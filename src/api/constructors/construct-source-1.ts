@@ -1,3 +1,5 @@
+// construct-source-1.ts
+
 import { HsonNode } from "../../types-consts/node.types";
 import { FrameConstructor } from "../../types-consts/constructor.types";
 import { OutputConstructor_2 } from "../../types-consts/constructor.types";
@@ -11,6 +13,9 @@ import { construct_output_2 } from "./construct-output-2";
 import { SourceConstructor_1 } from "../../types-consts/constructor.types";
 import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
 
+/**
+ * Per-call HTML parsing options for `construct_source_1.fromHTML()`.
+ */
 export interface HtmlSourceOptions {
   /** Per-call override for HTML sanitization.
    *
@@ -49,6 +54,9 @@ export interface HtmlSourceOptions {
  * - Are **not** passed through DOMPurify here.
  * - If they encode HTML AST and you want HTML-style sanitization, you must do
  *   that explicitly later (e.g. Node → HTML → DOMPurify → Node).
+ *
+ * @param pipelineOptions - Pipeline configuration (safe vs unsafe parsing).
+ * @returns Stage-1 constructor API for creating a normalized HSON frame.
  */
 export function construct_source_1(
   pipelineOptions: { unsafe: boolean } = { unsafe: false }

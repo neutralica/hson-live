@@ -1,3 +1,5 @@
+// store.ts
+
 import { HsonNode } from "../../types-consts/node.types";
 import { Patch, Store, Path, PatchOp, PathSeg } from "../livemap/types.livemap";
 
@@ -7,17 +9,28 @@ import { Patch, Store, Path, PatchOp, PathSeg } from "../livemap/types.livemap";
 
 type Subscriber = (patch: Patch) => void;
 
+/**
+ * Simple in-memory Store implementation for development/testing.
+ */
 export class InMemoryStore implements Store {
   private rootJson: unknown;
   private subscribers: Subscriber[] = [];
 
+  /**
+   * @param initialJson - Initial JSON value for the root.
+   */
   constructor(initialJson: unknown) {
     this.rootJson = initialJson;
   }
 
   // -- reads --
 
-  // Read JSON value at a path
+  /**
+   * Read a JSON value at a path.
+   *
+   * @param path - Path into the JSON view.
+   * @returns The value at the path, or undefined if missing.
+   */
   read(path: Path): unknown {
     let cur: unknown = this.rootJson;
     for (const seg of path) {
@@ -33,7 +46,12 @@ export class InMemoryStore implements Store {
     return cur;
   }
 
-  // Read an Hson node view at a path (stub)
+  /**
+   * Read an HSON node view at a path (placeholder stub).
+   *
+   * @param _path - Path into the node view.
+   * @returns A placeholder root node.
+   */
   readNode(_path: Path): HsonNode {
   
     // Placeholder to meet the interface:
@@ -47,6 +65,12 @@ export class InMemoryStore implements Store {
 
   // -- write + notify --
 
+  /**
+   * Apply a patch and notify subscribers.
+   *
+   * @param patch - Patch to apply.
+   * @returns void
+   */
   transact(patch: Patch): void {
     // 1) Apply ops to the JSON view (or to Node, if canonical)
     for (const op of patch.ops) {
@@ -59,6 +83,12 @@ export class InMemoryStore implements Store {
     }
   }
 
+  /**
+   * Subscribe to patch notifications.
+   *
+   * @param handler - Callback invoked on each patch.
+   * @returns Unsubscribe function.
+   */
   subscribe(handler: Subscriber): () => void {
     this.subscribers.push(handler);
     return () => {

@@ -1,3 +1,5 @@
+// livemap-projector.ts
+
 import { Patch, Path, PathStr, Store, toPointer, TxId } from "../livemap/types.livemap";
 import { Projector, ProjectorMode } from "./projector";
 
@@ -5,13 +7,19 @@ import { Projector, ProjectorMode } from "./projector";
  * (CURRENTLY UNUSED, TBC)
  ***************************/
 
+/**
+ * Options for LiveMap projection and schema hints.
+ */
 export type LiveMapOptions = {
-  // Schema hints by path pointer. Keep light for v1.
+  /** Schema hints by path pointer. Keep light for v1. */
   schema?: Record<PathStr, SchemaNode>;
-  // Collapsing thresholds, lazy render toggles, etc.
+  /** Collapsing thresholds, lazy render toggles, etc. */
   collapseAfter?: number;
 };
 
+/**
+ * Schema hints for rendering or editing a value at a path.
+ */
 export type SchemaNode = {
   type?: "object" | "array" | "string" | "number" | "boolean" | "null";
   widget?: "text" | "textarea" | "number" | "checkbox" | "select" | "slider";
@@ -25,6 +33,9 @@ export type SchemaNode = {
   hidden?: boolean;
 };
 
+/**
+ * Projector that renders a JSON tree as a DOM inspector/editor.
+ */
 export class LiveMapProjector implements Projector {
   private store: Store;
   private root: Element | null = null;
@@ -33,11 +44,23 @@ export class LiveMapProjector implements Projector {
   private unsubscribe: (() => void) | null = null;
   private opts: LiveMapOptions;
 
+  /**
+   * @param store - Backing data store.
+   * @param opts - Optional rendering/schema options.
+   */
   constructor(store: Store, opts?: LiveMapOptions) {
     this.store = store;
     this.opts = opts ?? {};
   }
 
+  /**
+   * Mount into a DOM container and render the selected subtree.
+   *
+   * @param root - DOM container to render into.
+   * @param path - Subtree path to render.
+   * @param mode - Presentation mode (snapshot/dashboard/control).
+   * @returns void
+   */
   mount(root: Element, path: Path, mode: ProjectorMode): void {
     this.root = root;
     this.path = path;
@@ -62,6 +85,11 @@ export class LiveMapProjector implements Projector {
     }
   }
 
+  /**
+   * Unmount and tear down event handlers/subscriptions.
+   *
+   * @returns void
+   */
   unmount(): void {
     if (!this.root) return;
     if (this.mode === "control") {
@@ -73,6 +101,12 @@ export class LiveMapProjector implements Projector {
     this.root = null;
   }
 
+  /**
+   * Apply a patch from the store (excluding self-originated DOM patches).
+   *
+   * @param patch - Patch to reconcile.
+   * @returns void
+   */
   onPatch(patch: Patch): void {
     if (!this.root) return;
     // Cheap path-scoped reconciliation: for each op touching this.path subtree,

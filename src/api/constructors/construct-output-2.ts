@@ -1,3 +1,5 @@
+// construct-output-2.ts
+
 import { RenderFormats } from "../../types-consts/constructor.types";
 import { OutputConstructor_2 } from "../../types-consts/constructor.types";
 import { HsonNode } from "../../types-consts/node.types";
@@ -19,7 +21,7 @@ import { make_branch_from_node } from "../livetree/livetree-constructors/create-
  * HSON pipeline – stage 2: select output format.
  *
  * This takes a normalized HSON "frame" (Node + meta) produced by
- * `construct_source` and produces the format-selection surface:
+ * `construct_source_1` and produces the format-selection surface:
  *
  *   hson.fromJSON(data)
  *       .toHTML()        // ← this function
@@ -36,6 +38,9 @@ import { make_branch_from_node } from "../livetree/livetree-constructors/create-
  * - text outputs:  .toHTML() / .toJSON() / .toHSON()
  * - LiveTree:      .liveTree().asBranch()
  * - cross-format transform: .sanitizeBEWARE() (Node → HTML → DOMPurify → Node)
+ *
+ * @param frame - Normalized frame from stage 1 (node + meta).
+ * @returns Stage-2 constructor API for selecting output formats.
  */
 export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
 

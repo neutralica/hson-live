@@ -9,6 +9,7 @@ import { AnimAdapters, CssAnimHandle, CssAnimScope } from "./animate.types";
 import { manage_property } from "./at-property";
 import { KeyframesManager, manage_keyframes } from "./keyframes";
 import { make_style_setter } from "./style-setter";
+import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "./css-globals";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -72,7 +73,7 @@ export function css_for_quids(
       // devSnapshot: () => mgr.devSnapshot(),
       debug_viewCss: () => mgr.renderCss?.(),
       debug_sync: () => mgr.syncNow?.(),
-      debug_hardReset: ()=> mgr.debug_hardReset?.()
+      debug_hardReset: () => mgr.debug_hardReset?.()
     };
   }
 
@@ -230,6 +231,7 @@ export class CssManager {
   private atPropManager: PropertyManager;
   private keyframeManager: KeyframesManager;
   private changed: boolean = false;
+  private readonly globalCss: Map<string, string> = new Map();
 
   // ADDED: coalescing state
   private scheduled: boolean = false;        // CHANGED: prevents multiple schedules
@@ -702,6 +704,7 @@ export class CssManager {
     if (styleEl) {
       styleEl.textContent = "";
     }
+    this.globalCss.clear();
   }
 
   /**
@@ -805,6 +808,8 @@ export class CssManager {
     const quidCss = blocks.join("\n\n").trim();
 
     const parts: string[] = [];
+    const globalCss = render_globals(this.globalCss);
+    if (globalCss) parts.push(globalCss);
     if (atPropCss) parts.push(atPropCss);
     if (keyframesCss) parts.push(keyframesCss);
     if (quidCss) parts.push(quidCss);
@@ -839,6 +844,29 @@ export class CssManager {
   }
 
 
+  public setGlobal(source: string, cssText: string): void {
+    set_global(this.globalCss, source, cssText);
+    this.mark_changed();
+  }
+
+  public removeGlobal(source: string): void {
+    remove_global(this.globalCss, source);
+    this.mark_changed();
+  }
+
+  public clearGlobals(): void {
+    if (this.globalCss.size === 0) return;
+    clear_globals(this.globalCss);
+    this.mark_changed();
+  }
+
+  public listGlobals(): readonly string[] {
+    return list_globals(this.globalCss);
+  }
+
+  public getGlobal(source: string): string | undefined {
+    return get_global(this.globalCss, source);
+  }
   private syncToDom(): void {
     const styleEl = this.ensureStyleElement();
     if (!styleEl) return;

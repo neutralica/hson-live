@@ -1,3 +1,5 @@
+// construct-render-4.ts
+
 import { RenderFormats } from "../../types-consts/constructor.types";
 import { $RENDER } from "../../types-consts/constants";
 import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils";
@@ -20,6 +22,9 @@ import { FrameRender } from "../../types-consts/constructor.types";
  * - `serialize()` → string in the chosen format,
  * - `parse()`     → structured value (JSON / Nodes),
  * - `asBranch()`  → LiveTree projection for DOM interaction.
+ *
+ * @param context - Render context containing the frame and output format.
+ * @returns Stage-4 terminal render API for the chosen format.
  */
 export function construct_render_4<K extends RenderFormats>(
   context: FrameRender<K>
