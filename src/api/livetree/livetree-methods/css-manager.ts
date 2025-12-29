@@ -699,7 +699,6 @@ export class CssManager {
    * @param quid The QUID whose entire rule block should be removed.
    */
   public clearQuid(quid: string): void {
-    this.ensureStyleElement();
     if (!this.rulesByQuid.delete(quid)) return;
     this.mark_changed();
   }
