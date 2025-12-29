@@ -94,7 +94,7 @@ export function remove_livetree(this: LiveTree): number {
   detach_node_deep(node);
   drop_quid(node);
 
-  const root = this.getHostRoots();
+  const root = this.hostRootNode();
   if (root) pruneNodeFromRoot(root, node);
 
   // CHANGED: return count

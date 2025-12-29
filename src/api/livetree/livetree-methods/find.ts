@@ -236,5 +236,5 @@ export function make_find_all_for(tree: LiveTree): FindMany {
  * @returns A `LiveTree` bound to `node` with inherited host roots.
  */
 export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
-    return new LiveTree(node).adoptRoots(parent.getHostRoots());
+    return new LiveTree(node).adoptRoots(parent.hostRootNode());
 }

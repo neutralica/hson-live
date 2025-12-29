@@ -95,7 +95,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
 
       for (const child of appended) {
         const childTree = new LiveTree(child);
-        childTree.adoptRoots(tree.getHostRoots());
+        childTree.adoptRoots(tree.hostRootNode());
         created.push(childTree);
       }
 

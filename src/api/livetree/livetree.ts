@@ -23,7 +23,7 @@ import { Primitive } from "../../types-consts/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./livetree-methods/style-setter";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types-consts/dom.types";
 import { make_dom_api } from "./livetree-managers/dom-manager";
-import { is_Node } from "hson-live/diagnostics";
+import { is_Node } from "../../utils/node-utils/node-guards";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"
@@ -305,7 +305,7 @@ export class LiveTree {
    *
    * @returns The root `HsonNode` for this tree's context.
    */
-  public getHostRoots(): HsonNode {
+  public hostRootNode(): HsonNode {
     return this.hostRoot;
   }
 
@@ -521,11 +521,6 @@ export class LiveTree {
     return this.classApi;
   }
 
-  private invalidate_attr_api(): void {
-    // ADDED: if you ever need to rebind (rare)
-    this.idApi = undefined;
-    this.classApi = undefined;
-  }
   /*  ---------- DOM adapter ---------- */
   /**
    * Resolve this tree's node to its associated DOM `Element`, if any.

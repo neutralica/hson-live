@@ -160,36 +160,36 @@ export interface ListenerSub {
   ok: boolean;
 }
 
-export interface ListenerBuilder {
-//   /*----- typed events */
-//   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerBuilder;
-//   onClick(h: (ev: MouseEvent) => void): ListenerBuilder;
-//   onMouseMove(h: (ev: MouseEvent) => void): ListenerBuilder;
-//   onMouseDown(h: (ev: MouseEvent) => void): ListenerBuilder;
-//   onMouseUp(h: (ev: MouseEvent) => void): ListenerBuilder;
-//   onKeyDown(h: (ev: KeyboardEvent) => void): ListenerBuilder;
-//   onKeyUp(h: (ev: KeyboardEvent) => void): ListenerBuilder;
+// export interface ListenerBuilder {
+// //   /*----- typed events */
+// //   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerBuilder;
+// //   onClick(h: (ev: MouseEvent) => void): ListenerBuilder;
+// //   onMouseMove(h: (ev: MouseEvent) => void): ListenerBuilder;
+// //   onMouseDown(h: (ev: MouseEvent) => void): ListenerBuilder;
+// //   onMouseUp(h: (ev: MouseEvent) => void): ListenerBuilder;
+// //   onKeyDown(h: (ev: KeyboardEvent) => void): ListenerBuilder;
+// //   onKeyUp(h: (ev: KeyboardEvent) => void): ListenerBuilder;
 
-//   /*----- options */
-//   once(): ListenerBuilder;
-//   passive(): ListenerBuilder;
-//   capture(): ListenerBuilder;
-//   toWindow(): ListenerBuilder;
-//   toDocument(): ListenerBuilder;
+// //   /*----- options */
+// //   once(): ListenerBuilder;
+// //   passive(): ListenerBuilder;
+// //   capture(): ListenerBuilder;
+// //   toWindow(): ListenerBuilder;
+// //   toDocument(): ListenerBuilder;
 
-//   /*----- validation / scheduling */
-//   strict(policy?: MissingPolicy): ListenerBuilder; // default "warn"
-//   defer(): ListenerBuilder; // cancel auto-attach for manual attach()
+// //   /*----- validation / scheduling */
+// //   strict(policy?: MissingPolicy): ListenerBuilder; // default "warn"
+// //   defer(): ListenerBuilder; // cancel auto-attach for manual attach()
 
-//   // may remove some day, seeing if this ubreaks something
-//  attach(): ListenerSub;
-//   /* Auto-attach will also return a handle. */
-//   preventDefault(): ListenerBuilder;
-//   stopProp(): ListenerBuilder;
-//   stopImmediateProp(): ListenerBuilder;
-//   stopAll(): ListenerBuilder;
-//   clearStops(): ListenerBuilder;
-}
+// //   // may remove some day, seeing if this ubreaks something
+// //  attach(): ListenerSub;
+// //   /* Auto-attach will also return a handle. */
+// //   preventDefault(): ListenerBuilder;
+// //   stopProp(): ListenerBuilder;
+// //   stopImmediateProp(): ListenerBuilder;
+// //   stopAll(): ListenerBuilder;
+// //   clearStops(): ListenerBuilder;
+// }
 export interface ListenerBuilder {
   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerSub;
 

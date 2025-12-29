@@ -220,54 +220,76 @@ function renderCssValue(v: CssValue): string | null {
   }
   return String(v);
 }
-
 export function make_id_api(tree: LiveTree): IdApi {
   return {
-    get: () => tree.getAttr("id") as string ?? undefined,
-    set: (id: string) => { tree.setAttrs("id", id); return tree; },
-    clear: () => { tree.removeAttr("id"); return tree; },
-  };
-}
+    // CHANGED: avoid `as string`; read attr and validate type
+    get: () => {
+      const v = tree.getAttr("id");
+      return typeof v === "string" ? v : undefined;
+    },
 
-export function make_class_api(tree: LiveTree): ClassApi {
-  const getClassStr = (): string => {
-    // CHANGED
-    const v = tree.getAttr("class");
-    return (typeof v === "string") ? v : "";
+    set: (id: string) => {
+      tree.setAttrs("id", id);
+      return tree;
+    },
+
+    clear: () => {
+      tree.removeAttr("id");
+      return tree;
+    },
   };
-  // CHANGED: parse class string safely
+} export function make_class_api(tree: LiveTree): ClassApi {
+  // REMOVED: unused helper getClassStr()
+
+  // CHANGED: single source of truth for the raw class attribute
+  const getRaw = (): string | undefined => {
+    const v = tree.getAttr("class");
+    return (typeof v === "string" && v.trim().length > 0) ? v : undefined;
+  };
+
+  // CHANGED: parse class string from getRaw() (avoid duplicate getAttr reads)
   const getSet = (): Set<string> => {
-    // CHANGED: guard because getAttr returns string | number | boolean
-    const raw = tree.getAttr("class");
-    const s = (typeof raw === "string") ? raw : "";
+    const s = getRaw() ?? "";
     return new Set(s.split(/\s+/).filter(Boolean));
   };
+
   return {
-    get: () => tree.getAttr("class") as string ?? undefined,
+    // CHANGED: avoid `as string`
+    get: () => getRaw(),
+
     has: (name: string) => getSet().has(name),
 
     set: (cls) => {
-      const next = Array.isArray(cls) ? cls.filter(Boolean).join(" ").trim() : (cls ?? "").trim();
-      if (!next) tree.setAttrs("class", null);
+      const next = Array.isArray(cls)
+        ? cls.filter(Boolean).join(" ").trim()
+        : (cls ?? "").trim();
+
+      // CHANGED: use removeAttr for clearing, consistent with other methods
+      if (!next) tree.removeAttr("class");
       else tree.setAttrs("class", next);
+
       return tree;
     },
 
     add: (...names) => {
       const set = getSet();
       for (const n of names) if (n) set.add(n);
+
       const next = [...set].join(" ");
       if (!next) tree.removeAttr("class");
       else tree.setAttrs("class", next);
+
       return tree;
     },
 
     remove: (...names) => {
       const set = getSet();
       for (const n of names) set.delete(n);
+
       const next = [...set].join(" ");
       if (!next) tree.removeAttr("class");
       else tree.setAttrs("class", next);
+
       return tree;
     },
 
@@ -275,14 +297,20 @@ export function make_class_api(tree: LiveTree): ClassApi {
       const set = getSet();
       const has = set.has(name);
       const shouldHave = (force === undefined) ? !has : force;
+
       if (shouldHave) set.add(name);
       else set.delete(name);
+
       const next = [...set].join(" ");
       if (!next) tree.removeAttr("class");
       else tree.setAttrs("class", next);
+
       return tree;
     },
 
-    clear: () => { tree.removeAttr("class"); return tree; },
+    clear: () => {
+      tree.removeAttr("class");
+      return tree;
+    },
   };
 }

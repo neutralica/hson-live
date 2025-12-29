@@ -110,7 +110,7 @@ export function append_branch(
   const nodesToAppend: HsonNode[] = unwrap_root_elem(srcNode);
 
   // preserve host root for pruning / removal
-  branch.adoptRoots(this.getHostRoots());
+  branch.adoptRoots(this.hostRootNode());
 
   append_nodes(targetNode, nodesToAppend, index);
   return this;
@@ -147,7 +147,7 @@ export function append_multi(
   for (const b of branchList) {
     const src = b.node;
     nodesToAppend.push(...unwrap_root_elem(src));
-    b.adoptRoots(this.getHostRoots());
+    b.adoptRoots(this.hostRootNode());
   }
 
   append_nodes(targetNode, nodesToAppend, index);
