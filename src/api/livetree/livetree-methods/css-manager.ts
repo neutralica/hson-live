@@ -71,9 +71,9 @@ export function css_for_quids(
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
       // devSnapshot: () => mgr.devSnapshot(),
-      debug_viewCss: () => mgr.renderCss?.(),
-      debug_sync: () => mgr.syncNow?.(),
-      debug_hardReset: () => mgr.debug_hardReset?.()
+      debug_viewCss: () => mgr.renderCss(),
+      debug_sync: () => mgr.syncNow(),
+      debug_hardReset: () => mgr.debug_hardReset()
     };
   }
 
@@ -293,23 +293,26 @@ export class CssManager {
     });
   }
 
+  private ensureBoundDoc(): void {
+    const doc = (globalThis as any).document as Document | undefined;
+    if (!doc) return;
 
-  /**
-   * Returns the singleton `CssManager` instance, creating it on first use.
-   *
-   * Side effects:
-   * - Ensures the manager is bound to a valid `<style>` element in the current
-   *   global `document` (via `ensureStyleElement()`), so subsequent writes can
-   *   safely render without a “first write creates DOM” race.
-   *
-   * @returns The process-wide `CssManager` singleton.
-   */
+    if (this.boundDoc !== doc) {
+      this.boundDoc = doc;
+      this.styleEl = null;
+      this.resetManagersAndRules();
+    }
+  }
+
   public static invoke(): CssManager {
     if (!CssManager.instance) CssManager.instance = new CssManager();
-    // ensure host <style> exists immediately 
-    CssManager.instance.ensureStyleElement();
+
+    // CHANGED: bind doc if present, but do NOT create <style> here
+    CssManager.instance.ensureBoundDoc();
+
     return CssManager.instance;
   }
+
 
   /**
    * Resets all in-memory CSS state and owned sub-managers to a clean baseline.
@@ -371,8 +374,11 @@ export class CssManager {
    */
   private ensureStyleElement(): HTMLStyleElement | undefined {
     // NEW: guard against true Node / no DOM
-    const doc = (globalThis as any).document as Document | undefined;
+    this.ensureBoundDoc();
+
+    const doc = this.boundDoc ?? ((globalThis as any).document as Document | undefined);
     if (!doc) return undefined;
+
 
     // CHANGED: use the local doc var instead of global `document`
     if (this.boundDoc !== doc) {
@@ -385,9 +391,6 @@ export class CssManager {
       if (!this.styleEl.isConnected || this.styleEl.ownerDocument !== doc) {
         this.styleEl = null;
       } else {
-        if (!this.changed && this.styleEl.textContent === "" && this.rulesByQuid.size > 0) {
-          this.rulesByQuid.clear();
-        }
         return this.styleEl;
       }
     }
@@ -415,37 +418,20 @@ export class CssManager {
       host.appendChild(styleEl);
     }
 
-    if (!this.changed && styleEl.textContent === "" && this.rulesByQuid.size > 0) {
-      this.rulesByQuid.clear();
-    }
 
     this.styleEl = styleEl;
     return styleEl;
   }
 
-  /**
-   * Dev-only helper that forces a full stylesheet render and returns the CSS text.
-   *
-   * Behavior:
-   * - Builds the combined stylesheet text from all current manager state
-   *   (QUID rules + `@property` registrations + keyframes/animations).
-   * - Writes that text directly into the managed `<style id="${CSS_STYLE_ID}">`.
-   * - Clears the internal dirty flag (`changed = false`).
-   *
-   * This is intentionally side-effecting and should be treated as an
-   * introspection/diagnostic escape hatch (useful in tests and debugging).
-   *
-   * @returns The exact CSS text written into the managed `<style>` element.
-   */
-  public devSnapshot(): string {
-    const cssText = this.buildCombinedCss();
-    const styleEl = this.ensureStyleElement(); // CHANGED: might be null
-    if (styleEl) {
-      styleEl.textContent = cssText;
-      this.changed = false;
-    }
-    return cssText;
-  }
+  // public devSnapshot(): string {
+  //   const cssText = this.buildCombinedCss();
+  //   const styleEl = this.ensureStyleElement(); // CHANGED: might be null
+  //   if (styleEl) {
+  //     styleEl.textContent = cssText;
+  //     this.changed = false;
+  //   }
+  //   return cssText;
+  // }
 
   /**
    * Dev-only helper that hard-resets all CSS state and re-ensures the DOM host.
@@ -454,7 +440,6 @@ export class CssManager {
    * - Clears all QUID-scoped rules.
    * - Recreates the `@property` and keyframes managers.
    * - Empties the managed `<style>` element (if connected).
-   * - Ensures the host + `<style>` element exist for the current `document`.
    *
    * This is primarily intended for tests (e.g. to avoid cross-test leakage)
    * and for manual debugging when the manager state must be rebuilt from zero.
@@ -479,26 +464,29 @@ export class CssManager {
    */
   private makeAnimAdapters(): AnimAdapters<CssAnimScope> {
     return {
-      // 1) set a single CSS property for every QUID in the scope
       setStyleProp: (scope, prop, value) => {
-        for (const quid of scope.quids) {
-          this.setForQuid(quid, prop, value);
-        }
+        for (const quid of scope.quids) this.setForQuid(quid, prop, value);
         return scope;
       },
 
-      // 2) iterate DOM elements for the selection
       forEachDomElement: (scope, fn) => {
+        // CHANGED: guard document
+        const doc = (globalThis as any).document as Document | undefined;
+        if (!doc) return;
+
         for (const quid of scope.quids) {
-          const el = document.querySelector(selectorForQuid(quid));
+          const el = doc.querySelector(selectorForQuid(quid));
           if (el) fn(el);
         }
       },
 
-      // 3) return one element (first match) for minimal reflow poke
       getFirstDomElement: (scope) => {
+        // CHANGED: guard document
+        const doc = (globalThis as any).document as Document | undefined;
+        if (!doc) return undefined;
+
         for (const quid of scope.quids) {
-          const el = document.querySelector(selectorForQuid(quid));
+          const el = doc.querySelector(selectorForQuid(quid));
           if (el) return el;
         }
         return undefined;
@@ -510,13 +498,11 @@ export class CssManager {
    * Exposes the `@property` registration manager used by this `CssManager`.
    *
    * Access guarantees:
-   * - Ensures the managed `<style>` element exists for the current `document`
    *   before returning the manager, so subsequent registrations can be rendered.
    *
    * @returns The live `PropertyManager` instance (singleton-owned).
    */
   public get atProperty(): PropertyManager {
-    this.ensureStyleElement();
     return this.atPropManager;
   }
 
@@ -530,7 +516,6 @@ export class CssManager {
    * @returns The live `KeyframesManager` instance (singleton-owned).
    */
   public get keyframes(): KeyframesManager {
-    this.ensureStyleElement();
     return this.keyframeManager;
 
   }
@@ -562,7 +547,6 @@ export class CssManager {
     propCanon: string,
     value: CssValue | string | number | boolean
   ): void {
-    this.ensureStyleElement();
 
     const q = quid.trim();
     if (!q) return;
@@ -614,7 +598,6 @@ export class CssManager {
    * @returns A `CssAnimHandle` that controls animations for that scope.
    */
   public animForQuids(quids: readonly string[]): CssAnimHandle {
-    this.ensureStyleElement();
 
     const core = apply_animation(this.makeAnimAdapters()); // AnimApiCore<CssAnimScope>
     const scope: CssAnimScope = { quids };
@@ -642,13 +625,12 @@ export class CssManager {
    * @throws Error if `quid` is blank after trimming.
    */
   public setManyForQuid(quid: string, decls: CssProp): void {
-    this.ensureStyleElement();
     const trimmedQuid = quid.trim();
     if (!trimmedQuid) {
       throw new Error("CssManager.setManyForQuid: quid must be non-empty");
     }
     for (const [propCanon, value] of Object.entries(decls)) {
-      this.setForQuid(trimmedQuid, propCanon, value as any);
+      this.setForQuid(trimmedQuid, propCanon, value);
     }
   }
 
@@ -665,7 +647,6 @@ export class CssManager {
    * @param propCanon The canonical property key to remove.
    */
   public unsetForQuid(quid: string, propCanon: string): void {
-    this.ensureStyleElement();
     const props = this.rulesByQuid.get(quid);
     if (!props) return;
 
@@ -736,7 +717,6 @@ export class CssManager {
    * reset of all CSS-related state.
    */
   public clearAll(): void {
-    this.ensureStyleElement();
     if (this.rulesByQuid.size === 0) return;
     this.rulesByQuid.clear();
     this.mark_changed();

@@ -22,8 +22,10 @@ import { FindWithById, NodeRef } from "../../types-consts/livetree.types";
 import { Primitive } from "../../types-consts/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./livetree-methods/style-setter";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types-consts/dom.types";
-import { make_dom_api } from "./livetree-managers/dom-manager";
+import { make_dom_api } from "./managers-handlers/dom-manager";
 import { is_Node } from "../../utils/node-utils/node-guards";
+import { TreeEvents } from "../../types-consts/events.types";
+import { make_tree_events } from "./managers-handlers/events-handler";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"
@@ -109,6 +111,8 @@ export class LiveTree {
   /*---------- .dataset editor */
   private datasetManagerInternal: DataManager | undefined = undefined;
 
+  private cssApiInternal: CssHandle | undefined = undefined;
+  private eventsInternal?: TreeEvents;
   private idApi?: IdApi;
   private classApi?: ClassApi;
 
@@ -192,7 +196,11 @@ export class LiveTree {
   // OPTIONAL: if the underlying bound element can change during lifetime
   // ADDED
   private invalidate_dom_api(): void {
+    // existing
     this.domApiInternal = undefined;
+
+    // ADDED: css handle depends on the current nodeRef/quid context
+    this.cssApiInternal = undefined;
   }
 
   /**
@@ -347,7 +355,12 @@ export class LiveTree {
     // StyleManager must expose its StyleSetter (suggested name: `setter`)
     return this.styleManagerInternal.setter;
   }
-
+  public get events(): TreeEvents {
+    if (!this.eventsInternal) {
+      this.eventsInternal = make_tree_events();
+    }
+    return this.eventsInternal;
+  }
   /**
    * Dataset (`data-*`) manager for this node (lazy).
    *
@@ -367,7 +380,10 @@ export class LiveTree {
    * @see css_for_quids
    */
   public get css(): CssHandle {
-    return css_for_quids(this, [this.quid]);
+    if (!this.cssApiInternal) {
+      this.cssApiInternal = css_for_quids(this, [this.quid]);
+    }
+    return this.cssApiInternal;
   }
 
   /**
