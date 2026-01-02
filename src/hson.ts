@@ -21,17 +21,17 @@ import { construct_tree } from "./api/constructors/construct-tree";
  * - Step 1: choose a source via:
  *     - `hson.fromUntrustedHtml(html)`
  *     - `hson.fromTrustedHtml(html)`
- *     - `hson.fromJSON(json)`
- *     - `hson.fromHSON(hson)`
+ *     - `hson.fromJson(json)`
+ *     - `hson.fromHson(hson)`
  *     - `hson.fromNode(node)`
  *     - `hson.queryDOM(selector)`
  *     - `hson.queryBody()`
  *
  * [OUTPUT]
  *  - Step 2: chain into the output builder returned by step 1:
- *       .toHTML()  → HTML string
- *       .toJSON()  → JSONValue
- *       .toHSON()  → HSON string or underlying nodes
+ *       .toHtml()  → HTML string
+ *       .toJson()  → JSONValue
+ *       .toHson()  → HSON string or underlying nodes
  *       .liveTree() → create LiveTree
  *
  * * [OPTIONS]
@@ -70,7 +70,7 @@ import { construct_tree } from "./api/constructors/construct-tree";
  *   - The resulting Nodes can express SVG, script tags, and other features that
  *     are blocked in the safe pipeline.
  *
- * - `fromJSON`, `fromHSON`, `fromNode`:
+ * - `fromJson`, `fromHson`, `fromNode`:
  *   - Treat inputs as data, not markup.
  *   - No DOMPurify is applied here by default.
  *   - If these structures encode HTML AST and you need HTML-style sanitization,
@@ -112,7 +112,7 @@ export const hson = {
    *     - or project into a LiveTree (`.branch()`).
    */
   fromUntrustedHtml(input: string | Element): OutputConstructor_2 {
-    return construct_source_1({ unsafe: false }).fromHTML(input, {
+    return construct_source_1({ unsafe: false }).fromHtml(input, {
       sanitize: true,
     });
   },
@@ -134,7 +134,7 @@ export const hson = {
    * Never feed untrusted / user-supplied HTML through this method.
    */
   fromTrustedHtml(input: string | Element): OutputConstructor_2 {
-    return construct_source_1({ unsafe: true }).fromHTML(input, {
+    return construct_source_1({ unsafe: true }).fromHtml(input, {
       sanitize: false,
     });
   },
@@ -154,12 +154,12 @@ export const hson = {
    * - If your JSON encodes an HTML AST and you want HTML-style sanitization,
    *   you must handle that explicitly (e.g. Nodes → HTML → DOMPurify → Nodes).
    */
-  fromJSON(input: string | JsonValue): OutputConstructor_2 {
+  fromJson(input: string | JsonValue): OutputConstructor_2 {
     // You can choose `{ unsafe: true }` or `{ unsafe: false }` here; for JSON,
     // the "unsafe" flag only tags meta and affects follow-up HTML parsing
     // decisions, not this step itself. Using `unsafe: true` makes it explicit
     // that this pipeline is free to express everything internally.
-    return construct_source_1({ unsafe: true }).fromJSON(input);
+    return construct_source_1({ unsafe: true }).fromJson(input);
   },
 
   /**
@@ -167,8 +167,8 @@ export const hson = {
    *
    * Parses HSON source text into Nodes. No DOMPurify is used here.
    */
-  fromHSON(input: string): OutputConstructor_2 {
-    return construct_source_1({ unsafe: true }).fromHSON(input);
+  fromHson(input: string): OutputConstructor_2 {
+    return construct_source_1({ unsafe: true }).fromHson(input);
   },
 
   /**

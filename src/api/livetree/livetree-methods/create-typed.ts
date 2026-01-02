@@ -38,7 +38,7 @@ const HTML_TAGS: TagName[] = [
  * Semantics:
  * - New elements are created as *children* of `tree.node`.
  * - HSON nodes are produced via the canonical HTML → HSON pipeline:
- *   `hson.fromTrustedHtml(html).toHSON().parse()`.
+ *   `hson.fromTrustedHtml(html).toHson().parse()`.
  * - Any `_elem` wrapper at the root is unwrapped via `unwrap_root_elem`,
  *   so created nodes are real element nodes, not virtual containers.
  * - For each call:
@@ -82,7 +82,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
     for (const t of tags) {
       const html = `<${t}></${t}>`;
 
-      const parsed = hson.fromTrustedHtml(html).toHSON().parse();
+      const parsed = hson.fromTrustedHtml(html).toHson().parse();
       const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
 
       const branch = new LiveTree(root0);

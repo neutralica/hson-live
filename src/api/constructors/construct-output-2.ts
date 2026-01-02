@@ -23,8 +23,8 @@ import { make_branch_from_node } from "../livetree/livetree-constructors/create-
  * This takes a normalized HSON "frame" (Node + meta) produced by
  * `construct_source_1` and produces the format-selection surface:
  *
- *   hson.fromJSON(data)
- *       .toHTML()        // ← this function
+ *   hson.fromJson(data)
+ *       .toHtml()        // ← this function
  *       .spaced()        // optional options (stage 3)
  *       .serialize();    // final action (stage 4)
  *
@@ -35,7 +35,7 @@ import { make_branch_from_node } from "../livetree/livetree-constructors/create-
  *   - configuration (OptionsConstructor_3),
  *   - final actions (RenderConstructor_4).
  * Given a normalized frame (Node + meta), this exposes:
- * - text outputs:  .toHTML() / .toJSON() / .toHSON()
+ * - text outputs:  .toHtml() / .toJson() / .toHson()
  * - LiveTree:      .liveTree().asBranch()
  * - cross-format transform: .sanitizeBEWARE() (Node → HTML → DOMPurify → Node)
  *
@@ -55,7 +55,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
 
   function makeBuilder(currentFrame: FrameConstructor): OutputConstructor_2 {
     return {
-      toHSON() {
+      toHson() {
         const hson = serialize_hson(currentFrame.node);
         const ctx: FrameRender<(typeof $RENDER)["HSON"]> = {
           frame: { ...currentFrame, hson },
@@ -64,7 +64,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
         return makeFinalizer(ctx);
       },
 
-      toJSON() {
+      toJson() {
         const json = serialize_json(currentFrame.node);
         const ctx: FrameRender<(typeof $RENDER)["JSON"]> = {
           frame: { ...currentFrame, json },
@@ -73,7 +73,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
         return makeFinalizer(ctx);
       },
 
-      toHTML(){
+      toHtml(){
         const html = serialize_html(currentFrame.node);
         const ctx: FrameRender<(typeof $RENDER)["HTML"]> = {
           frame: { ...currentFrame, html },

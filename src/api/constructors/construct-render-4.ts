@@ -36,9 +36,9 @@ export function construct_render_4<K extends RenderFormats>(
      * Return the final output as a string in the chosen format,
      * formatted according to any options supplied in stage 3.
      *
-     * - After `.toHSON()` → HSON source text.
-     * - After `.toJSON()` → JSON string.
-     * - After `.toHTML()` → HTML string.
+     * - After `.toHson()` → HSON source text.
+     * - After `.toJson()` → JSON string.
+     * - After `.toHtml()` → HTML string.
      */
     serialize(): string {
       switch (output) {
@@ -75,17 +75,17 @@ export function construct_render_4<K extends RenderFormats>(
     /**
      * Return the "valueful" data representation for inspection / manipulation.
      *
-     * - After `.toJSON()`:
+     * - After `.toJson()`:
      *     → parsed JSON value (object / array / primitive).
-     * - After `.toHSON()`:
+     * - After `.toHson()`:
      *     → the internal HsonNode tree (Nodes).
-     * - After `.toHTML()`:
+     * - After `.toHtml()`:
      *     → not supported; HTML is inherently stringy, so `.parse()` throws.
      *
      * This is intentionally typed as `unknown`; callers should narrow
      * based on which `toX()` they used:
      *
-     *   const val = hson.fromJSON(data).toJSON().parse(); // val: unknown
+     *   const val = hson.fromJson(data).toJson().parse(); // val: unknown
      *   if (Array.isArray(val)) { ... }
      */
     parse(): ParsedResult<K>  {

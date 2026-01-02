@@ -5,7 +5,7 @@ import { JsonValue } from "./core.types";
 import { LiveTree } from "../api/livetree/livetree";
 
 /**
- * Controls per-call HTML sanitization for `fromHTML(...)`.
+ * Controls per-call HTML sanitization for `fromHtml(...)`.
  *
  * In the safe pipeline:
  *   - sanitize: true  → run HTML through DOMPurify (default).
@@ -125,13 +125,13 @@ export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
  * Lowest-level “step 1” builder: given some input, produce a frame
  * and move to the *output selection* stage (OutputConstructor_2).
  *
- *  - fromHSON(input)
+ *  - fromHson(input)
  *      HSON string → Nodes.
  *
- *  - fromJSON(input)
+ *  - fromJson(input)
  *      JSON value or string → Nodes.
  *
- *  - fromHTML(input, options?)
+ *  - fromHtml(input, options?)
  *      HTML string or HTMLElement → Nodes.
  *      Per-call sanitization controlled by HtmlSourceOptions in
  *      the SAFE pipeline; ignored for UNSAFE pipelines.
@@ -148,9 +148,9 @@ export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
  *      Same as queryDOM, but for `document.body.innerHTML`.
  ***************/
 export interface SourceConstructor_1 {
-  fromHSON(input: string): OutputConstructor_2;
-  fromJSON(input: string | JsonValue): OutputConstructor_2;
-  fromHTML(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
+  fromHson(input: string): OutputConstructor_2;
+  fromJson(input: string | JsonValue): OutputConstructor_2;
+  fromHtml(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
   fromNode(input: HsonNode): OutputConstructor_2;
   queryDOM(selector: string): OutputConstructor_2;
   queryBody(): OutputConstructor_2;
@@ -164,13 +164,13 @@ export interface SourceConstructor_1 {
  *
  * Creation flows:
  *
- *  - fromHTML(html)
+ *  - fromHtml(html)
  *      Parse HTML/HSON-HTML into nodes, return BranchConstructor.
  *
- *  - fromJSON(json)
+ *  - fromJson(json)
  *      Parse JSON into nodes, return BranchConstructor.
  *
- *  - fromHSON(hson)
+ *  - fromHson(hson)
  *      Parse HSON text into nodes, return BranchConstructor.
  *
  *  - queryDom(selector)
@@ -182,9 +182,9 @@ export interface SourceConstructor_1 {
  *      as queryDom, but for the whole document body.
  ***************/
 export interface TreeConstructor_Source {
-  fromHTML(htmlString: string): BranchConstructor;
-  fromJSON(json: string | JsonValue): BranchConstructor;
-  fromHSON(hsonString: string): BranchConstructor;
+  fromHtml(htmlString: string): BranchConstructor;
+  fromJson(json: string | JsonValue): BranchConstructor;
+  fromHson(hsonString: string): BranchConstructor;
   queryDom(selector: string): GraftConstructor;
   queryBody(): GraftConstructor;
 }
@@ -221,13 +221,13 @@ export interface DomQuerySourceConstructor {
  *
  * Methods:
  *
- *  - toJSON()
+ *  - toJson()
  *      Choose JSON output. parse() will yield a JsonValue.
  *
- *  - toHSON()
+ *  - toHson()
  *      Choose HSON text output. parse() will yield a HsonNode.
  *
- *  - toHTML()
+ *  - toHtml()
  *      Choose HTML output. parse() is currently `never`.
  *
  *  - liveTree()
@@ -248,9 +248,9 @@ export interface DomQuerySourceConstructor {
  *      delete underscored tags and may return nothing.
  ***************/
 export interface OutputConstructor_2 {
-  toJSON(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
-  toHSON(): OptionsConstructor_3<(typeof $RENDER)["HSON"]> & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
-  toHTML(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
+  toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
+  toHson(): OptionsConstructor_3<(typeof $RENDER)["HSON"]> & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
   liveTree(): LiveTreeConstructor_3;
 
   /**
@@ -309,8 +309,8 @@ export interface GraftConstructor {
 /***************
  * BranchConstructor
  *
- * Returned by data-based source constructors (`fromJSON`, `fromHSON`,
- * `fromHTML`, `fromNode`).
+ * Returned by data-based source constructors (`fromJson`, `fromHson`,
+ * `fromHtml`, `fromNode`).
  *
  *  - asBranch()
  *      Creates and returns a *detached* LiveTree rooted at the frame’s

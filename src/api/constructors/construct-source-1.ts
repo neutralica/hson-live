@@ -14,7 +14,7 @@ import { SourceConstructor_1 } from "../../types-consts/constructor.types";
 import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
 
 /**
- * Per-call HTML parsing options for `construct_source_1.fromHTML()`.
+ * Per-call HTML parsing options for `construct_source_1.fromHtml()`.
  */
 export interface HtmlSourceOptions {
   /** Per-call override for HTML sanitization.
@@ -78,7 +78,7 @@ export function construct_source_1(
      *   - serialize (`.toHtml()`, `.toJson()`, `.toHson()`),
      *   - or project into a LiveTree (`.asBranch()`).
      */
-    fromHTML(
+    fromHtml(
       input: string | Element,
       options: HtmlSourceOptions = { sanitize: true }
     ): OutputConstructor_2 {
@@ -94,8 +94,8 @@ export function construct_source_1(
       if (isSvgMarkup(trimmed)) {
         if (!pipelineOptions.unsafe) {
           _throw_transform_err(
-            "fromHTML(): external SVG is only allowed on the UNSAFE pipeline or via internal VSN→SVG nodes.",
-            "fromHTML",
+            "fromHtml(): external SVG is only allowed on the UNSAFE pipeline or via internal VSN→SVG nodes.",
+            "fromHtml",
             raw.slice(0, 200)
           );
         }
@@ -140,7 +140,7 @@ export function construct_source_1(
      * - If your JSON encodes an HTML-like AST and you want HTML-style
      *   sanitization, you must opt into that later (Node → HTML → DOMPurify → Node).
      */
-    fromJSON(input: string | JsonValue): OutputConstructor_2 {
+    fromJson(input: string | JsonValue): OutputConstructor_2 {
       const raw: string =
         typeof input === "string" ? input : JSON.stringify(input);
 
@@ -170,7 +170,7 @@ export function construct_source_1(
      * - If your HSON ultimately encodes risky HTML, that must be handled
      *   at the HTML stage, not here.
      */
-    fromHSON(input: string): OutputConstructor_2 {
+    fromHson(input: string): OutputConstructor_2 {
       const node: HsonNode = parse_hson(input);
 
       const frame: FrameConstructor = {
@@ -218,7 +218,7 @@ export function construct_source_1(
      *
      * Snapshot helper for existing DOM. Semantics:
      * - Reads `innerHTML` of the matched element.
-     * - Delegates to `.fromHTML(html)` using the *current pipeline*’s
+     * - Delegates to `.fromHtml(html)` using the *current pipeline*’s
      *   safe/unsafe mode:
      *     - if `pipelineOptions.unsafe === true` → no sanitization,
      *     - if `pipelineOptions.unsafe === false` → sanitize by default.
@@ -241,7 +241,7 @@ export function construct_source_1(
       }
 
       const html: string = element.innerHTML;
-      return this.fromHTML(html);
+      return this.fromHtml(html);
     },
 
     /**
@@ -251,7 +251,7 @@ export function construct_source_1(
      *
      * Behavior:
      * - Throws a structured transform error if `document.body` is unavailable.
-     * - Delegates to `.fromHTML(body.innerHTML)` using the *current* pipeline’s
+     * - Delegates to `.fromHtml(body.innerHTML)` using the *current* pipeline’s
      *   safe/unsafe mode (same as `queryDOM`).
      *
      * In your new facade:
@@ -269,7 +269,7 @@ export function construct_source_1(
       }
 
       const html: string = body.innerHTML;
-      return this.fromHTML(html);
+      return this.fromHtml(html);
     },
   };
 }

@@ -55,8 +55,8 @@ const html = '<div id="main"><p class="greeting">Hello</p></div>';
 
 // 2. Convert it to its HSON representation
 const hsonString = hson
-  .fromHTML(html)
-  .toHSON()
+  .fromHtml(html)
+  .toHson()
   .serialize();
 
 
@@ -69,8 +69,8 @@ console.log(hsonString);
 
 // 3. Continue the chain to get a clean JSON object
 const jsonObject = hson
-  .fromHTML(html)
-  .toJSON()
+  .fromHtml(html)
+  .toJson()
   .parse();
 
 console.log(jsonObject);

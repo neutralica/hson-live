@@ -26,14 +26,14 @@ import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../
  *   external SVG markup may be parsed (`unsafe: true`) or must be rejected.
  *
  * Branch constructors:
- * - `fromHTML(html)`:
+ * - `fromHtml(html)`:
  *     - Detects whether input is SVG or HTML.
  *     - SVG parsing is allowed only when `unsafe: true`; otherwise a
  *       transform error is thrown.
  *     - Non-SVG HTML is routed through either the safe external parser
  *       (`parse_external_html`) or the raw parser (`parse_html`).
  *     - Produces a detached `LiveTree` branch via `make_branch_from_node`.
- * - `fromJSON(json)` and `fromHSON(hson)`:
+ * - `fromJson(json)` and `fromHson(hson)`:
  *     - Parse into an HSON root node and normalize through
  *       `make_branch_from_node`.
  *
@@ -62,7 +62,7 @@ export function construct_tree(
   /* the main object returned by construct_tree */
   return {
     /* methods for creating detached branches from data */
-    fromHTML(html: string): BranchConstructor {
+    fromHtml(html: string): BranchConstructor {
       let node: HsonNode;
 
       const trimmed = html.trimStart();
@@ -71,8 +71,8 @@ export function construct_tree(
         if (!options.unsafe) {
           // SAFE pipeline: SVG from external HTML is not allowed
           _throw_transform_err(
-            "liveTree.fromHTML(): SVG markup is only allowed on UNSAFE pipeline or via internal node_from_svg.",
-            "liveTree.fromHTML",
+            "liveTree.fromHtml(): SVG markup is only allowed on UNSAFE pipeline or via internal node_from_svg.",
+            "liveTree.fromHtml",
             html.slice(0, 200)
           );
         }
@@ -95,7 +95,7 @@ export function construct_tree(
       };
     },
 
-    fromJSON(json: string | JsonValue): BranchConstructor {
+    fromJson(json: string | JsonValue): BranchConstructor {
       const rootNode = parse_json(json as string);
       const branch = make_branch_from_node(rootNode);
       return {
@@ -104,7 +104,7 @@ export function construct_tree(
     },
 
 
-    fromHSON(hson: string): BranchConstructor {
+    fromHson(hson: string): BranchConstructor {
       // assumes tokenize_hson and parse_tokens available
       const rootNode = parse_hson(hson);
       const branch = make_branch_from_node(rootNode);

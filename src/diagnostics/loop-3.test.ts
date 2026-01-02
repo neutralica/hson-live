@@ -87,16 +87,16 @@ export type FixtureAtom =
  */
 const SPIN: Record<Fmt, { emit: (n: HsonNode) => string; parse: (s: string) => HsonNode }> = {
   json: {
-    emit: (n) => hson.fromNode(n as any).toJSON().serialize(),
-    parse: (s) => hson.fromJSON(s.trim()).toHSON().parse() as any,
+    emit: (n) => hson.fromNode(n as any).toJson().serialize(),
+    parse: (s) => hson.fromJson(s.trim()).toHson().parse() as any,
   },
   html: {
-    emit: (n) => hson.fromNode(n as any).toHTML().serialize(),
-    parse: (s) => hson.fromTrustedHtml(s).toHSON().parse() as any,
+    emit: (n) => hson.fromNode(n as any).toHtml().serialize(),
+    parse: (s) => hson.fromTrustedHtml(s).toHson().parse() as any,
   },
   hson: {
-    emit: (n) => hson.fromNode(n as any).toHSON().serialize(),
-    parse: (s) => hson.fromHSON(s).toHSON().parse() as any,
+    emit: (n) => hson.fromNode(n as any).toHson().serialize(),
+    parse: (s) => hson.fromHson(s).toHson().parse() as any,
   },
 } as const;
 
@@ -544,6 +544,6 @@ function is_html_element(x: unknown): x is HTMLElement {
   return typeof H === "function" && x instanceof H;
 }
 function snapshot_node_hson(n: HsonNode, max = 4000): string {
-  const s = make_string(hson.fromNode(n as any).toHSON().parse());
+  const s = make_string(hson.fromNode(n as any).toHson().parse());
   return s.length > max ? s.slice(0, max) + `…(+${s.length - max})` : s;
 }
