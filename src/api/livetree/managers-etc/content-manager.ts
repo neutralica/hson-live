@@ -59,10 +59,6 @@ function throw_missing_el(node: HsonNode, source: string): never {
   );
 }
 
-/* ------------------------------------------------------------------------------------------------
- * Text/content (unchanged, but note the same "mounted vs not" question applies here too)
- * ---------------------------------------------------------------------------------------------- */
-
 /**
  * Replace a node's content with a single text leaf and mirror it to the DOM.
  *
