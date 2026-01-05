@@ -10,7 +10,7 @@ import { remove_livetree } from "./livetree-methods/remove-self";
 import { get_node_form_value, get_node_text, set_node_content, set_node_form_value } from "./managers-etc/content-manager";
 import { DataManager } from "./managers-etc/data-manager";
 import { empty_contents } from "./livetree-methods/empty2";
-import { build_listener } from "./managers-etc/listen";
+import { build_listener } from "./managers-etc/listener-builder";
 import { FindMany, make_find_all_for, make_find_for } from "./livetree-methods/find"; // CHANGED
 import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
 import { remove_child } from "./livetree-methods/remove-child";
