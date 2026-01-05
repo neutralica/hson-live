@@ -1,5 +1,5 @@
-import { LiveTree } from "hson-live/types";
 // dom.ts
+import { LiveTree } from "../api/livetree/livetree";
 
 // helper types for “callable with .must”
 export type ClosestFn = ((sel: string) => LiveTree | undefined) & {

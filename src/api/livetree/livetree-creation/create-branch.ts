@@ -3,7 +3,7 @@
 import { HsonNode } from "../../../types-consts/node.types";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
-import { create_live_tree2 } from "./create-live-tree";
+import { create_live_tree } from "./create-live-tree";
 import { LiveTree } from "../livetree";
 
 /**
@@ -28,7 +28,7 @@ import { LiveTree } from "../livetree";
  * @param rootNode - The raw HSON node to normalize into a `LiveTree` root.
  * @returns A new `LiveTree` instance rooted at the unwrapped element node.
  * @see unwrap_root_elem
- * @see create_live_tree2
+ * @see create_live_tree
  * @see LiveTree
  */
 export function make_branch_from_node(rootNode: HsonNode): LiveTree {
@@ -46,6 +46,6 @@ export function make_branch_from_node(rootNode: HsonNode): LiveTree {
 
   const actualRoot = unwrapped[0];
 
-  create_live_tree2(actualRoot);   // populate NODE_ELEMENT_MAP for real element nodes
+  create_live_tree(actualRoot);   // populate NODE_ELEMENT_MAP for real element nodes
   return new LiveTree(actualRoot);
 }

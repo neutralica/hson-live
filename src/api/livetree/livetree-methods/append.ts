@@ -9,7 +9,7 @@ import { make_string } from "../../../utils/primitive-utils/make-string.nodes.ut
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
 import { LiveTree } from "../livetree";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { create_live_tree2 } from "../livetree-constructors/create-live-tree";
+import { create_live_tree } from "../livetree-creation/create-live-tree";
 
 /**
  * Normalize an insertion index for an array of a given length.
@@ -98,14 +98,14 @@ function insert_at(this: LiveTree, content: LiveTree, index: number): LiveTree {
       let insertIx = normalize_ix(index, domChildren.length);
 
       for (const newNode of nodesToAppend) {
-        const dom = create_live_tree2(newNode);
+        const dom = create_live_tree(newNode);
         const refNode = domChildren[insertIx] ?? null;
         liveElement.insertBefore(dom, refNode);
         insertIx += 1;
       }
     } else {
       for (const newNode of nodesToAppend) {
-        const dom = create_live_tree2(newNode);
+        const dom = create_live_tree(newNode);
         liveElement.appendChild(dom);
       }
     }

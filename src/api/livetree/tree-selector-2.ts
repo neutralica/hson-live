@@ -1,7 +1,4 @@
-// TreeSelector2.ts
-// NOTE: This is written to be drop-in friendly in your codebase.
-// - It avoids “rebuilding” manager types by *broadcasting* calls through a Proxy.
-// - It keeps the public surface strongly typed by deriving types from LiveTree itself.
+// tree-selector.ts
 
 import { LiveTree } from "./livetree";
 
@@ -21,7 +18,7 @@ export interface TreeSelectorType {
 
   forEach(fn: (tree: LiveTree, index: number) => void): void;
   map<T>(fn: (tree: LiveTree, index: number) => T): T[];
-  filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector2;
+  filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector;
 
   removeSelf(): number;
   remove(): number;
@@ -90,7 +87,7 @@ function makeBroadcastProxy<T extends object>(
   return proxy as unknown as T; // CHANGED: isolated cast
 }
 
-export class TreeSelector2 implements TreeSelectorType {
+export class TreeSelector implements TreeSelectorType {
   private readonly items: LiveTree[];
 
   public readonly listen: LiveTreeListen;
@@ -135,12 +132,12 @@ export class TreeSelector2 implements TreeSelectorType {
     return out;
   }
 
-  public filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector2 {
+  public filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector {
     const next: LiveTree[] = [];
     for (let i = 0; i < this.items.length; i += 1) {
       if (fn(this.items[i], i)) next.push(this.items[i]);
     }
-    return new TreeSelector2(next);
+    return new TreeSelector(next);
   }
 
   public removeSelf(): number {

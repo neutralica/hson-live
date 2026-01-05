@@ -4,28 +4,28 @@ import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid";
 import { HsonNode } from "../../types-consts/node.types";
 import { ListenerBuilder } from "../../types-consts/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
-import { css_for_quids } from "./livetree-methods/css-manager";
+import { css_for_quids } from "./managers-etc/css-manager";
 import { CssHandle } from "../../types-consts/css.types";
-import { remove_livetree } from "./livetree-methods/remove";
-import { get_node_form_value, get_node_text, set_node_content, set_node_form_value } from "./livetree-methods/content-manager";
-import { DataManager } from "./livetree-methods/data-manager";
+import { remove_livetree } from "./livetree-methods/remove-self";
+import { get_node_form_value, get_node_text, set_node_content, set_node_form_value } from "./managers-etc/content-manager";
+import { DataManager } from "./managers-etc/data-manager";
 import { empty_contents } from "./livetree-methods/empty2";
-import { build_listener } from "./livetree-methods/listen";
+import { build_listener } from "./managers-etc/listen";
 import { FindMany, make_find_all_for, make_find_for } from "./livetree-methods/find"; // CHANGED
-import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./livetree-methods/attrs-manager";
+import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
 import { remove_child } from "./livetree-methods/remove-child";
-import { StyleManager } from "./livetree-methods/style-manager";
+import { StyleManager } from "./managers-etc/style-manager";
 import { LiveTreeCreateHelper } from "../../types-consts/livetree.types"; // CHANGED
 import { append_branch } from "./livetree-methods/append-other";
 import { make_tree_create } from "./livetree-methods/create-typed";
 import { FindWithById, NodeRef } from "../../types-consts/livetree.types";
 import { Primitive } from "../../types-consts/core.types";
-import { make_class_api, make_id_api, StyleSetter } from "./livetree-methods/style-setter";
+import { make_class_api, make_id_api, StyleSetter } from "./managers-etc/style-setter";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types-consts/dom.types";
-import { make_dom_api } from "./managers-handlers/dom-manager";
+import { make_dom_api } from "./managers-etc/dom-manager";
 import { is_Node } from "../../utils/node-utils/node-guards";
 import { TreeEvents } from "../../types-consts/events.types";
-import { make_tree_events } from "./managers-handlers/events-handler";
+import { make_tree_events } from "./managers-etc/events-handler";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"

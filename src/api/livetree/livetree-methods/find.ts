@@ -4,8 +4,8 @@ import { HsonQuery } from "hson-live/types";
 import { HsonNode } from "../../../types-consts/node.types";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 import { LiveTree } from "../livetree";
-import { make_tree_selector } from "../tree-selector";
-import { TreeSelector2 } from "../tree-selector-2";
+import { make_tree_selector } from "../livetree-creation/make-tree-selector";
+import { TreeSelector } from "../tree-selector-2";
 import { search_nodes } from "./search";
 import { FindWithById } from "../../../types-consts/livetree.types";
 
@@ -15,15 +15,15 @@ export type FindQuery = HsonQuery | string;
 export type FindQueryMany = FindQuery | readonly FindQuery[];
 
 type FindManyHelpers = {
-    id: (ids: string | readonly string[]) => TreeSelector2;
-    byAttribute: (attr: string, value: string) => TreeSelector2;
-    byFlag: (flag: string) => TreeSelector2;
-    byTag: (tag: string) => TreeSelector2;
+    id: (ids: string | readonly string[]) => TreeSelector;
+    byAttribute: (attr: string, value: string) => TreeSelector;
+    byFlag: (flag: string) => TreeSelector;
+    byTag: (tag: string) => TreeSelector;
 };
 
-export type FindManyMust = ((q: FindQueryMany, label?: string) => TreeSelector2) & FindManyHelpers;
+export type FindManyMust = ((q: FindQueryMany, label?: string) => TreeSelector) & FindManyHelpers;
 
-export type FindMany = ((q: FindQueryMany) => TreeSelector2) & FindManyHelpers & {
+export type FindMany = ((q: FindQueryMany) => TreeSelector) & FindManyHelpers & {
     must: FindManyMust;
 };
 
@@ -61,7 +61,7 @@ function asManyQuery(q: FindQueryMany): readonly FindQuery[] {
  * @param q - A selector string or `HsonQuery` describing matches.
  * @returns A `TreeSelector` containing all matching nodes.
  */
-export function find_all_in_tree(tree: LiveTree, q: HsonQuery | string): TreeSelector2 {
+export function find_all_in_tree(tree: LiveTree, q: HsonQuery | string): TreeSelector {
     const query = typeof q === "string" ? parse_selector(q) : q;
     const found: HsonNode[] = search_nodes([tree.node], query, { findFirst: false });
 
@@ -77,7 +77,7 @@ export function find_all_in_tree(tree: LiveTree, q: HsonQuery | string): TreeSel
  * @returns A `TreeSelector` containing all matches across all queries.
  */
 // NEW: many-query helper (OR/union semantics)
-export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSelector2 {
+export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSelector {
     const qs = asManyQuery(q);
 
     const out: LiveTree[] = [];
@@ -161,7 +161,7 @@ export function make_find_for(tree: LiveTree): FindWithById {
  * @returns A `FindMany` helper bound to that tree.
  */
 export function make_find_all_for(tree: LiveTree): FindMany {
-    const base = ((q: FindQueryMany): TreeSelector2 => {
+    const base = ((q: FindQueryMany): TreeSelector => {
         const qs = asManyQuery(q);
 
         const out: LiveTree[] = [];
@@ -174,7 +174,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
         return make_tree_selector(out);
     }) as FindMany;
 
-    const mustBase = ((q: FindQueryMany, label?: string): TreeSelector2 => {
+    const mustBase = ((q: FindQueryMany, label?: string): TreeSelector => {
         const sel = base(q);
         if (sel.count() === 0) {
             const desc = label ?? "query";
@@ -184,32 +184,32 @@ export function make_find_all_for(tree: LiveTree): FindMany {
     }) as FindMany["must"];
 
     // CHANGED: make sure these param types are explicit (no implicit any)
-    base.id = (ids: string | readonly string[]): TreeSelector2 => {
+    base.id = (ids: string | readonly string[]): TreeSelector => {
         const list: readonly string[] = Array.isArray(ids) ? ids : [ids];
         return base(list.map((id) => ({ attrs: { id } })));
     };
 
-    base.byAttribute = (attr: string, value: string): TreeSelector2 =>
+    base.byAttribute = (attr: string, value: string): TreeSelector =>
         base({ attrs: { [attr]: value } });
 
-    base.byFlag = (flag: string): TreeSelector2 =>
+    base.byFlag = (flag: string): TreeSelector =>
         base({ attrs: { [flag]: flag } });
 
-    base.byTag = (tag: string): TreeSelector2 =>
+    base.byTag = (tag: string): TreeSelector =>
         base({ tag });
 
-    mustBase.id = (ids: string | readonly string[]): TreeSelector2 => {
+    mustBase.id = (ids: string | readonly string[]): TreeSelector => {
         const list: readonly string[] = Array.isArray(ids) ? ids : [ids];
         return mustBase(list.map((id) => ({ attrs: { id } })));
     };
 
-    mustBase.byAttribute = (attr: string, value: string): TreeSelector2 =>
+    mustBase.byAttribute = (attr: string, value: string): TreeSelector =>
         mustBase({ attrs: { [attr]: value } });
 
-    mustBase.byFlag = (flag: string): TreeSelector2 =>
+    mustBase.byFlag = (flag: string): TreeSelector =>
         mustBase({ attrs: { [flag]: flag } });
 
-    mustBase.byTag = (tag: string): TreeSelector2 =>
+    mustBase.byTag = (tag: string): TreeSelector =>
         mustBase({ tag });
 
     base.must = mustBase;

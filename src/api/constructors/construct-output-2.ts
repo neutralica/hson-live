@@ -15,7 +15,7 @@ import { OptionsConstructor_3, RenderConstructor_4 } from "../../types-consts/co
 import { FrameRender } from "../../types-consts/constructor.types";
 import { LiveTree } from "../livetree/livetree";
 import { LiveTreeConstructor_3 } from "../../types-consts/constructor.types";
-import { make_branch_from_node } from "../livetree/livetree-constructors/create-branch";
+import { make_branch_from_node } from "../livetree/livetree-creation/create-branch";
 
 /**
  * HSON pipeline – stage 2: select output format.

@@ -4,8 +4,8 @@ import { CssMap, CssValue } from "../../../types-consts/css.types";
 import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
 import { SetSurface } from "../../../types-consts/css.types";
 import { CssKey } from "../../../types-consts/css.types";
-import { LiveTree } from "hson-live/types";
 import { ClassApi, IdApi } from "../../../types-consts/dom.types";
+import { LiveTree } from "../livetree";
 
 
 // CHANGED: generic “proxy surface” builder that returns whatever your setProp returns.
@@ -238,6 +238,7 @@ export function make_id_api(tree: LiveTree): IdApi {
       return tree;
     },
   };
+  
 } export function make_class_api(tree: LiveTree): ClassApi {
   // REMOVED: unused helper getClassStr()
 

@@ -5,10 +5,10 @@ import { ELEM_TAG } from "../../../types-consts/constants";
 import { CREATE_NODE } from "../../../types-consts/factories";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { create_live_tree2 } from "../livetree-constructors/create-live-tree";
+import { create_live_tree } from "../livetree-creation/create-live-tree";
 import { LiveTree } from "../livetree";
 import { normalize_ix } from "./append";
-import { TreeSelector2 } from "../tree-selector-2";
+import { TreeSelector } from "../tree-selector-2";
 
 /**
  * Append one or more HSON nodes into a target node's `_elem` container
@@ -68,14 +68,14 @@ export function append_nodes(
     let insertIx = normalize_ix(index, domChildren.length);
 
     for (const newNode of nodesToAppend) {
-      const dom = create_live_tree2(newNode); // Node | DocumentFragment
+      const dom = create_live_tree(newNode); // Node | DocumentFragment
       const refNode = domChildren[insertIx] ?? null;
       liveElement.insertBefore(dom, refNode);
       insertIx += 1;
     }
   } else {
     for (const newNode of nodesToAppend) {
-      const dom = create_live_tree2(newNode);
+      const dom = create_live_tree(newNode);
       liveElement.appendChild(dom);
     }
   }
@@ -134,7 +134,7 @@ export function append_branch(
  */
 export function append_multi(
   this: LiveTree,
-  branches: TreeSelector2 | LiveTree[],
+  branches: TreeSelector | LiveTree[],
   index?: number,
 ): LiveTree {
   const targetNode = this.node;

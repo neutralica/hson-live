@@ -3,7 +3,8 @@
 import { LiveTree } from "../api/livetree/livetree";
 import { HsonAttrs, HsonMeta, HsonNode } from "./node.types";
 import { FindQuery } from "../api/livetree/livetree-methods/find";
-import { TreeSelector2 } from "../api/livetree/tree-selector-2";
+import { TreeSelector } from "../api/livetree/tree-selector-2";
+import { HTML_TAGS } from "../consts/html-tags";
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.
@@ -99,7 +100,7 @@ export type FindWithById = ((q: FindQuery) => LiveTree | undefined) &
  *   - type inference for tag-specific element types stays aligned
  *     with the browser’s built-in element map.
  **************************************************************/
-export type TagName = keyof HTMLElementTagNameMap;
+export type TagName = string;
 
 /**************************************************************
  * Generic element-creation helper used to define:
@@ -159,18 +160,18 @@ export type TagName = keyof HTMLElementTagNameMap;
  *
  * read as “insert a new <p> in the middle and then configure it”.
  **************************************************************/
-export type LiveTreeCreateHelper = CreateHelper<LiveTree, TreeSelector2>;
+export type LiveTreeCreateHelper = CreateHelper<LiveTree, TreeSelector>;
+export type HtmlTag = (typeof HTML_TAGS)[number];
 
-// CHANGED: add fluent placement methods to the helper type
-export type CreateHelper<Single, Many> = {
-  [K in TagName]: (index?: number) => Single;
-} & {
-  tags(tags: TagName[], index?: number): Many;
+// CHANGED: helper exposes methods for HtmlTag only (div(), span(), etc)
+// and keeps tags([...]) for arbitrary tag names.
+export type CreateHelper<Single, Many> =
+  Record<HtmlTag, (index?: number) => Single> & {
+    tags(tags: TagName[], index?: number): Many;
 
-  // ADDED: fluent placement
-  prepend(): CreateHelper<Single, Many>;
-  at(index: number): CreateHelper<Single, Many>;
-};
+    prepend(): CreateHelper<Single, Many>;
+    at(index: number): CreateHelper<Single, Many>;
+  };
 
 /**************************************************************
  * Creation helper exposed as `selector.create` on a
@@ -191,4 +192,4 @@ export type CreateHelper<Single, Many> = {
  * keeping the return type consistently `TreeSelector` for
  * further broadcast-style operations.
  **************************************************************/
-export type TreeSelectorCreateHelper = CreateHelper<TreeSelector2, TreeSelector2>;
+export type TreeSelectorCreateHelper = CreateHelper<TreeSelector, TreeSelector>;

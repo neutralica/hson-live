@@ -9,8 +9,8 @@ import { parse_external_html } from "../parsers/parse-external-html.transform";
 import { parse_hson } from "../parsers/parse-hson.new.transform";
 import { parse_html } from "../parsers/parse-html.new.transform";
 import { parse_json } from "../parsers/parse-json.new.transform";
-import { make_branch_from_node } from "../livetree/livetree-constructors/create-branch";
-import { graft } from "../livetree/livetree-constructors/graft";
+import { make_branch_from_node } from "../livetree/livetree-creation/create-branch";
+import { graft } from "../livetree/livetree-creation/graft";
 import { LiveTree } from "../livetree/livetree";
 import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../../types-consts/constructor.types";
 

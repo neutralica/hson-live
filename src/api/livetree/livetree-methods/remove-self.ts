@@ -6,7 +6,7 @@ import { _DATA_QUID } from "../../../types-consts/constants";
 import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { LiveTree } from "../livetree";
-import { CssManager } from "./css-manager";
+import { CssManager } from "../managers-etc/css-manager";
 import { is_Node } from "../../../utils/node-utils/node-guards";
 import { HsonQuery } from "hson-live/types";
 import { search_nodes } from "./search";

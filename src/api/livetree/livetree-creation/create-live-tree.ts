@@ -56,7 +56,7 @@ import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-ut
  *                   used to choose the appropriate element factory.
  * @returns The root DOM `Node` of the newly created subtree.
  */
-export function create_live_tree2(
+export function create_live_tree(
   node: HsonNode | Primitive,
   parentNs: "html" | "svg" = "html"
 ): Node {
@@ -88,7 +88,7 @@ export function create_live_tree2(
         const payload =
           is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
         if (payload != null) {
-          frag.appendChild(create_live_tree2(payload as HsonNode | Primitive, parentNs));
+          frag.appendChild(create_live_tree(payload as HsonNode | Primitive, parentNs));
         }
       }
       return frag;
@@ -96,7 +96,7 @@ export function create_live_tree2(
 
     // _root/_obj/_elem → render their children directly
     for (const child of n._content ?? []) {
-      frag.appendChild(create_live_tree2(child as HsonNode | Primitive, parentNs));
+      frag.appendChild(create_live_tree(child as HsonNode | Primitive, parentNs));
     }
     return frag;
   }
@@ -217,17 +217,17 @@ export function create_live_tree2(
         const payload =
           is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
         if (payload != null) {
-          el.appendChild(create_live_tree2(payload as HsonNode | Primitive, ns));
+          el.appendChild(create_live_tree(payload as HsonNode | Primitive, ns));
         }
       }
     } else {
       for (const c of container._content ?? []) {
-        el.appendChild(create_live_tree2(c as HsonNode | Primitive, ns));
+        el.appendChild(create_live_tree(c as HsonNode | Primitive, ns));
       }
     }
   } else {
     for (const c of kids) {
-      el.appendChild(create_live_tree2(c as HsonNode | Primitive, ns));
+      el.appendChild(create_live_tree(c as HsonNode | Primitive, ns));
     }
   }
 

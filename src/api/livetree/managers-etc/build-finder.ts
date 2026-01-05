@@ -1,9 +1,9 @@
-import { LiveTree } from "hson-live/types";
+import { LiveTree } from "../../livetree/livetree";
 import { HsonQuery } from "hson-live/types";
-import { search_nodes } from "./search";
-import { make_tree_selector } from "../tree-selector";
-import { wrap_in_tree } from "./find";
-import { TreeSelector2 } from "../tree-selector-2";
+import { search_nodes } from "../livetree-methods/search";
+import { make_tree_selector } from "../livetree-creation/make-tree-selector";
+import { wrap_in_tree } from "../livetree-methods/find";
+import { TreeSelector } from "../tree-selector-2";
 
 interface FinderBuilder {
   tag(tag: string): FinderBuilder;
@@ -21,8 +21,8 @@ interface FindAllBuilder {
   flag(flag: string): FindAllBuilder;
   ids(...ids: string[]): FindAllBuilder;
 
-  get(): TreeSelector2;
-  must(label?: string): TreeSelector2;
+  get(): TreeSelector;
+  must(label?: string): TreeSelector;
 }
 
 export function build_finder(tree: LiveTree): FinderBuilder {

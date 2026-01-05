@@ -1,36 +1,40 @@
 import { hson } from "../../../hson";
 import { HsonNode } from "../../../types-consts/node.types";
-import { LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types-consts/livetree.types";
+import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types-consts/livetree.types";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { LiveTree } from "../livetree";
-import { make_tree_selector } from "../tree-selector";
-import { TreeSelector2 } from "../tree-selector-2";
+import { make_tree_selector } from "../livetree-creation/make-tree-selector";
+import { TreeSelector } from "../tree-selector-2";
+import { HTML_TAGS } from "../../../consts/html-tags";
 
+export function is_valid_tag_name(name: unknown): name is TagName {
+  if (typeof name !== "string") return false;
 
-/**
- * Supported HTML tag names for the built-in `tree.create.<tag>()` sugar.
- *
- * These tags are chosen to keep the helper small, predictable, and in line
- * with the subset of structural elements LiveTree tends to operate on.
- *
- * Canonical list backing the dot-sugar creation functions on
- * `LiveTreeCreateHelper`.
- *
- * Each entry corresponds to a method added to the helper at runtime
- * (e.g., `helper.div()`, `helper.span()`, etc.).
- */
-const HTML_TAGS: TagName[] = [
-  "div",
-  "span",
-  "p",
-  "section",
-  "ul",
-  "li",
-  "button",
-  "header",
-  "footer",
-  "main",
-];
+  const t = name.trim();
+  if (t.length === 0) return false;
+
+  // reserve xml / XML / Xml...
+  if (/^xml/i.test(t)) return false;
+
+  // CHANGE: keep it simple & strict (works for your underscore tags)
+  // XML allows more Unicode than this; we are choosing a conservative subset.
+  // Start: letter or underscore
+  // Rest: letters/digits/underscore/dot/dash
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(t)) return false;
+
+  // CHANGE: forbid ":" unless you explicitly want namespaces
+  if (t.includes(":")) return false;
+
+  return true;
+}
+
+/** Throws early with a clean message (prevents XML parser spam). */
+export function assert_valid_tag_name(name: unknown, ctx?: string): asserts name is TagName {
+  if (is_valid_tag_name(name)) return;
+  const where = ctx ? ` (${ctx})` : "";
+  throw new Error(`[LiveTree.create] invalid tag name${where}: ${String(name)}`);
+}
+
 
 /**
  * Construct the `.create` helper for a single `LiveTree` instance.
@@ -71,15 +75,17 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
     return ix;
   };
 
-  function createForTags(tagOrTags: TagName | TagName[], index?: number): LiveTree | TreeSelector2 {
-    const tags: TagName[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
 
-    void tree.node;
+  function createForTags(tagOrTags: TagName | TagName[], index?: number): LiveTree | TreeSelector {
+    const tags: TagName[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
 
     const created: LiveTree[] = [];
     let insertIx: number | undefined = index;
 
     for (const t of tags) {
+      // CHANGE: validate BEFORE generating any markup (prevents XML parser errors)
+      assert_valid_tag_name(t, "createForTags");
+
       const html = `<${t}></${t}>`;
 
       const parsed = hson.fromTrustedHtml(html).toHson().parse();
@@ -87,7 +93,6 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
 
       const branch = new LiveTree(root0);
 
-      // CHANGED: call your new insertAt/append/prepend surface (not append(content, index?))
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);
 
@@ -99,9 +104,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
         created.push(childTree);
       }
 
-      if (typeof insertIx === "number") {
-        insertIx += appended.length;
-      }
+      if (typeof insertIx === "number") insertIx += appended.length;
     }
 
     if (!Array.isArray(tagOrTags)) {
@@ -112,38 +115,34 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
     return make_tree_selector(created);
   }
 
-  // CHANGED: build helper object once; mutate its methods to return itself
-  // CHANGED: build as a mutable object, then return as LiveTreeCreateHelper
-  const helper: Partial<LiveTreeCreateHelper> & {
-    prepend(): LiveTreeCreateHelper;
-    at(index: number): LiveTreeCreateHelper;
+  const helper: Partial<CreateHelper<LiveTree, TreeSelector>> & {
+    prepend(): CreateHelper<LiveTree, TreeSelector>;
+    at(index: number): CreateHelper<LiveTree, TreeSelector>;
   } = {
-    tags(tags: TagName[], index?: number): TreeSelector2 {
-      return createForTags(tags, index) as TreeSelector2;
+    tags(tags: TagName[], index?: number): TreeSelector {
+      return createForTags(tags, index) as TreeSelector;
     },
 
-    prepend(): LiveTreeCreateHelper {
+    prepend() {
       nextIndex = 0;
-      return helper as LiveTreeCreateHelper;
+      return helper as CreateHelper<LiveTree, TreeSelector>;
     },
 
-    at(index: number): LiveTreeCreateHelper {
+    at(index: number) {
       nextIndex = index;
-      return helper as LiveTreeCreateHelper;
+      return helper as CreateHelper<LiveTree, TreeSelector>;
     },
   };
 
   for (const tag of HTML_TAGS) {
     (helper as any)[tag] = (index?: number): LiveTree => {
-      const ix = (typeof index === "number") ? index : consumeIndex();
+      const ix = typeof index === "number" ? index : consumeIndex();
       return createForTags(tag, ix) as LiveTree;
     };
   }
 
-  return helper as LiveTreeCreateHelper;
+  return helper as CreateHelper<LiveTree, TreeSelector>;
 }
-
-
 /**
  * Construct the `.create` helper for a `TreeSelector`, providing the same
  * surface API as `LiveTree.create` but broadcasting across the selection.
@@ -166,7 +165,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
 export function make_selector_create(items: LiveTree[]): TreeSelectorCreateHelper {
   const helper: TreeSelectorCreateHelper = {
     // Batch: selector.create.tags(["div","span"], index?)
-    tags(tags: TagName[], index?: number): TreeSelector2 {
+    tags(tags: TagName[], index?: number): TreeSelector {
       const created: LiveTree[] = [];
 
       for (const tree of items) {
@@ -181,7 +180,7 @@ export function make_selector_create(items: LiveTree[]): TreeSelectorCreateHelpe
 
   // Per-tag sugar: selector.create.div(index?), selector.create.span(index?), …
   for (const tag of HTML_TAGS) {
-    (helper as any)[tag] = (index?: number): TreeSelector2 => {
+    (helper as any)[tag] = (index?: number): TreeSelector => {
       const created: LiveTree[] = [];
 
       for (const tree of items) {

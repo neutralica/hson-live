@@ -1,4 +1,4 @@
-import { LiveTree } from "hson-live/types";
+import { LiveTree } from "../livetree";
 import { ClosestFn, LiveTreeDom, ParentFn } from "../../../types-consts/dom.types";
 import { _snip } from "../../../utils/sys-utils/snip.utils";
 
