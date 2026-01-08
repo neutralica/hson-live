@@ -1,5 +1,7 @@
 // keyframes.ts
 
+import { canon_to_css_prop } from "../../../utils/attrs-utils/normalize-css";
+
 /** A `@keyframes` identifier (kept intentionally permissive). */
 
 export type KeyframesName = string;
@@ -407,11 +409,18 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
  *   for inclusion in a keyframe step block.
  */
 function renderDecls(decls: CssDeclMap): string[] {
-  // stable ordering by property name.
+  // stable ordering by original canonical keys
   const keys = Object.keys(decls).sort();
 
-  // render each declaration line.
-  return keys.map((k) => `    ${k}: ${decls[k]};`);
+  return keys.map((k) => {
+    // CHANGE: canonical -> emitted css prop (camel->kebab, keep --vars, etc.)
+    const prop = canon_to_css_prop(k);
+
+    // CHANGE: index safely; avoid "possibly undefined" by falling back to ""
+    const val = decls[k] ?? "";
+
+    return `    ${prop}: ${val};`;
+  });
 }
 
 /**
