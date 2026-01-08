@@ -10,6 +10,7 @@ import { KeyframesManager, manage_keyframes } from "./keyframes-manager";
 import { make_style_setter } from "./style-setter";
 import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "../livetree-methods/css-globals";
 import { LiveTree } from "../livetree";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -34,12 +35,7 @@ const CSS_STYLE_ID = "_hson";
  * @see CssManager
  */
 
-// css-handle.ts
-
-// CHANGED: overloads
-// css-manager.ts (or wherever)
-
-// CHANGED: explicit type guard
+// explicit type guard
 function isLiveTree(x: unknown): x is LiveTree {
   return x instanceof LiveTree;
 }
@@ -171,15 +167,15 @@ function selectorForQuid(quid: string): string {
  * @param propCanon Canonical property identifier (camelCase, kebab-case, or `--var`).
  * @returns The CSS property name to emit into a stylesheet rule.
  */
+
 function canon_to_css_prop(propCanon: string): string {
   // CSS custom properties keep their spelling
   if (propCanon.startsWith("--")) return propCanon;
 
-  // Already kebab (your StyleKey allowed `${string}-${string}`)
-  if (propCanon.includes("-")) return propCanon;
+  if (propCanon.includes("-")) return propCanon.toLowerCase();
 
-  // camelCase -> kebab-case
-  return propCanon.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`);
+  // shared canonical implementation
+  return camel_to_kebab(propCanon);
 }
 
 /**
