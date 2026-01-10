@@ -59,10 +59,19 @@ import * as ts from "typescript";
  *
  * Replace the placeholder paths below with your actual locations.
  *
- *   node --import tsx <* INSERT PATH TO SCRIPT *>
- *       <* INSERT PATH TO INPUT .ts FILE *>
- *       > <* INSERT PATH TO OUTPUT FILE *>
+     node --import tsx 
+      <* (INSERT PATH TO SCRIPT) *> 
+     \
+    <* (INSERT PATH TO INPUT .ts FILE) *> 
+     \ > 
+     <* (INSERT PATH TO OUTPUT FILE) *>
  *
+ * 
+ * 
+  node --import tsx ./_scripts/strip-comments.ts \
+   src/api/livetree/livetree-methods/animate.ts \
+  > _scripts/temp/anim.nc.md
+ * 
  * Example with concrete paths:
  *
  *   node --import tsx ./_scripts/strip-comments.ts \

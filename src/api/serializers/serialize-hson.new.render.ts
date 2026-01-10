@@ -1,13 +1,13 @@
 // serialize-hson.new.render.ts
 
 import { Primitive } from "../../types-consts/core.types";
-import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../types-consts/constants";
+import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../consts/constants";
 import { _snip } from "../../utils/sys-utils/snip.utils";
 import { serialize_style } from "../../utils/attrs-utils/serialize-style";
 import { serialize_primitive } from "../../utils/primitive-utils/serialize-primitive.utils";
 import { is_Node } from "../../utils/node-utils/node-guards";
 import { assert_invariants } from "../../diagnostics/assert-invariants.test";
-import { _META_DATA_PREFIX } from "../../types-consts/constants";
+import { _META_DATA_PREFIX } from "../../consts/constants";
 import { HsonAttrs, HsonMeta, HsonNode } from "../../types-consts/node.types";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
 

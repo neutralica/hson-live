@@ -6,18 +6,18 @@ import { ListenerBuilder } from "../../types-consts/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { css_for_quids } from "./managers-etc/css-manager";
 import { CssHandle } from "../../types-consts/css.types";
-import { remove_livetree } from "./livetree-methods/remove-self";
+import { remove_livetree } from "./methods/remove-self";
 import { get_node_form_value, get_node_text, set_node_content, set_node_form_value } from "./managers-etc/content-manager";
 import { DataManager } from "./managers-etc/data-manager";
-import { empty_contents } from "./livetree-methods/empty2";
+import { empty_contents } from "./methods/empty2";
 import { build_listener } from "./managers-etc/listener-builder";
-import { FindMany, make_find_all_for, make_find_for } from "./livetree-methods/find"; // CHANGED
+import { FindMany, make_find_all_for, make_find_for } from "./methods/find"; // CHANGED
 import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
-import { remove_child } from "./livetree-methods/remove-child";
+import { remove_child } from "./methods/remove-child";
 import { StyleManager } from "./managers-etc/style-manager";
 import { LiveTreeCreateHelper } from "../../types-consts/livetree.types"; // CHANGED
-import { append_branch } from "./livetree-methods/append-other";
-import { make_tree_create } from "./livetree-methods/create-typed";
+import { append_branch } from "./methods/append-other";
+import { make_tree_create } from "./methods/create-typed";
 import { FindWithById, NodeRef } from "../../types-consts/livetree.types";
 import { Primitive } from "../../types-consts/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./managers-etc/style-setter";

@@ -2,7 +2,7 @@
 
 import { drop_quid } from "../../../quid/data-quid.quid";
 import { HsonNode } from "../../../types-consts/node.types";
-import { _DATA_QUID } from "../../../types-consts/constants";
+import { _DATA_QUID } from "../../../consts/constants";
 import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { LiveTree } from "../livetree";

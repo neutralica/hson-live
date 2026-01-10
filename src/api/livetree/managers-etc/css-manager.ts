@@ -1,14 +1,14 @@
 // css-manager.ts
 
 import { PropertyManager } from "../../../types-consts/at-property.types";
-import { _DATA_QUID } from "../../../types-consts/constants";
+import { _DATA_QUID } from "../../../consts/constants";
 import { CssValue, CssProp, CssHandle, CssHandleVoid, CssHandleBase } from "../../../types-consts/css.types";
-import { apply_animation, bind_anim_api } from "../livetree-methods/animate";
-import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../livetree-methods/animate.types";
+import { apply_animation, bind_anim_api } from "../methods/anim";
+import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../methods/animate.types";
 import { manage_property } from "./at-prop-builder";
 import { KeyframesManager, manage_keyframes } from "./keyframes-manager";
 import { make_style_setter } from "./style-setter";
-import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "../livetree-methods/css-globals";
+import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "../methods/css-globals";
 import { LiveTree } from "../livetree";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
 

@@ -1,5 +1,5 @@
 
-import { $HSON_FRAME, $RENDER, } from "./constants";
+import { $HSON_FRAME, $RENDER, } from "../consts/constants";
 import { HsonNode } from "./node.types";
 import { JsonValue } from "./core.types";
 import { LiveTree } from "../api/livetree/livetree";

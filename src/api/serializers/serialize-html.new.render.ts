@@ -2,7 +2,7 @@
 
 import { Primitive } from '../../types-consts/core.types'
 import { is_Primitive } from '../../utils/cote-utils/guards.core';
-import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../types-consts/constants';
+import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants';
 import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs';
 import { escape_html } from '../../utils/html-utils/escape-html';
 import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils';

@@ -1,7 +1,7 @@
 // split-attrs-meta.ts
 
 import { HsonAttrs, HsonMeta } from "../../types-consts/node.types";
-import { _META_DATA_PREFIX } from "../../types-consts/constants";
+import { _META_DATA_PREFIX } from "../../consts/constants";
 import { RawAttr } from "../../types-consts/token.types";
 import { parse_style_string } from "../attrs-utils/parse-style";
 import { unescape_hson_string } from "./unescape-hson";

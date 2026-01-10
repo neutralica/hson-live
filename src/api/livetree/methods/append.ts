@@ -2,9 +2,9 @@
 
 import { is_Node } from "../../../utils/node-utils/node-guards";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
-import { STR_TAG, ELEM_TAG } from "../../../types-consts/constants";
+import { STR_TAG, ELEM_TAG } from "../../../consts/constants";
 import { HsonNode } from "../../../types-consts/node.types";
-import { CREATE_NODE } from "../../../types-consts/factories";
+import { CREATE_NODE } from "../../../consts/factories";
 import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
 import { LiveTree } from "../livetree";

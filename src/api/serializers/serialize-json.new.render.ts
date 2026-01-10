@@ -3,7 +3,7 @@
 import { JsonObj, Primitive } from "../../types-consts/core.types";
 import { assert_invariants } from "../../diagnostics/assert-invariants.test";
 import { is_indexed } from "../../utils/node-utils/node-guards";
-import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG } from "../../types-consts/constants";
+import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG } from "../../consts/constants";
 import {  HsonNode } from "../../types-consts/node.types";
 import { JsonValue } from "../../types-consts/core.types";
 import { clone_node } from "../../utils/node-utils/clone-node";

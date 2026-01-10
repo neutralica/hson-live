@@ -1,8 +1,8 @@
 // parse-html.new.transform.hson.ts (new)
 
 import { HsonNode } from "../../types-consts/node.types";
-import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../types-consts/constants";
-import { CREATE_NODE } from "../../types-consts/factories";
+import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants";
+import { CREATE_NODE } from "../../consts/factories";
 import { is_Primitive, is_string } from "../../utils/cote-utils/guards.core";
 import { _snip } from "../../utils/sys-utils/snip.utils";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";

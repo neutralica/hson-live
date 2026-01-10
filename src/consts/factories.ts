@@ -1,8 +1,8 @@
 // factories.ts
 
 
-import { HsonNode } from "./node.types";
-import {  ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenText, TokenEmptyObj, TOKEN_KIND } from "./token.types";
+import { HsonNode } from "../types-consts/node.types";
+import {  ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenText, TokenEmptyObj, TOKEN_KIND } from "../types-consts/token.types";
 
 /**
  * Construct a fresh `HsonNode` using a partial override.

@@ -2,7 +2,7 @@
 
 import { JsonValue } from "../../types-consts/core.types";
 import { HsonNode } from "../../types-consts/node.types";
-import { $_ERROR } from "../../types-consts/constants";
+import { $_ERROR } from "../../consts/constants";
 import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
 import { parse_external_html } from "../parsers/parse-external-html.transform";

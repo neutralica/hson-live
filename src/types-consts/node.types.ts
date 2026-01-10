@@ -3,7 +3,7 @@
 
 import { CssMap } from "./css.types";
 import {  Primitive } from "./core.types";
-import { _DATA_INDEX, _DATA_QUID } from "./constants";
+import { _DATA_INDEX, _DATA_QUID } from "../consts/constants";
 
 /*******
  * Core HSON structural node.

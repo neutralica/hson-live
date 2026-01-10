@@ -1,7 +1,7 @@
 // content.ts
 
 import { HsonAttrs, HsonNode } from "../../../types-consts/node.types";
-import { STR_TAG } from "../../../types-consts/constants";
+import { STR_TAG } from "../../../consts/constants";
 import { is_Node } from "../../../utils/node-utils/node-guards";
 import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";

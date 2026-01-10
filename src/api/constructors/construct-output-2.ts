@@ -3,7 +3,7 @@
 import { RenderFormats } from "../../types-consts/constructor.types";
 import { OutputConstructor_2 } from "../../types-consts/constructor.types";
 import { HsonNode } from "../../types-consts/node.types";
-import { $RENDER } from "../../types-consts/constants";
+import { $RENDER } from "../../consts/constants";
 import { FrameConstructor } from "../../types-consts/constructor.types";
 import { parse_external_html } from "../parsers/parse-external-html.transform";
 import { serialize_hson } from "../serializers/serialize-hson.new.render";

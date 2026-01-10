@@ -1,8 +1,8 @@
 import { LiveTree } from "../../livetree/livetree";
 import { HsonQuery } from "hson-live/types";
-import { search_nodes } from "../livetree-methods/search";
+import { search_nodes } from "../methods/search";
 import { make_tree_selector } from "../livetree-creation/make-tree-selector";
-import { wrap_in_tree } from "../livetree-methods/find";
+import { wrap_in_tree } from "../methods/find";
 import { TreeSelector } from "../tree-selector-2";
 
 interface FinderBuilder {

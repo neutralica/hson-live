@@ -1,6 +1,6 @@
 import { Primitive } from "../types-consts/core.types";
-import { STR_TAG, VAL_TAG, II_TAG, ARR_TAG, ROOT_TAG, OBJ_TAG, ELEM_TAG, VSN_TAGS, EVERY_VSN, ELEM_OBJ_ARR } from "../types-consts/constants";
-import { _META_DATA_PREFIX, _DATA_INDEX } from "../types-consts/constants";
+import { STR_TAG, VAL_TAG, II_TAG, ARR_TAG, ROOT_TAG, OBJ_TAG, ELEM_TAG, VSN_TAGS, EVERY_VSN, ELEM_OBJ_ARR } from "../consts/constants";
+import { _META_DATA_PREFIX, _DATA_INDEX } from "../consts/constants";
 import { HsonNode, HsonMeta, HsonAttrs, NodeContent } from "../types-consts/node.types";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
 import { is_Node } from "../utils/node-utils/node-guards";

@@ -1,7 +1,7 @@
 // css.types.ts
 
 import { LiveTree } from "../api/livetree/livetree";
-import { AnimationName, AnimSpec, CssAnimHandle } from "../api/livetree/livetree-methods/animate.types";
+import { AnimationName, AnimSpec, CssAnimHandle } from "../api/livetree/methods/animate.types";
 import { KeyframesManager } from "../api/livetree/managers-etc/keyframes-manager";
 import { StyleSetter } from "../api/livetree/managers-etc/style-setter";
 import { PropertyManager } from "./at-property.types";

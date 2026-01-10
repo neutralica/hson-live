@@ -11,7 +11,7 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-} from "../../../types-consts/constants";
+} from "../../../consts/constants";
 import { HsonNode } from "../../../types-consts/node.types";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg";
 import { is_Node } from "../../../utils/node-utils/node-guards";

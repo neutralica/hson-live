@@ -1,9 +1,9 @@
 // parse-tokens.transform.hson.ts
 
-import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG } from "../../types-consts/constants";
-import { CREATE_NODE } from "../../types-consts/factories";
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG } from "../../consts/constants";
+import { CREATE_NODE } from "../../consts/factories";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../../types-consts/token.types";
-import { _DATA_INDEX } from "../../types-consts/constants";
+import { _DATA_INDEX } from "../../consts/constants";
 import { HsonNode, NodeContent } from "../../types-consts/node.types";
 import { Tokens, CloseKind, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../../types-consts/token.types";
 import { coerce } from "../../utils/primitive-utils/coerce-string.utils";

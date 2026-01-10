@@ -1,7 +1,7 @@
 // parse_html_attrs.ts
 
 
-import { _DATA_INDEX, _DATA_QUID, _TRANSIT_PREFIX } from "../../types-consts/constants";
+import { _DATA_INDEX, _DATA_QUID, _TRANSIT_PREFIX } from "../../consts/constants";
 import { HsonAttrs, HsonMeta } from "../../types-consts/node.types";
 import { normalize_attr_ws } from "../attrs-utils/normalize_attrs_ws";
 import { parse_style_string } from "../attrs-utils/parse-style";

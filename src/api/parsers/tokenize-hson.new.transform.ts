@@ -1,7 +1,7 @@
 // tokenize-hson.old.hson.ts
 
-import { OBJ_TAG } from "../../types-consts/constants";
-import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../../types-consts/factories";
+import { OBJ_TAG } from "../../consts/constants";
+import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../../consts/factories";
 import { CLOSE_KIND, ARR_SYMBOL, TOKEN_KIND } from "../../types-consts/token.types";
 import { Position, CloseKind, Tokens, RawAttr } from "../../types-consts/token.types";
 import { lex_text_piece } from "../../utils/hson-utils/lex-text-piece";
