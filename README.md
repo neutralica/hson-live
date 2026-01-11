@@ -1,6 +1,6 @@
 # hson-live 2.0
 # HSON - Hypertext Structured Object Notation
-### neutralica · terminal_gothic · 11JAN2026
+### neutralica @ TERMINAL_GOTHIC · 11JAN2026
 
 
 
