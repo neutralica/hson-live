@@ -1,107 +1,96 @@
-// readme.hson.md
+# hson-live 2.0
+# HSON - Hypertext Structured Object Notation
+### neutralica · terminal_gothic 11JAN2026
+
+## Overview
+HSON is a glue format: a structural data representation capable of fully expressing both JSON and HTML within a single syntax.
+JSON and HTML are fundamentally different domains—data versus markup—yet both are built from hierarchical, tree-structured relationships.
+HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations.
+hson-live extends this model into runtime by eliminating the need for separate data and markup representations. Rather than maintaining separate representations and synchronizing between them, both are expressed by the same object graph and projected as needed.
+In hson-live, view is not a function of state: view *is* state. Immediate applications include UI, but the same guarantees apply to any data that can be expressed as JSON or markup.
+
+## Core Idea
+HSON is built around a single, explicit intermediate representation (IR): a node graph capable of representing:
+* JSON objects and arrays
+* HTML and SVG elements
+* mixed content (text + elements)
+* attributes, values, and ordering
+* namespaced markup (including XML and SVG)
+
+This representation is stable under repeated transformations. Serializing to another format and back does not degrade, reorder, or reinterpret the data.
+The result is a format that is both data and markup, without collapsing one into the other or privileging either.
+
+## hson.transform
+hson.transform is a set of core transformers responsible for:
+* parsing HTML, JSON, SVG, XML, and HSON strings into a shared HsonNode IR
+* serializing the nodes from any supported format to any other
+* performing repeated round-trip conversions without data loss or structural drift
+* preserving mixed content, attributes, ordering, and unique node ids
+
+This includes cases that are often lossy or ambiguous in conventional tooling, such as embedded markup in JSON, boolean attributes, void elements, or SVG namespace handling.
+Using hson-live’s transformers, arbitrary HTML can be rendered as a valid JSON representation, manipulated via standard JS object methods, and re-rendered on the DOM in its new form. The inverse—treating structured data as markup to be rendered—works equally well.
+
+## hson.liveTree
+LiveTree is a projection of the HsonNode IR into live DOM elements.
+Rather than maintaining a separate virtual model, LiveTree works by:
+* ingesting any existing DOM subtree within document.body, parsing it into HsonNodes
+* re-emitting those nodes as HTML back into the DOM
+* binding a fluent, typed API directly to the underlying node graph, enabling lightweight reactive interfaces
+
+Once grafted, mutations to the IR are immediately reflected in the DOM. Attributes, text content, children, styles, animations, and events are accessed and manipulated using ordinary JavaScript and TypeScript semantics.
+Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without direct use of low-level DOM construction APIs.
+
+## LiveTree Capabilities
+LiveTree supports:
+* creating, removing, and rearranging nodes
+* reading and writing attributes, text content, and tag names
+* scoped CSS manipulation without Shadow DOM
+* declarative animation control via CSS keyframes
+* typed event listener management with automatic teardown
+* SVG creation and animation
+* deterministic cleanup of removed nodes
+
+The API is intentionally conservative. It often mirrors established JavaScript document methods and avoids introducing abstractions that stray too far from familiar DOM APIs.
+
+## CSS as a First-Class Structure
+hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are all constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
+Because styles use nodes' unique IDs as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
+This approach enables typed style management, deterministic cleanup, and animation systems that can be composed and sequenced without fragile string concatenation.
 
 
-```
-▗▖ ▗▖ ▗▄▄▖ ▗▄▖ ▗▖  ▗▖
-▐▌ ▐▌▐▌   ▐▌ ▐▌▐▛▚▖▐▌
-▐▛▀▜▌ ▝▀▚▖▐▌ ▐▌▐▌ ▝▜▌                             pre-alpha demo
-▐▌ ▐▌▗▄▄▞▘▝▚▄▞▘▐▌  ▐▌       Hypertext Structured Object Notation
-----------------------------------------------------------------
-```
+## Significance
+Treating JSON and HTML as different representations of the same underlying structure removes a long-standing boundary in web development.
+As a result:
+* state and view cannot diverge; there is only one data node structure of which they are both projections
+* serialization is no longer an edge operation but a core function
+* reactive systems require no reconciliation step
+* DOM manipulation becomes authoritative and first-class rather than a side effect
+* non-JS runtimes (including WASM) gain a clear, stable target for DOM-adjacent interaction
 
-> [!WARNING]
-> **UNSAFE - EXPERIMENTAL**
->
-> Use for research or educational purposes. Do not use with important or sensitive business data. Do not use with unknown third-party data or html.
+## Status and Safety
+### hson-live is experimental.
+The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments.
+It is not currently recommended for processing untrusted HTML or for security-critical production use without additional hardening.
 
-HSON is a glue format that unifies JSON and HTML in a minimalist, pared-down syntax of HTML.
-
-It fully represents both data and markup under a single unified format (in a more compact file size than either). By connecting JSON and HTML's consistent, tree-based data structures, HSON can fluently and losslessly translate data from one to the other and back. 
-
-This library also provides a stateful API for grafting onto and manipulating live DOM elements, enabling reactive UIs built on a clear, declarative data model that manipulates the DOM itself via traditional JS Object methods and dot-notation access.
-
-The core HSON is a set of seven transformers that convert data between HTML, JSON, and HSON's own minimalist syntax (paredHTML). A small, compact API (hson.transform, hson.liveTree to start*) and simple toolchain are all that is needed to begin manipulating complex on-screen DOM elements with the precision of native JavaScript objects. 
-
-> This project is a proof of concept and not a final version. Carries a risk of executing unescaped html from unknown sources.  Use at your own risk. 
-
-
-```bash 
- npm install hson-live
-```
-
-This project uses TypeScript. To build:
-
-1. Install dependencies:
-   ```bash
-   npm install
-   ```
-2. Compile the source:
+## Installation
 ```bash
+npm install hson-live
+```
+
+## Build
+hson-live is written in TypeScript.
+```ts
+npm install
 npx tsc
 ```
+Compiled output is written to dist/.
 
-This will output compiled JavaScript to the dist/ directory.
-
-
-Quick Start
-
-Use the hson.transform fluent API to convert between formats.
-
-```JavaScript
-import { hson } from 'hson';
-
-// 1. Start with an HTML string
-const html = '<div id="main"><p class="greeting">Hello</p></div>';
-
-// 2. Convert it to its HSON representation
-const hsonString = hson
-  .fromHtml(html)
-  .toHson()
-  .serialize();
+## Demo
+The HSON demo site demonstrates LiveTree in a deliberately minimal environment, without frameworks or any other dependencies.
+<!-- demo url coming soon -->
 
 
-console.log(hsonString);
-/*
-<div id="main"
-  <p class="greeting" "Hello" />
-/>
-*/
-
-// 3. Continue the chain to get a clean JSON object
-const jsonObject = hson
-  .fromHtml(html)
-  .toJson()
-  .parse();
-
-console.log(jsonObject);
-/*
-{
-  "_elem": [
-    {
-      "_attrs": {
-        "id": "main"
-      },
-      "div": {
-        "_elem": [
-          {
-            "_attrs": {
-              "class": "greeting"
-            },
-            "p": {
-              "_elem": [
-                "Hello"
-              ]
-            }
-          }
-        ]
-      }
-    }
-  ]
-}
-*/
-```
+## Documentation
+Detailed documentation of the HSON syntax, transformer behavior, and LiveTree API is available in /src/docs.
 
 
-Documentation
-
-For HSON's syntax, liveTree API, and core concepts, please see /src/docs
