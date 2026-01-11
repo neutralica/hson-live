@@ -2,6 +2,28 @@
 # HSON - Hypertext Structured Object Notation
 ### neutralica · terminal_gothic 11JAN2026
 
+
+
+```
+               .x+=:.                                            ..    .       _                    
+  .uef^"      z`    ^%                                     x .d88"    @88>    u                     
+:d88E            .   <k        u.      u.    u.             5888R     %8P    88Nu.   u.             
+`888E          .@8Ned8"  ...ue888b   x@88k u@88c.           '888R      .    '88888.o888c      .u    
+ 888E .z8k   .@^%8888"   888R Y888r ^"8888""8888"            888R    .@88u   ^8888  8888   ud8888.  
+ 888E~?888L x88:  `)8b.  888R I888>   8888  888R             888R   ''888E`   8888  8888 :888'8888. 
+ 888E  888E 8888N=*8888  888R I888>   8888  888R             888R     888E    8888  8888 d888 '88%" 
+ 888E  888E  %8"    R88  888R I888>   8888  888R             888R     888E    8888  8888 8888.+"    
+ 888E  888E   @8Wou 9%  u8888cJ888    8888  888R  88888888   888R     888E   .8888b.888P 8888L      
+ 888E  888E .888888P`    "*888*P"    "*88*" 8888" 88888888  .888B .   888&    ^Y8888*""  '8888c. .+ 
+m888N= 888> `   ^"F        'Y"         ""   'Y"             ^*888%    R888"     `Y"       "88888%   
+ `Y"   888                                                    "%       ""                   "YP'    
+      J88"                                                                                          
+      @%                                                                                            
+    :"                      Hypertext-Structured Object Notation 
+                                          2.0                                                                        
+```
+
+
 ## Overview
 HSON is a glue format: a structural data representation capable of fully expressing both JSON and HTML within a single syntax.
 JSON and HTML are fundamentally different domains—data versus markup—yet both are built from hierarchical, tree-structured relationships.
@@ -92,23 +114,3 @@ The HSON demo site demonstrates LiveTree in a deliberately minimal environment, 
 
 ## Documentation
 Detailed documentation of the HSON syntax, transformer behavior, and LiveTree API is available in /src/docs.
-
-
-```
-               .x+=:.                                            ..    .       _                    
-  .uef^"      z`    ^%                                     x .d88"    @88>    u                     
-:d88E            .   <k        u.      u.    u.             5888R     %8P    88Nu.   u.             
-`888E          .@8Ned8"  ...ue888b   x@88k u@88c.           '888R      .    '88888.o888c      .u    
- 888E .z8k   .@^%8888"   888R Y888r ^"8888""8888"            888R    .@88u   ^8888  8888   ud8888.  
- 888E~?888L x88:  `)8b.  888R I888>   8888  888R             888R   ''888E`   8888  8888 :888'8888. 
- 888E  888E 8888N=*8888  888R I888>   8888  888R             888R     888E    8888  8888 d888 '88%" 
- 888E  888E  %8"    R88  888R I888>   8888  888R             888R     888E    8888  8888 8888.+"    
- 888E  888E   @8Wou 9%  u8888cJ888    8888  888R  88888888   888R     888E   .8888b.888P 8888L      
- 888E  888E .888888P`    "*888*P"    "*88*" 8888" 88888888  .888B .   888&    ^Y8888*""  '8888c. .+ 
-m888N= 888> `   ^"F        'Y"         ""   'Y"             ^*888%    R888"     `Y"       "88888%   
- `Y"   888                                                    "%       ""                   "YP'    
-      J88"                                                                                          
-      @%                                                                                            
-    :"                      Hypertext-Structured Object Notation 
-                                          2.0                                                                        
-```
