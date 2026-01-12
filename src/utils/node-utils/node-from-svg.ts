@@ -45,7 +45,7 @@ export const isSvgMarkup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * @returns An `HsonNode` representing `el` and its SVG subtree.
  */
 export function node_from_svg(el: Element): HsonNode {
-  const tag = el.tagName; // keep case if engine expects exact; or `toLowerCase()`
+  const tag = el.tagName; 
   const attrs: Record<string, string> = {};
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes[i];
@@ -59,7 +59,7 @@ export function node_from_svg(el: Element): HsonNode {
     }
   });
   return {
-    _tag: tag.toLowerCase(),              
+    _tag: tag,              
     _attrs: attrs,
     _content: kids.length ? kids : [],
     _meta: { }       
