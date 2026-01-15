@@ -29,7 +29,7 @@ import { TreeSelector } from "../tree-selector-2";
  *                used for both HSON and DOM insertion; otherwise nodes
  *                are appended to the end.
  */
-export function append_nodes(
+function appendNodes(
   targetNode: HsonNode,
   nodesToAppend: HsonNode[],
   index?: number,
@@ -112,44 +112,44 @@ export function append_branch(
   // preserve host root for pruning / removal
   branch.adoptRoots(this.hostRootNode());
 
-  append_nodes(targetNode, nodesToAppend, index);
+  appendNodes(targetNode, nodesToAppend, index);
   return this;
 }
 
-/**
- * Append multiple `LiveTree` branches as children of the current `LiveTree`'s node.
- *
- * Accepts either an explicit array of `LiveTree` instances or a `TreeSelector`
- * that can be converted to such an array. Each branch is unwrapped via
- * `unwrap_root_elem` to strip its root `_elem` wrapper, and its roots are
- * re-bound to the current tree via `adoptRoots`. All resulting HSON nodes
- * are batched and inserted through `appendNodesToTree`, which also updates
- * the DOM.
- *
- * @this LiveTree
- * @param branches - A `TreeSelector` or array of `LiveTree` branches to append.
- * @param index - Optional insertion index within the target `_elem` container
- *                where the combined branch nodes will be inserted.
- * @returns The receiver `LiveTree` (for chaining).
- */
-export function append_multi(
-  this: LiveTree,
-  branches: TreeSelector | LiveTree[],
-  index?: number,
-): LiveTree {
-  const targetNode = this.node;
+// /**
+//  * Append multiple `LiveTree` branches as children of the current `LiveTree`'s node.
+//  *
+//  * Accepts either an explicit array of `LiveTree` instances or a `TreeSelector`
+//  * that can be converted to such an array. Each branch is unwrapped via
+//  * `unwrap_root_elem` to strip its root `_elem` wrapper, and its roots are
+//  * re-bound to the current tree via `adoptRoots`. All resulting HSON nodes
+//  * are batched and inserted through `appendNodesToTree`, which also updates
+//  * the DOM.
+//  *
+//  * @this LiveTree
+//  * @param branches - A `TreeSelector` or array of `LiveTree` branches to append.
+//  * @param index - Optional insertion index within the target `_elem` container
+//  *                where the combined branch nodes will be inserted.
+//  * @returns The receiver `LiveTree` (for chaining).
+//  */
+// export function append_multi(
+//   this: LiveTree,
+//   branches: TreeSelector | LiveTree[],
+//   index?: number,
+// ): LiveTree {
+//   const targetNode = this.node;
 
-  const branchList: LiveTree[] = Array.isArray(branches)
-    ? branches
-    : branches.toArray();
+//   const branchList: LiveTree[] = Array.isArray(branches)
+//     ? branches
+//     : branches.toArray();
 
-  const nodesToAppend: HsonNode[] = [];
-  for (const b of branchList) {
-    const src = b.node;
-    nodesToAppend.push(...unwrap_root_elem(src));
-    b.adoptRoots(this.hostRootNode());
-  }
+//   const nodesToAppend: HsonNode[] = [];
+//   for (const b of branchList) {
+//     const src = b.node;
+//     nodesToAppend.push(...unwrap_root_elem(src));
+//     b.adoptRoots(this.hostRootNode());
+//   }
 
-  append_nodes(targetNode, nodesToAppend, index);
-  return this;
-}
+//   append_nodes(targetNode, nodesToAppend, index);
+//   return this;
+// }
