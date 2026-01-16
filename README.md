@@ -84,10 +84,10 @@ const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
     const branchDiv = tree.create.div()  // many basic JS document methods have been extended via LiveTree
         .setText('hello world'); // liveTree methods return `this`, enabling complex chained operations
 
-    tree.listen           // liveTree's ListenerManager handles event listeners including teardown
-        .once()          // eventListener options are fully represented in LiveTree's .listen toolchain
-        .onKeydown(
-            branchDiv.setText('goodbye world') // changes to the node are automatically expressed in the DOM
+    tree.listen           // liveTree's ListenerManager exposes event listeners and handling
+        .once()           // conventional eventListener options are fully represented in LiveTree's .listen toolchain 
+        .onKeydown(       // teardown and cleanup of listeners is built-in and automatic
+            branchDiv.setText('goodbye world') // changes to the node are automatically and instantly expressed in the DOM
          ); 
 ```
 
@@ -108,17 +108,17 @@ The API is intentionally conservative. It often mirrors established JavaScript d
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are all constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
 
-Because styles use nodes' unique IDs as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
+Because styles use nodes' unique "quantum IDs" as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
 
 This approach enables typed style management, deterministic cleanup, and animation systems that can be composed and sequenced without fragile string concatenation.
 
 
 ## significance
-Treating JSON and HTML as different representations of the same underlying structure removes a long-standing obstacle in web development. 
+Treating JSON and HTML as different representations of the same underlying structure removes a long-standing obstacle in web development. hson-live suggests a new paradigm of view and data alignment:
 
 * state and view cannot diverge; there is only one data node structure of which they are both projections
-* serialization is no longer an edge operation but a core function
-* reactive systems require no reconciliation step
+* serialization is no longer an edge operation, but a core function
+* reactive systems and interfaces require no reconciliation step
 * DOM manipulation becomes authoritative and first-class rather than a side effect
 * non-JS runtimes (including WASM) gain a clear, stable target for DOM-adjacent interaction
 
@@ -126,7 +126,7 @@ Treating JSON and HTML as different representations of the same underlying struc
 ## status and safety
 ### HSON-LIVE IS EXPERIMENTAL
 The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments.
-It is not currently recommended for processing untrusted HTML or for security-critical production use without additional hardening.
+It is not currently recommended for processing untrusted HTML or for security-critical production use without additional hardening. 
 
 
 ## installation
