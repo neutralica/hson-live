@@ -65,7 +65,7 @@ Using hson-live’s transformers, arbitrary HTML can be rendered as a valid JSON
 
 
 ## hson.liveTree
-LiveTree is an interface that projects live DOM elements from HsonNodes, using the Node IR as the source of truth and updating the DOM when changes are made.
+LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode IR as the source of truth and updating the DOM when changes are made.
 Rather than maintaining a separate virtual model, LiveTree works by:
 
 * ingesting any existing DOM subtree within document.body, parsing it into HsonNodes
@@ -77,8 +77,8 @@ Once grafted to document, mutations to LiveTree's node graph are immediately ref
 Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs.
 
 ```ts
-const tree = hson.queryBody()  // or `.queryDom(/*selector*/)
-       .liveTree  // LiveTree constructor
+const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
+       .liveTree()  // LiveTree constructor
        .graft()  // replace contents of document.body with identical LiveTree projection
 
     const branchDiv = tree.create.div()  // many basic JS document methods have been extended via LiveTree
