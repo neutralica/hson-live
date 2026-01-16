@@ -7,6 +7,9 @@ dist/
 # internal docs
 _docs/
 
+# util scripts
+_scripts
+
 # editor configs
 .vscode/
 .idea/
@@ -25,4 +28,4 @@ yarn-error.log*
 _archive/
 
 # tarballs
-*.tgz
+*.tgzpackage/
