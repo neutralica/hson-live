@@ -20,12 +20,13 @@
 + Keyframes automatic teardown--node:keyframe map removes registered keyframes when node is removed
 
 ## 14JAN2026
-√ .css.apply() for RAF calls
+✅ ~~.css.apply() for RAF calls~~
 
 ## 13JAN2026 
-+ add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)
+✅ ~~add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)~~ (see hson-demo2 for trial impl; issues exist)
+
 
 
 ## 09JAN2026
 + LiveTree.clone => same node IR, differet quid; for recreating elements but appending to different roots (ie for root-element swaps?)
-+ .listen.onAnim("[name of animation]") (.end, .begin, etc) -- allows prefiltration/null checks of names of multiple events
+✅ ~~.listen.onAnim("[name of animation]") (.end, .begin, etc) -- allows prefiltration/null checks of names of multiple events~~ (see hson-demo2 for trial impl)
