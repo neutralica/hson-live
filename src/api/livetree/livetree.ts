@@ -28,6 +28,7 @@ import { TreeEvents } from "../../types-consts/events.types";
 import { make_tree_events } from "./managers-etc/events-handler";
 import { clone_branch_method } from "./methods/clone";
 import { create_livetree } from "./create-livetree";
+import { ContentManager } from "./managers-etc/content-manager";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"
@@ -112,7 +113,7 @@ export class LiveTree {
   private styleManagerInternal: StyleManager | undefined = undefined;
   /* .dataset editor */
   private datasetManagerInternal: DataManager | undefined = undefined;
-
+  private contentManager: ContentManager | undefined = undefined;
   private cssApiInternal: CssHandle | undefined = undefined;
   private eventsInternal?: TreeEvents;
   private idApi?: IdApi;
@@ -318,7 +319,9 @@ export class LiveTree {
   public hostRootNode(): HsonNode {
     return this.hostRoot;
   }
-
+  public get content(): ContentManager {
+    return (this.contentManager ??= new ContentManager(this));
+  }
   /* internal: allow a branch to inherit host roots when grafted/appended */
   adoptRoots(root: HsonNode): this {
     this.hostRoot = root;

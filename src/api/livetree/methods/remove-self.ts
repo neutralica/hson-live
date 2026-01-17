@@ -8,7 +8,7 @@ import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { LiveTree } from "../livetree";
 import { CssManager } from "../managers-etc/css-manager";
 import { is_Node } from "../../../utils/node-utils/node-guards";
-import { HsonQuery } from "hson-live/types";
+import { HsonQuery } from "../../../types-consts/livetree.types";
 import { search_nodes } from "./search";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 

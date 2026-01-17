@@ -1,6 +1,6 @@
 // find.ts
 
-import { HsonQuery } from "hson-live/types";
+import { HsonQuery } from "../../../types-consts/livetree.types";;
 import { HsonNode } from "../../../types-consts/node.types";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 import { LiveTree } from "../livetree";
@@ -9,6 +9,7 @@ import { TreeSelector } from "../tree-selector";
 import { search_nodes } from "./search";
 import { FindWithById } from "../../../types-consts/livetree.types";
 import { ensure_quid } from "../../../quid/data-quid.quid";
+import { wrap_in_tree } from "../create-livetree";
 
 // “batching” helpers + queryish types
 
@@ -216,28 +217,4 @@ export function make_find_all_for(tree: LiveTree): FindMany {
     base.must = mustBase;
 
     return base;
-}
-
-/**
- * Wrap a raw `HsonNode` in a new `LiveTree` that inherits the caller’s host root.
- *
- * Semantics:
- * - Constructs a new `LiveTree` over `node`.
- * - Copies the parent’s `hostRoot` via `adoptRoots(parent.getHostRoots())`
- *   so the new tree participates in the same “document root” context
- *   (for removal, grafting, etc.).
- *
- * Notes:
- * - Used by search helpers (`find` / `find_all_in_tree`) to ensure that
- *   returned child trees still know which root they belong to, even
- *   though they are focused on a single node.
- *
- * @param parent - The `LiveTree` providing the host root context.
- * @param node - The raw `HsonNode` to wrap.
- * @returns A `LiveTree` bound to `node` with inherited host roots.
- */
-export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
-  ensure_quid(node);
-  const tree = new LiveTree(node).adoptRoots(parent.hostRootNode());
-  return tree;
 }

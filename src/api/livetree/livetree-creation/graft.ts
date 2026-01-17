@@ -16,39 +16,35 @@ import { create_livetree } from "../create-livetree";
  * @param element the target HTMLElement to graft onto (default = document.body)
  * @returns a LiveTree for querying and manipulating the grafted DOM element and its children
  */
-
 export function graft(
   element?: HTMLElement,
   options: { unsafe: boolean } = { unsafe: false }
 ): LiveTree {
   const targetElement = element;
   if (!targetElement) {
-    _throw_transform_err('error getting target element', 'graft', element);
+    _throw_transform_err("error getting target element", "graft", element);
   }
 
-  /* copy current HTML content of target & parse to nodes */
   const sourceHTML = targetElement.innerHTML;
   const rootNode: HsonNode = parse_html(sourceHTML);
 
-  /* recursively render the HsonNode tree back into live DOM elements,
-      then populate the `nodeElementMap`, linking the two */
-  const newDOMFragment = document.createDocumentFragment();
-
-  /* check for  _root/_elem*/
   const contentNodes = unwrap_root_elem(rootNode);
-
-  // Enforce graft's specific "single node" rule
   if (contentNodes.length !== 1) {
     _throw_transform_err(
       `[ERR: graft()]: expected 1 node, but received ${contentNodes.length}. Wrap multiple elements in a single container.`,
-      'graft'
+      "graft"
     );
   }
+
   const nodeToRender = contentNodes[0];
 
-  newDOMFragment.appendChild(project_livetree(nodeToRender));
-  /* replace the DOM element with the new liveTree-controlled model */
-  targetElement.replaceChildren(newDOMFragment)
-  /* return queryable liveTree */
+  // CHANGE: project exactly once into a fragment
+  const frag = document.createDocumentFragment();
+  frag.appendChild(project_livetree(nodeToRender));
+
+  // CHANGE: replace DOM with the projected subtree
+  targetElement.replaceChildren(frag);
+
+  // CHANGE: return a handle ONLY (no projection here)
   return create_livetree(nodeToRender);
 }
