@@ -4,8 +4,9 @@ import { HsonNode } from "../../../types-consts/node.types";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
 import { parse_html } from "../../parsers/parse-html.new.transform";
-import { create_live_tree } from "./create-live-tree";
+import { project_livetree } from "./project-live-tree";
 import { LiveTree } from "../livetree";
+import { create_livetree } from "../create-livetree";
 
 
 /**
@@ -45,9 +46,9 @@ export function graft(
   }
   const nodeToRender = contentNodes[0];
 
-  newDOMFragment.appendChild(create_live_tree(nodeToRender));
+  newDOMFragment.appendChild(project_livetree(nodeToRender));
   /* replace the DOM element with the new liveTree-controlled model */
   targetElement.replaceChildren(newDOMFragment)
   /* return queryable liveTree */
-  return new LiveTree(nodeToRender);
+  return create_livetree(nodeToRender);
 }

@@ -848,4 +848,19 @@ export class CssManager {
     styleEl.textContent = this.buildCombinedCss();
     this.changed = false;
   }
+
+
+
+/** @internal */
+public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
+  for (const [oldQ, newQ] of quidMap) {
+    const rules = this.rulesByQuid.get(oldQ);
+    if (!rules) continue;
+
+    // CHANGED: clone the inner map so edits don’t alias
+    this.rulesByQuid.set(newQ, new Map(rules));
+  }
+  this.mark_changed();
+}
+  
 }

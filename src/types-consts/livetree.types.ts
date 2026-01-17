@@ -3,7 +3,7 @@
 import { LiveTree } from "../api/livetree/livetree";
 import { HsonAttrs, HsonMeta, HsonNode } from "./node.types";
 import { FindQuery } from "../api/livetree/methods/find";
-import { TreeSelector } from "../api/livetree/tree-selector-2";
+import { TreeSelector } from "../api/livetree/tree-selector";
 import { HTML_TAGS } from "../consts/html-tags";
 
 /**************************************************************

@@ -12,7 +12,7 @@ const NODE_TO_QUID = new WeakMap<HsonNode, string>();
 
 /** short, sortable-ish id; crypto if available, else timestamp+counter */
 let _inc = 0;
-function mk_quid(): string {
+function mint_quid(): string {
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const b = new Uint8Array(8);
     crypto.getRandomValues(b);
@@ -64,7 +64,7 @@ export function ensure_quid(
   const persist = opts?.persist ?? true; // default true
 
   let q = get_quid(n);
-  if (!q) q = mk_quid();
+  if (!q) q = mint_quid();
 
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
@@ -110,7 +110,7 @@ export function reindex_quid(n: HsonNode): void {
   QUID_TO_NODE.set(q, n);
 }
 
-export { _DATA_QUID };
+export { _DATA_QUID }; //???
 
 /***************************************
  * drop_quid
@@ -162,4 +162,23 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
  ***************************************/
 export function has_quid(n: HsonNode): boolean {
   return !!get_quid(n);
+}
+
+
+export function remint_quid(
+  n: HsonNode,
+  opts?: { persist?: boolean; scrubMeta?: boolean },
+): string {
+  // drop old quid + old indexes
+  drop_quid(n, { scrubMeta: opts?.scrubMeta ?? true, stripDomAttr: false });
+
+  // write new quid + new indexes
+  const q = mint_quid();
+  QUID_TO_NODE.set(q, n);
+  NODE_TO_QUID.set(n, q);
+
+  if (opts?.persist ?? true) {
+    (n._meta ??= {})[_DATA_QUID] = q;
+  }
+  return q;
 }

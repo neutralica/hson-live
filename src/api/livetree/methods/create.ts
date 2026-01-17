@@ -4,8 +4,9 @@ import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper }
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { LiveTree } from "../livetree";
 import { make_tree_selector } from "../livetree-creation/make-tree-selector";
-import { TreeSelector } from "../tree-selector-2";
+import { TreeSelector } from "../tree-selector";
 import { HTML_TAGS } from "../../../consts/html-tags";
+import { create_livetree } from "../create-livetree";
 
 export function is_valid_tag_name(name: unknown): name is TagName {
   if (typeof name !== "string") return false;
@@ -91,7 +92,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
       const parsed = hson.fromTrustedHtml(html).toHson().parse();
       const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
 
-      const branch = new LiveTree(root0);
+      const branch = create_livetree(root0);
 
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);
@@ -99,7 +100,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
       const appended = unwrap_root_elem(root0);
 
       for (const child of appended) {
-        const childTree = new LiveTree(child);
+        const childTree = create_livetree(child);
         childTree.adoptRoots(tree.hostRootNode());
         created.push(childTree);
       }

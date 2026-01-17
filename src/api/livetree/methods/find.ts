@@ -5,9 +5,10 @@ import { HsonNode } from "../../../types-consts/node.types";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 import { LiveTree } from "../livetree";
 import { make_tree_selector } from "../livetree-creation/make-tree-selector";
-import { TreeSelector } from "../tree-selector-2";
+import { TreeSelector } from "../tree-selector";
 import { search_nodes } from "./search";
 import { FindWithById } from "../../../types-consts/livetree.types";
+import { ensure_quid } from "../../../quid/data-quid.quid";
 
 // “batching” helpers + queryish types
 
@@ -236,5 +237,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
  * @returns A `LiveTree` bound to `node` with inherited host roots.
  */
 export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
-    return new LiveTree(node).adoptRoots(parent.hostRootNode());
+  ensure_quid(node);
+  const tree = new LiveTree(node).adoptRoots(parent.hostRootNode());
+  return tree;
 }

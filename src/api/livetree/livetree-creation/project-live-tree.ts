@@ -1,8 +1,12 @@
 // create-live-tree.new.ts
 import { Primitive } from "../../../types-consts/core.types";
 import { ensure_quid } from "../../../quid/data-quid.quid";
-
 import { set_attrs_safe } from "../../../safety/safe-mount.safe";
+import { HsonNode } from "../../../types-consts/node.types";
+import { SVG_NS } from "../../../utils/node-utils/node-from-svg";
+import { is_Node } from "../../../utils/node-utils/node-guards";
+import { linkNodeToElement } from "../../../utils/tree-utils/node-map-helpers";
+import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
 import {
   _DATA_QUID,
   ARR_TAG,
@@ -12,11 +16,6 @@ import {
   STR_TAG,
   VAL_TAG,
 } from "../../../consts/constants";
-import { HsonNode } from "../../../types-consts/node.types";
-import { SVG_NS } from "../../../utils/node-utils/node-from-svg";
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { linkNodeToElement } from "../../../utils/tree-utils/node-map-helpers";
-import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
 
 
 
@@ -51,12 +50,12 @@ import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-ut
  *   identity; that responsibility lives with `LiveTree` and related
  *   helpers.
  *
- * @param node - The HSON node or primitive value to render.
+ * @param node - The HSON node or primitive value to project.
  * @param parentNs - The current namespace context (`"html"` or `"svg"`),
  *                   used to choose the appropriate element factory.
  * @returns The root DOM `Node` of the newly created subtree.
  */
-export function create_live_tree(
+export function project_livetree(
   node: HsonNode | Primitive,
   parentNs: "html" | "svg" = "html"
 ): Node {
@@ -88,7 +87,7 @@ export function create_live_tree(
         const payload =
           is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
         if (payload != null) {
-          frag.appendChild(create_live_tree(payload as HsonNode | Primitive, parentNs));
+          frag.appendChild(project_livetree(payload as HsonNode | Primitive, parentNs));
         }
       }
       return frag;
@@ -96,7 +95,7 @@ export function create_live_tree(
 
     // _root/_obj/_elem → render their children directly
     for (const child of n._content ?? []) {
-      frag.appendChild(create_live_tree(child as HsonNode | Primitive, parentNs));
+      frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
     }
     return frag;
   }
@@ -104,11 +103,9 @@ export function create_live_tree(
   // REAL ELEMENT NODE --------------------------------------
 
   const tag = n._tag;
-  const metaQuid = n._meta?._quid;
-  const quidInfo = metaQuid ? `, node._meta._quid=${metaQuid}` : "";
   const illegalDomTag = (badTag: string) =>
     new Error(
-      `[create_live_tree2] illegal DOM tag "${badTag}" (node._tag=${n._tag}${quidInfo})`
+      `[create_live_tree2] illegal DOM tag "${badTag}" (node._tag=${n._tag})`
     );
 
   // "_" prefixes are reserved for HSON virtual/internal nodes (and meta like `_tag`).
@@ -189,18 +186,6 @@ export function create_live_tree(
     }
   }
 
-  const m = n._meta;
-  if (m && _DATA_QUID in m) {
-    const q = String(m[_DATA_QUID]);
-    if (ns === "svg") {
-      // SVG path: write raw attribute
-      el.setAttribute(_DATA_QUID, q);
-    } else {
-      // HTML path: keep using the safe setter
-      set_attrs_safe(el as HTMLElement, _DATA_QUID, q);
-    }
-  }
-
   // children — either a single VSN wrapper or direct content
   const kids = n._content ?? [];
   if (
@@ -217,17 +202,17 @@ export function create_live_tree(
         const payload =
           is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
         if (payload != null) {
-          el.appendChild(create_live_tree(payload as HsonNode | Primitive, ns));
+          el.appendChild(project_livetree(payload as HsonNode | Primitive, ns));
         }
       }
     } else {
       for (const c of container._content ?? []) {
-        el.appendChild(create_live_tree(c as HsonNode | Primitive, ns));
+        el.appendChild(project_livetree(c as HsonNode | Primitive, ns));
       }
     }
   } else {
     for (const c of kids) {
-      el.appendChild(create_live_tree(c as HsonNode | Primitive, ns));
+      el.appendChild(project_livetree(c as HsonNode | Primitive, ns));
     }
   }
 

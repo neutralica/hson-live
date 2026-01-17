@@ -1,4 +1,4 @@
-// content.ts
+// text-manager.ts
 
 import { HsonAttrs, HsonNode } from "../../../types-consts/node.types";
 import { STR_TAG } from "../../../consts/constants";
@@ -35,6 +35,7 @@ function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaEleme
   }
   return null;
 }
+
 function form_el_for_node(node: HsonNode): FormEl | null {
   const el = element_for_node(node);
   if (!el) return null;
@@ -66,7 +67,7 @@ function throw_missing_el(node: HsonNode, source: string): never {
  * @param value - Primitive value to render as text (null becomes empty string).
  * @returns void.
  */
-export function set_node_content(node: HsonNode, value: Primitive): void {
+export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
   node._content = [leaf];
 
@@ -86,7 +87,7 @@ export function set_node_content(node: HsonNode, value: Primitive): void {
  * @param node - The HSON node to read from.
  * @returns The concatenated text content.
  */
-export function get_node_text(node: HsonNode): string {
+export function get_node_text_content(node: HsonNode): string {
   const el = element_for_node(node);
   if (el) return el.textContent ?? "";
 
@@ -140,7 +141,7 @@ export type SetNodeFormOpts = Readonly<{
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
  */
-export function set_node_form_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
+export function set_form_text_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
   const attrs = ensure_attrs(node);
   attrs.value = value;
 
@@ -164,7 +165,7 @@ export function set_node_form_value(node: HsonNode, value: string, opts?: SetNod
  * @param node - The HSON node to read from.
  * @returns The current form value (empty string if missing).
  */
-export function get_node_form_value(node: HsonNode): string {
+export function get_form_text_value(node: HsonNode): string {
   const el = element_for_node(node);
   if (el) {
     const ctl = resolve_form_control(el as Element);
@@ -184,7 +185,7 @@ export function get_node_form_value(node: HsonNode): string {
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
  */
-export function set_node_form_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
+export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
   const attrs = ensure_attrs(node);
   attrs.checked = checked;
 
@@ -206,7 +207,7 @@ export function set_node_form_checked(node: HsonNode, checked: boolean, opts?: S
  * @param node - The HSON node to read from.
  * @returns True when checked, otherwise false.
  */
-export function get_node_form_checked(node: HsonNode): boolean {
+export function get_input_checked(node: HsonNode): boolean {
   const el = form_el_for_node(node);
   if (el instanceof HTMLInputElement) return !!el.checked;
 
@@ -230,7 +231,7 @@ export function get_node_form_checked(node: HsonNode): boolean {
  * @param opts - Optional flags controlling missing DOM behavior.
  * @returns void.
  */
-export function set_node_form_selected(
+export function set_input_selected(
   node: HsonNode,
   selected: string | readonly string[],
   opts?: SetNodeFormOpts,
@@ -278,7 +279,7 @@ export function set_node_form_selected(
  * @param node - The HSON node to read from.
  * @returns The selected value string or array of values for multi-select.
  */
-export function get_node_form_selected(node: HsonNode): string | readonly string[] {
+export function get_input_selected(node: HsonNode): string | readonly string[] {
   const el = form_el_for_node(node);
 
   if (el instanceof HTMLSelectElement) {

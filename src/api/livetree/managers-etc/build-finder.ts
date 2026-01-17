@@ -3,7 +3,7 @@ import { HsonQuery } from "hson-live/types";
 import { search_nodes } from "../methods/search";
 import { make_tree_selector } from "../livetree-creation/make-tree-selector";
 import { wrap_in_tree } from "../methods/find";
-import { TreeSelector } from "../tree-selector-2";
+import { TreeSelector } from "../tree-selector";
 
 interface FinderBuilder {
   tag(tag: string): FinderBuilder;

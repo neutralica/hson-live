@@ -7,9 +7,9 @@ import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { css_for_quids } from "./managers-etc/css-manager";
 import { CssHandle } from "../../types-consts/css.types";
 import { remove_livetree } from "./methods/remove-self";
-import { get_node_form_value, get_node_text, set_node_content, set_node_form_value } from "./managers-etc/content-manager";
+import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers-etc/text-values";
 import { DataManager } from "./managers-etc/data-manager";
-import { empty_contents } from "./methods/empty2";
+import { empty_contents } from "./methods/empty";
 import { build_listener } from "./managers-etc/listener-builder";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find"; // CHANGED
 import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
@@ -17,7 +17,7 @@ import { remove_child } from "./methods/remove-child";
 import { StyleManager } from "./managers-etc/style-manager";
 import { LiveTreeCreateHelper } from "../../types-consts/livetree.types"; // CHANGED
 import { append_branch } from "./methods/append-other";
-import { make_tree_create } from "./methods/create-typed";
+import { make_tree_create } from "./methods/create";
 import { FindWithById, NodeRef } from "../../types-consts/livetree.types";
 import { Primitive } from "../../types-consts/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./managers-etc/style-setter";
@@ -26,6 +26,8 @@ import { make_dom_api } from "./managers-etc/dom-manager";
 import { is_Node } from "../../utils/node-utils/node-guards";
 import { TreeEvents } from "../../types-consts/events.types";
 import { make_tree_events } from "./managers-etc/events-handler";
+import { clone_branch_method } from "./methods/clone";
+import { create_livetree } from "./create-livetree";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"
@@ -102,13 +104,13 @@ function makeRef(node: HsonNode): NodeRef {
  * - Lazily constructed managers for style (`StyleManager`) and dataset (`DataManager`).
  */
 export class LiveTree {
-  /*---------- the HsonNode being referenced */
+  /* the HsonNode being referenced */
   private nodeRef!: NodeRef;
-  /*---------- the root node or historic root node */
+  /* the root node or historic root node */
   private hostRoot!: HsonNode;
-  /*---------- inline style editor */
+  /* inline style editor */
   private styleManagerInternal: StyleManager | undefined = undefined;
-  /*---------- .dataset editor */
+  /* .dataset editor */
   private datasetManagerInternal: DataManager | undefined = undefined;
 
   private cssApiInternal: CssHandle | undefined = undefined;
@@ -241,7 +243,7 @@ export class LiveTree {
     // ADDED: snapshot direct children; remove each via the canonical funnel
     for (const child of nodeKids) {
       // CHANGED: wrap the child as a LiveTree bound to the same hostRoot context
-      const childTree = new LiveTree(child);
+      const childTree = create_livetree(child);
       childTree.setRoot(this); // or whatever your “inherit hostRoot” API is
       removed += remove_livetree.call(childTree);
     }
@@ -488,20 +490,20 @@ export class LiveTree {
    *
    * @param value - The primitive value to render as text for this node.
    * @returns This `LiveTree` instance, for chaining.
-   * @see set_node_content
+   * @see set_node_text_content
    */
   public setText(value: Primitive): LiveTree {
-    set_node_content(this.node, value);
+    set_node_text_content(this.node, value);
     return this;
   }
   /**
    * Return all text content rendered under this node.
    *
    * @returns A string containing the concatenated text content.
-   * @see get_node_text
+   * @see get_node_text_content
    */
   public getText(): string {
-    return get_node_text(this.node);
+    return get_node_text_content(this.node);
   }
   /**
    * Set the form value for this node and mirror to DOM when mounted.
@@ -509,20 +511,20 @@ export class LiveTree {
    * @param value - The string form value to apply.
    * @param opts - Optional flags (`silent`, `strict`).
    * @returns This `LiveTree` instance, for chaining.
-   * @see set_node_form_value
+   * @see set_form_text_value
    */
   public setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): LiveTree {
-    set_node_form_value(this.node, value, opts);
+    set_form_text_value(this.node, value, opts);
     return this;
   }
   /**
    * Read the form value for this node.
    *
    * @returns The current form value as a string (possibly empty).
-   * @see get_node_form_value
+   * @see get_form_text_value
    */
   public getFormValue(): string {
-    return get_node_form_value(this.node);
+    return get_form_text_value(this.node);
   }
 
   public get id(): IdApi {
@@ -537,6 +539,9 @@ export class LiveTree {
     return this.classApi;
   }
 
+  public cloneBranch(): LiveTree {
+    return clone_branch_method.call(this);
+  }
   /*  ---------- DOM adapter ---------- */
   /**
    * Resolve this tree's node to its associated DOM `Element`, if any.

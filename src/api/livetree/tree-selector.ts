@@ -2,15 +2,11 @@
 
 import { LiveTree } from "./livetree";
 
-
 type LiveTreeStyle = LiveTree["style"];
 type LiveTreeCss = LiveTree["css"];
 type LiveTreeListen = LiveTree["listen"];
 
-/**
- * Keep this interface in the same module as TreeSelector2 so it stays honest.
- * Derive types from LiveTree so you don’t have to mirror “manager” signatures here.
- */
+
 export interface TreeSelectorType {
   toArray(): LiveTree[];
   count(): number;
@@ -23,11 +19,11 @@ export interface TreeSelectorType {
   removeSelf(): number;
   remove(): number;
 
-  readonly listen: LiveTreeListen; // ListenerBuilder-like; matches your existing `tree.listen`
+  readonly listen: LiveTreeListen; 
   readonly style: LiveTreeStyle;
   readonly css: LiveTreeCss;
 
-  // If your LiveTree uses `dataset` instead of `data`, change this line to match.
+
   readonly data: LiveTree["data"];
 }
 
@@ -41,10 +37,10 @@ function makeBroadcastProxy<T extends object>(
   items: readonly LiveTree[],
   pick: (t: LiveTree) => T,
 ): T {
-  // We need a concrete object target for Proxy; the first item’s manager works fine.
+
   const base: T | undefined = items[0] ? pick(items[0]) : undefined;
 
-  // Empty selection: return a no-op proxy that safely absorbs calls.
+  // empty selection: return a no-op proxy that safely absorbs calls.
   if (!base) {
     const noop = new Proxy(
       {},
@@ -55,7 +51,7 @@ function makeBroadcastProxy<T extends object>(
       },
     );
     // TS can’t infer Proxy shape; this is one contained cast.
-    return noop as unknown as T; // CHANGED: isolated cast (no spreading `as` all over user code)
+    return noop as unknown as T; 
   }
 
   const proxy = new Proxy(base, {
@@ -84,7 +80,7 @@ function makeBroadcastProxy<T extends object>(
     },
   });
 
-  return proxy as unknown as T; // CHANGED: isolated cast
+  return proxy as unknown as T; // isolated cast
 }
 
 export class TreeSelector implements TreeSelectorType {

@@ -1,7 +1,7 @@
 // tree-selector.ts
 
 import { LiveTree } from "../livetree";
-import { TreeSelector } from "../tree-selector-2";
+import { TreeSelector } from "../tree-selector";
 
 /**
  * Construct a `TreeSelector2` over a set of `LiveTree` instances.
