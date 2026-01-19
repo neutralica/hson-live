@@ -27,7 +27,7 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
 ## overview
 HSON is a glue format: a structural data representation capable of fully expressing both JSON and HTML within a single syntax.
 
-JSON and HTML are fundamentally different domains—data versus markup—yet both are built from hierarchical, tree-structured relationships.
+JSON and HTML are fundamentally different domains--data versus markup--yet both are built from hierarchical, tree-structured relationships.
 
 HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations.
 
@@ -44,9 +44,7 @@ HSON is built around a single, explicit intermediate representation (IR): a node
 * attributes, values, and ordering
 * namespaced markup (including XML and SVG)
 
-This representation is stable under repeated transformations. Serializing to another format and back does not degrade, reorder, or reinterpret the data.
-
-The result is a format that serves as both data and markup without collapsing one into the other or privileging either.
+This representation is stable under repeated transformations. Serializing to another format and back does not degrade, reorder, or reinterpret the data. The result is a format that serves as both data and markup without collapsing one into the other or privileging either.
 
 ## hson.transform
 hson.transform is a set of core transformers responsible for:

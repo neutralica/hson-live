@@ -1,9 +1,12 @@
 // hson-todo
 
-
+## 18JAN2026
++ change .setText so that it does not check element_for_node and instead writes node and updates if applicable
++ create.textnode
++ pseudoelements handling 
 
 ## 17JAN
-+fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:
++ fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:
  ```
  textShadow: [
     // slight emboss: light edge + dark edge
@@ -13,6 +16,8 @@
     "0 0 18px rgba(0,0,0,0.30)",
   ].join(", "),
 ```
++ tree.css.keyframes.deleteMany()/deleteAll()
++ 
 
 ## 16JAN2026
 + handle append() better. Should you be able to append an attached node to something new? If so it should not copy but remove and transport probably. Even if it does copy, it should not copy the quid; it should .clone() the node at most, which leaves quids behind. 
