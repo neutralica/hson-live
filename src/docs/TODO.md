@@ -1,5 +1,11 @@
 // hson-todo
 
+
+## 24JAN2026
++ move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css
++ .anim.setMany({})
++ getAttrs/setAttrs => attrs.set/get
+
 ## 18JAN2026
 + change .setText so that it does not check element_for_node and instead writes node and updates if applicable
 + create.textnode
@@ -9,10 +15,8 @@
 + fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:
  ```
  textShadow: [
-    // slight emboss: light edge + dark edge
     "0 1px 0 rgba(255,255,255,0.08)",
     "0 -1px 0 rgba(0,0,0,0.35)",
-    // soft “ink” bleed
     "0 0 18px rgba(0,0,0,0.30)",
   ].join(", "),
 ```
@@ -33,5 +37,5 @@
 
 
 ## 09JAN2026
-+ LiveTree.clone => same node IR, differet quid; for recreating elements but appending to different roots (ie for root-element swaps?)
++ ~~LiveTree.clone => same node IR, differet quid; for recreating elements but appending to different roots (ie for root-element swaps?)~~
 ✅ ~~.listen.onAnim("[name of animation]") (.end, .begin, etc) -- allows prefiltration/null checks of names of multiple events~~ (see hson-demo2 for trial impl)
