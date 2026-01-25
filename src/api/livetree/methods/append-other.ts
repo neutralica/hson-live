@@ -1,6 +1,6 @@
 // append-other.ts
 
-import { HsonNode } from "../../../types-consts/node.types";
+import { HsonNode } from "../../../types/node.types";
 import { ELEM_TAG } from "../../../consts/constants";
 import { CREATE_NODE } from "../../../consts/factories";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";

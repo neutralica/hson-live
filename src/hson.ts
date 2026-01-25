@@ -1,9 +1,9 @@
 
 import { construct_source_1 } from "./api/constructors/construct-source-1";
-import { DomQueryLiveTreeConstructor, OutputConstructor_2 } from "./types-consts/constructor.types";
-import { DomQuerySourceConstructor } from "./types-consts/constructor.types";
-import { HsonNode } from "./types-consts/node.types";
-import { JsonValue } from "./types-consts/core.types";
+import { DomQueryLiveTreeConstructor, OutputConstructor_2 } from "./types/constructor.types";
+import { DomQuerySourceConstructor } from "./types/constructor.types";
+import { HsonNode } from "./types/node.types";
+import { JsonValue } from "./types/core.types";
 import { LiveTree } from "./api/livetree/livetree";
 import { construct_tree } from "./api/constructors/construct-tree";
 

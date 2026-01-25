@@ -13,7 +13,7 @@
  */
 
 import { hson } from "../hson";
-import { HsonNode } from "../types-consts/node.types"
+import { HsonNode } from "../types/node.types"
 import { is_Node } from "../utils/node-utils/node-guards";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
 import { assert_invariants } from "./assert-invariants.test";

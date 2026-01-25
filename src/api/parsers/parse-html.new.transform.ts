@@ -1,6 +1,6 @@
 // parse-html.new.transform.hson.ts (new)
 
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants";
 import { CREATE_NODE } from "../../consts/factories";
 import { is_Primitive, is_string } from "../../utils/cote-utils/guards.core";
@@ -22,7 +22,7 @@ import { quote_unquoted_attrs } from "../../utils/html-preflights/quoted-unquote
 import { mangle_illegal_attrs } from "../../utils/html-preflights/mangle-illegal-attrs";
 import { namespace_svg } from "../../utils/html-preflights/namespace-svg";
 import { is_indexed } from "../../utils/node-utils/node-guards";
-import { Primitive } from "../../types-consts/core.types";
+import { Primitive } from "../../types/core.types";
 
 /**
  * Parse HTML/XML (trusted or pre-sanitized) into a rooted `HsonNode` tree.

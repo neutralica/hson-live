@@ -1,6 +1,6 @@
 // consts.types.ts
 
-import { HsonNode } from "../types-consts/node.types";
+import { HsonNode } from "../types/node.types";
 
 
 /***************************************************************

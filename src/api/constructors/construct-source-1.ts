@@ -1,16 +1,16 @@
 // construct-source-1.ts
 
-import { HsonNode } from "../../types-consts/node.types";
-import { FrameConstructor } from "../../types-consts/constructor.types";
-import { OutputConstructor_2 } from "../../types-consts/constructor.types";
-import { JsonValue } from "../../types-consts/core.types";
+import { HsonNode } from "../../types/node.types";
+import { FrameConstructor } from "../../types/constructor.types";
+import { OutputConstructor_2 } from "../../types/constructor.types";
+import { JsonValue } from "../../types/core.types";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
 import { parse_external_html } from "../parsers/parse-external-html.transform";
 import { parse_hson } from "../parsers/parse-hson.new.transform";
 import { parse_html } from "../parsers/parse-html.new.transform";
 import { parse_json } from "../parsers/parse-json.new.transform";
 import { construct_output_2 } from "./construct-output-2";
-import { SourceConstructor_1 } from "../../types-consts/constructor.types";
+import { SourceConstructor_1 } from "../../types/constructor.types";
 import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
 
 /**

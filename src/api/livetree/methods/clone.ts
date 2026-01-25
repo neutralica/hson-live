@@ -1,4 +1,4 @@
-import { HsonNode } from "../../../types-consts/node.types";
+import { HsonNode } from "../../../types/node.types";
 import { _DATA_QUID, ensure_quid, get_quid } from "../../../quid/data-quid.quid";
 import { LiveTree } from "../livetree";
 import { hson } from "../../../hson";

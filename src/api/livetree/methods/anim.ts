@@ -1,6 +1,6 @@
 // animate.ts
 
-import { AnimAdapters, AnimApi, AnimApiCore, AnimSpec, AnimationName, AnimationEndMode } from "../../../types-consts/animate.types";
+import { AnimAdapters, AnimApi, AnimApiCore, AnimSpec, AnimationName, AnimationEndMode } from "../../../types/animate.types";
 
 // CHANGED: single type parameter; output API matches the core + target type
 export function bind_anim_api<TTarget>(

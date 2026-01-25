@@ -1,6 +1,6 @@
 // listener-builder.ts
 
-import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types-consts/listen.types";
+import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types";
 import { LiveTree } from "../livetree";
 
 type Q = { type: string; handler: EventListener };

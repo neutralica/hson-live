@@ -1,10 +1,10 @@
 // style-setter.ts
 
-import { CssMap, CssValue } from "../../../types-consts/css.types";
+import { CssMap, CssValue } from "../../../types/css.types";
 import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
-import { SetSurface } from "../../../types-consts/css.types";
-import { CssKey } from "../../../types-consts/css.types";
-import { ClassApi, IdApi } from "../../../types-consts/dom.types";
+import { SetSurface } from "../../../types/css.types";
+import { CssKey } from "../../../types/css.types";
+import { ClassApi, IdApi } from "../../../types/dom.types";
 import { LiveTree } from "../livetree";
 
 
@@ -239,16 +239,15 @@ export function make_id_api(tree: LiveTree): IdApi {
     },
   };
   
-} export function make_class_api(tree: LiveTree): ClassApi {
-  // REMOVED: unused helper getClassStr()
+}
 
-  // CHANGED: single source of truth for the raw class attribute
+export function make_class_api(tree: LiveTree): ClassApi {
   const getRaw = (): string | undefined => {
     const v = tree.getAttr("class");
     return (typeof v === "string" && v.trim().length > 0) ? v : undefined;
   };
 
-  // CHANGED: parse class string from getRaw() (avoid duplicate getAttr reads)
+  //  parse class string from getRaw() (avoid duplicate getAttr reads)
   const getSet = (): Set<string> => {
     const s = getRaw() ?? "";
     return new Set(s.split(/\s+/).filter(Boolean));

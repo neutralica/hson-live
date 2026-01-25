@@ -1,17 +1,18 @@
 // css-manager.ts
 
-import { PropertyManager } from "../../../types-consts/at-property.types";
+import { PropertyManager } from "../../../types/at-property.types";
 import { _DATA_QUID } from "../../../consts/constants";
-import { CssValue, CssProp, CssHandle, CssHandleVoid, CssHandleBase } from "../../../types-consts/css.types";
+import { CssValue, CssProp, CssHandle, CssHandleVoid, CssHandleBase } from "../../../types/css.types";
 import { apply_animation, bind_anim_api } from "../methods/anim";
-import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types-consts/animate.types";
+import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types";
 import { manage_property } from "./at-prop-builder";
 import { manage_keyframes } from "./keyframes-manager";
-import { KeyframesManager } from "../../../types-consts/keyframes.types";
+import { KeyframesManager } from "../../../types/keyframes.types";
 import { make_style_setter } from "./style-setter";
 import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "../methods/css-globals";
 import { LiveTree } from "../livetree";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
+import { make_style_getter } from "./style-getter";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -40,21 +41,46 @@ const CSS_STYLE_ID = "_hson";
 function isLiveTree(x: unknown): x is LiveTree {
   return x instanceof LiveTree;
 }
+// css_for_quids.ts
 
 export function css_for_quids(quids: readonly string[]): CssHandleVoid;
 export function css_for_quids(host: LiveTree, quids: readonly string[]): CssHandle;
-
 export function css_for_quids(
   a: LiveTree | readonly string[],
   b?: readonly string[],
 ): CssHandleBase<any> {
   const mgr = CssManager.invoke();
 
-  // CHANGED: narrow via LiveTree guard (reliable)
+  // ADDED: globals facade (no QUID involvement)
+  const globals = {
+    set: (source: string, cssText: string) => mgr.setGlobal(source, cssText),
+    remove: (source: string) => mgr.removeGlobal(source),
+    clear: () => mgr.clearGlobals(),
+    list: () => mgr.listGlobals(),
+    get: (source: string) => mgr.getGlobal(source),
+  } as const;
+
+  const mk_getters_for_ids = (ids: readonly string[]) => {
+    const readConsensus = (propCanon: string): string | undefined => {
+      let seen: string | undefined;
+
+      for (const quid of ids) {
+        const v = mgr.getForQuid(quid, propCanon);
+        if (v === undefined) return undefined;
+        if (seen === undefined) { seen = v; continue; }
+        if (v !== seen) return undefined;
+      }
+      return seen;
+    };
+
+    return make_style_getter({
+      read: (propCanon) => readConsensus(propCanon),
+    });
+  };
+
   if (isLiveTree(a)) {
     const host: LiveTree = a;
-    const quids: readonly string[] = b ?? [];
-    const ids = quids.map(q => q.trim()).filter(Boolean);
+    const ids = (b ?? []).map(q => q.trim()).filter(Boolean);
 
     const setter = make_style_setter<LiveTree>(host, {
       apply: (propCanon, value) => { for (const quid of ids) mgr.setForQuid(quid, propCanon, value); },
@@ -62,19 +88,18 @@ export function css_for_quids(
       clear: () => { for (const quid of ids) mgr.clearQuid(quid); },
     });
 
+    const getter = mk_getters_for_ids(ids);
+
     return {
       ...setter,
+      get: getter,
+      globals,                 // ADDED
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
-      // devSnapshot: () => mgr.devSnapshot(),
-      debug_viewCss: () => mgr.renderCss(),
-      debug_sync: () => mgr.syncNow(),
-      debug_hardReset: () => mgr.debug_hardReset()
     };
   }
 
-  // non-hosted case: a is the quid list
   const ids = a.map(q => q.trim()).filter(Boolean);
 
   const setter = make_style_setter<void>(undefined, {
@@ -83,15 +108,15 @@ export function css_for_quids(
     clear: () => { for (const quid of ids) mgr.clearQuid(quid); },
   });
 
+  const getter = mk_getters_for_ids(ids);
+
   return {
     ...setter,
+    get: getter,
+    globals,                   // ADDED
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),
-    // devSnapshot: () => mgr.devSnapshot(),
-    debug_viewCss: () => mgr.renderCss(),
-    debug_sync: () => mgr.syncNow(),
-    debug_hardReset: () => mgr.debug_hardReset(),
   };
 }
 
@@ -301,15 +326,6 @@ export class CssManager {
     }
   }
 
-  public static invoke(): CssManager {
-    if (!CssManager.instance) CssManager.instance = new CssManager();
-
-    // CHANGED: bind doc if present, but do NOT create <style> here
-    CssManager.instance.ensureBoundDoc();
-
-    return CssManager.instance;
-  }
-
 
   /**
    * Resets all in-memory CSS state and owned sub-managers to a clean baseline.
@@ -420,30 +436,96 @@ export class CssManager {
     return styleEl;
   }
 
-  // public devSnapshot(): string {
-  //   const cssText = this.buildCombinedCss();
-  //   const styleEl = this.ensureStyleElement(); // CHANGED: might be null
-  //   if (styleEl) {
-  //     styleEl.textContent = cssText;
-  //     this.changed = false;
-  //   }
-  //   return cssText;
-  // }
-
+  // --- INTERNAL: BUILD + SYNC -------------------------------------------
   /**
-   * Dev-only helper that hard-resets all CSS state and re-ensures the DOM host.
-   *
-   * Behavior:
-   * - Clears all QUID-scoped rules.
-   * - Recreates the `@property` and keyframes managers.
-   * - Empties the managed `<style>` element (if connected).
-   *
-   * This is primarily intended for tests (e.g. to avoid cross-test leakage)
-   * and for manual debugging when the manager state must be rebuilt from zero.
-   */
-  public renderCss(): string {
-    return this.buildCombinedCss();
+ * Builds the complete stylesheet text managed by `CssManager`.
+ *
+ * Composition order:
+ * 1) `@property` registrations (from `atPropManager.renderAll()`)
+ * 2) keyframes / animation definitions (from `keyframeManager.renderAll()`)
+ * 3) QUID-scoped rule blocks (from `rulesByQuid`)
+ *
+ * QUID rule format:
+ * - Each QUID **must** emit exactly one selector block:
+ *   `[data-_quid="..."] { prop: value; ... }`
+ * - Properties are stored internally as *canonical* keys (camelCase, kebab-case,
+ *   or `--custom-prop`) and are converted to emitted CSS property names via
+ *   `canon_to_css_prop()`.
+ * - Values in `rulesByQuid` are **final rendered strings** (no `{value, unit}`
+ *   objects survive into this map). A defensive invariant check enforces this.
+ *
+ * Determinism:
+ * - This function is pure with respect to DOM (string-in/string-out).
+ * - Output ordering is defined by the iteration order of `rulesByQuid` and each
+ *   per-QUID property map; if you need strict stability across runs, ensure
+ *   insertion order is deterministic or sort keys before emitting.
+ *
+ * @returns The full stylesheet text ready to assign to `<style>.textContent`.
+ * @throws Error If an invariant check detects a non-string value in `rulesByQuid`.
+ */
+  private buildCombinedCss(): string {
+    // INVARIANT:
+    // Each QUID MUST emit exactly one selector block.
+    // rulesByQuid is Map<quid, Map<prop, string>> and MUST be folded
+    // into a single `[data-_quid="..."] { ... }` block.
+    // Do NOT emit per-property selector blocks.
+    //
+    // Boundary: rulesByQuid stores final rendered strings only (no objects).
+
+    // Optional guard (no process.env):
+    for (const [quid, rules] of this.rulesByQuid) {
+      for (const [prop, val] of rules) {
+        if (typeof val !== "string") {
+          throw new Error(
+            `CssManager invariant violated: non-string value at ${quid}.${prop}`
+          );
+        }
+      }
+    }
+    const atPropCss = this.atPropManager.renderAll().trim();
+    const keyframesCss = this.keyframeManager.renderAll().trim();
+
+    const blocks: string[] = [];
+
+    for (const [quid, props] of this.rulesByQuid.entries()) {
+      if (props.size === 0) continue;
+
+      const decls: string[] = [];
+      for (const [propCanon, value] of props.entries()) {
+        const prop = canon_to_css_prop(propCanon);
+        decls.push(`${prop}: ${value};`);
+      }
+
+      blocks.push(`${selectorForQuid(quid)} { ${decls.join(" ")} }`);
+    }
+
+    const quidCss = blocks.join("\n\n").trim();
+
+    const parts: string[] = [];
+    const globalCss = render_globals(this.globalCss);
+    if (globalCss) parts.push(globalCss);
+    if (atPropCss) parts.push(atPropCss);
+    if (keyframesCss) parts.push(keyframesCss);
+    if (quidCss) parts.push(quidCss);
+
+    return parts.join("\n\n");
   }
+
+  // added
+  private isNodeRuntime(): boolean {
+    return typeof (globalThis as any).process !== "undefined"
+      && !!(globalThis as any).process?.versions?.node;
+  }
+
+  private syncToDom(): void {
+    const styleEl = this.ensureStyleElement();
+    if (!styleEl) return;
+    styleEl.textContent = this.buildCombinedCss();
+    this.changed = false;
+  }
+
+
+
 
   /**
    * Constructs the adapter surface used by the animation subsystem for QUID scopes.
@@ -489,6 +571,40 @@ export class CssManager {
         return undefined;
       },
     };
+  }
+
+
+  public static invoke(): CssManager {
+    if (!CssManager.instance) CssManager.instance = new CssManager();
+
+    // CHANGED: bind doc if present, but do NOT create <style> here
+    CssManager.instance.ensureBoundDoc();
+
+    return CssManager.instance;
+  }
+  // ADDED: read the last-written value for quid+propCanon
+  public getForQuid(quid: string, propCanon: string): string | undefined {
+    return this.rulesByQuid.get(quid)?.get(propCanon);
+  }
+
+  // CHANGED: helper if you want “does this element have any css at all?”
+  public hasAnyRules(quid: string): boolean {
+    return (this.rulesByQuid.get(quid)?.size ?? 0) > 0;
+  }
+
+  /**
+   * Dev-only helper that hard-resets all CSS state and re-ensures the DOM host.
+   *
+   * Behavior:
+   * - Clears all QUID-scoped rules.
+   * - Recreates the `@property` and keyframes managers.
+   * - Empties the managed `<style>` element (if connected).
+   *
+   * This is primarily intended for tests (e.g. to avoid cross-test leakage)
+   * and for manual debugging when the manager state must be rebuilt from zero.
+   */
+  public renderCss(): string {
+    return this.buildCombinedCss();
   }
 
   /**
@@ -718,87 +834,6 @@ export class CssManager {
     this.mark_changed();
   }
 
-  // --- INTERNAL: BUILD + SYNC -------------------------------------------
-  /**
- * Builds the complete stylesheet text managed by `CssManager`.
- *
- * Composition order:
- * 1) `@property` registrations (from `atPropManager.renderAll()`)
- * 2) keyframes / animation definitions (from `keyframeManager.renderAll()`)
- * 3) QUID-scoped rule blocks (from `rulesByQuid`)
- *
- * QUID rule format:
- * - Each QUID **must** emit exactly one selector block:
- *   `[data-_quid="..."] { prop: value; ... }`
- * - Properties are stored internally as *canonical* keys (camelCase, kebab-case,
- *   or `--custom-prop`) and are converted to emitted CSS property names via
- *   `canon_to_css_prop()`.
- * - Values in `rulesByQuid` are **final rendered strings** (no `{value, unit}`
- *   objects survive into this map). A defensive invariant check enforces this.
- *
- * Determinism:
- * - This function is pure with respect to DOM (string-in/string-out).
- * - Output ordering is defined by the iteration order of `rulesByQuid` and each
- *   per-QUID property map; if you need strict stability across runs, ensure
- *   insertion order is deterministic or sort keys before emitting.
- *
- * @returns The full stylesheet text ready to assign to `<style>.textContent`.
- * @throws Error If an invariant check detects a non-string value in `rulesByQuid`.
- */
-  private buildCombinedCss(): string {
-    // INVARIANT:
-    // Each QUID MUST emit exactly one selector block.
-    // rulesByQuid is Map<quid, Map<prop, string>> and MUST be folded
-    // into a single `[data-_quid="..."] { ... }` block.
-    // Do NOT emit per-property selector blocks.
-    //
-    // Boundary: rulesByQuid stores final rendered strings only (no objects).
-
-    // Optional guard (no process.env):
-    for (const [quid, rules] of this.rulesByQuid) {
-      for (const [prop, val] of rules) {
-        if (typeof val !== "string") {
-          throw new Error(
-            `CssManager invariant violated: non-string value at ${quid}.${prop}`
-          );
-        }
-      }
-    }
-    const atPropCss = this.atPropManager.renderAll().trim();
-    const keyframesCss = this.keyframeManager.renderAll().trim();
-
-    const blocks: string[] = [];
-
-    for (const [quid, props] of this.rulesByQuid.entries()) {
-      if (props.size === 0) continue;
-
-      const decls: string[] = [];
-      for (const [propCanon, value] of props.entries()) {
-        const prop = canon_to_css_prop(propCanon);
-        decls.push(`${prop}: ${value};`);
-      }
-
-      blocks.push(`${selectorForQuid(quid)} { ${decls.join(" ")} }`);
-    }
-
-    const quidCss = blocks.join("\n\n").trim();
-
-    const parts: string[] = [];
-    const globalCss = render_globals(this.globalCss);
-    if (globalCss) parts.push(globalCss);
-    if (atPropCss) parts.push(atPropCss);
-    if (keyframesCss) parts.push(keyframesCss);
-    if (quidCss) parts.push(quidCss);
-
-    return parts.join("\n\n");
-  }
-
-  // added
-  private isNodeRuntime(): boolean {
-    return typeof (globalThis as any).process !== "undefined"
-      && !!(globalThis as any).process?.versions?.node;
-  }
-
   /** 
    * Immediately writes the current in-memory CSS to the DOM.
    * This is the "force it now" path used by devFlush and (optionally) tests.
@@ -811,7 +846,6 @@ export class CssManager {
     }
     this.rafId = null;
     this.scheduled = false;
-
     // CHANGED: no-op if nothing changed
     if (!this.changed) return;
 
@@ -843,25 +877,17 @@ export class CssManager {
   public getGlobal(source: string): string | undefined {
     return get_global(this.globalCss, source);
   }
-  private syncToDom(): void {
-    const styleEl = this.ensureStyleElement();
-    if (!styleEl) return;
-    styleEl.textContent = this.buildCombinedCss();
-    this.changed = false;
+
+  /** @internal */
+  public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
+    for (const [oldQ, newQ] of quidMap) {
+      const rules = this.rulesByQuid.get(oldQ);
+      if (!rules) continue;
+
+      // CHANGED: clone the inner map so edits don’t alias
+      this.rulesByQuid.set(newQ, new Map(rules));
+    }
+    this.mark_changed();
   }
 
-
-
-/** @internal */
-public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
-  for (const [oldQ, newQ] of quidMap) {
-    const rules = this.rulesByQuid.get(oldQ);
-    if (!rules) continue;
-
-    // CHANGED: clone the inner map so edits don’t alias
-    this.rulesByQuid.set(newQ, new Map(rules));
-  }
-  this.mark_changed();
-}
-  
 }

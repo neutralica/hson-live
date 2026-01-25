@@ -1,5 +1,5 @@
 // unwrap-returned-root.ts
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { ROOT_TAG } from "../../consts/constants";
 import { is_Node } from "./node-guards";
 

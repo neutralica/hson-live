@@ -1,6 +1,6 @@
 // node-from-svg.ts
 
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { STR_TAG } from "../../consts/constants";
 
 

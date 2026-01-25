@@ -1,5 +1,7 @@
 // hson-todo
 
+## 25JAN2025
++ hson.keyframes/hson.anim currently coerce underscores to hyphens; fix this
 
 ## 24JAN2026
 + move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css

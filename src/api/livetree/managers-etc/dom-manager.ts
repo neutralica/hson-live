@@ -1,5 +1,5 @@
 import { LiveTree } from "../livetree";
-import { ClosestFn, LiveTreeDom, ParentFn } from "../../../types-consts/dom.types";
+import { ClosestFn, LiveTreeDom, ParentFn } from "../../../types/dom.types";
 import { _snip } from "../../../utils/sys-utils/snip.utils";
 
 // CHANGED: better name; honest about failure

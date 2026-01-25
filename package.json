@@ -34,8 +34,8 @@
       "import": "./dist/diagnostics/index.js"
     },
     "./types": {
-      "types": "./dist/types-consts/index.d.ts",
-      "import": "./dist/types-consts/index.js"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/types/index.js"
     }
   },
   "scripts": {

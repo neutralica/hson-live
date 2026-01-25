@@ -5,8 +5,20 @@ import { AnimationName, AnimSpec, CssAnimHandle } from "./animate.types";
 import { KeyframesManager } from "./keyframes.types";
 import { StyleSetter } from "../api/livetree/managers-etc/style-setter";
 import { PropertyManager } from "./at-property.types";
+import { StyleGetter } from "../api/livetree/managers-etc/style-getter";
 
 
+/* doc me */
+type GetApi = {
+  // get a canonical property, e.g. "maskPosition", "opacity", "WebkitMaskPosition"
+  prop: (propCanon: string) => string | undefined;
+
+  // get a css variable, e.g. "--cloud-phase-px"
+  var: (name: string) => string | undefined;
+
+  // convenience (optional)
+  opacity: () => string | undefined;
+};
 
 /**
  * Normalized set of CSS units supported by the style utilities.
@@ -189,26 +201,49 @@ export type CssMap = Readonly<
  * underlying `<style>` element, keeping the CSS in sync with the
  * current state of the handle.
  */
-// CHANGED: StyleSetter now requires a return type; css should chain back to LiveTree
-// css.types.ts (or wherever CssHandle lives)
 
-// ADDED: generic base
+export type CssGetter = Readonly<{
+  // get by canonical key (what you store in rulesByQuid)
+  prop: (propCanon: string) => string | undefined;
+
+  // css var convenience
+  var: (name: string) => string | undefined;
+
+  // common convenience helpers (optional)
+  opacity: () => string | undefined;
+}>;
+
+// css.types.ts (or wherever CssHandleBase lives)
+
+// ADDED: globals API surface
+export type CssGlobalsApi = Readonly<{
+  set: (source: string, cssText: string) => void;
+  remove: (source: string) => void;
+  clear: () => void;
+  list: () => readonly string[];
+  get: (source: string) => string | undefined;
+}>;
+
+// CHANGED: add globals onto CssHandleBase
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
+    get: StyleGetter;                 // you already added this
+    globals: CssGlobalsApi;           // ADDED
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
-    // devSnapshot: () => string;
-    debug_viewCss: () => string;
-    debug_sync: () => void;
-    debug_hardReset: () => void;
   }
 >;
 
-// CHANGED: keep the public name as the “normal” hosted case
 export type CssHandle = CssHandleBase<LiveTree>;
 
-// ADDED: hostless case for “before mount”
+export type StyleHandle = Readonly<
+  StyleSetter<LiveTree> & {
+    get: StyleGetter;
+  }
+>;
+
+// hostless case for “before mount”
 export type CssHandleVoid = CssHandleBase<void>;
 
 /**
@@ -261,3 +296,4 @@ export type SetSurface<Next> =
   &
 
   { var: (name: `--${string}`, v: CssValue) => Next; };
+

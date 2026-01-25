@@ -1,10 +1,10 @@
 // construct-render-4.ts
 
-import { RenderFormats } from "../../types-consts/constructor.types";
+import { RenderFormats } from "../../types/constructor.types";
 import { $RENDER } from "../../consts/constants";
 import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils";
-import { ParsedResult, RenderConstructor_4 } from "../../types-consts/constructor.types";
-import { FrameRender } from "../../types-consts/constructor.types";
+import { ParsedResult, RenderConstructor_4 } from "../../types/constructor.types";
+import { FrameRender } from "../../types/constructor.types";
 
 /**
  * Stage 4 (NEW, terminal): serialize or project the final data.

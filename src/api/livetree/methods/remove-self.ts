@@ -1,14 +1,14 @@
 // remove2.ts
 
 import { drop_quid } from "../../../quid/data-quid.quid";
-import { HsonNode } from "../../../types-consts/node.types";
+import { HsonNode } from "../../../types/node.types";
 import { _DATA_QUID } from "../../../consts/constants";
 import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { LiveTree } from "../livetree";
 import { CssManager } from "../managers-etc/css-manager";
 import { is_Node } from "../../../utils/node-utils/node-guards";
-import { HsonQuery } from "../../../types-consts/livetree.types";
+import { HsonQuery } from "../../../types/livetree.types";
 import { search_nodes } from "./search";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 

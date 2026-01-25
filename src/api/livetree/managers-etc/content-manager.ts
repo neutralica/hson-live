@@ -1,8 +1,8 @@
 //content-manager.ts
 
 
-import { Primitive } from "../../../types-consts/core.types";
-import { HsonNode } from "../../../types-consts/node.types";
+import { Primitive } from "../../../types/core.types";
+import { HsonNode } from "../../../types/node.types";
 import { is_Node } from "../../../utils/node-utils/node-guards";
 import { create_livetree } from "../create-livetree";
 import { LiveTree } from "../livetree";
@@ -77,7 +77,7 @@ export class ContentManager {
    * - ignores primitives
    * - warns and returns undefined on 0 or >1 nodes
    */
-  public mustOnly(opts?: { warn?: boolean }): LiveTree | undefined {
+  public mustOnly(opts?: { warn?: boolean }): LiveTree  {
     const warn = opts?.warn ?? true;
 
     let found: HsonNode | undefined;
@@ -96,7 +96,9 @@ export class ContentManager {
           (on: ${this.owner.node._tag})`
         );
       }
-      return undefined;
+      throw new Error ( `ContentManager.mustOnly(): expected 1 node-content, got ${count}.\n 
+          (on: ${this.owner.node._tag})`)
+      // return undefined;
     }
 
     const t = create_livetree(found!);

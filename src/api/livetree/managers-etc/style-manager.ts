@@ -1,13 +1,14 @@
 // style-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types-consts/node.types";
-import { AllowedStyleKey, CssMap } from "../../../types-consts/css.types";
+import { HsonAttrs, HsonNode } from "../../../types/node.types";
+import { AllowedStyleKey, CssMap } from "../../../types/css.types";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
 import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { LiveTree } from "../livetree";
 import { make_style_setter, StyleSetter } from "./style-setter";
+import { make_style_getter, StyleGetter } from "./style-getter";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 
@@ -48,6 +49,24 @@ const FALLBACK_KEYS: ReadonlyArray<AllowedStyleKey> = Object.freeze([
     "paddingLeft",
     "transform",
 ]);
+
+export const parse_style_attr = (raw: string | undefined): Map<string, string> => {
+    const out = new Map<string, string>();
+    if (!raw) return out;
+
+    for (const part of raw.split(";")) {
+        const s = part.trim();
+        if (!s) continue;
+
+        const idx = s.indexOf(":");
+        if (idx < 0) continue;
+
+        const k = s.slice(0, idx).trim();
+        const v = s.slice(idx + 1).trim();
+        if (k) out.set(k, v);
+    }
+    return out;
+};
 
 /**
  * Remove a single inline style declaration from a node and its DOM element.
@@ -261,11 +280,12 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * the `LiveTree` it was constructed with, not on selections.
  */
 export class StyleManager {
-    // accept the real LiveTree2; do not reference private methods.
     private readonly tree: LiveTree;
     private readonly runtimeKeys: ReadonlyArray<AllowedStyleKey>;
-    // private readonly _set: StyleSetterFacade;
     public readonly setter: StyleSetter<LiveTree>;
+
+    // ADDED: read surface (mirrors your setter pattern)
+    public readonly getter: StyleGetter;
 
     /**
      * Create a `StyleManager` for a given `LiveTree`.
@@ -283,18 +303,12 @@ export class StyleManager {
      */
     constructor(tree: LiveTree) {
         this.tree = tree;
-        // compute keys once (DOM probe if available).
         this.runtimeKeys = computeRuntimeKeys();
-        // build the proxy using those keys.
-        // this._set = buildSetFacade(this.tree, this.runtimeKeys);
-        this.setter = make_style_setter<LiveTree>(
-            tree,
-            {
-            // OPTIONAL: if you have runtimeKeys in camelCase, feed them
+
+        this.setter = make_style_setter<LiveTree>(tree, {
             keys: this.runtimeKeys,
 
             apply: (propCanon, value) => {
-                // assumes setProperty accepts canonical camelCase or --var
                 this.apply(propCanon, value);
             },
 
@@ -306,7 +320,25 @@ export class StyleManager {
                 this.clearAll();
             },
         });
+
+        // ADDED: getter reads from the node’s style attr (internal truth)
+        this.getter = make_style_getter({
+            read: (propCanon: string) => {
+                // CHANGED: StyleManager stores inline style in kebab form
+                const attr = this.tree.getAttr("style");
+                const raw = typeof attr === "string" ? attr : undefined;
+
+                const map = parse_style_attr(raw);
+
+                const key = propCanon.startsWith("--")
+                    ? propCanon
+                    : camel_to_kebab(propCanon);
+
+                return map.get(key);
+            },
+        });
     }
+
 
     /**
      * Set a single inline style property on this node.
@@ -329,40 +361,45 @@ export class StyleManager {
      * @see applyStyleToNode
      */
     private apply(propertyName: string, value: string | number | null): LiveTree {
-
         const kebab = propertyName.startsWith("--")
             ? propertyName
             : camel_to_kebab(propertyName);
 
         const val = value == null ? "" : String(value);
+
         applyStyleToNode(this.tree.node, kebab, val);
-        const el = this.tree.asDomElement() as any;
+
+        // NOTE: if you also mirror to DOM element, keep it, but it isn’t the “truth”
+        // const el = this.tree.asDomElement() as any;
+
         return this.tree;
     }
 
     /**
-     * Remove a single inline style property from this node.
-     *
-     * Behavior:
-     * - Normalizes the property name from camelCase to kebab-case (except
-     *   for `--custom` variables).
-     * - Delegates to `removeStyleFromNode`, which clears the property from
-     *   the node's style object and the DOM `style` attribute.
-     *
-     * This is equivalent to calling `setProperty(propertyName, null)` but
-     * uses the dedicated removal pathway.
-     *
-     * @param propertyName - CSS property name in camelCase or kebab-case.
-     * @returns The underlying `LiveTree` instance, for chaining.
-     * @see removeStyleFromNode
-     */
+    * Remove a single inline style property from this node.
+    *
+    * Behavior:
+    * - Normalizes the property name from camelCase to kebab-case (except
+    *   for `--custom` variables).
+    * - Delegates to `removeStyleFromNode`, which clears the property from
+    *   the node's style object and the DOM `style` attribute.
+    *
+    * This is equivalent to calling `setProperty(propertyName, null)` but
+    * uses the dedicated removal pathway.
+    *
+    * @param propertyName - CSS property name in camelCase or kebab-case.
+    * @returns The underlying `LiveTree` instance, for chaining.
+    * @see removeStyleFromNode
+    */
     private remove(propertyName: string): LiveTree {
-        const kebab = camel_to_kebab(propertyName);
-        const node = this.tree.node;
-        removeStyleFromNode(node, kebab);
+        const kebab = propertyName.startsWith("--")
+            ? propertyName
+            : camel_to_kebab(propertyName);
 
+        removeStyleFromNode(this.tree.node, kebab);
         return this.tree;
     }
+
 
     /**
      * Remove all inline style state from the current tree node.
@@ -392,5 +429,4 @@ export class StyleManager {
         const el = element_for_node(node) as HTMLElement | undefined;
         if (el) el.removeAttribute("style");
     }
-
 }

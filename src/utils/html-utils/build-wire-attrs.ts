@@ -2,7 +2,7 @@
 
 
 import { _META_DATA_PREFIX } from "../../consts/constants";
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { serialize_style } from "../attrs-utils/serialize-style";
 
 /**

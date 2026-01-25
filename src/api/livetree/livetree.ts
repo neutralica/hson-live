@@ -1,11 +1,11 @@
 // livetree2.ts
 
 import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid";
-import { HsonNode } from "../../types-consts/node.types";
-import { ListenerBuilder } from "../../types-consts/listen.types";
+import { HsonNode } from "../../types/node.types";
+import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { css_for_quids } from "./managers-etc/css-manager";
-import { CssHandle } from "../../types-consts/css.types";
+import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
 import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers-etc/text-values";
 import { DataManager } from "./managers-etc/data-manager";
@@ -15,16 +15,16 @@ import { FindMany, make_find_all_for, make_find_for } from "./methods/find"; // 
 import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
 import { remove_child } from "./methods/remove-child";
 import { StyleManager } from "./managers-etc/style-manager";
-import { LiveTreeCreateHelper } from "../../types-consts/livetree.types"; // CHANGED
+import { LiveTreeCreateHelper } from "../../types/livetree.types"; // CHANGED
 import { append_branch } from "./methods/append-other";
 import { make_tree_create } from "./methods/create";
-import { FindWithById, NodeRef } from "../../types-consts/livetree.types";
-import { Primitive } from "../../types-consts/core.types";
+import { FindWithById, NodeRef } from "../../types/livetree.types";
+import { Primitive } from "../../types/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./managers-etc/style-setter";
-import { ClassApi, IdApi, LiveTreeDom } from "../../types-consts/dom.types";
+import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types";
 import { make_dom_api } from "./managers-etc/dom-manager";
 import { is_Node } from "../../utils/node-utils/node-guards";
-import { TreeEvents } from "../../types-consts/events.types";
+import { TreeEvents } from "../../types/events.types";
 import { make_tree_events } from "./managers-etc/events-handler";
 import { clone_branch_method } from "./methods/clone";
 import { create_livetree } from "./create-livetree";
@@ -110,7 +110,10 @@ export class LiveTree {
   /* the root node or historic root node */
   private hostRoot!: HsonNode;
   /* inline style editor */
-  private styleManagerInternal: StyleManager | undefined = undefined;
+
+  private styleApiInternal: StyleHandle | undefined = undefined;
+
+  // private styleManagerInternal: StyleManager | undefined = undefined;
   /* .dataset editor */
   private datasetManagerInternal: DataManager | undefined = undefined;
   private contentManager: ContentManager | undefined = undefined;
@@ -201,7 +204,6 @@ export class LiveTree {
   private invalidate_dom_api(): void {
     // existing
     this.domApiInternal = undefined;
-
     // ADDED: css handle depends on the current nodeRef/quid context
     this.cssApiInternal = undefined;
   }
@@ -353,13 +355,19 @@ export class LiveTree {
   * @returns A `StyleSetter` bound to this tree’s node.
   * @see StyleManager
   */
-  public get style(): StyleSetter<LiveTree> {
-    if (!this.styleManagerInternal) {
-      this.styleManagerInternal = new StyleManager(this);
+
+  public get style(): StyleHandle {
+    if (!this.styleApiInternal) {
+      const mgr = new StyleManager(this);
+      // CHANGED: expose both write + read
+      this.styleApiInternal = {
+        ...mgr.setter,
+        get: mgr.getter,
+      };
     }
-    // StyleManager must expose its StyleSetter (suggested name: `setter`)
-    return this.styleManagerInternal.setter;
+    return this.styleApiInternal;
   }
+
   public get events(): TreeEvents {
     if (!this.eventsInternal) {
       this.eventsInternal = make_tree_events();

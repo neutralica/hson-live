@@ -1,6 +1,6 @@
 // serialize-primitive.utils.ts
 
-import { Primitive } from "../../types-consts/core.types";
+import { Primitive } from "../../types/core.types";
 /**
  * Serialize a primitive into its string representation.
  *

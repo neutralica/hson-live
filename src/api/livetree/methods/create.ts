@@ -1,6 +1,6 @@
 import { hson } from "../../../hson";
-import { HsonNode } from "../../../types-consts/node.types";
-import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types-consts/livetree.types";
+import { HsonNode } from "../../../types/node.types";
+import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { LiveTree } from "../livetree";
 import { make_tree_selector } from "../livetree-creation/make-tree-selector";

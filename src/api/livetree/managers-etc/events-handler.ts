@@ -1,6 +1,6 @@
 // events-handler.ts
 
-import { TreeEventHandler, TreeEvents } from "../../../types-consts/events.types";
+import { TreeEventHandler, TreeEvents } from "../../../types/events.types";
 
 export function make_tree_events(): TreeEvents {
   const listeners = new Map<string, Set<TreeEventHandler>>();

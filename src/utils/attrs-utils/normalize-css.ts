@@ -74,7 +74,7 @@ export function nrmlz_cssom_prop_key(raw: string): string {
 
   //  aliases first (treat input case-insensitively)
   const lower = p.toLowerCase();
-  const aliased = CSS_PROP_ALIASES[lower];
+  const aliased = CSS_PROP_ALIASES[lower]; //// currently special-case for cssFloat/css-float only
   if (aliased) return aliased;
 
   // vendor-ish: -webkit-foo-bar -> WebkitFooBar

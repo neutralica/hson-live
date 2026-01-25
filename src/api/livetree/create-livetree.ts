@@ -1,7 +1,7 @@
 
 // create-livetree.ts
 
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { LiveTree } from "./livetree";
 import { ensure_quid } from "../../quid/data-quid.quid";
 

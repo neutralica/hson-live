@@ -1,6 +1,6 @@
 // store.ts
 
-import { HsonNode } from "../../types-consts/node.types";
+import { HsonNode } from "../../types/node.types";
 import { Patch, Store, Path, PatchOp, PathSeg } from "../livemap/types.livemap";
 
 /*************************** 

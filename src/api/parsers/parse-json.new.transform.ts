@@ -4,8 +4,8 @@ import { is_Primitive, is_Object, is_string } from "../../utils/cote-utils/guard
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG,  II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants";
 import { CREATE_NODE } from "../../consts/factories";
 import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants";
-import { HsonMeta,  HsonAttrs, HsonNode } from "../../types-consts/node.types";
-import { JsonObj, JsonValue, Primitive } from "../../types-consts/core.types";
+import { HsonMeta,  HsonAttrs, HsonNode } from "../../types/node.types";
+import { JsonObj, JsonValue, Primitive } from "../../types/core.types";
 import { assert_invariants } from "../../diagnostics/assert-invariants.test";
 import { _snip } from "../../utils/sys-utils/snip.utils";
 import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils";

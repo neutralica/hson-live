@@ -1,7 +1,7 @@
 // guards.core.ts
 
 
-import { BasicValue, JsonObj, JsonValue, Primitive } from "../../types-consts/core.types";
+import { BasicValue, JsonObj, JsonValue, Primitive } from "../../types/core.types";
 
 
 /**
