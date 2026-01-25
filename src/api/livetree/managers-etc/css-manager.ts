@@ -93,7 +93,6 @@ export function css_for_quids(
     return {
       ...setter,
       get: getter,
-      globals,                 // ADDED
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
@@ -113,7 +112,6 @@ export function css_for_quids(
   return {
     ...setter,
     get: getter,
-    globals,                   // ADDED
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),

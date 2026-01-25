@@ -1,12 +1,12 @@
 // hson-todo
 
 ## 25JAN2025
-+ hson.keyframes/hson.anim currently coerce underscores to hyphens; fix this
++ hson.keyframes/hson.anim currently coerce underscores to hyphens? fix 
 
 ## 24JAN2026
 + move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css
 + .anim.setMany({})
-+ getAttrs/setAttrs => attrs.set/get
+√ ~~getAttrs/setAttrs => attrs.set/get~~
 
 ## 18JAN2026
 + change .setText so that it does not check element_for_node and instead writes node and updates if applicable
@@ -34,10 +34,10 @@
 ✅ ~~.css.apply() for RAF calls~~
 
 ## 13JAN2026 
-✅ ~~add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)~~ (see hson-demo2 for trial impl; issues exist)
+✅ ~~add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)~~ (no - out of scope for library)
 
 
 
 ## 09JAN2026
 + ~~LiveTree.clone => same node IR, differet quid; for recreating elements but appending to different roots (ie for root-element swaps?)~~
-✅ ~~.listen.onAnim("[name of animation]") (.end, .begin, etc) -- allows prefiltration/null checks of names of multiple events~~ (see hson-demo2 for trial impl)
+✅ ~~.listen.onAnim("[name of animation]") (.end, .begin, etc) -- allows prefiltration/null checks of names of multiple events~~ 

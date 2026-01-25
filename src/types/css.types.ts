@@ -227,8 +227,7 @@ export type CssGlobalsApi = Readonly<{
 // CHANGED: add globals onto CssHandleBase
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
-    get: StyleGetter;                 // you already added this
-    globals: CssGlobalsApi;           // ADDED
+    get: StyleGetter;                
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
