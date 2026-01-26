@@ -9,10 +9,10 @@ import { manage_property } from "./at-prop-builder";
 import { manage_keyframes } from "./keyframes-manager";
 import { KeyframesManager } from "../../../types/keyframes.types";
 import { make_style_setter } from "./style-setter";
-import { clear_globals, get_global, list_globals, remove_global, render_globals, set_global } from "../methods/css-globals";
 import { LiveTree } from "../livetree";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
 import { make_style_getter } from "./style-getter";
+import { GlobalCss } from "./global-css";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -452,7 +452,7 @@ export class CssManager {
  * @returns The full stylesheet text ready to assign to `<style>.textContent`.
  * @throws Error If an invariant check detects a non-string value in `rulesByQuid`.
  */
-  private buildCombinedCss(): string {
+  private buildCombinedCss(opts?: { globalsCss?: string }): string {
     // INVARIANT:
     // Each QUID MUST emit exactly one selector block.
     // rulesByQuid is Map<quid, Map<prop, string>> and MUST be folded
@@ -491,8 +491,10 @@ export class CssManager {
     const quidCss = blocks.join("\n\n").trim();
 
     const parts: string[] = [];
-    const globalCss = render_globals(this.globalCss);
-    if (globalCss) parts.push(globalCss);
+
+    const globals = opts?.globalsCss?.trim();
+    if (globals) parts.push(globals);
+
     if (atPropCss) parts.push(atPropCss);
     if (keyframesCss) parts.push(keyframesCss);
     if (quidCss) parts.push(quidCss);
@@ -509,12 +511,14 @@ export class CssManager {
   private syncToDom(): void {
     const styleEl = this.ensureStyleElement();
     if (!styleEl) return;
-    styleEl.textContent = this.buildCombinedCss();
+
+    const cssText = this.buildCombinedCss({
+      globalsCss: GlobalCss.invoke().renderAll(),
+    });
+
+    styleEl.textContent = cssText;
     this.changed = false;
   }
-
-
-
 
   /**
    * Constructs the adapter surface used by the animation subsystem for QUID scopes.
@@ -841,40 +845,13 @@ export class CssManager {
     // CHANGED: perform the actual write
     this.syncToDom();
   }
-  public static readonly globals = (() => {
-    const mgr = () => CssManager.invoke();
-    return {
-      set: (source: string, cssText: string) => mgr().set(source, cssText),
-      remove: (source: string) => mgr().remove(source),
-      clear: () => mgr().clear(),
-      list: () => mgr().list(),
-      get: (source: string) => mgr().get(source),
-    } as const;
-  })();
 
-  private set(source: string, cssText: string): void {
-    set_global(this.globalCss, source, cssText);
-    this.mark_changed();
+  public static get globals() {
+    // CHANGED: bind change notifications to CssManager.invoke().mark_changed()
+    // (so global writes schedule a sync)
+    return GlobalCss.api(() => CssManager.invoke().mark_changed());
   }
 
-  private remove(source: string): void {
-    remove_global(this.globalCss, source);
-    this.mark_changed();
-  }
-
-  private clear(): void {
-    if (this.globalCss.size === 0) return;
-    clear_globals(this.globalCss);
-    this.mark_changed();
-  }
-
-  private list(): readonly string[] {
-    return list_globals(this.globalCss);
-  }
-
-  private get(source: string): string | undefined {
-    return get_global(this.globalCss, source);
-  }
 
   /** @internal */
   public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
