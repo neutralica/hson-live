@@ -2,7 +2,7 @@
 
 import { PropertyManager } from "../../../types/at-property.types";
 import { _DATA_QUID } from "../../../consts/constants";
-import { CssValue, CssProp, CssHandle, CssHandleVoid, CssHandleBase } from "../../../types/css.types";
+import { CssValue, CssProp, CssHandle, CssHandleVoid, CssHandleBase, CssGlobalsApi } from "../../../types/css.types";
 import { apply_animation, bind_anim_api } from "../methods/anim";
 import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types";
 import { manage_property } from "./at-prop-builder";
@@ -50,15 +50,6 @@ export function css_for_quids(
   b?: readonly string[],
 ): CssHandleBase<any> {
   const mgr = CssManager.invoke();
-
-  // ADDED: globals facade (no QUID involvement)
-  const globals = {
-    set: (source: string, cssText: string) => mgr.setGlobal(source, cssText),
-    remove: (source: string) => mgr.removeGlobal(source),
-    clear: () => mgr.clearGlobals(),
-    list: () => mgr.listGlobals(),
-    get: (source: string) => mgr.getGlobal(source),
-  } as const;
 
   const mk_getters_for_ids = (ids: readonly string[]) => {
     const readConsensus = (propCanon: string): string | undefined => {
@@ -850,29 +841,38 @@ export class CssManager {
     // CHANGED: perform the actual write
     this.syncToDom();
   }
+  public static readonly globals = (() => {
+    const mgr = () => CssManager.invoke();
+    return {
+      set: (source: string, cssText: string) => mgr().set(source, cssText),
+      remove: (source: string) => mgr().remove(source),
+      clear: () => mgr().clear(),
+      list: () => mgr().list(),
+      get: (source: string) => mgr().get(source),
+    } as const;
+  })();
 
-
-  public setGlobal(source: string, cssText: string): void {
+  private set(source: string, cssText: string): void {
     set_global(this.globalCss, source, cssText);
     this.mark_changed();
   }
 
-  public removeGlobal(source: string): void {
+  private remove(source: string): void {
     remove_global(this.globalCss, source);
     this.mark_changed();
   }
 
-  public clearGlobals(): void {
+  private clear(): void {
     if (this.globalCss.size === 0) return;
     clear_globals(this.globalCss);
     this.mark_changed();
   }
 
-  public listGlobals(): readonly string[] {
+  private list(): readonly string[] {
     return list_globals(this.globalCss);
   }
 
-  public getGlobal(source: string): string | undefined {
+  private get(source: string): string | undefined {
     return get_global(this.globalCss, source);
   }
 

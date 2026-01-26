@@ -224,7 +224,6 @@ export type CssGlobalsApi = Readonly<{
   get: (source: string) => string | undefined;
 }>;
 
-// CHANGED: add globals onto CssHandleBase
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
     get: StyleGetter;                

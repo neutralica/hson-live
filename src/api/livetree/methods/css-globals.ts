@@ -37,7 +37,7 @@ export function get_global(
   store: GlobalCssMap,
   source: string
 ): string | undefined {
-  return store.get(source);
+    return store.get(source.trim());
 }
 
 export function render_globals(store: GlobalCssMap): string {
