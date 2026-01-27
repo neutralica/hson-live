@@ -4,7 +4,6 @@ import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid";
 import { HsonNode } from "../../types/node.types";
 import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
-import { css_for_quids } from "./managers-etc/css-manager";
 import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
 import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers-etc/text-values";
@@ -29,6 +28,7 @@ import { make_tree_events } from "./managers-etc/events-handler";
 import { clone_branch_method } from "./methods/clone";
 import { create_livetree } from "./create-livetree";
 import { ContentManager } from "./managers-etc/content-manager";
+import { css_for_quids } from "./methods/css-for-quids";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{
   x?: string;   // "--x"

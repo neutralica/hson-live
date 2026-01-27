@@ -2,6 +2,8 @@
 
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
 import { make_style_setter, StyleSetter } from "./style-setter";
+
+
 type GlobalRule = Readonly<{
   selector: string;
   decls: Record<string, string>; // canon prop -> rendered string
@@ -85,6 +87,10 @@ function render_rule(selector: string, decls: Record<string, string>): string {
   return lines.join("\n");
 }
 
+
+/**
+ * GLOBALCSS CLASS 
+ **/
 export class GlobalCss {
   private static _inst: GlobalCss | undefined;
 
@@ -104,7 +110,7 @@ export class GlobalCss {
       rule: (ruleKey: string, selector: string) => g().rule(ruleKey, selector),
       sel: (selector: string) => g().sel(selector), // ADDED: selector-only convenience
       drop: (ruleKey: string) => g().remove(ruleKey),
-      clear: () => g().clear(),
+      clearAll: () => g().clear(),
       has: (ruleKey: string) => g().has(ruleKey),
       list: () => g().list(),
       get: (ruleKey: string) => g().get(ruleKey),
