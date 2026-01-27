@@ -1,21 +1,34 @@
 // global_css.ts
 
-import { CssMap, CssRuleBuilder } from "../../../types/css.types";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
-import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
-
+import { make_style_setter, StyleSetter } from "./style-setter";
 type GlobalRule = Readonly<{
   selector: string;
   decls: Record<string, string>; // canon prop -> rendered string
 }>;
 
-const _listeners = new Set<() => void>();
+export type GlobalRuleHandle = Readonly<
+  StyleSetter<void> & {
+    readonly ruleKey: string;
+    readonly selector: string;
+    drop(): void;     // remove entire rule
+  }
+>;
 
-function notify_changed(): void {
-  for (const fn of _listeners) fn();
+const _listeners = new Set<() => void>();
+let _pending = false;
+
+function notifyChanged(): void {
+  if (_pending) return;
+  _pending = true;
+
+  queueMicrotask(() => {
+    _pending = false;
+    for (const fn of _listeners) fn();
+  });
 }
 
-// CHANGED: keep render rules in ONE place (match make_style_setter semantics)
+//  keep render rules in ONE place (match make_style_setter semantics)
 function render_css_value(v: unknown): string | null {
   if (v == null) return null;
 
@@ -30,15 +43,16 @@ function render_css_value(v: unknown): string | null {
       const unit = typeof obj.unit === "string" ? obj.unit : "";
       const val =
         typeof raw === "string" ? raw.trim() :
-        typeof raw === "number" ? String(raw) :
-        raw == null ? "" :
-        String(raw);
+          typeof raw === "number" ? String(raw) :
+            raw == null ? "" :
+              String(raw);
       return `${val}${unit}`.trim();
     }
   }
 
-  return String(v);
+  return String(v).trim();
 }
+
 
 function render_rule(selector: string, decls: Record<string, string>): string {
   const keys = Object.keys(decls)
@@ -50,20 +64,28 @@ function render_rule(selector: string, decls: Record<string, string>): string {
 
   const lines: string[] = [];
   lines.push(`${selector} {`);
+
+  let any = false;
+
   for (const canon of keys) {
     const raw = decls[canon];
     const v = raw == null ? "" : String(raw).trim();
-    if (!v && v !== "") continue;
 
+    // NOTE: we assume empties have already been deleted upstream.
+    // If you *want* to treat "" as delete, do it in the setter, not here.
+    if (v.length === 0) continue;
+
+    any = true;
     const prop = canon.startsWith("--") ? canon : camel_to_kebab(canon);
     lines.push(`  ${prop}: ${v};`);
   }
+
+  if (!any) return "";
   lines.push(`}`);
   return lines.join("\n");
 }
 
 export class GlobalCss {
-  // ADDED: singleton instance
   private static _inst: GlobalCss | undefined;
 
   public static invoke(): GlobalCss {
@@ -71,110 +93,128 @@ export class GlobalCss {
     return this._inst;
   }
 
-  // ADDED: public “API surface” builder (so CssManager can expose it without
-  // implementing these methods itself)
+  //  returns disposer to unsubscribe
   public static api(onChange: () => void) {
-    // CHANGED: subscribe once per caller (dedupe by identity)
     _listeners.add(onChange);
 
     const g = () => GlobalCss.invoke();
 
     return {
-      rule: (source: string, selector: string) => g().rule(source, selector),
-      remove: (source: string) => g().remove(source),
+      dispose: () => { _listeners.delete(onChange); }, // ADDED
+      rule: (ruleKey: string, selector: string) => g().rule(ruleKey, selector),
+      sel: (selector: string) => g().sel(selector), // ADDED: selector-only convenience
+      drop: (ruleKey: string) => g().remove(ruleKey),
       clear: () => g().clear(),
-      has: (source: string) => g().has(source),
+      has: (ruleKey: string) => g().has(ruleKey),
       list: () => g().list(),
-      get: (source: string) => g().get(source),
+      get: (ruleKey: string) => g().get(ruleKey),
       renderAll: () => g().renderAll(),
     } as const;
   }
 
-  // ---- instance state ----
-  private readonly rules = new Map<string, GlobalRule>(); // source -> rule
-  private readonly rendered = new Map<string, string>();  // source -> cssText
+  private readonly rules = new Map<string, GlobalRule>();
+  private readonly rendered = new Map<string, string>();
 
-  // ADDED: builder API
-  public rule(sourceRaw: string, selectorRaw: string): CssRuleBuilder {
-    const source = sourceRaw.trim();
-    const selector = selectorRaw.trim();
-    if (!source) throw new Error("GlobalCss.rule: empty source");
+  public rule(keyStr: string, selStr: string): GlobalRuleHandle {
+    const ruleKey = keyStr.trim();
+    const selector = selStr.trim();
+    if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
     if (!selector) throw new Error("GlobalCss.rule: empty selector");
 
-    const prior = this.rules.get(source);
+    const prior = this.rules.get(ruleKey);
     const decls: Record<string, string> =
       prior && prior.selector === selector ? { ...prior.decls } : {};
 
-    // ADDED: single stateful builder object (as your docs expect)
-    const builder: CssRuleBuilder = {
-      id: source,
-      selector,
+    const applyNow = (): void => {
+      const cssText = render_rule(selector, decls).trim();
 
-      set: (prop, v) => {
-        const canon = nrmlz_cssom_prop_key(prop);
-        if (!canon) return builder;
+      if (!cssText) {
+        const had = this.rules.delete(ruleKey) || this.rendered.delete(ruleKey);
+        if (had) notifyChanged();
+        return;
+      }
 
-        const rendered = render_css_value(v);
-        if (rendered == null) delete decls[canon];
-        else decls[canon] = rendered;
+      const prev = this.rendered.get(ruleKey);
+      if (prev === cssText) return;
 
-        return builder;
-      },
-
-      setMany: (map: CssMap) => {
-        for (const [k, v] of Object.entries(map)) {
-          const canon = nrmlz_cssom_prop_key(k);
-          if (!canon) continue;
-
-          const rendered = render_css_value(v);
-          if (rendered == null) delete decls[canon];
-          else decls[canon] = rendered;
-        }
-        return builder;
-      },
-
-      commit: () => {
-        const cssText = render_rule(selector, decls).trim();
-
-        if (!cssText) {
-          const had = this.rules.delete(source) || this.rendered.delete(source);
-          if (had) notify_changed();
-          return;
-        }
-
-        const prev = this.rendered.get(source);
-        if (prev === cssText) return; // CHANGED: no-op if identical
-
-        this.rules.set(source, { selector, decls: { ...decls } });
-        this.rendered.set(source, cssText);
-        notify_changed();
-      },
-
-      remove: () => {
-        const had = this.rules.delete(source) || this.rendered.delete(source);
-        if (had) notify_changed();
-      },
+      this.rules.set(ruleKey, { selector, decls: { ...decls } });
+      this.rendered.set(ruleKey, cssText);
+      notifyChanged();
     };
 
-    return builder;
+    
+  const setter = make_style_setter<void>(undefined, {
+    apply: (propCanon, value) => {
+      // Defensive normalization at GlobalCss boundary.
+      const rendered = render_css_value(value);
+
+      // null/empty => delete
+      if (rendered == null || rendered.length === 0) {
+        if (propCanon in decls) {
+          delete decls[propCanon];
+          applyNow();
+        }
+        return;
+      }
+
+      if (decls[propCanon] === rendered) return;
+
+      decls[propCanon] = rendered;
+      applyNow();
+    },
+
+      remove: (propCanon) => {
+        if (propCanon in decls) {
+          delete decls[propCanon];
+          applyNow();
+        }
+      },
+
+      clear: () => {
+        const hadAny = Object.keys(decls).length > 0;
+        if (!hadAny) return;
+        for (const k of Object.keys(decls)) delete decls[k];
+        applyNow();
+      },
+    });
+
+    return {
+      ...setter,
+      ruleKey,
+      selector,
+      drop: () => {
+        const had = this.rules.delete(ruleKey) || this.rendered.delete(ruleKey);
+        if (had) notifyChanged();
+      },
+    };
   }
 
-  public remove(sourceRaw: string): void {
-    const source = sourceRaw.trim();
+  private static id_for_selector(selStr: string): string {
+    return `sel:${selStr.trim()}`;
+  }
+
+  public sel(selStr: string): GlobalRuleHandle {
+    const selector = selStr.trim();
+    if (!selector) throw new Error("GlobalCss.sel: empty selector");
+    return this.rule(GlobalCss.id_for_selector(selector), selector);
+  }
+
+  public remove(keyStr: string): void {
+    const source = keyStr.trim();
     if (!source) return;
     const had = this.rules.delete(source) || this.rendered.delete(source);
-    if (had) notify_changed();
+    if (had) notifyChanged();
   }
 
   public clear(): void {
     if (this.rules.size === 0 && this.rendered.size === 0) return;
     this.rules.clear();
     this.rendered.clear();
-    notify_changed();
+    notifyChanged();
   }
 
-  public has(sourceRaw: string): boolean {
-    const source = sourceRaw.trim();
+  public has(keyStr: string): boolean {
+    const source = keyStr.trim();
     if (!source) return false;
     return this.rendered.has(source);
   }
@@ -190,7 +230,6 @@ export class GlobalCss {
   }
 
   public renderAll(): string {
-    // CHANGED: deterministic output
     return this.list()
       .map(k => this.rendered.get(k) ?? "")
       .map(s => s.trim())

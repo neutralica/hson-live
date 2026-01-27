@@ -845,12 +845,22 @@ export class CssManager {
     // CHANGED: perform the actual write
     this.syncToDom();
   }
+  // CssManager.ts
+  public static readonly globals = {
+    invoke: () => {
+      const g = GlobalCss.invoke(); // invoked at usage time, not import time
 
-  public static get globals() {
-    // CHANGED: bind change notifications to CssManager.invoke().mark_changed()
-    // (so global writes schedule a sync)
-    return GlobalCss.api(() => CssManager.invoke().mark_changed());
-  }
+      return {
+        sel: (selector: string) => g.sel(selector),
+        class: (cls: string) => g.sel(`.${cls.trim()}`),
+        id: (id: string) => g.sel(`#${id.trim()}`),
+
+        dropSel: (selector: string) => g.sel(selector).drop(),
+        dropClass: (cls: string) => g.sel(`.${cls.trim()}`).drop(),
+        dropId: (id: string) => g.sel(`#${id.trim()}`).drop(),
+      } as const;
+    },
+  } as const;
 
 
   /** @internal */

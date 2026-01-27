@@ -151,8 +151,8 @@ export interface CssRuleBuilder {
   set(property: string, value: CssValue): CssRuleBuilder;
   setMany(decls: Record<string, CssValue>): CssRuleBuilder;
 
-  // apply current declarations to CssManager
-  commit(): void;
+  // TRASH // apply current declarations to CssManager
+  // commit(): void;
 
   // convenience: remove rule from CssManager
   remove(): void;
