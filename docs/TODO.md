@@ -1,5 +1,13 @@
 // hson-todo
 
+## 29JAN2026
++ needed on LiveTree somewhere:
+ -- getBoundingRect & co.
+ -- getAnimations
+ -- setTimeout?
+ -- etc
+
+
 ## 25JAN2025
 + hson.keyframes/hson.anim currently coerce underscores to hyphens? fix 
 

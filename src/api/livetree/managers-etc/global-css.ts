@@ -121,7 +121,7 @@ export class GlobalCss {
   private readonly rules = new Map<string, GlobalRule>();
   private readonly rendered = new Map<string, string>();
 
-  public rule(keyStr: string, selStr: string): GlobalRuleHandle {
+  private rule(keyStr: string, selStr: string): GlobalRuleHandle {
     const ruleKey = keyStr.trim();
     const selector = selStr.trim();
     if (!ruleKey) throw new Error("GlobalCss.rule: empty source");
@@ -148,26 +148,26 @@ export class GlobalCss {
       notifyChanged();
     };
 
-    
-  const setter = make_style_setter<void>(undefined, {
-    apply: (propCanon, value) => {
-      // Defensive normalization at GlobalCss boundary.
-      const rendered = render_css_value(value);
 
-      // null/empty => delete
-      if (rendered == null || rendered.length === 0) {
-        if (propCanon in decls) {
-          delete decls[propCanon];
-          applyNow();
+    const setter = make_style_setter<void>(undefined, {
+      apply: (propCanon, value) => {
+        // Defensive normalization at GlobalCss boundary.
+        const rendered = render_css_value(value);
+
+        // null/empty => delete
+        if (rendered == null || rendered.length === 0) {
+          if (propCanon in decls) {
+            delete decls[propCanon];
+            applyNow();
+          }
+          return;
         }
-        return;
-      }
 
-      if (decls[propCanon] === rendered) return;
+        if (decls[propCanon] === rendered) return;
 
-      decls[propCanon] = rendered;
-      applyNow();
-    },
+        decls[propCanon] = rendered;
+        applyNow();
+      },
 
       remove: (propCanon) => {
         if (propCanon in decls) {
@@ -199,43 +199,43 @@ export class GlobalCss {
     return `sel:${selStr.trim()}`;
   }
 
-  public sel(selStr: string): GlobalRuleHandle {
+  private sel(selStr: string): GlobalRuleHandle {
     const selector = selStr.trim();
     if (!selector) throw new Error("GlobalCss.sel: empty selector");
     return this.rule(GlobalCss.id_for_selector(selector), selector);
   }
 
-  public remove(keyStr: string): void {
+  private remove(keyStr: string): void {
     const source = keyStr.trim();
     if (!source) return;
     const had = this.rules.delete(source) || this.rendered.delete(source);
     if (had) notifyChanged();
   }
 
-  public clear(): void {
+  private clear(): void {
     if (this.rules.size === 0 && this.rendered.size === 0) return;
     this.rules.clear();
     this.rendered.clear();
     notifyChanged();
   }
 
-  public has(keyStr: string): boolean {
+  private has(keyStr: string): boolean {
     const source = keyStr.trim();
     if (!source) return false;
     return this.rendered.has(source);
   }
 
-  public list(): readonly string[] {
+  private list(): readonly string[] {
     return Array.from(this.rendered.keys()).sort();
   }
 
-  public get(sourceRaw: string): string | undefined {
+  private get(sourceRaw: string): string | undefined {
     const source = sourceRaw.trim();
     if (!source) return undefined;
     return this.rendered.get(source);
   }
 
-  public renderAll(): string {
+  private renderAll(): string {
     return this.list()
       .map(k => this.rendered.get(k) ?? "")
       .map(s => s.trim())

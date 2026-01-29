@@ -147,11 +147,9 @@ export class CssManager {
   private readonly globalCss: Map<string, string> = new Map();
   private globalsApi: GlobalCssApi | undefined;
 
-  // Keep this private. It’s the “meaning” of onChange for your app.
   private notify_global_css_changed(): void {
-    // pick ONE:
-    this.mark_changed();      // preferred (batched)
-    // this.syncToDom();           // if you really want immediate
+    this.mark_changed();      //  (batched)
+    // this.syncToDom();           // immediate
   }
 
   // ADDED: coalescing state
@@ -423,7 +421,7 @@ export class CssManager {
     if (!styleEl) return;
 
     const cssText = this.buildCombinedCss({
-      globalsCss: GlobalCss.invoke().renderAll(),
+      globalsCss: this.globals_invoke().renderAll(),
     });
 
     styleEl.textContent = cssText;
@@ -755,18 +753,18 @@ export class CssManager {
     // CHANGED: perform the actual write
     this.syncToDom();
   }
-  
+
+  private globals_invoke(): GlobalCssApi {
+    if (!this.globalsApi) {
+      this.globalsApi = GlobalCss.api(() => this.notify_global_css_changed());
+    }
+    return this.globalsApi;
+  }
+
+  // public facade stays the same idea, but route through the instance:
   public static readonly globals = {
     invoke(): GlobalCssApi {
-      const mgr = CssManager.invoke();
-
-      if (!mgr.globalsApi) {
-        // IMPORTANT: closure resolves *this instance*, but since CssManager is singleton
-        // that’s fine. If you ever allow multiple managers, revisit.
-        mgr.globalsApi = GlobalCss.api(() => mgr.notify_global_css_changed());
-      }
-
-      return mgr.globalsApi;
+      return CssManager.invoke().globals_invoke();
     },
   } as const;
 
