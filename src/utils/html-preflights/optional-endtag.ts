@@ -248,8 +248,6 @@ export function optional_endtag_preflight(src: string): string {
     out = out.slice(0, ins.at) + ins.text + out.slice(ins.at);
   }
 
-  console.log('out final')
-  console.log(out)
 
 
   return out;
