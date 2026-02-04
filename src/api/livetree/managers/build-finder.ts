@@ -1,6 +1,6 @@
-import { LiveTree } from "../../livetree/livetree";
+import { LiveTree } from "../livetree";
 import { search_nodes } from "../methods/search";
-import { make_tree_selector } from "../livetree-creation/make-tree-selector";
+import { make_tree_selector } from "../creation/make-tree-selector";
 import { TreeSelector } from "../tree-selector";
 import { wrap_in_tree } from "../create-livetree";
 import { HsonQuery } from "../../../types/livetree.types";

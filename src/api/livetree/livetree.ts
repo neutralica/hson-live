@@ -6,28 +6,28 @@ import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
-import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers-etc/text-values";
-import { DataManager } from "./managers-etc/data-manager";
+import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers/text-values";
+import { DataManager } from "./managers/data-manager";
 import { empty_contents } from "./methods/empty";
-import { build_listener } from "./managers-etc/listener-builder";
+import { build_listener } from "./managers/listener-builder";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find"; // CHANGED
-import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers-etc/attrs-manager";
+import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers/attrs-manager";
 import { remove_child } from "./methods/remove-child";
-import { StyleManager } from "./managers-etc/style-manager";
+import { StyleManager } from "./managers/style-manager";
 import { LiveTreeCreateHelper } from "../../types/livetree.types"; // CHANGED
 import { append_branch } from "./methods/append-other";
 import { make_tree_create } from "./methods/create";
 import { FindWithById, NodeRef } from "../../types/livetree.types";
 import { Primitive } from "../../types/core.types";
-import { make_class_api, make_id_api, StyleSetter } from "./managers-etc/style-setter";
+import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types";
-import { make_dom_api } from "./managers-etc/dom-manager";
+import { make_dom_api } from "./managers/dom-manager";
 import { is_Node } from "../../utils/node-utils/node-guards";
 import { TreeEvents } from "../../types/events.types";
-import { make_tree_events } from "./managers-etc/events-handler";
+import { make_tree_events } from "./managers/events-handler";
 import { clone_branch_method } from "./methods/clone";
 import { create_livetree } from "./create-livetree";
-import { ContentManager } from "./managers-etc/content-manager";
+import { ContentManager } from "./managers/content-manager";
 import { css_for_quids } from "./methods/css-for-quids";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 export type MotionVars = Readonly<{

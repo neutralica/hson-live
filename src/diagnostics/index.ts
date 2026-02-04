@@ -13,4 +13,4 @@ export {
     set_input_selected as set_node_form_selected,
     get_input_selected as get_node_form_selected
 
-} from "../api/livetree/managers-etc/text-values.js";
+} from "../api/livetree/managers/text-values.js";

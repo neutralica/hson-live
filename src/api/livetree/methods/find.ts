@@ -4,7 +4,7 @@ import { HsonQuery } from "../../../types/livetree.types";;
 import { HsonNode } from "../../../types/node.types";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector";
 import { LiveTree } from "../livetree";
-import { make_tree_selector } from "../livetree-creation/make-tree-selector";
+import { make_tree_selector } from "../creation/make-tree-selector";
 import { TreeSelector } from "../tree-selector";
 import { search_nodes } from "./search";
 import { FindWithById } from "../../../types/livetree.types";

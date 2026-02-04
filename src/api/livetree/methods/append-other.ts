@@ -5,7 +5,7 @@ import { ELEM_TAG } from "../../../consts/constants";
 import { CREATE_NODE } from "../../../consts/factories";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { project_livetree } from "../livetree-creation/project-live-tree";
+import { project_livetree } from "../creation/project-live-tree";
 import { LiveTree } from "../livetree";
 import { normalize_ix } from "./append";
 import { TreeSelector } from "../tree-selector";

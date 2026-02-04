@@ -3,9 +3,9 @@
 
 import { CssHandleVoid, CssHandle, CssHandleBase } from "../../../types/css.types";
 import { LiveTree } from "../livetree";
-import { CssManager, isLiveTree } from "../managers-etc/css-manager";
-import { make_style_getter } from "../managers-etc/style-getter";
-import { make_style_setter } from "../managers-etc/style-setter";
+import { CssManager, isLiveTree } from "../managers/css-manager";
+import { make_style_getter } from "../managers/style-getter";
+import { make_style_setter } from "../managers/style-setter";
 
 
 /**

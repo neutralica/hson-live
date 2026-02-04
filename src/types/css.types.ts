@@ -3,9 +3,9 @@
 import { LiveTree } from "../api/livetree/livetree";
 import { CssAnimHandle } from "./animate.types";
 import { KeyframesManager } from "./keyframes.types";
-import { StyleSetter } from "../api/livetree/managers-etc/style-setter";
+import { StyleSetter } from "../api/livetree/managers/style-setter";
 import { PropertyManager } from "./at-property.types";
-import { StyleGetter } from "../api/livetree/managers-etc/style-getter";
+import { StyleGetter } from "../api/livetree/managers/style-getter";
 
 
 /* doc me */

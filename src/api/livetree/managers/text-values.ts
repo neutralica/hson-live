@@ -70,15 +70,11 @@ function throw_missing_el(node: HsonNode, source: string): never {
 export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
   node._content = [leaf];
-
   const el = element_for_node(node);
-  if (!el) {
-    // NOTE: you may eventually want to make this non-throwing like forms.
-    // Leaving as-is because you asked to focus on form/input first.
-    throw_missing_el(node, "setNodeContent");
+  if (el) {    
+    (el as HTMLElement).textContent = value === null ? "" : String(value);
   }
 
-  (el as HTMLElement).textContent = value === null ? "" : String(value);
 }
 
 /**
