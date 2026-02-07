@@ -1,5 +1,9 @@
 // hson-todo
 
+## 07FEB2026
++ liveTree.queryBody() currently is locked to a single window document; creating a new window and calling LiveTree does not switch from the old. fix.
++ automatic teardown of keyframes when possible
+
 ## 29JAN2026
 + needed on LiveTree somewhere:
  -- getBoundingRect & co.
@@ -17,7 +21,7 @@
 √ ~~getAttrs/setAttrs => attrs.set/get~~
 
 ## 18JAN2026
-+ change .setText so that it does not check element_for_node and instead writes node and updates if applicable
++ ~~change .setText so that it does not check element_for_node and instead writes node and updates if applicable~~
 + create.textnode
 + pseudoelements handling 
 
@@ -31,7 +35,6 @@
   ].join(", "),
 ```
 + tree.css.keyframes.deleteMany()/deleteAll()
-+ 
 
 ## 16JAN2026
 + handle append() better. Should you be able to append an attached node to something new? If so it should not copy but remove and transport probably. Even if it does copy, it should not copy the quid; it should .clone() the node at most, which leaves quids behind. 

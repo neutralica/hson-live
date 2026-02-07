@@ -41,6 +41,8 @@ export type Artifact = {
   fmt: Fmt;
   text: string;
   node: string;
+  label?: string;
+
 
 };
 
@@ -56,7 +58,7 @@ export type LoopReport = {
   times: number;
   dir: LoopDir | "dual";           // CHANGED
   entry: SourceFormat;
-
+  label?: string;
   failures: Step[];
   trace?: Step[];
 
@@ -157,7 +159,7 @@ function runRing(
       }
 
       //  capture emitted artifacts here
-      
+
       const next = safe_parse(fmt, text, `parse:${fmt}`, opt, { lap, fmt, phase: "parse" });
       if (!next) {
         return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
@@ -170,7 +172,7 @@ function runRing(
           node: make_string(next),
         });
       }
-      
+
       const diffs = compare_nodes(node, next, false);
       if (diffs.length) {
         step_fail(opt, `diff nodes<ERR>:node -> ${fmt} -> node`, diffs[0]);
