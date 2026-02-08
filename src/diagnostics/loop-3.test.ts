@@ -16,6 +16,7 @@ import { hson } from "../hson";
 import { HsonNode } from "../types/node.types"
 import { is_Node } from "../utils/node-utils/node-guards";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
+import { _snip } from "../utils/sys-utils/snip.utils";
 import { assert_invariants } from "./assert-invariants.test";
 import { compare_nodes } from "./compare-nodes.test";
 
@@ -153,7 +154,7 @@ function runRing(
     for (let i = 0; i < path.length; i++) {
       const fmt = path[i];
 
-      const text = safe_emit(fmt, node, `emit:${fmt}`, opt);
+      const text = safe_emit(fmt, node, `emit:${fmt}`, opt, { lap, dir, phase: "emit" });
       if (text === undefined) {
         return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
       }
@@ -235,9 +236,9 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
     trace,
     failures,
     verbose: !!opts.verbose,
-    stopOnFirstFail: opts.stopOnFirstFail ?? true,
+    stopOnFirstFail: opts.stopOnFirstFail ?? false,
   };
-
+  step_ok({ trace, failures, verbose: true, stopOnFirstFail: false }, `debug:opts.entry=${String(opts.entry)} typeofAtom=${typeof atom}`);
   //  dual by default
   const dual = opts.dual ?? true;
 
@@ -289,7 +290,7 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
   //  compare final nodes cw vs ccw (path dependence detector)
   const finalDiffs = compare_nodes(cwRes.finalNode, ccwRes.finalNode, false);
   if (finalDiffs.length) {
-    step_fail({ trace, failures, verbose: !!opts.verbose,  }, "dual:finalNode cw != ccw", finalDiffs[0]);
+    step_fail({ trace, failures, verbose: !!opts.verbose, }, "dual:finalNode cw != ccw", finalDiffs[0]);
   } else {
     step_ok({ trace, failures, verbose: !!opts.verbose }, "dual:finalNode cw == ccw");
   }
@@ -347,6 +348,41 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
  * HELPERS
  * ========================================================================= */
 
+function looks_like_json(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+
+  const c0 = t[0]!;
+  if (c0 === "{" || c0 === "[") return true;
+
+  // JSON scalars
+  if (c0 === `"` || c0 === "-" || (c0 >= "0" && c0 <= "9")) return true;
+  return t === "true" || t === "false" || t === "null";
+}
+
+// CHANGED: only try HTML when it actually looks like markup.
+// (Keep this conservative; “false negatives” are better than HTML swallowing JSON.)
+function looks_like_html(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+
+  // starts with a tag-like opener: <a  </a  <!doctype  <?xml  <_obj ...
+  if (/^<\s*[A-Za-z_!/??]/.test(t)) return true;
+
+  // or contains a tag-ish opener somewhere (avoid treating "< 3" as HTML)
+  if (/<\s*[A-Za-z_!/??]/.test(t)) return true;
+
+  return false;
+}
+
+// OPTIONAL: if you want a “hard” JSON check (syntax-valid JSON), keep it here.
+// Using JSON.parse is fast and gives you crisp “this isn't JSON” classification.
+function is_json_source_text(s: string): boolean {
+  const t = s.trim();
+  if (!looks_like_json(t)) return false;
+  try { JSON.parse(t); return true; } catch { return false; }
+}
+
 function resolve_entry(
   atom: FixtureAtom,
   entry: SourceFormat,
@@ -372,27 +408,98 @@ function resolve_entry(
 
   const s = atom.trim();
 
-  try {
-    const n = SPIN.json.parse(s);
-    assert_invariants(n, "auto:json");
-    return { fmt: "json", text: s };
-  } catch { /* ignore */ }
+  // CHANGED: commit by shape; do NOT “try-parse vacuum” through HTML.
+  const likeJson = looks_like_json(s);
+  const likeHtml = looks_like_html(s);
 
-  try {
-    const n = SPIN.html.parse(s);
-    assert_invariants(n, "auto:html");
-    return { fmt: "html", text: s };
-  } catch { /* ignore */ }
+  // Prefer JSON if it looks JSON-ish.
+  if (likeJson) {
+    // Optional: if you want “invalid JSON should never be treated as HTML/HSON”
+    // then enforce syntax validity up front.
+    if (!is_json_source_text(s)) {
+      step_fail(opt, "resolve_entry:auto", "Looks like JSON but JSON.parse failed (invalid JSON)");
+      return undefined;
+    }
 
+    try {
+      const n = SPIN.json.parse(s);
+      assert_invariants(n, "auto:json");
+      return { fmt: "json", text: s };
+    } catch (err) {
+      // CHANGED: do not fall through to HTML; this was the bug pattern.
+      step_fail(opt, "resolve_entry:auto", `Looks like JSON but SPIN.json.parse failed: ${err_to_string(err)}`);
+      return undefined;
+    }
+  }
+
+  // Only try HTML if it actually looks like HTML.
+  if (likeHtml) {
+    try {
+      const n = SPIN.html.parse(s);
+      assert_invariants(n, "auto:html");
+      return { fmt: "html", text: s };
+    } catch { /* ignore */ }
+  }
+
+  // Otherwise, try HSON as the final fallback.
   try {
     const n = SPIN.hson.parse(s);
     assert_invariants(n, "auto:hson");
     return { fmt: "hson", text: s };
   } catch { /* ignore */ }
 
-  step_fail(opt, "resolve_entry:auto", "Could not detect entry format via try-parse (json/html/hson)");
+  step_fail(opt, "resolve_entry:auto", "Could not detect entry format (shape-gated json/html/hson)");
   return undefined;
 }
+
+// function resolve_entry(
+//   atom: FixtureAtom,
+//   entry: SourceFormat,
+//   opt: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail">
+// ): { fmt: Fmt; text: string } | undefined {
+//   if (entry !== "auto") {
+//     return coerce_entry(atom, entry, opt);
+//   }
+
+//   if (is_Node(atom)) {
+//     const text = safe_emit("hson", atom, "emit:node->hson(entry)", opt);
+//     if (text === undefined) return undefined;
+//     return { fmt: "hson", text };
+//   }
+
+//   if (is_html_element(atom)) {
+//     return { fmt: "html", text: atom.outerHTML };
+//   }
+
+//   if (typeof atom !== "string") {
+//     return { fmt: "json", text: JSON.stringify(atom) };
+//   }
+
+//   const s = atom.trim();
+
+//   try {
+//     const n = SPIN.json.parse(s);
+//     assert_invariants(n, "auto:json");
+//     return { fmt: "json", text: s };
+//   } catch { /* ignore */ }
+
+//   try {
+//     const n = SPIN.html.parse(s);
+//     assert_invariants(n, "auto:html");
+//     return { fmt: "html", text: s };
+//   } catch { /* ignore */ }
+
+//   try {
+//     const n = SPIN.hson.parse(s);
+//     assert_invariants(n, "auto:hson");
+//     return { fmt: "hson", text: s };
+//   } catch { /* ignore */ }
+
+//   step_fail(opt, "resolve_entry:auto", "Could not detect entry format via try-parse (json/html/hson)");
+//   return undefined;
+// }
+
+
 
 function coerce_entry(
   atom: FixtureAtom,
@@ -443,11 +550,27 @@ function safe_emit(
   fmt: Fmt,
   node: HsonNode,
   stepName: string,
-  opt: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail">
+  opt: CoreOpt,
+  mark?: { lap: number; dir?: "cw" | "ccw"; phase: "emit" } // CHANGED: add lap/dir context
 ): string | undefined {
   try {
     const s = SPIN[fmt].emit(node);
     step_ok(opt, stepName);
+
+    // CHANGED: capture emitted string immediately, even if subsequent parse fails
+    if (opt.capture && mark) {
+      opt.capture.artifacts.push({
+        lap: mark.lap,
+        fmt,
+        text: s,
+        node: JSON.stringify(node, null, 2), // or your existing node serializer
+        // dir: mark.dir, // only if your Artifact type includes it
+      });
+
+      console.log("[loop capture] push", { fmt, lap: mark.lap, len: s.length });
+
+    }
+
     return s;
   } catch (err) {
     step_fail(opt, stepName, err_to_string(err));
@@ -474,7 +597,7 @@ function safe_parse(
 
     return n;
   } catch (err) {
-    step_fail(opt, stepName, err_to_string(err));
+    step_fail(opt, stepName, `${err_to_string(err)} :\n ${_snip(text, 300)}`);
     return undefined;
   }
 }
