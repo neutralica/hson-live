@@ -1,6 +1,8 @@
 // hson-todo
 
 ## 07FEB2026
++ add 'role' special-casing?? 
++ livetree.aria?
 + liveTree.queryBody() currently is locked to a single window document; creating a new window and calling LiveTree does not switch from the old. fix.
 + automatic teardown of keyframes when possible
 
