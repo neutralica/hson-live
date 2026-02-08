@@ -110,7 +110,7 @@ type CoreOpt = {
   trace: Step[];
   failures: Step[];
   verbose: boolean;
-  stopOnFirstFail: boolean;
+  stopOnFirstFail?: boolean;
 
   capture?: { artifacts: Artifact[] }; // emitted text artifacts
   marks?: { nodes: NodeMark[] };       //  parsed-node marks for paranoid mode
@@ -289,9 +289,9 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
   //  compare final nodes cw vs ccw (path dependence detector)
   const finalDiffs = compare_nodes(cwRes.finalNode, ccwRes.finalNode, false);
   if (finalDiffs.length) {
-    step_fail({ trace, failures, verbose: !!opts.verbose, stopOnFirstFail: true }, "dual:finalNode cw != ccw", finalDiffs[0]);
+    step_fail({ trace, failures, verbose: !!opts.verbose,  }, "dual:finalNode cw != ccw", finalDiffs[0]);
   } else {
-    step_ok({ trace, failures, verbose: !!opts.verbose, stopOnFirstFail: true }, "dual:finalNode cw == ccw");
+    step_ok({ trace, failures, verbose: !!opts.verbose }, "dual:finalNode cw == ccw");
   }
 
   // ADDED: paranoid cross-check at each checkpoint (lap, fmt, phase)
@@ -309,15 +309,15 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
       const a = cwMap.get(k);
       const b = ccwMap.get(k);
       if (!a || !b) {
-        step_fail({ trace, failures, verbose: !!opts.verbose, stopOnFirstFail: true }, `paranoid:missing mark ${k}`, !a ? "missing cw mark" : "missing ccw mark");
+        step_fail({ trace, failures, verbose: !!opts.verbose }, `paranoid:missing mark ${k}`, !a ? "missing cw mark" : "missing ccw mark");
         continue;
       }
       const diffs = compare_nodes(a, b, false);
       if (diffs.length) {
-        step_fail({ trace, failures, verbose: !!opts.verbose, stopOnFirstFail: true }, `paranoid:mark mismatch ${k}`, diffs[0]);
+        step_fail({ trace, failures, verbose: !!opts.verbose }, `paranoid:mark mismatch ${k}`, diffs[0]);
         if (opts.stopOnFirstFail ?? true) break;
       } else {
-        step_ok({ trace, failures, verbose: !!opts.verbose, stopOnFirstFail: true }, `paranoid:mark ok ${k}`);
+        step_ok({ trace, failures, verbose: !!opts.verbose }, `paranoid:mark ok ${k}`);
       }
     }
   }
