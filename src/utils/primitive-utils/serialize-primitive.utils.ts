@@ -1,6 +1,7 @@
 // serialize-primitive.utils.ts
 
 import { Primitive } from "../../types/core.types";
+
 /**
  * Serialize a primitive into its string representation.
  *
@@ -12,7 +13,7 @@ import { Primitive } from "../../types/core.types";
  * @returns The serialized string representation.
  */
 
-export function serialize_primitive(prim: Primitive): string {
+export function serialize_primitive_hson(prim: Primitive): string {
 
   /* if the primitive is a string, just serialize it as a string. */
     if (typeof prim === 'string') {

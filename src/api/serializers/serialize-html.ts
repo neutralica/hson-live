@@ -1,10 +1,10 @@
 // serialize-html.new.render.ts
 
 import { Primitive } from '../../types/core.types'
-import { is_Primitive } from '../../utils/cote-utils/guards.core';
+import { is_Primitive } from '../../utils/core-utils/guards.core';
 import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants';
 import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs';
-import { escape_html } from '../../utils/html-utils/escape-html';
+import { escape_html_text } from '../../utils/html-utils/escape-html';
 import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils';
 import { _snip } from '../../utils/sys-utils/snip.utils';
 import { is_Node } from '../../utils/node-utils/node-guards';
@@ -59,22 +59,32 @@ function collect_raw_text(nodes: (HsonNode | Primitive)[] | undefined): string {
   return out;
 }
 
-/**
- * Escape a string for safe use inside a double-quoted XML/HTML attribute.
- *
- * Escapes the following:
- * - `&` → `&amp;`
- * - `"` → `&quot;`
- * - `<` → `&lt;`
- *
- * Does *not* escape `'` or `>`; sufficient for the attribute formats this
- * serializer emits (`key="value"`).
- *
- * @param v - Raw attribute value.
- * @returns Escaped attribute-safe string.
- */
-function escape_attr(v: string): string {
-  return v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+
+//  strict XML attribute escaper (XML 1.0) + control-char guard
+export function escape_attr(v: string): string {
+  // reject illegal XML 1.0 control chars (except \t \n \r)
+  for (let i = 0; i < v.length; i++) {
+    const code = v.charCodeAt(i);
+    const illegal =
+      (code >= 0x00 && code <= 0x08) ||
+      code === 0x0B ||
+      code === 0x0C ||
+      (code >= 0x0E && code <= 0x1F);
+    if (illegal) {
+      _throw_transform_err(
+        `Illegal XML control char U+${code.toString(16).padStart(4, "0")} in attribute value`,
+        "escape_attr",
+        v
+      );
+    }
+  }
+
+  return v
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll(`"`, "&quot;")
+    .replaceAll("'", "&apos;");
 }
 
 /**
@@ -94,8 +104,8 @@ function escape_attr(v: string): string {
  */
 function primitive_to_xml(p: Primitive): string {
   //  strings escape as text, others stringify+escape
-  if (typeof p === 'string') return escape_html(p);
-  return escape_html(String(p));
+  if (typeof p === 'string') return escape_html_text(p);
+  return escape_html_text(String(p));
 }
 
 /**
@@ -182,7 +192,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
       }
 
       // Non-empty strings remain melted as plain text
-      return escape_html(s);
+      return escape_html_text(s);
     }
 
     // keep <_val> literal for round-trip typing
@@ -191,7 +201,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
         _throw_transform_err('<_val> must contain exactly one value', 'serialize_html');
       }
       const v = content[0] as Primitive;
-      return `<${VAL_TAG}>${escape_html(String(v))}</${VAL_TAG}>`;
+      return `<${VAL_TAG}>${escape_html_text(String(v))}</${VAL_TAG}>`;
     }
 
     // flatten element cluster

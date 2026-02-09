@@ -3,7 +3,7 @@
 import { sanitize_external } from "../../safety/sanitize-html.utils";
 import { HsonNode } from "../../types/node.types";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { parse_html } from "./parse-html.new.transform";
+import { parse_html } from "./parse-html";
 
 /**
  * Parse untrusted HTML into a sanitized `HsonNode` tree.

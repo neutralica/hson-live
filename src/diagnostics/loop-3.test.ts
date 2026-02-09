@@ -567,8 +567,6 @@ function safe_emit(
         // dir: mark.dir, // only if your Artifact type includes it
       });
 
-      console.log("[loop capture] push", { fmt, lap: mark.lap, len: s.length });
-
     }
 
     return s;

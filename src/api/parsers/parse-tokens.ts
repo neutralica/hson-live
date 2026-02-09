@@ -11,7 +11,7 @@ import { _snip } from "../../utils/sys-utils/snip.utils";
 import { unwrap_root_obj } from "../../utils/json-utils/unwrap-root-obj";
 import { split_attrs_meta } from "../../utils/hson-utils/split-attrs-meta";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { is_string } from "../../utils/cote-utils/guards.core";
+import { is_string } from "../../utils/core-utils/guards.core";
 import { Primitive } from "../../types/core.types";
 
 
@@ -105,32 +105,58 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
         return tok;
     }
-    function decode_json_string_literal(inner: string): string {
-        inner = inner.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => {
-            try { return String.fromCharCode(parseInt(hex, 16)); }
-            catch { return '\\u' + hex; } // keep as-is on failure
-        });
 
-        // Common escapes
-        inner = inner.replace(/\\([nrtbf\\"'/\\])/g, (_, c) => {
-            switch (c) {
-                case 'n': return '\n';
-                case 'r': return '\r';
-                case 't': return '\t';
-                case 'b': return '\b';
-                case 'f': return '\f';
-                case '"': return '"';
-                case "'": return "'";
-                case '\\': return '\\';
-                case '/': return '/';
-                default: return '\\' + c; // defensive; shouldn't hit
-            }
-        });
 
-        // Leave any other backslash sequences untouched (e.g. \x, \k) to avoid over-decoding
-        return inner;
-    }
-    // (Optional) keep a type guard too; it’s fine and helps in places without overloads
+    // // CHANGED: raw is now the *full* quoted literal, including quotes.
+    // // CHANGED: accept either a full JSON string literal ("...") OR inner text (...\n...)
+    // // and always decode with JSON.parse exactly once.
+    // function decode_quoted_text(raw: string): string {
+    //     const s = raw;
+
+    //     // Fast path: full literal already.
+    //     if (s.length >= 2 && s[0] === `"` && s[s.length - 1] === `"`) {
+    //         const v = JSON.parse(s);
+    //         if (typeof v !== "string") {
+    //             _throw_transform_err("quoted literal did not parse to string", "parse_tokens.decode_quoted_text", s);
+    //         }
+    //         return v;
+    //     }
+
+    //     // Inner-text path: wrap it into a JSON string literal.
+    //     // NOTE: JSON does not allow literal CR or LF in a string token, so if your tokenizer
+    //     // can hand us raw newlines here, they must have been represented as '\n' already.
+    //     // If not, this will (correctly) throw and reveal the upstream bug.
+    //     const v = JSON.parse(`"${s}"`);
+    //     if (typeof v !== "string") {
+    //         _throw_transform_err("quoted inner did not parse to string", "parse_tokens.decode_quoted_text", s);
+    //     }
+    //     return v;
+    // }
+    // function decode_quoted_literal(raw: string): string {
+    //     // raw is the full JSON string literal including quotes
+    //     const v = JSON.parse(raw);
+    //     if (typeof v !== "string") {
+    //         _throw_transform_err(
+    //             "quoted text did not decode to string",
+    //             "parse-tokens.decode_json_string_literal"
+    //         );
+    //     }
+
+    //     // CHANGED: guard against XML 1.0–illegal control chars in resulting text
+    //     // (tab, LF, CR are allowed; most others under 0x20 are not)
+    //     if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(v)) {
+    //         const m = v.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)!;
+    //         const code = m[0].charCodeAt(0);
+    //         _throw_transform_err(
+    //             `decoded string contains XML-invalid control char U+${code.toString(16).toUpperCase().padStart(4, "0")}`,
+    //             "parse-tokens.decode_json_string_literal"
+    //         );
+    //     }
+
+    //     return v;
+    // }
+
+    //  type guard helps in places without overloads
     function isTokenOpen(t: Tokens | null | undefined): t is TokenOpen {
         return !!t && t.kind === TOKEN_KIND.OPEN;
     }
@@ -153,7 +179,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const open = tok as TokenOpen;
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
-        const node = CREATE_NODE( { _tag: open.tag, _meta: meta});
+        const node = CREATE_NODE({ _tag: open.tag, _meta: meta });
 
         // VSNs carry no _attrs
         const isVSN =
@@ -174,35 +200,35 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         while (ix < N) {
             const t = _peek(); if (!t) break;
 
-            // ✅ end of this tag
+            //  end of this tag
             if (isTokenClose(t)) {
                 sawClose = _take(TOKEN_KIND.CLOSE);
                 break;
             }
 
-            // ✅ empty object shorthand "<>"
+            //  empty object shorthand "<>"
             if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
                 _take(TOKEN_KIND.EMPTY_OBJ);
                 sawEmptyObjShorthand = true;
                 continue;
             }
 
-            // ✅ nested array
+            //  nested array
             if (isTokenArrOpen(t)) {
                 kids.push(readArray());
                 continue;
             }
 
-            // ✅ nested tag
+            //  nested tag
             if (isTokenOpen(t)) {
                 kids.push(readTag(false).node);
                 continue;
             }
 
-            // ✅ nested text → primitive leaf
+            //  nested text → primitive leaf
             if (isTokenText(t)) {
                 const tt = _take(TOKEN_KIND.TEXT);
-                const prim = tt.quoted ? decode_json_string_literal(tt.raw) : coerce(tt.raw);
+                const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
                 kids.push(make_leaf(prim));
                 continue;
             }
@@ -316,7 +342,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             } else if (t.kind === TOKEN_KIND.TEXT) {
                 // FIX: keep primitives inside the array (do NOT push to outer "nodes")
                 const tt = _take() as TokenText;
-                const prim = tt.quoted ? decode_json_string_literal(tt.raw) : coerce(tt.raw);
+                const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
                 childNode = make_leaf(prim); // ← was: nodes.push(...); continue;
 
             } else if (t.kind === TOKEN_KIND.OPEN) {
@@ -368,7 +394,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
         if (t.kind === TOKEN_KIND.TEXT) {
             const tt = _take(TOKEN_KIND.TEXT);
-            const prim = tt.quoted ? decode_json_string_literal(tt.raw) : coerce(tt.raw);
+            const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
             nodes.push(make_leaf(prim));
             topCloseKinds.push('elem');
             continue;

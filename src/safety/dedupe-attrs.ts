@@ -38,9 +38,9 @@
  ***********************************************/
 export function dedupe_attrs_html(src: string): string {
   return src.replace(
-  /<([a-zA-Z][^\s>/]*)([^>]*?)(\s*\/?)>/g,
-  (_m: string, tag: string, attrs: string, self: string) => {
-    //
+    /<([a-zA-Z][^\s>/]*)([^>]*?)(\s*\/?)>/g,
+    (_m: string, tag: string, attrs: string, self: string) => {
+      //
       type Seen = {
         val?: string;
         isFlag: boolean;
@@ -122,13 +122,17 @@ export function dedupe_attrs_html(src: string): string {
         const rec = seen.get(k)!;
         // class empty → drop
         if (k === 'class' && (!rec.val || !rec.val.trim())) continue;
-
+        const esc_attr = (x: string) =>
+          x
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/"/g, "&quot;");
         const v = rec.val ?? k;
         // always quote on output
-        out += ` ${k}="${v}"`;
+        out += ` ${k}="${esc_attr(v)}"`;
       }
-       const end = self && self.includes('/') ? ' />' : '>';
-    return `<${tag}${out}${end}`;
+      const end = self && self.includes('/') ? ' />' : '>';
+      return `<${tag}${out}${end}`;
     }
   );
 }

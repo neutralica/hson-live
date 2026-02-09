@@ -3,7 +3,7 @@
 import { HsonNode } from "../../../types/node.types";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
-import { parse_html } from "../../parsers/parse-html.new.transform";
+import { parse_html } from "../../parsers/parse-html";
 import { project_livetree } from "./project-live-tree";
 import { LiveTree } from "../livetree";
 import { create_livetree } from "../create-livetree";

@@ -161,53 +161,48 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
     _log(`[token_from_hson depth=${depth}]; total lines: ${splitLines.length}`);
 
-/**
- * Verify and normalize a candidate string literal segment in tag headers.
- *
- * Behavior:
- * - Delegates to `lex_text_piece` to classify the raw `lit` as either:
- *   - quoted   → `{ text, quoted: true }`, or
- *   - unquoted → `{ text, quoted: false }`.
- * - If the *trimmed* text begins with a quote (`"` or `'`) but
- *   `lex_text_piece` reports it as *not* quoted, treats this as an
- *   unterminated quoted literal and throws a tokenizer error.
- *
- * This function centralizes the “did the user start a string and forget
- * to close it?” check, keeping the main tokenizer loop simpler.
- *
- * @param lit - Raw slice from the line containing the candidate literal.
- * @param where - Human-readable label for the caller, used in error messages.
- * @returns The `{ text, quoted }` structure from `lex_text_piece` when valid.
- * @throws If a string looks like a quoted literal but has no closing quote.
- */
     function ensureQuotedLiteral(lit: string, where: string) {
-        const piece = lex_text_piece(lit);
         const t = lit.trim();
-        // If it starts with a quote, it must be a *properly closed* quoted literal.
-        if ((t.startsWith('"') || t.startsWith("'")) && !piece.quoted) {
-            _throw_transform_err(`[${where}] unterminated quoted literal: ${lit}`, 'tokenize-hson');
+
+        // CHANGED: if it looks like a quoted literal, it must be JSON-style: "..."
+        if (t.startsWith("'") || t.startsWith("`")) {
+            _throw_transform_err(
+                `[${where}] unsupported quote delimiter (use double quotes only): ${lit}`,
+                "tokenize-hson"
+            );
         }
-        return piece; // { text, quoted }
+
+        const piece = lex_text_piece(lit);
+
+        // CHANGED: starts with " but not properly closed => hard error
+        if (t.startsWith('"') && !piece.quoted) {
+            _throw_transform_err(
+                `[${where}] unterminated quoted literal: ${lit}`,
+                "tokenize-hson"
+            );
+        }
+
+        return piece; // { text: full literal OR unquoted text, quoted flag }
     }
 
-/**
- * Decide whether a bare token in attribute position should be treated as
- * a *primitive value* rather than a flag-style attribute.
- *
- * Rules (after trimming):
- * - Empty string → `false` (not a primitive).
- * - `"true" | "false" | "null"` → primitive.
- * - Numeric-like forms matching:
- *     /^-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$/
- *   (integers, floats, scientific notation) → primitive.
- *
- * This is used when encountering an attribute-like token without an
- * explicit `=`. If it passes this check, the tokenizer treats it as
- * a bare value rather than as a boolean/flag attribute.
- *
- * @param string - Raw token text.
- * @returns `true` if the token represents a primitive literal, `false` otherwise.
- */
+    /**
+     * Decide whether a bare token in attribute position should be treated as
+     * a *primitive value* rather than a flag-style attribute.
+     *
+     * Rules (after trimming):
+     * - Empty string → `false` (not a primitive).
+     * - `"true" | "false" | "null"` → primitive.
+     * - Numeric-like forms matching:
+     *     /^-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$/
+     *   (integers, floats, scientific notation) → primitive.
+     *
+     * This is used when encountering an attribute-like token without an
+     * explicit `=`. If it passes this check, the tokenizer treats it as
+     * a bare value rather than as a boolean/flag attribute.
+     *
+     * @param string - Raw token text.
+     * @returns `true` if the token represents a primitive literal, `false` otherwise.
+     */
     function isPrimitiveLex(string: string): boolean {
         const t = string.trim();
         if (!t) return false;
@@ -216,20 +211,20 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         return /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
     }
 
-/**
- * Advance the tokenizer’s line/offset cursors by a single line.
- *
- * Side effects:
- * - Increments the global `_offset` by `line.length + 1` to account for
- *   the line content plus a newline.
- * - Increments the current line index `ix` to point at the next line
- *   in `splitLines`.
- *
- * This helper keeps all line-advance logic centralized so that position
- * tracking remains consistent.
- *
- * @param line - The current line string being consumed.
- */
+    /**
+     * Advance the tokenizer’s line/offset cursors by a single line.
+     *
+     * Side effects:
+     * - Increments the global `_offset` by `line.length + 1` to account for
+     *   the line content plus a newline.
+     * - Increments the current line index `ix` to point at the next line
+     *   in `splitLines`.
+     *
+     * This helper keeps all line-advance logic centralized so that position
+     * tracking remains consistent.
+     *
+     * @param line - The current line string being consumed.
+     */
     function _bump_line(line: string) { _offset += line.length + 1; ix++; }
 
     /**
@@ -306,7 +301,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         let ix = startIx;
         const end = endIx;
 
-        let inQuote: '"' | "'" | null = null;
+        let inQuote: '"' | null = null;
         let escaped = false;
 
         const _col = (relIx: number) => leadCol + relIx;                 /* 1-based col */
@@ -334,9 +329,14 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             if (ix < end && trimLine[ix] === '=') {
                 ix++; _skip_whitespace();
                 let valStart = ix;
-
-                if (ix < end && (trimLine[ix] === '"' || trimLine[ix] === "'")) {
-                    inQuote = trimLine[ix] as '"' | "'"; ix++; valStart = ix;
+                if (trimLine[ix] === "'") {
+                    _throw_transform_err(
+                        `unsupported single-quoted attribute value (use " only)`,
+                        "tokenize_hson.readAttrs"
+                    );
+                }
+                if (ix < end && (trimLine[ix] === '"')) {
+                    inQuote = trimLine[ix] as '"'; ix++; valStart = ix;
                     while (ix < end) {
                         const ch = trimLine[ix];
                         if (escaped) { escaped = false; ix++; continue; }
@@ -350,9 +350,19 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                     out.push({ name, value: { text, quoted: true }, start: startPos, end: endPos });
                 } else {
                     while (ix < end && !/\s/.test(trimLine[ix])) ix++;
-                    const text = trimLine.slice(valStart, ix);
                     const endPos = _mkpos(ix);
-                    out.push({ name, value: { text, quoted: false }, start: startPos, end: endPos });
+                    // CHANGED: store full JSON string literal for quoted values (Option B)
+                    const inner = trimLine.slice(valStart, ix);
+
+                    // CHANGED: normalize: only allow double-quoted JSON literals as the stored form
+                    // If the source quote was single, we convert by JSON-stringifying the inner *as text*.
+                    // (This means single-quoted attrs become “literal text”, not a JS-like escape soup.)
+                    const full =
+                        inQuote === '"'
+                            ? `"${inner}"`                    // keep raw inner, still escaped as authored
+                            : JSON.stringify(inner);          // normalize single-quoted input into a JSON literal
+
+                    out.push({ name, value: { text: full, quoted: true }, start: startPos, end: endPos });
                 }
             } else {
                 if (isPrimitiveLex(name)) {
@@ -647,7 +657,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
             if (is_quote(ch)) {
                 const pos = _pos(ix + 1, lead + 1, _offset + lead);
-             const { raw, endLine, endCol } = scan_quoted_block(splitLines, ix, lead);
+                const { raw, endLine, endCol } = scan_quoted_block(splitLines, ix, lead);
 
                 // emit one TEXT token with quoted=true and the inner raw
                 finalTokens.push(CREATE_TEXT_TOKEN(raw, /*quoted*/ true, pos));
@@ -672,7 +682,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
             if (isPrim) {
                 const p = _pos(ix + 1, (currentLine.match(/^\s*/)?.[0].length ?? 0) + 1, _offset + (currentLine.match(/^\s*/)?.[0].length ?? 0));
-                // unquoted primitive → let parser coerce
                 finalTokens.push(CREATE_TEXT_TOKEN(body, /*quoted*/ undefined, p));
                 _bump_line(currentLine);
                 continue;
@@ -705,7 +714,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         _throw_transform_err(`final check failed: tokenizer finished with ${contextStack.length} unclosed items: ${residual}`, 'tokenize-hson');
     }
 
-    /* debug print — neutral summary, not the old make_string */
     if (_VERBOSE) {
         logTokens();
     }

@@ -4,7 +4,7 @@ import { Primitive } from "../../types/core.types";
 import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../consts/constants";
 import { _snip } from "../../utils/sys-utils/snip.utils";
 import { serialize_style } from "../../utils/attrs-utils/serialize-style";
-import { serialize_primitive } from "../../utils/primitive-utils/serialize-primitive.utils";
+import { serialize_primitive_hson } from "../../utils/primitive-utils/serialize-primitive.utils";
 import { is_Node } from "../../utils/node-utils/node-guards";
 import { assert_invariants } from "../../diagnostics/assert-invariants.test";
 import { _META_DATA_PREFIX } from "../../consts/constants";
@@ -384,8 +384,8 @@ function emitNode(
 
             if (node._tag === STR_TAG) {
                 if (typeof v !== "string") {
-                    const v = node._content?.[0];
-                    console.warn("STR payload not string:", v, node);
+                    const vErr = node._content?.[0];
+                    console.warn("STR payload not string:", vErr, node);
                     _throw_transform_err(`serialize-hson: _str must contain a string`, 'serialize_hson.emitNode()')
                 }
                 return pad + JSON.stringify(v);
@@ -418,15 +418,18 @@ function emitNode(
                     _throw_transform_err('serialize-hson: non-node item in _arr', 'emitNode');
                 }
 
-                // Unwrap leaked _ii (shouldn’t be on wire)
-                let item = it;
-                if (item._tag === II_TAG) {
-                    const c = item._content?.[0];
-                    if (!is_Node(c)) {
-                        _throw_transform_err('serialize-hson: _ii must contain exactly one child node', 'emitNode');
-                    }
-                    item = c as HsonNode;
+                /* is this an appropriate place for this guard? */
+                if (it._tag !== II_TAG) {
+                    _throw_transform_err('serialize-hson: only _ii allowed directly under _arr', 'emitNode');
                 }
+
+                // Unwrap expected _ii index wrapper (not on wire)
+                let item = it;
+                const c = item._content ?? [];
+                if (c.length !== 1 || !is_Node(c[0])) {
+                    _throw_transform_err('serialize-hson: _ii must contain exactly one child node', 'emitNode');
+                }
+                item = c[0] as HsonNode;
 
                 if (item._tag === OBJ_TAG) {
                     const props = (item._content ?? []) as HsonNode[];
@@ -572,11 +575,6 @@ function emitNode(
             return undefined;
         }
 
-        // primitive -> HSON literal
-        function emit_primitive_as_hson(p: Primitive): string {
-            return typeof p === 'string' ? JSON.stringify(p) : String(p);
-        }
-
         _log('building attrs string for standard tag');
         const attrsStr = buildAttrString(node._attrs, node._meta);
 
@@ -587,13 +585,13 @@ function emitNode(
                 if (shape.kind === 'void') {
                     return `${pad}<${node._tag}${attrsStr}\n${pad}  <>\n${pad}>`;
                 } else {
-                    return `${pad}<${node._tag}${attrsStr}\n${pad}  ${emit_primitive_as_hson(shape.value)}\n${pad}>`;
+                    return `${pad}<${node._tag}${attrsStr}\n${pad}  ${serialize_primitive_hson(shape.value)}\n${pad}>`;
                 }
             }
             // HTML-mode: allow one-liner
             return shape.kind === 'void'
                 ? `${pad}<${node._tag}${attrsStr} />`
-                : `${pad}<${node._tag}${attrsStr} ${emit_primitive_as_hson(shape.value)} />`;
+                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)} />`;
         }
 
         // One-liner primitive value (no attrs/meta; single _str/_val child)
@@ -601,10 +599,10 @@ function emitNode(
         if (selfVal !== undefined) {
             if (parentCluster === OBJ_TAG) {
                 // block in JSON-mode
-                return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive(selfVal)}>`;
+                return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(selfVal)}>`;
             }
             // element semantics ok to self-close
-            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive(selfVal)} />`;
+            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)} />`;
         }
 
         const children = (node._content ?? []) as HsonNode[];

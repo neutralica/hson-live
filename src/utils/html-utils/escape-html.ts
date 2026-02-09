@@ -1,6 +1,6 @@
 // escape-html.ts
 
-import { is_Primitive } from "../cote-utils/guards.core.js";
+import { is_Primitive } from "../core-utils/guards.core.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 /**
@@ -29,7 +29,7 @@ import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js"
  * @returns The escaped string representation.
  * @throws If `str` is not a primitive value.
  */
-export function escape_html(str: any): string {
+export function escape_html_text(str: any): string {
   if (!is_Primitive(str)) {
     _throw_transform_err('need a string in escape_html', 'escape_html', str)
   }

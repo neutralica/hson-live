@@ -12,7 +12,7 @@ type QuoteDelim = '"' | "'" | '`';
  * @returns True when `ch` is `"`, `'`, or `` ` ``.
  */
 export function is_quote(ch: string): ch is QuoteDelim {
-  return ch === '"' || ch === "'" || ch === '`';
+  return ch === '"';
 }
 
 /*******
@@ -53,21 +53,24 @@ export function is_quote(ch: string): ch is QuoteDelim {
 export function scan_quoted_block(
   lines: string[],
   lineIdx: number,
-  colIdx: number // cursor at the opening quote
+  colIdx: number
 ): { raw: string; endLine: number; endCol: number; delim: QuoteDelim } {
-  const line = lines[lineIdx] ?? '';
+  const line = lines[lineIdx] ?? "";
   const opener = line[colIdx];
-  if (!is_quote(opener)) {
+
+  // CHANGED: only support double quote blocks
+  if (opener !== '"') {
     _throw_transform_err(
-      `readQuotedSpan: expected quote at ${lineIdx + 1}:${colIdx + 1}`,
-      'tokenize_hson.readQuotedSpan'
+      `readQuotedSpan: unsupported quote delimiter (use " only) at ${lineIdx + 1}:${colIdx + 1}`,
+      "tokenize_hson.readQuotedSpan"
     );
   }
 
-  const delim: QuoteDelim = opener as QuoteDelim;
+  const delim: QuoteDelim = '"' as QuoteDelim;
+
   let i = lineIdx;
-  let j = colIdx + 1; // start after the opener
-  let raw = '';
+  let j = colIdx + 1;
+  let raw = '"'; // CHANGED: start raw with opener (full literal contract)
   let escaped = false;
 
   while (i < lines.length) {
@@ -75,26 +78,34 @@ export function scan_quoted_block(
 
     while (j < cur.length) {
       const ch = cur[j];
+      if (escaped) {
+        // preserve the escape sequence as authored (e.g. \" or \\ or \n)
+        raw += '\\' + ch;
+        escaped = false;
+        j++;
+        continue;
+      }
 
-      if (escaped) { raw += '\\' + ch; escaped = false; j++; continue; }
       if (ch === '\\') { escaped = true; j++; continue; }
 
-      // Found unescaped closer → finish
       if (ch === delim) {
+        raw += '"'; // CHANGED: close JSON literal
         return { raw, endLine: i, endCol: j + 1, delim };
       }
 
-      // Any other char is literal (including quotes of *other* kinds and comment tokens)
+      // CHANGED: encode literal newlines etc as JSON escapes (since this may span lines)
+      if (ch === '\t') { raw += '\\t'; j++; continue; }
+      if (ch === '\r') { raw += '\\r'; j++; continue; }
+      if (ch === '"') { raw += '\\"'; j++; continue; } // because we normalize to JSON double quotes
+
       raw += ch;
       j++;
     }
 
-    // End of line without closing delimiter → preserve newline and continue
-    raw += '\n';
-    i++;
-    j = 0;
+    // end-of-line: preserve newline as \n in the JSON literal
+    raw += '\\n';
+    i++; j = 0;
   }
 
-  // If we got here, we ran out of lines without a closer
-  _throw_transform_err('unterminated quoted string', 'tokenize_hson.readQuotedSpan');
+  _throw_transform_err("unterminated quoted string", "tokenize_hson.readQuotedSpan");
 }

@@ -3,7 +3,7 @@
 import { HsonNode } from "../../types/node.types";
 import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants";
 import { CREATE_NODE } from "../../consts/factories";
-import { is_Primitive, is_string } from "../../utils/cote-utils/guards.core";
+import { is_Primitive, is_string } from "../../utils/core-utils/guards.core";
 import { _snip } from "../../utils/sys-utils/snip.utils";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
 import { parse_html_attrs } from "../../utils/html-utils/parse_html_attrs";
@@ -12,7 +12,7 @@ import { assert_invariants } from "../../diagnostics/assert-invariants.test";
 import { expand_entities } from "../../utils/html-preflights/expand-entities";
 import { expand_flags } from "../../utils/html-preflights/expand-flags";
 import { expand_void_tags } from "../../utils/html-preflights/expand-self-closing";
-import { escape_text } from "../../utils/html-preflights/escape-text.new";
+import { escape_text } from "../../utils/html-preflights/escape-text";
 import { strip_html_comments } from "../../utils/html-preflights/strip-html-comments";
 import { wrap_cdata } from "../../safety/wrap-cdata";
 import { optional_endtag_preflight } from "../../utils/html-preflights/optional-endtag";
