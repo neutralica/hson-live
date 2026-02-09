@@ -24,6 +24,36 @@ import { namespace_svg } from "../../utils/html-preflights/namespace-svg";
 import { is_indexed } from "../../utils/node-utils/node-guards";
 import { Primitive } from "../../types/core.types";
 
+
+
+/**
+ *DEBUG - remove when clear 
+ **/
+function find_invalid_xml_char(s: string): { index: number; code: number } | null {
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        // XML 1.0 valid chars:
+        // #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD]
+        if (
+            c === 0x9 || c === 0xA || c === 0xD ||
+            (c >= 0x20 && c <= 0xD7FF) ||
+            (c >= 0xE000 && c <= 0xFFFD)
+        ) {
+            continue;
+        }
+        return { index: i, code: c };
+    }
+    return null;
+}
+
+function snip_context(s: string, at: number, radius = 80): string {
+    const start = Math.max(0, at - radius);
+    const end = Math.min(s.length, at + radius);
+    return s.slice(start, end)
+        .replace(/\r/g, '\\r')
+        .replace(/\n/g, '\\n');
+}
+
 /**
  * Parse HTML/XML (trusted or pre-sanitized) into a rooted `HsonNode` tree.
  *
@@ -63,83 +93,126 @@ import { Primitive } from "../../types/core.types";
  */
 export function parse_html(input: string | Element): HsonNode {
     let inputElement: Element;
-
     if (typeof input === "string") {
         const stripped = strip_html_comments(input);
         const bools = expand_flags(stripped);
         const safe = escape_text(bools);
         const ents = expand_entities(safe);
-        const unquotedSafe = quote_unquoted_attrs(ents);
-        const quotedSafe = escape_attr_angles(unquotedSafe);
-        const xmlNameSafe = mangle_illegal_attrs(quotedSafe);  
-        const voids = expand_void_tags(xmlNameSafe);
-        const cdata = wrap_cdata(voids);
-        const svgSafe = namespace_svg(cdata);
 
-        const ampSafe = svgSafe.replace(
-            /&(?!(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});)/g,
-            "&amp;"
-        );
+        // CONFIRM: keep these if required for XML compliance on your edge.
+        // If not strictly required, gate them later too.
+        const xmlNameSafe = mangle_illegal_attrs(ents);
+        const svgSafe = namespace_svg(xmlNameSafe);
+
+        let xmlSrc = svgSafe;
 
         const parser = new DOMParser();
-
-        // try raw (namespaced) XML first — no preflight yet
-        let xmlSrc = ampSafe; // keep the "current" source in one variable
         let parsed = parser.parseFromString(xmlSrc, "application/xml");
-        
-        let err = parsed.querySelector('parsererror');
+        let err = parsed.querySelector("parsererror");
 
-        if (err) {
-            if (err && /Duplicate|redefined/i.test(err.textContent ?? '')) {
+        const errText = () => (err?.textContent ?? "");
+        const hasErr = () => Boolean(err);
+
+        // CHANGED: single helper to reduce drift + ensure we re-read parsererror each time
+        const tryParse = (nextSrc: string, _why: string) => {
+            if (nextSrc === xmlSrc) return;
+            xmlSrc = nextSrc;
+            parsed = parser.parseFromString(xmlSrc, "application/xml");
+            err = parsed.querySelector("parsererror");
+        };
+
+        // CHANGED: amp-fix is dangerous; only apply when parser error looks entity-related
+        const amp_fix = (src: string) =>
+            src.replace(
+                /&(?!(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});)/g,
+                "&amp;"
+            );
+
+        // ---- Repair pass (gated, ordered, no duplicates) ----
+
+        if (hasErr()) {
+            const msg = errText();
+
+            // 0) Invalid XML control chars: bail early with a good message (your existing logic)
+            const bad = find_invalid_xml_char(xmlSrc);
+            if (bad) {
+                const hex = `0x${bad.code.toString(16).toUpperCase()}`;
+                const ctx = snip_context(xmlSrc, bad.index);
+                _throw_transform_err(
+                    `XML parse failed: invalid control character ${hex} at index ${bad.index}\n` +
+                    `Context: “…${ctx}…”`,
+                    "parse-html"
+                );
+            }
+
+            // 1) Duplicate attributes: only then dedupe
+            if (/Duplicate|redefined/i.test(msg)) {
                 const deduped = dedupe_attrs_html(xmlSrc);
-                if (deduped !== xmlSrc) {
-                    xmlSrc = deduped.replace(/&(?!(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});)/g, '&amp;');
-                    parsed = parser.parseFromString(xmlSrc, 'application/xml');
-                    err = parsed.querySelector('parsererror');
-                }
-            }
-            // 2) try quoting unquoted attrs (only on failure)
-            const quoted = quote_unquoted_attrs(xmlSrc);
-            if (quoted !== xmlSrc) {
-                // re-apply amp fix because quoting might introduce new bare '&'
-                xmlSrc = quoted.replace(/&(?!(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});)/g, '&amp;');
-                parsed = parser.parseFromString(xmlSrc, 'application/xml');
-                err = parsed.querySelector('parsererror');
-            }
-        }
-        if (err && /Unescaped/i.test(err.textContent ?? '')) {
-            xmlSrc = escape_attr_angles(xmlSrc);
-            parsed = parser.parseFromString(xmlSrc, 'application/xml');
-            err = parsed.querySelector('parsererror');
-        }
-
-        if (err && /Unescaped .*<.* in attributes/i.test(err.textContent ?? '')) {
-            xmlSrc = escape_attr_angles(xmlSrc);
-            parsed = parser.parseFromString(xmlSrc, 'application/xml');
-            err = parsed.querySelector('parsererror');
-        }
-
-        if (err) {
-            // 3) now use optional-end-tag preflight
-            const balanced = optional_endtag_preflight(xmlSrc);
-            if (balanced !== xmlSrc) {
-                xmlSrc = balanced;
-                parsed = parser.parseFromString(xmlSrc, 'application/xml');
-                err = parsed.querySelector('parsererror');
+                tryParse(deduped, "dedupe_attrs_html");
             }
         }
 
-        if (err && /extra content/i.test(err.textContent ?? '')) {
-            xmlSrc = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
-            const reb = optional_endtag_preflight(xmlSrc);
-            if (reb !== xmlSrc) xmlSrc = reb;
-            parsed = parser.parseFromString(xmlSrc, 'application/xml');
-            err = parsed.querySelector('parsererror');
+        if (hasErr()) {
+            const msg = errText();
+
+            // 2) Entity / ampersand problems: only then amp-fix
+            // (Patterns vary by engine; keep loose but still clearly entity-related.)
+            if (/Entity|entity|&|reference to entity/i.test(msg)) {
+                tryParse(amp_fix(xmlSrc), "amp_fix(entity)");
+            }
         }
 
-        if (err) {
-            console.error("XML Parsing Error:", err.textContent);
-            _throw_transform_err(`Failed to parse input HTML/XML`, "parse-html");
+        if (hasErr()) {
+            const msg = errText();
+
+            // 3) Unquoted attribute values: only then quote them (and re-run amp fix once)
+            // IMPORTANT: do NOT run this for tag mismatch errors; it's a regex and can worsen things.
+            if (/AttValue|attribute value|expected ['"]|quotation mark/i.test(msg)) {
+                const quoted = quote_unquoted_attrs(xmlSrc);
+                // quoting can introduce bare &, so do amp_fix once immediately after
+                tryParse(amp_fix(quoted), "quote_unquoted_attrs(+amp_fix)");
+            }
+        }
+
+        if (hasErr()) {
+            const msg = errText();
+
+            // 4) Literal '<' inside attribute values: only then escape it
+            // Keep this narrow; your earlier /Unescaped/i was too broad.
+            if (/unescaped.*<.*attribute/i.test(msg)) {
+                tryParse(escape_attr_angles(xmlSrc), "escape_attr_angles(< in attr)");
+            }
+        }
+
+        if (hasErr()) {
+            const msg = errText();
+
+            // 5) Optional end tags / HTML-ish structure: only then try balancing.
+            // (This is where your <ul><li>one<li>two... fixtures live.)
+            if (/mismatch|Opening and ending tag mismatch|unterminated|unclosed|end tag|expected/i.test(msg)) {
+                const balanced = optional_endtag_preflight(xmlSrc);
+                tryParse(balanced, "optional_endtag_preflight");
+            }
+        }
+
+        if (hasErr()) {
+            const msg = errText();
+
+            // 6) Multiple top-level nodes ("extra content"): wrap a root and re-run optional balancing once
+            if (/extra content/i.test(msg)) {
+                let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
+                wrapped = optional_endtag_preflight(wrapped);
+                tryParse(wrapped, "wrap_root(+optional_endtag_preflight)");
+            }
+        }
+
+        if (hasErr()) {
+            const msg = errText();
+            _throw_transform_err(
+                `XML parse failed:\n${msg}\n` +
+                `Snippet:\n${snip_context(xmlSrc, 0)}`,
+                "parse-html"
+            );
         }
 
         inputElement = parsed.documentElement!;
@@ -262,7 +335,7 @@ function convert(el: Element): HsonNode {
         const only = children[0] as unknown; // pre-wrapped atom from elementToNode
 
         const coerceNonString = (s: string): Primitive => {
-            const v = coerce(s); 
+            const v = coerce(s);
             return v as Primitive;
         };
 

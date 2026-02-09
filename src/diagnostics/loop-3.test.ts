@@ -434,11 +434,7 @@ function resolve_entry(
 
   // Only try HTML if it actually looks like HTML.
   if (likeHtml) {
-    try {
-      const n = SPIN.html.parse(s);
-      assert_invariants(n, "auto:html");
-      return { fmt: "html", text: s };
-    } catch { /* ignore */ }
+    return { fmt: "html", text: s };
   }
 
   // Otherwise, try HSON as the final fallback.
