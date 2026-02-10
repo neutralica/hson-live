@@ -351,7 +351,7 @@ function convert(el: Element): HsonNode {
 
     // Build children (DOM → HSON)
     const childNodes: HsonNode[] = [];
-    const children = elementToNode(el.childNodes);
+    const children = elementToNode(el.childNodes, tagLower);
 
     for (const child of children) {
         if (is_Primitive(child)) {
@@ -523,40 +523,59 @@ function wrap_as_root(node: HsonNode): HsonNode {
  * @returns An array of `HsonNode | Primitive` representing the converted children.
  * @see convert
  */
-function elementToNode(els: NodeListOf<ChildNode>): (HsonNode | Primitive)[] {
-    const children: (HsonNode | Primitive)[] = [];
+// CHANGED: take parentTag so text handling can be context-aware without DOM parent guessing
+function elementToNode(
+  els: NodeListOf<ChildNode>,
+  parentTag: string, // already lowercased
+): (HsonNode | Primitive)[] {
+  const children: (HsonNode | Primitive)[] = [];
 
-    for (const kid of Array.from(els)) {
-        if (kid.nodeType === Node.ELEMENT_NODE) {
-            children.push(convert(kid as Element));
-            continue;
-        }
-
-        if (kid.nodeType === Node.TEXT_NODE) {
-            const raw = kid.textContent ?? "";
-            const trimmed = raw.trim();
-
-            // handle the empty-string sentinel *after* trimming
-            if (trimmed === '""') {
-                children.push(
-                    CREATE_NODE({
-                        _tag: STR_TAG,
-                        _meta: {},
-                        _content: [""], // <-- the actual empty string
-                    }),
-                );
-                continue;
-            }
-
-            // ignore layout-only whitespace; otherwise pass string through
-            if (trimmed.length > 0) {
-                children.push(trimmed); // (or coerce(trimmed)?)
-            }
-
-            continue;
-        }
-
+  for (const kid of Array.from(els)) {
+    if (kid.nodeType === Node.ELEMENT_NODE) {
+      children.push(convert(kid as Element));
+      continue;
     }
 
-    return children;
+    if (kid.nodeType === Node.TEXT_NODE) {
+      const raw = kid.textContent ?? "";
+
+      // handle the empty-string sentinel *after* trimming
+      const trimmed = raw.trim();
+      if (trimmed === '""') {
+        children.push(CREATE_NODE({
+          _tag: STR_TAG,
+          _meta: {},
+          _content: [""],
+        }));
+        continue;
+      }
+
+      // CHANGED: if we're inside <_obj>, whitespace is *data*, not layout.
+      // But your serializer tends to "box" text as:
+      //   "\n   \n" or "\nalpha\n"
+      // So: remove a single leading/trailing newline wrapper, keep everything else verbatim.
+      if (parentTag === "_obj") {
+        let unboxed = raw;
+
+        // remove exactly one leading newline (and one trailing newline), if present
+        unboxed = unboxed.replace(/^\r?\n/, "");
+        unboxed = unboxed.replace(/\r?\n$/, "");
+
+        // IMPORTANT: do NOT trim here. If the payload is "   ", we keep it.
+        if (unboxed.length > 0) {
+          children.push(unboxed);
+        }
+        continue;
+      }
+
+      // Original behavior: ignore layout-only whitespace between elements
+      if (trimmed.length > 0) {
+        children.push(trimmed);
+      }
+
+      continue;
+    }
+  }
+
+  return children;
 }

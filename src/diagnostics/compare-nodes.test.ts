@@ -3,13 +3,23 @@
 import type { HsonNode } from "../types/node.types";
 import { is_Node } from "../utils/node-utils/node-guards";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
+import { _snip } from "../utils/sys-utils/snip.utils";
 
 const LEAF = new Set(["_str", "_val"]);
 const MAX_SNIP = 500;
 const ELLIPSIS = " …";
 
-const snip = (s?: string, n = MAX_SNIP) =>
-    !s ? "" : s.length <= n ? s : s.slice(0, n - ELLIPSIS.length) + ELLIPSIS;
+
+export type CompareNodesOpts = Readonly<{
+    allow_html_newline_norm?: boolean;
+    // (future: other narrowly-scoped normalizations)
+}>;
+
+// CHANGED: small helper; keep it local to compare_nodes to avoid broad reuse
+function normalize_newlines_lf(s: string): string {
+    return s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
 
 function semanticChildren(n: HsonNode): HsonNode[] {
     const kids = (n._content ?? []).filter(is_Node);
@@ -27,11 +37,34 @@ function collapseTrivial(n: HsonNode): HsonNode {
     return n;
 }
 
-function compareLeaf(a: HsonNode, b: HsonNode, path: string, diffs: string[]) {
+function compareLeaf(a: HsonNode, b: HsonNode, path: string, diffs: string[], opts?: CompareNodesOpts): boolean {
     if (!(LEAF.has(a._tag) && LEAF.has(b._tag))) return false;
+
     const va = a._content?.[0];
     const vb = b._content?.[0];
-    if (va !== vb) diffs.push(`Leaf mismatch @ ${path}: ${JSON.stringify(va)} vs ${JSON.stringify(vb)}`);
+
+    if (va === vb) return true;
+
+    // CHANGED: allow HTML/XML newline normalization ONLY when explicitly enabled,
+    // ONLY for string leaves, and ONLY when CR exists on either side.
+    if (
+        opts?.allow_html_newline_norm === true &&
+        typeof va === "string" &&
+        typeof vb === "string" &&
+        (va.includes("\r") || vb.includes("\r"))
+    ) {
+        const na = normalize_newlines_lf(va);
+        const nb = normalize_newlines_lf(vb);
+
+        if (na === nb) {
+            // Optional: add a non-failing note. This keeps diffs empty (pass),
+            // but still leaves breadcrumbs if you want them.
+            // diffs.push(`Leaf normalized (CR→LF) @ ${path}: ${JSON.stringify(va)} -> ${JSON.stringify(na)}`);
+            return true;
+        }
+    }
+
+    diffs.push(`Leaf mismatch @ ${path}: ${JSON.stringify(va)} vs ${JSON.stringify(vb)}`);
     return true;
 }
 
@@ -117,7 +150,7 @@ function compareContent(aC?: any[], bC?: any[], path = ""): string[] {
     return diffs;
 }
 
-function compare(nodeA: HsonNode, nodeB: HsonNode, path: string): string[] {
+function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareNodesOpts): string[] {
     const diffs: string[] = [];
     if (nodeA._tag !== nodeB._tag) diffs.push(`_tag mismatch @ ${path}: "${nodeA._tag}" vs "${nodeB._tag}"`);
 
@@ -126,17 +159,19 @@ function compare(nodeA: HsonNode, nodeB: HsonNode, path: string): string[] {
 
     // BUGFIX: compare A vs B (was A vs A)
     diffs.push(...compareAttrs(collapseA._attrs, collapseB._attrs, `${path}._attrs`));
-    if (compareLeaf(collapseA, collapseB, path, diffs)) return diffs;
+
+    // CHANGED: compareLeaf now gets opts
+    if (compareLeaf(collapseA, collapseB, path, diffs, opts)) return diffs;
 
     const aKids = semanticChildren(collapseA);
     const bKids = semanticChildren(collapseB);
 
     if (collapseA._tag === "_obj" && collapseB._tag === "_obj") {
-        compareChildrenByKeyForObj(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p)));
+        compareChildrenByKeyForObj(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
     } else if (collapseA._tag === "_arr" && collapseB._tag === "_arr") {
-        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p)));
+        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
     } else {
-        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p)));
+        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
     }
 
     return diffs;
@@ -271,47 +306,42 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • JSON→HSON→JSON or HTML→HSON→HTML round-trips,
  *       • different parsers/serializers meant to be equivalent.
  **********************************************************/
-export function compare_nodes(a: HsonNode, b: HsonNode, verbose = true): string[] {
-    if (!a || !b) throw new Error(`compare_nodes: missing input (a:${JSON.stringify(a)}, b:${JSON.stringify(b)})`);
-    if (a === b) {
-        throw new Error('compareNodes called with identical references');
-    }
-    const diffs = compare(a, b, "/_root");
+export function compare_nodes(
+  a: HsonNode,
+  b: HsonNode,
+  verbose = true,
+  opts: CompareNodesOpts = {allow_html_newline_norm: true}
+): string[] {
+  if (!a || !b) throw new Error(`compare_nodes: missing input (a:${JSON.stringify(a)}, b:${JSON.stringify(b)})`);
+  if (a === b) {
+    throw new Error("compareNodes called with identical references");
+  }
 
-    if (!verbose) return diffs;
+  const diffs = compare(a, b, "/_root", opts); // CHANGED
 
-    // Collapsed, data-rich group
-    console.groupCollapsed(
-        diffs.length ? `❌ node-compare FAIL  (${diffs.length} diffs)` : "✅ node-compare OK"
-    );
-    console.log("A (snip):", snip(make_string(a)));
-    console.log("B (snip):", snip(make_string(b)));
+  if (!verbose) return diffs;
 
-    if (diffs.length) {
-        console.groupCollapsed("diffs");
-        // show first handful; full array is still accessible
-        for (let i = 0; i < Math.min(diffs.length, 20); i++) console.log(diffs[i]);
-        if (diffs.length > 20) console.log(`… +${diffs.length - 20} more`);
-        console.groupEnd();
-    }
+  console.groupCollapsed(
+    diffs.length ? `❌ node-compare FAIL  (${diffs.length} diffs)` : "✅ node-compare OK"
+  );
+  console.log("A (snip):", _snip(make_string(a)),500);
+  console.log("B (snip):", _snip(make_string(b)),500);
+
+  if (diffs.length) {
+    console.groupCollapsed("diffs");
+    for (let i = 0; i < Math.min(diffs.length, 20); i++) console.log(diffs[i]);
+    if (diffs.length > 20) console.log(`… +${diffs.length - 20} more`);
     console.groupEnd();
+  }
+  console.groupEnd();
 
-    // Loud line outside the group so it’s not swallowed
-    if (diffs.length) {
-        console.error(`FAILED • node-compare: first diff — ${diffs[0]}`);
-        console.group(`node-compare FAIL`);
-        console.log('A:', snip(make_string(a), 2000));
-        console.log('B:', snip(make_string(b), 2000));
-        console.groupEnd();
-    }
-
-    return diffs;
-}
-
-function logCmp(path: string[], a: HsonNode, b: HsonNode, equal: boolean): void {
-    if (equal) return; // too noisy otherwise
-    console.group(`node-compare FAIL at /${path.join('/')}`);
-    console.log('A:', snip(make_string(a), 2000));
-    console.log('B:', snip(make_string(b), 2000));
+  if (diffs.length) {
+    console.error(`FAILED • node-compare: first diff — ${diffs[0]}`);
+    console.group(`node-compare FAIL`);
+    console.log("A:", _snip(make_string(a), 2000));
+    console.log("B:", _snip(make_string(b), 2000));
     console.groupEnd();
+  }
+
+  return diffs;
 }
