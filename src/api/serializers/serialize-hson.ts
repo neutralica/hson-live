@@ -523,8 +523,7 @@ function emitNode(
                     // CHANGED: allow one-line “simple” values in OBJ property emission
                     const canInline =
                         // renderedRaw === "<>" ||
-                        // primitive-ish (you already serialize primitives as a single token)
-                        /^[^<>\n]+$/.test(renderedRaw);
+                        (renderedRaw.length > 0 && !renderedRaw.includes("\n"));
 
                     if (canInline) {
                         return `${pad}<${key}  ${renderedRaw}>`;
@@ -612,7 +611,7 @@ function emitNode(
             // ELEM-mode: inline with elem-closer
             return shape.kind === "void"
                 ? `${pad}<${node._tag}${attrsStr} />`
-                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)} />`; // TODO remove space before closer
+                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)}/>`; // TODO remove space before closer
         }
 
         // One-liner primitive value (no attrs/meta; single _str/_val child)
@@ -623,7 +622,7 @@ function emitNode(
                 return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(selfVal)}>`;
             }
             // element semantics ok to self-close
-            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)} />`; // TODO -- remove space before closing tag
+            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)}/>`; // TODO -- remove space before closing tag
         }
 
         const children = (node._content ?? []) as HsonNode[];
@@ -634,7 +633,7 @@ function emitNode(
                 return `${pad}<${node._tag}${attrsStr}\n${pad}  <>\n${pad}>`;
             } else {
                 // close on same line in _elem too
-                return `${pad}<${node._tag}${attrsStr} />`; // TODO -- remove space before closing />
+                return `${pad}<${node._tag}${attrsStr}/>`; // TODO -- remove space before closing />
             }
         }
 
@@ -662,7 +661,7 @@ function emitNode(
 
         // If nothing actually rendered, self-close regardless of computed closer.
         if (inner.length === 0) {
-            return `${pad}<${node._tag}${attrsStr} ${closer}`; // TODO -- remove space before closer
+            return `${pad}<${node._tag}${attrsStr}${closer}`; // TODO -- remove space before closer
         }
 
         // Use the computed closer.
