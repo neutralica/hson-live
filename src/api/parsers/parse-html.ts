@@ -502,6 +502,8 @@ function wrap_as_root(node: HsonNode): HsonNode {
     });
 }
 
+
+// TODO -- update docs for inner-obj whitespace handling change
 /**
  * Convert a DOM child node list into a sequence of HSON children.
  *
@@ -519,11 +521,12 @@ function wrap_as_root(node: HsonNode): HsonNode {
  *         - Pure layout whitespace is ignored.
  *   - Other node types are ignored.
  *
+    // CHANGED: take parentTag so text handling can be context-aware without DOM parent guessing
+ *
  * @param els - The DOM child nodes to transform.
  * @returns An array of `HsonNode | Primitive` representing the converted children.
  * @see convert
  */
-// CHANGED: take parentTag so text handling can be context-aware without DOM parent guessing
 function elementToNode(
   els: NodeListOf<ChildNode>,
   parentTag: string, // already lowercased
@@ -539,7 +542,7 @@ function elementToNode(
     if (kid.nodeType === Node.TEXT_NODE) {
       const raw = kid.textContent ?? "";
 
-      // handle the empty-string sentinel *after* trimming
+       /* handle the empty-string sentinel after trimming */
       const trimmed = raw.trim();
       if (trimmed === '""') {
         children.push(CREATE_NODE({
@@ -550,25 +553,23 @@ function elementToNode(
         continue;
       }
 
-      // CHANGED: if we're inside <_obj>, whitespace is *data*, not layout.
-      // But your serializer tends to "box" text as:
-      //   "\n   \n" or "\nalpha\n"
-      // So: remove a single leading/trailing newline wrapper, keep everything else verbatim.
+       /* inside <_obj>, whitespace is *data*, not layout;
+            remove a single leading/trailing newline wrapper, keep everything else */
       if (parentTag === "_obj") {
         let unboxed = raw;
 
-        // remove exactly one leading newline (and one trailing newline), if present
+         /* remove exactly one leading newline (and one trailing newline), if present */
         unboxed = unboxed.replace(/^\r?\n/, "");
         unboxed = unboxed.replace(/\r?\n$/, "");
 
-        // IMPORTANT: do NOT trim here. If the payload is "   ", we keep it.
+         /* IMPORTANT: do NOT trim here. If the payload is "   ", we keep it */
         if (unboxed.length > 0) {
           children.push(unboxed);
         }
         continue;
       }
 
-      // Original behavior: ignore layout-only whitespace between elements
+       /* ignore layout-only whitespace between elements */
       if (trimmed.length > 0) {
         children.push(trimmed);
       }

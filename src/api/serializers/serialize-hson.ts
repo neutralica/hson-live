@@ -228,7 +228,7 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
  * @param node - Candidate `HsonNode` to inspect.
  * @returns The primitive value if a valid self-close shape, otherwise `undefined`.
  */
-function getSelfCloseValueNEW(node: HsonNode): Primitive | undefined {
+function getSimpleNodeValue(node: HsonNode): Primitive | undefined {
 
     // must not carry attrs or meta
     if (!isEmptyAttrs(node._attrs)) return undefined;
@@ -334,7 +334,7 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  *    - Attribute/meta handling via `buildAttrString`.
  *    - Attempts compact representations in this order:
  *      - `inlineShape(...)` → one-line primitive or void forms.
- *      - `getSelfCloseValueNEW(...)` → compact value-bearing form.
+ *      - `getSimpleNodeValue(...)` → compact value-bearing form.
  *    - When in `OBJ_TAG` parent context:
  *      - Prefers block forms (with inner lines) over one-liners to
  *        keep JSON-mode visually distinct.
@@ -507,10 +507,28 @@ function emitNode(
                     // Dive through wrapper _obj if present
                     const rendered =
                         inner._tag === OBJ_TAG
-                            ? (inner._content as HsonNode[])
-                                .map(grand => emitNode(grand, depth + 1, cluster, guard))
-                                .join("\n")
+                            ? (() => {
+                                const props = (inner._content ?? []) as HsonNode[];
+                                if (props.length === 0) {
+                                    return `${pad}  <>`; // explicit empty object value
+                                }
+                                return props
+                                    .map(grand => emitNode(grand, depth + 1, cluster, guard))
+                                    .join("\n");
+                            })()
                             : emitNode(inner, depth + 1, cluster, guard);
+
+                    const renderedRaw = rendered.trim();
+
+                    // CHANGED: allow one-line “simple” values in OBJ property emission
+                    const canInline =
+                        // renderedRaw === "<>" ||
+                        // primitive-ish (you already serialize primitives as a single token)
+                        /^[^<>\n]+$/.test(renderedRaw);
+
+                    if (canInline) {
+                        return `${pad}<${key}  ${renderedRaw}>`;
+                    }
 
                     return `${pad}<${key}\n${rendered}\n${pad}>`;
                 }).join("\n");
@@ -598,7 +616,7 @@ function emitNode(
         }
 
         // One-liner primitive value (no attrs/meta; single _str/_val child)
-        const selfVal = getSelfCloseValueNEW(node);
+        const selfVal = getSimpleNodeValue(node);
         if (selfVal !== undefined) {
             if (parentCluster === OBJ_TAG) {
                 // block in JSON-mode
