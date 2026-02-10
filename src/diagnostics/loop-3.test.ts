@@ -439,9 +439,12 @@ function resolve_entry(
 
   // Otherwise, try HSON as the final fallback.
   try {
+    console.warn("hit")
     const n = SPIN.hson.parse(s);
     assert_invariants(n, "auto:hson");
+    console.warn("returned "  + s + " as hson")
     return { fmt: "hson", text: s };
+    
   } catch { /* ignore */ }
 
   step_fail(opt, "resolve_entry:auto", "Could not detect entry format (shape-gated json/html/hson)");

@@ -102,11 +102,9 @@ export function parse_html(input: string | Element): HsonNode {
 
         // CONFIRM: keep these if required for XML compliance on your edge.
         // If not strictly required, gate them later too.
-        const xmlNameSafe = mangle_illegal_attrs(ents);
-        const svgSafe = namespace_svg(xmlNameSafe);
-
-        let xmlSrc = svgSafe;
-
+        const svgSafe = namespace_svg(ents);
+        const mangled = mangle_illegal_attrs(svgSafe);
+        let xmlSrc = mangled;
         const parser = new DOMParser();
         let parsed = parser.parseFromString(xmlSrc, "application/xml");
         let err = parsed.querySelector("parsererror");
