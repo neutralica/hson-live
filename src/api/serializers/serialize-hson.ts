@@ -581,17 +581,20 @@ function emitNode(
         const shape = inlineShape(node);
         if (shape !== undefined) {
             if (parentCluster === OBJ_TAG) {
-                // JSON-mode: block with primitive inside
-                if (shape.kind === 'void') {
-                    return `${pad}<${node._tag}${attrsStr}\n${pad}  <>\n${pad}>`;
+                // CHANGED: OBJ-mode should be inline for primitive/void too.
+                // This removes the inconsistent newline policy vs getSelfCloseValueNEW.
+                if (shape.kind === "void") {
+                    return `${pad}<${node._tag}${attrsStr}  <>`; // OBJ closer implied by ">"
+                    // NOTE: this line already ends with ">" because <> is the value token.
                 } else {
-                    return `${pad}<${node._tag}${attrsStr}\n${pad}  ${serialize_primitive_hson(shape.value)}\n${pad}>`;
+                    return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(shape.value)}>`;
                 }
             }
-            // HTML-mode: allow one-liner
-            return shape.kind === 'void'
+
+            // ELEM-mode: inline with elem-closer
+            return shape.kind === "void"
                 ? `${pad}<${node._tag}${attrsStr} />`
-                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)} />`;
+                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)} />`; // TODO remove space before closer
         }
 
         // One-liner primitive value (no attrs/meta; single _str/_val child)
@@ -602,7 +605,7 @@ function emitNode(
                 return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(selfVal)}>`;
             }
             // element semantics ok to self-close
-            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)} />`;
+            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)} />`; // TODO -- remove space before closing tag
         }
 
         const children = (node._content ?? []) as HsonNode[];
@@ -612,8 +615,8 @@ function emitNode(
                 // empty property in object semantics → explicit empty object cluster
                 return `${pad}<${node._tag}${attrsStr}\n${pad}  <>\n${pad}>`;
             } else {
-                // element semantics may self-close
-                return `${pad}<${node._tag}${attrsStr} />`;
+                // close on same line in _elem too
+                return `${pad}<${node._tag}${attrsStr} />`; // TODO -- remove space before closing />
             }
         }
 
@@ -641,7 +644,7 @@ function emitNode(
 
         // If nothing actually rendered, self-close regardless of computed closer.
         if (inner.length === 0) {
-            return `${pad}<${node._tag}${attrsStr} ${closer}`;
+            return `${pad}<${node._tag}${attrsStr} ${closer}`; // TODO -- remove space before closer
         }
 
         // Use the computed closer.

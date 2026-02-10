@@ -40,16 +40,37 @@ const voidTags = [
  * @param $input - HTML source text to normalize.
  * @returns HTML with matching void tags rewritten as `<tag ... />`.
  *******/
-export function expand_void_tags($input: string): string {
-    const tagNames = voidTags.join('|');
-    /* match <img ...> or <IMG ...> but not already <img .../> */
-    const regex = new RegExp(
-      `<(${tagNames})(\\b[^>]*?)(?<!/)>(?!</\\1>)`,
-      'gi'
-    );
-    return $input.replace(
-      regex,
-      (_match, tag, attrs) => `<${tag}${attrs} />`
-    );
-  }
-  
+// src/utils/html-utils/expand-void-tags.ts (or wherever yours lives)
+export function expand_void_tags(src: string): string {
+  // CHANGED: include embed + full HTML void set; keep lowercase canonical
+  const VOID = new Set([
+    "area", "base", "br", "col", "embed", "hr", "img", "input",
+    "link", "meta", "param", "source", "track", "wbr",
+  ]);
+
+  // CHANGED: self-close <void ...> into <void ... />
+  // - handles attributes
+  // - handles adjacency like </object><embed ...>
+  // - does NOT touch already-self-closed tags
+  // - does NOT touch tags that already have an explicit closer </tag>
+  return src.replace(
+    /<([A-Za-z][A-Za-z0-9:_-]*)([^<>]*?)>/g,
+    (m: string, tagRaw: string, rest: string) => {
+      const tag = tagRaw.toLowerCase();
+
+      // not a void tag → leave
+      if (!VOID.has(tag)) return m;
+
+      // already self-closed → leave
+      if (/\s\/\s*$/.test(rest)) return m;
+
+      // if it already has an explicit closer somewhere, do not force self-close
+      // (rare for true HTML voids, but keeps this transform conservative)
+      const closer = new RegExp(`</\\s*${tagRaw}\\s*>`, "i");
+      if (closer.test(src)) return m;
+
+      // CHANGED: self-close
+      return `<${tagRaw}${rest} />`;
+    }
+  );
+}

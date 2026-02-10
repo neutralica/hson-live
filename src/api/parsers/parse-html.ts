@@ -23,6 +23,7 @@ import { mangle_illegal_attrs } from "../../utils/html-preflights/mangle-illegal
 import { namespace_svg } from "../../utils/html-preflights/namespace-svg";
 import { is_indexed } from "../../utils/node-utils/node-guards";
 import { Primitive } from "../../types/core.types";
+import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers";
 
 
 
@@ -114,11 +115,16 @@ export function parse_html(input: string | Element): HsonNode {
         const hasErr = () => Boolean(err);
 
         // CHANGED: single helper to reduce drift + ensure we re-read parsererror each time
-        const tryParse = (nextSrc: string, _why: string) => {
-            if (nextSrc === xmlSrc) return;
-            xmlSrc = nextSrc;
+
+        const tryParse = (candidate: string, label: string) => {
+            // CHANGED: commit the candidate to xmlSrc *before* parsing, so later steps repair the current text
+            xmlSrc = candidate;
+
             parsed = parser.parseFromString(xmlSrc, "application/xml");
             err = parsed.querySelector("parsererror");
+
+            // (Optional) trace label somewhere if you want
+            // _log(`tryParse:${label} err=${!!err}`);
         };
 
         // CHANGED: amp-fix is dangerous; only apply when parser error looks entity-related
@@ -157,7 +163,7 @@ export function parse_html(input: string | Element): HsonNode {
 
             // 2) Entity / ampersand problems: only then amp-fix
             // (Patterns vary by engine; keep loose but still clearly entity-related.)
-            if (/Entity|entity|&|reference to entity/i.test(msg)) {
+            if (/Entity|reference to entity|The entity name must immediately follow the '&' in the entity reference/i.test(msg)) {
                 tryParse(amp_fix(xmlSrc), "amp_fix(entity)");
             }
         }
@@ -173,36 +179,71 @@ export function parse_html(input: string | Element): HsonNode {
                 tryParse(amp_fix(quoted), "quote_unquoted_attrs(+amp_fix)");
             }
         }
-
         if (hasErr()) {
             const msg = errText();
 
-            // 4) Literal '<' inside attribute values: only then escape it
-            // Keep this narrow; your earlier /Unescaped/i was too broad.
-            if (/unescaped.*<.*attribute/i.test(msg)) {
+            // 4) Literal '<' inside attribute values
+            // DOMParser messages vary; keep it narrow-ish but not brittle.
+            if (/Unescaped/i.test(msg) && /attribute/i.test(msg) && /</.test(xmlSrc)) {
                 tryParse(escape_attr_angles(xmlSrc), "escape_attr_angles(< in attr)");
             }
         }
-
         if (hasErr()) {
             const msg = errText();
 
-            // 5) Optional end tags / HTML-ish structure: only then try balancing.
-            // (This is where your <ul><li>one<li>two... fixtures live.)
-            if (/mismatch|Opening and ending tag mismatch|unterminated|unclosed|end tag|expected/i.test(msg)) {
-                const balanced = optional_endtag_preflight(xmlSrc);
-                tryParse(balanced, "optional_endtag_preflight");
+            // 4) Void tags left unclosed: only then expand void tags (and re-run amp_fix once)
+            if (should_try_void_expand(msg)) {
+                const voidFixed = expand_void_tags(xmlSrc);
+                tryParse(amp_fix(voidFixed), "expand_void_tags(+amp_fix)");
             }
         }
 
         if (hasErr()) {
             const msg = errText();
 
-            // 6) Multiple top-level nodes ("extra content"): wrap a root and re-run optional balancing once
+            // 5) Optional end tags (<li>, <p>) only: THEN run optional_endtag_preflight
+            if (should_try_optional_endtags(msg)) {
+                const balanced = optional_endtag_preflight(xmlSrc);
+                tryParse(balanced, "optional_endtag_preflight(li/p only)");
+            }
+        }
+
+        if (hasErr()) {
+            const msg = errText();
+
+            // 6) Multiple top-level nodes ("extra content"): wrap a root and retry.
             if (/extra content/i.test(msg)) {
+                // CHANGED: keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
                 let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
+
+                // Keep your existing optional endtag pass (safe-ish) on the wrapped source.
                 wrapped = optional_endtag_preflight(wrapped);
+
+                // Attempt parse of the wrapped source.
                 tryParse(wrapped, "wrap_root(+optional_endtag_preflight)");
+
+                // CHANGED: If wrapping exposed a void-tag mismatch (embed/input/meta/etc),
+                // apply expand_void_tags to the *wrapped* string (NOT the old xmlSrc) and retry.
+                if (hasErr()) {
+                    const msg2 = errText();
+                    if (should_try_void_expand(msg2)) {
+                        const voidFixedWrapped = expand_void_tags(wrapped);
+                        // quoting/void expansion can surface bare '&' in some broken inputs → amp_fix once.
+                        tryParse(amp_fix(voidFixedWrapped), "wrap_root(+optional_endtag_preflight+void_expand)");
+                    }
+                }
+
+                // OPTIONAL (leave out unless you need it):
+                // If you want to give optional_endtag_preflight a second shot after void-fix:
+                /*
+                if (hasErr()) {
+                  const msg3 = errText();
+                  if (should_try_optional_endtags(msg3)) {
+                    const balanced2 = optional_endtag_preflight(wrapped);
+                    tryParse(balanced2, "wrap_root(+optional_endtag_preflight#2)");
+                  }
+                }
+                */
             }
         }
 

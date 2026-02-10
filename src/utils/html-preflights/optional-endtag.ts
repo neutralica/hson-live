@@ -1,254 +1,243 @@
-// optional-endtag.ts
-// - Closes <li>, <dt>/<dd>, <p>, and basic table cells/rows/sections
-// - Skips raw-text elements and VSN tags (<_*>)
-// - Edits only the string fed to the XML parser (Nodes stay clean)
+
 
 type Range = { start: number; end: number };
-type ListFrame = { name: 'ul' | 'ol'; liOpen: boolean }; 
 
-/*********
- * Preflight-normalize HTML by explicitly inserting “optional end tags” so an XML-ish
- * parser won’t choke on HTML5’s permissive omission rules.
+type ListFrame = { name: "ul" | "ol"; liOpen: boolean };
+
+type TableFrame = { trOpen: boolean; cellOpen: "td" | "th" | null };
+
+function ranges_from_matches(src: string, re: RegExp): Range[] {
+  const out: Range[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(src))) {
+    out.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return out;
+}
+
+function in_ranges(sorted: Range[], i: number): boolean {
+  // Linear is fine for test inputs, but we can do cheap binary without drama.
+  let lo = 0;
+  let hi = sorted.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = sorted[mid]!;
+    if (i < r.start) hi = mid - 1;
+    else if (i >= r.end) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+function is_vsn(nameLower: string): boolean {
+  return nameLower.startsWith("_");
+}
+
+function is_void(nameLower: string): boolean {
+  // NOTE: keep in sync with expand_void_tags
+  return /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(nameLower);
+}
+
+function starts_block_that_autocloses_p(nameLower: string): boolean {
+  // HTML auto-closes <p> when a block element starts (non-exhaustive but solid).
+  return /^(address|article|aside|blockquote|div|dl|fieldset|figure|footer|form|h[1-6]|header|hr|main|nav|ol|pre|section|table|ul)$/i.test(
+    nameLower
+  );
+}
+
+/**
+ * Preflight-normalize *minimal* HTML optional-end-tag behavior so XML parsing won't choke.
+ * Scope (intentional):
+ * - Lists: <ul>/<ol>/<li> (insert </li> where HTML would imply it)
+ * - Paragraphs: <p> (insert </p> where HTML would imply it)
  *
- * This function edits only the *string* fed to a strict parser (e.g., XML-mode parsing).
- * It does not mutate any HSON nodes; it is intentionally a one-way “make this parseable”
- * shim for inputs that are valid-ish HTML but not valid XML.
- *
- * What it tries to fix (limited scope by design):
- * - Lists:
- *   - Closes a previous `<li>` when a new `<li>` begins at the same list depth.
- *   - Closes a dangling `<li>` just before `</ul>` / `</ol>` when needed.
- * - Paragraphs:
- *   - Closes an open `<p>` when a new `<p>` starts or when a block element starts
- *     (since HTML auto-closes `<p>` in those situations).
- * - Definition lists and tables:
- *   - Applies basic “best effort” closing of `<dt>/<dd>` and table cells/rows/sections
- *     using small heuristics, to avoid leaving structurally open tags before a strict parse.
- *
- * Safety guards:
- * - Skips “raw text” elements whose contents must be treated as literal text
- *   (`<script>`, `<style>`, `<textarea>`, `<noscript>`, `<xmp>`, `<iframe>`),
- *   as well as HTML comments and CDATA blocks. These regions are treated as opaque.
- * - Skips “VSN” tags (anything whose tag name starts with `_`), since those are
- *   HSON-internal and should not be rewritten by HTML heuristics.
- * - Ignores void/self-closing tags.
- *
- * Implementation notes:
- * - Performs a cheap regex-based tag walk and records planned insertions
- *   (`</li>`, `</p>`, etc.) as splice operations.
- * - Applies insertions right-to-left so string indices remain stable.
- *
- * Limitations (intentional):
- * - This is not a full HTML parser and will not perfectly repair arbitrarily malformed HTML.
- * - The DL/table logic is heuristic and may under-close or over-close in pathological cases.
- * - Only protects a finite set of raw-text blocks; new tag types may need to be added.
- *
- * @param src - Source markup that may be valid HTML but not strict-XML friendly.
- * @returns A rewritten markup string with explicit closures inserted where helpful.
- *********/
+ * Explicit non-goals:
+ * - No table/DL heuristics, no “best effort” structural repairs beyond li/p.
+ */
 export function optional_endtag_preflight(src: string): string {
-  // 0) Fast exit
-  if (!/[<]([a-zA-Z/_])/.test(src)) return src;
+  // Fast exit: nothing tag-like
+  if (!src.includes("<")) return src;
 
-  // 1) Protect raw-text blocks, comments, CDATA
+  // Protect raw-text blocks, comments, CDATA (treat as opaque)
   const RAW = /<(script|style|textarea|noscript|xmp|iframe)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
   const COMM = /<!--[\s\S]*?-->/g;
   const CDATA = /<!\[CDATA\[[\s\S]*?\]\]>/g;
 
-  const holes: Range[] = [];
-  const protect = (re: RegExp) => {
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(src))) holes.push({ start: m.index, end: m.index + m[0].length });
-  };
-  protect(RAW); protect(COMM); protect(CDATA);
-  holes.sort((a, b) => a.start - b.start);
-
-  const inHole = (i: number) => {
-    // binary search would be nicer; linear is fine for test inputs
-    for (const h of holes) if (i >= h.start && i < h.end) return true;
-    return false;
-  };
-
-  // 2) Walk tags; maintain tiny stacks for lists/dl/p/table
-  type Tag = { name: string; iOpenEnd: number; iAfterOpen: number };
-  const openList: ListFrame[] = [];                                     
-  const openDL: Tag[] = [];
-  let openP: Tag | null = null;
-  const openTable: { tr: Tag | null; cell: Tag | null; section: 'thead' | 'tbody' | 'tfoot' | null } = { tr: null, cell: null, section: null };
+  const holes: Range[] = [
+    ...ranges_from_matches(src, RAW),
+    ...ranges_from_matches(src, COMM),
+    ...ranges_from_matches(src, CDATA),
+  ].sort((a, b) => a.start - b.start);
 
   const inserts: Array<{ at: number; text: string }> = [];
 
-  // helpers
-  const isVSN = (name: string) => name.startsWith('_');
-  const isVoid = (name: string) => /^(area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)$/i.test(name);
-  const blockStartsP = (name: string) =>
-    /^(address|article|aside|blockquote|div|dl|fieldset|figure|footer|form|h[1-6]|header|hr|main|nav|ol|pre|section|table|ul)$/i.test(name);
+  const openList: ListFrame[] = [];
+  let pOpen = false;
+  const openTable: TableFrame[] = [];
+  const topTable = () => openTable[openTable.length - 1];
 
-  // regex to find tags (cheap tokenizer)
+  const closeCell = (at: number, t: TableFrame) => {
+    if (t.cellOpen) {
+      inserts.push({ at, text: `</${t.cellOpen}>` });
+      t.cellOpen = null;
+    }
+  };
+  const closeRow = (at: number, t: TableFrame) => {
+    if (t.trOpen) {
+      inserts.push({ at, text: "</tr>" });
+      t.trOpen = false;
+    }
+  };
+
+  const closeRowImplicit = (at: number, t: TableFrame) => {
+    let txt = "";
+    if (t.cellOpen) { txt += `</${t.cellOpen}>`; t.cellOpen = null; }
+    if (t.trOpen) { txt += "</tr>"; t.trOpen = false; }
+    if (txt) inserts.push({ at, text: txt });
+  };
+  // Cheap tag walker (NOT a parser; keep scope small)
   const TAG = /<\s*(\/)?\s*([a-zA-Z_:][-a-zA-Z0-9_:.]*)\b[^>]*?(\/?)\s*>/g;
+
   let m: RegExpExecArray | null;
   while ((m = TAG.exec(src))) {
     const iTag = m.index;
-    if (inHole(iTag)) continue;
+    if (in_ranges(holes, iTag)) continue;
 
     const isClose = !!m[1];
     const rawName = m[2]!;
     const selfClose = !!m[3];
+
     const name = rawName.toLowerCase();
 
-    if (isVSN(name)) continue;
+    // Skip HSON-internal tags
+    if (is_vsn(name)) continue;
 
-    // --- LISTS: <ul>/<ol>/<li> ----------------------------------------------
-
-    //  opening a list just pushes a new frame; do not touch li state yet
-    if (!isClose && (name === 'ul' || name === 'ol')) {                 
-      openList.push({ name: name as 'ul' | 'ol', liOpen: false });      
+    // Skip void and explicit self-close on open tags
+    if (!isClose && (selfClose || is_void(name))) {
+      // voids don't affect li/p “open” state in this preflight
       continue;
     }
 
-    //  when starting a new <li>, close the previous one only if liOpen at this depth
-    if (!isClose && name === 'li') {                                    
+    // --- P behavior (very small model) ---
+    if (!isClose && name === "p") {
+      // If a <p> starts while one is open, HTML auto-closes the previous.
+      if (pOpen) inserts.push({ at: iTag, text: "</p>" });
+      pOpen = true;
+      continue;
+    }
+
+    if (!isClose && name === "table") {
+      openTable.push({ trOpen: false, cellOpen: null });
+      continue;
+    }
+
+    if (!isClose && (name === "thead" || name === "tbody" || name === "tfoot")) {
+      const t = topTable();
+      if (t) { closeCell(iTag, t); closeRow(iTag, t); }
+      continue;
+    }
+
+    if (!isClose && name === "tr") {
+      const t = topTable();
+      if (t) { closeCell(iTag, t); closeRowImplicit(iTag, t); t.trOpen = true; }
+      continue;
+    }
+
+    if (!isClose && (name === "td" || name === "th")) {
+      const t = topTable();
+      if (t) {
+        if (t.cellOpen) inserts.push({ at: iTag, text: `</${t.cellOpen}>` });
+        t.cellOpen = name as "td" | "th";
+      }
+      continue;
+    }
+
+    if (isClose && (name === "td" || name === "th")) {
+      const t = topTable();
+      if (t) t.cellOpen = null;
+      continue;
+    }
+
+    if (isClose && name === "tr") {
+      const t = topTable();
+      if (t) { closeCell(iTag, t); t.trOpen = false; }
+      continue;
+    }
+
+    // on </table> or section close (implicit row close)
+    if (isClose && (name === "table" || name === "thead" || name === "tbody" || name === "tfoot")) {
+      const t = topTable();
+      if (t) closeRowImplicit(iTag, t);
+      if (name === "table") openTable.pop();
+      continue;
+    }
+
+    if (!isClose && pOpen && starts_block_that_autocloses_p(name)) {
+      // Block element starts: HTML auto-closes <p> before it.
+      inserts.push({ at: iTag, text: "</p>" });
+      pOpen = false;
+      // fallthrough: block tag still processed for list logic below
+    }
+
+    if (isClose && name === "p") {
+      // Explicit close clears state (even if malformed nesting, this is “preflight”)
+      pOpen = false;
+      continue;
+    }
+
+    // --- Lists ---
+    if (!isClose && (name === "ul" || name === "ol")) {
+      openList.push({ name: name as "ul" | "ol", liOpen: false });
+      continue;
+    }
+
+    if (!isClose && name === "li") {
       const last = openList[openList.length - 1];
       if (last) {
-        if (last.liOpen) inserts.push({ at: iTag, text: '</li>' });     
-        last.liOpen = true;                                             
+        if (last.liOpen) inserts.push({ at: iTag, text: "</li>" });
+        last.liOpen = true;
       }
       continue;
     }
 
-    //  explicit </li> closes the liOpen bit for this depth
-    if (isClose && name === 'li') {                                     
+    if (isClose && name === "li") {
       const last = openList[openList.length - 1];
-      if (last && last.liOpen) last.liOpen = false;                     
+      if (last) last.liOpen = false;
       continue;
     }
 
-    //  only close a dangling </li> when the list itself closes AND a <li> is actually open
-    if (isClose && (name === 'ul' || name === 'ol')) {                  
+    if (isClose && (name === "ul" || name === "ol")) {
       const last = openList[openList.length - 1];
       if (last && last.liOpen) {
-        inserts.push({ at: iTag, text: '</li>' });                      
-        last.liOpen = false;                                            
+        inserts.push({ at: iTag, text: "</li>" });
+        last.liOpen = false;
       }
-      if (last && last.name === name) openList.pop();                   
-      else {
-        // tolerant pop if malformed nesting
+      // Pop one level if it matches; tolerate malformed nesting by searching back.
+      if (last && last.name === name) {
+        openList.pop();
+      } else {
         for (let i = openList.length - 2; i >= 0; i--) {
-          if (openList[i].name === name) { openList.length = i; break; }
+          if (openList[i]!.name === name) {
+            openList.length = i;
+            break;
+          }
         }
         openList.pop();
       }
       continue;
     }
-
-    // --- DL: <dl>/<dt>/<dd> ---
-    if (!isClose && name === 'dl') {
-      openDL.push({ name, iOpenEnd: TAG.lastIndex, iAfterOpen: TAG.lastIndex });
-      continue;
-    }
-    if (!isClose && (name === 'dt' || name === 'dd')) {
-      // close previous dt/dd
-      inserts.push({ at: iTag, text: name === 'dt' ? '</dd></dt>'.replace('</dd>', '') : '</dt></dd>'.replace('</dt>', '') });
-      continue;
-    }
-    if (isClose && name === 'dl') {
-      // close any open dt/dd before </dl>
-      inserts.push({ at: iTag, text: '</dd></dt>'.replace('</dd>', '').replace('</dt>', '') });
-      openDL.pop();
-      continue;
-    }
-
-    // --- P: close before blocks and before </p> if needed ---
-    if (!isClose && name === 'p') {
-      openP = { name, iOpenEnd: TAG.lastIndex, iAfterOpen: TAG.lastIndex };
-      continue;
-    }
-    if (!isClose && openP && (blockStartsP(name) || name === 'p')) {
-      inserts.push({ at: iTag, text: '</p>' });
-      openP = null;
-      // fall through
-    }
-    if (isClose && name === 'p' && openP) {
-      openP = null;
-      continue;
-    }
-
-    // --- TABLE family (very basic heuristics) ---
-    if (!isClose && name === 'table') {
-      openTable.tr = null; openTable.cell = null; openTable.section = null;
-      continue;
-    }
-    if (!isClose && (name === 'thead' || name === 'tbody' || name === 'tfoot')) {
-      if (openTable.section) {
-        // CLOSE ORDER before new section starts:
-        // push previous section close FIRST, then </tr>, then </td>
-        inserts.push({ at: iTag, text: `</${openTable.section}>` });
-        if (openTable.tr) { inserts.push({ at: iTag, text: '</tr>' }); openTable.tr = null; }
-        if (openTable.cell) { inserts.push({ at: iTag, text: `</${openTable.cell.name}>` }); openTable.cell = null; }
-      }
-      openTable.section = name as any;
-      openTable.tr = null; openTable.cell = null;
-      continue;
-    }
-    if (!isClose && name === 'tr') {
-      // ensure in a section
-      if (!openTable.section) {
-        inserts.push({ at: iTag, text: '<tbody>' });
-        openTable.section = 'tbody';
-      }
-      // CLOSE ORDER at the same index (before this <tr>):
-      // 1) close cell (later push → ends up closer)
-      if (openTable.cell) { inserts.push({ at: iTag, text: `</${openTable.cell.name}>` }); openTable.cell = null; }
-      // 2) close previous tr
-      if (openTable.tr) { inserts.push({ at: iTag, text: '</tr>' }); openTable.tr = null; }
-
-      // now open the new tr
-      openTable.tr = { name, iOpenEnd: TAG.lastIndex, iAfterOpen: TAG.lastIndex };
-      openTable.cell = null;
-      continue;
-    }
-    if (!isClose && (name === 'td' || name === 'th')) {
-      // ensure tr
-      if (!openTable.tr) {
-        inserts.push({ at: iTag, text: '<tr>' });
-        openTable.tr = { name: 'tr', iOpenEnd: TAG.lastIndex, iAfterOpen: TAG.lastIndex };
-      }
-      // close prior cell
-      if (openTable.cell) inserts.push({ at: iTag, text: `</${openTable.cell.name}>` });
-      openTable.cell = { name, iOpenEnd: TAG.lastIndex, iAfterOpen: TAG.lastIndex };
-      continue;
-    }
-    if (isClose && (name === 'td' || name === 'th')) {
-      openTable.cell = null; continue;
-    }
-    if (isClose && name === 'tr') {
-      if (openTable.cell) { inserts.push({ at: iTag, text: `</${openTable.cell.name}>` }); openTable.cell = null; }
-      openTable.tr = null; continue;
-    }
-    if (isClose && name === 'table') {
-      // push in this order so final text reads </td></tr></tbody>...
-      if (openTable.section) { inserts.push({ at: iTag, text: `</${openTable.section}>` }); openTable.section = null; }
-      if (openTable.tr) { inserts.push({ at: iTag, text: '</tr>' }); openTable.tr = null; }
-      if (openTable.cell) { inserts.push({ at: iTag, text: `</${openTable.cell.name}>` }); openTable.cell = null; }
-      continue;
-    }
-
-
-    // --- Void/self-closing: ignore ---
-    if (!isClose && (selfClose || isVoid(name))) continue;
   }
 
-  // 3) Apply inserts (right-to-left so offsets stay valid)
   if (!inserts.length) return src;
+
+  // Apply right-to-left
   inserts.sort((a, b) => b.at - a.at);
+
   let out = src;
   for (const ins of inserts) {
-
-    if (inHole(ins.at)) continue;
+    if (in_ranges(holes, ins.at)) continue;
     out = out.slice(0, ins.at) + ins.text + out.slice(ins.at);
   }
-
-
 
   return out;
 }
