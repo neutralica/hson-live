@@ -1,9 +1,11 @@
 // css_for_quids.ts
 
 
-import { CssHandleVoid, CssHandle, CssHandleBase } from "../../../types/css.types";
+import { Primitive } from "hson-live/types";
+import { CssHandleVoid, CssHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types";
+import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css";
 import { LiveTree } from "../livetree";
-import { CssManager, isLiveTree } from "../managers/css-manager";
+import { CssManager, isLiveTree, render_css_value } from "../managers/css-manager";
 import { make_style_getter } from "../managers/style-getter";
 import { make_style_setter } from "../managers/style-setter";
 
@@ -35,7 +37,7 @@ export function css_for_quids(
 ): CssHandleBase<any> {
   const mgr = CssManager.invoke();
 
-  const mk_getters_for_ids = (ids: readonly string[]) => {
+  const idGetter = (ids: readonly string[]) => {
     const readConsensus = (propCanon: string): string | undefined => {
       let seen: string | undefined;
 
@@ -61,9 +63,27 @@ export function css_for_quids(
       apply: (propCanon, value) => { for (const quid of ids) mgr.setForQuid(quid, propCanon, value); },
       remove: (propCanon) => { for (const quid of ids) mgr.unsetForQuid(quid, propCanon); },
       clear: () => { for (const quid of ids) mgr.clearQuid(quid); },
+      applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+        for (const quid of ids) {
+          for (const [k, v] of Object.entries(pseudoDecls)) {
+            if (v == null) continue;
+
+            const propCanon = nrmlz_css_prop_key(k as CssKey);
+            const rendered = render_css_value(v as CssValue);
+
+            if (rendered == null) mgr.unsetPseudoForQuid(quid, pseudo, propCanon);
+            else mgr.setPseudoForQuid(quid, pseudo, propCanon, rendered);
+          }
+
+          // ADDED: default content for ::before/::after
+          if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
+            mgr.setPseudoForQuid(quid, pseudo, "content", `""`);
+          }
+        }
+      },
     });
 
-    const getter = mk_getters_for_ids(ids);
+    const getter = idGetter(ids);
 
     return {
       ...setter,
@@ -79,11 +99,36 @@ export function css_for_quids(
   const setter = make_style_setter<void>(undefined, {
     apply: (propCanon, value) => { for (const quid of ids) mgr.setForQuid(quid, propCanon, value); },
     remove: (propCanon) => { for (const quid of ids) mgr.unsetForQuid(quid, propCanon); },
-    clear: () => { for (const quid of ids) mgr.clearQuid(quid); },
+    clear: () => {
+      for (const quid of ids) {
+        mgr.clearQuid(quid);
+        mgr.clearPseudoAllForQuid(quid); // CHANGED: no optional chaining
+      }
+    },
+
+    applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+      for (const quid of ids) {
+        for (const [k, v] of Object.entries(pseudoDecls)) {
+          if (v == null) continue;
+
+          // CHANGED: normalize + render (keep these consistent with make_style_setter)
+          const propCanon = nrmlz_css_prop_key(k as CssKey);
+          const rendered = render_css_value(v as CssValue);
+
+          if (rendered == null) mgr.unsetPseudoForQuid(quid, pseudo, propCanon);
+          else mgr.setPseudoForQuid(quid, pseudo, propCanon, rendered);
+        }
+
+        if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
+          mgr.setPseudoForQuid(quid, pseudo, "content", `""`);
+        }
+      }
+    },
   });
 
-  const getter = mk_getters_for_ids(ids);
+  const getter = idGetter(ids);
 
+  // ADDED: the missing return
   return {
     ...setter,
     get: getter,
@@ -91,6 +136,7 @@ export function css_for_quids(
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),
   };
+
 }
 /**
  * Convenience wrapper for the single-QUID case.

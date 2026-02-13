@@ -151,34 +151,40 @@ export interface CssRuleBuilder {
   set(property: string, value: CssValue): CssRuleBuilder;
   setMany(decls: Record<string, CssValue>): CssRuleBuilder;
 
-  // TRASH // apply current declarations to CssManager
-  // commit(): void;
-
-  // convenience: remove rule from CssManager
+  // remove rule from CssManager
   remove(): void;
 }
+// ADDED: the “main players” only (v1)
+export type CssPseudoKey =
+  | "_hover"
+  | "_active"
+  | "_focus"
+  | "_focusWithin"
+  | "_focusVisible"
+  | "_visited"
+  | "_checked"
+  | "_disabled"
+  | "__before"
+  | "__after";
 
-/**
- * Plain-object representation of inline style declarations.
- *
- * Keys:
- * - `CsseKey` values, typically:
- *   - Known CSS properties derived from `CSSStyleDeclaration`.
- *   - Custom props / kebab-case names.
- *
- * Values:
- * - `string | number | null | undefined`:
- *   - `string` / `number` → applied as-is (with units provided by caller).
- *   - `null` → remove the property.
- *   - `undefined` → ignored (no-op).
- *
- * This shape is used by APIs like `StyleSetter.setMany` to perform
- * batch style updates on a node.
- */
+// base map cannot contain pseudos (so pseudo blocks don’t recurse)
+//  nested maps through the string index signature ok too
+
+
+interface CssMapBase_ extends Partial<Record<AllowedStyleKey | "float", CssValue>> {
+  // CHANGED: allow nested maps (for pseudos) *and* regular css values
+  // NOTE: include undefined so `Partial<>` behaves sanely with the index signature.
+  [k: string]: CssValue | CssMapBase_ | undefined;
+}
+
+// Your public “readable” map type
+export type CssMapBase = Readonly<CssMapBase_>;
+
+// CHANGED: pseudos explicitly map to *decl maps*
 export type CssMap = Readonly<
-  Partial<Record<AllowedStyleKey | "float", CssValue>> &
-  Record<string, CssValue>
->;
+  CssMapBase_ &
+  Partial<Record<CssPseudoKey, CssMapBase_>>
+  >;
 
 /**
  * Public-facing handle for working with QUID-scoped stylesheet rules.

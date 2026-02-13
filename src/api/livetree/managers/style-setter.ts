@@ -1,12 +1,60 @@
 // style-setter.ts
 
-import { CssMap, CssValue } from "../../../types/css.types";
+import { CssMap, CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types";
 import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
 import { SetSurface } from "../../../types/css.types";
 import { CssKey } from "../../../types/css.types";
 import { ClassApi, IdApi } from "../../../types/dom.types";
 import { LiveTree } from "../livetree";
 
+
+
+// ADDED: type guard for structured CssValue object
+const isStructuredCssValue = (
+  v: unknown,
+): v is Readonly<{ value: string | number; unit?: string }> => {
+  if (!v || typeof v !== "object") return false;
+
+  const obj = v as Record<string, unknown>;
+
+  // must have "value"
+  if (!("value" in obj)) return false;
+
+  const val = obj["value"];
+  if (typeof val !== "string" && typeof val !== "number") return false;
+
+  // unit optional but if present must be string
+  if ("unit" in obj && obj["unit"] !== undefined && typeof obj["unit"] !== "string") {
+    return false;
+  }
+
+  return true;
+};
+const isCssValue = (v: unknown): v is CssValue => {
+  if (v === null || v === undefined) return true;
+
+  const t = typeof v;
+  if (t === "string" || t === "number" || t === "boolean") return true;
+
+  return isStructuredCssValue(v);
+};
+
+const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
+  "_hover", "_active", "_focus", "_focusWithin", "_disabled", "_before", "_after",
+]);
+
+
+//  detects CssValue object shape `{ value, unit? }`
+const isCssValueObject = (v: unknown): v is Readonly<{ value: string | number; unit?: string }> => {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return ("value" in o) && (typeof o.value === "string" || typeof o.value === "number");
+};
+
+// pseudo blocks must be “plain object maps” (and not the `{value,unit}` CssValue object)
+const isPseudoDecls = (v: unknown): v is CssMapBase => {
+  return !!v && typeof v === "object" && !Array.isArray(v) && !isCssValueObject(v);
+};
 
 // CHANGED: generic “proxy surface” builder that returns whatever your setProp returns.
 export function make_set_surface<TReturn>(
@@ -83,6 +131,8 @@ export type StyleSetterAdapters = Readonly<{
    * If omitted, the proxy allows any property string.
    */
   keys?: readonly string[];
+  applyPseudo?: (pseudo: CssPseudoKey, decls: CssMapBase) => void;
+
 }>;
 
 /**
@@ -152,14 +202,25 @@ export function make_style_setter<TReturn>(
     set: make_set_surface<TReturn>((prop, v) => setProp(prop, v)),
 
     setProp,
-
     setMany(map: CssMap): TReturn {
       for (const [k, v] of Object.entries(map)) {
-        if (v !== undefined && v !== null) setProp(k, v);
+        // ADDED: pseudo blocks routed to adapter hook (CssManager only)
+        if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
+          const pseudo = k as CssPseudoKey;
+ console.log("[pseudos] saw key", k, "value", v);
+
+          if (adapters.applyPseudo) adapters.applyPseudo(pseudo, v);
+          continue;
+        }
+
+        // CHANGED: narrow to CssValue before calling setProp
+        if (!isCssValue(v)) continue;
+
+        // CHANGED: k from Object.entries is string; cast is fine because setProp normalizes anyway
+        if (v !== undefined && v !== null) setProp(k as CssKey, v);
       }
       return host;
     },
-
     remove(prop: CssKey): TReturn {
       adapters.remove(nrmlz_cssom_prop_key(prop));
       return host;
@@ -238,7 +299,7 @@ export function make_id_api(tree: LiveTree): IdApi {
       return tree;
     },
   };
-  
+
 }
 
 export function make_class_api(tree: LiveTree): ClassApi {

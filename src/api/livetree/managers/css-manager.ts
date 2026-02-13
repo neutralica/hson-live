@@ -2,7 +2,7 @@
 
 import { PropertyManager } from "../../../types/at-property.types";
 import { _DATA_QUID } from "../../../consts/constants";
-import { CssValue, CssProp } from "../../../types/css.types";
+import { CssValue, CssProp, CssPseudoKey } from "../../../types/css.types";
 import { apply_animation, bind_anim_api } from "../methods/anim";
 import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types";
 import { manage_property } from "./at-prop-builder";
@@ -19,6 +19,21 @@ const CSS_STYLE_ID = "_hson";
 
 type GlobalCssApi = ReturnType<typeof GlobalCss.api>;
 
+// ADDED (near top of global-css.ts, outside the class)
+export const pseudo_to_suffix = (p: CssPseudoKey): string => {
+  switch (p) {
+    case "_hover": return ":hover";
+    case "_active": return ":active";
+    case "_focus": return ":focus";
+    case "_focusWithin": return ":focus-within";
+    case "_focusVisible": return ":focus-visible";
+    case "_visited": return ":visited";
+    case "_disabled": return ":disabled";
+    case "_checked": return ":checked";
+    case "__before": return "::before";
+    case "__after": return "::after";
+  }
+};
 
 // explicit type guard
 export function isLiveTree(x: unknown): x is LiveTree {
@@ -36,7 +51,7 @@ export function isLiveTree(x: unknown): x is LiveTree {
  * @param v A `CssValue` to render.
  * @returns A CSS-ready literal string (no surrounding property name).
  */
-function renderCssValue(v: CssValue): string {
+export function render_css_value(v: CssValue): string {
   // string → already a valid CSS literal
   if (typeof v === "string") {
     return v.trim();
@@ -146,9 +161,9 @@ export class CssManager {
   private changed: boolean = false;
   private readonly globalCss: Map<string, string> = new Map();
   private globalsApi: GlobalCssApi | undefined;
-
+  private readonly pseudoRulesByQuid: Map<string, Map<string, Map<string, string>>> = new Map();
   private notify_global_css_changed(): void {
-    this.mark_changed();      //  (batched)
+    this.markChanged();      //  (batched)
     // this.syncToDom();           // immediate
   }
 
@@ -159,8 +174,8 @@ export class CssManager {
   private boundDoc: Document | null = null;
 
   private constructor() {
-    this.atPropManager = manage_property({ onChange: () => this.mark_changed() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.mark_changed() });
+    this.atPropManager = manage_property({ onChange: () => this.markChanged() });
+    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
   }
   /**
    * Marks the stylesheet state as updated and triggers a DOM sync.
@@ -174,7 +189,7 @@ export class CssManager {
    *   batching (e.g. microtask/RAF), this is the natural choke point to flip
    *   from “eager” to “scheduled” syncing.
    */
-  private mark_changed(): void {
+  private markChanged(): void {
     // CHANGED: mark dirty, but DO NOT write immediately
     this.changed = true;
 
@@ -244,13 +259,14 @@ export class CssManager {
     this.rulesByQuid.clear();
     this.changed = false;
     this.scheduled = false;
-    this.atPropManager = manage_property({ onChange: () => this.mark_changed() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.mark_changed() });
+    this.atPropManager = manage_property({ onChange: () => this.markChanged() });
+    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
 
     if (this.styleEl && this.styleEl.isConnected) {
       this.styleEl.textContent = "";
     }
   }
+
 
   /**
    * Ensures the manager has a live `<style>` element in the current `document`
@@ -333,6 +349,28 @@ export class CssManager {
     return styleEl;
   }
 
+  // ADDED
+  private getPseudoBucket(quid: string, pseudo: CssPseudoKey): Map<string, string> {
+    let byPseudo = this.pseudoRulesByQuid.get(quid);
+    if (!byPseudo) {
+      byPseudo = new Map();
+      this.pseudoRulesByQuid.set(quid, byPseudo);
+    }
+
+    let decls = byPseudo.get(pseudo);
+    if (!decls) {
+      decls = new Map();
+      byPseudo.set(pseudo, decls);
+    }
+
+    return decls;
+  }
+
+  // ADDED
+  private clearPseudoForQuid(quid: string): void {
+    if (this.pseudoRulesByQuid.delete(quid)) this.markChanged();
+  }
+
   // --- INTERNAL: BUILD + SYNC -------------------------------------------
   /**
  * Builds the complete stylesheet text managed by `CssManager`.
@@ -406,7 +444,13 @@ export class CssManager {
     if (atPropCss) parts.push(atPropCss);
     if (keyframesCss) parts.push(keyframesCss);
     if (quidCss) parts.push(quidCss);
-
+    for (const [quid, byPseudo] of this.pseudoRulesByQuid) {
+      for (const [pseudo, decls] of byPseudo) {
+        const selector = `${selectorForQuid(quid)}${pseudo_to_suffix(pseudo as CssPseudoKey)}`;
+        const cssText = this.renderRule(selector, Object.fromEntries(decls)).trim();
+        if (cssText) parts.push(cssText);
+      }
+    }
     return parts.join("\n\n");
   }
 
@@ -471,6 +515,8 @@ export class CssManager {
         }
         return undefined;
       },
+
+
     };
   }
 
@@ -572,7 +618,7 @@ export class CssManager {
     const rendered =
       typeof value === "string" || typeof value === "number" || typeof value === "boolean"
         ? String(value)
-        : renderCssValue(value); // <-- must return string or null
+        : render_css_value(value); // <-- must return string or null
 
     //  explicit delete if null
     if (rendered === null) {
@@ -594,7 +640,7 @@ export class CssManager {
     }
 
     props.set(p, v);
-    this.mark_changed();
+    this.markChanged();
   }
 
   /**
@@ -667,9 +713,45 @@ export class CssManager {
     props.delete(propCanon);
     if (props.size === 0) this.rulesByQuid.delete(quid);
 
-    this.mark_changed();
+    this.markChanged();
   }
 
+  // ADDED
+  public setPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string, rendered: string): void {
+    const b = this.getPseudoBucket(quid, pseudo);
+    if (b.get(propCanon) === rendered) return;
+    b.set(propCanon, rendered);
+    this.markChanged();
+  }
+
+  // ADDED
+  public unsetPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string): void {
+    const byPseudo = this.pseudoRulesByQuid.get(quid);
+    const b = byPseudo?.get(pseudo);
+    if (!b) return;
+
+    if (b.delete(propCanon)) this.markChanged();
+
+    // cleanup empties
+    if (b.size === 0) byPseudo!.delete(pseudo);
+    if (byPseudo!.size === 0) this.pseudoRulesByQuid.delete(quid);
+  }
+
+  // ADDED
+  public clearPseudoQuid(quid: string, pseudo: CssPseudoKey): void {
+    const byPseudo = this.pseudoRulesByQuid.get(quid);
+    if (!byPseudo) return;
+    if (byPseudo.delete(pseudo)) this.markChanged();
+    if (byPseudo.size === 0) this.pseudoRulesByQuid.delete(quid);
+  }
+
+  // CssManager.ts (or wherever the class lives)
+
+  // ADDED: clear all pseudo buckets for one quid
+  public clearPseudoAllForQuid(quid: string): void {
+    const had = this.pseudoRulesByQuid.delete(quid);
+    if (had) this.markChanged();
+  }
   /**
  * Debug-only nuclear reset.
  * Clears all CssManager-owned state:
@@ -691,8 +773,8 @@ export class CssManager {
     this.rafId = null;
 
     // recreate managers to drop all registrations
-    this.atPropManager = manage_property({ onChange: () => this.mark_changed() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.mark_changed() });
+    this.atPropManager = manage_property({ onChange: () => this.markChanged() });
+    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
 
     // clear style element if it exists
     const styleEl = this.ensureStyleElement();
@@ -714,7 +796,7 @@ export class CssManager {
    */
   public clearQuid(quid: string): void {
     if (!this.rulesByQuid.delete(quid)) return;
-    this.mark_changed();
+    this.markChanged();
   }
 
   /**
@@ -732,9 +814,23 @@ export class CssManager {
   public clearAll(): void {
     if (this.rulesByQuid.size === 0) return;
     this.rulesByQuid.clear();
-    this.mark_changed();
+    this.markChanged();
   }
 
+  // WARN I actually think I have this somewhere???
+  private renderRule(selector: string, decls: Record<string, string>): string {
+    const keys = Object.keys(decls);
+    if (keys.length === 0) return "";
+
+    // stable-ish order so rebuilds don't churn
+    keys.sort();
+
+    const body = keys
+      .map((k) => `${k}:${decls[k]};`)
+      .join("");
+
+    return `${selector}{${body}}`;
+  }
   /** 
    * Immediately writes the current in-memory CSS to the DOM.
    * This is the "force it now" path used by devFlush and (optionally) tests.
@@ -778,7 +874,7 @@ export class CssManager {
       // CHANGED: clone the inner map so edits don’t alias
       this.rulesByQuid.set(newQ, new Map(rules));
     }
-    this.mark_changed();
+    this.markChanged();
   }
 
 }

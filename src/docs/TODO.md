@@ -1,5 +1,8 @@
 // hson-todo
 
+## 12FEB2025
++ break up CssManager similar to livetree
+
 ## 07FEB2026
 + add 'role' special-casing?? 
 + livetree.aria?

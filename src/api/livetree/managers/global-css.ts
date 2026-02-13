@@ -1,6 +1,7 @@
 // global_css.ts
 
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
+import { pseudo_to_suffix } from "./css-manager";
 import { make_style_setter, StyleSetter } from "./style-setter";
 
 
@@ -56,7 +57,7 @@ function render_css_value(v: unknown): string | null {
 }
 
 
-function render_rule(selector: string, decls: Record<string, string>): string {
+export function render_rule(selector: string, decls: Record<string, string>): string {
   const keys = Object.keys(decls)
     .map(k => k.trim())
     .filter(Boolean)
@@ -148,13 +149,10 @@ export class GlobalCss {
       notifyChanged();
     };
 
-
     const setter = make_style_setter<void>(undefined, {
       apply: (propCanon, value) => {
-        // Defensive normalization at GlobalCss boundary.
         const rendered = render_css_value(value);
 
-        // null/empty => delete
         if (rendered == null || rendered.length === 0) {
           if (propCanon in decls) {
             delete decls[propCanon];
@@ -182,8 +180,26 @@ export class GlobalCss {
         for (const k of Object.keys(decls)) delete decls[k];
         applyNow();
       },
+
+      applyPseudo: (pseudo, pseudoDecls) => {
+        const suf = pseudo_to_suffix(pseudo);
+
+        const pseudoKey = `${ruleKey}${suf}`;
+        const pseudoSelector = `${selector}${suf}`;
+
+        // IMPORTANT: sibling rule in GlobalCss
+        const h = GlobalCss.invoke().rule(pseudoKey, pseudoSelector);
+        h.setMany(pseudoDecls);
+
+        // IMPORTANT: h.set is NOT callable. Use setProp or proxy-property call.
+        if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
+          h.setProp("content", `""`);     // <-- CHANGED (fixes your TS 2349)
+          // alternatively: h.set.content(`""`);
+        }
+      },
     });
 
+    // ADDED: you were missing this return entirely
     return {
       ...setter,
       ruleKey,
