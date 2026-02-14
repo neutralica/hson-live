@@ -2,34 +2,31 @@
 
 # CSS APIs
 
-This document covers the shared StyleSetter surface, the CssManager (stylesheet-backed) API,
-the globals API, and the inline StyleManager differences.
+This document covers the CssManager API (both QUID-scoped and global), differences between stylesheet-based CssManager vs the inline StyleManager, the shared StyleSetter surface, and KeyframesManager, AnimationManager, and (@)PropertyManager.
 
 ---
 
 ## StyleSetter
 
 StyleSetter is the shared fluent write surface used by `LiveTree.style`, `LiveTree.css`,
-and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, then delegates
-writes to a backend adapter.
+and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, then delegates writes to a backend adapter.
 
 ### Surface
 
-- `set` Proxy surface, for example `tree.style.set.backgroundColor("red")`.
-- `set.var("--x", 10)` convenience for CSS variables.
+- `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
+- `set.var("--x", 10)` convenience setter for CSS variables.
 - `setProp(prop, value)` write one property.
 - `setMany(map)` write many properties in one call.
 - `remove(prop)` remove one property.
 - `clear()` clear all properties for the handle.
 
-All methods return the host value (typically the `LiveTree`) for chaining.
+All methods return the host value (typically the `LiveTree`), enabling chaining.
 
 ### Key normalization
 
-- Accepts camelCase, kebab-case, vendor-prefixed kebab (for example `-webkit-user-select`),
-  and custom properties like `--my-var`.
+- Accepts camelCase, kebab-case strings and vendor-prefixed kebab (`-webkit-user-select`), and custom property strings (`--my-var`).
 - `float` and `css-float` normalize to `cssFloat`.
-- Keys are normalized to canonical CSSOM form before hitting the backend.
+- Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
 
 ### Value normalization
 
@@ -38,11 +35,12 @@ All methods return the host value (typically the `LiveTree`) for chaining.
 - `null` or `undefined` means remove when used with `setProp`.
 - Strings are trimmed; numbers and booleans are stringified.
 - `{ value, unit }` renders as `${value}${unit ?? ""}`.
-- `setMany` skips `null` and `undefined` entries and ignores non-CssValue entries.
+- `setMany` skips `null` and `undefined`
 
 ### Pseudo blocks in `setMany`
 
-If the backend provides `applyPseudo`, `setMany` can route pseudo blocks. Supported keys are:
+Provided the caller passes `applyPseudo` (via make_style_setter), `setMany` can route pseudo blocks. As pseudo-elements are not accepted in inline style attributes, only managers with access to the hson-_style stylesheet (CssManager & GlobalCss) can manipulate them.
+Supported keys are:
 `_hover`, `_active`, `_focus`, `_focusWithin`, `_disabled`, `_before`, `_after`.
 
 A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object.
@@ -54,7 +52,7 @@ Example:
 tree.css.setMany({
   opacity: 0.5,
   _hover: { opacity: 1 },
-  _before: { content: "\"\"", display: "block" },
+  _before: { display: "block" },
 });
 ```
 
@@ -69,24 +67,27 @@ single `<style>` element in the current document:
 
 Each QUID maps to a selector `[data-_quid="..."]`.
 
+Using liveTree.css.setMany, CSS can be set locally, per-node.
+
 ### Primary entry points
 
 - `LiveTree.css` returns a `CssHandle` bound to the node's QUID.
-- `css_for_quids([...])` returns a multi-QUID handle for broadcast styling.
 - `CssManager.invoke()` returns the singleton manager.
 
 A `CssHandle` is `StyleSetter + get + atProperty + keyframes + anim`.
 
-### Writing rules
+( **In the near future, `.css` may only return `StyleSetter + get + atProperty`, and keyframes + animation would be under the `.anim` namespace** )
+
+### Setting CSS rules
 
 Handle surface:
 
 ```ts
 // Single-QUID handle
-node.css.set.backgroundColor("black");
-node.css.setMany({ opacity: 0.5, "--phase": 1 });
-node.css.remove("opacity");
-node.css.clear();
+tree.css.set.backgroundColor("black");
+tree.css.setMany({ opacity: 0.5, "--phase": 1 });
+tree.css.remove("opacity");
+tree.css.clear();
 ```
 
 Manager methods (power-user):
@@ -140,7 +141,7 @@ interpolate correctly.
 Usage pattern:
 
 ```ts
-const css = node.css;
+const css = tree.css;
 css.atProperty
   .set("--phase", { syntax: "<number>", inherits: false, initial: 0 })
   .set("--speed", { syntax: "<number>", inherits: true, initial: 1 });
@@ -159,7 +160,7 @@ The `keyframes` manager owns named keyframe definitions.
 Usage pattern:
 
 ```ts
-const css = node.css;
+const css = tree.css;
 css.keyframes.set({
   name: "fade",
   steps: {
@@ -184,7 +185,7 @@ against those targets.
 Typical usage:
 
 ```ts
-const anim = node.css.anim;
+const anim = tree.css.anim;
 anim.begin({ name: "fade", duration: "300ms", easing: "ease-out" });
 ```
 
@@ -236,8 +237,7 @@ For `::before` and `::after`, `GlobalCss` will insert `content: ""` if you do no
 
 ## StyleManager Differences
 
-`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the
-element and `_attrs.style` on the HSON node.
+`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element and `_attrs.style` on the HSON node.
 
 Key differences from `LiveTree.css`:
 

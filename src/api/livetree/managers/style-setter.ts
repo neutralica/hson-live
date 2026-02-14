@@ -207,7 +207,6 @@ export function make_style_setter<TReturn>(
         // ADDED: pseudo blocks routed to adapter hook (CssManager only)
         if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
           const pseudo = k as CssPseudoKey;
- console.log("[pseudos] saw key", k, "value", v);
 
           if (adapters.applyPseudo) adapters.applyPseudo(pseudo, v);
           continue;
