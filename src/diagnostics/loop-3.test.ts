@@ -20,10 +20,24 @@ import { _snip } from "../utils/sys-utils/snip.utils";
 import { assert_invariants } from "./assert-invariants.test";
 import { compare_nodes } from "./compare-nodes.test";
 
+/**
+ * Canonical wire formats exercised by the round-trip loop.
+ */
 export type Fmt = "json" | "html" | "hson";
+/**
+ * Entry format selector for `_test_full_loop`.
+ *
+ * `auto` attempts to infer the format from the input atom.
+ */
 export type SourceFormat = Fmt | "auto" | "node" | "dom";
+/**
+ * Direction of traversal around the JSON ↔ HTML ↔ HSON ring.
+ */
 export type LoopDir = "cw" | "ccw";
 
+/**
+ * Options controlling `_test_full_loop`.
+ */
 export type LoopOpts = {
   times?: number;            // default 3
   dir?: LoopDir;             // default "cw" (only used when dual=false)
@@ -35,8 +49,14 @@ export type LoopOpts = {
   paranoid?: boolean;        // ADDED: also compare per-step parsed nodes across dirs (requires captureNodes)
 };
 
+/**
+ * Single trace/failure record produced during a run.
+ */
 export type Step = { step: string; ok: boolean; error?: string };
 
+/**
+ * Captured emission snapshot (text + stringified node) for a single step.
+ */
 export type Artifact = {
   lap: number;
   fmt: Fmt;
@@ -47,6 +67,9 @@ export type Artifact = {
 
 };
 
+/**
+ * Captured parsed node at a specific lap/format/phase.
+ */
 export type NodeMark = {
   lap: number;
   fmt: Fmt;
@@ -54,6 +77,9 @@ export type NodeMark = {
   node: HsonNode;
 };
 
+/**
+ * Summary report returned by `_test_full_loop`.
+ */
 export type LoopReport = {
   ok: boolean;
   times: number;
@@ -75,6 +101,9 @@ export type LoopReport = {
   };
 };
 
+/**
+ * Input accepted by `_test_full_loop`.
+ */
 export type FixtureAtom =
   | string
   | number
@@ -223,8 +252,9 @@ function runRing(
  * Default behavior runs BOTH directions (dual=true) and compares the
  * final nodes from cw vs ccw to detect path-dependence.
  *
- * When paranoid=true, also captures parsed nodes ("marks") and compares
- * cw vs ccw at matching (lap, fmt, phase) checkpoints.
+ * When `capture=true`, emitted text artifacts are stored in the report.
+ * When `paranoid=true`, parsed nodes are captured and compared across
+ * directions at matching (lap, fmt, phase) checkpoints.
  */
 export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopReport {
   const trace: Step[] = [];

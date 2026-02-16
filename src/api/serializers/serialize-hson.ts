@@ -336,8 +336,8 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  *      - `inlineShape(...)` → one-line primitive or void forms.
  *      - `getSimpleNodeValue(...)` → compact value-bearing form.
  *    - When in `OBJ_TAG` parent context:
- *      - Prefers block forms (with inner lines) over one-liners to
- *        keep JSON-mode visually distinct.
+ *      - Uses object-closer forms (`<>` value tokens) but still inlines
+ *        primitive/void shapes when possible for compactness.
  *    - Otherwise:
  *      - Uses HTML-like self-closing or multi-line `<tag ...>\n...\n</>` forms.
  *

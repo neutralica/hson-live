@@ -94,7 +94,9 @@ export function attachConvenience(api: ListenerBuilder): ListenerBuilder {
  **************************************************************/
 export type ElemMap = HTMLElementEventMap;
 
-// TODO - doc
+/**
+ * Typed handler signature for `CustomEvent` payloads.
+ */
 export type CustomEventHandler<D = unknown> = (ev: CustomEvent<D>) => void;
 
 /**************************************************************

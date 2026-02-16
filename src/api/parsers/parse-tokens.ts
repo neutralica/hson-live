@@ -53,9 +53,10 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *   `_arr` nodes full of `_ii` children, each tagged with `data-_index`.
  * - Handles shorthand empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
  *   top-level and inside arrays.
- * - Converts `TEXT` tokens into primitive leaves via `coerce`, or via
- *   `decode_json_string_literal` when quoted, wrapping them with
- *   `make_leaf`.
+ * - Converts `TEXT` tokens into primitive leaves:
+ *   - quoted text → `JSON.parse(raw)` to decode string literals
+ *   - unquoted text → `coerce(raw)` for primitive inference
+ *   then wraps the result with `make_leaf`.
  * - Tracks the close kind for each top-level construct in `topCloseKinds`
  *   so that implicit roots can be shaped correctly later.
  *

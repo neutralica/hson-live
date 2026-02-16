@@ -11,6 +11,12 @@ type GlobalRule = Readonly<{
   decls: Record<string, string>; // canon prop -> rendered string
 }>;
 
+/**
+ * Fluent handle for a single global CSS rule.
+ *
+ * This is a `StyleSetter` bound to a fixed selector, with extra
+ * metadata and a `drop()` helper to delete the rule entirely.
+ */
 export type GlobalRuleHandle = Readonly<
   StyleSetter<void> & {
     readonly ruleKey: string;
@@ -58,6 +64,13 @@ function render_css_value(v: unknown): string | null {
 }
 
 
+/**
+ * Render a selector + canonical declaration map into CSS text.
+ *
+ * - Keys are normalized to kebab-case (except custom properties).
+ * - Empty/whitespace values are skipped.
+ * - Returns `""` when no declarations remain.
+ */
 export function render_rule(selector: string, decls: Record<string, string>): string {
   const keys = Object.keys(decls)
     .map(k => k.trim())
@@ -91,8 +104,11 @@ export function render_rule(selector: string, decls: Record<string, string>): st
 
 
 /**
- * GLOBALCSS CLASS 
- **/
+ * Global stylesheet manager (selector-based, not QUID-scoped).
+ *
+ * Stores a set of named rules and renders them into CSS text for
+ * `CssManager` to include in its combined output.
+ */
 export class GlobalCss {
   private static _inst: GlobalCss | undefined;
 
@@ -101,7 +117,14 @@ export class GlobalCss {
     return this._inst;
   }
 
-  //  returns disposer to unsubscribe
+  /**
+   * Return a stable API for managing global CSS rules.
+   *
+   * - Subscribes `onChange` to internal updates (call `dispose()` to remove).
+   * - Rules are keyed by `ruleKey` to allow updates and replacement.
+   * - Use `sel(selector)` when you don't care about rule keys; the selector
+   *   is used to derive a stable key internally.
+   */
   public static api(onChange: () => void) {
     _listeners.add(onChange);
 

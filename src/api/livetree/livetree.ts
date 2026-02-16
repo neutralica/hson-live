@@ -30,6 +30,14 @@ import { create_livetree } from "./create-livetree";
 import { ContentManager } from "./managers/content-manager";
 import { css_for_quids } from "./methods/css-for-quids";
 // NEW: motion.ts (or livetree-methods/motion.ts)
+/**
+ * Named CSS variables used by `set_motion_transform`.
+ *
+ * Each field corresponds to a `--*` custom property:
+ * - `x` / `y`   → base position
+ * - `tx` / `ty` → animated offsets
+ * - `dx` / `dy` → interactive offsets (e.g. drag)
+ */
 export type MotionVars = Readonly<{
   x?: string;   // "--x"
   y?: string;   // "--y"
@@ -39,6 +47,15 @@ export type MotionVars = Readonly<{
   dy?: string;  // "--dy" (interactive)
 }>;
 
+/**
+ * Apply the canonical motion transform to a `LiveTree`.
+ *
+ * This composes `--x/--y` + `--dx/--dy` + `--tx/--ty` into a single
+ * `translate3d(...)` and sets `will-change: transform` for smoother
+ * animation.
+ *
+ * @param t - LiveTree whose inline style should receive the transform.
+ */
 export function set_motion_transform(t: LiveTree): void {
   // CHANGED: one canonical transform composition.
   t.style.setMany({
@@ -192,6 +209,12 @@ export class LiveTree {
   private domApiInternal: LiveTreeDom | undefined = undefined;
 
   // ADDED: public accessor
+  /**
+   * DOM adapter bound to this tree.
+   *
+   * Provides element-oriented helpers (`el`, `closest`, `parent`, etc.)
+   * while remaining safe to call when the node is not mounted.
+   */
   public get dom(): LiveTreeDom {
     if (!this.domApiInternal) {
       this.domApiInternal = make_dom_api(this);
@@ -321,6 +344,11 @@ export class LiveTree {
   public hostRootNode(): HsonNode {
     return this.hostRoot;
   }
+  /**
+   * Content manager for structured child access and mutation.
+   *
+   * This is a lazy accessor; the manager is constructed on first use.
+   */
   public get content(): ContentManager {
     return (this.contentManager ??= new ContentManager(this));
   }
@@ -499,6 +527,9 @@ export class LiveTree {
   /**
    * Replace this node’s content with a single text/leaf value.
    *
+   * `null` is stored as a `_val` payload and rendered as an empty string
+   * when mirrored to the DOM.
+   *
    * @param value - The primitive value to render as text for this node.
    * @returns This `LiveTree` instance, for chaining.
    * @see set_node_text_content
@@ -538,12 +569,24 @@ export class LiveTree {
     return get_form_text_value(this.node);
   }
 
+  /**
+   * ID helper bound to this node’s `id` attribute.
+   *
+   * Provides `get/set/clear` in a chainable API.
+   */
   public get id(): IdApi {
     // ADDED: cached id namespace
     if (!this.idApi) this.idApi = make_id_api(this);
     return this.idApi;
   }
 
+  /**
+   * Classlist helper bound to this node’s `class` attribute.
+   *
+   * Provides `get/has/set/add/remove/toggle/clear` in a stable, chainable
+   * API. All mutations are reflected in the underlying HSON attrs (and
+   * DOM when mounted).
+   */
   public get classlist(): ClassApi {
     // ADDED: cached class namespace
     if (!this.classApi) this.classApi = make_class_api(this);

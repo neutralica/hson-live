@@ -1,5 +1,9 @@
 // hson-todo
 
+## 14FEB2026
++ (HTMLElement).focus() (see: getBoundingRect, below)
++ hasFlag()
+
 ## 12FEB2025
 + break up CssManager similar to livetree
 

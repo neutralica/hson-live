@@ -9,26 +9,6 @@ import { CssManager, isLiveTree, render_css_value } from "../managers/css-manage
 import { make_style_getter } from "../managers/style-getter";
 import { make_style_setter, StyleSetterAdapters } from "../managers/style-setter";
 
-
-/**
- * Create a multi-QUID CSS handle.
- *
- * This is the main entrypoint for “stylesheet-backed” styling. It produces a `CssHandle`
- * whose core mutation surface is a `StyleSetter` wired to `CssManager`:
- *
- * - `apply(prop, value)` writes `prop: value` into each QUID’s rule block
- * - `remove(prop)` removes that property from each QUID’s rule block
- * - `clear()` deletes each QUID’s rule block entirely
- *
- * The returned handle may also expose additional manager capabilities (e.g. `atProperty`,
- * `keyframes`, animation helpers, and dev tooling snapshots) as pass-throughs.
- *
- * @param quids List of QUID strings to target. Empty/whitespace entries are ignored.
- * @returns A `CssHandle` that broadcasts style mutations to all provided QUIDs.
- * @see make_style_setter
- * @see CssManager
- */
-
 // CHANGED: one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
 const mk_css_quids_adapters = (
@@ -80,6 +60,26 @@ const mk_css_quids_adapters = (
 
 export function css_for_quids(quids: readonly string[]): CssHandleVoid;
 export function css_for_quids(host: LiveTree, quids: readonly string[]): CssHandle;
+/**
+ * Create a multi-QUID CSS handle.
+ *
+ * This is the main entrypoint for “stylesheet-backed” styling. It produces a
+ * `CssHandle` whose mutation surface is a `StyleSetter` wired to `CssManager`.
+ *
+ * Behavior:
+ * - Writes (`setProp`, `setMany`, `remove`, `clear`) are broadcast to all QUIDs.
+ * - `setMany` accepts pseudo blocks keyed by `CssPseudoKey` (e.g. `_hover`,
+ *   `__before`) and routes them to pseudo selector rules.
+ * - For `__before` / `__after`, `content: ""` is auto-injected when omitted.
+ *
+ * Read surface:
+ * - `get.prop` / `get.var` return a value only when all QUIDs agree.
+ *
+ * @param quids List of QUID strings to target. Empty/whitespace entries are ignored.
+ * @returns A `CssHandle` that broadcasts style mutations to all provided QUIDs.
+ * @see make_style_setter
+ * @see CssManager
+ */
 export function css_for_quids(
   a: LiveTree | readonly string[],
   b?: readonly string[],

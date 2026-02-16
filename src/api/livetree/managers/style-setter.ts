@@ -40,7 +40,16 @@ const isCssValue = (v: unknown): v is CssValue => {
 };
 
 const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
-  "_hover", "_active", "_focus", "_focusWithin", "_disabled", "_before", "_after",
+  "_hover",
+  "_active",
+  "_focus",
+  "_focusWithin",
+  "_focusVisible",
+  "_visited",
+  "_checked",
+  "_disabled",
+  "__before",
+  "__after",
 ]);
 
 
@@ -131,6 +140,14 @@ export type StyleSetterAdapters = Readonly<{
    * If omitted, the proxy allows any property string.
    */
   keys?: readonly string[];
+
+  /**
+   * Optional: handle pseudo-blocks passed via `setMany`.
+   *
+   * When provided, `make_style_setter` will treat entries whose keys match
+   * `CssPseudoKey` (e.g. `_hover`, `__before`) as nested declaration maps
+   * and route them here instead of applying them as regular properties.
+   */
   applyPseudo?: (pseudo: CssPseudoKey, decls: CssMapBase) => void;
 
 }>;
@@ -167,6 +184,12 @@ export type StyleSetterAdapters = Readonly<{
  * `make_style_setter()` guarantees:
  * - `null | undefined` values are treated as **remove semantics** (calls `adapters.remove()`).
  * - keys passed via proxy or map entries are normalized via `normalize_css_prop_key()`.
+ *
+ * ## Pseudo blocks in `setMany`
+ * If `setMany` receives keys that match `CssPseudoKey`, their values are
+ * interpreted as nested declaration maps (not as `CssValue`s). Those maps
+ * are forwarded to `adapters.applyPseudo` when available; otherwise they
+ * are ignored. Pseudo maps do not recurse.
  *
  * ## Proxy builder notes
  * The returned `setter.set` is a Proxy that converts property access into calls:

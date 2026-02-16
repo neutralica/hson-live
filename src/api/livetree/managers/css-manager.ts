@@ -19,7 +19,12 @@ const CSS_STYLE_ID = "_hson";
 
 type GlobalCssApi = ReturnType<typeof GlobalCss.api>;
 
-// ADDED (near top of global-css.ts, outside the class)
+/**
+ * Convert a `CssPseudoKey` into its CSS selector suffix.
+ *
+ * This is the single mapping table used by both QUID-scoped and global
+ * CSS rule generation.
+ */
 export const pseudo_to_suffix = (p: CssPseudoKey): string => {
   switch (p) {
     case "_hover": return ":hover";
@@ -35,7 +40,9 @@ export const pseudo_to_suffix = (p: CssPseudoKey): string => {
   }
 };
 
-// explicit type guard
+/**
+ * Runtime type guard for `LiveTree` instances.
+ */
 export function isLiveTree(x: unknown): x is LiveTree {
   return x instanceof LiveTree;
 }
@@ -521,6 +528,12 @@ export class CssManager {
   }
 
 
+  /**
+   * Return the singleton `CssManager` instance.
+   *
+   * Note: this does **not** force creation of a `<style>` element. It only
+   * binds to the current `document` if one exists.
+   */
   public static invoke(): CssManager {
     if (!CssManager.instance) CssManager.instance = new CssManager();
 
@@ -529,26 +542,27 @@ export class CssManager {
 
     return CssManager.instance;
   }
-  // ADDED: read the last-written value for quid+propCanon
+  /**
+   * Read the last-written value for a QUID + canonical property pair.
+   *
+   * This reflects the in-memory rule model, not computed style.
+   */
   public getForQuid(quid: string, propCanon: string): string | undefined {
     return this.rulesByQuid.get(quid)?.get(propCanon);
   }
 
-  // CHANGED: helper if you want “does this element have any css at all?”
+  /**
+   * Check whether a QUID currently has any rule entries.
+   */
   public hasAnyRules(quid: string): boolean {
     return (this.rulesByQuid.get(quid)?.size ?? 0) > 0;
   }
 
   /**
-   * Dev-only helper that hard-resets all CSS state and re-ensures the DOM host.
+   * Render the current in-memory CSS to a single string.
    *
-   * Behavior:
-   * - Clears all QUID-scoped rules.
-   * - Recreates the `@property` and keyframes managers.
-   * - Empties the managed `<style>` element (if connected).
-   *
-   * This is primarily intended for tests (e.g. to avoid cross-test leakage)
-   * and for manual debugging when the manager state must be rebuilt from zero.
+   * This is a read-only snapshot of what would be written into the managed
+   * `<style>` element, useful for tests or debugging.
    */
   public renderCss(): string {
     return this.buildCombinedCss();
@@ -556,9 +570,6 @@ export class CssManager {
 
   /**
    * Exposes the `@property` registration manager used by this `CssManager`.
-   *
-   * Access guarantees:
-   *   before returning the manager, so subsequent registrations can be rendered.
    *
    * @returns The live `PropertyManager` instance (singleton-owned).
    */
@@ -568,10 +579,6 @@ export class CssManager {
 
   /**
    * Exposes the keyframes/animation definition manager used by this `CssManager`.
-   *
-   * Access guarantees:
-   * - Ensures the managed `<style>` element exists for the current `document`
-   *   before returning the manager, so keyframe writes can be rendered.
    *
    * @returns The live `KeyframesManager` instance (singleton-owned).
    */
@@ -716,7 +723,14 @@ export class CssManager {
     this.markChanged();
   }
 
-  // ADDED
+  /**
+   * Set a pseudo rule declaration for a specific QUID.
+   *
+   * @param quid - QUID whose selector will receive the pseudo rule.
+   * @param pseudo - Pseudo key (e.g. `_hover`, `__before`).
+   * @param propCanon - Canonical property key to set.
+   * @param rendered - Rendered CSS value string.
+   */
   public setPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string, rendered: string): void {
     const b = this.getPseudoBucket(quid, pseudo);
     if (b.get(propCanon) === rendered) return;
@@ -724,7 +738,9 @@ export class CssManager {
     this.markChanged();
   }
 
-  // ADDED
+  /**
+   * Remove a single pseudo declaration for a specific QUID.
+   */
   public unsetPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string): void {
     const byPseudo = this.pseudoRulesByQuid.get(quid);
     const b = byPseudo?.get(pseudo);
@@ -737,7 +753,9 @@ export class CssManager {
     if (byPseudo!.size === 0) this.pseudoRulesByQuid.delete(quid);
   }
 
-  // ADDED
+  /**
+   * Clear all declarations for a given QUID + pseudo pair.
+   */
   public clearPseudoQuid(quid: string, pseudo: CssPseudoKey): void {
     const byPseudo = this.pseudoRulesByQuid.get(quid);
     if (!byPseudo) return;
@@ -747,7 +765,9 @@ export class CssManager {
 
   // CssManager.ts (or wherever the class lives)
 
-  // ADDED: clear all pseudo buckets for one quid
+  /**
+   * Clear *all* pseudo buckets for a given QUID.
+   */
   public clearPseudoAllForQuid(quid: string): void {
     const had = this.pseudoRulesByQuid.delete(quid);
     if (had) this.markChanged();
@@ -857,6 +877,12 @@ export class CssManager {
     return this.globalsApi;
   }
 
+  /**
+   * Global CSS facade.
+   *
+   * Use `CssManager.globals.invoke()` to access the shared GlobalCss API
+   * (rule-based, not QUID-scoped).
+   */
   // public facade stays the same idea, but route through the instance:
   public static readonly globals = {
     invoke(): GlobalCssApi {

@@ -60,8 +60,8 @@ function snip_context(s: string, at: number, radius = 80): string {
  *
  * Input forms:
  * - `string`:
- *     - Runs the full preflight pipeline to coerce HTML into
- *       XML-safe markup before parsing.
+ *     - Runs a preflight pipeline to coerce HTML into XML-safe markup
+ *       before parsing.
  * - `Element`:
  *     - Skips string preprocessing and converts the element subtree
  *       directly via `convert`.
@@ -69,20 +69,20 @@ function snip_context(s: string, at: number, radius = 80): string {
  * String pipeline (high level):
  * 1. Strip HTML comments (`strip_html_comments`).
  * 2. Expand boolean/flag attributes (`expand_flags`).
- * 3. Escape text and attribute content (`escape_text`, `expand_entities`,
- *    `quote_unquoted_attrs`, `escape_attr_angles`, `mangle_illegal_attrs`).
- * 4. Normalize void tags (`expand_void_tags`).
- * 5. Handle CDATA and SVG namespacing (`wrap_cdata`, `namespace_svg`).
- * 6. Patch bare ampersands to XML-safe form.
- * 7. Attempt XML parse via `DOMParser("application/xml")`.
- *    - On parse errors, progressively:
- *        - Deduplicate attributes (`dedupe_attrs_html`).
- *        - Re-quote/unquote attributes as needed.
- *        - Escape unescaped `<` in attributes.
- *        - Run `optional_endtag_preflight` to balance optional end tags.
- *        - As a last resort, wrap in `<_root>…</_root>` and retry.
- *    - If parsing still fails, throw a transform error.
- * 8. Take `documentElement` as the root element and pass it to `convert`.
+ * 3. Escape text + expand entities (`escape_text`, `expand_entities`).
+ * 4. Namespace SVG and sanitize attributes (`namespace_svg`, `mangle_illegal_attrs`).
+ * 5. Attempt XML parse via `DOMParser("application/xml")`.
+ * 6. On parse errors, apply gated repairs in order:
+ *    - Deduplicate attributes (`dedupe_attrs_html`) for duplicate-attr errors.
+ *    - Patch bare ampersands (`amp_fix`) for entity errors.
+ *    - Quote unquoted attrs (`quote_unquoted_attrs`) and re-amp-fix.
+ *    - Escape literal `<` inside attrs (`escape_attr_angles`).
+ *    - Expand void tags (`expand_void_tags`) and re-amp-fix.
+ *    - Balance optional end tags (`optional_endtag_preflight`).
+ *    - If the error is “extra content”, wrap in `<_root>…</_root>` and retry,
+ *      optionally re-running void expansion on the wrapped source.
+ * 7. If parsing still fails, throw a transform error with context.
+ * 8. Convert `documentElement` via `convert`.
  * 9. Wrap the converted tree via `wrap_as_root` to ensure a `_root` node.
  * 10. Validate invariants with `assert_invariants`.
  *
@@ -503,7 +503,6 @@ function wrap_as_root(node: HsonNode): HsonNode {
 }
 
 
-// TODO -- update docs for inner-obj whitespace handling change
 /**
  * Convert a DOM child node list into a sequence of HSON children.
  *
@@ -512,16 +511,16 @@ function wrap_as_root(node: HsonNode): HsonNode {
  *   - `ELEMENT_NODE`:
  *       - Recursively converted via `convert`, returning a `HsonNode`.
  *   - `TEXT_NODE`:
- *       - Takes `textContent`, trims it, and then:
- *         - If the trimmed text is exactly `""` (two quote chars):
- *             - Emits an explicit `_str` node with an empty string payload.
- *         - If the trimmed text has non-whitespace content:
- *             - Emits the trimmed string as a primitive (to be wrapped
- *               later by callers such as `convert`).
- *         - Pure layout whitespace is ignored.
+ *       - Reads `textContent` and handles it in context:
+ *         - If `trimmed === '""'`, emit an explicit `_str` with `""`.
+ *         - If `parentTag === "_obj"`:
+ *             - Whitespace is *data*, not layout.
+ *             - Remove at most one leading newline and one trailing newline.
+ *             - Do **not** trim; emit the remaining raw string if non-empty.
+ *         - Otherwise:
+ *             - Emit trimmed text when it has non-whitespace content.
+ *             - Ignore pure layout whitespace.
  *   - Other node types are ignored.
- *
-    // CHANGED: take parentTag so text handling can be context-aware without DOM parent guessing
  *
  * @param els - The DOM child nodes to transform.
  * @returns An array of `HsonNode | Primitive` representing the converted children.

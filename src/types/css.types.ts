@@ -8,7 +8,14 @@ import { PropertyManager } from "./at-property.types";
 import { StyleGetter } from "../api/livetree/managers/style-getter";
 
 
-/* doc me */
+/**
+ * Internal read helper shape used by style getter adapters.
+ *
+ * This is intentionally minimal: read a canonical property, read a CSS
+ * variable, and expose a tiny convenience surface.
+ *
+ * @internal
+ */
 type GetApi = {
   // get a canonical property, e.g. "maskPosition", "opacity", "WebkitMaskPosition"
   prop: (propCanon: string) => string | undefined;
@@ -154,7 +161,16 @@ export interface CssRuleBuilder {
   // remove rule from CssManager
   remove(): void;
 }
-// ADDED: the “main players” only (v1)
+/**
+ * Keys used to express pseudo-classes and pseudo-elements in `CssMap`.
+ *
+ * These keys are *not* emitted as CSS properties. Instead, they represent
+ * nested declaration maps that should be applied to selector variants:
+ * - `_hover` → `:hover`
+ * - `_focusVisible` → `:focus-visible`
+ * - `__before` → `::before`
+ * - `__after` → `::after`
+ */
 export type CssPseudoKey =
   | "_hover"
   | "_active"
@@ -177,10 +193,21 @@ interface CssMapBase_ extends Partial<Record<AllowedStyleKey | "float", CssValue
   [k: string]: CssValue | CssMapBase_ | undefined;
 }
 
-// Your public “readable” map type
+/**
+ * Base declaration map used by style setters.
+ *
+ * Notes:
+ * - Values are `CssValue` or nested maps for grouping.
+ * - Pseudo keys should be placed only at the top level (see `CssMap`).
+ */
 export type CssMapBase = Readonly<CssMapBase_>;
 
-// CHANGED: pseudos explicitly map to *decl maps*
+/**
+ * Full declaration map accepted by `StyleSetter.setMany`.
+ *
+ * In addition to normal declarations, it may include pseudo blocks keyed
+ * by `CssPseudoKey`, each of which is itself a `CssMapBase` of declarations.
+ */
 export type CssMap = Readonly<
   CssMapBase_ &
   Partial<Record<CssPseudoKey, CssMapBase_>>
@@ -208,6 +235,12 @@ export type CssMap = Readonly<
  * current state of the handle.
  */
 
+/**
+ * Read-only accessor for rendered CSS values from a style handle.
+ *
+ * This reads the *internal truth* (HSON attrs or CssManager state), not
+ * computed styles from the browser.
+ */
 export type CssGetter = Readonly<{
   // get by canonical key (what you store in rulesByQuid)
   prop: (propCanon: string) => string | undefined;
@@ -221,13 +254,33 @@ export type CssGetter = Readonly<{
 
 // css.types.ts (or wherever CssHandleBase lives)
 
-// ADDED: globals API surface
+/**
+ * Handle for a single global CSS rule returned by `CssGlobalsApi`.
+ */
+export type CssGlobalRuleHandle = Readonly<
+  StyleSetter<void> & {
+    readonly ruleKey: string;
+    readonly selector: string;
+    drop(): void;
+  }
+>;
+
+/**
+ * Global stylesheet API used by `CssManager.globals.invoke()`.
+ *
+ * This surface is rule-based: callers obtain a `CssGlobalRuleHandle` and
+ * then use the regular `StyleSetter` API to mutate that rule.
+ */
 export type CssGlobalsApi = Readonly<{
-  set: (source: string, cssText: string) => void;
-  remove: (source: string) => void;
-  clear: () => void;
+  dispose: () => void;
+  rule: (ruleKey: string, selector: string) => CssGlobalRuleHandle;
+  sel: (selector: string) => CssGlobalRuleHandle;
+  drop: (ruleKey: string) => void;
+  clearAll: () => void;
+  has: (ruleKey: string) => boolean;
   list: () => readonly string[];
-  get: (source: string) => string | undefined;
+  get: (ruleKey: string) => string | undefined;
+  renderAll: () => string;
 }>;
 
 export type CssHandleBase<TReturn> = Readonly<
@@ -300,4 +353,3 @@ export type SetSurface<Next> =
   &
 
   { var: (name: `--${string}`, v: CssValue) => Next; };
-
