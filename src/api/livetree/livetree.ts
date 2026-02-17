@@ -6,7 +6,7 @@ import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
-import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers/form-values";
+import { get_form_value, get_node_text_content, set_node_text_content, set_form_value, set_node_text_leaves, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_leaf } from "./managers/text-form-values";
 import { DataManager } from "./managers/data-manager";
 import { empty_contents } from "./methods/empty";
 import { build_listener } from "./managers/listener-builder";
@@ -523,6 +523,17 @@ export class LiveTree {
     return setAttrsImpl(this, nameOrMap, value);
   }
 
+
+
+public readonly text: LiveTextApi = {
+  set: (value) => { set_node_text_leaves(this.node, value); return this; },
+  add: (value) => { add_node_text_leaf(this.node, value); return this; },
+  overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
+  insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
+};
+  
+  
+  //// TODO - TEXT HANDLING MOVED TO .text NAMESPACE; delete these when safe
   /*  ---------- content API ---------- */
   /**
    * Replace this node’s content with a single text/leaf value.
@@ -534,39 +545,39 @@ export class LiveTree {
    * @returns This `LiveTree` instance, for chaining.
    * @see set_node_text_content
    */
-  public setText(value: Primitive): LiveTree {
-    set_node_text_content(this.node, value);
-    return this;
-  }
+  // public setText(value: Primitive): LiveTree {
+  //   set_node_text_content(this.node, value);
+  //   return this;
+  // }
   /**
    * Return all text content rendered under this node.
    *
    * @returns A string containing the concatenated text content.
    * @see get_node_text_content
    */
-  public getText(): string {
-    return get_node_text_content(this.node);
-  }
+  // public getText(): string {
+  //   return get_node_text_content(this.node);
+  // }
   /**
    * Set the form value for this node and mirror to DOM when mounted.
    *
    * @param value - The string form value to apply.
    * @param opts - Optional flags (`silent`, `strict`).
    * @returns This `LiveTree` instance, for chaining.
-   * @see set_form_text_value
+   * @see set_form_value
    */
   public setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): LiveTree {
-    set_form_text_value(this.node, value, opts);
+    set_form_value(this.node, value, opts);
     return this;
   }
   /**
    * Read the form value for this node.
    *
    * @returns The current form value as a string (possibly empty).
-   * @see get_form_text_value
+   * @see get_form_value
    */
   public getFormValue(): string {
-    return get_form_text_value(this.node);
+    return get_form_value(this.node);
   }
 
   /**

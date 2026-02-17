@@ -7,10 +7,10 @@ export { _test_full_loop } from "./loop-3.test.js";
 export {
     set_node_text_content as set_node_content,
     get_node_text_content as get_node_text,
-    set_form_text_value as set_node_form_value,
-    get_form_text_value as get_node_form_value,
+    set_form_value as set_node_form_value,
+    get_form_value as get_node_form_value,
     set_input_checked as set_node_form_checked,
     set_input_selected as set_node_form_selected,
     get_input_selected as get_node_form_selected
 
-} from "../api/livetree/managers/form-values.js";
+} from "../api/livetree/managers/text-form-values.js";
