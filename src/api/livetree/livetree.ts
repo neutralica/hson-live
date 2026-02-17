@@ -6,7 +6,7 @@ import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
-import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers/text-values";
+import { get_form_text_value, get_node_text_content, set_node_text_content, set_form_text_value } from "./managers/form-values";
 import { DataManager } from "./managers/data-manager";
 import { empty_contents } from "./methods/empty";
 import { build_listener } from "./managers/listener-builder";
@@ -16,7 +16,7 @@ import { remove_child } from "./methods/remove-child";
 import { StyleManager } from "./managers/style-manager";
 import { LiveTreeCreateHelper } from "../../types/livetree.types"; // CHANGED
 import { append_branch } from "./methods/append-other";
-import { make_tree_create } from "./methods/create";
+import { make_tree_create } from "./methods/create-node";
 import { FindWithById, NodeRef } from "../../types/livetree.types";
 import { Primitive } from "../../types/core.types";
 import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter";

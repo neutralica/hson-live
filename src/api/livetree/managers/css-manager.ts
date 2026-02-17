@@ -837,7 +837,6 @@ export class CssManager {
     this.markChanged();
   }
 
-  // WARN I actually think I have this somewhere???
   private renderRule(selector: string, decls: Record<string, string>): string {
     const keys = Object.keys(decls);
     if (keys.length === 0) return "";
@@ -846,11 +845,15 @@ export class CssManager {
     keys.sort();
 
     const body = keys
-      .map((k) => `${k}:${decls[k]};`)
+      .map((k) => {
+        const prop = canon_to_css_prop(k);   // ADDED
+        return `${prop}:${decls[k]};`;
+      })
       .join("");
 
     return `${selector}{${body}}`;
   }
+  
   /** 
    * Immediately writes the current in-memory CSS to the DOM.
    * This is the "force it now" path used by devFlush and (optionally) tests.

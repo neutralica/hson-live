@@ -9,14 +9,26 @@ import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { make_leaf } from "../../parsers/parse-tokens";
 import { Primitive } from "../../../types/core.types";
 
-/* ------------------------------------------------------------------------------------------------
- * Internal helpers
- * ---------------------------------------------------------------------------------------------- */
+/**
+ * Options for form state writers that mirror to the DOM when available.
+ */
+export type SetNodeFormOpts = Readonly<{
+  // CHANGED: default should be "silent" (missing DOM is normal pre-mount)
+  silent?: boolean;
+
+  // ADDED: for callers that want the old strict behavior
+  strict?: boolean;
+}>;
+
 
 // treat _attrs as a simple dictionary
 type AttrDict = Record<string, unknown>;
 // central DOM form-control narrowing
 type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+/* ------------------------------------------------------------------------------------------------
+ * Internal helpers
+ * ---------------------------------------------------------------------------------------------- */
 
 function ensure_attrs(node: HsonNode): AttrDict {
   if (!node._attrs) node._attrs = {} as HsonAttrs;
@@ -116,16 +128,7 @@ export function get_node_text_content(node: HsonNode): string {
  * Form state: value / checked / selected
  * ---------------------------------------------------------------------------------------------- */
 
-/**
- * Options for form state writers that mirror to the DOM when available.
- */
-export type SetNodeFormOpts = Readonly<{
-  // CHANGED: default should be "silent" (missing DOM is normal pre-mount)
-  silent?: boolean;
 
-  // ADDED: for callers that want the old strict behavior
-  strict?: boolean;
-}>;
 
 /**
  * Set a form value on the node and mirror it to the DOM when mounted.
