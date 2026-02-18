@@ -9,6 +9,7 @@ import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
 import { make_leaf } from "../../parsers/parse-tokens";
 import { Primitive } from "../../../types/core.types";
 import { LiveTree } from "hson-live";
+import { CREATE_NODE } from "../../../consts/factories";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -46,12 +47,12 @@ function ensure_vsn_bucket(node: HsonNode): HsonNode {
   if (found) return found;
 
   // create bucket; prefer `_elem` as the generic container
-  const bucket: HsonNode = {
+  const bucket = CREATE_NODE( {
     _tag: ELEM_TAG,      // from your constants
     _attrs: {},          // or however you represent empty attrs/meta
     _meta: {},
     _content: node._content, // move existing content under the bucket
-  };
+  });
 
   node._content = [bucket];
   return bucket;
