@@ -27,6 +27,7 @@ export type LiveTextApi = Readonly<{
   add: (value: Primitive) => LiveTree;
   overwrite: (value: Primitive) => LiveTree;
   insert: (index: number, value: Primitive) => LiveTree;
+  get: () => string;
 }>;
 
 // treat _attrs as a simple dictionary
@@ -103,29 +104,14 @@ function throw_missing_el(node: HsonNode, source: string): never {
     make_string(node),
   );
 }
-
-/**
- * Read concatenated text content under a node, preferring DOM when mounted.
- *
- * @param node - The HSON node to read from.
- * @returns The concatenated text content.
- */
 export function get_node_text_content(node: HsonNode): string {
-  const el = element_for_node(node);
-  if (el) return el.textContent ?? "";
-
   let out = "";
-  const seen = new Set<HsonNode>(); // ADDED
 
   const walk = (n: HsonNode): void => {
-    if (seen.has(n)) return;        // ADDED
-    seen.add(n);                    // ADDED
-
-    const content = n._content ?? [];
-    for (const child of content) {
+    for (const child of n._content ?? []) {
       if (!is_Node(child)) continue;
 
-      if (child._tag === STR_TAG) {
+      if (child._tag === STR_TAG || child._tag === VAL_TAG) {
         const first = child._content?.[0];
         if (typeof first === "string") out += first;
         continue;

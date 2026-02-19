@@ -82,7 +82,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
         return makeFinalizer(ctx);
       },
 
-      liveTree(): LiveTreeConstructor_3 {
+     get liveTree(): LiveTreeConstructor_3 {
         return {
           asBranch(): LiveTree {
             const node: HsonNode | undefined = currentFrame.node;

@@ -6,7 +6,7 @@ import { ListenerBuilder } from "../../types/listen.types";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
 import { CssHandle, StyleHandle } from "../../types/css.types";
 import { remove_livetree } from "./methods/remove-self";
-import { get_form_value,  set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content  } from "./managers/text-form-values";
+import { get_form_value,  set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content  } from "./managers/text-form-values";
 import { DataManager } from "./managers/data-manager";
 import { empty_contents } from "./methods/empty";
 import { build_listener } from "./managers/listener-builder";
@@ -530,6 +530,9 @@ public readonly text: LiveTextApi = {
   add: (value) => { add_node_text_content(this.node, value); return this; },
   overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
   insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
+  get: (): string => {
+    return get_node_text_content(this.node);
+  }
 };
   
   

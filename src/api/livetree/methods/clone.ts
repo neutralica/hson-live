@@ -70,5 +70,5 @@ export function clone_branch_method(this: LiveTree): LiveTree {
   const srcNode: HsonNode = this.node; 
   const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode).root;
 
-  return hson.fromNode(clonedRootNode).liveTree().asBranch();
+  return hson.fromNode(clonedRootNode).liveTree.asBranch();
 }

@@ -251,7 +251,7 @@ export interface OutputConstructor_2 {
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
   toHson(): OptionsConstructor_3<(typeof $RENDER)["HSON"]> & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
-  liveTree(): LiveTreeConstructor_3;
+  liveTree: LiveTreeConstructor_3;
 
   /**
    * 🔥 HTML-style sanitization applied *after* source selection.
