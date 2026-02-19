@@ -57,24 +57,7 @@ function ensureVsn(node: HsonNode): HsonNode {
   node._content = [bucket];
   return bucket;
 }
-// ADDED: remove only immediate leaf children in the DOM
-function remove_dom_text_leaves(el: Element): void {
-  // avoid querySelector edge cases with underscore tags; iterate direct children
-  const kids = Array.from(el.children);
-  for (const child of kids) {
-    const tag = (child as Element).tagName; // in HTML DOM this is typically uppercase; handle both
-    const canon = tag.toLowerCase();
-    if (canon === "_str" || canon === "_val") child.remove();
-  }
-}
 
-// // ADDED: create a DOM element for a leaf (minimal, no projector dependencies)
-// function make_dom_leaf(leaf: HsonNode, value: Primitive): Element {
-//   const tag = String(leaf._tag); // "_str" | "_val"
-//   const el = document.createElement(tag);
-//   el.textContent = value === null ? "" : String(value);
-//   return el;
-// }
 function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
   return document.createTextNode(value === null ? "" : String(value));
 }
@@ -329,82 +312,137 @@ export function get_input_selected(node: HsonNode): string | readonly string[] {
   const raw = attrs?.value;
   return raw == null ? "" : String(raw);
 }
+// -----------------------------------------------------------------------------//.. DOM helpers (CHANGED): project text leaves as *Text nodes*, never <_str>/< _val >
+// -----------------------------------------------------------------------------
+
+// CHANGED: was creating document.createElement("_str") which injects <_str> into DOM.
+// Now: always create a Text node.
+function make_dom_text(value: Primitive): Text {
+  return document.createTextNode(value === null ? "" : String(value));
+}
+
+// CHANGED: remove direct child Text nodes (these represent projected text leaves).
+// We do NOT touch element children, so non-leaf content remains.
+function remove_dom_text_leaves(host: Element): void {
+  const toRemove: ChildNode[] = [];
+
+  for (const n of Array.from(host.childNodes)) {
+    if (n.nodeType === Node.TEXT_NODE) toRemove.push(n);
+  }
+
+  for (const n of toRemove) host.removeChild(n);
+}
+
+// Optional helper if you want to *only* remove projected leaves inserted by us,
+// but right now you’re projecting leaves as Text nodes only, so this is correct.
+
+// -----------------------------------------------------------------------------//.. IR helpers
+// -----------------------------------------------------------------------------
+
+// If you don't already have an isLeafNode(tag) helper, this is safe and tiny.
+// Uses your leaf tags invariant.
+function isLeafTag(tag: unknown): boolean {
+  return tag === "_str" || tag === "_val";
+}
+
+// -----------------------------------------------------------------------------//.. Text operations
+// -----------------------------------------------------------------------------
 
 /**
- * Replace ONLY the text leaves (<_str>/< _val >) under this node.
- * Keeps non-leaf content (element children) untouched.
- * DOM: removes only leaf elements under the host element; keeps other children.
+ * Replace ONLY the text leaves (_str/_val) under this node.
+ * Keeps non-leaf content untouched.
+ *
+ * DOM: removes only direct Text children under the host element; keeps element children.
  */
-export function set_node_text_leaves(node: HsonNode, value: Primitive): void {
+export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
 
   // CHANGED: always edit inside the VSN bucket
   const bucket = ensureVsn(node);
 
-  // CHANGED: remove only leaf nodes; keep everything else (child nodes) intact
-  bucket._content = bucket._content.filter((c) => is_Node(c) && !isLeafNode(c._tag));
+  // CHANGED: remove only leaf nodes; keep everything else intact
+  bucket._content = bucket._content.filter((c) => {
+    if (!is_Node(c)) return true;               // if you truly never have non-nodes, fine
+    return !isLeafTag(c._tag);                  // remove _str/_val only
+  });
 
   // CHANGED: append exactly one new leaf
   bucket._content.push(leaf);
 
-  // --- DOM projection ---
+  // --- DOM projection (CHANGED): Text nodes only ---
   const host = element_for_node(node);
   if (!host) return;
 
   remove_dom_text_leaves(host);
-  host.appendChild(make_dom_leaf(leaf, value));
+  host.appendChild(make_dom_text(value));
 }
 
 /**
  * Append another text leaf to _content (non-destructive).
+ *
+ * DOM: appends a Text node to the host element.
  */
-export function add_node_text_leaf(node: HsonNode, value: Primitive): void {
+export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
-  node._content.push(leaf);
+
+  // CHANGED: always edit inside the VSN bucket
+  const bucket = ensureVsn(node);
+  bucket._content.push(leaf);
 
   const host = element_for_node(node);
   if (!host) return;
 
-  host.appendChild(make_dom_leaf(leaf, value));
+  host.appendChild(make_dom_text(value));
 }
 
 /**
- * Insert a text leaf at a specific _content index. Index counts all content items.
- * Clamps index into [0..len].
+ * Insert a text leaf at a specific _content index.
+ * Index counts all items in the VSN bucket _content.
+ *
+ * DOM: attempts to insert among childNodes by index. This only stays “perfect”
+ * if your DOM projection preserves 1:1 direct-child ordering for bucket._content.
+ * If that's not guaranteed, prefer the safer approach in the comment below.
  */
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
   const leaf = make_leaf(value);
 
-  const len = node._content.length;
-  const ix = Number.isFinite(index) ? Math.max(0, Math.min(len, Math.floor(index))) : len;
+  // CHANGED: always edit inside the VSN bucket
+  const bucket = ensureVsn(node);
 
-  node._content.splice(ix, 0, leaf);
+  const len = bucket._content.length;
+  const ix = Number.isFinite(index)
+    ? Math.max(0, Math.min(len, Math.floor(index)))
+    : len;
+
+  bucket._content.splice(ix, 0, leaf);
 
   const host = element_for_node(node);
   if (!host) return;
 
-  const domLeaf = make_dom_leaf(leaf, value);
+  const domText = make_dom_text(value);
 
-  // Insert among DOM *childNodes* to match _content indexing.
-  // This assumes your DOM projection keeps 1:1 ordering for direct children.
+  // NOTE: This assumes direct childNodes index aligns with bucket._content.
+  // If that's not a safe invariant, replace this whole insertBefore block with:
+  //   remove_dom_text_leaves(host); host.appendChild(make_dom_text(value));
+  // or build a full reconciliation pass.
   const ref = host.childNodes.item(ix) ?? null;
-  host.insertBefore(domLeaf, ref);
+  host.insertBefore(domText, ref);
 }
 
 /**
  * Destructive overwrite: replace ALL content with one leaf; mirror to DOM using textContent.
+ *
+ * This matches your old set_node_text_content semantics, but still respects VSN.
  */
 export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
-  node._content = [leaf];
+
+  // CHANGED: always overwrite the VSN bucket, not node._content
+  const bucket = ensureVsn(node);
+  bucket._content = [leaf];
 
   const el = element_for_node(node);
   if (!el) return;
 
   (el as HTMLElement).textContent = value === null ? "" : String(value);
-}
-
-// BACKCOMPAT: keep old name, but make it delegate so callsites don’t break
-export function set_node_text_content(node: HsonNode, value: Primitive): void {
-  overwrite_node_text_content(node, value);
 }
