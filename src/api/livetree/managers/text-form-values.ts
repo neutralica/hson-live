@@ -1,7 +1,7 @@
 // text-manager.ts
 
 import { HsonAttrs, HsonNode } from "../../../types/node.types";
-import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG } from "../../../consts/constants";
+import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../consts/constants";
 import { is_Node } from "../../../utils/node-utils/node-guards";
 import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
@@ -39,15 +39,15 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
  * ---------------------------------------------------------------------------------------------- */
 // ADDED: leaf tags
 
-const is_leaf_tag = (tag: string): boolean => LEAF_NODES.includes(tag);
-const is_vsn_tag = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
-function ensure_vsn_bucket(node: HsonNode): HsonNode {
+const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
+const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
+function ensureVsn(node: HsonNode): HsonNode {
   // find first VSN child
-  const found = node._content.find((c): c is HsonNode => is_Node(c) && is_vsn_tag(c._tag));
+  const found = node._content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c._tag));
   if (found) return found;
 
   // create bucket; prefer `_elem` as the generic container
-  const bucket = CREATE_NODE( {
+  const bucket = CREATE_NODE({
     _tag: ELEM_TAG,      // from your constants
     _attrs: {},          // or however you represent empty attrs/meta
     _meta: {},
@@ -68,12 +68,15 @@ function remove_dom_text_leaves(el: Element): void {
   }
 }
 
-// ADDED: create a DOM element for a leaf (minimal, no projector dependencies)
-function make_dom_leaf(leaf: HsonNode, value: Primitive): Element {
-  const tag = String(leaf._tag); // "_str" | "_val"
-  const el = document.createElement(tag);
-  el.textContent = value === null ? "" : String(value);
-  return el;
+// // ADDED: create a DOM element for a leaf (minimal, no projector dependencies)
+// function make_dom_leaf(leaf: HsonNode, value: Primitive): Element {
+//   const tag = String(leaf._tag); // "_str" | "_val"
+//   const el = document.createElement(tag);
+//   el.textContent = value === null ? "" : String(value);
+//   return el;
+// }
+function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
+  return document.createTextNode(value === null ? "" : String(value));
 }
 
 function ensure_attrs(node: HsonNode): AttrDict {
@@ -336,10 +339,10 @@ export function set_node_text_leaves(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
 
   // CHANGED: always edit inside the VSN bucket
-  const bucket = ensure_vsn_bucket(node);
+  const bucket = ensureVsn(node);
 
   // CHANGED: remove only leaf nodes; keep everything else (child nodes) intact
-  bucket._content = bucket._content.filter((c) => is_Node(c) && !is_leaf_tag(c._tag));
+  bucket._content = bucket._content.filter((c) => is_Node(c) && !isLeafNode(c._tag));
 
   // CHANGED: append exactly one new leaf
   bucket._content.push(leaf);
