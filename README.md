@@ -1,7 +1,3 @@
-# hson-live 2.0
-# HSON - Hypertext Structured Object Notation
-### neutralica @ TERMINAL_GOTHIC · 11JAN2026
-
 
 
 ```
@@ -22,6 +18,10 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
     :"                      Hypertext-Structured Object Notation 
                                           2.0.26                                                                                    
 ```
+
+# hson-live 2.0
+# HSON - Hypertext Structured Object Notation
+### neutralica @ TERMINAL_GOTHIC · 11JAN2026
 
 
 ## overview
