@@ -132,7 +132,7 @@ For multi-QUID handles, `get.property(...)` returns a consensus value:
 - `animForQuids(...)` returns a `CssAnimHandle` wired to QUID scopes.
 - `CssHandle.anim` is a pre-wired animation handle for the bound QUIDs.
 
-#### @property manager
+### @property manager
 
 The `atProperty` manager owns `@property` registrations. It is intended for declaring custom
 properties with type, syntax, and inheritance metadata so animations and transitions can
@@ -153,7 +153,7 @@ Behavior notes:
 - Changes are rendered into the same managed `<style>` element.
 - You can treat registrations as global for the current document.
 
-#### Keyframes manager
+### Keyframes manager
 
 The `keyframes` manager owns named keyframe definitions.
 
@@ -176,7 +176,7 @@ Behavior notes:
 - Updating a keyframe name replaces the prior definition.
 - The manager only writes the keyframe blocks; it does not start animations.
 
-#### Animation handle
+### Animation
 
 `CssHandle.anim` and `CssManager.animForQuids(...)` return a `CssAnimHandle` bound to one
 or more QUIDs. It is a small control surface for applying, starting, or clearing animations

@@ -7,119 +7,192 @@ This section describes the serialized textual form of HSON: the string format pr
 HSON is an HTML-like syntax designed to serialize either JSON-derived or HTML-derived node graphs without introducing format-specific scaffolding. It is not HTML, though it intentionally resembles it.
 
 ⸻
-
 ## 1. Basic Form
 
-HSON consists of nodes with:
-	•	a tag name
-	•	optional attributes
-	•	optional child content
+HSON is a tree of nodes. Each node has:
 
-Every serialized HSON document represents a tree of nodes. A HsonNode's _tag and _content correspond 1:1 with key:value and parent:child node.
+- a tag name  
+- optional attributes  
+- optional child content  
 
-### Canonical form
+Every serialized HSON document corresponds 1:1 to a node graph. A `HsonNode`’s `_tag` and `_content` directly represent the serialized structure.
 
-<tag attrs?="?" flags?
-  ...children?
->
+### Canonical Form
+```
+<tag attrs? flags?
+…children?
+```
+Unlike HTML or XML, tag names appear only once. All attributes and content are contained within that single construct. There is no separate closing tag.
 
-Unlike HTML/XML, HSON tag names are displayed only once, when opening the tag. All content, attributes, and metadata are contained within the open tag.  
-Tags are closed by > (if representing an object) or /> (if representing an element). There is no implicit closing.
+Nodes are terminated by one of two explicit closers:
 
-⸻
+- `/>`
+- `>`
+
+The chosen closer encodes the structural model (see below). There is no 'implicit' closure.
+
+---
 
 ## 2. Node Closure Rules
 
-HSON uses two distinct closure forms, with strict meaning.
+HSON's two closure symbols carry strict meaning. They are structural markers, not stylistic variants.
 
-2.1 Structural close (> or />)
+### 2.1 `_elem` nodes (`/>`)
 
-A node that may contain children always closes with > or />, even if it happens to have none at the moment. Nodes that are begun but not eventually closed with > will cause a parser error. 
+Nodes sourced from html terminate with:
+- `/>`
 
-<_obj>
-
-This represents a node that exists as a structural container.
-
-This is why _obj, _arr, and other structural nodes never close with />.
-
-This rule is essential: structural nodes are never self-closing.
-
-⸻
-
-2.2 Self-closing form (/>)
-
-The self-closing form is reserved for leaf nodes whose entire payload is known at declaration time.
-
-<title "On Trees and Structure" />
-<published true />
-
-Self-closing nodes:
-	•	have no children
-	•	carry either attributes or an inline primitive payload
-	•	do not imply structural containment
-
-If a node is structural, or may contain children later, /> is invalid.
-
-⸻
-
-3. Inline Primitive Payloads
-
-HSON supports a compact inline form for nodes whose content is a single primitive value.
-
-<views 18342 />
-<ratio 0.0279 />
-<updated null />
-<title "On Trees and Structure" />
-
-This is syntactic sugar over the underlying node representation:
-	•	primitive values are always represented internally via _str or _val VSNs
-	•	the inline form exists only at the serialization layer
-	•	there is no such thing as a “raw primitive” node
-
-Quoting rules
-	•	Strings must be quoted
-	•	Numbers, booleans, and null are unquoted
-
-"name"      → string
-42          → number
-true        → boolean
-null        → null
+### 2.2 `_obj` nodes (`>`)
+Nodes sourced from JSON terminate with:
+- `>`
 
 
-⸻
+A single serialized HSON string must use one model consistently. Mixing `/>` and `>` within the same document is invalid and will throw.
 
-4. Child Content
+---
 
-Child content appears as nested nodes or literals inside a container node.
+## 3. Primitive Content and Inline Form
 
+If a node contains **either attributes XOR one primitive value**, it may use the inline form:
+
+```
+<tag primitive/>
+<tag primitive>
+```
+A space before the closure (`<tag primitive>`) is also valid)
+
+Examples:
+```
+<title "On Trees and Structure"/>
+<published true>
+<views 18342>
+<updated null>
+```
+Rules:
+	•	A node may contain at most one primitive value to close inline.
+	•	It may not contain both attributes and inline primitive content.
+	•	It may not contain nested child nodes.
+
+If a node contains:
+	•	child nodes,
+	•	multiple primitives,
+	•	or both attributes and primitive content,
+
+then its content must be written on subsequent lines and the closer must appear on its own line, much as with a JSON objects.
+
+Example (element model):
+```
+<title
+  <h1 "overview"/>
+  <date "20FEB2025"/>
+/>
+```
+Example (object model):
+```
+<published
+  true
+  <date 20FEB2025>
+>
+```
+
+## HsonNode IR Representation
+
+Internally, in the HsonNode graph:
+- Primitive values are always wrapped in `_str` or `_val` leaf nodes.
+- Other nodes never store raw primitives directly.
+- HTML has no native type information. When parsing HTML, values that are parseable as numbers, booleans, or `null` are wrapped in `<_val>` to preserve their type.
+- A `_val` leaf explicitly signals that its content should be parsed on reentry.  
+  If a number, boolean, or `null` is not wrapped in `<_val>` in HTML, it will be re-emitted as a string into the node graph.
+
+## HSON Serialization Rules
+
+HSON's syntax is designed to express both HTML and JSON without requiring structural hints like leaf nodes. _str or _val (or any other underscored structural node like _elem, _obj, _arr) will never appear in HSON.
+
+Within the serialized HSON:
+- String content must always be quoted.
+- Numbers, booleans, and `null` are always unquoted.
+
+“name”   → string
+42       → number
+“42”     → string
+true     → boolean
+“false”  → string
+null     → null
+“null”   → string
+
+
+---
+
+## 4. Children
+
+A node’s `_content` consists of ordered child nodes, which may be:
+
+- standard container nodes, or
+- primitive leaf nodes (`<_str>` / `<_val>`)
+
+Example:
+```
 <p
   "JSON and"
-  <em "HTML" />
+  <em "HTML"/>
   "are often treated as opposites."
->
+/>
+```
 
-This represents ordered child content. Text and elements coexist naturally.
+Content order is preserved when parsing HSON. Text and nested nodes coexist naturally, as they do in HTML: text is simply a primitive leaf node within the tree.
 
-There is no concept of “text inside an element” separate from the node tree — text is simply a primitive child.
-
-⸻
 
 ## 5. Attributes
 
 Attributes appear inside the opening tag, before content. When attributes and content are both present, the node introduces the content on a newline, to maintain clear visual separation. When only attributes or primitive content is present on a node, it is serialized as a single line
 
+```
 <article id="post-042" class="entry featured"
   ...
 >
+```
 
 Attributes:
 	•	are HTML metadata, not content
     •	are stored in the _attrs property, not in _content
 	•	are not ordered semantically
-	•	map directly to _attrs internally
 	•	are serialized as `foo="bar"`
 
 Attributes never appear as child nodes.
+
+
+## Flags (Boolean Attributes)
+
+Flags are boolean attributes whose presence alone implies truth.
+
+HTML:
+```
+<details open>
+  ...
+</details>
+```
+
+HSON:
+```
+<details open
+  ...
+/>
+```
+
+Internally, flags are stored in _attrs with a boolean value:
+```
+{
+  _attrs: {
+    open: true
+  }
+}
+```
+
+Serialization rules:
+	•	true → serialized as a bare attribute name
+	•	false → omitted entirely
+
+Flags are not child nodes and never appear in _content.
 
 ⸻
 
@@ -152,19 +225,34 @@ Nested arrays and objects are permitted exactly as with JSON.
 ## 7. Objects as Nodes
 
 When serializing JSON-derived data to HSON, object properties are represented as named child nodes.
+JSON:
+```ts
+{
+  "author": {
+    "handle": "Neutralica",
+    "org": "@terminal_gothic",
+    "roles": [
+      "author",
+      "maintainer"
+    ]
+  }
+}
+```
 
+HSON:
+```
 <author
-  <name "Neutralica" />
-  <handle "@terminal_gothic" />
+  <handle "Neutralica">
+  <org "@terminal_gothic">
   <roles
     «
       "author",
       "maintainer"
     »
-  >
+ >
 >
+```
 
-There is no explicit “object literal” syntax at the HSON layer. Object-ness is expressed structurally by containment.
 
 ⸻
 
@@ -181,22 +269,23 @@ Common examples:
 
 VSNs:
 	•	are always structural
-	•	always close with >
-	•	never use />
+	•	always close with>
+	•	never use/>
 	•	are required when serializing HTML or JSON into the other format
-	•	are omitted in HSON serialization wherever the syntax can express the structure directly
+	•	are unnecessary in HSON serialization: syntax expresses structure
 
-This is why HSON serialization appears cleaner than JSON→HTML projections.
+The HSON syntax expresses either format cleanly without VSN clutter.
 
 ⸻
 
 9. Identity (data-_quid)
 
 Nodes may carry a stable identity token via metadata:
-
+```
 <p data-_quid="Q7f3c"
   "Hello"
 >
+```
 
 Notes:
 	•	data-_quid is an internal identity mechanism
@@ -207,27 +296,17 @@ Notes:
 ⸻
 
 10. XML Correctness
-
-HSON is parsed via an XML parser. As a result:
+HTML is parsed via XML and must be XML-valid to be accepted.
 	•	tags must be properly nested
 	•	attributes must be well-formed
-	•	all nodes must be explicitly closed (> or />)
 
-This enforces syntactic correctness but does not enforce HTML semantics or browser repair rules.
+This enforces a modicum of consistency and reliability in structure, and sidesteps the variability and unpredictable of individual browsers' html parsing rules.
 
 ⸻
 
-11. What HSON Is (at the Syntax Level)
+11. What HSON is at the syntax level
 	•	HSON is not HTML
 	•	HSON is not JSON
 	•	HSON is a serialization of a unified node graph that can project cleanly to either
 
 It exists to serialize HsonNode graphs without introducing format-specific scaffolding, not to replace HTML or JSON as external interchange formats.
-
-⸻
-
-If you want, the next clean step is:
-	•	a one-page mapping table: JSON → HSON → HTML (purely mechanical)
-	•	or a short appendix explaining why _obj/_arr/_ii appear in HTML projections but not in HSON
-
-But this section above should stand on its own as the “what am I looking at?” anchor for the whole system.

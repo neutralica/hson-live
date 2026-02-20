@@ -1,6 +1,7 @@
 
+### hson-live 2.0 / neutralica @ TERMINAL_GOTHIC · 11JAN2026
 
-```
+```hson
                .x+=:.                                         ..    .       _                    
   .uef^"      z`    ^%                                x .d88"    @88>    u                     
 :d88E            .   <k        u.      u.    u.        5888R     %8P    88Nu.   u.             
@@ -15,13 +16,11 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
  `Y"   888                                               "%       ""                   "YP'    
       J88"                                                                                        
       @%                                                                                            
-    :"                      Hypertext-Structured Object Notation 
+    :"                      Hypertext Structured Object Notation 
                                           2.0.26                                                                                    
 ```
 
-# hson-live 2.0
-# HSON - Hypertext Structured Object Notation
-### neutralica @ TERMINAL_GOTHIC · 11JAN2026
+# HSON: Hypertext Structured Object Notation
 
 
 ## overview
@@ -31,16 +30,18 @@ JSON and HTML are fundamentally different domains--data versus markup--yet both 
 
 HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations.
 
-hson-live extends this model into runtime by eliminating the need for separate data and markup representations. Rather than maintaining separate representations and synchronizing between them, both are expressed by the same object graph and projected as needed.
 
-In hson-live, view is not a function of state: view *is* state. Immediate applications include UI, but the same guarantees apply to any data that can be expressed as JSON or markup.
+## view ≡ state
+hson-live extends this model into runtime by eliminating the need for separate data and markup representations. Rather than maintaining separate representations and synchronizing between them, they are simply projections of the same object graph.
+
+In hson-live, view is not a function of state: view *is* state. Immediate applications include UI, but the same guarantees apply to any HTML or JSON data.
 
 ## core
-HSON is built around a single, explicit intermediate representation (IR): a node graph capable of representing:
+HSON is built around a single, explicit intermediate representation (IR), a node graph capable of representing:
 
 * JSON objects and arrays
 * HTML and SVG elements
-* mixed content (text + elements)
+* mixed markup content (text + elements)
 * attributes, values, and ordering
 * namespaced markup (including XML and SVG)
 
@@ -59,33 +60,42 @@ This includes cases that are often lossy or ambiguous in conventional tooling, s
 Using hson-live’s transformers, arbitrary HTML can be rendered as a valid JSON representation, manipulated via standard JS object methods, and re-rendered on the DOM in its new form. The inverse — treating structured data as markup to be rendered — works equally well.
 
 
-#### Joining two incompatible notations in a single unified syntax offers new ways of creating the web. hson.LiveTree is a library extension that demonstrates the possibilities and provides a platform on which to build further.
+#### Joining two incompatible notations in a single unified syntax offers new ways of creating the web. hson.LiveTree is a library extension that demonstrates the possibilities and provides a foundation on which to build further.
 
 
 ## hson.liveTree
-LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode IR as the source of truth and updating the DOM when changes are made.
-Rather than maintaining a separate virtual model, LiveTree works by:
+LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made. LiveTree allows the DOM to be accessible and editable as though it were a standard JS object.
 
-* ingesting any existing DOM subtree within document.body, parsing it into HsonNodes
-* re-emitting those nodes as HTML back into the DOM
-* binding a fluent, typed API directly to the underlying node graph for inspection and manipulation
+Rather than maintaining a separate virtual ui-state model that must be kept in sync, LiveTree works by:
 
-Once grafted to document, mutations to LiveTree's node graph are immediately reflected in the DOM. Attributes, text content, children, styles, animations, and events are accessed and manipulated using ordinary JavaScript and TypeScript semantics.
+1) ingesting any existing HTMLElement within document.body (or <body> itself) and parsing it to HsonNodes
+2) re-emitting those nodes as HTML back into the DOM, structurally identical to the original
+3) binding a fluent, typed API directly to the underlying node graph that updates the DOM in realtime
 
-Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs.
+Attributes, text content, child nodes, CSS and styles, animations and keyframes, and events and listeners--all are accessible using ordinary JavaScript and TypeScript semantics.
+
+ Once grafted onto document.body, changes to LiveTree's node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs or the complexity and heft of a framework.
 
 ```ts
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
-       .liveTree()  // LiveTree constructor
-       .graft()  // replace contents of document.body with identical LiveTree projection
+        // LiveTree constructor
+      .liveTree()  
+        // replace contents of document.body with identical LiveTree projection
+      .graft()  
 
-    const branchDiv = tree.create.div()  // many basic JS document methods have been extended via LiveTree
-        .setText('hello world'); // liveTree methods return `this`, enabling complex chained operations
+      // LiveTree extends many basic JS document methods
+    const branchDiv = tree.create.div()  
+          // liveTree methods return `this`, enabling complex chained operations
+        .setText('hello world'); 
 
-    tree.listen           // liveTree's ListenerManager exposes event listeners and handling
-        .once()           // conventional eventListener options are fully represented in LiveTree's .listen toolchain 
-        .onKeydown(       // teardown and cleanup of listeners is built-in and automatic
-            branchDiv.setText('goodbye world') // changes to the node are automatically and instantly expressed in the DOM
+      // liveTree's ListenerManager exposes event listeners and handling
+    tree.listen           
+          // event listener options are fully represented in LiveTree's .listen toolchain 
+        .once()           
+        .onKeydown(       
+          // changes are automatically and instantly expressed in the DOM
+            branchDiv.setText('goodbye world') 
+              // teardown and cleanup of listeners is built-in and automatic
          ); 
 ```
 
@@ -106,7 +116,7 @@ The API is intentionally conservative. It often mirrors established JavaScript d
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are all constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
 
-Because styles use nodes' "quantum unique IDs" as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
+LiveTree's CssManager uses each a node's "quantum unique ID" (quids) as its selector. Local CSS scoping emerges naturally fcrom this: Rules apply only on the node where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree.
 
 This approach enables typed style management, deterministic cleanup, and animation systems that can be composed and sequenced without fragile string concatenation.
 
@@ -116,7 +126,7 @@ Treating JSON and HTML as different representations of the same underlying struc
 
 * state and view cannot diverge; there is only one data node structure of which they are both projections
 * serialization is no longer an edge operation, but a core function
-* reactive systems and interfaces require no reconciliation step
+* reactive systems and interfaces requiring no reconciliation step
 * DOM manipulation becomes authoritative and first-class rather than a side effect
 * non-JS runtimes (including WASM) gain a clear, stable target for DOM-adjacent interaction
 

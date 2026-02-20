@@ -30,13 +30,13 @@ No format is treated as canonical. No transformation path is privileged.
 
 ⸻
 
-###  1. Choosing a Source
+##  1. Choosing a Source
 
 Every transformation begins by declaring what kind of input you are providing.
 
 This step is mandatory and establishes both parsing semantics and the security model.
 
-#### HTML Sources
+### HTML Sources
 
 hson.fromUntrustedHtml(html: string)
 
@@ -65,7 +65,7 @@ This path exists to avoid silently degrading internal documents.
 
 ⸻
 
-#### Data Sources
+### Data Sources
 
 hson.fromJson(value: JSONValue)
 
@@ -95,7 +95,7 @@ This is useful for:
 
 ⸻
 
-#### DOM Query Sources
+### DOM Query Sources
 
 hson.queryDOM(selector: string)
 
@@ -112,11 +112,11 @@ These sources are typically used as entry points for LiveTree workflows.
 
 ⸻
 
-### 2. Choosing an Output Representation
+## 2. Choosing an Output Representation
 
 Every source method returns an output builder.
 
-#### HTML Output
+### HTML Output
 
 .toHtml()
 
@@ -126,7 +126,7 @@ Prepares an HTML output pipeline.
 
 ⸻
 
-#### JSON Output
+### JSON Output
 
 .toJson()
 
@@ -137,7 +137,7 @@ Produces structured JSON values derived from the node graph.
 
 ⸻
 
-#### HSON Output
+### HSON Output
 
 .toHson()
 
@@ -145,7 +145,7 @@ Returns HSON’s pared syntax or underlying nodes, depending on finalization.
 
 ⸻
 
-#### LiveTree Output
+### LiveTree Output
 
 .liveTree()
 
@@ -161,7 +161,7 @@ After selecting an output, you may apply optional modifiers.
 
 These affect serialization only, not the underlying node graph.
 
-#### Formatting Controls
+### Formatting Controls
 
 .spaced()
 
@@ -185,7 +185,7 @@ Applies fine-grained control over serialization behavior.
 
 ⸻
 
-#### Explicit Sanitization Escape Hatch
+### Explicit Sanitization Escape Hatch
 
 .sanitizeBEWARE()
 
@@ -207,7 +207,7 @@ Important notes:
 
 The final step materializes the result.
 
-#### String Serialization
+### String Serialization
 
 .serialize()
 
@@ -218,7 +218,7 @@ Returns a string:
 
 ⸻
 
-#### Structured Output
+### Structured Output
 
 .parse()
 
@@ -265,7 +265,7 @@ Sanitization is explicit, predictable, and opt-in outside HTML parsing.
 
 ⸻
 
-#### Design Notes
+### Design Notes
 	•	Transformations are deterministic
 	•	Round-trip conversions do not drift
 	•	No format is treated as canonical or 'true'

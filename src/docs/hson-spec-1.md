@@ -102,7 +102,7 @@ Root: Represents the base 'wrapper' node of a HSON tree undergoing transformatio
 	•	To ensure consistency, HSON's transformers wrap content under operation in a <_root> tag during processing. This tag is unwrapped on serialization or appending to other nodes and is usually not exposed publicly. 
 
 
-#### Note:
+### Note:
 <_elem> tags, as well as _attrs properties, will only be derived from HTML sources of data. 
 <_obj> tags, <_arr>/<_ii> tags will only be derived from JSON data. 
 
