@@ -93,7 +93,7 @@ const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
 ## LiveTree capabilities
 LiveTree supports:
 
-* creating, removing, and rearranging nodes
+* creating, removing, and rearranging nodes and child nodes
 * reading and writing attributes, text content, and tag names
 * scoped CSS manipulation without Shadow DOM
 * declarative animation control via CSS keyframes
@@ -106,7 +106,7 @@ The API is intentionally conservative. It often mirrors established JavaScript d
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are all constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
 
-Because styles use nodes' unique "quantum IDs" as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
+Because styles use nodes' "quantum unique IDs" as selectors, scoping emerges naturally. Rules apply exactly where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. CSS remains CSS, but its lifetime and scope can be governed programmatically by LiveTree's CssManager.
 
 This approach enables typed style management, deterministic cleanup, and animation systems that can be composed and sequenced without fragile string concatenation.
 
@@ -122,9 +122,9 @@ Treating JSON and HTML as different representations of the same underlying struc
 
 
 ## status and safety
-### HSON-LIVE IS EXPERIMENTAL
+### HSON-LIVE IS EXPERIMENTAL - USE WITH CAUTION
 The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments.
-It is not currently recommended for processing untrusted HTML or for security-critical production use without additional hardening. 
+It is not currently recommended for processing untrusted HTML or for security-critical production use. 
 
 
 ## installation
