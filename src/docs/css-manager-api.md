@@ -13,29 +13,29 @@ and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, th
 
 ### Surface
 
-- `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
-- `set.var("--x", 10)` convenience setter for CSS variables.
-- `setProp(prop, value)` write one property.
-- `setMany(map)` write many properties in one call.
-- `remove(prop)` remove one property.
-- `clear()` clear all properties for the handle.
+* `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
+* `set.var("--x", 10)` convenience setter for CSS variables.
+* `setProp(prop, value)` write one property.
+* `setMany(map)` write many properties in one call.
+* `remove(prop)` remove one property.
+* `clear()` clear all properties for the handle.
 
 All methods return the host value (typically the `LiveTree`), enabling chaining.
 
 ### Key normalization
 
-- Accepts camelCase, kebab-case strings and vendor-prefixed kebab (`-webkit-user-select`), and custom property strings (`--my-var`).
-- `float` and `css-float` normalize to `cssFloat`.
-- Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
+* Accepts camelCase, kebab-case strings and vendor-prefixed kebab (`-webkit-user-select`), and custom property strings (`--my-var`).
+* `float` and `css-float` normalize to `cssFloat`.
+* Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
 
 ### Value normalization
 
 `CssValue` is `string | number | boolean | null | undefined | { value, unit? }`.
 
-- `null` or `undefined` means remove when used with `setProp`.
-- Strings are trimmed; numbers and booleans are stringified.
-- `{ value, unit }` renders as `${value}${unit ?? ""}`.
-- `setMany` skips `null` and `undefined`
+* `null` or `undefined` means remove when used with `setProp`.
+* Strings are trimmed; numbers and booleans are stringified.
+* `{ value, unit }` renders as `${value}${unit ?? ""}`.
+* `setMany` skips `null` and `undefined`
 
 ### Pseudo blocks in `setMany`
 
@@ -71,8 +71,8 @@ Using liveTree.css.setMany, CSS can be set locally, per-node.
 
 ### Primary entry points
 
-- `LiveTree.css` returns a `CssHandle` bound to the node's QUID.
-- `CssManager.invoke()` returns the singleton manager.
+* `LiveTree.css` returns a `CssHandle` bound to the node's QUID.
+* `CssManager.invoke()` returns the singleton manager.
 
 A `CssHandle` is `StyleSetter + get + atProperty + keyframes + anim`.
 
@@ -92,13 +92,13 @@ tree.css.clear();
 
 Manager methods (power-user):
 
-- `setForQuid(quid, propCanon, value)`
-- `setManyForQuid(quid, decls)`
-- `unsetForQuid(quid, propCanon)`
-- `clearQuid(quid)`
-- `clearAll()`
-- `getForQuid(quid, propCanon)` returns the last written value
-- `hasAnyRules(quid)` returns whether any rules exist
+* `setForQuid(quid, propCanon, value)`
+* `setManyForQuid(quid, decls)`
+* `unsetForQuid(quid, propCanon)`
+* `clearQuid(quid)`
+* `clearAll()`
+* `getForQuid(quid, propCanon)` returns the last written value
+* `hasAnyRules(quid)` returns whether any rules exist
 
 ### Read semantics
 
@@ -106,31 +106,31 @@ Manager methods (power-user):
 
 For multi-QUID handles, `get.property(...)` returns a consensus value:
 
-- If any QUID is missing the property, the result is `undefined`.
-- If values differ between QUIDs, the result is `undefined`.
+* If any QUID is missing the property, the result is `undefined`.
+* If values differ between QUIDs, the result is `undefined`.
 
 ### Value and key behavior
 
-- Property keys are normalized to canonical CSSOM form when written.
-- At render time, canonical keys are emitted as CSS property names
+* Property keys are normalized to canonical CSSOM form when written.
+* At render time, canonical keys are emitted as CSS property names
   (custom properties preserved, camelCase converted to kebab-case).
-- `setForQuid` treats empty strings as delete and `null` or `undefined` as delete.
+* `setForQuid` treats empty strings as delete and `null` or `undefined` as delete.
 
 ### Scheduling and rendering
 
-- Mutations mark the manager as dirty.
-- In browsers, a single `requestAnimationFrame` flush batches updates.
-- In Node/test environments, writes flush immediately.
-- `syncNow()` forces an immediate flush if anything changed.
-- `renderCss()` returns the combined CSS text for inspection.
-- `debug_hardReset()` clears all CSS state and the managed style element.
+* Mutations mark the manager as dirty.
+* In browsers, a single `requestAnimationFrame` flush batches updates.
+* In Node/test environments, writes flush immediately.
+* `syncNow()` forces an immediate flush if anything changed.
+* `renderCss()` returns the combined CSS text for inspection.
+* `debug_hardReset()` clears all CSS state and the managed style element.
 
 ### Sub-managers
 
-- `atProperty` exposes the `@property` registration manager.
-- `keyframes` exposes the keyframes manager.
-- `animForQuids(...)` returns a `CssAnimHandle` wired to QUID scopes.
-- `CssHandle.anim` is a pre-wired animation handle for the bound QUIDs.
+* `atProperty` exposes the `@property` registration manager.
+* `keyframes` exposes the keyframes manager.
+* `animForQuids(...)` returns a `CssAnimHandle` wired to QUID scopes.
+* `CssHandle.anim` is a pre-wired animation handle for the bound QUIDs.
 
 ### @property manager
 
@@ -149,9 +149,9 @@ css.atProperty
 
 Behavior notes:
 
-- Writes are centralized in `CssManager`, not per-node.
-- Changes are rendered into the same managed `<style>` element.
-- You can treat registrations as global for the current document.
+* Writes are centralized in `CssManager`, not per-node.
+* Changes are rendered into the same managed `<style>` element.
+* You can treat registrations as global for the current document.
 
 ### Keyframes manager
 
@@ -172,9 +172,9 @@ css.keyframes.set({
 
 Behavior notes:
 
-- Definitions are stored in memory and rendered into the managed stylesheet.
-- Updating a keyframe name replaces the prior definition.
-- The manager only writes the keyframe blocks; it does not start animations.
+* Definitions are stored in memory and rendered into the managed stylesheet.
+* Updating a keyframe name replaces the prior definition.
+* The manager only writes the keyframe blocks; it does not start animations.
 
 ### Animation
 
@@ -191,8 +191,8 @@ anim.begin({ name: "fade", duration: "300ms", easing: "ease-out" });
 
 Behavior notes:
 
-- Animation writes flow through `CssManager` and are scoped to the QUID selector(s).
-- DOM element discovery for animation side effects uses the current document.
+* Animation writes flow through `CssManager` and are scoped to the QUID selector(s).
+* DOM element discovery for animation side effects uses the current document.
 
 ---
 
@@ -213,16 +213,16 @@ This returns the `GlobalCss.api(...)` surface already wired to notify `CssManage
 
 `globals` (or `GlobalCss.api(...)`) exposes:
 
-- `rule(ruleKey, selector)` returns a `GlobalRuleHandle`.
-- `sel(selector)` returns a rule handle with a stable key `sel:<selector>`.
-- `drop(ruleKey)` removes an entire rule.
-- `clearAll()`, `has(ruleKey)`, `list()`, `get(ruleKey)`, `renderAll()`.
-- `dispose()` unregisters the change listener (useful for tests).
+* `rule(ruleKey, selector)` returns a `GlobalRuleHandle`.
+* `sel(selector)` returns a rule handle with a stable key `sel:<selector>`.
+* `drop(ruleKey)` removes an entire rule.
+* `clearAll()`, `has(ruleKey)`, `list()`, `get(ruleKey)`, `renderAll()`.
+* `dispose()` unregisters the change listener (useful for tests).
 
 `GlobalRuleHandle` is a `StyleSetter` plus:
 
-- `ruleKey` and `selector`
-- `drop()` to remove the rule
+* `ruleKey` and `selector`
+* `drop()` to remove the rule
 
 Rules are rendered with deterministic property ordering. Empty rules are dropped.
 
@@ -241,10 +241,10 @@ For `::before` and `::after`, `GlobalCss` will insert `content: ""` if you do no
 
 Key differences from `LiveTree.css`:
 
-- Inline only. It does not touch QUID-scoped rules or global rules.
-- No pseudo blocks. `_hover` or `_before` maps in `setMany` are ignored.
-- The `set` proxy is constrained by runtime keys. In browser runtimes it uses
+* Inline only. It does not touch QUID-scoped rules or global rules.
+* No pseudo blocks. `_hover` or `_before` maps in `setMany` are ignored.
+* The `set` proxy is constrained by runtime keys. In browser runtimes it uses
   `document.documentElement.style` for the key list; in Node/tests it falls back to a small,
   fixed list.
-- `style.get.*` reads from the serialized inline style attribute, not computed style.
+* `style.get.*` reads from the serialized inline style attribute, not computed style.
   It will not reflect rules set through `CssManager` or `GlobalCss`.

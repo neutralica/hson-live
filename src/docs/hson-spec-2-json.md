@@ -1,7 +1,7 @@
-// hson-spec-2.json.md
+// hson-spec-2-json.md
 
-# HSON Spec Part 2
-# JSON Representation in HSON
+# HSON Spec[2]
+## JSON Representation in HSON
 
 This section defines the normative mapping between JSON values and the HSON node graph.
 It specifies how JSON structures are represented internally, independent of syntax, parser, or runtime projection.
@@ -13,15 +13,15 @@ This mapping enables a lossless, deterministic round-trip conversion between JSO
 ## 2.1 Scope
 
 This specification applies to:
-	•	JSON values as defined by ECMA-404:
-	•	object
-	•	array
-	•	string
-	•	number
-	•	boolean
-	•	null
-	•	Their representation within the HSON node graph
-	•	Serialization back to JSON without structural drift
+*	JSON values as defined by ECMA-404:
+*	object
+*	array
+*	string
+*	number
+*	boolean
+*	null
+*	Their representation within the HSON node graph
+*	Serialization back to JSON without structural drift
 
 This section does not describe HTML, markup syntax, or runtime behavior.
 
@@ -32,9 +32,9 @@ This section does not describe HTML, markup syntax, or runtime behavior.
 All JSON values are represented using HsonNode structures and a fixed set of Virtual Structural Nodes (VSNs).
 
 A HsonNode consists of:
-	•	a tag name (the "key")
-	•	an ordered list of child nodes (the "value")
-	•	optional metadata and attributes 
+*	a tag name (the "key")
+*	an ordered list of child nodes (the "value")
+*	optional metadata and attributes 
 
 Primitive values never appear directly as children of arbitrary nodes.
 They are always wrapped in explicit primitive VSNs.
@@ -49,10 +49,10 @@ Except for 'cluster' VSNs - <_obj>, <_elem>, <_arr> - HsonNodes may not contain 
 Accurate preservation of cluster structure using these VSNs is a core requirement for HSON, as <_obj> and <_elem> shapes look similar but are fundamentally incompatible. 
 
 Mapping rules
-	•	Each JSON object maps to exactly one <_obj> node.
-	•	Each property of the object is represented as a child node of <_obj>.
-	•	Property names are represented as node _tags.
-	•	Property values are represented as _content under their corresponding 'key' property node.
+*	Each JSON object maps to exactly one <_obj> node.
+*	Each property of the object is represented as a child node of <_obj>.
+*	Property names are represented as node _tags.
+*	Property values are represented as _content under their corresponding 'key' property node.
 
 Example (conceptual):
 ```
@@ -70,8 +70,8 @@ maps to:
      └─<_str>("x")
 ```
 Notes
-	•	JSON object ordering is not semantically significant and is not interpreted as meaningful.
-	•	HSON canonicalizes JSON property order once at parsing.
+*	JSON object ordering is not semantically significant and is not interpreted as meaningful.
+*	HSON canonicalizes JSON property order once at parsing.
 
 ⸻
 
@@ -80,10 +80,10 @@ Notes
 A JSON array is represented as a node containing an <_arr> VSN. 
 
 Mapping rules
-	•	Each array maps to exactly one <_arr> node.
-	•	Each element of the array is wrapped in an <_ii> (index item) node.
-	•	<_ii> nodes preserve array ordering by carrying the index number in _meta.data-_index.
-	•	Each <_ii> contains exactly one child representing the element value. <_ii> nodes may also contain <_arr> or <_obj> nodes
+*	Each array maps to exactly one <_arr> node.
+*	Each element of the array is wrapped in an <_ii> (index item) node.
+*	<_ii> nodes preserve array ordering by carrying the index number in _meta.data-_index.
+*	Each <_ii> contains exactly one child representing the element value. <_ii> nodes may also contain <_arr> or <_obj> nodes
 
 Example:
 ```
@@ -103,20 +103,20 @@ maps to:
 
 Primitive values are represented using dedicated primitive VSNs.
 
-Primitive VSNs
+#### Primitive VSNs
 Primitive VSNs are the 'endpoint' for HsonNode graphs, containing the 'value' of the ordered pair. To preserve JSON's typed primitives when converted to untyped HTML, typed VSNs act as parser hints to dictate how to handle a given value.
 
-type -> VSN _tag
-string ->	<_str>
-number ->	<_val>
-boolean ->	<_val>
-null ->	<_val>
+* type -> VSN _tag
+* string ->	<_str>
+* number ->	<_val>
+* boolean ->	<_val>
+* null ->	<_val>
 
 Rules
-	•	Primitive values must appear only within primitive nodes: <_str> or <_val>.
-	•	Primitive values may not appear directly as children of non-primitive nodes.
-	•	<_str> preserves string content verbatim.
-	•	<_val> preserves numeric, boolean, and null. It is a parser hint to coerce the node's string value to a typed primitive on reentry into JSON. 
+*	Primitive values must appear only within primitive nodes: <_str> or <_val>.
+*	Primitive values may not appear directly as children of non-primitive nodes.
+*	<_str> preserves string content verbatim.
+*	<_val> preserves numeric, boolean, and null. It is a parser hint to coerce the node's string value to a typed primitive on reentry into JSON. 
 
 ⸻
 
@@ -125,9 +125,9 @@ Rules
 JSON values may be nested arbitrarily.
 
 The mapping rules above apply recursively:
-	•	Objects may contain arrays
-	•	Arrays may contain objects
-	•	Any structure depth is permitted
+*	Objects may contain arrays
+*	Arrays may contain objects
+*	Any structure depth is permitted
 
 No information is discarded or reinterpreted during nesting.
 
@@ -136,14 +136,14 @@ No information is discarded or reinterpreted during nesting.
 ## 2.7 Round-Trip Guarantees
 
 Given a valid JSON value J:
-	1.	Parsing J into HsonNode IR
-	2.	Serializing the resulting node graph back to JSON
+1.	Parsing J into HsonNode IR
+2.	Serializing the resulting node graph back to JSON
 
 must produce a JSON value J′ such that:
-	•	J′ is structurally equivalent to J
-	•	All values are preserved exactly
-	•	No keys or values are added, removed, or coerced
-	•	If J′ is reparsed into HsonNodes again, the second node graph will be identical to the first
+*	J′ is structurally equivalent to J
+*	All values are preserved exactly
+*	No keys or values are added, removed, or coerced
+*	If J′ is reparsed into HsonNodes again, the second node graph will be identical to the first
 
 Whitespace, formatting, and source-level ordering are not part of this guarantee.
 
@@ -152,14 +152,14 @@ Whitespace, formatting, and source-level ordering are not part of this guarantee
 ## 2.8 Canonicalization
 
 HSON does not impose semantic meaning on:
-	•	object property order
-	•	formatting choices
-	•	source syntax
+*	object property order
+*	formatting choices
+*	source syntax
 
 However, once parsed into the node graph:
-	•	the structure is explicit
-	•	value semantics are fixed
-	•	transformations are deterministic
+*	the structure is explicit
+*	value semantics are fixed
+*	transformations are deterministic
 
 This canonical form is the basis for HTML mapping, runtime projection, and reactive systems described in later sections.
 
@@ -168,9 +168,9 @@ This canonical form is the basis for HTML mapping, runtime projection, and react
 ## 2.9 Non-Goals
 
 This mapping does not attempt to:
-	•	validate JSON schemas
-	•	infer types
-	•	enforce application-level constraints
-	•	interpret JSON as markup
+*	validate JSON schemas
+*	infer types
+*	enforce application-level constraints
+*	interpret JSON as markup
 
 It describes representation only.
