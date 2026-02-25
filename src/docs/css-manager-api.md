@@ -8,52 +8,55 @@ This document covers the CssManager API (both QUID-scoped and global), differenc
 
 ## StyleSetter
 
-StyleSetter is the shared fluent write surface used by `LiveTree.style`, `LiveTree.css`,
-and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, then delegates writes to a backend adapter.
+StyleSetter is the shared fluent write surface used by `LiveTree.style` (StyleManager), `LiveTree.css` (CssManager), and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, then delegates writes to a backend adapter.
 
 ### Surface
 
 * `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
 * `set.var("--x", 10)` convenience setter for CSS variables.
-* `setProp(prop, value)` write one property.
+* `setProp(prop: string, value: string)` write one property.
 * `setMany(map)` write many properties in one call.
-* `remove(prop)` remove one property.
+* `remove(prop: string)` remove one property.
 * `clear()` clear all properties for the handle.
+ 
+Methods usually return `this`, enabling chaining with other LiveTree methods.
 
-All methods return the host value (typically the `LiveTree`), enabling chaining.
 
 ### Key normalization
 
-* Accepts camelCase, kebab-case strings and vendor-prefixed kebab (`-webkit-user-select`), and custom property strings (`--my-var`).
+* setMany accepts only camelCase.
 * `float` and `css-float` normalize to `cssFloat`.
 * Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
 
-### Value normalization
 
+### Value normalization
 `CssValue` is `string | number | boolean | null | undefined | { value, unit? }`.
 
 * `null` or `undefined` means remove when used with `setProp`.
 * Strings are trimmed; numbers and booleans are stringified.
-* `{ value, unit }` renders as `${value}${unit ?? ""}`.
+* `{ value, unit }` renders as `${value}: ${unit}`.
 * `setMany` skips `null` and `undefined`
 
-### Pseudo blocks in `setMany`
-
-Provided the caller passes `applyPseudo` (via make_style_setter), `setMany` can route pseudo blocks. As pseudo-elements are not accepted in inline style attributes, only managers with access to the hson-_style stylesheet (CssManager & GlobalCss) can manipulate them.
+### Pseudo blocks in `setMany()`
+`setMany` can write route pseudoelement rule blocks. As pseudo-elements are not accepted in inline style attributes, only managers with access to the hson-_style stylesheet element (CssManager & GlobalCss) can manipulate them.
 Supported keys are:
 `_hover`, `_active`, `_focus`, `_focusWithin`, `_disabled`, `_before`, `_after`.
 
-A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object.
+A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object. Psuedoelements are only supported via get/setMany. 
 
-Example:
-
+#### Example:
 ```ts
-// QUID-scoped CSS rules (via CssManager)
+// applies CSS rules scoped to tree's QUID via CssManager
 tree.css.setMany({
-  opacity: 0.5,
-  _hover: { opacity: 1 },
-  _before: { display: "block" },
+  _hover: { 
+    opacity: 1,
+    background: "orange" },
 });
+```
+
+this appears in the style element as
+```ts
+[data-_quid="dbb9b6ce017707c9"]:hover{background:orange;opacity:1;}
 ```
 
 ---
@@ -90,7 +93,7 @@ tree.css.remove("opacity");
 tree.css.clear();
 ```
 
-Manager methods (power-user):
+#### Manager methods (typically internal):
 
 * `setForQuid(quid, propCanon, value)`
 * `setManyForQuid(quid, decls)`
@@ -118,28 +121,31 @@ For multi-QUID handles, `get.property(...)` returns a consensus value:
 
 ### Scheduling and rendering
 
-* Mutations mark the manager as dirty.
+* Mutations mark the manager as changed.
 * In browsers, a single `requestAnimationFrame` flush batches updates.
 * In Node/test environments, writes flush immediately.
 * `syncNow()` forces an immediate flush if anything changed.
 * `renderCss()` returns the combined CSS text for inspection.
 * `debug_hardReset()` clears all CSS state and the managed style element.
 
-### Sub-managers
+## Sub-managers
 
 * `atProperty` exposes the `@property` registration manager.
 * `keyframes` exposes the keyframes manager.
 * `animForQuids(...)` returns a `CssAnimHandle` wired to QUID scopes.
 * `CssHandle.anim` is a pre-wired animation handle for the bound QUIDs.
 
-### @property manager
+At some point in the future, animation and keyframes may both be relocated under the `liveTree.anim` namespace
+
+---
+
+### PropertyManager
 
 The `atProperty` manager owns `@property` registrations. It is intended for declaring custom
 properties with type, syntax, and inheritance metadata so animations and transitions can
 interpolate correctly.
 
-Usage pattern:
-
+#### Usage pattern:
 ```ts
 const css = tree.css;
 css.atProperty
@@ -147,17 +153,18 @@ css.atProperty
   .set("--speed", { syntax: "<number>", inherits: true, initial: 1 });
 ```
 
-Behavior notes:
-
+#### Behavior notes:
 * Writes are centralized in `CssManager`, not per-node.
 * Changes are rendered into the same managed `<style>` element.
 * You can treat registrations as global for the current document.
 
-### Keyframes manager
+---
 
-The `keyframes` manager owns named keyframe definitions.
+### KeyframesManager
 
-Usage pattern:
+The `.keyframes` manager owns named keyframe definitions.
+
+#### Usage pattern:
 
 ```ts
 const css = tree.css;
@@ -170,26 +177,29 @@ css.keyframes.set({
 });
 ```
 
-Behavior notes:
+#### Behavior notes:
 
 * Definitions are stored in memory and rendered into the managed stylesheet.
 * Updating a keyframe name replaces the prior definition.
 * The manager only writes the keyframe blocks; it does not start animations.
 
-### Animation
+Automated teardown and cleanup of keyframes is planned but not begun.
+
+
+### AnimationManager
 
 `CssHandle.anim` and `CssManager.animForQuids(...)` return a `CssAnimHandle` bound to one
 or more QUIDs. It is a small control surface for applying, starting, or clearing animations
 against those targets.
 
-Typical usage:
+#### Typical usage:
 
 ```ts
 const anim = tree.css.anim;
 anim.begin({ name: "fade", duration: "300ms", easing: "ease-out" });
 ```
 
-Behavior notes:
+#### Behavior notes:
 
 * Animation writes flow through `CssManager` and are scoped to the QUID selector(s).
 * DOM element discovery for animation side effects uses the current document.
@@ -207,7 +217,7 @@ Recommended entry:
 const globals = CssManager.globals.invoke();
 ```
 
-This returns the `GlobalCss.api(...)` surface already wired to notify `CssManager` on change.
+This returns the `GlobalCss.api(...)` surface wired to notify `CssManager` on change.
 
 ### GlobalCss API
 
@@ -226,23 +236,29 @@ This returns the `GlobalCss.api(...)` surface already wired to notify `CssManage
 
 Rules are rendered with deterministic property ordering. Empty rules are dropped.
 
-### Pseudos in globals
+Automated rule teardown & cleanup is on the roadmap but not begun. 
+
+
+---
+
+
+## Pseudos in globals
 
 `setMany` supports the same pseudo block keys as `StyleSetter` and will create sibling rules
 like `selector:hover` or `selector::before`.
 
-For `::before` and `::after`, `GlobalCss` will insert `content: ""` if you do not provide it.
+For `::before` and `::after`, `GlobalCss` will default to `content: ""` if it is not provided.
 
 ---
 
-## StyleManager Differences
+### StyleManager Differences
 
-`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element and `_attrs.style` on the HSON node.
+`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element - `_attrs.style` on the HSON node.
 
 Key differences from `LiveTree.css`:
 
-* Inline only. It does not touch QUID-scoped rules or global rules.
-* No pseudo blocks. `_hover` or `_before` maps in `setMany` are ignored.
+* Inline only. Does not touch QUID-scoped rules or global rules.
+* No pseudo blocks. `_hover` or `_before` maps in `style.setMany` are ignored.
 * The `set` proxy is constrained by runtime keys. In browser runtimes it uses
   `document.documentElement.style` for the key list; in Node/tests it falls back to a small,
   fixed list.

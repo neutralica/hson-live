@@ -44,17 +44,17 @@ They are always wrapped in explicit primitive VSNs.
 ## 2.3 JSON Object Mapping
 
 A JSON object is represented as a node containing an <_obj> VSN. The position of the <_obj> tag roughly mirrors the position of the curly braces that would delimit the object in JSON, and are serialized to JSON as such.
-Except for 'cluster' VSNs - <_obj>, <_elem>, <_arr> - HsonNodes may not contain multiple child nodes in their _content properties. **every node's _content property is wrapped in its native cluster VSN**, even if the propery contains a single child node. 
+Nodes other than 'cluster' VSNs - <_obj>, <_elem>, <_arr> -  may not contain multiple child nodes in their _content properties. Other than primitive-containing <_str> and <_val> tags, **every node's _content property is wrapped in its native cluster VSN**, even if the propery contains a single child node. 
 
 Accurate preservation of cluster structure using these VSNs is a core requirement for HSON, as <_obj> and <_elem> shapes look similar but are fundamentally incompatible. 
 
-Mapping rules
+#### Mapping rules
 *	Each JSON object maps to exactly one <_obj> node.
 *	Each property of the object is represented as a child node of <_obj>.
 *	Property names are represented as node _tags.
 *	Property values are represented as _content under their corresponding 'key' property node.
 
-Example (conceptual):
+#### Conceptual Example:
 ```
 {
   "a": 1,
@@ -69,7 +69,7 @@ maps to:
  └─ b
      └─<_str>("x")
 ```
-Notes
+#### Notes
 *	JSON object ordering is not semantically significant and is not interpreted as meaningful.
 *	HSON canonicalizes JSON property order once at parsing.
 
@@ -79,13 +79,13 @@ Notes
 
 A JSON array is represented as a node containing an <_arr> VSN. 
 
-Mapping rules
+#### Mapping rules
 *	Each array maps to exactly one <_arr> node.
 *	Each element of the array is wrapped in an <_ii> (index item) node.
 *	<_ii> nodes preserve array ordering by carrying the index number in _meta.data-_index.
 *	Each <_ii> contains exactly one child representing the element value. <_ii> nodes may also contain <_arr> or <_obj> nodes
 
-Example:
+#### Example:
 ```
 [1, "x", true]
 ```

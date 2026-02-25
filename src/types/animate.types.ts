@@ -4,7 +4,6 @@ export type AnimationName = string;
 export type AnimationEndMode = "name-only" | "clear-all";
 export type AnimSpec = Readonly<{
   name: AnimationName;
-
   // Optional sugar: if omitted, user can define these in CSS rules/classes instead.
   duration: string;          // "250ms", "1s"
   timingFunction?: string;    // "ease", "linear", "cubic-bezier(...)"

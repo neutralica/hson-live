@@ -3,6 +3,7 @@
 ## 14FEB2026
 + (HTMLElement).focus() (see: getBoundingRect, below)
 + hasFlag()
++ document.getElementByPoint? (add to getClientBoundingRect etc -- .dom? )
 
 ## 12FEB2025
 + break up CssManager similar to livetree
