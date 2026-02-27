@@ -1,7 +1,7 @@
 // normalize-css.ts
 
-import { kebab_to_camel } from "../primitive-utils/kebab-to-camel.util";
-import { camel_to_kebab } from "./camel_to_kebab";
+import { kebab_to_camel } from "../primitive-utils/kebab-to-camel.util.js";
+import { camel_to_kebab } from "./camel_to_kebab.js";
 
 //  keep this table small and explicit.
 const CSS_PROP_ALIASES: Readonly<Record<string, string>> = {

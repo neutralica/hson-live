@@ -1,6 +1,6 @@
 // types.livemap.ts
 
-import { HsonNode } from "../../types/node.types";
+import { HsonNode } from "../../types/node.types.js";
 
 /*************************** 
  * (CURRENTLY UNUSED, TBC)

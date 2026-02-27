@@ -1,6 +1,6 @@
 // slice-balance.ts
 
-import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils";
+import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 /*******
  * Extract the contents of a balanced, nested delimiter region from a string.
  *

@@ -1,8 +1,8 @@
 // make-string.nodes.utils.ts
 
-import { is_Node } from "../node-utils/node-guards";
-import { HsonNode, HsonAttrs, HsonMeta } from "../../types/node.types";
-import { _DATA_INDEX, _DATA_QUID } from "../../consts/constants";
+import { is_Node } from "../node-utils/node-guards.js";
+import { HsonNode, HsonAttrs, HsonMeta } from "../../types/node.types.js";
+import { _DATA_INDEX, _DATA_QUID } from "../../consts/constants.js";
 
 /**
  * Deterministically stringify arbitrary values for debugging and snapshots.

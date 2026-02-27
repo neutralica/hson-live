@@ -1,6 +1,6 @@
 // projector.ts
 
-import { Patch, Path } from "../livemap/types.livemap";
+import { Patch, Path } from "../livemap/types.livemap.js";
 
 /*************************** 
  * (CURRENTLY UNUSED, TBC)

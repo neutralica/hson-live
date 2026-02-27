@@ -1,9 +1,9 @@
 // construct-options-3.ts
 
-import { RenderFormats } from "../../types/constructor.types";
-import { construct_render_4 } from "./construct-render-4"; 
-import { OptionsConstructor_3, FrameOptions, RenderConstructor_4 } from "../../types/constructor.types";
-import { FrameRender } from "../../types/constructor.types";
+import { RenderFormats } from "../../types/constructor.types.js";
+import { construct_render_4 } from "./construct-render-4.js"; 
+import { OptionsConstructor_3, FrameOptions, RenderConstructor_4 } from "../../types/constructor.types.js";
+import { FrameRender } from "../../types/constructor.types.js";
 
 /**
  * Stage 3 : applying output options.

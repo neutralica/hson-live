@@ -1,9 +1,9 @@
 // unwrap-root-obj.ts
 
-import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../consts/constants";
-import { CREATE_NODE } from "../../consts/factories";
-import { HsonNode } from "../../types/node.types";
-import { is_Node } from "../node-utils/node-guards";
+import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../consts/constants.js";
+import { CREATE_NODE } from "../../consts/factories.js";
+import { HsonNode } from "../../types/node.types.js";
+import { is_Node } from "../node-utils/node-guards.js";
 
 
 /**

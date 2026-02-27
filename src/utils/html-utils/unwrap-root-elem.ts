@@ -1,8 +1,8 @@
 // unwrap-root-elem.ts
 
-import { ROOT_TAG, ELEM_TAG } from "../../consts/constants";
-import { HsonNode } from "../../types/node.types";
-import { is_Node } from "../node-utils/node-guards";
+import { ROOT_TAG, ELEM_TAG } from "../../consts/constants.js";
+import { HsonNode } from "../../types/node.types.js";
+import { is_Node } from "../node-utils/node-guards.js";
 
 
 /**

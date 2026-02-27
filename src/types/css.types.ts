@@ -1,11 +1,11 @@
 // css.types.ts
 
-import { LiveTree } from "../api/livetree/livetree";
-import { CssAnimHandle } from "./animate.types";
-import { KeyframesManager } from "./keyframes.types";
-import { StyleSetter } from "../api/livetree/managers/style-setter";
-import { PropertyManager } from "./at-property.types";
-import { StyleGetter } from "../api/livetree/managers/style-getter";
+import { LiveTree } from "../api/livetree/livetree.js";
+import { CssAnimHandle } from "./animate.types.js";
+import { KeyframesManager } from "./keyframes.types.js";
+import { StyleSetter } from "../api/livetree/managers/style-setter.js";
+import { PropertyManager } from "./at-property.types.js";
+import { StyleGetter } from "../api/livetree/managers/style-getter.js";
 
 
 /**

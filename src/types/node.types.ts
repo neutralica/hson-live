@@ -1,9 +1,9 @@
 // node.types.ts
 
 
-import { CssMap } from "./css.types";
-import {  Primitive } from "./core.types";
-import { _DATA_INDEX, _DATA_QUID } from "../consts/constants";
+import { CssMap } from "./css.types.js";
+import {  Primitive } from "./core.types.js";
+import { _DATA_INDEX, _DATA_QUID } from "../consts/constants.js";
 
 /*******
  * Core HSON structural node.

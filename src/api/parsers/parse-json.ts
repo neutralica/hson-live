@@ -1,17 +1,17 @@
 // parse-json.transform.hson.ts
 
-import { is_Primitive, is_Object, is_string } from "../../utils/core-utils/guards.core";
-import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG,  II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants";
-import { CREATE_NODE } from "../../consts/factories";
-import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants";
-import { HsonMeta,  HsonAttrs, HsonNode } from "../../types/node.types";
-import { JsonObj, JsonValue, Primitive } from "../../types/core.types";
-import { assert_invariants } from "../../diagnostics/assert-invariants.test";
-import { _snip } from "../../utils/sys-utils/snip.utils";
-import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils";
-import { parse_style_string } from "../../utils/attrs-utils/parse-style";
-import { serialize_style } from "../../utils/attrs-utils/serialize-style";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
+import { is_Primitive, is_Object, is_string } from "../../utils/core-utils/guards.core.js";
+import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG,  II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants.js";
+import { CREATE_NODE } from "../../consts/factories.js";
+import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants.js";
+import { HsonMeta,  HsonAttrs, HsonNode } from "../../types/node.types.js";
+import { JsonObj, JsonValue, Primitive } from "../../types/core.types.js";
+import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { _snip } from "../../utils/sys-utils/snip.utils.js";
+import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils.js";
+import { parse_style_string } from "../../utils/attrs-utils/parse-style.js";
+import { serialize_style } from "../../utils/attrs-utils/serialize-style.js";
+import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
 
 /**
  * Infer the appropriate HSON VSN tag for a JSON value.

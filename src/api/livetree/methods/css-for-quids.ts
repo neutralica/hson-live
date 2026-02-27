@@ -2,12 +2,12 @@
 
 
 import { Primitive } from "hson-live/types";
-import { CssHandleVoid, CssHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types";
-import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css";
-import { LiveTree } from "../livetree";
-import { CssManager, isLiveTree, render_css_value } from "../managers/css-manager";
-import { make_style_getter } from "../managers/style-getter";
-import { make_style_setter, StyleSetterAdapters } from "../managers/style-setter";
+import { CssHandleVoid, CssHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
+import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { LiveTree } from "../livetree.js";
+import { CssManager, isLiveTree, render_css_value } from "../managers/css-manager.js";
+import { make_style_getter } from "../managers/style-getter.js";
+import { make_style_setter, StyleSetterAdapters } from "../managers/style-setter.js";
 
 // CHANGED: one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.

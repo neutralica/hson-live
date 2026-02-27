@@ -1,6 +1,6 @@
 // parse-style.ts
 
-import { kebab_to_camel } from "../primitive-utils/kebab-to-camel.util";
+import { kebab_to_camel } from "../primitive-utils/kebab-to-camel.util.js";
 
 /*******
  * Parse a CSS declaration list string into a key/value record.

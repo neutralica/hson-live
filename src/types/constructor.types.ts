@@ -1,8 +1,8 @@
 
-import { $HSON_FRAME, $RENDER, } from "../consts/constants";
-import { HsonNode } from "./node.types";
-import { JsonValue } from "./core.types";
-import { LiveTree } from "../api/livetree/livetree";
+import { $HSON_FRAME, $RENDER, } from "../consts/constants.js";
+import { HsonNode } from "./node.types.js";
+import { JsonValue } from "./core.types.js";
+import { LiveTree } from "../api/livetree/livetree.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.

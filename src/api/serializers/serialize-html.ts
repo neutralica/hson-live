@@ -1,17 +1,17 @@
 // serialize-html.new.render.ts
 
-import { Primitive } from '../../types/core.types'
-import { is_Primitive } from '../../utils/core-utils/guards.core';
-import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants';
-import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs';
-import { escape_html_text } from '../../utils/html-utils/escape-html';
-import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils';
-import { _snip } from '../../utils/sys-utils/snip.utils';
-import { is_Node } from '../../utils/node-utils/node-guards';
-import { assert_invariants } from '../../diagnostics/assert-invariants.test';
-import { clone_node } from '../../utils/node-utils/clone-node';
-import { HsonNode } from '../../types/node.types';
-import { _throw_transform_err } from '../../utils/sys-utils/throw-transform-err.utils';
+import { Primitive } from '../../types/core.types.js'
+import { is_Primitive } from '../../utils/core-utils/guards.core.js';
+import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
+import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs.js';
+import { escape_html_text } from '../../utils/html-utils/escape-html.js';
+import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils.js';
+import { _snip } from '../../utils/sys-utils/snip.utils.js';
+import { is_Node } from '../../utils/node-utils/node-guards.js';
+import { assert_invariants } from '../../diagnostics/assert-invariants.test.js';
+import { clone_node } from '../../utils/node-utils/clone-node.js';
+import { HsonNode } from '../../types/node.types.js';
+import { _throw_transform_err } from '../../utils/sys-utils/throw-transform-err.utils.js';
 
   const RAWTEXT = new Set(["style", "script"]);
 

@@ -1,15 +1,15 @@
 // text-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types/node.types";
-import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../consts/constants";
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils";
-import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { make_leaf } from "../../parsers/parse-tokens";
-import { Primitive } from "../../../types/core.types";
+import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
+import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../consts/constants.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils.js";
+import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { make_leaf } from "../../parsers/parse-tokens.js";
+import { Primitive } from "../../../types/core.types.js";
 import { LiveTree } from "hson-live";
-import { CREATE_NODE } from "../../../consts/factories";
+import { CREATE_NODE } from "../../../consts/factories.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.

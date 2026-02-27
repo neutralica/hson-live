@@ -1,8 +1,8 @@
 // livetree-projector.ts
 
-import { HsonNode } from "../../types/node.types";
-import { Patch, Path, Store } from "../livemap/types.livemap";
-import { Projector, ProjectorMode } from "./projector";
+import { HsonNode } from "../../types/node.types.js";
+import { Patch, Path, Store } from "../livemap/types.livemap.js";
+import { Projector, ProjectorMode } from "./projector.js";
 
 
 /*************************** 

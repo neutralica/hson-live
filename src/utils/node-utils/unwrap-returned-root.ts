@@ -1,7 +1,7 @@
 // unwrap-returned-root.ts
-import { HsonNode } from "../../types/node.types";
-import { ROOT_TAG } from "../../consts/constants";
-import { is_Node } from "./node-guards";
+import { HsonNode } from "../../types/node.types.js";
+import { ROOT_TAG } from "../../consts/constants.js";
+import { is_Node } from "./node-guards.js";
 
 /**
  * Normalize a returned parse root into a stable node fragment.

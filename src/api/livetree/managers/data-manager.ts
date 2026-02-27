@@ -1,8 +1,8 @@
 // data-manager.utils.ts
 
-import { Primitive } from "../../../types/core.types";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
-import { LiveTree } from "../livetree";
+import { Primitive } from "../../../types/core.types.js";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { LiveTree } from "../livetree.js";
 
 
 export type DatasetValue = Primitive | undefined;

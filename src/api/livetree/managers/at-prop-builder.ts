@@ -1,6 +1,6 @@
 // at-property.ts
 
-import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyManager, PropertyRegistration, PropertySyntax } from "../../../types/at-property.types";
+import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyManager, PropertyRegistration, PropertySyntax } from "../../../types/at-property.types.js";
 
 /**
  * Type guard for `PropertyInput` tuple form.

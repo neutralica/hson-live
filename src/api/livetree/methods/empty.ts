@@ -1,9 +1,9 @@
 // empty.ts
 
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { LiveTree } from "../livetree";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { detach_node_deep } from "../../../utils/tree-utils/detach-node.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { LiveTree } from "../livetree.js";
 
 /**
  * Remove *all* children of this LiveTree’s node, both in the HSON model

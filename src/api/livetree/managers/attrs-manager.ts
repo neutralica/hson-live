@@ -1,12 +1,12 @@
 // attrs-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types/node.types";
-import { parse_style_string } from "../../../utils/attrs-utils/parse-style";
-import { serialize_style } from "../../../utils/attrs-utils/serialize-style";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { LiveTree } from "../livetree";
-import { CssMap } from "../../../types/css.types";
-import { Primitive } from "../../../types/core.types";
+import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
+import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
+import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { LiveTree } from "../livetree.js";
+import { CssMap } from "../../../types/css.types.js";
+import { Primitive } from "../../../types/core.types.js";
 
 /**
  * Apply a single attribute to a HSON node and keep the corresponding DOM

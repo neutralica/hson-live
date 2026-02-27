@@ -1,7 +1,7 @@
 // serialize-style.ts
 
-import { CssMap } from "../../types/css.types";
-import { camel_to_kebab } from "./camel_to_kebab";
+import { CssMap } from "../../types/css.types.js";
+import { camel_to_kebab } from "./camel_to_kebab.js";
 
 /*******
  * Serialize a style object into a CSS declaration list string.

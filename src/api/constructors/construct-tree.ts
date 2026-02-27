@@ -1,18 +1,18 @@
 // construct-tree.ts
 
-import { JsonValue } from "../../types/core.types";
-import { HsonNode } from "../../types/node.types";
-import { $_ERROR } from "../../consts/constants";
-import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { parse_external_html } from "../parsers/parse-external-html.transform";
-import { parse_hson } from "../parsers/parse-hson";
-import { parse_html } from "../parsers/parse-html";
-import { parse_json } from "../parsers/parse-json";
-import { make_branch_from_node } from "../livetree/creation/create-branch";
-import { graft } from "../livetree/creation/graft";
-import { LiveTree } from "../livetree/livetree";
-import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../../types/constructor.types";
+import { JsonValue } from "../../types/core.types.js";
+import { HsonNode } from "../../types/node.types.js";
+import { $_ERROR } from "../../consts/constants.js";
+import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
+import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { parse_external_html } from "../parsers/parse-external-html.transform.js";
+import { parse_hson } from "../parsers/parse-hson.js";
+import { parse_html } from "../parsers/parse-html.js";
+import { parse_json } from "../parsers/parse-json.js";
+import { make_branch_from_node } from "../livetree/creation/create-branch.js";
+import { graft } from "../livetree/creation/graft.js";
+import { LiveTree } from "../livetree/livetree.js";
+import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../../types/constructor.types.js";
 
 /**
  * Build the entry point for the LiveTree creation and grafting pipeline.

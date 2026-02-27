@@ -1,29 +1,29 @@
 // parse-html.new.transform.hson.ts (new)
 
-import { HsonNode } from "../../types/node.types";
-import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants";
-import { CREATE_NODE } from "../../consts/factories";
-import { is_Primitive, is_string } from "../../utils/core-utils/guards.core";
-import { _snip } from "../../utils/sys-utils/snip.utils";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { parse_html_attrs } from "../../utils/html-utils/parse_html_attrs";
-import { coerce } from "../../utils/primitive-utils/coerce-string.utils";
-import { assert_invariants } from "../../diagnostics/assert-invariants.test";
-import { expand_entities } from "../../utils/html-preflights/expand-entities";
-import { expand_flags } from "../../utils/html-preflights/expand-flags";
-import { expand_void_tags } from "../../utils/html-preflights/expand-self-closing";
-import { escape_text } from "../../utils/html-preflights/escape-text";
-import { strip_html_comments } from "../../utils/html-preflights/strip-html-comments";
-import { wrap_cdata } from "../../safety/wrap-cdata";
-import { optional_endtag_preflight } from "../../utils/html-preflights/optional-endtag";
-import { escape_attr_angles } from "../../safety/escape_angles";
-import { dedupe_attrs_html } from "../../safety/dedupe-attrs";
-import { quote_unquoted_attrs } from "../../utils/html-preflights/quoted-unquoted";
-import { mangle_illegal_attrs } from "../../utils/html-preflights/mangle-illegal-attrs";
-import { namespace_svg } from "../../utils/html-preflights/namespace-svg";
-import { is_indexed } from "../../utils/node-utils/node-guards";
-import { Primitive } from "../../types/core.types";
-import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers";
+import { HsonNode } from "../../types/node.types.js";
+import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants.js";
+import { CREATE_NODE } from "../../consts/factories.js";
+import { is_Primitive, is_string } from "../../utils/core-utils/guards.core.js";
+import { _snip } from "../../utils/sys-utils/snip.utils.js";
+import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { parse_html_attrs } from "../../utils/html-utils/parse_html_attrs.js";
+import { coerce } from "../../utils/primitive-utils/coerce-string.utils.js";
+import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { expand_entities } from "../../utils/html-preflights/expand-entities.js";
+import { expand_flags } from "../../utils/html-preflights/expand-flags.js";
+import { expand_void_tags } from "../../utils/html-preflights/expand-self-closing.js";
+import { escape_text } from "../../utils/html-preflights/escape-text.js";
+import { strip_html_comments } from "../../utils/html-preflights/strip-html-comments.js";
+import { wrap_cdata } from "../../safety/wrap-cdata.js";
+import { optional_endtag_preflight } from "../../utils/html-preflights/optional-endtag.js";
+import { escape_attr_angles } from "../../safety/escape_angles.js";
+import { dedupe_attrs_html } from "../../safety/dedupe-attrs.js";
+import { quote_unquoted_attrs } from "../../utils/html-preflights/quoted-unquoted.js";
+import { mangle_illegal_attrs } from "../../utils/html-preflights/mangle-illegal-attrs.js";
+import { namespace_svg } from "../../utils/html-preflights/namespace-svg.js";
+import { is_indexed } from "../../utils/node-utils/node-guards.js";
+import { Primitive } from "../../types/core.types.js";
+import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers.js";
 
 
 

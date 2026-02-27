@@ -1,10 +1,10 @@
 // livetree2.types.ts
 
-import { LiveTree } from "../api/livetree/livetree";
-import { HsonAttrs, HsonMeta, HsonNode } from "./node.types";
-import { FindQuery } from "../api/livetree/methods/find";
-import { TreeSelector } from "../api/livetree/tree-selector";
-import { HTML_TAGS } from "../consts/html-tags";
+import { LiveTree } from "../api/livetree/livetree.js";
+import { HsonAttrs, HsonMeta, HsonNode } from "./node.types.js";
+import { FindQuery } from "../api/livetree/methods/find.js";
+import { TreeSelector } from "../api/livetree/tree-selector.js";
+import { HTML_TAGS } from "../consts/html-tags.js";
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.

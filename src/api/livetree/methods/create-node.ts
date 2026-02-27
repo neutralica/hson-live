@@ -1,12 +1,12 @@
-import { hson } from "../../../hson";
-import { HsonNode } from "../../../types/node.types";
-import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
-import { LiveTree } from "../livetree";
-import { make_tree_selector } from "../creation/make-tree-selector";
-import { TreeSelector } from "../tree-selector";
-import { HTML_TAGS } from "../../../consts/html-tags";
-import { create_livetree } from "../create-livetree";
+import { hson } from "../../../hson.js";
+import { HsonNode } from "../../../types/node.types.js";
+import { CreateHelper, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types.js";
+import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
+import { LiveTree } from "../livetree.js";
+import { make_tree_selector } from "../creation/make-tree-selector.js";
+import { TreeSelector } from "../tree-selector.js";
+import { HTML_TAGS } from "../../../consts/html-tags.js";
+import { create_livetree } from "../create-livetree.js";
 
 export function is_valid_tag_name(name: unknown): name is TagName {
   if (typeof name !== "string") return false;

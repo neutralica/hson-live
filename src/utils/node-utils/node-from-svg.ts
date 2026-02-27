@@ -1,7 +1,7 @@
 // node-from-svg.ts
 
-import { HsonNode } from "../../types/node.types";
-import { STR_TAG } from "../../consts/constants";
+import { HsonNode } from "../../types/node.types.js";
+import { STR_TAG } from "../../consts/constants.js";
 
 
 //  tiny helper once, reuse everywhere

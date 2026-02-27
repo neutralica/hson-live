@@ -1,11 +1,11 @@
 
-import { construct_source_1 } from "./api/constructors/construct-source-1";
-import { DomQueryLiveTreeConstructor, OutputConstructor_2 } from "./types/constructor.types";
-import { DomQuerySourceConstructor } from "./types/constructor.types";
-import { HsonNode } from "./types/node.types";
-import { JsonValue } from "./types/core.types";
-import { LiveTree } from "./api/livetree/livetree";
-import { construct_tree } from "./api/constructors/construct-tree";
+import { construct_source_1 } from "./api/constructors/construct-source-1.js";
+import { DomQueryLiveTreeConstructor, OutputConstructor_2 } from "./types/constructor.types.js";
+import { DomQuerySourceConstructor } from "./types/constructor.types.js";
+import { HsonNode } from "./types/node.types.js";
+import { JsonValue } from "./types/core.types.js";
+import { LiveTree } from "./api/livetree/livetree.js";
+import { construct_tree } from "./api/constructors/construct-tree.js";
 
 
 (globalThis as any)._test_ON = () => { (globalThis as any).test = true; location.reload(); };

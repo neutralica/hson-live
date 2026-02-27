@@ -1,11 +1,11 @@
 //content-manager.ts
 
 
-import { Primitive } from "../../../types/core.types";
-import { HsonNode } from "../../../types/node.types";
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { create_livetree } from "../create-livetree";
-import { LiveTree } from "../livetree";
+import { Primitive } from "../../../types/core.types.js";
+import { HsonNode } from "../../../types/node.types.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { create_livetree } from "../create-livetree.js";
+import { LiveTree } from "../livetree.js";
 
 
 type ContentItem = HsonNode | Primitive;

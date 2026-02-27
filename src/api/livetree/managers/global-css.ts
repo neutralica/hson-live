@@ -1,9 +1,9 @@
 // global_css.ts
 
-import { CssMapBase, CssPseudoKey } from "../../../types/css.types";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
-import { pseudo_to_suffix } from "./css-manager";
-import { make_style_setter, StyleSetter } from "./style-setter";
+import { CssMapBase, CssPseudoKey } from "../../../types/css.types.js";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { pseudo_to_suffix } from "./css-manager.js";
+import { make_style_setter, StyleSetter } from "./style-setter.js";
 
 
 type GlobalRule = Readonly<{

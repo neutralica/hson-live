@@ -1,12 +1,12 @@
 // graft.tree.hson.ts
 
-import { HsonNode } from "../../../types/node.types";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
-import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
-import { parse_html } from "../../parsers/parse-html";
-import { project_livetree } from "./project-live-tree";
-import { LiveTree } from "../livetree";
-import { create_livetree } from "../create-livetree";
+import { HsonNode } from "../../../types/node.types.js";
+import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
+import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
+import { parse_html } from "../../parsers/parse-html.js";
+import { project_livetree } from "./project-live-tree.js";
+import { LiveTree } from "../livetree.js";
+import { create_livetree } from "../create-livetree.js";
 
 
 /**

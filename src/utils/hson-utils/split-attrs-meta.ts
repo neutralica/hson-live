@@ -1,11 +1,11 @@
 // split-attrs-meta.ts
 
-import { HsonAttrs, HsonMeta } from "../../types/node.types";
-import { _META_DATA_PREFIX } from "../../consts/constants";
-import { RawAttr } from "../../types/token.types";
-import { parse_style_string } from "../attrs-utils/parse-style";
-import { unescape_hson_string } from "./unescape-hson";
-import { Primitive } from "../../types/core.types";
+import { HsonAttrs, HsonMeta } from "../../types/node.types.js";
+import { _META_DATA_PREFIX } from "../../consts/constants.js";
+import { RawAttr } from "../../types/token.types.js";
+import { parse_style_string } from "../attrs-utils/parse-style.js";
+import { unescape_hson_string } from "./unescape-hson.js";
+import { Primitive } from "../../types/core.types.js";
 
 /*******
  * Decode an attribute/meta value coming from the HSON tokenizer.

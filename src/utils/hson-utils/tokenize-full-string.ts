@@ -1,6 +1,6 @@
 // tokenize-full-string.ts
 
-import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils";
+import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 
 type QuoteDelim = '"' | "'" | '`';

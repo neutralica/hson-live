@@ -1,9 +1,9 @@
 // build-wire-attrs.ts
 
 
-import { _META_DATA_PREFIX } from "../../consts/constants";
-import { HsonNode } from "../../types/node.types";
-import { serialize_style } from "../attrs-utils/serialize-style";
+import { _META_DATA_PREFIX } from "../../consts/constants.js";
+import { HsonNode } from "../../types/node.types.js";
+import { serialize_style } from "../attrs-utils/serialize-style.js";
 
 /**
  * Build a DOM-ready attribute map for an `HsonNode`.

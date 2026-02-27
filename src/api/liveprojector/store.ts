@@ -1,7 +1,7 @@
 // store.ts
 
-import { HsonNode } from "../../types/node.types";
-import { Patch, Store, Path, PatchOp, PathSeg } from "../livemap/types.livemap";
+import { HsonNode } from "../../types/node.types.js";
+import { Patch, Store, Path, PatchOp, PathSeg } from "../livemap/types.livemap.js";
 
 /*************************** 
  * (CURRENTLY UNUSED, TBC)

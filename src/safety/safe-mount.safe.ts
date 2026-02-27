@@ -1,5 +1,5 @@
 // safe-mount.ts
-import {  ALLOWED_URI_REGEX, sanitize_external } from "./sanitize-html.utils";
+import {  ALLOWED_URI_REGEX, sanitize_external } from "./sanitize-html.utils.js";
 
 const DANGEROUS_TAGS = new Set([
   "script", "style", "iframe", "object", "embed", "link", "meta", "base",

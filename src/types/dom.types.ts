@@ -1,5 +1,5 @@
 // dom.ts
-import { LiveTree } from "../api/livetree/livetree";
+import { LiveTree } from "../api/livetree/livetree.js";
 
 /**
  * Callable `closest` helper with a `.must` variant.

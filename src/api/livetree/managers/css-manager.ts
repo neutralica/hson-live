@@ -1,16 +1,16 @@
 // css-manager.ts
 
-import { PropertyManager } from "../../../types/at-property.types";
-import { _DATA_QUID } from "../../../consts/constants";
-import { CssValue, CssProp, CssPseudoKey } from "../../../types/css.types";
-import { apply_animation, bind_anim_api } from "../methods/anim";
-import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types";
-import { manage_property } from "./at-prop-builder";
-import { manage_keyframes } from "./keyframes-manager";
-import { KeyframesManager } from "../../../types/keyframes.types";
-import { LiveTree } from "../livetree";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
-import { GlobalCss } from "./global-css";
+import { PropertyManager } from "../../../types/at-property.types.js";
+import { _DATA_QUID } from "../../../consts/constants.js";
+import { CssValue, CssProp, CssPseudoKey } from "../../../types/css.types.js";
+import { apply_animation, bind_anim_api } from "../methods/anim.js";
+import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types.js";
+import { manage_property } from "./at-prop-builder.js";
+import { manage_keyframes } from "./keyframes-manager.js";
+import { KeyframesManager } from "../../../types/keyframes.types.js";
+import { LiveTree } from "../livetree.js";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { GlobalCss } from "./global-css.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";

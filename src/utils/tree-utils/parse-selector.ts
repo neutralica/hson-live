@@ -1,6 +1,6 @@
 // parse-selector.ts
 
-import { HsonQuery } from "../../types/livetree.types";
+import { HsonQuery } from "../../types/livetree.types.js";
 
 
 /**

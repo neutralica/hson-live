@@ -1,21 +1,21 @@
 // construct-output-2.ts
 
-import { RenderFormats } from "../../types/constructor.types";
-import { OutputConstructor_2 } from "../../types/constructor.types";
-import { HsonNode } from "../../types/node.types";
-import { $RENDER } from "../../consts/constants";
-import { FrameConstructor } from "../../types/constructor.types";
-import { parse_external_html } from "../parsers/parse-external-html.transform";
-import { serialize_hson } from "../serializers/serialize-hson";
-import { serialize_html } from "../serializers/serialize-html";
-import { serialize_json } from "../serializers/serialize-json";
-import { construct_options_3 } from "./construct-options-3";
-import { construct_render_4 } from "./construct-render-4";
-import { OptionsConstructor_3, RenderConstructor_4 } from "../../types/constructor.types";
-import { FrameRender } from "../../types/constructor.types";
-import { LiveTree } from "../livetree/livetree";
-import { LiveTreeConstructor_3 } from "../../types/constructor.types";
-import { make_branch_from_node } from "../livetree/creation/create-branch";
+import { RenderFormats } from "../../types/constructor.types.js";
+import { OutputConstructor_2 } from "../../types/constructor.types.js";
+import { HsonNode } from "../../types/node.types.js";
+import { $RENDER } from "../../consts/constants.js";
+import { FrameConstructor } from "../../types/constructor.types.js";
+import { parse_external_html } from "../parsers/parse-external-html.transform.js";
+import { serialize_hson } from "../serializers/serialize-hson.js";
+import { serialize_html } from "../serializers/serialize-html.js";
+import { serialize_json } from "../serializers/serialize-json.js";
+import { construct_options_3 } from "./construct-options-3.js";
+import { construct_render_4 } from "./construct-render-4.js";
+import { OptionsConstructor_3, RenderConstructor_4 } from "../../types/constructor.types.js";
+import { FrameRender } from "../../types/constructor.types.js";
+import { LiveTree } from "../livetree/livetree.js";
+import { LiveTreeConstructor_3 } from "../../types/constructor.types.js";
+import { make_branch_from_node } from "../livetree/creation/create-branch.js";
 
 /**
  * HSON pipeline – stage 2: select output format.

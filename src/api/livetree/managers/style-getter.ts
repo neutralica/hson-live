@@ -1,7 +1,7 @@
 // style.getter.ts (new file)
 
-import { CssKey } from "../../../types/css.types";
-import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
+import { CssKey } from "../../../types/css.types.js";
+import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
 
 /**
  * Backend contract for style reads.

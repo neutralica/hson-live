@@ -1,7 +1,7 @@
 // livemap-projector.ts
 
-import { Patch, Path, PathStr, Store, toPointer, TxId } from "../livemap/types.livemap";
-import { Projector, ProjectorMode } from "./projector";
+import { Patch, Path, PathStr, Store, toPointer, TxId } from "../livemap/types.livemap.js";
+import { Projector, ProjectorMode } from "./projector.js";
 
 /*************************** 
  * (CURRENTLY UNUSED, TBC)

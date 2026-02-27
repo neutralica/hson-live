@@ -1,7 +1,7 @@
 // keyframes.ts
 
-import { canon_to_css_prop } from "../../../utils/attrs-utils/normalize-css";
-import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager } from "../../../types/keyframes.types";
+import { canon_to_css_prop } from "../../../utils/attrs-utils/normalize-css.js";
+import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager } from "../../../types/keyframes.types.js";
 
 /**
  * Narrow a `KeyframesInput` union to the tuple-shaped variant.

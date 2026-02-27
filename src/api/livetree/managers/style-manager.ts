@@ -1,14 +1,14 @@
 // style-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types/node.types";
-import { AllowedStyleKey, CssMap } from "../../../types/css.types";
-import { serialize_style } from "../../../utils/attrs-utils/serialize-style";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab";
-import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { LiveTree } from "../livetree";
-import { make_style_setter, StyleSetter } from "./style-setter";
-import { make_style_getter, StyleGetter } from "./style-getter";
+import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
+import { AllowedStyleKey, CssMap } from "../../../types/css.types.js";
+import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { LiveTree } from "../livetree.js";
+import { make_style_setter, StyleSetter } from "./style-setter.js";
+import { make_style_getter, StyleGetter } from "./style-getter.js";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 

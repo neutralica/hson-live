@@ -1,34 +1,34 @@
 // livetree2.ts
 
-import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid";
-import { HsonNode } from "../../types/node.types";
-import { ListenerBuilder } from "../../types/listen.types";
-import { element_for_node } from "../../utils/tree-utils/node-map-helpers";
-import { CssHandle, StyleHandle } from "../../types/css.types";
-import { remove_livetree } from "./methods/remove-self";
-import { get_form_value,  set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content  } from "./managers/text-form-values";
-import { DataManager } from "./managers/data-manager";
-import { empty_contents } from "./methods/empty";
-import { build_listener } from "./managers/listener-builder";
-import { FindMany, make_find_all_for, make_find_for } from "./methods/find"; // CHANGED
-import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers/attrs-manager";
-import { remove_child } from "./methods/remove-child";
-import { StyleManager } from "./managers/style-manager";
-import { LiveTreeCreateHelper } from "../../types/livetree.types"; // CHANGED
-import { append_branch } from "./methods/append-other";
-import { make_tree_create } from "./methods/create-node";
-import { FindWithById, NodeRef } from "../../types/livetree.types";
-import { Primitive } from "../../types/core.types";
-import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter";
-import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types";
-import { make_dom_api } from "./managers/dom-manager";
-import { is_Node } from "../../utils/node-utils/node-guards";
-import { TreeEvents } from "../../types/events.types";
-import { make_tree_events } from "./managers/events-handler";
-import { clone_branch_method } from "./methods/clone";
-import { create_livetree } from "./create-livetree";
-import { ContentManager } from "./managers/content-manager";
-import { css_for_quids } from "./methods/css-for-quids";
+import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid.js";
+import { HsonNode } from "../../types/node.types.js";
+import { ListenerBuilder } from "../../types/listen.types.js";
+import { element_for_node } from "../../utils/tree-utils/node-map-helpers.js";
+import { CssHandle, StyleHandle } from "../../types/css.types.js";
+import { remove_livetree } from "./methods/remove-self.js";
+import { get_form_value,  set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content  } from "./managers/text-form-values.js";
+import { DataManager } from "./managers/data-manager.js";
+import { empty_contents } from "./methods/empty.js";
+import { build_listener } from "./managers/listener-builder.js";
+import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
+import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers/attrs-manager.js";
+import { remove_child } from "./methods/remove-child.js";
+import { StyleManager } from "./managers/style-manager.js";
+import { LiveTreeCreateHelper } from "../../types/livetree.types.js"; // CHANGED
+import { append_branch } from "./methods/append-other.js";
+import { make_tree_create } from "./methods/create-node.js";
+import { FindWithById, NodeRef } from "../../types/livetree.types.js";
+import { Primitive } from "../../types/core.types.js";
+import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter.js";
+import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types.js";
+import { make_dom_api } from "./managers/dom-manager.js";
+import { is_Node } from "../../utils/node-utils/node-guards.js";
+import { TreeEvents } from "../../types/events.types.js";
+import { make_tree_events } from "./managers/events-handler.js";
+import { clone_branch_method } from "./methods/clone.js";
+import { create_livetree } from "./create-livetree.js";
+import { ContentManager } from "./managers/content-manager.js";
+import { css_for_quids } from "./methods/css-for-quids.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.

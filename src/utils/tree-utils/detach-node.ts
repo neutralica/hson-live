@@ -1,10 +1,10 @@
 // detach-node.ts
 
-import { _listeners_off_for_target } from "../../api/livetree/managers/listener-builder";
-import { HsonNode } from "../../types/node.types";
-import { NODE_ELEMENT_MAP } from "../../consts/constants";
-import { is_Node } from "../node-utils/node-guards";
-import { element_for_node } from "./node-map-helpers";
+import { _listeners_off_for_target } from "../../api/livetree/managers/listener-builder.js";
+import { HsonNode } from "../../types/node.types.js";
+import { NODE_ELEMENT_MAP } from "../../consts/constants.js";
+import { is_Node } from "../node-utils/node-guards.js";
+import { element_for_node } from "./node-map-helpers.js";
 
 
 

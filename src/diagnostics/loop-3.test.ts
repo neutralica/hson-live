@@ -12,13 +12,13 @@
  *   - Optionally (paranoid) compare per-step parsed nodes across directions.
  */
 
-import { hson } from "../hson";
-import { HsonNode } from "../types/node.types"
-import { is_Node } from "../utils/node-utils/node-guards";
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
-import { _snip } from "../utils/sys-utils/snip.utils";
-import { assert_invariants } from "./assert-invariants.test";
-import { compare_nodes } from "./compare-nodes.test";
+import { hson } from "../hson.js";
+import { HsonNode } from "../types/node.types.js"
+import { is_Node } from "../utils/node-utils/node-guards.js";
+import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
+import { _snip } from "../utils/sys-utils/snip.utils.js";
+import { assert_invariants } from "./assert-invariants.test.js";
+import { compare_nodes } from "./compare-nodes.test.js";
 
 /**
  * Canonical wire formats exercised by the round-trip loop.

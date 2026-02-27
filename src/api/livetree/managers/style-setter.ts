@@ -1,11 +1,11 @@
 // style-setter.ts
 
-import { CssMap, CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types";
-import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css";
-import { SetSurface } from "../../../types/css.types";
-import { CssKey } from "../../../types/css.types";
-import { ClassApi, IdApi } from "../../../types/dom.types";
-import { LiveTree } from "../livetree";
+import { CssMap, CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types.js";
+import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { SetSurface } from "../../../types/css.types.js";
+import { CssKey } from "../../../types/css.types.js";
+import { ClassApi, IdApi } from "../../../types/dom.types.js";
+import { LiveTree } from "../livetree.js";
 
 
 

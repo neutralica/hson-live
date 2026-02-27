@@ -1,9 +1,9 @@
 // compare-nodes.ts
 
-import type { HsonNode } from "../types/node.types";
-import { is_Node } from "../utils/node-utils/node-guards";
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils";
-import { _snip } from "../utils/sys-utils/snip.utils";
+import type { HsonNode } from "../types/node.types.js";
+import { is_Node } from "../utils/node-utils/node-guards.js";
+import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
+import { _snip } from "../utils/sys-utils/snip.utils.js";
 
 const LEAF = new Set(["_str", "_val"]);
 const MAX_SNIP = 500;

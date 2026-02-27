@@ -1,11 +1,11 @@
 // node-guards.ts
 
-import { II_TAG, STR_TAG, VAL_TAG } from "../../consts/constants";
-import { BasicValue } from "../../types/core.types";
-import { is_Primitive } from "../core-utils/guards.core"
-import { _DATA_INDEX } from "../../consts/constants";
-import { HsonNode } from "../../types/node.types";
-import { JsonValue } from "../../types/core.types";
+import { II_TAG, STR_TAG, VAL_TAG } from "../../consts/constants.js";
+import { BasicValue } from "../../types/core.types.js";
+import { is_Primitive } from "../core-utils/guards.core.js"
+import { _DATA_INDEX } from "../../consts/constants.js";
+import { HsonNode } from "../../types/node.types.js";
+import { JsonValue } from "../../types/core.types.js";
 
 /**
  * Type guard for the current (new-structure) `HsonNode`.

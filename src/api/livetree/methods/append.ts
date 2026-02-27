@@ -1,15 +1,15 @@
 // append.ts
 
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
-import { STR_TAG, ELEM_TAG } from "../../../consts/constants";
-import { HsonNode } from "../../../types/node.types";
-import { CREATE_NODE } from "../../../consts/factories";
-import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils";
-import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils";
-import { LiveTree } from "../livetree";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { project_livetree } from "../creation/project-live-tree";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
+import { STR_TAG, ELEM_TAG } from "../../../consts/constants.js";
+import { HsonNode } from "../../../types/node.types.js";
+import { CREATE_NODE } from "../../../consts/factories.js";
+import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils.js";
+import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
+import { LiveTree } from "../livetree.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { project_livetree } from "../creation/project-live-tree.js";
 
 /**
  * Normalize an insertion index for an array of a given length.

@@ -1,18 +1,18 @@
 // parse-tokens.transform.hson.ts
 
-import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG } from "../../consts/constants";
-import { CREATE_NODE } from "../../consts/factories";
-import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../../types/token.types";
-import { _DATA_INDEX } from "../../consts/constants";
-import { HsonNode, NodeContent } from "../../types/node.types";
-import { Tokens, CloseKind, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../../types/token.types";
-import { coerce } from "../../utils/primitive-utils/coerce-string.utils";
-import { _snip } from "../../utils/sys-utils/snip.utils";
-import { unwrap_root_obj } from "../../utils/json-utils/unwrap-root-obj";
-import { split_attrs_meta } from "../../utils/hson-utils/split-attrs-meta";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { is_string } from "../../utils/core-utils/guards.core";
-import { Primitive } from "../../types/core.types";
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG } from "../../consts/constants.js";
+import { CREATE_NODE } from "../../consts/factories.js";
+import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../../types/token.types.js";
+import { _DATA_INDEX } from "../../consts/constants.js";
+import { HsonNode, NodeContent } from "../../types/node.types.js";
+import { Tokens, CloseKind, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../../types/token.types.js";
+import { coerce } from "../../utils/primitive-utils/coerce-string.utils.js";
+import { _snip } from "../../utils/sys-utils/snip.utils.js";
+import { unwrap_root_obj } from "../../utils/json-utils/unwrap-root-obj.js";
+import { split_attrs_meta } from "../../utils/hson-utils/split-attrs-meta.js";
+import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { is_string } from "../../utils/core-utils/guards.core.js";
+import { Primitive } from "../../types/core.types.js";
 
 
 

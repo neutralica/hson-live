@@ -1,6 +1,6 @@
 // tree-selector.ts
 
-import { LiveTree } from "./livetree";
+import { LiveTree } from "./livetree.js";
 
 type LiveTreeStyle = LiveTree["style"];
 type LiveTreeCss = LiveTree["css"];

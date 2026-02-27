@@ -1,9 +1,9 @@
-import { LiveTree } from "../livetree";
-import { search_nodes } from "../methods/search";
-import { make_tree_selector } from "../creation/make-tree-selector";
-import { TreeSelector } from "../tree-selector";
-import { wrap_in_tree } from "../create-livetree";
-import { HsonQuery } from "../../../types/livetree.types";
+import { LiveTree } from "../livetree.js";
+import { search_nodes } from "../methods/search.js";
+import { make_tree_selector } from "../creation/make-tree-selector.js";
+import { TreeSelector } from "../tree-selector.js";
+import { wrap_in_tree } from "../create-livetree.js";
+import { HsonQuery } from "../../../types/livetree.types.js";
 
 
 interface FinderBuilder {

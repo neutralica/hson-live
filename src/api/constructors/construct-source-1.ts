@@ -1,17 +1,17 @@
 // construct-source-1.ts
 
-import { HsonNode } from "../../types/node.types";
-import { FrameConstructor } from "../../types/constructor.types";
-import { OutputConstructor_2 } from "../../types/constructor.types";
-import { JsonValue } from "../../types/core.types";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils";
-import { parse_external_html } from "../parsers/parse-external-html.transform";
-import { parse_hson } from "../parsers/parse-hson";
-import { parse_html } from "../parsers/parse-html";
-import { parse_json } from "../parsers/parse-json";
-import { construct_output_2 } from "./construct-output-2";
-import { SourceConstructor_1 } from "../../types/constructor.types";
-import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg";
+import { HsonNode } from "../../types/node.types.js";
+import { FrameConstructor } from "../../types/constructor.types.js";
+import { OutputConstructor_2 } from "../../types/constructor.types.js";
+import { JsonValue } from "../../types/core.types.js";
+import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { parse_external_html } from "../parsers/parse-external-html.transform.js";
+import { parse_hson } from "../parsers/parse-hson.js";
+import { parse_html } from "../parsers/parse-html.js";
+import { parse_json } from "../parsers/parse-json.js";
+import { construct_output_2 } from "./construct-output-2.js";
+import { SourceConstructor_1 } from "../../types/constructor.types.js";
+import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
 
 /**
  * Per-call HTML parsing options for `construct_source_1.fromHtml()`.

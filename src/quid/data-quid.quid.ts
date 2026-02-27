@@ -1,8 +1,8 @@
 // data-quid.quid.ts
 
-import { HsonNode } from '../types/node.types';
-import { _DATA_QUID} from '../consts/constants';
-import { element_for_node } from '../utils/tree-utils/node-map-helpers';
+import { HsonNode } from '../types/node.types.js';
+import { _DATA_QUID} from '../consts/constants.js';
+import { element_for_node } from '../utils/tree-utils/node-map-helpers.js';
 
 // Use type-only imports and .js specifiers to play nice with verbatimModuleSyntax
 

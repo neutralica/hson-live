@@ -1,16 +1,16 @@
 // remove2.ts
 
-import { drop_quid } from "../../../quid/data-quid.quid";
-import { HsonNode } from "../../../types/node.types";
-import { _DATA_QUID } from "../../../consts/constants";
-import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { LiveTree } from "../livetree";
-import { CssManager } from "../managers/css-manager";
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { HsonQuery } from "../../../types/livetree.types";
-import { search_nodes } from "./search";
-import { parse_selector } from "../../../utils/tree-utils/parse-selector";
+import { drop_quid } from "../../../quid/data-quid.quid.js";
+import { HsonNode } from "../../../types/node.types.js";
+import { _DATA_QUID } from "../../../consts/constants.js";
+import { detach_node_deep } from "../../../utils/tree-utils/detach-node.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { LiveTree } from "../livetree.js";
+import { CssManager } from "../managers/css-manager.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { HsonQuery } from "../../../types/livetree.types.js";
+import { search_nodes } from "./search.js";
+import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
 
 /**
  * Collect QUID identifiers for the DOM subtree of a given HSON node.

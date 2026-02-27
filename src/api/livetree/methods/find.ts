@@ -1,15 +1,15 @@
 // find.ts
 
-import { HsonQuery } from "../../../types/livetree.types";;
-import { HsonNode } from "../../../types/node.types";
-import { parse_selector } from "../../../utils/tree-utils/parse-selector";
-import { LiveTree } from "../livetree";
-import { make_tree_selector } from "../creation/make-tree-selector";
-import { TreeSelector } from "../tree-selector";
-import { search_nodes } from "./search";
-import { FindWithById } from "../../../types/livetree.types";
-import { ensure_quid } from "../../../quid/data-quid.quid";
-import { wrap_in_tree } from "../create-livetree";
+import { HsonQuery } from "../../../types/livetree.types.js";;
+import { HsonNode } from "../../../types/node.types.js";
+import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
+import { LiveTree } from "../livetree.js";
+import { make_tree_selector } from "../creation/make-tree-selector.js";
+import { TreeSelector } from "../tree-selector.js";
+import { search_nodes } from "./search.js";
+import { FindWithById } from "../../../types/livetree.types.js";
+import { ensure_quid } from "../../../quid/data-quid.quid.js";
+import { wrap_in_tree } from "../create-livetree.js";
 
 // “batching” helpers + queryish types
 

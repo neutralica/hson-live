@@ -1,5 +1,5 @@
 // mangle-illegal-attrs.ts
-import { _TRANSIT_ATTRS, _TRANSIT_PREFIX } from "../../consts/constants";
+import { _TRANSIT_ATTRS, _TRANSIT_PREFIX } from "../../consts/constants.js";
 
 /*  XML 1.0 Name production (approx; good enough for preflight) */
 const XML_NAME = /^[A-Za-z_:\u00C0-\uD7FF\uF900-\uFDCF\uFDF0-\uFFFD][\w.\-:\u00B7\u0300-\u036F\u203F-\u2040]*$/u;

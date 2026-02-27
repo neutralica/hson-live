@@ -1,11 +1,11 @@
 // remove-child.ts
 
-import { HsonQuery } from "../../../types/livetree.types";
-import { is_Node } from "../../../utils/node-utils/node-guards";
-import { detach_node_deep } from "../../../utils/tree-utils/detach-node";
-import { parse_selector } from "../../../utils/tree-utils/parse-selector";
-import { LiveTree } from "../livetree";
-import { search_nodes } from "./search";
+import { HsonQuery } from "../../../types/livetree.types.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { detach_node_deep } from "../../../utils/tree-utils/detach-node.js";
+import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
+import { LiveTree } from "../livetree.js";
+import { search_nodes } from "./search.js";
 
 /**
  * Removes one or more *direct child nodes* from this LiveTree’s underlying

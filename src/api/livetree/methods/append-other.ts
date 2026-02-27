@@ -1,14 +1,14 @@
 // append-other.ts
 
-import { HsonNode } from "../../../types/node.types";
-import { ELEM_TAG } from "../../../consts/constants";
-import { CREATE_NODE } from "../../../consts/factories";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers";
-import { project_livetree } from "../creation/project-live-tree";
-import { LiveTree } from "../livetree";
-import { normalize_ix } from "./append";
-import { TreeSelector } from "../tree-selector";
+import { HsonNode } from "../../../types/node.types.js";
+import { ELEM_TAG } from "../../../consts/constants.js";
+import { CREATE_NODE } from "../../../consts/factories.js";
+import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { project_livetree } from "../creation/project-live-tree.js";
+import { LiveTree } from "../livetree.js";
+import { normalize_ix } from "./append.js";
+import { TreeSelector } from "../tree-selector.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_elem` container

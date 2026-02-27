@@ -1,6 +1,6 @@
-import { LiveTree } from "../livetree";
-import { ClosestFn, LiveTreeDom, ParentFn } from "../../../types/dom.types";
-import { _snip } from "../../../utils/sys-utils/snip.utils";
+import { LiveTree } from "../livetree.js";
+import { ClosestFn, LiveTreeDom, ParentFn } from "../../../types/dom.types.js";
+import { _snip } from "../../../utils/sys-utils/snip.utils.js";
 
 // CHANGED: better name; honest about failure
 function tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
