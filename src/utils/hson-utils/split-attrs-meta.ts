@@ -118,22 +118,6 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
     }
   }
 
-  // OPTIONAL (but recommended during debug builds):
-  // Assert the Node invariant: no stray JSON escapes or HTML entities.
-  // This catches missed decodes or accidental cross-edge escaping.
-  if (process.env.NODE_ENV !== "production") {
-    const suspicious = /\\["nrt]|&(?:quot|amp|lt|gt);/;
-    for (const [ak, av] of Object.entries(attrs)) {
-      if (typeof av === "string" && suspicious.test(av)) {
-        console.warn(`[HSON ingest] suspicious attr value after decode: ${ak}=${JSON.stringify(av)}`);
-      }
-    }
-    for (const [mk, mv] of Object.entries(meta)) {
-      if (typeof mv === "string" && suspicious.test(mv)) {
-        console.warn(`[HSON ingest] suspicious meta value after decode: ${mk}=${JSON.stringify(mv)}`);
-      }
-    }
-  }
 
   return { attrs, meta };
 }
