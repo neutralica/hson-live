@@ -244,7 +244,7 @@ function buildAddTags(html: string): string[] {
  ***********************************************/
 export function sanitize_external(html: string): string {
   const ADD_TAGS = buildAddTags(html);
-  DOMPurify.addHook("uponSanitizeAttribute", (node) => {
+  DOMPurify.addHook("uponSanitizeAttribute", (node: unknown) => {
     const el = node as unknown as Element;
     const name: string = (node as any).attrName;
     const value: string = (node as any).attrValue;
