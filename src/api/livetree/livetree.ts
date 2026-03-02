@@ -29,6 +29,7 @@ import { clone_branch_method } from "./methods/clone.js";
 import { create_livetree } from "./create-livetree.js";
 import { ContentManager } from "./managers/content-manager.js";
 import { css_for_quids } from "./methods/css-for-quids.js";
+import { remove_node_children } from "../../utils/tree-utils/detach-node.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.
@@ -248,33 +249,14 @@ export class LiveTree {
    * @see empty_contents
    */
   public empty = empty_contents;
+  
   public removeChildren(): number {
-    const parent = this.nodeRef.resolveNode();
-    const kids = parent!._content;
+  // CHANGED: operate purely on graph; no hostRoot needed
+  const parent = this.nodeRef.resolveNode();
+  if (!parent) return 0;
 
-    if (!Array.isArray(kids) || kids.length === 0) return 0;
-
-    const nodeKids = kids.filter(is_Node);
-    if (nodeKids.length === 0) return 0;
-
-    let removed = 0;
-
-    // CHANGED: capture the *actual* host root node once
-    const hostRoot = this.hostRootNode();
-
-    for (const child of nodeKids) {
-      const childTree = create_livetree(child);
-
-      // CHANGED: inherit the same host-root context as the parent tree
-      // (do NOT set root to `this`)
-      if (hostRoot) childTree.adoptRoots(hostRoot);
-
-      removed += remove_livetree.call(childTree);
-    }
-
-    return removed;
-  }
-
+  return remove_node_children(parent);
+}
   /**
    * Remove this node from its parent (HSON + DOM).
    *
