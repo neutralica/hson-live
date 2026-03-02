@@ -69,7 +69,7 @@ function nodeText(n: HsonNode): string {
  * @returns `true` if the node passes the text constraint, `false` otherwise.
  * @see nodeText
  */
-function matchText(node: HsonNode, query: HsonQuery): boolean {
+export function matchText(node: HsonNode, query: HsonQuery): boolean {
   const qText = (query as any).text;
   if (qText == null) return true;
 
@@ -110,7 +110,7 @@ function matchText(node: HsonNode, query: HsonQuery): boolean {
  * @param query - The `HsonQuery` providing an `attrs` constraint.
  * @returns `true` if the node matches all attribute rules, else `false`.
  */
-function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
+export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
   if (!query.attrs) return true;
   const na = node._attrs ?? {};
 
@@ -151,7 +151,7 @@ function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
  * @param query - The `HsonQuery` providing a `meta` constraint.
  * @returns `true` if the node satisfies all meta rules, else `false`.
  */
-function matchMeta(node: HsonNode, query: HsonQuery): boolean {
+export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
   if (!query.meta) return true;
   const nm = node._meta ?? {};
   const qMeta = query.meta as Record<string, unknown>;

@@ -162,7 +162,7 @@ Sets boolean attributes (HTML flag semantics).
 Clears boolean attributes.
 
 ⸻
-
+****** OUTDATED TODO: ****** 
 Text & Form Helpers
 
 - text(value: Primitive): LiveTree
@@ -185,6 +185,7 @@ getFormValue(): string
 
 Returns current form value.
 
+****** ^ OUTDATED TODO ^ ****** 
 ⸻
 
 ID & Class APIs
