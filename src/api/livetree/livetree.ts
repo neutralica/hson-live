@@ -12,7 +12,7 @@ import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
 import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers/attrs-manager.js";
-import { remove_child } from "./methods/remove-child.js";
+import { remove_children } from "./methods/remove-child.js";
 import { StyleManager } from "./managers/style-manager.js";
 import { LiveTreeCreateHelper } from "../../types/livetree.types.js"; // CHANGED
 import { append_branch } from "./methods/append-other.js";

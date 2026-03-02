@@ -10,7 +10,7 @@ import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 
 
 // CHANGED: implement "remove all direct node-children" directly (no selector/search logic)
-export function remove_child(this: LiveTree): number {
+export function remove_children(this: LiveTree): number {
   const parent = this.node;
   const kids = parent._content;
 

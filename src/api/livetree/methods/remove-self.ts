@@ -74,30 +74,28 @@ function is_attached(node: HsonNode): boolean {
   // - nodeRef still resolves, etc.
   return element_for_node(node)!== undefined;
 }
-
-/**
- * Remove this `LiveTree`'s node from DOM and HSON, returning a count.
- *
- * @returns `1` when the node was removed, or `0` if already detached.
- */
 export function remove_livetree(this: LiveTree): number {
   const node = this.node;
 
-  // ADDED: idempotent count behavior
-  if (!is_attached(node)) return 0;
+  // CHANGED: idempotence should be based on graph membership, not DOM attachment.
+  const root = this.hostRootNode();
 
-  // (existing)
+  // If we have a root, we only count removal if we actually pruned it out.
+  // This makes the operation idempotent even when called twice.
+  const pruned = root ? pruneNodeFromRoot(root, node) : true;
+  if (!pruned) return 0;
+
+  // CHANGED: only clear per-quid CSS if quids exist
   const css = CssManager.invoke();
-  const quids = collectQuidsForSubtree(node);
+  const quids = collectQuidsForSubtree(node); // should return [] if none
   for (const q of quids) css.clearQuid(q);
 
+  // Existing: detach listeners + DOM mappings where present (should tolerate "no DOM")
   detach_node_deep(node);
+
+  // Existing: drop quid identity if present (should be a no-op if none)
   drop_quid(node);
 
-  const root = this.hostRootNode();
-  if (root) pruneNodeFromRoot(root, node);
-
-  // CHANGED: return count
   return 1;
 }
 
@@ -107,32 +105,32 @@ export function remove_livetree(this: LiveTree): number {
  * @param query - Selector string or `HsonQuery` describing direct children.
  * @returns The number of removed child nodes.
  */
-export function remove_child(this: LiveTree, query: HsonQuery | string): number {
-  const parent = this.node;
-  const kids = parent._content;
-  if (!Array.isArray(kids) || kids.length === 0) return 0;
+// export function remove_child(this: LiveTree, query: HsonQuery | string): number {
+//   const parent = this.node;
+//   const kids = parent._content;
+//   if (!Array.isArray(kids) || kids.length === 0) return 0;
 
-  const nodeKids = kids.filter(is_Node);
-  if (nodeKids.length === 0) return 0;
+//   const nodeKids = kids.filter(is_Node);
+//   if (nodeKids.length === 0) return 0;
 
-  const q: HsonQuery = typeof query === "string" ? parse_selector(query) : query;
-  const toRemove = search_nodes(nodeKids, q, { findFirst: false });
-  if (!toRemove.length) return 0;
+//   const q: HsonQuery = typeof query === "string" ? parse_selector(query) : query;
+//   const toRemove = search_nodes(nodeKids, q, { findFirst: false });
+//   if (!toRemove.length) return 0;
 
-  // CHANGED: centralized cleanup
-  for (const child of toRemove) detach_subtree(child);
+//   // CHANGED: centralized cleanup
+//   for (const child of toRemove) detach_subtree(child);
 
-  // Keep your Set-based filter (good).
-  const removeSet = new Set(toRemove);
-  const nextKids: typeof kids = [];
-  for (const ch of kids) {
-    if (is_Node(ch) && removeSet.has(ch)) continue;
-    nextKids.push(ch);
-  }
-  parent._content = nextKids;
+//   // Keep your Set-based filter (good).
+//   const removeSet = new Set(toRemove);
+//   const nextKids: typeof kids = [];
+//   for (const ch of kids) {
+//     if (is_Node(ch) && removeSet.has(ch)) continue;
+//     nextKids.push(ch);
+//   }
+//   parent._content = nextKids;
 
-  return toRemove.length; // CHANGED
-}
+//   return toRemove.length; // CHANGED
+// }
 /**
  * Recursively remove a specific HSON node from a root subtree.
  *
