@@ -5,6 +5,7 @@ import { HsonNode } from "../../types/node.types.js";
 import { NODE_ELEMENT_MAP } from "../../consts/constants.js";
 import { is_Node } from "../node-utils/node-guards.js";
 import { element_for_node } from "./node-map-helpers.js";
+import { CssManager } from "../../api/livetree/managers/css-manager.js";
 
 
 
@@ -31,8 +32,7 @@ type NodeWithKids = { _content?: unknown[] };
  *
  * @param node - Root HSON node to detach (deep).
  * @returns void.
- */
-export function detach_node_deep(node: HsonNode): void {
+ */export function detach_node_deep(node: HsonNode): void {
   // 1) recurse first so children go away before parent
   const kids = (node as NodeWithKids)._content;
   if (Array.isArray(kids) && kids.length) {
@@ -44,9 +44,7 @@ export function detach_node_deep(node: HsonNode): void {
   // 2) drop listeners and element for this node
   const el = element_for_node(node);
   if (el) {
-    _listeners_off_for_target(el);   // ← kill all listeners bound via builder
-    // also drop listeners on all DOM descendants in case something attached there
-    // (cheap DOM walk; safe even if builder didn’t attach anything below)
+    _listeners_off_for_target(el);
     const iter = el.querySelectorAll("*");
     for (let i = 0; i < iter.length; i++) {
       _listeners_off_for_target(iter[i] as unknown as EventTarget);
@@ -54,10 +52,16 @@ export function detach_node_deep(node: HsonNode): void {
     el.remove();
   }
 
+  // CHANGED: clear any QUID-scoped CSS for this node (if present)
+  // (Put your actual “get quid from node” logic here.)
+  const quid = (node as any)?._meta?.["data-_quid"];
+  if (typeof quid === "string" && quid.length) {
+    CssManager.invoke().clearQuid(quid);
+  }
+
   // 3) finally drop the map entry
   NODE_ELEMENT_MAP.delete(node);
 }
-
 // CHANGED: new helper — removes direct node children, detaches their subtrees
 export function remove_node_children(parent: HsonNode): number {
   const kids = parent._content;
