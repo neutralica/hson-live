@@ -6,7 +6,7 @@ import { ListenerBuilder } from "../../types/listen.types.js";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers.js";
 import { CssHandle, StyleHandle } from "../../types/css.types.js";
 import { remove_livetree } from "./methods/remove-self.js";
-import { get_form_value,  set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content  } from "./managers/text-form-values.js";
+import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content } from "./managers/text-form-values.js";
 import { DataManager } from "./managers/data-manager.js";
 import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
@@ -248,35 +248,32 @@ export class LiveTree {
    * @see empty_contents
    */
   public empty = empty_contents;
-
-  /**
-   * Remove all direct node children and return how many were removed.
-   *
-   * @returns The number of removed child nodes.
-   */
   public removeChildren(): number {
     const parent = this.nodeRef.resolveNode();
     const kids = parent!._content;
 
     if (!Array.isArray(kids) || kids.length === 0) return 0;
 
-    // CHANGED: only node children (not text leaves)
     const nodeKids = kids.filter(is_Node);
     if (nodeKids.length === 0) return 0;
 
     let removed = 0;
 
-    // ADDED: snapshot direct children; remove each via the canonical funnel
+    // CHANGED: capture the *actual* host root node once
+    const hostRoot = this.hostRootNode();
+
     for (const child of nodeKids) {
-      // CHANGED: wrap the child as a LiveTree bound to the same hostRoot context
       const childTree = create_livetree(child);
-      childTree.setRoot(this); // or whatever your “inherit hostRoot” API is
+
+      // CHANGED: inherit the same host-root context as the parent tree
+      // (do NOT set root to `this`)
+      if (hostRoot) childTree.adoptRoots(hostRoot);
+
       removed += remove_livetree.call(childTree);
     }
 
     return removed;
   }
-
 
   /**
    * Remove this node from its parent (HSON + DOM).
@@ -525,17 +522,17 @@ export class LiveTree {
 
 
 
-public readonly text: LiveTextApi = {
-  set: (value) => { set_node_text_content(this.node, value); return this; },
-  add: (value) => { add_node_text_content(this.node, value); return this; },
-  overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
-  insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
-  get: (): string => {
-    return get_node_text_content(this.node);
-  }
-};
-  
-  
+  public readonly text: LiveTextApi = {
+    set: (value) => { set_node_text_content(this.node, value); return this; },
+    add: (value) => { add_node_text_content(this.node, value); return this; },
+    overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
+    insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
+    get: (): string => {
+      return get_node_text_content(this.node);
+    }
+  };
+
+
   //// TODO - TEXT HANDLING MOVED TO .text NAMESPACE; delete these when safe
   /*  ---------- content API ---------- */
   /**
