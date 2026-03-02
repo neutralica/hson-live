@@ -8,32 +8,54 @@ import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 
-export function remove_child(
-  this: LiveTree,
-  query: HsonQuery | string,
-): LiveTree {
+
+// CHANGED: implement "remove all direct node-children" directly (no selector/search logic)
+export function remove_child(this: LiveTree): number {
+  const parent = this.node;
+  const kids = parent._content;
+
+  if (!Array.isArray(kids) || kids.length === 0) return 0;
+
+  // Only node children are removable via detach_node_deep.
+  const toRemove: HsonNode[] = [];
+  const nextKids: typeof kids = [];
+
+  for (const ch of kids) {
+    if (is_Node(ch)) {
+      toRemove.push(ch);
+      continue;
+    }
+    // keep primitives (if you truly want to drop primitives too, we can change this)
+    nextKids.push(ch);
+  }
+
+  if (toRemove.length === 0) return 0;
+
+  // unlink first (graph correctness), then deep-detach
+  parent._content = nextKids;
+
+  for (const n of toRemove) detach_node_deep(n);
+
+  return toRemove.length;
+}
+
+// CHANGED: if you have empty() that should clear EVERYTHING (nodes + primitives),
+// implement it separately so semantics are explicit.
+export function empty_contents(this: LiveTree): LiveTree {
   const parent = this.node;
   const kids = parent._content;
 
   if (!Array.isArray(kids) || kids.length === 0) return this;
 
-  const q: HsonQuery = typeof query === "string" ? parse_selector(query) : query;
-
-  // CHANGED: only consider DIRECT node children for matching
-  const toRemove: HsonNode[] = [];
+  const toDetach: HsonNode[] = [];
   for (const ch of kids) {
-    if (!is_Node(ch)) continue;
-    if (matches_query(ch, q)) toRemove.push(ch); // implement using your checkNode logic
+    if (is_Node(ch)) toDetach.push(ch);
   }
 
-  if (toRemove.length === 0) return this;
+  // drop everything, including primitives
+  parent._content = [];
 
-  // CHANGED: unlink first (graph correctness), then deep-detach
-  const removeSet = new Set(toRemove);
-  const nextKids = kids.filter((ch) => !(is_Node(ch) && removeSet.has(ch)));
-  parent._content = nextKids;
-
-  for (const n of toRemove) detach_node_deep(n);
+  for (const n of toDetach) detach_node_deep(n);
 
   return this;
 }
