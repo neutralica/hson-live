@@ -23,14 +23,36 @@ export class ContentManager {
     return (n._content ?? []) as readonly ContentItem[];
   }
 
+  // ADDED: effective content list with transparent `_elem` unwrapping
+  // Rule: if the parent has exactly ONE node child and it's `_elem`,
+  // treat that `_elem` as invisible and use ITS raw _content instead.
+  private effective_nodes(): readonly ContentItem[] {
+    const raw = this.pure_nodes();
+
+    // node children only (primitives ignored for semantic content APIs)
+    const nodeKids: HsonNode[] = [];
+    for (const v of raw) if (is_Node(v)) nodeKids.push(v);
+
+    if (nodeKids.length === 1 && nodeKids[0]!._tag === "_elem") {
+      // unwrap one level; still raw content items under the wrapper
+      return ((nodeKids[0]!._content ?? []) as readonly ContentItem[]);
+    }
+
+    // otherwise: semantic content is just this node’s raw content
+    return raw;
+  }
+
   /** Count of raw content items. */
   public count(): number {
+    // NOTE: keep as raw count (your original intent). If you want semantic count,
+    // add a separate method later (e.g., countNodes()).
     return this.pure_nodes().length;
   }
 
   /** Raw item at index (can be node or primitive). */
   private at_node(ix: number): ContentItem | undefined {
-    const a = this.pure_nodes();
+    // CHANGED: operate on effective content (unwrap `_elem` if applicable)
+    const a = this.effective_nodes();
     if (ix < 0 || ix >= a.length) return undefined;
     return a[ix];
   }
@@ -50,7 +72,8 @@ export class ContentManager {
 
   /** First node-content as a LiveTree handle (skips primitives). */
   public first(): LiveTree | undefined {
-    const a = this.pure_nodes();
+    // CHANGED: operate on effective content
+    const a = this.effective_nodes();
     for (const v of a) {
       if (!is_Node(v)) continue;
       const t = create_livetree(v);
@@ -62,8 +85,9 @@ export class ContentManager {
 
   /** All node-contents as LiveTree handles (skips primitives). */
   public all(): readonly LiveTree[] {
+    // CHANGED: operate on effective content
     const out: LiveTree[] = [];
-    for (const v of this.pure_nodes()) {
+    for (const v of this.effective_nodes()) {
       if (!is_Node(v)) continue;
       const t = create_livetree(v);
       t.adoptRoots(this.owner.hostRootNode());
@@ -75,30 +99,28 @@ export class ContentManager {
   /**
    * Expect exactly one node child.
    * - ignores primitives
-   * - warns and returns undefined on 0 or >1 nodes
+   * - throws on 0 or >1 nodes
    */
-  public mustOnly(opts?: { warn?: boolean }): LiveTree  {
+  public mustOnly(opts?: { warn?: boolean }): LiveTree {
     const warn = opts?.warn ?? true;
 
+    // CHANGED: operate on effective content
     let found: HsonNode | undefined;
     let count = 0;
 
-    for (const v of this.pure_nodes()) {
+    for (const v of this.effective_nodes()) {
       if (!is_Node(v)) continue;
       count += 1;
       if (count === 1) found = v;
     }
 
     if (count !== 1) {
-      if (warn) {
-        console.warn(
-            `ContentManager.mustOnly(): expected 1 node-content, got ${count}.\n 
-          (on: ${this.owner.node._tag})`
-        );
-      }
-      throw new Error ( `ContentManager.mustOnly(): expected 1 node-content, got ${count}.\n 
-          (on: ${this.owner.node._tag})`)
-      // return undefined;
+      const msg =
+        `ContentManager.mustOnly(): expected 1 node-content, got ${count}.\n` +
+        `(on: ${this.owner.node._tag})`;
+
+      if (warn) console.warn(msg);
+      throw new Error(msg);
     }
 
     const t = create_livetree(found!);
