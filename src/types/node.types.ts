@@ -48,7 +48,8 @@ export type NodeContent = (HsonNode | Primitive)[];
  * in lockstep with the DOM.
  *******/
 export type HsonAttrs = {'style'?: CssMap } & Record<string, Primitive>;
-
+export type AttrValue = Primitive | undefined;
+export type AttrMap = Readonly<Record<string, AttrValue>>;
 
 /*******
  * Metadata namespace reserved for structural bookkeeping.

@@ -32,68 +32,68 @@ import { Primitive } from "../../../types/core.types.js";
  *                semantics, or normal string value as described above. If
  *                `undefined`, it is treated as `null` (removal).
  */
-export function applyAttrToNode(
-  node: HsonNode,
-  name: string,
-  value: Primitive | undefined,
-): void {
-  if (!node._attrs) node._attrs = {};
-  const attrs = node._attrs as HsonAttrs & { style?: CssMap };
+// export function applyAttrToNode_OLD(
+//   node: HsonNode,
+//   name: string,
+//   value: Primitive | undefined,
+// ): void {
+//   if (!node._attrs) node._attrs = {};
+//   const attrs = node._attrs as HsonAttrs & { style?: CssMap };
 
-  const key = name.toLowerCase();
-  const el = element_for_node(node) as HTMLElement | undefined;
+//   const key = name.toLowerCase();
+//   const el = element_for_node(node) as HTMLElement | undefined;
 
-  // normalize undefined -> null
-  if (value === undefined) {
-    value = null;
-  }
+//   // normalize undefined -> null
+//   if (value === undefined) {
+//     value = null;
+//   }
 
-  // ---- remove / delete ----------------------------------------
-  if (value === null || value === false) {
-    if (key === "style") {
-      delete attrs.style;
-      if (el) el.removeAttribute("style");
-    } else {
-      delete (attrs as any)[key];
-      if (el) el.removeAttribute(key);
-    }
-    return;
-  }
+//   // ---- remove / delete ----------------------------------------
+//   if (value === null || value === false) {
+//     if (key === "style") {
+//       delete attrs.style;
+//       if (el) el.removeAttribute("style");
+//     } else {
+//       delete (attrs as any)[key];
+//       if (el) el.removeAttribute(key);
+//     }
+//     return;
+//   }
 
-  // ---- boolean-present attribute ------------------------------
-  if (value === true) {
-    if (key === "style") {
-      // treat boolean style as "clear style"
-      delete attrs.style;
-      if (el) el.removeAttribute("style");
-    } else {
-      // CANONICAL: store flag as key="key" in _attrs
-      (attrs as any)[key] = key;
-      if (el) el.setAttribute(key, key);
-    }
-    return;
-  }
+//   // ---- boolean-present attribute ------------------------------
+//   if (value === true) {
+//     if (key === "style") {
+//       // treat boolean style as "clear style"
+//       delete attrs.style;
+//       if (el) el.removeAttribute("style");
+//     } else {
+//       // CANONICAL: store flag as key="key" in _attrs
+//       (attrs as any)[key] = key;
+//       if (el) el.setAttribute(key, key);
+//     }
+//     return;
+//   }
 
-  // ---- normal value -------------------------------------------
-  const s = String(value);
+//   // ---- normal value -------------------------------------------
+//   const s = String(value);
 
-  if (key === "style") {
-    const cssObj = parse_style_string(s) as CssMap;
-    attrs.style = cssObj;
+//   if (key === "style") {
+//     const cssObj = parse_style_string(s) as CssMap;
+//     attrs.style = cssObj;
 
-    const cssText = serialize_style(cssObj);
-    if (el) {
-      if (cssText) {
-        el.setAttribute("style", cssText);
-      } else {
-        el.removeAttribute("style");
-      }
-    }
-  } else {
-    (attrs as any)[key] = s;
-    if (el) el.setAttribute(key, s);
-  }
-}
+//     const cssText = serialize_style(cssObj);
+//     if (el) {
+//       if (cssText) {
+//         el.setAttribute("style", cssText);
+//       } else {
+//         el.removeAttribute("style");
+//       }
+//     }
+//   } else {
+//     (attrs as any)[key] = s;
+//     if (el) el.setAttribute(key, s);
+//   }
+// }
 /**
  * Read a single attribute from a HSON node, treating the node as the
  * source of truth rather than the DOM.
@@ -114,7 +114,7 @@ export function applyAttrToNode(
  * @returns The stored attribute value as a `Primitive`, or `undefined` if
  *          the attribute is not present.
  */
-export function readAttrFromNode(
+export function readAttrFromNode_OLD(
   node: HsonNode,
   name: string,
 ): Primitive | undefined {
@@ -156,23 +156,23 @@ export function readAttrFromNode(
  *                omitted or `undefined` is treated as `null` (removal).
  * @returns The same `LiveTree` instance, for chaining.
  */
-export function setAttrsImpl(
-  tree: LiveTree,
-  nameOrMap: string | Record<string, string | boolean | null>,
-  value?: Primitive
-): LiveTree {
-  const node = tree.node; // mutators are allowed to throw if unbound
+// export function setAttrsImpl_OLD(
+//   tree: LiveTree,
+//   nameOrMap: string | Record<string, Primitive>,
+//   value?: Primitive
+// ): LiveTree {
+//   const node = tree.node; // mutators are allowed to throw if unbound
 
-  if (typeof nameOrMap === "string") {
-    applyAttrToNode(node, nameOrMap, (value) ?? null);
-    return tree;
-  }
+//   if (typeof nameOrMap === "string") {
+//     applyAttrToNode_OLD(node, nameOrMap, (value) ?? null);
+//     return tree;
+//   }
 
-  for (const [k, v] of Object.entries(nameOrMap)) {
-    applyAttrToNode(node, k, (v) ?? null);
-  }
-  return tree;
-}
+//   for (const [k, v] of Object.entries(nameOrMap)) {
+//     applyAttrToNode_OLD(node, k, (v) ?? null);
+//   }
+//   return tree;
+// }
 /**
  * Remove a single attribute from the given `LiveTree`'s node, using
  * `applyAttrToNode` with a `null` value to trigger removal semantics.
@@ -184,11 +184,11 @@ export function setAttrsImpl(
  * @param name - The attribute name to remove (case-insensitive).
  * @returns The same `LiveTree` instance, for chaining.
  */
-export function removeAttrImpl(tree: LiveTree, name: string): LiveTree {
-  const node = tree.node;
-  applyAttrToNode(node, name, null);
-  return tree;
-}
+// export function removeAttrImpl_OLD(tree: LiveTree, name: string): LiveTree {
+//   const node = tree.node;
+//   applyAttrToNode_OLD(node, name, null);
+//   return tree;
+// }
 /**
  * Set one or more boolean-present attributes (flags) on the given
  * `LiveTree`'s node.
@@ -201,13 +201,13 @@ export function removeAttrImpl(tree: LiveTree, name: string): LiveTree {
  * @param names - One or more attribute names to set as boolean-present flags.
  * @returns The same `LiveTree` instance, for chaining.
  */
-export function setFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
-  const node = tree.node;
-  for (const n of names) {
-    applyAttrToNode(node, n, true);
-  }
-  return tree;
-}
+// export function setFlagsImpl_OLD(tree: LiveTree, ...names: string[]): LiveTree {
+//   const node = tree.node;
+//   for (const n of names) {
+//     applyAttrToNode_OLD(node, n, true);
+//   }
+//   return tree;
+// }
 /**
  * Clear one or more boolean-present attributes (or any attributes) from
  * the given `LiveTree`'s node.
@@ -218,14 +218,14 @@ export function setFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
  * @param tree - The `LiveTree` whose node will be mutated.
  * @param names - One or more attribute names to remove.
  * @returns The same `LiveTree` instance, for chaining.
- */
-export function clearFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
-  const node = tree.node;
-  for (const n of names) {
-    applyAttrToNode(node, n, null);
-  }
-  return tree;
-}
+//  */
+// export function clearFlagsImpl_OLD(tree: LiveTree, ...names: string[]): LiveTree {
+//   const node = tree.node;
+//   for (const n of names) {
+//     applyAttrToNode_OLD(node, n, null);
+//   }
+//   return tree;
+// }
 /**
  * Read a single attribute from the given `LiveTree`'s node, delegating
  * to `readAttrFromNode`.
@@ -237,7 +237,7 @@ export function clearFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
  * @param name - Attribute name to read (case-insensitive).
  * @returns The attribute value as a `Primitive`, or `undefined` if
  *          the attribute is not present.
- */
-export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined {
-  return readAttrFromNode(tree.node, name);
-}
+//  */
+// export function getAttrImpl_OLD(tree: LiveTree, name: string): Primitive | undefined {
+//   return readAttrFromNode_OLD(tree.node, name);
+// }

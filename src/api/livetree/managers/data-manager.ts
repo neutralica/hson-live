@@ -76,12 +76,12 @@ export class DataManager {
 
         // null/undefined → remove the data-* attribute entirely
         if (value === null || value === undefined) {
-            this.liveTree.setAttrs(attrName, null);
+            this.liveTree.attr.set(attrName, null);
             return this.liveTree;
         }
 
         // everything else → string
-        this.liveTree.setAttrs(attrName, String(value));
+        this.liveTree.attr.set(attrName, String(value));
         return this.liveTree;
     }
 
@@ -100,7 +100,9 @@ export class DataManager {
         }
 
         if (Object.keys(patch).length > 0) {
-            this.liveTree.setAttrs(patch);
+            Object.keys(patch).forEach(k => {
+                this.liveTree.attr.set(k, patch[k]);
+            })
         }
 
         return this.liveTree;
@@ -125,6 +127,6 @@ export class DataManager {
      */
     get(key: string): Primitive | undefined {
         const dataAttrName = `data-${key}`;
-        return this.liveTree.getAttr(dataAttrName);
+        return this.liveTree.attr.get(dataAttrName);
     }
 }

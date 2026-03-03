@@ -11,25 +11,22 @@ import { DataManager } from "./managers/data-manager.js";
 import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
-import { clearFlagsImpl, getAttrImpl, removeAttrImpl, setAttrsImpl, setFlagsImpl } from "./managers/attrs-manager.js";
-import { remove_children } from "./methods/remove-child.js";
 import { StyleManager } from "./managers/style-manager.js";
 import { LiveTreeCreateHelper } from "../../types/livetree.types.js"; // CHANGED
 import { append_branch } from "./methods/append-other.js";
 import { make_tree_create } from "./methods/create-node.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
-import { Primitive } from "../../types/core.types.js";
 import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter.js";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types.js";
 import { make_dom_api } from "./managers/dom-manager.js";
-import { is_Node } from "../../utils/node-utils/node-guards.js";
 import { TreeEvents } from "../../types/events.types.js";
 import { make_tree_events } from "./managers/events-handler.js";
 import { clone_branch_method } from "./methods/clone.js";
-import { create_livetree } from "./create-livetree.js";
 import { ContentManager } from "./managers/content-manager.js";
 import { css_for_quids } from "./methods/css-for-quids.js";
 import { remove_node_children } from "../../utils/tree-utils/detach-node.js";
+import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
+import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.
@@ -139,6 +136,9 @@ export class LiveTree {
   private eventsInternal?: TreeEvents;
   private idApi?: IdApi;
   private classApi?: ClassApi;
+  private _attr?: AttrHandle;
+  private _flag?: FlagHandle;
+
 
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
@@ -249,14 +249,14 @@ export class LiveTree {
    * @see empty_contents
    */
   public empty = empty_contents;
-  
-  public removeChildren(): number {
-  // CHANGED: operate purely on graph; no hostRoot needed
-  const parent = this.nodeRef.resolveNode();
-  if (!parent) return 0;
 
-  return remove_node_children(parent);
-}
+  public removeChildren(): number {
+    // CHANGED: operate purely on graph; no hostRoot needed
+    const parent = this.nodeRef.resolveNode();
+    if (!parent) return 0;
+
+    return remove_node_children(parent);
+  }
   /**
    * Remove this node from its parent (HSON + DOM).
    *
@@ -417,90 +417,14 @@ export class LiveTree {
   }
 
   /* ---------- attribute / flags API ---------- */
-  /**
-   * Read a single attribute from this tree's node.
-   *
-   * Delegates to `getAttrImpl(this, name)`, which treats the HSON node
-   * as the source of truth and applies any special handling (e.g. for
-   * `style` attributes).
-   *
-   * @param name - The attribute name to read.
-   * @returns The attribute value as a primitive, or `undefined` if absent.
-   * @see getAttrImpl
-   */
-  public getAttr(name: string): Primitive | undefined {
-    return getAttrImpl(this, name);
-  }
-  /**
-   * Remove a single attribute from this tree's node.
-   *
-   * Delegates to `removeAttrImpl(this, name)`, which updates the HSON
-   * node and DOM element consistently.
-   *
-   * @param name - The attribute name to remove.
-   * @returns This `LiveTree` instance, for chaining.
-   * @see removeAttrImpl
-   */
-  public removeAttr(name: string): LiveTree {
-    return removeAttrImpl(this, name);
-  }
-  /**
-   * Set one or more boolean-present attributes ("flags") on this node.
-   *
-   * Delegates to `setFlagsImpl(this, ...names)`, which ensures each
-   * named attribute is present and treated as a flag, typically by
-   * storing `key="key"` or an equivalent representation.
-   *
-   * @param names - One or more attribute names to set as flags.
-   * @returns This `LiveTree` instance, for chaining.
-   * @see setFlagsImpl
-   */
-  public setFlags(...names: string[]): LiveTree {
-    return setFlagsImpl(this, ...names);
-  }
-  /**
-   * Clear one or more boolean-present attributes ("flags") on this node.
-   *
-   * Delegates to `clearFlagsImpl(this, ...names)`, removing each named
-   * flag from both HSON and DOM.
-   *
-   * @param names - One or more attribute names to remove.
-   * @returns This `LiveTree` instance, for chaining.
-   * @see clearFlagsImpl
-   */
-  public removeFlags(...names: string[]): LiveTree {
-    return clearFlagsImpl(this, ...names);
+  public get attr(): AttrHandle {
+    return (this._attr ??= attr_handle(this));
   }
 
-  /**
-   * Set one or more attributes on this node.
-   *
-   * Overloads:
-   * - `setAttrs(name, value)`:
-   *   - Set a single attribute by name, where `value` may be a string,
-   *     boolean, or `null`.
-   * - `setAttrs(map)`:
-   *   - Set multiple attributes from a record of names to values.
-   *
-   * Both forms delegate to `setAttrsImpl(this, nameOrMap, value)`, which
-   * normalizes semantics such as:
-   * - Removing attributes when given `null`/`false`.
-   * - Handling boolean-present attributes.
-   * - Special-casing `style` to use structured style objects.
-   *
-   * @param nameOrMap - Attribute name or map of attribute names to values.
-   * @param value - Optional value when setting a single attribute.
-   * @returns This `LiveTree` instance, for chaining.
-   * @see setAttrsImpl
-   */
-  public setAttrs(name: string, value: string | boolean | null): LiveTree;
-  public setAttrs(map: Record<string, string | boolean | null>): LiveTree;
-  public setAttrs(
-    nameOrMap: string | Record<string, string | boolean | null>,
-    value?: string | boolean | null,
-  ): LiveTree {
-    return setAttrsImpl(this, nameOrMap, value);
+  public get flag(): FlagHandle {
+    return (this._flag ??= flag_handle(this));
   }
+
 
 
 

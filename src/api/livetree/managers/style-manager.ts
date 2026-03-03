@@ -325,7 +325,7 @@ export class StyleManager {
         this.getter = make_style_getter({
             read: (propCanon: string) => {
                 // CHANGED: StyleManager stores inline style in kebab form
-                const attr = this.tree.getAttr("style");
+                const attr = this.tree.attr.get("style");
                 const raw = typeof attr === "string" ? attr : undefined;
 
                 const map = parse_style_attr(raw);

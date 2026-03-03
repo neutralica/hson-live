@@ -1,0 +1,206 @@
+import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
+import { Primitive } from "../../../types/core.types.js";
+import { HsonNode, HsonAttrs, CssMap } from "../../../types/index.js";
+import { AttrMap, AttrValue } from "../../../types/node.types.js";
+import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
+import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
+import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { LiveTree } from "../livetree.js";
+
+export function attr_handle(tree: LiveTree): AttrHandle {
+  return Object.freeze({
+    get: (name) => getAttrImpl(tree, name),
+
+    // NOTE: “present” semantics. If you want strict key-exists, implement
+    // it via direct node._attrs check instead of getAttrImpl.
+    has: (name) => getAttrImpl(tree, name) !== undefined,
+
+    drop: (name) => removeAttrImpl(tree, name),
+
+    set: (name, value) => setAttrsImpl(tree, name, value),
+
+    setMany: (map) => {
+      for (const [k, v] of Object.entries(map)) {
+        setAttrsImpl(tree, k, v);
+      }
+      return tree;
+    },
+  });
+}
+
+export function flag_handle(tree: LiveTree): FlagHandle {
+  return Object.freeze({
+    has: (name) => attr_handle(tree).has(name), // or a direct key-check version
+    set: (...names) => setFlagsImpl(tree, ...names),
+    clear: (...names) => clearFlagsImpl(tree, ...names),
+  });
+}
+
+
+/* ---------------------------------------------
+ * Core single-attr apply/read
+ * ------------------------------------------- */
+
+/**
+ * CHANGED: accepts Primitive (number supported) and preserves:
+ * - null/false/undefined => remove
+ * - true => boolean-present attr (key="key") except style clears
+ * - string/number => set stringified
+ */
+export function applyAttrToNode(
+  node: HsonNode,
+  name: string,
+  value: AttrValue,
+): void {
+  if (!node._attrs) node._attrs = {};
+  const attrs = node._attrs as HsonAttrs & { style?: CssMap };
+
+  const key = name.toLowerCase();
+  const el = element_for_node(node) as HTMLElement | undefined;
+
+  // CHANGED: normalize undefined -> null (removal)
+  const v: Primitive = (value === undefined ? null : value);
+
+  // ---- remove / delete ----------------------------------------
+  // CHANGED: `false` means remove (if you want literal "false", pass "false")
+  if (v === null || v === false) {
+    if (key === "style") {
+      delete attrs.style;
+      if (el) el.removeAttribute("style");
+    } else {
+      delete (attrs as any)[key];
+      if (el) el.removeAttribute(key);
+    }
+    return;
+  }
+
+  // ---- boolean-present attribute ------------------------------
+  if (v === true) {
+    if (key === "style") {
+      // treat boolean style as "clear style"
+      delete attrs.style;
+      if (el) el.removeAttribute("style");
+    } else {
+      (attrs as any)[key] = key;
+      if (el) el.setAttribute(key, key);
+    }
+    return;
+  }
+
+  // ---- normal value -------------------------------------------
+  // CHANGED: numbers become strings here
+  const s = String(v);
+
+  if (key === "style") {
+    // CHANGED: parse+store structured style map, mirror canonical text to DOM
+    const cssObj = parse_style_string(s) as CssMap;
+    attrs.style = cssObj;
+
+    const cssText = serialize_style(cssObj);
+    if (el) {
+      if (cssText) el.setAttribute("style", cssText);
+      else el.removeAttribute("style");
+    }
+  } else {
+    (attrs as any)[key] = s;
+    if (el) el.setAttribute(key, s);
+  }
+}
+
+/**
+ * Read a single attribute from the node (IR is source of truth).
+ * - missing => undefined
+ * - style object => serialized css text
+ */
+export function readAttrFromNode(
+  node: HsonNode,
+  name: string,
+): Primitive | undefined {
+  const attrs = node._attrs;
+  if (!attrs) return undefined;
+
+  const key = name.toLowerCase();
+  const raw = (attrs as any)[key];
+
+  if (raw == null) return undefined;
+
+  if (key === "style" && typeof raw === "object") {
+    return serialize_style(raw as Record<string, string>);
+  }
+
+  return raw as Primitive;
+}
+
+/* ---------------------------------------------
+ * LiveTree-facing helpers
+ * ------------------------------------------- */
+
+/**
+ * CHANGED: accepts Primitive map + numbers; undefined => remove
+ *
+ * Overloads kept for ergonomics.
+ */
+export function setAttrsImpl(tree: LiveTree, name: string, value: AttrValue): LiveTree;
+export function setAttrsImpl(tree: LiveTree, map: AttrMap): LiveTree;
+export function setAttrsImpl(
+  tree: LiveTree,
+  nameOrMap: string | AttrMap,
+  value?: AttrValue,
+): LiveTree {
+  const node = tree.node; // allowed to throw if unbound
+
+  if (typeof nameOrMap === "string") {
+    applyAttrToNode(node, nameOrMap, value);
+    return tree;
+  }
+
+  // CHANGED: apply each entry; undefined removes
+  for (const [k, v] of Object.entries(nameOrMap)) {
+    applyAttrToNode(node, k, v);
+  }
+  return tree;
+}
+
+export function removeAttrImpl(tree: LiveTree, name: string): LiveTree {
+  // CHANGED: removal uses undefined->null normalization inside apply
+  applyAttrToNode(tree.node, name, null);
+  return tree;
+}
+
+/**
+ * Set boolean-present attrs. (style treated as clear, per applyAttrToNode)
+ */
+export function setFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
+  const node = tree.node;
+  for (const n of names) {
+    applyAttrToNode(node, n, true);
+  }
+  return tree;
+}
+
+/**
+ * Clear boolean-present attrs (and any attr, really).
+ */
+export function clearFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
+  const node = tree.node;
+  for (const n of names) {
+    applyAttrToNode(node, n, null);
+  }
+  return tree;
+}
+
+export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined {
+  return readAttrFromNode(tree.node, name);
+}
+
+/**
+ * Optional helper if you want a canonical "hasAttr" that means “present”
+ * even for flags stored as key="key".
+ */
+export function hasAttrImpl(tree: LiveTree, name: string): boolean {
+  // CHANGED: key-exists check avoids edge cases where value could be ""
+  const attrs = tree.node._attrs;
+  if (!attrs) return false;
+  const key = name.toLowerCase();
+  return (attrs as any)[key] != null;
+}

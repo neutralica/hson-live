@@ -6,10 +6,11 @@ import { SetSurface } from "../../../types/css.types.js";
 import { CssKey } from "../../../types/css.types.js";
 import { ClassApi, IdApi } from "../../../types/dom.types.js";
 import { LiveTree } from "../livetree.js";
+import { getAttrImpl, removeAttrImpl, setAttrsImpl } from "./attr-handle.js";
 
 
 
-// ADDED: type guard for structured CssValue object
+// type guard for structured CssValue object
 const isStructuredCssValue = (
   v: unknown,
 ): v is Readonly<{ value: string | number; unit?: string }> => {
@@ -305,39 +306,47 @@ function renderCssValue(v: CssValue): string | null {
 }
 export function make_id_api(tree: LiveTree): IdApi {
   return {
-    // CHANGED: avoid `as string`; read attr and validate type
+    // CHANGED: read from underlying attr impl to avoid calling tree.id.get() (recursion)
     get: () => {
-      const v = tree.getAttr("id");
+      const v = getAttrImpl(tree, "id");
       return typeof v === "string" ? v : undefined;
     },
 
+    // CHANGED: write via attr impl (id is just an attribute)
     set: (id: string) => {
-      tree.setAttrs("id", id);
+      setAttrsImpl(tree, "id", id);
       return tree;
     },
 
+    // CHANGED: clear via remove impl
     clear: () => {
-      tree.removeAttr("id");
+      removeAttrImpl(tree, "id");
       return tree;
     },
   };
-
 }
-
 export function make_class_api(tree: LiveTree): ClassApi {
+  // CHANGED: read from attrs, not tree.classlist.get() (avoids self-recursion)
   const getRaw = (): string | undefined => {
-    const v = tree.getAttr("class");
+    const v = tree.attr.get("class");
     return (typeof v === "string" && v.trim().length > 0) ? v : undefined;
   };
 
-  //  parse class string from getRaw() (avoid duplicate getAttr reads)
+  // CHANGED: keep parsing centralized; uses getRaw() once per op
   const getSet = (): Set<string> => {
     const s = getRaw() ?? "";
     return new Set(s.split(/\s+/).filter(Boolean));
   };
 
+  // CHANGED: centralize write semantics (empty => drop)
+  const write = (names: Iterable<string>): LiveTree => {
+    const next = Array.from(names).filter(Boolean).join(" ").trim();
+    if (!next) tree.attr.drop("class");
+    else tree.attr.set("class", next);
+    return tree;
+  };
+
   return {
-    // CHANGED: avoid `as string`
     get: () => getRaw(),
 
     has: (name: string) => getSet().has(name),
@@ -347,9 +356,9 @@ export function make_class_api(tree: LiveTree): ClassApi {
         ? cls.filter(Boolean).join(" ").trim()
         : (cls ?? "").trim();
 
-      // CHANGED: use removeAttr for clearing, consistent with other methods
-      if (!next) tree.removeAttr("class");
-      else tree.setAttrs("class", next);
+      // CHANGED: write via attrs (no tree.classlist.*)
+      if (!next) tree.attr.drop("class");
+      else tree.attr.set("class", next);
 
       return tree;
     },
@@ -357,23 +366,13 @@ export function make_class_api(tree: LiveTree): ClassApi {
     add: (...names) => {
       const set = getSet();
       for (const n of names) if (n) set.add(n);
-
-      const next = [...set].join(" ");
-      if (!next) tree.removeAttr("class");
-      else tree.setAttrs("class", next);
-
-      return tree;
+      return write(set);
     },
 
     remove: (...names) => {
       const set = getSet();
-      for (const n of names) set.delete(n);
-
-      const next = [...set].join(" ");
-      if (!next) tree.removeAttr("class");
-      else tree.setAttrs("class", next);
-
-      return tree;
+      for (const n of names) if (n) set.delete(n);
+      return write(set);
     },
 
     toggle: (name, force) => {
@@ -384,15 +383,12 @@ export function make_class_api(tree: LiveTree): ClassApi {
       if (shouldHave) set.add(name);
       else set.delete(name);
 
-      const next = [...set].join(" ");
-      if (!next) tree.removeAttr("class");
-      else tree.setAttrs("class", next);
-
-      return tree;
+      return write(set);
     },
 
     clear: () => {
-      tree.removeAttr("class");
+      // CHANGED: drop via attrs
+      tree.attr.drop("class");
       return tree;
     },
   };
