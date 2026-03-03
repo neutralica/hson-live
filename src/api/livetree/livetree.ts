@@ -24,9 +24,9 @@ import { make_tree_events } from "./managers/events-handler.js";
 import { clone_branch_method } from "./methods/clone.js";
 import { ContentManager } from "./managers/content-manager.js";
 import { css_for_quids } from "./methods/css-for-quids.js";
-import { remove_node_children } from "../../utils/tree-utils/detach-node.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
+import { remove_node_children } from "./methods/remove-child.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.
@@ -251,10 +251,9 @@ export class LiveTree {
   public empty = empty_contents;
 
   public removeChildren(): number {
-    // CHANGED: operate purely on graph; no hostRoot needed
+    // CHANGED: minimal wrapper; semantics live in helper
     const parent = this.nodeRef.resolveNode();
     if (!parent) return 0;
-
     return remove_node_children(parent);
   }
   /**

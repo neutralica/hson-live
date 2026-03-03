@@ -7,8 +7,6 @@ import { is_Node } from "../node-utils/node-guards.js";
 import { element_for_node } from "./node-map-helpers.js";
 import { CssManager } from "../../api/livetree/managers/css-manager.js";
 
-
-
 type NodeWithKids = { _content?: unknown[] };
 
 /**
@@ -61,26 +59,4 @@ type NodeWithKids = { _content?: unknown[] };
 
   // 3) finally drop the map entry
   NODE_ELEMENT_MAP.delete(node);
-}
-// CHANGED: new helper — removes direct node children, detaches their subtrees
-export function remove_node_children(parent: HsonNode): number {
-  const kids = parent._content;
-  if (!Array.isArray(kids) || kids.length === 0) return 0;
-
-  // collect direct node kids (do NOT recurse)
-  const toRemove: HsonNode[] = [];
-  for (const ch of kids) {
-    if (is_Node(ch)) toRemove.push(ch);
-  }
-  if (toRemove.length === 0) return 0;
-
-  // CHANGED: unlink first (graph correctness)
-  parent._content = kids.filter((ch) => !is_Node(ch));
-
-  // CHANGED: teardown after unlink (listeners, node-element map, etc.)
-  for (const n of toRemove) {
-    detach_node_deep(n);
-  }
-
-  return toRemove.length;
-}
+ }

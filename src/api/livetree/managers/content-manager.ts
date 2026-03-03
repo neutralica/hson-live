@@ -1,14 +1,21 @@
 //content-manager.ts
 
 
+import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../consts/constants.js";
 import { Primitive } from "../../../types/core.types.js";
 import { HsonNode } from "../../../types/node.types.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { create_livetree } from "../create-livetree.js";
 import { LiveTree } from "../livetree.js";
-
-
 type ContentItem = HsonNode | Primitive;
+
+const VSN_SET: ReadonlySet<string> = new Set(EVERY_VSN);
+const LEAF_SET: ReadonlySet<string> = new Set(LEAF_NODES);
+
+// CHANGED: helper
+const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
+const is_leaf_vsn = (tag: string): boolean => LEAF_SET.has(tag);
+
 export class ContentManager {
   private readonly owner: LiveTree;
 
@@ -22,53 +29,76 @@ export class ContentManager {
     return (n._content ?? []) as readonly ContentItem[];
   }
 
-  // CHANGED: content APIs treat `_elem` as invisible and operate on its contents.
-  private effective_nodes(): readonly ContentItem[] {
-    const raw = this.pure_nodes();
+  /**
+   * CHANGED: “content” means element-children, with VSN wrappers invisible:
+   * - flatten VSN containers: _root, _elem, _obj, _arr, _ii
+   * - skip VSN leaves: _str, _val
+   * - include non-VSN nodes
+   * - ignore primitives
+   */
+  private effective_node_children(): readonly HsonNode[] {
+    const out: HsonNode[] = [];
 
-    // Find node children (ignore primitives for wrapper detection)
-    const nodeKids: HsonNode[] = [];
-    for (const v of raw) if (is_Node(v)) nodeKids.push(v);
+    const walk_items = (items: readonly ContentItem[]): void => {
+      for (const it of items) {
+        if (!is_Node(it)) continue;
 
-    // If there is exactly one node child and it's `_elem`, content = its content.
-    if (nodeKids.length === 1 && nodeKids[0]!._tag === "_elem") {
-      return ((nodeKids[0]!._content ?? []) as readonly ContentItem[]);
-    }
+        const tag = it._tag;
 
-    // If you truly guarantee `_elem` always exists, this is “unexpected but survivable”.
-    return raw;
+        // CHANGED: leaf wrappers are invisible at the “element-children” level
+        if (is_leaf_vsn(tag)) {
+          continue;
+        }
+
+        // CHANGED: container wrappers are invisible; descend into their content
+        if (is_vsn_tag(tag)) {
+          const kids = (it._content ?? []) as readonly ContentItem[];
+          walk_items(kids);
+          continue;
+        }
+
+        // CHANGED: normal element node
+        out.push(it);
+      }
+    };
+
+    walk_items(this.pure_nodes());
+    return out;
   }
 
-  /** Count of content items (within `_elem` when present). */
+  /** Count of effective node-children (VSNs invisible; primitives ignored). */
   public count(): number {
-    // CHANGED: semantic count
-    return this.effective_nodes().length;
+    return this.effective_node_children().length;
   }
 
-  private at_node(ix: number): ContentItem | undefined {
-    // CHANGED: semantic indexing
-    const a = this.effective_nodes();
+  /** Node-child at index (effective view). */
+  private at_node(ix: number): HsonNode | undefined {
+    const a = this.effective_node_children();
     if (ix < 0 || ix >= a.length) return undefined;
     return a[ix];
   }
 
+  /** LiveTree handle for the node-child at index (effective view). */
+  public at(ix: number): LiveTree | undefined {
+    const n = this.at_node(ix);
+    if (!n) return undefined;
+    const t = create_livetree(n);
+    t.adoptRoots(this.owner.hostRootNode());
+    return t;
+  }
+
   public first(): LiveTree | undefined {
-    // CHANGED: semantic first()
-    for (const v of this.effective_nodes()) {
-      if (!is_Node(v)) continue;
-      const t = create_livetree(v);
-      t.adoptRoots(this.owner.hostRootNode());
-      return t;
-    }
-    return undefined;
+    const n = this.at_node(0);
+    if (!n) return undefined;
+    const t = create_livetree(n);
+    t.adoptRoots(this.owner.hostRootNode());
+    return t;
   }
 
   public all(): readonly LiveTree[] {
-    // CHANGED: semantic all()
     const out: LiveTree[] = [];
-    for (const v of this.effective_nodes()) {
-      if (!is_Node(v)) continue;
-      const t = create_livetree(v);
+    for (const n of this.effective_node_children()) {
+      const t = create_livetree(n);
       t.adoptRoots(this.owner.hostRootNode());
       out.push(t);
     }
@@ -76,27 +106,18 @@ export class ContentManager {
   }
 
   public mustOnly(opts?: { warn?: boolean }): LiveTree {
-    // CHANGED: semantic mustOnly()
     const warn = opts?.warn ?? true;
+    const kids = this.effective_node_children();
 
-    let found: HsonNode | undefined;
-    let count = 0;
-
-    for (const v of this.effective_nodes()) {
-      if (!is_Node(v)) continue;
-      count += 1;
-      if (count === 1) found = v;
-    }
-
-    if (count !== 1) {
+    if (kids.length !== 1) {
       const msg =
-        `ContentManager.mustOnly(): expected 1 node-content, got ${count}.\n` +
+        `ContentManager.mustOnly(): expected 1 node-content, got ${kids.length}.\n` +
         `(on: ${this.owner.node._tag})`;
       if (warn) console.warn(msg);
       throw new Error(msg);
     }
 
-    const t = create_livetree(found!);
+    const t = create_livetree(kids[0]!);
     t.adoptRoots(this.owner.hostRootNode());
     return t;
   }
