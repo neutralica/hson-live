@@ -193,3 +193,14 @@ export type CreateHelper<Single, Many> =
  * further broadcast-style operations.
  **************************************************************/
 export type TreeSelectorCreateHelper = CreateHelper<TreeSelector, TreeSelector>;
+
+export type DocApi = Readonly<{
+  document: Document;
+  window: Window | null;
+
+  // Amenity: handle to <body> if it exists
+  body: LiveTree | undefined;
+
+  // Good to have (optional):
+  rootEl: HTMLElement | null;  // doc.documentElement if needed later
+}>;
