@@ -74,7 +74,7 @@ Rather than maintaining separate virtual ui and state model that must be kept in
 
 Attributes, text content, child nodes, CSS and styles, animations and keyframes, and events and listeners--all are accessible using ordinary JavaScript and TypeScript semantics.
 
- Once grafted onto document.body, changes to LiveTree's node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs or the complexity and heft of a framework.
+Once grafted onto document.body, changes to LiveTree's node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs or the complexity and heft of a framework.
 
 ```ts
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
@@ -84,7 +84,7 @@ const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
 
       // LiveTree extends many basic JS document methods
     const branchDiv = tree.create.div()  
-        .setText('hello world'); 
+        .setText("hello world"); 
         .css.set.backgroundColor("pink")
           // liveTree methods return `this`, enabling complex chained operations
 
@@ -94,7 +94,7 @@ const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
         .once()           
           // listener teardown/cleanup occurs automatically on node removal
         .onClick(       
-          branchDiv.setText('goodbye world') 
+          branchDiv.setText("goodbye world") 
           // changes to the node graph are instantaneously expressed in the DOM
          ); 
 ```
