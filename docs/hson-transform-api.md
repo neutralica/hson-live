@@ -151,11 +151,11 @@ Returns HSON’s pared syntax or underlying nodes, depending on finalization.
 
 ⸻
 
-### LiveTree Output
+### LiveTree getter
 ```ts
-.liveTree()
+.liveTree
 ```
-Creates a LiveTree projection of the node graph.
+Prepares a LiveTree projection of the node graph.
 
 This path diverges slightly in finalization (see below).
 
@@ -234,12 +234,12 @@ No stringification occurs. To avoid enabling XSS and UI injection, hson-live doe
 
 ⸻
 
-### LiveTree Finalization
+### LiveTree - Finalization
 
 ```ts
 .asBranch()
 ```
-For .liveTree() outputs. Creates an unattached LiveTree instance without mutating the DOM.
+For .liveTree() outputs: creates an unattached LiveTree instance without mutating the DOM.
 
 ⸻
 

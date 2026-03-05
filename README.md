@@ -78,7 +78,7 @@ Once grafted onto document.body, changes to LiveTree's node graph are immediatel
 
 ```ts
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
-      .liveTree()  
+      .liveTree
         // replace contents of document.body with identical LiveTree projection
       .graft()  
 
