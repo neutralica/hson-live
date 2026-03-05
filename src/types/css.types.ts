@@ -289,6 +289,7 @@ export type CssHandleBase<TReturn> = Readonly<
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
+    devSnapshot: ()=>string;
   }
 >;
 

@@ -121,6 +121,7 @@ export function css_for_quids(
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
+      devSnapshot: () => mgr.devSnapshot(),
     };
   }
 
@@ -133,10 +134,10 @@ export function css_for_quids(
 
   const getter = mk_getter_for_ids(ids);
 
-  // IMPORTANT: your previous code was missing this return (TS2366).
   return {
     ...setter,
     get: getter,
+    devSnapshot: () => mgr.devSnapshot(),
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),

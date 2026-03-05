@@ -853,7 +853,7 @@ export class CssManager {
 
     return `${selector}{${body}}`;
   }
-  
+
   /** 
    * Immediately writes the current in-memory CSS to the DOM.
    * This is the "force it now" path used by devFlush and (optionally) tests.
@@ -894,7 +894,13 @@ export class CssManager {
   } as const;
 
 
+  
+  public devSnapshot(): string {
+    return this.renderCss()
+  }
+  
   /** @internal */
+
   public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
     for (const [oldQ, newQ] of quidMap) {
       const rules = this.rulesByQuid.get(oldQ);
