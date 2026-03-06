@@ -7,6 +7,7 @@ import { CssKey } from "../../../types/css.types.js";
 import { ClassApi, IdApi } from "../../../types/dom.types.js";
 import { LiveTree } from "../livetree.js";
 import { getAttrImpl, removeAttrImpl, setAttrsImpl } from "./attr-handle.js";
+import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 
 
 // type guard for structured CssValue object
@@ -54,16 +55,18 @@ const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export function css_supports_decl(propCanon: string, value: string): boolean {
-  // Custom props: can't validate meaningfully; allow.
+  // Custom props: allow through
   if (propCanon.startsWith("--")) return true;
 
-  // If CSS.supports doesn't exist (rare), fail open.
-  if (typeof CSS === "undefined" || typeof CSS.supports !== "function") return true;
+  if (typeof CSS === "undefined" || typeof CSS.supports !== "function") {
+    return true;
+  }
+
+  const cssProp = camel_to_kebab(propCanon);
 
   try {
-    return CSS.supports(propCanon, value);
+    return CSS.supports(cssProp, value);
   } catch {
-    // CSS.supports can throw on weird inputs; treat as unsupported.
     return false;
   }
 }
