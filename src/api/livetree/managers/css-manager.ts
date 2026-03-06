@@ -11,6 +11,7 @@ import { KeyframesManager } from "../../../types/keyframes.types.js";
 import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss } from "./global-css.js";
+import { css_supports_decl } from "./style-setter.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -639,7 +640,15 @@ export class CssManager {
       this.unsetForQuid(q, p);
       return;
     }
-
+if (!css_supports_decl(p, v)) {
+    console.warn("CssManager.setForQuid: unsupported CSS decl skipped", {
+      quid: q,
+      prop: p,
+      value: v,
+    });
+    return; // CHANGED: do not store invalid decl
+}
+    
     let props = this.rulesByQuid.get(q);
     if (!props) {
       props = new Map<string, string>();

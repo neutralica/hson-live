@@ -9,7 +9,6 @@ import { LiveTree } from "../livetree.js";
 import { getAttrImpl, removeAttrImpl, setAttrsImpl } from "./attr-handle.js";
 
 
-
 // type guard for structured CssValue object
 const isStructuredCssValue = (
   v: unknown,
@@ -31,6 +30,7 @@ const isStructuredCssValue = (
 
   return true;
 };
+
 const isCssValue = (v: unknown): v is CssValue => {
   if (v === null || v === undefined) return true;
 
@@ -53,6 +53,20 @@ const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
   "__after",
 ]);
 
+export function css_supports_decl(propCanon: string, value: string): boolean {
+  // Custom props: can't validate meaningfully; allow.
+  if (propCanon.startsWith("--")) return true;
+
+  // If CSS.supports doesn't exist (rare), fail open.
+  if (typeof CSS === "undefined" || typeof CSS.supports !== "function") return true;
+
+  try {
+    return CSS.supports(propCanon, value);
+  } catch {
+    // CSS.supports can throw on weird inputs; treat as unsupported.
+    return false;
+  }
+}
 
 //  detects CssValue object shape `{ value, unit? }`
 const isCssValueObject = (v: unknown): v is Readonly<{ value: string | number; unit?: string }> => {

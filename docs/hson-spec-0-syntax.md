@@ -34,11 +34,11 @@ Nodes are terminated by one of two explicit closers. The chosen closer encodes t
 
 HSON's two closure symbols are structural markers that carry strict meaning.
 
-### 2.1 `_elem` nodes (`/>`)
+### 2.1 "_elem" nodes ("/>")
 
 Nodes sourced from html elements terminate with `/>`. 
 
-### 2.2 `_obj` nodes (`>`)
+### 2.2 "_obj" nodes (">")
 Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON. 
 
 
@@ -175,7 +175,7 @@ Attributes never appear as child nodes.
 
 ## Flags (Boolean Attributes)
 
-Flags are boolean attributes whose presence implies `true`.
+Flags are boolean attributes whose presence implies "true".
 
 #### HTML:
 ```
@@ -185,7 +185,7 @@ Flags are boolean attributes whose presence implies `true`.
 ```
 
 #### HSON:
-```
+
 <details disabled
   ...
 />
