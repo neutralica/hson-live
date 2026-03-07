@@ -197,14 +197,11 @@ export const hson = {
    * - Throws a structured transform error if the selector matches nothing.
    */
   queryDOM(selector: string): DomQuerySourceConstructor {
-    const el = document.querySelector<HTMLElement>(selector);
     return {
-      liveTree(): DomQueryLiveTreeConstructor {
-        return {
+      liveTree:  {
           graft(): LiveTree {
             return construct_tree({ unsafe: false }).queryDom(selector).graft();
           },
-        };
       },
     };
   },
@@ -219,12 +216,10 @@ export const hson = {
    */
   queryBody(): DomQuerySourceConstructor {
     return {
-      liveTree(): DomQueryLiveTreeConstructor {
-        return {
+     liveTree: {
           graft(): LiveTree {
             return construct_tree({ unsafe: false }).queryBody().graft();
           },
-        };
       },
     };
   },

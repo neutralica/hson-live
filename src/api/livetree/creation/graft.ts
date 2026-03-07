@@ -7,44 +7,83 @@ import { parse_html } from "../../parsers/parse-html.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "../create-livetree.js";
+import { node_for_element } from "../../../utils/tree-utils/node-map-helpers.js";
+
 
 
 /**
- * grafts the hson model onto a DOM element, making it live and interactive
- *  - parses the element's existing HTML, rebuilds it as an HSON-managed
- *     DOM tree, and returns a queryable HsonTree instance that auto-updates
- * @param element the target HTMLElement to graft onto (default = document.body)
- * @returns a LiveTree for querying and manipulating the grafted DOM element and its children
+ * Project a known HSON node into an existing DOM element and return a LiveTree
+ * handle for that node.
+ *
+ * This is the real endpoint used by graft().
+ */
+function graft_node_into_element(
+  element: HTMLElement,
+  nodeToRender: HsonNode,
+): LiveTree {
+  const frag = document.createDocumentFragment();
+  frag.appendChild(project_livetree(nodeToRender));
+
+  element.replaceChildren(frag);
+
+  return create_livetree(nodeToRender);
+}
+
+/**
+ * Graft an existing DOM element into HSON/LiveTree.
+ *
+ * Semantics:
+ * - parses the element itself (not its innerHTML string)
+ * - unwraps parser-only structural wrappers (_root / _elem)
+ * - requires exactly one real root node
+ * - re-projects that node into the same DOM element
+ * - returns a LiveTree handle for that element-node
  */
 export function graft(
   element?: HTMLElement,
-  options: { unsafe: boolean } = { unsafe: false }
+  options: { unsafe: boolean } = { unsafe: false },
 ): LiveTree {
+  void options; // CHANGED: currently unused; keep only if you expect it soon
+
   const targetElement = element;
   if (!targetElement) {
     _throw_transform_err("error getting target element", "graft", element);
   }
 
-  const sourceHTML = targetElement.innerHTML;
-  const rootNode: HsonNode = parse_html(sourceHTML);
+  const parsedRoot: HsonNode = parse_html(targetElement);
+  const contentNodes = unwrap_root_elem(parsedRoot);
 
-  const contentNodes = unwrap_root_elem(rootNode);
   if (contentNodes.length !== 1) {
     _throw_transform_err(
       `[ERR: graft()]: expected 1 node, but received ${contentNodes.length}. Wrap multiple elements in a single container.`,
-      "graft"
+      "graft",
     );
   }
 
   const nodeToRender = contentNodes[0];
+  if (!nodeToRender) {
+    _throw_transform_err(
+      `[ERR: graft()]: unwrap_root_elem() returned no renderable node.`,
+      "graft",
+    );
+  }
+  const existingNode = node_for_element(targetElement);
+  if (existingNode) {
+    return create_livetree(existingNode);
+  }
 
-  // CHANGE: project exactly once into a fragment
-  const frag = document.createDocumentFragment();
-  frag.appendChild(project_livetree(nodeToRender));
+  return graft_node_into_element(targetElement, nodeToRender);
+}
 
-  // CHANGE: replace DOM with the projected subtree
-  targetElement.replaceChildren(frag);
-
-  // CHANGE: return a handle ONLY (no projection here)
-  return create_livetree(nodeToRender);
+/**
+ * Legacy compatibility alias.
+ *
+ * Body is no longer treated specially here; it is grafted with the same
+ * semantics as any other queried element.
+ */
+export function graft_body(
+  element: HTMLElement,
+  options: { unsafe: boolean } = { unsafe: false },
+): LiveTree {
+  return graft(element, options);
 }

@@ -1,11 +1,10 @@
 // consts.types.ts
 
-import { HsonNode } from "../types/node.types.js";
-
 
 /***************************************************************
- * HSON 2025 — core tag, sentinel, and metadata constants
  *
+ *  HSON constants
+ * 
  * This module defines the canonical identifiers used throughout
  * the HSON system: the VSN (Virtual Structural Node) tag set,
  * render-target markers, stable metadata keys, and the runtime
@@ -27,22 +26,6 @@ import { HsonNode } from "../types/node.types.js";
  * change to the entire HSON ecosystem.
  ***************************************************************/
 
-/***************************************************************
- * NODE_ELEMENT_MAP
- *
- * WeakMap<HsonNode, Element>
- *
- * Runtime bridge linking a hydrated DOM Element to its logical
- * HSON node. Populated by LiveTree mounting routines and used for:
- *
- *   - efficient DOM updates,
- *   - reverse lookups (element → node),
- *   - preserving identity across re-render passes.
- *
- * As a WeakMap, nodes and elements are eligible for GC once no
- * external references remain.
- ***************************************************************/
-export const NODE_ELEMENT_MAP = new WeakMap<HsonNode, Element>();
 
 /***************************************************************
  * _FALSE / FALSE_TYPE / _ERROR

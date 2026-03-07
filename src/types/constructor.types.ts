@@ -200,7 +200,7 @@ export interface TreeConstructor_Source {
  *      actual graft into the DOM.
  ***************/
 export interface DomQuerySourceConstructor {
-  liveTree(): DomQueryLiveTreeConstructor;
+  liveTree: DomQueryLiveTreeConstructor;
 }
 
 /******************************************************************************

@@ -2,9 +2,8 @@
 
 import { _listeners_off_for_target } from "../../api/livetree/managers/listener-builder.js";
 import { HsonNode } from "../../types/node.types.js";
-import { NODE_ELEMENT_MAP } from "../../consts/constants.js";
 import { is_Node } from "../node-utils/node-guards.js";
-import { element_for_node } from "./node-map-helpers.js";
+import { element_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../../api/livetree/managers/css-manager.js";
 
 type NodeWithKids = { _content?: unknown[] };
@@ -58,5 +57,5 @@ type NodeWithKids = { _content?: unknown[] };
   }
 
   // 3) finally drop the map entry
-  NODE_ELEMENT_MAP.delete(node);
+  unlinkNode(node);
  }

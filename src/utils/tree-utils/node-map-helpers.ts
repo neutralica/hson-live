@@ -1,38 +1,80 @@
 // node-map-helpers.ts
 
 import { HsonNode } from "../../types/node.types.js";
-import { NODE_ELEMENT_MAP } from "../../consts/constants.js";
 import { make_string } from "../primitive-utils/make-string.nodes.utils.js";
 
+/***************************************************************
+ * NODE_ELEMENT_MAP / ELEMENT_NODE_MAP
+ *
+ * Canonical bi-directional runtime bridge between HSON nodes
+ * and their live DOM elements.
+ *
+ * Invariant:
+ * - one node -> one element
+ * - one element -> one node
+ *
+ * All writes must go through linkNodeToElement / unlinkNode / unlinkElement.
+ ***************************************************************/
+
+const NODE_ELEMENT_MAP = new WeakMap<HsonNode, Element>();
+
+const ELEMENT_NODE_MAP = new WeakMap<Element, HsonNode>();
+
 
 /**
- * Associate a live DOM `Element` with an `HsonNode` in the internal node→element map.
- *
- * This is the single, canonical registration point for establishing the linkage used
- * by DOM-sync operations (style, dataset, append/remove, detach, etc.).
- *
- * Notes:
- * - Uses a `WeakMap`, so entries are eligible for GC when the `HsonNode` is no longer referenced.
- * - Overwrites any prior mapping for the same node.
- *
- * @param node - The HSON node that conceptually “owns” the element.
- * @param el - The concrete DOM element that represents `node` in the live document.
+ * Link one node to one element, cleaning up any stale prior pairings on either side.
  */
 export function linkNodeToElement(node: HsonNode, el: Element): void {
+  // CHANGED: clear any previous element for this node
+  const prevEl = NODE_ELEMENT_MAP.get(node);
+  if (prevEl && prevEl !== el) {
+    ELEMENT_NODE_MAP.delete(prevEl);
+  }
+
+  // CHANGED: clear any previous node for this element
+  const prevNode = ELEMENT_NODE_MAP.get(el);
+  if (prevNode && prevNode !== node) {
+    unlinkNode(prevNode);
+  }
+
+  // CHANGED: write both directions
   NODE_ELEMENT_MAP.set(node, el);
+  ELEMENT_NODE_MAP.set(el, node);
 }
-//  optional helpers
+
+
 /**
- * Remove any existing node→element association for the given `HsonNode`.
- *
- * Use this when a node is being detached/unmounted so future sync calls do not
- * accidentally target a stale element reference.
- *
- * @param node - The node whose mapping should be removed.
+ * Remove both directions for a node, if present.
  */
 export function unlinkNode(node: HsonNode): void {
+  const el = NODE_ELEMENT_MAP.get(node);
+
   NODE_ELEMENT_MAP.delete(node);
+
+  if (el) {
+    const mappedNode = ELEMENT_NODE_MAP.get(el);
+    if (mappedNode === node) {
+      ELEMENT_NODE_MAP.delete(el);
+    }
+  }
 }
+
+/**
+ * Remove both directions for an element, if present.
+ */
+export function unlinkElement(el: Element): void {
+  const node = ELEMENT_NODE_MAP.get(el);
+
+  ELEMENT_NODE_MAP.delete(el);
+
+  if (node) {
+    const mappedEl = NODE_ELEMENT_MAP.get(node);
+    if (mappedEl === el) {
+      NODE_ELEMENT_MAP.delete(node);
+    }
+  }
+}
+
 /**
  * Check whether an `HsonNode` currently has an associated live DOM `Element`.
  *
@@ -43,6 +85,9 @@ export function unlinkNode(node: HsonNode): void {
  */
 export function hasElementForNode(node: HsonNode): boolean {
   return NODE_ELEMENT_MAP.has(node);
+}
+export function hasNodeForEl(el: Element): boolean {
+  return ELEMENT_NODE_MAP.has(el);
 }
 
 /**
@@ -58,6 +103,10 @@ export type ElementLookupPolicy = "throw" | "warn" | "silent";
  */
 export function element_for_node(node: HsonNode): Element | undefined {
   return NODE_ELEMENT_MAP.get(node);
+}
+
+export function node_for_element(el: Element): HsonNode | undefined {
+  return ELEMENT_NODE_MAP.get(el);
 }
 
 // NEW: opt-in tripwire
@@ -97,4 +146,14 @@ export function element_for_node_checked(
   }
 
   return el;
+}
+
+export function assert_node_element_link(node: HsonNode): void {
+  const el = element_for_node(node);
+  if (!el) return;
+
+  const roundTrip = node_for_element(el);
+  if (roundTrip !== node) {
+    throw new Error("node<->element map mismatch");
+  }
 }

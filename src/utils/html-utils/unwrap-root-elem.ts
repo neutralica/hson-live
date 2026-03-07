@@ -17,7 +17,7 @@ import { is_Node } from "../node-utils/node-guards.js";
  * - Always returns an array.
  *
  * @param content - A single node or list of nodes that may include `_root`/`_elem` wrappers.
- * @returns The unwrapped concrete child nodes (no `_root`/`_elem` wrapper nodes).
+ * @returns The unwrapped concrete child nodes (stripped of `_root`/`_elem` wrapper nodes).
  */
 export function unwrap_root_elem(content: HsonNode | HsonNode[]): HsonNode[] {
     const nodes = Array.isArray(content) ? content : [content];
