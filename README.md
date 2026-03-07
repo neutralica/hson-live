@@ -21,6 +21,7 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
 ```
 
 # HSON: Hypertext Structured Object Notation
+### www.terminalgothic.com
 
 
 ## overview
@@ -151,9 +152,10 @@ npx tsc
 Compiled output is written to dist/.
 
 
-## demo
-The HSON demo site demonstrates LiveTree in a deliberately minimal environment, without frameworks or any other dependencies.
-<!-- demo url coming soon -->
+## demo site
+The HSON demo site demonstrates LiveTree in a deliberately minimal environment, without frameworks or any other dependencies. Test it at:
+
+### www.terminalgothic.com
 
 
 ## documentation

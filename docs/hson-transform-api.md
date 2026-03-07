@@ -1,7 +1,7 @@
 // hson-transform-api.md
 
 # hson-live 
-## Transformater API
+## Transformer API
 
 The hson object is the public transformation facade for HSON-LIVE.
 It provides a fluent, deterministic pipeline for converting between:
@@ -11,10 +11,10 @@ It provides a fluent, deterministic pipeline for converting between:
 *	Live DOM projection (LiveTree)
 
 The API is deliberately linear and explicit. Every transformation follows the same four conceptual stages:
-	1.	Select source format
-	2.	Select output format
-	3.	(Optionally: configure formatting or safety)
-	4.	Select render method & render
+1. Select source format
+2. Select output format
+3. (Optionally: configure formatting or safety)
+4. Select render method & render
 
 This design avoids implicit behavior, hidden sanitization, and format-specific shortcuts.
 

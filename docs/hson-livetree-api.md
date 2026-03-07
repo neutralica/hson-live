@@ -1,252 +1,245 @@
-// hson-livetree-api.md
-
-# hson.livetree
-LiveTree API (Current)
+# hson.livetree (LiveTree API)
+Updated: 2026-03-07
 
 Overview
 
-LiveTree is a mutable handle to a single HsonNode.
-It provides structured, opt-in access to DOM synchronization, styling, data, events, and traversal while remaining safe to use without a DOM (Node/test/runtime-agnostic).
+LiveTree is a mutable handle to a single `HsonNode`. It provides structured access to traversal, DOM synchronization, styling, data, events, and node mutation while remaining safe to use without a DOM (Node/test/runtime-agnostic). A LiveTree always represents one node and operates relative to a host root.
 
-A LiveTree always represents one node and operates relative to a host root.
+---
 
-⸻
+## Construction
 
-Construction
+`new LiveTree(input: HsonNode | LiveTree)`
 
-constructor(input: HsonNode | LiveTree)
+- If constructed from a `HsonNode`, that node becomes both the reference node and host root.
+- If constructed from another `LiveTree`, the new instance points at the same node and adopts the same host root.
+
+---
 
-Creates a LiveTree handle.
-*	If constructed from a HsonNode, the node becomes both the reference node and host root.
-*	If constructed from another LiveTree, the new instance points at the same node and adopts the same host root.
+## Identity and Core Accessors
 
-⸻
+- `node: HsonNode`
+  - Returns the resolved node. Throws if the reference cannot be resolved.
+- `quid: string`
+  - Stable identity token for the node.
+- `hostRootNode(): HsonNode`
+  - Returns the current host root.
+- `adoptRoots(root: HsonNode): this`
+  - Rebinds host root (advanced/internal usage).
 
-Identity & Core Accessors
+---
 
-- node: HsonNode
+## DOM Access
 
-Returns the resolved node.
-Throws if the reference cannot be resolved.
+- `dom: LiveTreeDom`
+  - Lazily created DOM helper API for this node.
+  - Methods:
+    - `el(): Element | undefined`
+    - `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
+    - `matches(sel: string): boolean`
+    - `contains(other: LiveTree): boolean`
+    - `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
+    - `parent(): LiveTree | undefined` with `parent.must(label?)`
+- `asDomElement(): Element | undefined`
+  - Returns the underlying DOM element if it exists (undefined when not mounted).
 
-- quid: string
-Returns the node’s QUID (stable identity token).
+---
 
-- hostRootNode(): HsonNode
-Returns the current host root node.
+## Tree Mutation
 
-- adoptRoots(root: HsonNode): this
-Replaces the host root and returns this.
+- `append(branch: LiveTree, index?: number): LiveTree`
+  - Appends children from another branch under this node. Mirrors to DOM when present.
+- `empty(): LiveTree`
+  - Removes all content from this node.
+- `removeChildren(): number`
+  - Removes direct node children (ignores primitives). Returns count removed.
+- `removeSelf(): number`
+  - Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
+- `cloneBranch(): LiveTree`
+  - Deep-clones subtree with new QUIDs; returns a detached branch.
 
-⸻
+---
 
-DOM Access
+## Querying
 
-- dom: LiveTreeDom
-Returns the lazily-created DOM helper API for this node.
-*	Cached per LiveTree
-*	Created only on first access
+- `find(q: string | HsonQuery): LiveTree | undefined`
+- `find.byId(id: string): LiveTree | undefined`
+- `find.byAttrs(attr: string, value: string): LiveTree | undefined`
+- `find.byFlags(flag: string): LiveTree | undefined`
+- `find.byTag(tag: string): LiveTree | undefined`
+- `find.must(...)` and `.must.*` variants
+- `findAll(q: FindQueryMany): TreeSelector`
+- `findAll.id(...) / byAttribute(...) / byFlag(...) / byTag(...)`
+- `findAll.must(...)` and `.must.*` variants
 
-- asDomElement(): Element | undefined
-Returns the underlying DOM element if it exists.
-Returns undefined if the node is not mounted or no DOM is available.
+`TreeSelector` supports iteration and broadcast APIs (see below).
 
-⸻
+---
 
-Tree Mutation
+## Creation Helpers
 
-- append
-Alias for append_branch.
-Appends child node(s) to this node and mirrors to DOM when present.
+- `create: LiveTreeCreateHelper`
+  - Bound creation helper for appending new nodes under this tree.
+  - Examples:
+    - `create.prepend()`
+    - `create.at(index)`
+    - `create.tags(tags: string[], index?)`
+    - `create.<tag>(index?)`
+  - Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
 
-- empty
-Alias for empty_contents.
-Removes all content from this node.
+---
 
-- removeChildren(): number
-Removes all child nodes (ignores primitives).
-Returns the number of nodes removed.
+## Content and Text
 
-- removeSelf(): number
-Removes this node from its parent.
-Returns the number of nodes removed.
+### ContentManager
 
-⸻
+- `content.count(): number`
+- `content.at(ix: number): LiveTree | undefined`
+- `content.first(): LiveTree | undefined`
+- `content.all(): readonly LiveTree[]`
+- `content.mustOnly(opts?: { warn?: boolean }): LiveTree`
 
-Querying
+Content operations only consider node children (primitives are skipped). `_elem` wrappers are unwrapped.
 
-- find
-Finds a single descendant node.
-Provided by make_find_for(this).
-Returns a LiveTree or undefined depending on method used.
+### Text API
 
-- findAll
-Finds multiple descendant nodes.
-Returns a multi-selection object (TreeSelector) supporting iteration and broadcast APIs.
+- `text.set(value: Primitive): LiveTree`
+  - Replaces only `_str/_val` leaves (keeps element children).
+- `text.add(value: Primitive): LiveTree`
+  - Appends a new text leaf.
+- `text.insert(index: number, value: Primitive): LiveTree`
+  - Inserts a text leaf at VSN bucket index.
+- `text.overwrite(value: Primitive): LiveTree`
+  - Replaces all content with one text leaf (DOM `textContent`).
+- `text.get(): string`
+  - Concatenated text of `_str/_val` leaves.
 
-⸻
+### Form Helpers
 
-Creation Helpers
+- `setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): LiveTree`
+- `getFormValue(): string`
 
-- create: LiveTreeCreateHelper
-Fluent helper for creating and appending new nodes under this tree.
+---
 
-⸻
+## Attributes and Flags (Updated)
 
-Styling
+LiveTree no longer exposes `getAttr` / `setAttrs` directly. Use `attr` and `flag` handles.
 
-Inline Style (element-local)
+### `attr: AttrHandle`
 
-- style: StyleSetter<LiveTree>
-Returns the inline style setter for this node.
-*	Lazily created
-*	Applies styles via style="" semantics
-*	Coexists with QUID-scoped CSS
+- `attr.get(name: string): Primitive | undefined`
+- `attr.has(name: string): boolean`
+  - Present semantics based on stored value; not a strict key-exists check.
+- `attr.set(name: string, value: Primitive | null | false): LiveTree`
+  - `null`, `undefined`, or `false` remove the attribute.
+  - `true` sets a boolean-present attribute (`key="key"`).
+  - Numbers are stringified.
+  - For `style`, string values are parsed into a structured map and mirrored to DOM.
+- `attr.setMany(map: Record<string, Primitive | null | false>): LiveTree`
+  - Applies each entry with the same semantics as `attr.set`.
+- `attr.drop(name: string): LiveTree`
+  - Removes an attribute.
 
-⸻
+### `flag: FlagHandle`
 
-QUID-Scoped CSS (stylesheet)
+- `flag.has(name: string): boolean`
+- `flag.set(...names: string[]): LiveTree`
+  - Sets boolean-present attributes (same semantics as `attr.set(name, true)`).
+- `flag.clear(...names: string[]): LiveTree`
+  - Clears boolean-present attributes (same semantics as remove).
 
-- css: CssHandle
-Returns a cached QUID-scoped CSS handle.
-*	Rules are written to a managed <style> element
-*	Selectors use [_quid="…"]
-*	Safe to call before DOM mount
-*	Supports animations, keyframes, and @property
+---
 
-The handle exposes:
-*	Style setter methods (setProp, setMany, remove, clear)
-*	atProperty
-*	keyframes
-*	anim
-*	Debug helpers (if enabled)
+## DataManager (dataset)
 
-see: css-manager-api.md
+`data: DataManager` manages `data-*` attributes.
 
-⸻
+- `data.set(key: string, value: Primitive | undefined): LiveTree`
+  - `key` is normalized with camel-to-kebab and prefixed with `data-`.
+  - `null` or `undefined` removes the attribute.
+- `data.setMany(map: Record<string, Primitive | undefined>): LiveTree`
+  - Batch set/remove using the same rules as `data.set`.
+- `data.get(key: string): Primitive | undefined`
+  - Reads `data-${key}` as-is. (No camel-to-kebab normalization on read.)
 
-Data Attributes
+Notes:
+- Values are stored as strings, matching HTML attribute behavior.
 
-- data: DataManager
+---
 
-Manages data-* attributes.
-*	Lazily created
-*	Keeps node attrs and DOM dataset in sync
-*	Supports single and multi-set operations
+## ID and Class APIs (Updated)
 
-⸻
+### `id: IdApi`
 
-Attributes & Flags
+- `id.get(): string | undefined`
+- `id.set(id: string): LiveTree`
+- `id.clear(): LiveTree`
 
-- getAttr(name: string): Primitive | undefined
+### `classlist: ClassApi`
 
-Returns an attribute value or undefined.
+- `classlist.get(): string | undefined`
+  - Raw `class` attribute (undefined if empty).
+- `classlist.has(name: string): boolean`
+- `classlist.set(cls: string | string[]): LiveTree`
+- `classlist.add(...names: string[]): LiveTree`
+- `classlist.remove(...names: string[]): LiveTree`
+- `classlist.toggle(name: string, force?: boolean): LiveTree`
+- `classlist.clear(): LiveTree`
 
-- removeAttr(name: string): LiveTree
+---
 
-Removes an attribute and returns this.
+## Styling (Abridged)
 
-- setAttrs(...)
+### Inline Style
 
-Overloads:
+- `style: StyleHandle`
+  - Implements `StyleSetter` API for inline styles.
+  - Common methods: `setProp`, `setMany`, `remove`, `clear`, and proxy `set.*`.
+  - Also exposes `style.get.property(prop)` and `style.get.var(name)`.
 
-- setAttrs(name: string, value: string | boolean | null): LiveTree
-- setAttrs(map: Record<string, string | boolean | null>): LiveTree
-null removes the attribute
-Returns this
+### QUID-Scoped CSS
 
-- setFlags(...names: string[]): LiveTree
-Sets boolean attributes (HTML flag semantics).
+- `css: CssHandle`
+  - Implements the same `StyleSetter` API for QUID-scoped stylesheet rules.
+  - Supports keyframes, animations, and `@property` registration.
 
-- removeFlags(...names: string[]): LiveTree
-Clears boolean attributes.
+See `css-manager-api.md` for full details.
 
-⸻
-****** OUTDATED TODO: ****** 
-Text & Form Helpers
+---
 
-- text(value: Primitive): LiveTree
+## Events
 
-Replaces node content with a primitive leaf.
+- `listen: ListenerBuilder`
+  - Fluent, typed DOM event registration (mouse, pointer, keyboard, focus, animation, transition, clipboard, custom, etc.).
+  - Supports options (`once`, `passive`, `capture`) and modifiers (`preventDefault`, `stopProp`, etc.).
 
-getText(): string
+- `events: TreeEvents`
+  - Internal, non-DOM event bus:
+    - `events.on(type, handler): () => void`
+    - `events.once(type, handler): () => void`
+    - `events.emit(type, payload?): void`
 
-Returns textual content.
+---
 
-setFormValue(value: string, opts?): LiveTree
+## TreeSelector (from `findAll`)
 
-Sets form-related value and mirrors to DOM/attrs.
+Returned by `findAll(...)`.
 
-Options:
-*	silent?: boolean
-*	strict?: boolean
+- `toArray(): LiveTree[]`
+- `count(): number`
+- `first(): LiveTree | undefined`
+- `forEach(fn)`
+- `map(fn)`
+- `filter(fn): TreeSelector`
+- `removeSelf(): number` (alias `remove()`)
 
-getFormValue(): string
+Broadcast proxies (apply to all selected nodes):
 
-Returns current form value.
+- `listen`, `style`, `css`, `data`
 
-****** ^ OUTDATED TODO ^ ****** 
-⸻
+---
 
-ID & Class APIs
-
-id: IdApi
-
-Cached helper for the id attribute.
-
-get(): string | undefined
-set(id: string): LiveTree
-clear(): LiveTree
-
-
-⸻
-
-classlist: ClassApi
-
-Cached helper for the class attribute.
-
-get(): string | undefined
-has(name: string): boolean
-set(cls: string | string[]): LiveTree
-add(...names: string[]): LiveTree
-remove(...names: string[]): LiveTree
-toggle(name: string, force?): LiveTree
-clear(): LiveTree
-
-
-⸻
-
-DOM Event Listeners
-
-listen: ListenerBuilder
-
-Fluent, typed DOM event registration.
-*	Supports mouse, pointer, keyboard, focus, animation, transition, clipboard, custom events
-*	Supports options (once, passive, capture, etc.)
-*	Returns detachable listener handles
-
-⸻
-
-Tree-Local Events
-
-events: TreeEvents
-
-Lightweight pub/sub system scoped to this LiveTree.
-
-Typical surface:
-
-on(type, handler): unsubscribe
-once(type, handler): unsubscribe
-emit(type, payload): void
-
-Used for application-level signaling independent of DOM events.
-
-⸻
-
-Lifecycle Notes
-*	All sub-APIs are lazy
-*	DOM interaction is best-effort
-*	Safe to use in Node / test environments
-*	QUID-scoped CSS survives pre-mount usage
-
-⸻
+#### Notes
+- LiveTree is DOM-optional. All DOM-facing APIs no-op safely when not mounted.
+- Attributes are normalized to lowercase internally.
+- For precise tag creation and full CSS/animation APIs, consult `livetree-methods-list.md` and `css-manager-api.md`.
