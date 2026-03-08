@@ -7,7 +7,11 @@ import { parse_html } from "../../parsers/parse-html.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "../create-livetree.js";
-import { node_for_element } from "../../../utils/tree-utils/node-map-helpers.js";
+import { linkNodeToElement, node_for_element } from "../../../utils/tree-utils/node-map-helpers.js";
+import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
+import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
+import { Primitive } from "../../../types/core.types.js";
+import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
 
 
 
@@ -21,8 +25,15 @@ function graft_node_into_element(
   element: HTMLElement,
   nodeToRender: HsonNode,
 ): LiveTree {
+  linkNodeToElement(nodeToRender, element);
+
+  // reflect attrs from root node onto existing host element
+  sync_root_attrs_to_element(nodeToRender, element);
+
   const frag = document.createDocumentFragment();
-  frag.appendChild(project_livetree(nodeToRender));
+  for (const child of nodeToRender._content ?? []) {
+    frag.appendChild(project_livetree(child as HsonNode | Primitive));
+  }
 
   element.replaceChildren(frag);
 
@@ -86,4 +97,58 @@ export function graft_body(
   options: { unsafe: boolean } = { unsafe: false },
 ): LiveTree {
   return graft(element, options);
+}
+
+function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
+  const quid = ensure_quid(node);
+  set_attrs_safe(el, _DATA_QUID, quid);
+
+  const attrs = node._attrs ?? {};
+
+  // optional but recommended: clear stale attrs first,
+  // except things you explicitly preserve
+  for (const name of el.getAttributeNames()) {
+    if (name === _DATA_QUID) continue;
+    if (!(name in attrs)) {
+      el.removeAttribute(name);
+    }
+  }
+
+  for (const [key, raw] of Object.entries(attrs)) {
+    if (raw == null) {
+      el.removeAttribute(key);
+      continue;
+    }
+
+    if (key === "style") {
+      if (typeof raw === "string") {
+        el.style.cssText = raw;
+      } else if (raw && typeof raw === "object") {
+        // clear then rebuild
+        el.removeAttribute("style");
+
+        const obj = raw as Record<string, string | number | null>;
+        for (const [prop, v] of Object.entries(obj)) {
+          const val = v == null ? "" : String(v);
+          const cssProp = canon_to_css_prop(nrmlz_cssom_prop_key(prop));
+          if (!cssProp) continue;
+          if (val === "") el.style.removeProperty(cssProp);
+          else el.style.setProperty(cssProp, val);
+        }
+      }
+      continue;
+    }
+
+    if (raw === true) {
+      set_attrs_safe(el, key, "");
+      continue;
+    }
+
+    if (raw === false) {
+      el.removeAttribute(key);
+      continue;
+    }
+
+    set_attrs_safe(el, key, String(raw));
+  }
 }
