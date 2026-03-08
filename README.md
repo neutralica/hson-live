@@ -29,16 +29,35 @@ HSON is a glue format: a structural data representation capable of fully express
 
 JSON and HTML are fundamentally different domains--data versus markup--yet both are built from hierarchical, tree-structured relationships.
 
-HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations.
+HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations. 
 
+HSON is a serializable syntax resembling a pared-down version of HTML. It draws a parallel between JSON's key:value pair and HTML's parent:child, describing either format via the same node graph. 
 
-## view ≡ state
-hson-live extends this model into runtime with LiveTree, an extension that parses the DOM and makes it accessible and manipulable as a JS data structure. Markup values like attributes and text content may be directly manipulated in JS code like a state object; changing these values immediately updates the DOM.
+```
+// JSON:
+{
+  "key1": {
+    "key2": "value"
+  }
+}
+// HSON:
+<key1  
+  <key2  "value">
+>
 
-With hson.liveTree, view is not a function of state: view *is* state.  Rather than synchronizing separate representations, they are simply projections of the same node graph. Immediate applications include include lightweight reactive UI, but the same guarantees apply to any HTML or JSON data.
+// HTML:
+<parent>
+ <child>text node</child>
+</parent>
+// HSON:
+<parent
+  <child "text node"/>
+/>
+```
+hson-live ships a set of 7 transformers capable of converting JSON and XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across n transformations. 
 
 ## core
-HSON is built around a single, explicit intermediate representation (IR), a node graph capable of representing:
+HSON's syntax is built to express an explicit intermediate representation (IR), a node graph capable of representing:
 
 * JSON objects and arrays
 * HTML and SVG elements
@@ -58,9 +77,9 @@ hson.transform is a set of core transformers responsible for:
 
 This includes cases that are often lossy or ambiguous in conventional tooling, such as embedded markup in JSON, boolean attributes, void elements, or SVG namespace handling.
 
-Using hson-live’s transformers, arbitrary HTML can be rendered as a valid JSON representation, manipulated via standard JS object methods, and re-rendered on the DOM in its new form. The inverse — treating structured data as markup to be rendered — works equally well. 
+Using hson-live’s transformers, arbitrary HTML can theoretically be rendered as valid JSON, manipulated via standard JS object methods, and re-rendered on the DOM in its new form. The inverse — treating structured data as markup to be rendered — works equally well, with no distortion of user data. 
 
-Joining two incompatible notations in a single unified format opens up new ways of creating the web. hson-live's LiveTree extension explores the possibilities this unlocks.
+Joining two incompatible notations in a single unified format opens up new ways of creating the web. hson-live's LiveTree extension explores the possibilities this unlocks and makes the theoretical practical. 
 
 
 
