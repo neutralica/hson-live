@@ -21,7 +21,7 @@
     "include": [
         "src/index.ts",
         "src/**/*"
-, "_archive/strip-vsns.new.ts"    ],
+, "_archive/strip-vsns.new.ts",   ],
     "exclude": ["dist", "node_modules", "src/_refactor/**/*"]
 }
 

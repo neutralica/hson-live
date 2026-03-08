@@ -15,6 +15,12 @@ function ranges_from_matches(src: string, re: RegExp): Range[] {
   return out;
 }
 
+function auto_closing_p(nameLower: string): boolean {
+  return /^(address|article|aside|blockquote|div|dl|fieldset|figure|footer|form|h[1-6]|header|main|nav|ol|pre|section|table|ul)$/i.test(
+    nameLower
+  );
+}
+
 function in_ranges(sorted: Range[], i: number): boolean {
   // Linear is fine for test inputs, but we can do cheap binary without drama.
   let lo = 0;
@@ -184,6 +190,11 @@ export function optional_endtag_preflight(src: string): string {
       pOpen = false;
       continue;
     }
+    if (isClose && pOpen && auto_closing_p(name)) {
+      inserts.push({ at: iTag, text: "</p>" });
+      pOpen = false;
+      // do not continue unless this tag has other logic below
+    }
 
     // --- Lists ---
     if (!isClose && (name === "ul" || name === "ol")) {
@@ -226,6 +237,10 @@ export function optional_endtag_preflight(src: string): string {
       }
       continue;
     }
+    if (pOpen) {
+      inserts.push({ at: src.length, text: "</p>" });
+    }
+
   }
 
   if (!inserts.length) return src;
