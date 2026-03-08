@@ -86,7 +86,7 @@ Joining two incompatible notations in a single unified format opens up new ways 
 ## hson.liveTree
 LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made. LiveTree allows the DOM to be accessible and editable directly via JS (with a few other unexpected bonuses thrown in).
 
-Rather than maintaining separate virtual ui and state model that must be kept in sync, LiveTree works by:
+Rather than maintaining separate virtual ui and state models that must be kept in sync, LiveTree works by:
 
 1) ingesting any existing HTMLElement within document.body (or <body> itself) and parsing it (and all nested content) to HsonNodes
 2) re-emitting those nodes as HTML back into the DOM, structurally identical to the original
@@ -97,26 +97,29 @@ Attributes, text content, child nodes, CSS and styles, animations and keyframes,
 Once grafted onto document.body, changes to LiveTree's node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs or the complexity and heft of a framework.
 
 ```ts
+// livetree-fixtures-2.ts
+
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
-      .liveTree
-        // replace contents of document.body with identical LiveTree projection
-      .graft()  
+    .liveTree
+    .graft();
+// replaces contents of document.body with identical LiveTree projection
 
-      // LiveTree extends many basic JS document methods
-    const branchDiv = tree.create.div()  
-        .setText("hello world"); 
-        .css.set.backgroundColor("pink")
-          // liveTree methods return `this`, enabling complex chained operations
+// LiveTree extends many basic JS document methods
+const branchDiv = tree.create.div()
+    .setText("hello world")
+    // methods return `this`, enabling complex chained operations
+    .css.set.backgroundColor("pink");
 
-      // liveTree's ListenerManager exposes event listeners and handling
-    tree.listen           
-          // event listener options are fully represented in liveTree's .listen toolchain 
-        .once()           
-          // listener teardown/cleanup occurs automatically on node removal
-        .onClick(       
-          branchDiv.setText("goodbye world") 
-          // changes to the node graph are instantaneously expressed in the DOM
-         ); 
+// liveTree's ListenerManager exposes event listeners and handling
+tree.listen
+    // listener teardown/cleanup occurs automatically on node removal
+    .once()
+    // event listener options are fully represented in liveTree's .listen toolchain 
+    .onClick(
+        // changes to the node graph are instantaneously expressed in the DOM
+        branchDiv.setText("goodbye world")
+            .css.set.backgroundColor("blue")
+    ); 
 ```
 
 
@@ -164,10 +167,12 @@ npm install hson-live
 
 ## build
 hson-live is written in TypeScript.
+
 ```ts
 npm install
 npx tsc
 ```
+
 Compiled output is written to dist/.
 
 
