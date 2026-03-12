@@ -1,54 +1,19 @@
 // hson-todo
 
-## TEMP TODO
-
-1) Unify LiveTree API around handle surfaces for “fields”
-	•	Treat “field-ish” domains as handles (id, text, classlist, css, data, content, etc).
-	•	Attrs + flags are the main offenders and should be converted to handles.
-
-2) Break the old attrs/flags methods on purpose
-	•	Go “all-in” on breaking changes (no long deprecation layer), and rely on the LiveTree tests to keep us honest.
-
-3) Naming choice
-	•	Use singular manager handles: tree.attr and tree.flag (not attrs/flags), consistent with text, id, css, etc.
-	•	Keep data as-is for now (you noted dataset naming is optional; current surface works).
-
-4) Keep DOM-specific things in .dom
-	•	.dom stays the “specialized / might be absent off-DOM” zone.
-	•	We’re not trying to route anything through raw document.* at this stage.
-
--> Likely-next, but still triage-worthy
-
-5) Define what “flag” means precisely
-	•	You want hasFlag()-style ability; under the new surface that becomes:
-	•	tree.flag.has("disabled")
-	•	plus tree.flag.set(...) and tree.flag.drop(...) (or remove).
-	•	Decide whether flag.set("disabled") implies boolean-present attribute semantics only (almost certainly yes).
-
-6) Decide whether data should become dataset
-	•	Not required. You like the pared-down naming.
-	•	If you ever add a tree.data non-DOM concept, then renaming to dataset becomes attractive to avoid semantic collision.
-
--> Parked / optional (not in the “do it now” scope)
-
-7) Document / globals convenience surfaces:
+## 11MAR2026 still remaining from refactor:
+ document / globals surfaces:
 	•	tree.doc (curated document methods, useful for lifecycle/teardown wiring)
 	•	tree.root (graph root of the node universe)
 	•	hson.getRoot / global manager direction
 
--> good ideas, but they’re bigger semantics decisions than attrs/flags and don’t need to be bundled into the same breaking-change batch.
-
-8) DOM geometry + animation affordances
+8DOM geometry + animation affordances
 	•	getBoundingClientRect and friends, maybe under .dom
 	•	getAnimations
 	•	elementFromPoint, etc
 
--> useful, but separate from the “normalize the API surface” work.
+ Keyframes teardown + keyframe ownership maps
 
-9) Keyframes teardown + keyframe ownership maps
-	•	Still a TODO category; not directly coupled to attrs/flags.
-
-10) Multi-document / window switching bug
+ Multi-document / window switching bug
 	•	queryBody() locked to one document; needs a fix eventually.
 	•	Not coupled to attrs/flags.
 

@@ -23,11 +23,18 @@ export interface LiveTreeDom {
   html(): HTMLElement | undefined;
   matches(sel: string): boolean;
   contains(other: LiveTree): boolean;
+  isConnected(): boolean;
 
-  // CHANGED: single declarations using intersection types
+
+  rect: RectFn;
   closest: ClosestFn;
   parent: ParentFn;
 }
+
+export type RectFn = {
+  (): DOMRect | undefined;
+  must(label?: string): DOMRect;
+};
 
 /**
  * ID helper bound to a node’s `id` attribute.
