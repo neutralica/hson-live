@@ -1,4 +1,5 @@
 // hson-transform-api.md
+// neutralica @ terminal_gothic
 
 # hson-live 
 ## Transformer API
@@ -22,11 +23,9 @@ This design avoids implicit behavior, hidden sanitization, and format-specific s
 
 ## Conceptual Model
 
-At the center of all transformations is a stable intermediate representation: HsonNode.
+At the center of all transformations is a stable intermediate representation type: HsonNode.
 
-All supported formats—HTML, JSON, SVG, XML-like markup, and HSON itself—are parsed into this shared node graph. All outputs are derived from that graph.
-
-No format is treated as canonical and no transformation path is privileged.
+All supported formats—HTML, JSON, SVG, XML-like markup, and HSON itself—are parsed into this shared node structure. All outputs are derived from that graph. No format is treated as canonical and no transformation path is privileged.
 
 ⸻
 
@@ -54,7 +53,7 @@ This is the default choice for:
 
 ⸻
 
-```
+```ts
 hson.fromTrustedHtml(html: string)
 ```
 Use this only for developer-authored or fully trusted HTML.
@@ -114,7 +113,7 @@ hson.queryBody()
 ```
 A convenience wrapper for document.body.
 
-These sources are typically used as entry points for LiveTree workflows.
+These sources are used as entry points for LiveTree workflows and only return LiveTree creation methods.
 
 ⸻
 

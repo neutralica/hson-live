@@ -171,7 +171,10 @@ export function parse_html(input: string | Element): HsonNode {
 
             // 3) Unquoted attribute values: only then quote them (and re-run amp fix once)
             // IMPORTANT: do NOT run this for tag mismatch errors; it's a regex and can worsen things.
-            if (/AttValue|attribute value|expected ['"]|quotation mark/i.test(msg)) {
+            if (
+                /AttValue|attribute value|expected ['"]|quotation mark|not well-formed/i.test(msg) &&
+                /=([^\s"'=<>`]+)/.test(xmlSrc)
+            ) {
                 const quoted = quote_unquoted_attrs(xmlSrc);
                 // quoting can introduce bare &, so do amp_fix once immediately after
                 tryParse(amp_fix(quoted), "quote_unquoted_attrs(+amp_fix)");
@@ -210,7 +213,7 @@ export function parse_html(input: string | Element): HsonNode {
             const msg = errText();
 
             // 6) Multiple top-level nodes ("extra content"): wrap a root and retry.
-            if (/extra content/i.test(msg)) {
+            if (/extra content|junk after document element|no root element found/i.test(msg)) {
                 // CHANGED: keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
                 let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
 
@@ -527,55 +530,55 @@ function wrap_as_root(node: HsonNode): HsonNode {
  * @see convert
  */
 function elementToNode(
-  els: NodeListOf<ChildNode>,
-  parentTag: string, // already lowercased
+    els: NodeListOf<ChildNode>,
+    parentTag: string, // already lowercased
 ): (HsonNode | Primitive)[] {
-  const children: (HsonNode | Primitive)[] = [];
+    const children: (HsonNode | Primitive)[] = [];
 
-  for (const kid of Array.from(els)) {
-    if (kid.nodeType === Node.ELEMENT_NODE) {
-      children.push(convert(kid as Element));
-      continue;
-    }
-
-    if (kid.nodeType === Node.TEXT_NODE) {
-      const raw = kid.textContent ?? "";
-
-       /* handle the empty-string sentinel after trimming */
-      const trimmed = raw.trim();
-      if (trimmed === '""') {
-        children.push(CREATE_NODE({
-          _tag: STR_TAG,
-          _meta: {},
-          _content: [""],
-        }));
-        continue;
-      }
-
-       /* inside <_obj>, whitespace is *data*, not layout;
-            remove a single leading/trailing newline wrapper, keep everything else */
-      if (parentTag === "_obj") {
-        let unboxed = raw;
-
-         /* remove exactly one leading newline (and one trailing newline), if present */
-        unboxed = unboxed.replace(/^\r?\n/, "");
-        unboxed = unboxed.replace(/\r?\n$/, "");
-
-         /* IMPORTANT: do NOT trim here. If the payload is "   ", we keep it */
-        if (unboxed.length > 0) {
-          children.push(unboxed);
+    for (const kid of Array.from(els)) {
+        if (kid.nodeType === Node.ELEMENT_NODE) {
+            children.push(convert(kid as Element));
+            continue;
         }
-        continue;
-      }
 
-       /* ignore layout-only whitespace between elements */
-      if (trimmed.length > 0) {
-        children.push(trimmed);
-      }
+        if (kid.nodeType === Node.TEXT_NODE) {
+            const raw = kid.textContent ?? "";
 
-      continue;
+            /* handle the empty-string sentinel after trimming */
+            const trimmed = raw.trim();
+            if (trimmed === '""') {
+                children.push(CREATE_NODE({
+                    _tag: STR_TAG,
+                    _meta: {},
+                    _content: [""],
+                }));
+                continue;
+            }
+
+            /* inside <_obj>, whitespace is *data*, not layout;
+                 remove a single leading/trailing newline wrapper, keep everything else */
+            if (parentTag === "_obj") {
+                let unboxed = raw;
+
+                /* remove exactly one leading newline (and one trailing newline), if present */
+                unboxed = unboxed.replace(/^\r?\n/, "");
+                unboxed = unboxed.replace(/\r?\n$/, "");
+
+                /* IMPORTANT: do NOT trim here. If the payload is "   ", we keep it */
+                if (unboxed.length > 0) {
+                    children.push(unboxed);
+                }
+                continue;
+            }
+
+            /* ignore layout-only whitespace between elements */
+            if (trimmed.length > 0) {
+                children.push(trimmed);
+            }
+
+            continue;
+        }
     }
-  }
 
-  return children;
+    return children;
 }

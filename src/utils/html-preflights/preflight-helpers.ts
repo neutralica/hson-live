@@ -21,22 +21,9 @@ function extract_mismatched_tag(msg: string): string | undefined {
 }
 
 export function should_try_void_expand(msg: string): boolean {
-  // Either a premature-end in a void tag, or a mismatch mentioning a void tag
-  const VOID = new Set([
-    "area","base","br","col","embed","hr","img","input",
-    "link","meta","param","source","track","wbr",
-  ]);
-
-  if (/Premature end of data in tag/i.test(msg)) {
-    const m = msg.match(/Premature end of data in tag\s+([A-Za-z0-9:_-]+)/i);
-    const t = m?.[1]?.toLowerCase();
-    return !!t && VOID.has(t);
-  }
-
-  if (/Opening and ending tag mismatch/i.test(msg)) {
-    const t = extract_mismatched_tag(msg);
-    return !!t && VOID.has(t);
-  }
-
-  return false;
+  return (
+    /expected:\s*<\/(?:area|base|br|col|embed|hr|img|input|link|meta|param|source|track|wbr)>/i.test(msg) ||
+    /opening and ending tag mismatch/i.test(msg) ||
+    /premature end of data in tag/i.test(msg)
+  );
 }
