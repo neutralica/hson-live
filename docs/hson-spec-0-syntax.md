@@ -19,7 +19,7 @@ HSON is a tree of nodes. Each node has:
 Every serialized HSON document corresponds 1:1 to a node graph. A HsonNode’s _tag and _content properties directly represent the serialized structure. 
 
 ### Canonical Form
-```
+```ts
 <tag attrs? flags?
   "…content"?
 >
@@ -50,7 +50,7 @@ A single serialized HSON string must use one model consistently. Mixing `/>` and
 
 If a node contains either attributes XOR one primitive value it uses the inline closure form:
 
-```
+```ts
 <tag primitive/>
 <tag primitive>
 ```
@@ -58,20 +58,20 @@ A space before the closure (`<tag primitive />`) is also valid)
 
 Examples:
 HTML:
-```
+```ts
 <title "On Trees and Structure"/>
 <section id="hson-spec-1-syntax"/>
 <generator disabled/>
 ```
 
 JSON:
-```
+```ts
 <author "neutralica">
 <views 18342>
 <updated null>
 ```
 
-#### Rules:
+### Rules:
 *	A node may contain at most one primitive value to close inline.
 *	It may not contain both attributes and inline primitive content.
 *	It may not contain a child node.
@@ -83,8 +83,8 @@ If a node contains:
 
 then its content must be serialized on subsequent lines and the closer must appear on its own line, similar to a JSON object.
 
-#### HTML:
-```
+### HTML:
+```ts
 <title
   <h1 "overview"/>
   <div
@@ -95,8 +95,8 @@ then its content must be serialized on subsequent lines and the closer must appe
 />
 ```
 
-#### JSON:
-```
+### JSON:
+```ts
 <user
   <name "bo">
   <age "32">
@@ -143,7 +143,7 @@ A node’s `_content` property consists of ordered child nodes, which may be:
 - standard container nodes, or
 - primitive leaf nodes (`<_str>` / `<_val>`)
 
-```
+```ts
 <p
   "JSON and"
   <em "HTML"/>
@@ -158,13 +158,13 @@ Content order is preserved when parsing HSON. Text and nested nodes coexist natu
 
 Attributes appear inside the opening tag, before content. When attributes and content are both present, the node introduces the content on a newline, to maintain clear visual separation. When only attributes or primitive content is present on a node, it is serialized as a single line
 
-```
+```ts
 <article id="post-042" class="entry featured"
   ...
 >
 ```
 
-#### Attributes:
+### Attributes:
 *	are HTML-derived metadata, not content
   *	are stored in the _attrs property, not in _content
 *	are not ordered semantically
@@ -177,22 +177,22 @@ Attributes never appear as child nodes.
 
 Flags are boolean attributes whose presence implies "true".
 
-#### HTML:
-```
+### HTML:
+```ts
 <details disabled>
   ...
 </details>
 ```
 
-#### HSON:
-
+### HSON:
+```ts
 <details disabled
   ...
 />
 ```
 
 Internally, flags are stored in XML form, `key="key"`:
-```
+```ts
 {
   _attrs: {
     disabled: disabled
@@ -207,7 +207,7 @@ Like attributes--which they are--flags are not child nodes and never appear in _
 ## 6. Arrays (« » syntax)
 
 HSON provides a compact array literal syntax.
-```
+```ts
 <tags
   «
     "hson",
@@ -221,7 +221,7 @@ HSON provides a compact array literal syntax.
 This is equivalent to an internal _arr node with _iindexed children.
 HSON parsers accept brackets as array delimiters provided the closer is consistent. If reserialized, all arrays use guillemet delimiters regardless of input symbol. 
 
-#### Notes:
+### Notes:
 *	« » is purely a serialization convenience and minor visual flourish
 *	internally, arrays are still represented structurally via VSNs
 *	array order is preserved through the use of internal _ii nodes
@@ -236,7 +236,7 @@ Nested arrays and objects within arrays are permitted exactly as with JSON. Arra
 
 When serializing JSON-derived data to HSON, object properties are represented as named child nodes.
 
-#### JSON:
+### JSON:
 ```ts
 {
   "author": {
@@ -250,8 +250,8 @@ When serializing JSON-derived data to HSON, object properties are represented as
 }
 ```
 
-#### HSON:
-```
+### HSON:
+```ts
 <author
   <handle "Neutralica">
   <org "@terminal_gothic">
@@ -271,28 +271,29 @@ hson-lives's HSON parser accepts arrays with or without newline separators; arra
 
 Some nodes exist solely to preserve structure across formats. These are Virtual Structural Nodes (VSNs).
 
-#### Common examples:
+### Common examples:
 *	_obj — object container
 *	_arr — array container
 *	_ii  — array item
 *	_str — string primitive
 *	_val — non-string primitive
 
-#### VSNs:
+### VSNs:
 *	are always structural
-*	always close with>
-*	never use/>
+* always begin with underscore
 *	are required when serializing HTML or JSON into the other format
 *	are unnecessary in HSON serialization: syntax expresses structure
 
-VSNs are required when serializing HTML into JSON or vice-versa. The HSON syntax expresses either format cleanly without VSN clutter.
+VSNs, and nodes' _meta property, are necessary to preserve the structural differences between HTML and JSON (such as the presence of attributes in one, the presence of arrays in another). VSNs are visible in user data during conversion, and are fully removed when the data is returned to its source format. 
+
+The HSON syntax is designed to express either format cleanly without the need for VSN clutter.
 
 ⸻
 
 ## 9. Identity (data-_quid)
 
 Nodes may carry a stable identity token called a `quantum unique ID` (quid):
-```
+```ts
 <p data-_quid="Q7f3c"
   "Hello"
 >
