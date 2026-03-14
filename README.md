@@ -33,23 +33,28 @@ HSON explicitly models that shared structure, allowing JSON and HTML to be trans
 
 HSON is a serializable syntax resembling a pared-down version of HTML. It draws a parallel between JSON's key:value pair and HTML's parent:child, describing either format via the same node graph. 
 
-```
-// JSON:
+### JSON:
+```ts
 {
   "key1": {
     "key2": "value"
   }
 }
-// HSON:
+```
+### HSON:
+```ts
 <key1  
   <key2  "value">
 >
-
-// HTML:
+```
+### HTML:
+```ts
 <parent>
- <child>text node</child>
+  <child>text node</child>
 </parent>
-// HSON:
+```
+### HSON:
+```ts
 <parent
   <child "text node"/>
 />
@@ -140,27 +145,33 @@ The API is intentionally conservative. It often mirrors established JavaScript d
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
 
-LiveTree's CssManager uses each node's "quantum unique ID" (QUID) as its selector. Local CSS scoping emerges naturally from this. Rules apply only on the node where they are defined, without requiring Shadow DOM boundaries, naming conventions, or build-time transformations. Cleanup is built-in: rules are automatically deleted from the <hson-_style> stylesheet on node removal. CSS remains CSS, but its lifetime, scope, and validity can be governed programmatically by LiveTree.
+LiveTree's CssManager uses each node's "quantum unique ID" (QUID) as its selector. Local CSS scoping emerges naturally from this. Rules apply only on the node where they are defined, without requiring Shadow DOM boundaries, complex naming conventions, or build-time transformations. 
 
 hson-live's CssManager, KeyframesManager, StyleManager, and (@)PropertyManager together enable typed style management, deterministic cleanup, dynamic rule composition, and animation systems that can be defined, sequenced, and controlled without fragile string concatenation.
 
+Cleanup is built-in: rules are automatically deleted from the <hson-_style> stylesheet on node removal. CSS remains CSS, but its lifetime, scope, and validity can be governed programmatically by LiveTree.
+
 
 ## significance
-Treating JSON and HTML as different representations of the same underlying structure removes a long-standing obstacle in web development. hson-live suggests a new paradigm of view and data alignment:
+Treating JSON and HTML as representations of the same underlying structure offers a novel solution to a long-standing challenge: how best to align UI and state data. hson-live suggests a new paradigm:
 
 * state and view cannot diverge; there is only one data node structure of which they are both projections
-* serialization is no longer an edge operation, but a core function
-* reactive systems and interfaces requiring no reconciliation step
+* serialization is not an edge case operation but core functionality
+* responsive interfaces require no reconciliation step; they are always up to date
 * DOM manipulation becomes authoritative and first-class rather than a side effect
 * non-JS runtimes (including WASM) gain a clear, stable target for DOM-adjacent interaction
 
 
 ## status and safety
+
 ### HSON-LIVE IS EXPERIMENTAL - USE WITH CAUTION
-The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments. ***hson-live is not currently recommended for processing untrusted HTML or for security-critical production use.*** 
+
+The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments. 
+***hson-live is not currently recommended for processing untrusted HTML or for security-critical production use.*** 
 
 
 ## installation
+
 ```bash
 npm install hson-live
 ```
