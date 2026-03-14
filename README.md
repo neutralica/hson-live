@@ -60,10 +60,10 @@ HSON is a serializable syntax resembling a pared-down version of HTML. It draws 
 />
 ```
 
-hson-live provides 7 parsers and serializers capable of converting JSON and XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations. 
+hson-live provides 7 parsers and serializers for converting any JSON or XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations. 
 
 ## core
-HSON's syntax is built to express an explicit intermediate representation (IR), a node graph capable of representing:
+HSON's syntax is designed to express an explicit intermediate representation (IR), a node graph capable of representing:
 
 * JSON objects and arrays
 * HTML and SVG elements
