@@ -1,5 +1,6 @@
 
-### hson-live 2.0 / neutralica @ TERMINAL_GOTHIC · 11JAN2026
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
 
 ```hson
                .x+=:.                                         ..    .       _                    
@@ -21,7 +22,6 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
 ```
 
 # HSON: Hypertext Structured Object Notation
-### www.terminalgothic.com
 
 
 ## overview
@@ -54,7 +54,8 @@ HSON is a serializable syntax resembling a pared-down version of HTML. It draws 
   <child "text node"/>
 />
 ```
-hson-live ships a set of 7 transformers capable of converting JSON and XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across n transformations. 
+
+hson-live provides 7 parsers and serializers capable of converting JSON and XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations. 
 
 ## core
 HSON's syntax is built to express an explicit intermediate representation (IR), a node graph capable of representing:

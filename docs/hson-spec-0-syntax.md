@@ -1,4 +1,5 @@
-// hson-spec-0-syntax.md
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
 
 # HSON Spec
 # 0 - Serialized Syntax

@@ -1,6 +1,7 @@
-// css-manager-api.md
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
 
-# CSS APIs
+# LiveTree CSS APIs
 
 This document covers the CssManager API (both QUID-scoped and global), differences between stylesheet-based CssManager vs the inline StyleManager, the shared StyleSetter surface, and KeyframesManager, AnimationManager, and (@)PropertyManager.
 

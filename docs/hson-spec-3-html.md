@@ -1,4 +1,5 @@
-// hson-spec-3-html.md
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
 
 # HSON Spec[3]
 ## HTML Representation in HSON

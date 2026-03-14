@@ -1,4 +1,5 @@
-// 
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
 
 # hson.livetree (LiveTree API)
 Updated: 2026-03-07

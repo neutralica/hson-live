@@ -1,9 +1,12 @@
+// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
+// www.terminalgothic.com
+
 # hson.livetree (LiveTree API)
-Updated: 2026-03-07
+[ last updated:  2026-03-07 ] 
 
 ## Overview
 
-LiveTree is a mutable handle to a single `HsonNode`. It provides structured access to traversal, DOM synchronization, styling, data, events, and node mutation while remaining safe to use without a DOM (Node/test/runtime-agnostic). A LiveTree always represents one node and operates relative to a host root.
+LiveTree is a mutable handle to a HsonNode and its surrounding graph. LiveTree provides type-safe traversal, DOM synchronization, styling, data, events, and node creation/mutation both on-and-off DOM (Node/test/runtime-agnostic). A LiveTree always represents one node and operates relative to a host root.
 
 ---
 
@@ -11,8 +14,8 @@ LiveTree is a mutable handle to a single `HsonNode`. It provides structured acce
 
 `new LiveTree(input: HsonNode | LiveTree)`
 
-- If constructed from a `HsonNode`, that node becomes both the reference node and host root.
-- If constructed from another `LiveTree`, the new instance points at the same node and adopts the same host root.
+- If constructed from a HsonNode, that node becomes both the reference node and host root.
+- If constructed from another LiveTree, the new instance points at the same node and adopts the same host root.
 
 ---
 
