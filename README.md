@@ -104,9 +104,9 @@ Once grafted onto document.body, mutations to LiveTree’s node graph are immedi
 -! direct use of low-level DOM construction APIs
 -! large UI frameworks
 
-```ts
-// livetree-fixtures-2.ts
 
+### API example
+```ts
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
     .liveTree. // initialize LiveTree creation
     .graft();  // replace document.body with identical LiveTree projection
@@ -123,7 +123,7 @@ tree.listen
     .once()
       // event listener options are fully represented in liveTree's .listen toolchain 
     .onClick(() => {
-          // changes to the node graph are instantaneously expressed in the DOM
+          // changes to the node graph are rendered to the DOM in realtime
         branchDiv.setText("goodbye world")
             .css.set.backgroundColor("blue");
     }); 
