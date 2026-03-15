@@ -265,3 +265,5 @@ Key differences from `LiveTree.css`:
   fixed list.
 * `style.get.*` reads from the serialized inline style attribute, not computed style.
   It will not reflect rules set through `CssManager` or `GlobalCss`.
+
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.

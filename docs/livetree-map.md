@@ -81,3 +81,5 @@
 │                                                        │
 │  find / findAll / create / attrs / flags / text        │
 └────────────────────────────────────────────────────────┘
+
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.

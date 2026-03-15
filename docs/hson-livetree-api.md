@@ -246,3 +246,5 @@ Broadcast proxies (apply to all selected nodes):
 - LiveTree is DOM-optional. All DOM-facing APIs no-op safely when not mounted.
 - Attributes are normalized to lowercase internally.
 - For precise tag creation and full CSS/animation APIs, consult `livetree-methods-list.md` and `css-manager-api.md`.
+
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.

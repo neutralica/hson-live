@@ -203,3 +203,5 @@ This mapping does not attempt to:
 *	normalize authoring style
 
 It describes representation only.
+
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.
