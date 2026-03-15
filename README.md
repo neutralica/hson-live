@@ -25,13 +25,11 @@ m888N= 888> `   ^"F        'Y"         ""   'Y"        ^*888%    R888"     `Y"  
 
 
 ## overview
-HSON is a glue format: a structural data representation capable of fully expressing both JSON and HTML within a single syntax.
+HSON is a glue format: a structural representation capable of fully expressing both JSON and HTML within a unified syntax resembling a pared-down form of HTML.
 
-JSON and HTML are fundamentally different domains--data versus markup--yet both are built from hierarchical, tree-structured relationships.
+JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the correspondence between these two patterns, representing both within the same underlying node graph.
 
-HSON explicitly models that shared structure, allowing JSON and HTML to be translated losslessly, deterministically, and reversibly into one another, preserving data integrity across any number of round-trip transformations. 
-
-HSON is a serializable syntax resembling a pared-down version of HTML. It draws a parallel between JSON's key:value pair and HTML's parent:child, describing either format via the same node graph. 
+By expressing either format through a common structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. This capability opens up interesting possibilities.
 
 ### JSON:
 ```ts
@@ -75,57 +73,60 @@ This representation is stable under repeated transformations. Serializing to ano
 
 ## hson.transform
 hson.transform is a set of core transformers responsible for:
-
-* parsing HTML, JSON, SVG, XML, and HSON strings into a shared HsonNode IR
-* serializing the nodes from any supported format to any other
-* performing repeated round-trip conversions without data loss or structural drift
-* preserving mixed content, attributes, ordering, and unique node ids
+- parsing HTML, JSON, SVG, XML, and HSON strings into a shared HsonNode intermediate representation (IR)
+- serializing that node graph from any supported format to any other
+- performing repeated round-trip conversions without structural drift
+- preserving mixed content, attributes, ordering, and unique node identifiers
 
 This includes cases that are often lossy or ambiguous in conventional tooling, such as embedded markup in JSON, boolean attributes, void elements, or SVG namespace handling.
 
-Using hson-live’s transformers, arbitrary HTML can theoretically be rendered as valid JSON, manipulated via standard JS object methods, and re-rendered on the DOM in its new form. The inverse — treating structured data as markup to be rendered — works equally well, with no distortion of user data. 
+Using hson-live’s transformers, arbitrary HTML can be rendered as valid JSON, manipulated using standard JavaScript object operations, and then re-rendered to the DOM. The inverse — treating structured data as markup to be rendered — works equally well, without altering the underlying user data.
 
-Joining two incompatible notations in a single unified format opens up new ways of creating the web. hson-live's LiveTree extension explores the possibilities this unlocks and makes the theoretical practical. 
+Unifying two previously incompatible notations in one representation opens up new avenues for creating web content. hson-live's LiveTree extension explores these possibilities.
 
 
 
 ## hson.liveTree
-LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made. LiveTree allows the DOM to be accessible and editable directly via JS (with a few other unexpected bonuses thrown in).
+LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made.
 
-Rather than maintaining separate virtual ui and state models that must be kept in sync, LiveTree works by:
+Rather than maintaining separate virtual UI and state models that must be kept in sync, LiveTree works by:
+1.	ingesting any existing HTMLElement within document.body (or <body> itself) and parsing it — along with all nested content — into a HsonNode graph
+2.	re-emitting those nodes back into the DOM as HTML that is structurally identical to the original document
+3.	binding a fluent, typed API to the underlying node graph that synchronously reflects node graph mutations to the DOM
 
-1) ingesting any existing HTMLElement within document.body (or <body> itself) and parsing it (and all nested content) to HsonNodes
-2) re-emitting those nodes as HTML back into the DOM, structurally identical to the original
-3) binding a fluent, typed API directly to the underlying node graph that updates the DOM in realtime
 
-Attributes, text content, child nodes, CSS and styles, animations and keyframes, and events and listeners--all are accessible using ordinary JavaScript and TypeScript semantics.
+HTML attributes, text content, child nodes, CSS rules and styles, animations and keyframes, and event listeners are all accessible and mutable through a unified JS/TS interface that minimizes null checks and type friction.
 
-Once grafted onto document.body, changes to LiveTree's node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on templates, reconciliation layers, or shadow DOM, and without any direct use of low-level DOM construction APIs or the complexity and heft of a framework.
+Once grafted onto document.body, mutations to LiveTree’s node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on intermediary abstractions such as:
+-! templates
+-! reconciliation layers
+-! shadow DOM
+-! direct use of low-level DOM construction APIs
+-! large UI frameworks
 
 ```ts
 // livetree-fixtures-2.ts
 
 const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
-    .liveTree
-    .graft();
-// replaces contents of document.body with identical LiveTree projection
+    .liveTree. // initialize LiveTree creation
+    .graft();  // replace document.body with identical LiveTree projection
 
 // LiveTree extends many basic JS document methods
 const branchDiv = tree.create.div()
     .setText("hello world")
-    // methods return `this`, enabling complex chained operations
+      // methods return `this`, enabling complex chained operations
     .css.set.backgroundColor("pink");
 
 // liveTree's ListenerManager exposes event listeners and handling
 tree.listen
-    // listener teardown/cleanup occurs automatically on node removal
+      // listener teardown/cleanup occurs automatically on node removal
     .once()
-    // event listener options are fully represented in liveTree's .listen toolchain 
-    .onClick(
-        // changes to the node graph are instantaneously expressed in the DOM
+      // event listener options are fully represented in liveTree's .listen toolchain 
+    .onClick(() => {
+          // changes to the node graph are instantaneously expressed in the DOM
         branchDiv.setText("goodbye world")
-            .css.set.backgroundColor("blue")
-    ); 
+            .css.set.backgroundColor("blue");
+    }); 
 ```
 
 
@@ -167,7 +168,8 @@ Treating JSON and HTML as representations of the same underlying structure offer
 ### HSON-LIVE IS EXPERIMENTAL - USE WITH CAUTION
 
 The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments. 
-***hson-live is not currently recommended for processing untrusted HTML or for security-critical production use.*** 
+
+!!!hson-live is not currently recommended for untrusted HTML or for security-critical production use.!!!
 
 
 ## installation
