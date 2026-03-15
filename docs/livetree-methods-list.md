@@ -22,44 +22,43 @@ LiveTree is a mutable handle to a HsonNode and its surrounding graph. LiveTree p
 ## Identity and Core Accessors
 
 - `node: HsonNode`
--- Returns the resolved node. Throws if the reference cannot be resolved.
+Returns the resolved node. Throws if the reference cannot be resolved.
 - `quid: string`
--- Stable identity token for the node.
+Stable identity token for the node.
 - `hostRootNode(): HsonNode`
--- Returns the current host root.
+Returns the current host root.
 - `adoptRoots(root: HsonNode): this`
--- Rebinds host root (advanced/internal usage).
+Rebinds host root (advanced/internal usage).
 
 ---
 
 ## DOM Access
 
 - `dom: LiveTreeDom`
--- Lazily created DOM helper API for this node.
--- Methods:
--- `el(): Element | undefined`
---- `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
---- `matches(sel: string): boolean`
---- `contains(other: LiveTree): boolean`
---- `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
---- `parent(): LiveTree | undefined` with `parent.must(label?)`
-- `asDomElement(): Element | undefined`
--- Returns the underlying DOM element if it exists (undefined when not mounted).
+Lazily created DOM helper API for this node.
+### Methods:
+- `el(): Element | undefined`
+- `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
+- `matches(sel: string): boolean`
+- `contains(other: LiveTree): boolean`
+- `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
+- `parent(): LiveTree | undefined` with `parent.must(label?)`
+- `asDomElement(): Element | undefined` Returns the underlying DOM element if it exists (undefined when not mounted).
 
 ---
 
 ## Tree Mutation
 
 - `append(branch: LiveTree, index?: number): LiveTree`
--- Appends children from another branch under this node. Mirrors to DOM when present.
+Appends children from another branch under this node. Mirrors to DOM when present.
 - `empty(): LiveTree`
--- Removes all content from this node.
+Removes all content from this node.
 - `removeChildren(): number`
--- Removes direct node children (ignores primitives). Returns count removed.
+Removes direct node children (ignores primitives). Returns count removed.
 - `removeSelf(): number`
--- Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
+Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
 - `cloneBranch(): LiveTree`
--- Deep-clones subtree with new QUIDs; returns a detached branch.
+Deep-clones subtree with new QUIDs; returns a detached branch.
 
 ---
 
@@ -82,13 +81,14 @@ LiveTree is a mutable handle to a HsonNode and its surrounding graph. LiveTree p
 ## Creation Helpers
 
 - `create: LiveTreeCreateHelper`
--- Bound creation helper for appending new nodes under this tree.
--- Examples:
---- `create.prepend()`
---- `create.at(index)`
---- `create.tags(tags: string[], index?)`
---- `create.<tag>(index?)`
--- Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
+Bound creation helper for appending new nodes under this tree.
+
+#### Examples:
+- `create.prepend()`
+- `create.at(index)`
+- `create.tags(tags: string[], index?)`
+- `create.<tag>(index?)`
+Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
 
 ---
 
@@ -107,15 +107,15 @@ Content operations only consider node children (primitives are skipped). `_elem`
 ### Text API
 
 - `text.set(value: Primitive): LiveTree`
--- Replaces only `_str/_val` leaves (keeps element children).
+Replaces only `_str/_val` leaves (keeps element children).
 - `text.add(value: Primitive): LiveTree`
--- Appends a new text leaf.
+Appends a new text leaf.
 - `text.insert(index: number, value: Primitive): LiveTree`
--- Inserts a text leaf at VSN bucket index.
+Inserts a text leaf at VSN bucket index.
 - `text.overwrite(value: Primitive): LiveTree`
--- Replaces all content with one text leaf (DOM `textContent`).
+Replaces all content with one text leaf (DOM `textContent`).
 - `text.get(): string`
--- Concatenated text of `_str/_val` leaves.
+Concatenated text of `_str/_val` leaves.
 
 ### Form Helpers
 
@@ -132,24 +132,20 @@ LiveTree no longer exposes `getAttr` / `setAttrs` directly. Use `attr` and `flag
 
 - `attr.get(name: string): Primitive | undefined`
 - `attr.has(name: string): boolean`
--- Present semantics based on stored value; not a strict key-exists check.
-- `attr.set(name: string, value: Primitive | null | false): LiveTree`
--- `null`, `undefined`, or `false` remove the attribute.
--- `true` sets a boolean-present attribute (`key="key"`).
--- Numbers are stringified.
--- For `style`, string values are parsed into a structured map and mirrored to DOM.
+Present semantics based on stored value; not a strict key-exists check.
+- `attr.set(name: string, value: Primitive | null | false): LiveTree` `null`, `undefined`, or `false` remove the attribute. `true` sets a boolean-present attribute (`key="key"`). Numbers are stringified. For `style`, string values are parsed into a structured map and mirrored to DOM.
 - `attr.setMany(map: Record<string, Primitive | null | false>): LiveTree`
--- Applies each entry with the same semantics as `attr.set`.
+Applies each entry with the same semantics as `attr.set`.
 - `attr.drop(name: string): LiveTree`
--- Removes an attribute.
+Removes an attribute.
 
 ### `flag: FlagHandle`
 
 - `flag.has(name: string): boolean`
 - `flag.set(...names: string[]): LiveTree`
--- Sets boolean-present attributes (same semantics as `attr.set(name, true)`).
+Sets boolean-present attributes (same semantics as `attr.set(name, true)`).
 - `flag.clear(...names: string[]): LiveTree`
--- Clears boolean-present attributes (same semantics as remove).
+Clears boolean-present attributes (same semantics as remove).
 
 ---
 
@@ -158,12 +154,12 @@ LiveTree no longer exposes `getAttr` / `setAttrs` directly. Use `attr` and `flag
 `data: DataManager` manages `data-*` attributes.
 
 - `data.set(key: string, value: Primitive | undefined): LiveTree`
--- `key` is normalized with camel-to-kebab and prefixed with `data-`.
--- `null` or `undefined` removes the attribute.
+`key` is normalized with camel-to-kebab and prefixed with `data-`.
+`null` or `undefined` removes the attribute.
 - `data.setMany(map: Record<string, Primitive | undefined>): LiveTree`
--- Batch set/remove using the same rules as `data.set`.
+Batch set/remove using the same rules as `data.set`.
 - `data.get(key: string): Primitive | undefined`
--- Reads `data-${key}` as-is. (No camel-to-kebab normalization on read.)
+Reads `data-${key}` as-is. (No camel-to-kebab normalization on read.)
 
 Notes:
 - Values are stored as strings, matching HTML attribute behavior.
@@ -181,7 +177,7 @@ Notes:
 ### `classlist: ClassApi`
 
 - `classlist.get(): string | undefined`
--- Raw `class` attribute (undefined if empty).
+Raw `class` attribute (undefined if empty).
 - `classlist.has(name: string): boolean`
 - `classlist.set(cls: string | string[]): LiveTree`
 - `classlist.add(...names: string[]): LiveTree`
@@ -196,15 +192,15 @@ Notes:
 ### Inline Style
 
 - `style: StyleHandle`
--- Implements `StyleSetter` API for inline styles.
--- Common methods: `setProp`, `setMany`, `remove`, `clear`, and proxy `set.*`.
--- Also exposes `style.get.property(prop)` and `style.get.var(name)`.
+Implements `StyleSetter` API for inline styles.
+Common methods: `setProp`, `setMany`, `remove`, `clear`, and proxy `set.*`.
+Also exposes `style.get.property(prop)` and `style.get.var(name)`.
 
 ### QUID-Scoped CSS
 
 - `css: CssHandle`
--- Implements the same `StyleSetter` API for QUID-scoped stylesheet rules.
--- Supports keyframes, animations, and `@property` registration.
+Implements the same `StyleSetter` API for QUID-scoped stylesheet rules.
+Supports keyframes, animations, and `@property` registration.
 
 See `css-manager-api.md` for full details.
 
@@ -213,14 +209,14 @@ See `css-manager-api.md` for full details.
 ## Events
 
 - `listen: ListenerBuilder`
--- Fluent, typed DOM event registration (mouse, pointer, keyboard, focus, animation, transition, clipboard, custom, etc.).
--- Supports options (`once`, `passive`, `capture`) and modifiers (`preventDefault`, `stopProp`, etc.).
+Fluent, typed DOM event registration (mouse, pointer, keyboard, focus, animation, transition, clipboard, custom, etc.).
+Supports options (`once`, `passive`, `capture`) and modifiers (`preventDefault`, `stopProp`, etc.).
 
 - `events: TreeEvents`
--- Internal, non-DOM event bus:
---- `events.on(type, handler): () => void`
---- `events.once(type, handler): () => void`
---- `events.emit(type, payload?): void`
+ Internal, non-DOM event bus:
+- `events.on(type, handler): () => void`
+- `events.once(type, handler): () => void`
+- `events.emit(type, payload?): void`
 
 ---
 
@@ -242,7 +238,7 @@ Broadcast proxies (apply to all selected nodes):
 
 ---
 
-Notes
+## Notes
 
 - LiveTree is DOM-optional. All DOM-facing APIs no-op safely when not mounted.
 - Attributes are normalized to lowercase internally.
