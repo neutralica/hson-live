@@ -182,4 +182,4 @@ Detailed documentation of the HSON syntax, transformer behavior, and LiveTree AP
 hson-live is licensed under the Public Parity License 7.0.
 See LICENSE for details.
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.
+© 2026 Neutralica. All rights reserved except as granted under the Public Parity License 7.0.
