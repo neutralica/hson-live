@@ -1,5 +1,6 @@
-// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
-// www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026
+#### www.terminalgothic.com
+
 # HSON: Hypertext Structured Object Notation
 ### hson-live — a unified format for HTML markup and JSON data
 
@@ -40,7 +41,7 @@ By expressing either format through a common structure, HSON enables JSON and HT
 hson-live provides 7 parsers and serializers for converting any JSON or XML-valid HTML to HSON and back. It also provides a diagnostic suite to verify data integrity and stability across multiple transformations. 
 
 ## core
-HSON's syntax is designed to express an explicit intermediate representation (IR), a node graph capable of representing:
+HSON's syntax expresses an explicit intermediate representation (IR), a node graph capable of representing:
 
 * JSON objects and arrays
 * HTML and SVG elements
@@ -62,7 +63,6 @@ This includes cases that are often lossy or ambiguous in conventional tooling, s
 Using hson-live’s transformers, arbitrary HTML can be rendered as valid JSON, manipulated using standard JavaScript object operations, and then re-rendered to the DOM. The inverse — treating structured data as markup to be rendered — works equally well, without altering the underlying user data.
 
 Unifying two previously incompatible notations in one representation opens up new avenues for creating web content. hson-live's LiveTree extension explores these possibilities.
-
 
 
 ## hson.liveTree

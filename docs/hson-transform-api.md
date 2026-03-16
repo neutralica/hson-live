@@ -1,5 +1,5 @@
-// hson-transform-api.md
-// neutralica @ terminal_gothic
+#### hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC / 14MAR2026
+#### www.terminalgothic.com
 
 # hson-live 
 ## Transformer API

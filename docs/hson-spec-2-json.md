@@ -1,5 +1,5 @@
-// hson-live 2.0.26 / neutralica @ TERMINAL_GOTHIC · 14MAR2026
-// www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026
+#### www.terminalgothic.com
 
 # HSON Spec[2]
 ## JSON Representation in HSON
