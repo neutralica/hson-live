@@ -1,12 +1,12 @@
 #### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026
 #### www.terminalgothic.com
 
-# HSON Spec
-# 0 - Serialized Syntax
+# HSON Spec[0]
+# Serialized Syntax
 
 This section describes the serialized textual form of HSON: the string format produced when a HsonNode graph is serialized to HSON, and the format accepted by the HSON parser.
 
-HSON is an HTML-like syntax designed to serialize either JSON-derived or HTML-derived node graphs without introducing format-specific scaffolding. It is not HTML, though it resembles a pared-down dialect of it.
+HSON is an HTML-like notation designed to serialize either JSON-derived or HTML-derived node graphs without introducing format-specific scaffolding. It is not HTML, though it resembles a pared-down dialect of it.
 
 ⸻
 ## 1. Basic Form
@@ -41,7 +41,6 @@ Nodes sourced from html elements terminate with `/>`.
 
 ### 2.2 "_obj" nodes (">")
 Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON. 
-
 
 A single serialized HSON string must use one model consistently. Mixing `/>` and `>` within the same document is invalid and will throw.
 

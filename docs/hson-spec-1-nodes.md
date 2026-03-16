@@ -1,8 +1,7 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026
-#### www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026 / www.terminalgothic.com
 
 # HSON Spec[1]
-##Nodes, Structure, and Invariants
+## Nodes, Structure, and Invariants
 
 ## 1. Overview
 
@@ -18,7 +17,7 @@ The HsonNode graph is lossless, order-preserving, and round-trip stable. This se
 
 An HsonNode graph must satisfy the following properties:
 
-####  Tree-structured
+#### Tree-structured
 The graph forms a rooted, ordered tree. Cycles are not permitted.
 
 ####  Order-preserving
@@ -77,14 +76,21 @@ VSNs define and preserve the structural meaning of content in the node graph. Th
 
 #### <_elem>
 Element: Represents an HTML Element 'cluster'.
-*	<_elem> tags can contain multiple of the same key/_tag.
+* <_elem> tags can contain multiple nodes with the same key/_tag.
+* <_elem> tags can contain array-like items that have no key/_tag.
+* <_elem> is represented as an array in the node graph structure
 
 #### <_obj>
 Object: Represents a JSON object 'cluster'.
-*	encodes key–value pairs as child nodes.
-*	child nodes must have unique key/_tags.
+* <_obj> tags encodes key–value pairs as child nodes.
+* <_obj> tags must contain unique keys/_tags; duplicate keys are invalid and will throw
+* <_obj> is represented as a JS object in the node graph structure
 
 <_obj> and <_elem> are required for disambiguation of HsonNode 'clusters'. Though the shapes of <_elem> and <_obj> structures are very similar, each have differences that cause fatal errors in the other (such as JSON objects' requirement for unique keys, whereas HTML elements may contain multiple 'button' tags).
+
+When serializing HTML as JSON (or vice-versa), <_obj> or <_elem> tags (depending) will clutter the node structure visually. These tags are essential for the transformers to correctly type node clusters correctly across round-trip conversions. 
+
+HSON is a notation that can faithfully serialize either JSON or HTML without this structural node clutter.
 
 #### <_arr>
 Array: Represents a JSON array.
