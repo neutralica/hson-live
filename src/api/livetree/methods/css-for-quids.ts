@@ -2,12 +2,12 @@
 
 
 import { Primitive } from "hson-live/types";
-import { CssHandleVoid, CssHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
+import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
 import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { LiveTree } from "../livetree.js";
-import { CssManager, isLiveTree, render_css_value } from "../managers/css-manager.js";
+import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../managers/css-manager.js";
 import { make_style_getter } from "../managers/style-getter.js";
-import { make_style_setter, StyleSetterAdapters } from "../managers/style-setter.js";
+import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
 // CHANGED: one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
@@ -57,9 +57,78 @@ const mk_css_quids_adapters = (
     },
   };
 };
+function quid_selector(quid: string): string {
+  const q = quid.trim();
+  if (!q) throw new Error("quid_selector: empty quid");
+  return `[data-_quid="${q}"]`;
+}
+
+function resolve_selector_pattern(
+  ids: readonly string[],
+  patternRaw: string,
+): string {
+  const pattern = patternRaw.trim();
+  if (!pattern) throw new Error("css.selector: empty selector pattern");
+
+  return ids
+    .map((quid) => quid_selector(quid))
+    .map((selfSel) => (
+      pattern.includes("&")
+        ? pattern.replaceAll("&", selfSel)
+        : `${selfSel}${pattern}`
+    ))
+    .join(", ");
+}
+
+function selector_rule_key(
+  ids: readonly string[],
+  patternRaw: string,
+): string {
+  const idsPart = ids.map((q) => q.trim()).filter(Boolean).join("|");
+  const patPart = patternRaw.trim();
+  return `quid-sel:${idsPart}::${patPart}`;
+}
+
+function make_selector_style_setter<TReturn>(
+  ret: TReturn,
+  ids: readonly string[],
+  patternRaw: string,
+): StyleSetter<TReturn> {
+  const gcss = CssManager.globals.invoke();
+
+  const selector = resolve_selector_pattern(ids, patternRaw);
+  const ruleKey = selector_rule_key(ids, patternRaw);
+
+  const handle = gcss.rule(ruleKey, selector);
+
+  return make_style_setter<TReturn>(ret, {
+    apply: (propCanon, value) => {
+      handle.setProp(propCanon as CssKey, value);
+    },
+
+    remove: (propCanon) => {
+      handle.remove(propCanon as CssKey);
+    },
+
+    clear: () => {
+      handle.clear();
+    },
+
+    // CHANGED: keep pseudo support working on selector-scoped rules too
+    applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
+      const suf = pseudo_to_suffix(pseudo);
+      const pseudoHandle = gcss.rule(`${ruleKey}${suf}`, `${selector}${suf}`);
+      pseudoHandle.setMany(pseudoDecls);
+
+      if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
+        pseudoHandle.setProp("content", `""`);
+      }
+    },
+  });
+}
 
 export function css_for_quids(quids: readonly string[]): CssHandleVoid;
-export function css_for_quids(host: LiveTree, quids: readonly string[]): CssHandle;
+export function css_for_quids(host: LiveTree, quids: readonly string[]): CssTreeHandle;
 /**
  * Create a multi-QUID CSS handle.
  *
@@ -122,6 +191,8 @@ export function css_for_quids(
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
       devSnapshot: () => mgr.devSnapshot(),
+      selector: (pattern: string) =>
+        make_selector_style_setter<LiveTree>(host, ids, pattern),
     };
   }
 
@@ -141,6 +212,10 @@ export function css_for_quids(
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),
+      selector: (pattern: string) =>
+      make_selector_style_setter<void>(undefined, ids, pattern),
+
+    
   };
 }
 /**
@@ -153,6 +228,6 @@ export function css_for_quids(
  * @see css_for_quids
  */
 
-export function css_for_quid(host: LiveTree, quid: string): CssHandle {
+export function css_for_quid(host: LiveTree, quid: string): CssTreeHandle {
   return css_for_quids(host, [quid]);
 }

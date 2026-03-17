@@ -289,11 +289,13 @@ export type CssHandleBase<TReturn> = Readonly<
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
-    devSnapshot: ()=>string;
+    devSnapshot: () => string;
+
+    selector: (pattern: string) => StyleSetter<TReturn>;
   }
 >;
 
-export type CssHandle = CssHandleBase<LiveTree>;
+export type CssTreeHandle = CssHandleBase<LiveTree>;
 
 export type StyleHandle = Readonly<
   StyleSetter<LiveTree> & {

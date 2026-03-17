@@ -4,7 +4,7 @@ import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid.js";
 import { HsonNode } from "../../types/node.types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
 import { element_for_node } from "../../utils/tree-utils/node-map-helpers.js";
-import { CssHandle, StyleHandle } from "../../types/css.types.js";
+import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
 import { remove_livetree } from "./methods/remove-self.js";
 import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content } from "./managers/text-form-values.js";
 import { DataManager } from "./managers/data-manager.js";
@@ -132,7 +132,7 @@ export class LiveTree {
   /* .dataset editor */
   private datasetManagerInternal: DataManager | undefined = undefined;
   private contentManager: ContentManager | undefined = undefined;
-  private cssApiInternal: CssHandle | undefined = undefined;
+  private cssApiInternal: CssTreeHandle | undefined = undefined;
   private eventsInternal?: TreeEvents;
   private idApi?: IdApi;
   private classApi?: ClassApi;
@@ -398,7 +398,7 @@ export class LiveTree {
    * @returns A `CssHandle` targeting this node’s QUID selector.
    * @see css_for_quids
    */
-  public get css(): CssHandle {
+  public get css(): CssTreeHandle {
     if (!this.cssApiInternal) {
       this.cssApiInternal = css_for_quids(this, [this.quid]);
     }
