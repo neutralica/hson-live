@@ -1,5 +1,4 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026
-#### www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026 / www.terminalgothic.com
 
 # LiveTree CSS APIs
 
