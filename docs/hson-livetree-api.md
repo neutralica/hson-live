@@ -12,10 +12,40 @@ LiveTree is a mutable handle to a single `HsonNode`. It provides structured acce
 
 ## Construction
 
-`new LiveTree(input: HsonNode | LiveTree)`
+There are a number of ways to initialize a LiveTree node both on- and off-DOM. 
 
-- If constructed from a `HsonNode`, that node becomes both the reference node and host root.
-- If constructed from another `LiveTree`, the new instance points at the same node and adopts the same host root.
+### Query & graft
+```ts
+const tree = hson.queryBody().liveTree.graft();
+```
+
+This operation:
+1) Queries for document.body
+2) parses the element and all child nodes into a HsonNode tree
+3) re-emits the nodes as functioan HTML in the original location, identical to the original
+4) returns the LiveTree API 
+
+A similar method, `queryDom`, accepts a CSS Selector argument and searches within document.body. It also returns graft().
+
+### Construct from string
+```ts
+const branch = hson.fromTrustHtml(html).liveTree.asBranch();
+```
+
+This operation 
+1) accepts an html string
+2) parses it to an **off-DOM** node graph
+3) and returns the LiveTree API scoped to the new 'branch'
+
+Though HTML will usually be the source for LiveTree markup, `.fromJson`, `.fromHson`, and `.fromNode` may also be used if passed HTML-valid nodes. 
+
+The returned branch can be appended to any LiveTree, on- or off-DOM:
+
+```ts
+tree.append(branch);
+```
+
+
 
 ---
 
