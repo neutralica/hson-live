@@ -1,5 +1,10 @@
 // hson-todo
 
+## 18MAR2026
+scrollHeight/width
+scrollTop
+similar
+
 ## 11MAR2026 still remaining from refactor:
  document / globals surfaces:
 	•	tree.doc (curated document methods, useful for lifecycle/teardown wiring)
