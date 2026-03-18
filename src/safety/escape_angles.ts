@@ -30,6 +30,9 @@
  *             escaped only within quoted attribute values.
  ***********************************************/
 export function escape_attr_angles(src: string): string {
+  // DEBUG
+  console.log("escape attrs angle debug - src:")
+  console.log(src)
   let out = '';
   let inTag = false;
   let quote: '"' | "'" | null = null;
@@ -54,5 +57,8 @@ export function escape_attr_angles(src: string): string {
       out += ch; continue;
     }
   }
+  // DEBUG
+  console.log("escape attrs angles debug - out:")
+  console.log(out)
   return out;
 }

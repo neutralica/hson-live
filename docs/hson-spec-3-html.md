@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026 / www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic
 
 # HSON Spec[3]
 ## HTML Representation in HSON

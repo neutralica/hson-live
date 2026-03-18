@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic / 14MAR2026 / www.terminalgothic.com
+#### hson-live 2.0.26 / neutralica @ terminal_gothic
 
 # hson.livetree (LiveTree API)
 Updated: 2026-03-07
@@ -11,7 +11,7 @@ LiveTree is a mutable handle to a single `HsonNode`. It provides structured acce
 
 ## Construction
 
-There are a number of ways to initialize a LiveTree node both on- and off-DOM. 
+There are several ways to initialize a LiveTree node both on- and off-DOM. 
 
 ### Query & graft
 ```ts
@@ -19,8 +19,8 @@ const tree = hson.queryBody().liveTree.graft();
 ```
 
 This operation:
-1) Queries for document.body
-2) parses the element and all child nodes into a HsonNode tree
+1) Queries document.body
+2) parses the <body> and all child nodes into a HsonNode tree
 3) re-emits the nodes as functioan HTML in the original location, identical to the original
 4) returns the LiveTree API 
 
@@ -50,14 +50,14 @@ tree.append(branch);
 
 ## Identity and Core Accessors
 
-- `node: HsonNode`
-  - Returns the resolved node. Throws if the reference cannot be resolved.
-- `quid: string`
-  - Stable identity token for the node.
-- `hostRootNode(): HsonNode`
-  - Returns the current host root.
-- `adoptRoots(root: HsonNode): this`
-  - Rebinds host root (advanced/internal usage).
+`node: HsonNode`
+- Returns the resolved node. Throws if the reference cannot be resolved.
+`quid: string`
+- Stable identity token for the node.
+`hostRootNode(): HsonNode`
+- Returns the current host root.
+`adoptRoots(root: HsonNode): this`
+- Rebinds host root (advanced/internal usage).
 
 ---
 

@@ -121,8 +121,8 @@ export function parse_html(input: string | Element): HsonNode {
             parsed = parser.parseFromString(xmlSrc, "application/xml");
             err = parsed.querySelector("parsererror");
 
-            // (Optional) trace label somewhere if you want
-            // _log(`tryParse:${label} err=${!!err}`);
+            //  trace label 
+            // console.log(`tryParse:${label} err=${!!err}`);
         };
 
         // CHANGED: amp-fix is dangerous; only apply when parser error looks entity-related
@@ -181,17 +181,19 @@ export function parse_html(input: string | Element): HsonNode {
             }
         }
         if (hasErr()) {
-            const msg = errText();
 
             // 4) Literal '<' inside attribute values
             // DOMParser messages vary; keep it narrow-ish but not brittle.
-            if (/Unescaped/i.test(msg) && /attribute/i.test(msg) && /</.test(xmlSrc)) {
+            const msg = errText();
+            // raw < inside a quoted attribute value
+            if (/[A-Za-z_:][\w:.-]*\s*=\s*"(?:[^"]*<[^"]*)"/.test(xmlSrc) ||
+                /[A-Za-z_:][\w:.-]*\s*=\s*'(?:[^']*<[^']*)'/.test(xmlSrc)) {
                 tryParse(escape_attr_angles(xmlSrc), "escape_attr_angles(< in attr)");
             }
+
         }
         if (hasErr()) {
             const msg = errText();
-
             // 4) Void tags left unclosed: only then expand void tags (and re-run amp_fix once)
             if (should_try_void_expand(msg)) {
                 const voidFixed = expand_void_tags(xmlSrc);
