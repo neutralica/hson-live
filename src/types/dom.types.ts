@@ -25,6 +25,14 @@ export interface LiveTreeDom {
   contains(other: LiveTree): boolean;
   isConnected(): boolean;
 
+  must: Readonly<{
+    el: (label?: string) => Element;
+    html: (label?: string) => HTMLElement;
+    rect: (label?: string) => DOMRect;
+    closest: (sel: string, label?: string) => LiveTree;
+    parent: (label?: string) => LiveTree;
+    treeFromEl?: (domEl: Element, label?: string) => LiveTree;
+  }>;
 
   rect: RectFn;
   closest: ClosestFn;

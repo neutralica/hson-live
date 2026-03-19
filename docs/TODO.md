@@ -1,5 +1,9 @@
 // hson-todo
 
+## 19MAR2026
+~~dom.el.must~~
+
+
 ## 18MAR2026
 scrollHeight/width
 scrollTop
@@ -8,6 +12,7 @@ find/findall.byClass
 find/findall.byData?
 find/findall.byTag
 find.query/queryAll(CSSSelector)
+
 **data.remove**
 
 ## 11MAR2026 still remaining from refactor:
