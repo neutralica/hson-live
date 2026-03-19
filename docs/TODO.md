@@ -4,6 +4,11 @@
 scrollHeight/width
 scrollTop
 similar
+find/findall.byClass
+find/findall.byData?
+find/findall.byTag
+find.query/queryAll(CSSSelector)
+**data.remove**
 
 ## 11MAR2026 still remaining from refactor:
  document / globals surfaces:

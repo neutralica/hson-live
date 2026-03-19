@@ -47,11 +47,23 @@ export class DataManager {
     }
 
     // normalize data key → data-* attribute name
-    private formatData(key: string): string {
-        // "userId" → "data-user-id"
-        const kebab = camel_to_kebab(key);   // you already have this
-        return `data-${kebab}`;
+   private formatData(key: string): string {
+    // CHANGED: reject empty / whitespace-only keys before serialization
+    const raw = String(key).trim();
+    if (!raw) {
+        throw new Error("Dataset key must be non-empty");
     }
+
+    // "userId" → "user-id"
+    const kebab = camel_to_kebab(raw).trim();
+
+    // CHANGED: guard again in case normalization empties it out
+    if (!kebab) {
+        throw new Error("Dataset key must normalize to a non-empty name");
+    }
+
+    return `data-${kebab}`;
+}
 
     /**
      * Sets or removes a `data-*` attribute on all selected nodes.
