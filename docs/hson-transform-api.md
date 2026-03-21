@@ -1,9 +1,10 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic
+#### hson-live 2.0.26 / terminalgothic.com
 
 # hson-live 
 ## Transformer API
 
-The hson object is the public transformation facade for HSON-LIVE.
+The `hson.transform` namespace extends the public API for hson-live's parsers and serializers through data.
+
 It provides a fluent, deterministic pipeline for converting between:
 *	HTML
 *	JSON

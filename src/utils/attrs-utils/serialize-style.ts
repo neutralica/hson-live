@@ -3,6 +3,16 @@
 import { CssMap } from "../../types/css.types.js";
 import { camel_to_kebab } from "./camel_to_kebab.js";
 
+type StyleFormat = "inline" | "multiline";
+
+interface StyleSerializeOptions {
+  format?: StyleFormat;
+  indent?: string;
+  baseIndent?: string;
+}
+
+
+
 /*******
  * Serialize a style object into a CSS declaration list string.
  *

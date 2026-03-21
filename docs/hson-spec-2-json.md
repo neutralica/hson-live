@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic
+#### hson-live 2.0.26 / terminalgothic.com
 
 # HSON Spec[2]
 ## JSON Representation in HSON

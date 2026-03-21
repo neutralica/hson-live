@@ -139,7 +139,7 @@ let tokenFirst: boolean = true;
  */
 export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
-    const maxDepth = 50;
+    const maxDepth = 75;
     _log(`[token_from_hson called with depth=${depth}]`);
     if (tokenFirst) {
         if (_VERBOSE) {
@@ -224,7 +224,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
      * tracking remains consistent.
      *
      * @param line - The current line string being consumed.
-     */
+         */
     function _bump_line(line: string) { _offset += line.length + 1; ix++; }
 
     /**
@@ -381,7 +381,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         const currentIx = ix;
         const currentLine = splitLines[ix];
         const trimLine = currentLine.trim();
-        // near tokenizer setup (top of function/file)
         const getLine = (n: number) => splitLines[n] ?? '';
 
         _log(`[token_from_hson depth=${depth} L=${currentIx + 1}/${splitLines.length}]: processing: "${trimLine}" (Original: "${currentLine}")`);
