@@ -108,55 +108,6 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
     }
 
 
-    // // CHANGED: raw is now the *full* quoted literal, including quotes.
-    // // CHANGED: accept either a full JSON string literal ("...") OR inner text (...\n...)
-    // // and always decode with JSON.parse exactly once.
-    // function decode_quoted_text(raw: string): string {
-    //     const s = raw;
-
-    //     // Fast path: full literal already.
-    //     if (s.length >= 2 && s[0] === `"` && s[s.length - 1] === `"`) {
-    //         const v = JSON.parse(s);
-    //         if (typeof v !== "string") {
-    //             _throw_transform_err("quoted literal did not parse to string", "parse_tokens.decode_quoted_text", s);
-    //         }
-    //         return v;
-    //     }
-
-    //     // Inner-text path: wrap it into a JSON string literal.
-    //     // NOTE: JSON does not allow literal CR or LF in a string token, so if your tokenizer
-    //     // can hand us raw newlines here, they must have been represented as '\n' already.
-    //     // If not, this will (correctly) throw and reveal the upstream bug.
-    //     const v = JSON.parse(`"${s}"`);
-    //     if (typeof v !== "string") {
-    //         _throw_transform_err("quoted inner did not parse to string", "parse_tokens.decode_quoted_text", s);
-    //     }
-    //     return v;
-    // }
-    // function decode_quoted_literal(raw: string): string {
-    //     // raw is the full JSON string literal including quotes
-    //     const v = JSON.parse(raw);
-    //     if (typeof v !== "string") {
-    //         _throw_transform_err(
-    //             "quoted text did not decode to string",
-    //             "parse-tokens.decode_json_string_literal"
-    //         );
-    //     }
-
-    //     // CHANGED: guard against XML 1.0–illegal control chars in resulting text
-    //     // (tab, LF, CR are allowed; most others under 0x20 are not)
-    //     if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(v)) {
-    //         const m = v.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/)!;
-    //         const code = m[0].charCodeAt(0);
-    //         _throw_transform_err(
-    //             `decoded string contains XML-invalid control char U+${code.toString(16).toUpperCase().padStart(4, "0")}`,
-    //             "parse-tokens.decode_json_string_literal"
-    //         );
-    //     }
-
-    //     return v;
-    // }
-
     //  type guard helps in places without overloads
     function isTokenOpen(t: Tokens | null | undefined): t is TokenOpen {
         return !!t && t.kind === TOKEN_KIND.OPEN;

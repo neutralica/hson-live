@@ -114,39 +114,19 @@ function assertAndReturnMeta(meta?: HsonMeta): Record<string, string> {
     return out;
 }
 
+function escape_hson_quoted_attr_value(v: string): string {
+    // CHANGED: use JSON string escaping, then strip the outer quotes
+    return JSON.stringify(v).slice(1, -1);
+}
 /**
- * Render a HSON `_attrs` object into a canonical HTML-style attribute string.
- *
- * Behavior:
- * - Early exits for `undefined` or empty objects, returning `""`.
- * - Partitions entries into:
- *   - non-flag attributes: `value !== key`
- *   - flag attributes: `value === key` (e.g. `{ disabled: "disabled" }`)
- * - For non-flags:
- *   - Special-cases `style`:
- *     - If the value is an object, renders it via `serialize_style` to a
- *       canonical CSS string (sorted/normalized) and quotes it.
- *   - String values:
- *     - Escapes double quotes (`" → \"`) and renders as ` key="value"`.
- *   - Non-string primitives:
- *     - Rendered as ` key=value` with no quotes.
- * - For flags:
- *   - Rendered as bare tokens: ` key` (no `=value`).
- *
- * Output format:
- * - Each attribute is prefixed with a leading space.
- * - Order is “non-flags first, then flags”, preserving relative order
- *   within each group.
- *
- * @param attrs - The HSON `_attrs` to render.
- * @returns A space-prefixed attribute string suitable for `<tag${attrs}>`.
+ * CHANGED
  */
+
 function formatAttrsNEW(attrs: HsonAttrs | undefined): string {
     if (!attrs) return "";
     const entries = Object.entries(attrs);
     if (!entries.length) return "";
-    _log('formatting _attrs')
-
+    _log('formatting _attrs');
 
     // partition without sorting: non-flags first, then flags (value === key)
     const nonFlags = entries.filter(([k, v]) => v !== k);
@@ -154,41 +134,29 @@ function formatAttrsNEW(attrs: HsonAttrs | undefined): string {
 
     const kv = (k: string, v: Primitive | Record<string, string>) => {
         if (k === "style" && v && typeof v === "object" && !Array.isArray(v)) {
-            // style object → canonical CSS string
-            return ` style="${serialize_style(v as Record<string, string>)}"`;
+            // CHANGED: style object → canonical CSS string, then fully escape for quoted attr transport
+            const css = serialize_style(v as Record<string, string>);
+            return ` ${k}="${escape_hson_quoted_attr_value(css)}"`;
         }
+
         if (typeof v === "string") {
-            return ` ${k}="${v.replace(/"/g, '\\"')}"`;
+            // CHANGED: escape backslashes, quotes, control chars, newlines, etc.
+            return ` ${k}="${escape_hson_quoted_attr_value(v)}"`;
         }
+
         return ` ${k}=${String(v)}`;
     };
 
     const parts: string[] = [];
     for (const [k, v] of nonFlags) parts.push(kv(k, v as any));
-    for (const [k] of flags) parts.push(` ${k}`); // flags as bare keys
+    for (const [k] of flags) parts.push(` ${k}`);
 
     return parts.join("");
 }
 
+
 /**
- * Merge user `_attrs` and `_meta` into a single attribute string for HSON tags.
- *
- * Composition:
- * - User attributes:
- *   - Rendered via `formatAttrsNEW(attrs)` (style, flags, etc.).
- * - System/meta attributes:
- *   - Filtered and validated via `assertAndReturnMeta(meta)`.
- *   - Sorted by key and rendered as:
- *       ` data-foo="..." data-bar="..."`
- *     with inner quotes escaped.
- *
- * Behavior:
- * - Each component may be empty; the final string is just `user + sys`.
- * - Always returns a string that can be spliced directly into `<tag${attrsStr}>`.
- *
- * @param attrs - User-facing `_attrs` from the node.
- * @param meta - `_meta` payload (usually `data-*` keys) from the node.
- * @returns A combined attribute string including both user and meta attrs.
+ * CHANGED
  */
 function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefined): string {
     _log('building attrs string');
@@ -196,9 +164,15 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
     const sys = (() => {
         const m = assertAndReturnMeta(meta);
         if (!Object.keys(m).length) return "";
-        const parts = Object.keys(m).sort().map(k => ` ${k}="${m[k].replace(/"/g, '\\"')}"`);
+
+        // CHANGED: system/meta attrs need the same full quoted-string escaping
+        const parts = Object.keys(m)
+            .sort()
+            .map(k => ` ${k}="${escape_hson_quoted_attr_value(m[k])}"`);
+
         return parts.join("");
     })();
+
     return `${user}${sys}`;
 }
 

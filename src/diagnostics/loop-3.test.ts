@@ -390,6 +390,18 @@ function looks_like_json(s: string): boolean {
   return t === "true" || t === "false" || t === "null";
 }
 
+function looks_like_hson(s: string): boolean {
+  const t = s.trim();
+  if (!t) return false;
+
+  if (/[«»]/.test(t)) return true;
+  if (/(?:^|\n)\s*\/?>\s*(?:\/\/.*)?(?:\n|$)/.test(t)) return true;
+  if (/(?:^|\n)\s*"\s*/.test(t)) return true;
+  if (/<>\s*/.test(t)) return true;
+
+  return false;
+}
+
 // CHANGED: only try HTML when it actually looks like markup.
 // (Keep this conservative; “false negatives” are better than HTML swallowing JSON.)
 function looks_like_html(s: string): boolean {
@@ -437,15 +449,17 @@ function resolve_entry(
   }
 
   const s = atom.trim();
-
-  // CHANGED: commit by shape; do NOT “try-parse vacuum” through HTML.
+  // CHANGED: commit by shape first, but give explicit HTML closer syntax priority
+  // over HSON because some HTML is parseable as HSON and contaminates source-sensitive tests.
   const likeJson = looks_like_json(s);
+  const likeHson = looks_like_hson(s);
   const likeHtml = looks_like_html(s);
+
+  // CHANGED: strong HTML signal for auto-detect in diagnostics/tests
+  const hasHtmlCloser = s.includes("</");
 
   // Prefer JSON if it looks JSON-ish.
   if (likeJson) {
-    // Optional: if you want “invalid JSON should never be treated as HTML/HSON”
-    // then enforce syntax validity up front.
     if (!is_json_source_text(s)) {
       step_fail(opt, "resolve_entry:auto", "Looks like JSON but JSON.parse failed (invalid JSON)");
       return undefined;
@@ -456,26 +470,70 @@ function resolve_entry(
       assert_invariants(n, "auto:json");
       return { fmt: "json", text: s };
     } catch (err) {
-      // CHANGED: do not fall through to HTML; this was the bug pattern.
       step_fail(opt, "resolve_entry:auto", `Looks like JSON but SPIN.json.parse failed: ${err_to_string(err)}`);
       return undefined;
     }
   }
 
-  // Only try HTML if it actually looks like HTML.
-  if (likeHtml) {
-    return { fmt: "html", text: s };
+  // CHANGED: explicit HTML closing tags are a strong diagnostic signal.
+  // HSON normally does not use </tag> closers, so prefer HTML here.
+  if (hasHtmlCloser) {
+    try {
+      const n = SPIN.html.parse(s);
+      assert_invariants(n, "auto:html");
+      return { fmt: "html", text: s };
+    } catch (htmlErr) {
+      step_fail(
+        opt,
+        "resolve_entry:auto",
+        `Contains '</' so auto preferred HTML, but HTML parse failed: ${err_to_string(htmlErr)}`
+      );
+      return undefined;
+    }
   }
 
-  // Otherwise, try HSON as the final fallback.
-  try {
-    const n = SPIN.hson.parse(s);
-    assert_invariants(n, "auto:hson");
-    return { fmt: "hson", text: s };
-    
-  } catch { /* ignore */ }
+  let hsonErr: unknown = undefined;
 
-  step_fail(opt, "resolve_entry:auto", "Could not detect entry format (shape-gated json/html/hson)");
+  // CHANGED: prefer HSON for remaining markup-ish input
+  if (likeHson || likeHtml) {
+    try {
+      const n = SPIN.hson.parse(s);
+      assert_invariants(n, "auto:hson");
+      return { fmt: "hson", text: s };
+    } catch (err) {
+      hsonErr = err;
+      step_meh(
+        opt,
+        `resolve_entry:auto:hson-failed - ${err_to_string(err)}\n... trying html`
+      );
+    }
+  }
+
+  // CHANGED: HTML fallback only after HSON fails, unless the strong </ signal already handled it above
+  if (likeHtml) {
+    try {
+      const n = SPIN.html.parse(s);
+      assert_invariants(n, "auto:html");
+      return { fmt: "html", text: s };
+    } catch (htmlErr) {
+      step_fail(
+        opt,
+        "resolve_entry:auto",
+        [
+          "Markup-like input failed HSON parse, then failed HTML parse.",
+          `HSON: ${err_to_string(hsonErr)}`,
+          `HTML: ${err_to_string(htmlErr)}`,
+        ].join("\n")
+      );
+      return undefined;
+    }
+  }
+
+  step_fail(
+    opt,
+    "resolve_entry:auto",
+    `Markup-like input failed HSON parse: ${err_to_string(hsonErr)}`
+  );
   return undefined;
 }
 
@@ -638,6 +696,13 @@ function step_ok(
   step: string
 ): void {
   if (opt.verbose) opt.trace.push({ step, ok: true });
+}
+
+function step_meh(
+  opt: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail">,
+  step: string
+): void {
+  if (opt.verbose) opt.trace.push({ step, ok: false });
 }
 
 function step_fail(

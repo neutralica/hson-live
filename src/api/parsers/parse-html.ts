@@ -349,7 +349,14 @@ function convert(el: Element): HsonNode {
                 _attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 // no inner _elem — children go directly
-                _content: [str],
+                _content: [
+                    CREATE_NODE({
+                        _tag: ELEM_TAG,
+                        _content: [
+                            CREATE_NODE({ _tag: STR_TAG, _content: [text_content] })
+                        ]
+                    })
+                ]
             });
         }
     }

@@ -7,9 +7,13 @@ import { Position, CloseKind, Tokens, RawAttr } from "../../types/token.types.js
 import { lex_text_piece } from "../../utils/hson-utils/lex-text-piece.js";
 import { slice_balanced_arr } from "../../utils/hson-utils/slice-balance.js";
 import { split_top_level } from "../../utils/hson-utils/split-top-2.js";
-import { is_quote, scan_quoted_block } from "../../utils/hson-utils/tokenize-full-string.js";
+import { is_quote, scan_quoted_block, scan_tag_header_block } from "../../utils/hson-utils/scan-quoted-block.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
 
+/* debug log */
+const _VERBOSE = false;
+const boundLog = console.log.bind(console, '%c[hson tokenizer]', 'color: maroon; background: lightblue;');
+const _log = _VERBOSE ? boundLog : () => { };
 
 /**
  * Construct a `Position` object representing a concrete source location
@@ -89,11 +93,6 @@ const LONE_OPEN_ANGLE_REGEX = /^<\s*$/;
  */
 const IMPLICIT_OBJECT_START_REGEX = /^\s*<\s*<(\s|$)/; /* ensures second '<' is followed by space or EOL */
 
-/* debug log */
-const _VERBOSE = false;
-const boundLog = console.log.bind(console, '%c[hson tokenizer]', 'color: maroon; background: lightblue;');
-const _log = _VERBOSE ? boundLog : () => { };;
-
 let tokenFirst: boolean = true;
 
 /**
@@ -158,7 +157,15 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     const contextStack: ContextStackItem[] = [];
     const splitLines = hson.split(/\r\n|\r|\n/);
     let ix = 0;
-
+    // CHANGED: absolute start offset for each physical line in splitLines
+    const lineOffsets: number[] = [];
+    {
+        let acc = 0;
+        for (let i = 0; i < splitLines.length; i++) {
+            lineOffsets.push(acc);
+            acc += splitLines[i].length + 1; // assumes split on \n
+        }
+    }
     _log(`[token_from_hson depth=${depth}]; total lines: ${splitLines.length}`);
 
     function ensureQuotedLiteral(lit: string, where: string) {
@@ -291,85 +298,112 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
  * @returns An object with `{ attrs, endIx }` for downstream tokenization.
  */
     function readAttrs(
-        trimLine: string,
-        startIx: number,                /* first char after tag name */
-        endIx: number,                  /* start index of the trailing closer in trimLine */
-        lineNo: number,
-        leadCol: number                 /* first non-space col in currentLine (1-based) */
+        source: string,
+        startIx: number,
+        endIx: number,
+        posAt: (ix: number) => Position
     ): { attrs: RawAttr[]; endIx: number } {
         const out: RawAttr[] = [];
         let ix = startIx;
         const end = endIx;
 
-        let inQuote: '"' | null = null;
-        let escaped = false;
-
-        const _col = (relIx: number) => leadCol + relIx;                 /* 1-based col */
-        const _mkpos = (relIx: number): Position => {
-            const col = _col(relIx);
-            return { line: lineNo, col, index: _offset + col - 1 };
+        const _skip_whitespace = (): void => {
+            while (ix < end && /\s/.test(source[ix])) ix++;
         };
-
-        const _skip_whitespace = () => { while (ix < end && /\s/.test(trimLine[ix])) ix++; };
 
         while (ix < end) {
             _skip_whitespace();
             if (ix >= end) break;
 
-            /* attr name must start with letter/_/: */
-            if (!/[A-Za-z_:]/.test(trimLine[ix])) break;
-
+            // CHANGED: attr name must start with letter/_/:
+            if (!/[A-Za-z_:]/.test(source[ix])) break;
+            if (!/[A-Za-z_:]/.test(source[ix])) {
+                break;
+            }
             const nameStart = ix;
-            ix++; while (ix < end && /[\w:.\-]/.test(trimLine[ix])) ix++;
-            const name = trimLine.slice(nameStart, ix);
-            const startPos = _mkpos(nameStart);
+            ix++;
+            while (ix < end && /[\w:.\-]/.test(source[ix])) ix++;
+
+            const name = source.slice(nameStart, ix);
+            const startPos = posAt(nameStart);
 
             _skip_whitespace();
 
-            if (ix < end && trimLine[ix] === '=') {
-                ix++; _skip_whitespace();
-                let valStart = ix;
-                if (trimLine[ix] === "'") {
+            if (ix < end && source[ix] === "=") {
+                ix++;
+                _skip_whitespace();
+
+                const valStartIx = ix;
+
+                if (source[ix] === "'") {
                     _throw_transform_err(
                         `unsupported single-quoted attribute value (use " only)`,
-                        "tokenize_hson.readAttrs"
+                        "tokenize_hson.readAttrsFromSource"
                     );
                 }
-                if (ix < end && (trimLine[ix] === '"')) {
-                    inQuote = trimLine[ix] as '"'; ix++; valStart = ix;
+
+                if (ix < end && source[ix] === '"') {
+                    ix++; // move past opening quote
+                    const innerStart = ix;
+
+                    let escaped = false;
                     while (ix < end) {
-                        const ch = trimLine[ix];
-                        if (escaped) { escaped = false; ix++; continue; }
-                        if (ch === '\\') { escaped = true; ix++; continue; }
-                        if (ch === inQuote) break;
+                        const ch = source[ix];
+
+                        if (escaped) {
+                            escaped = false;
+                            ix++;
+                            continue;
+                        }
+
+                        if (ch === "\\") {
+                            escaped = true;
+                            ix++;
+                            continue;
+                        }
+
+                        if (ch === '"') break;
                         ix++;
                     }
-                    const text = trimLine.slice(valStart, ix);
-                    if (ix < end && trimLine[ix] === inQuote) ix++;
-                    const endPos = _mkpos(ix);
-                    out.push({ name, value: { text, quoted: true }, start: startPos, end: endPos });
+
+                    const text = source.slice(innerStart, ix);
+
+                    if (ix < end && source[ix] === '"') {
+                        ix++; // consume closer
+                    } else {
+                        _throw_transform_err(
+                            `unterminated quoted attribute value for "${name}"`,
+                            "tokenize_hson.readAttrsFromSource"
+                        );
+                    }
+
+                    const endPos = posAt(Math.max(0, ix - 1));
+                    out.push({
+                        name,
+                        value: { text, quoted: true },
+                        start: startPos,
+                        end: endPos,
+                    });
                 } else {
-                    while (ix < end && !/\s/.test(trimLine[ix])) ix++;
-                    const endPos = _mkpos(ix);
-                    // CHANGED: store full JSON string literal for quoted values (Option B)
-                    const inner = trimLine.slice(valStart, ix);
+                    while (ix < end && !/\s/.test(source[ix])) ix++;
 
-                    // CHANGED: normalize: only allow double-quoted JSON literals as the stored form
-                    // If the source quote was single, we convert by JSON-stringifying the inner *as text*.
-                    // (This means single-quoted attrs become “literal text”, not a JS-like escape soup.)
-                    const full =
-                        inQuote === '"'
-                            ? `"${inner}"`                    // keep raw inner, still escaped as authored
-                            : JSON.stringify(inner);          // normalize single-quoted input into a JSON literal
+                    const inner = source.slice(valStartIx, ix);
+                    const endPos = posAt(Math.max(0, ix - 1));
 
-                    out.push({ name, value: { text: full, quoted: true }, start: startPos, end: endPos });
+                    out.push({
+                        name,
+                        value: { text: inner, quoted: false },
+                        start: startPos,
+                        end: endPos,
+                    });
                 }
             } else {
                 if (isPrimitiveLex(name)) {
                     return { attrs: out, endIx: nameStart };
                 }
-                const endPos = _mkpos(ix);
-                out.push({ name, start: startPos, end: endPos }); /* flag */
+
+                const endPos = posAt(Math.max(nameStart, ix - 1));
+                out.push({ name, start: startPos, end: endPos });
             }
         }
 
@@ -523,14 +557,13 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             }
         }
 
-
         /* step F: open tags */
         if (trimLine.startsWith('<')) {
             // f.0 exact empty-object token "<>"
             if (/^<>\s*$/.test(trimLine)) {
                 const lineNo = currentIx + 1;
-                const leadCol = currentLine.search(/\S|$/) + 1;   // first non-space col on this line
-                const colOpen = leadCol;                           // '<' sits here
+                const leadCol = currentLine.search(/\S|$/) + 1;
+                const colOpen = leadCol;
                 const posOpen = _pos(lineNo, colOpen, _offset + colOpen - 1);
 
                 finalTokens.push(CREATE_EMPTY_OBJ_TOKEN('<>', /*quoted*/ false, posOpen));
@@ -538,12 +571,11 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 continue;
             }
 
-
             /* f.1 implicit object opener "< <...": accept preamble, no tokens, structure only */
             if (IMPLICIT_OBJECT_START_REGEX.test(trimLine)) {
                 _log(`[step f depth=${depth} L=${currentIx + 1}] implicit object opener`);
                 contextStack.push({ type: 'IMPLICIT_OBJECT' });
-                contextStack.push({ type: 'CLUSTER' });/* pending close kind */
+                contextStack.push({ type: 'CLUSTER' });
 
                 const secondIx = trimLine.indexOf('<', trimLine.indexOf('<') + 1);
                 const inner = secondIx >= 0 ? trimLine.substring(secondIx).trim() : '';
@@ -555,56 +587,100 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 continue;
             }
 
-            /* f.2 read tag header minimally: name + find header end (no attrs yet) */
-            let ixHeader = 1;                               /* after '<' */
-            const lineLen = trimLine.length;
-            while (ixHeader < lineLen && /\s/.test(trimLine[ixHeader])) ixHeader++;
+            // CHANGED: scan logical tag header across lines if quoted attrs stay open
+            const leadIx0 = currentLine.search(/\S|$/); // 0-based
+            const leadCol = leadIx0 + 1;
+
+            const scanned = scan_tag_header_block(
+                splitLines,
+                currentIx,
+                leadIx0,
+                lineOffsets
+            );
+            console.log("[stepF scanned]", {
+                startLine: currentIx + 1,
+                endLine: scanned.endLine + 1,
+                closer: scanned.closer,
+                raw: JSON.stringify(scanned.raw),
+            });
+            const headerRaw = scanned.raw;
+            const closerLex = scanned.closer;
+            const endLine = scanned.endLine;
+            const endCol = scanned.endCol;
+            const posAt = scanned.posAt;
+
+            // CHANGED: only whitespace or //comment may follow the consumed header on its ending line
+            const tailAfterHeader = (splitLines[endLine] ?? "").slice(endCol - 1);
+
+            if (!closerLex) {
+                if (!/^\s*(?:\/\/.*)?$/.test(tailAfterHeader)) {
+                    _throw_transform_err(
+                        `unexpected trailing characters after tag header`,
+                        "tokenize_hson.stepF"
+                    );
+                }
+            }
+
+            /* f.2 read tag header minimally: name */
+            let ixHeader = 1; // after '<'
+            const headerLen = headerRaw.length;
+
+            while (ixHeader < headerLen && /\s/.test(headerRaw[ixHeader])) ixHeader++;
 
             const tagNameStartIx = ixHeader;
-            while (ixHeader < lineLen && /[A-Za-z0-9:._-]/.test(trimLine[ixHeader])) ixHeader++;
-            const tag = trimLine.slice(tagNameStartIx, ixHeader);
-            if (!tag) _throw_transform_err(`[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${trimLine}"`, 'tokenize-hson');
+            while (ixHeader < headerLen && /[A-Za-z0-9:._-]/.test(headerRaw[ixHeader])) ixHeader++;
 
-            const lineNo = currentIx + 1;
-            const leadCol = currentLine.search(/\S|$/) + 1;          /* first non-space col */
-            const colOpen = leadCol;                                  /* '<' sits here */
-            const posOpen = _pos(lineNo, colOpen, _offset + colOpen - 1);
+            const tag = headerRaw.slice(tagNameStartIx, ixHeader);
+            if (!tag) {
+                _throw_transform_err(
+                    `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
+                    'tokenize-hson'
+                );
+            }
 
-            /* f.3 detect trailing closer @ end of the raw line (ignore //comment) */
-            const mTrail = currentLine.match(/(\/?>)\s*(?:\/\/.*)?$/);
-            const closerLex = mTrail ? (mTrail[1] as ('>' | '/>')) : null;
+            const posOpen = _pos(
+                currentIx + 1,
+                leadCol,
+                lineOffsets[currentIx] + leadIx0
+            );
 
             let rawAttrs: RawAttr[] = [];
-            let tailRaw = '';
+            let tailRaw = "";
 
-            /* compute relative indices against trimLine */
-            const leadSpaces = currentLine.match(/^\s*/)?.[0].length ?? 0;
+            const headerEndIx =
+                closerLex === "/>" ? headerRaw.length - 2 :
+                    closerLex === ">" ? headerRaw.length - 1 :
+                        headerRaw.length;
 
-            if (closerLex) {
-                const closerLen = closerLex === '/>' ? 2 : 1;
+            const parsedAttrs = readAttrs(
+                headerRaw,
+                ixHeader,
+                headerEndIx,
+                posAt
+            );
+            console.log("[stepF parsedAttrs SNAPSHOT]", JSON.stringify({
+                tag,
+                headerEndIx,
+                parsedEndIx: parsedAttrs.endIx,
+                tailRaw: headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim(),
+                parsedAttrsLen: parsedAttrs.attrs.length,
+                parsedAttrs: parsedAttrs.attrs.map((a) => ({
+                    name: a.name,
+                    value: a.value ? {
+                        text: a.value.text,
+                        quoted: a.value.quoted,
+                    } : undefined,
+                })),
+            }, null, 2));
+            rawAttrs = parsedAttrs.attrs;
 
-                /* absolute index of the closer in currentLine */
-                const closerAbs = currentLine.lastIndexOf(closerLex);
-                if (closerAbs < 0) {
-                    _throw_transform_err(`internal: trailing closer not found in "${currentLine}"`, 'tokenize-hson', currentLine);
-                }
+            const preCloserTail = headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim();
+            const postCloserTail = closerLex ? tailAfterHeader.trim() : "";
 
-                /* relative index inside trimLine */
-                const closerRel = Math.max(0, closerAbs - leadSpaces);
-
-                /* parse attrs up to the closer; capture where we stopped for tail */
-                const { attrs, endIx: attrsEndIx } =
-                    readAttrs(trimLine, ixHeader /* after name */, closerRel, lineNo, leadCol);
-
-                rawAttrs = attrs;
-
-                /* anything between attrs end and trailing closer is the inline tail */
-                tailRaw = trimLine.slice(attrsEndIx, closerRel).trim();
-            } else {
-                /* no same-line closer: parse attrs until we can’t read more */
-                const { attrs } = readAttrs(trimLine, ixHeader, trimLine.length, lineNo, leadCol);
-                rawAttrs = attrs;
-            }
+            tailRaw = [preCloserTail, postCloserTail]
+                .filter((s) => s.length > 0)
+                .join(" ")
+                .trim();
 
             /* emit open */
             finalTokens.push(CREATE_OPEN_TOKEN(tag, rawAttrs, posOpen));
@@ -621,10 +697,10 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                             'tokenize-hson'
                         );
                     }
-                    const lit = parts[0].trim();
 
-                    //  quote-aware, without endIx
+                    const lit = parts[0].trim();
                     const piece = ensureQuotedLiteral(lit, 'step f');
+
                     finalTokens.push(
                         CREATE_TEXT_TOKEN(piece.text, piece.quoted ? true : undefined, posOpen)
                     );
@@ -633,16 +709,26 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
             /* close now or defer to step e */
             if (closerLex) {
-                const closerLen = closerLex === '/>' ? 2 : 1;
-                const colCloserAbs = leadCol + (trimLine.length - closerLen);
-                const posClose = _pos(lineNo, colCloserAbs, _offset + colCloserAbs - 1);
-                const closeKind = (closerLex === '/>') ? CLOSE_KIND.elem : CLOSE_KIND.obj;
+                const closeStartIx =
+                    closerLex === "/>" ? headerRaw.length - 2 : headerRaw.length - 1;
+
+                const posClose = posAt(closeStartIx);
+                const closeKind = closerLex === "/>" ? CLOSE_KIND.elem : CLOSE_KIND.obj;
+
                 finalTokens.push(CREATE_END_TOKEN(closeKind, posClose));
-                _bump_line(currentLine);
+
+                // CHANGED: bump all consumed physical lines
+                for (let k = currentIx; k <= endLine; k++) {
+                    _bump_line(splitLines[k] ?? "");
+                }
                 continue;
             } else {
-                contextStack.push({ type: 'CLUSTER' });  /* pending: Step E will close */
-                _bump_line(currentLine);
+                contextStack.push({ type: 'CLUSTER' });
+
+                // CHANGED: bump all consumed physical lines
+                for (let k = currentIx; k <= endLine; k++) {
+                    _bump_line(splitLines[k] ?? "");
+                }
                 continue;
             }
         } // ---- end of step F ---=|
@@ -718,30 +804,32 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     }
 
     function logTokens(): void {
-        console.groupCollapsed('returning tokens (summary)');
-        for (const t of finalTokens) {
-            switch (t.kind) {
-                case TOKEN_KIND.OPEN:
-                    console.log(`OPEN <${t.tag}> @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.CLOSE:
-                    console.log(`END ${t.close} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.ARR_OPEN:
-                    console.log(`ARR_OPEN ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.ARR_CLOSE:
-                    console.log(`ARR_CLOSE ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.TEXT:
-                    console.log(`TEXT "${t.raw}" @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.EMPTY_OBJ:
-                    console.log(`EMPTY_OBJ "${t}" @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
+        if (_VERBOSE) {
+            console.groupCollapsed('returning tokens (summary)');
+            for (const t of finalTokens) {
+                switch (t.kind) {
+                    case TOKEN_KIND.OPEN:
+                        console.log(`OPEN <${t.tag}> @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                    case TOKEN_KIND.CLOSE:
+                        console.log(`END ${t.close} @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                    case TOKEN_KIND.ARR_OPEN:
+                        console.log(`ARR_OPEN ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                    case TOKEN_KIND.ARR_CLOSE:
+                        console.log(`ARR_CLOSE ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                    case TOKEN_KIND.TEXT:
+                        console.log(`TEXT "${t.raw}" @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                    case TOKEN_KIND.EMPTY_OBJ:
+                        console.log(`EMPTY_OBJ "${t}" @ L${t.pos.line}:C${t.pos.col}`);
+                        break;
+                }
             }
+            console.groupEnd();
         }
-        console.groupEnd();
     }
 
     /* return new tokens; no _root wrapping here — parser will handle it */
