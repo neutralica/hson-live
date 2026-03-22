@@ -597,12 +597,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 leadIx0,
                 lineOffsets
             );
-            console.log("[stepF scanned]", {
-                startLine: currentIx + 1,
-                endLine: scanned.endLine + 1,
-                closer: scanned.closer,
-                raw: JSON.stringify(scanned.raw),
-            });
             const headerRaw = scanned.raw;
             const closerLex = scanned.closer;
             const endLine = scanned.endLine;
@@ -658,20 +652,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 headerEndIx,
                 posAt
             );
-            console.log("[stepF parsedAttrs SNAPSHOT]", JSON.stringify({
-                tag,
-                headerEndIx,
-                parsedEndIx: parsedAttrs.endIx,
-                tailRaw: headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim(),
-                parsedAttrsLen: parsedAttrs.attrs.length,
-                parsedAttrs: parsedAttrs.attrs.map((a) => ({
-                    name: a.name,
-                    value: a.value ? {
-                        text: a.value.text,
-                        quoted: a.value.quoted,
-                    } : undefined,
-                })),
-            }, null, 2));
+
             rawAttrs = parsedAttrs.attrs;
 
             const preCloserTail = headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim();
