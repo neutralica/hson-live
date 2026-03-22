@@ -543,6 +543,7 @@ export class CssManager {
 
     return CssManager.instance;
   }
+
   /**
    * Read the last-written value for a QUID + canonical property pair.
    *
@@ -550,6 +551,12 @@ export class CssManager {
    */
   public getForQuid(quid: string, propCanon: string): string | undefined {
     return this.rulesByQuid.get(quid)?.get(propCanon);
+  }
+  public getAllForQuid(quid: string): Record<string, string> | undefined {
+    const found = this.rulesByQuid.get(quid);
+    if (!found) return undefined;
+
+    return Object.fromEntries(found);
   }
 
   /**
@@ -640,15 +647,15 @@ export class CssManager {
       this.unsetForQuid(q, p);
       return;
     }
-if (!css_supports_decl(p, v)) {
-    console.warn("CssManager.setForQuid: unsupported CSS decl skipped", {
-      quid: q,
-      prop: p,
-      value: v,
-    });
-    return; // CHANGED: do not store invalid decl
-}
-    
+    if (!css_supports_decl(p, v)) {
+      console.warn("CssManager.setForQuid: unsupported CSS decl skipped", {
+        quid: q,
+        prop: p,
+        value: v,
+      });
+      return; // CHANGED: do not store invalid decl
+    }
+
     let props = this.rulesByQuid.get(q);
     if (!props) {
       props = new Map<string, string>();
@@ -903,11 +910,11 @@ if (!css_supports_decl(p, v)) {
   } as const;
 
 
-  
+
   public devSnapshot(): string {
     return this.renderCss()
   }
-  
+
   /** @internal */
 
   public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
