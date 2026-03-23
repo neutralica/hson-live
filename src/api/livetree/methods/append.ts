@@ -35,81 +35,81 @@ export function normalize_ix(index: number, length: number): number {
   return fromEnd;
 }
 
-export function append(this: LiveTree, content: LiveTree): LiveTree {
-  // CHANGED: append is end-only
-  return insert_at.call(this, content, Infinity);
-}
+// export function append(this: LiveTree, content: LiveTree): LiveTree {
+//   // CHANGED: append is end-only
+//   return insert_at.call(this, content, Infinity);
+// }
 
-export function prepend(this: LiveTree, content: LiveTree): LiveTree {
-  // NEW: explicit prepend
-  return insert_at.call(this, content, 0);
-}
+// export function prepend(this: LiveTree, content: LiveTree): LiveTree {
+//   // NEW: explicit prepend
+//   return insert_at.call(this, content, 0);
+// }
 
-// CHANGED: add to LiveTree methods (where append is defined / exported)
-export function insertAt(this: LiveTree, content: LiveTree, index: number): LiveTree {
-  // CHANGED: forward directly; do not re-normalize here
-  return this.append(content, index);
-}
+// // CHANGED: add to LiveTree methods (where append is defined / exported)
+// export function insertAt(this: LiveTree, content: LiveTree, index: number): LiveTree {
+//   // CHANGED: forward directly; do not re-normalize here
+//   return this.append(content, index);
+// }
 
-// CHANGED: old append(content, index?) becomes internal primitive
-function insert_at(this: LiveTree, content: LiveTree, index: number): LiveTree {
-  const targetNode = this.node;
+// // CHANGED: old append(content, index?) becomes internal primitive
+// function insert_at(this: LiveTree, content: LiveTree, index: number): LiveTree {
+//   const targetNode = this.node;
 
-  // Normalize content into HsonNode[]
-  let nodesToAppend: HsonNode[];
-  if (is_Node(content)) {
-    nodesToAppend = unwrap_root_elem(content);
-  } else {
-    _throw_transform_err("[ERR] invalid content provided", "insert_at", make_string(content));
-  }
+//   // Normalize content into HsonNode[]
+//   let nodesToAppend: HsonNode[];
+//   if (is_Node(content)) {
+//     nodesToAppend = unwrap_root_elem(content);
+//   } else {
+//     _throw_transform_err("[ERR] invalid content provided", "insert_at", make_string(content));
+//   }
 
-  // Ensure container node
-  let containerNode: HsonNode;
-  const firstChild = targetNode._content[0];
+//   // Ensure container node
+//   let containerNode: HsonNode;
+//   const firstChild = targetNode._content[0];
 
-  if (is_Node(firstChild) && firstChild._tag === ELEM_TAG) {
-    containerNode = firstChild;
-  } else {
-    containerNode = CREATE_NODE({ _tag: ELEM_TAG, _content: [] });
+//   if (is_Node(firstChild) && firstChild._tag === ELEM_TAG) {
+//     containerNode = firstChild;
+//   } else {
+//     containerNode = CREATE_NODE({ _tag: ELEM_TAG, _content: [] });
 
-    // CHANGED: migrate existing node-children into the container so indices mean what you think
-    const existing = targetNode._content.filter(is_Node);
-    const nonNodes = targetNode._content.filter(ch => !is_Node(ch));
+//     // CHANGED: migrate existing node-children into the container so indices mean what you think
+//     const existing = targetNode._content.filter(is_Node);
+//     const nonNodes = targetNode._content.filter(ch => !is_Node(ch));
 
-    containerNode._content.push(...existing);
+//     containerNode._content.push(...existing);
 
-    // CHANGED: replace content with single container + any non-node content
-    targetNode._content = [containerNode, ...nonNodes];
-  }
+//     // CHANGED: replace content with single container + any non-node content
+//     targetNode._content = [containerNode, ...nonNodes];
+//   }
 
-  const childContent = containerNode._content;
+//   const childContent = containerNode._content;
 
-  // HSON INSERTION
-  const insertIx = normalize_ix(index, childContent.length); // CHANGED: always compute once
-  childContent.splice(insertIx, 0, ...nodesToAppend);
+//   // HSON INSERTION
+//   const insertIx = normalize_ix(index, childContent.length); // CHANGED: always compute once
+//   childContent.splice(insertIx, 0, ...nodesToAppend);
 
-  // DOM SYNC
-  // --- DOM SYNC --------------------------------------------------------
-  const liveElement = element_for_node(targetNode);
-  if (liveElement) {
-    const domChildren = Array.from(liveElement.childNodes);
+//   // DOM SYNC
+//   // --- DOM SYNC --------------------------------------------------------
+//   const liveElement = element_for_node(targetNode);
+//   if (liveElement) {
+//     const domChildren = Array.from(liveElement.childNodes);
 
-    if (typeof index === "number") {
-      let insertIx = normalize_ix(index, domChildren.length);
+//     if (typeof index === "number") {
+//       let insertIx = normalize_ix(index, domChildren.length);
 
-      for (const newNode of nodesToAppend) {
-        const dom = project_livetree(newNode);
-        const refNode = domChildren[insertIx] ?? null;
-        liveElement.insertBefore(dom, refNode);
-        insertIx += 1;
-      }
-    } else {
-      for (const newNode of nodesToAppend) {
-        const dom = project_livetree(newNode);
-        liveElement.appendChild(dom);
-      }
-    }
-  }
+//       for (const newNode of nodesToAppend) {
+//         const dom = project_livetree(newNode);
+//         const refNode = domChildren[insertIx] ?? null;
+//         liveElement.insertBefore(dom, refNode);
+//         insertIx += 1;
+//       }
+//     } else {
+//       for (const newNode of nodesToAppend) {
+//         const dom = project_livetree(newNode);
+//         liveElement.appendChild(dom);
+//       }
+//     }
+//   }
 
-  return this;
-}
+//   return this;
+// }
