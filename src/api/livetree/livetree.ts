@@ -27,6 +27,7 @@ import { css_for_quids } from "./methods/css-for-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
+import { is_svg_context_tag } from "../../consts/html-tags.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.

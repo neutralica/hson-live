@@ -2,7 +2,7 @@
 
 ## 19MAR2026
 ~~dom.el.must~~
-
+- (remove livetree.asDomElement() in favor of the above)
 
 ## 18MAR2026
 scrollHeight/width
@@ -21,7 +21,7 @@ find.query/queryAll(CSSSelector)
 	•	tree.root (graph root of the node universe)
 	•	hson.getRoot / global manager direction
 
-8DOM geometry + animation affordances
+ DOM geometry + animation affordances
 	•	getBoundingClientRect and friends, maybe under .dom
 	•	getAnimations
 	•	elementFromPoint, etc
@@ -48,10 +48,9 @@ find.query/queryAll(CSSSelector)
 
 ## 29JAN2026
 + needed on LiveTree somewhere:
- -- getBoundingRect & co.
+ ~~-- getBoundingRect & co.~~
  -- getAnimations
- -- setTimeout?
- -- etc
+ ~~-- setTimeout?~~
 
 
 ## 25JAN2025
@@ -65,7 +64,7 @@ find.query/queryAll(CSSSelector)
 ## 18JAN2026
 + ~~change .setText so that it does not check element_for_node and instead writes node and updates if applicable~~
 + create.textnode
-+ pseudoelements handling 
+~~+ pseudoelements ~~
 
 ## 17JAN
 + fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:

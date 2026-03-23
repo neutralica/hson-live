@@ -142,9 +142,38 @@ export const HTML_TAGS = [
   "template",
   "canvas",
 
+  // svg
+  "svg",
+
   // Obsolete / legacy (kept for tolerance)
   "menu",
   "menuitem",
   "center",
   "font",
 ] as const;
+export const SVG_TAGS = [
+  "svg",
+  "g",
+  "circle",
+  "rect",
+  "path",
+  "line",
+  "polyline",
+  "polygon",
+  "ellipse",
+  "text",
+  "defs",
+  "use",
+  "clipPath",
+  "mask",
+  "linearGradient",
+  "radialGradient",
+  "stop",
+  "symbol",
+  "pattern",
+] as const;
+const SVG_TAG_SET = new Set<string>(SVG_TAGS as readonly string[]);
+
+export function is_svg_context_tag(tag: string): boolean {
+  return SVG_TAG_SET.has(tag);
+}

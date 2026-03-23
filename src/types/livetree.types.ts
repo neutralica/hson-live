@@ -4,7 +4,7 @@ import { LiveTree } from "../api/livetree/livetree.js";
 import { HsonAttrs, HsonMeta, HsonNode } from "./node.types.js";
 import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/tree-selector.js";
-import { HTML_TAGS } from "../consts/html-tags.js";
+import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.
@@ -160,10 +160,38 @@ export type TagName = string;
  *
  * read as “insert a new <p> in the middle and then configure it”.
  **************************************************************/
-export type LiveTreeCreateHelper = CreateHelper<LiveTree, TreeSelector>;
+export type AnyCreateTag = HtmlTag | SvgTag;
 export type HtmlTag = (typeof HTML_TAGS)[number];
+export type SvgTag = (typeof SVG_TAGS)[number];
+export type NonRootSvgTag = Exclude<SvgTag, "svg">;
 
-// CHANGED: helper exposes methods for HtmlTag only (div(), span(), etc)
+export type LiveTreeCreateHelper =
+  Record<Exclude<HtmlTag, "svg">, (index?: number) => LiveTree> &
+  Record<NonRootSvgTag, (index?: number) => LiveTree> & {
+    tags(tags: TagName[], index?: number): TreeSelector;
+
+    // CHANGED: svg is special
+    svg(source?: string): LiveTree;
+
+    // CHANGED: recursive to itself, not CreateHelper
+    prepend(): LiveTreeCreateHelper;
+    at(index: number): LiveTreeCreateHelper;
+  };
+  
+// export type HtmlCreateHelper = Omit<CreateHelper<LiveTree, TreeSelector>, SvgTag>;
+
+// export type SvgCreateHelper =
+//   Record<Exclude<SvgTag, "svg">, (index?: number) => SvgLiveTree> & {
+//     svg(source?: string): SvgLiveTree;
+
+//     tags(tags: SvgTag[], index?: number): TreeSelector;
+
+//     prepend(): SvgCreateHelper;
+//     at(index: number): SvgCreateHelper;
+//   };
+
+
+// helper exposes methods for HtmlTag only (div(), span(), etc)
 // and keeps tags([...]) for arbitrary tag names.
 export type CreateHelper<Single, Many> =
   Record<HtmlTag, (index?: number) => Single> & {
