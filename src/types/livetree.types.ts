@@ -102,64 +102,6 @@ export type FindWithById = ((q: FindQuery) => LiveTree | undefined) &
  **************************************************************/
 export type TagName = string;
 
-/**************************************************************
- * Generic element-creation helper used to define:
- *   - `LiveTreeCreateHelper`  (single-tree context),
- *   - `TreeSelectorCreateHelper` (multi-tree context).
- *
- * Shape:
- *   - Per-tag methods:
- *       • `.create.div(index?) → Single`
- *         where `Single` is `LiveTree` or `TreeSelector`.
- *   - Batch method:
- *       • `.create.tags([...], index?) → Many`
- *         where `Many` is `TreeSelector` for both cases.
- *   - Fluent placement:
- *       • `.create.prepend()` / `.create.at(index)` → helper
- *         (applies to the next per-tag call).
- *
- * Implementations are expected to:
- *   - allocate new HSON nodes for each requested tag,
- *   - append them as children of the current parent node,
- *   - propagate the correct `Single` / `Many` return type
- *     according to the context (`tree` vs `selector`).
- **************************************************************/
-// export type CreateHelper<Single, Many> = {
-//   // per-tag sugar: .create.div(index?)
-//   [K in TagName]: (index?: number) => Single;
-// } & {
-//   // batch: .create.tags(["div", "span"], index?)
-//   tags(tags: TagName[], index?: number): Many;
-// };
-
-/**************************************************************
- * LiveTreeCreateHelper
- *
- * Fluent factory for creating *appended* children relative to
- * a specific parent LiveTree.
- *
- * Semantics (mounted parent):
- * - `tree.create.div(index?)`:
- *     - Parses `<div></div>` into HSON.
- *     - Inserts the new node into `tree.node`'s `_content` at
- *       the given index (or at the end if omitted).
- *     - If `tree` is mounted, creates and inserts the matching
- *       DOM element into the live subtree.
- *     - Returns a `LiveTree` bound to the newly inserted child.
- *
- * Semantics (unmounted parent):
- * - Same HSON insertion contract, but no DOM element exists
- *   until the subtree is grafted into a mounted tree.
- *
- * This makes calls like:
- *
- *   tree.find.must.byId("root")
- *     .create.p(1)
- *     .setAttrs({ class: "insert" })
- *     .setText("between");
- *
- * read as “insert a new <p> in the middle and then configure it”.
- **************************************************************/
 export type AnyCreateTag = HtmlTag | SvgTag;
 export type HtmlTag = (typeof HTML_TAGS)[number];
 export type SvgTag = (typeof SVG_TAGS)[number];
@@ -177,19 +119,29 @@ export type LiveTreeCreateHelper =
     prepend(): LiveTreeCreateHelper;
     at(index: number): LiveTreeCreateHelper;
   };
+
+export type HtmlLiveTree = LiveTree & {
+  create: HtmlCreateHelper;
+};
+
+export type SvgLiveTree = LiveTree & {
+  create: SvgCreateHelper;
+};
+export type HtmlCreateHelper =
+  Record<Exclude<HtmlTag, "svg">, (index?: number) => LiveTree> & {
+    tags(tags: TagName[], index?: number): TreeSelector;
+    svg(source?: string): SvgLiveTree;
+    prepend(): HtmlCreateHelper;
+    at(index: number): HtmlCreateHelper;
+  };
+  export type SvgCreateHelper =
+  Record<Exclude<SvgTag, "svg">, (index?: number) => SvgLiveTree> & {
+    tags(tags: TagName[], index?: number): TreeSelector;
+    svg(source?: string): SvgLiveTree;
+    prepend(): SvgCreateHelper;
+    at(index: number): SvgCreateHelper;
+    };
   
-// export type HtmlCreateHelper = Omit<CreateHelper<LiveTree, TreeSelector>, SvgTag>;
-
-// export type SvgCreateHelper =
-//   Record<Exclude<SvgTag, "svg">, (index?: number) => SvgLiveTree> & {
-//     svg(source?: string): SvgLiveTree;
-
-//     tags(tags: SvgTag[], index?: number): TreeSelector;
-
-//     prepend(): SvgCreateHelper;
-//     at(index: number): SvgCreateHelper;
-//   };
-
 
 // helper exposes methods for HtmlTag only (div(), span(), etc)
 // and keeps tags([...]) for arbitrary tag names.

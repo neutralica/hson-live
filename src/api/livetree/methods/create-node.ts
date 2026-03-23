@@ -1,6 +1,6 @@
 import { hson } from "../../../hson.js";
 import { HsonNode } from "../../../types/node.types.js";
-import { CreateHelper, HtmlTag, LiveTreeCreateHelper, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types.js";
+import { CreateHelper, HtmlCreateHelper, HtmlTag, LiveTreeCreateHelper, SvgLiveTree, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types.js";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
 import { LiveTree } from "../livetree.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
@@ -82,7 +82,7 @@ export function assert_valid_tag_name(name: unknown, ctx?: string): asserts name
  *               elements created via the helper.
  * @returns A `LiveTreeCreateHelper` bound to `tree`.
  */
-export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
+export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
   // CHANGED: placement config for *next* create call only
   let nextIndex: number | undefined = undefined;
 
@@ -131,9 +131,9 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
     return make_tree_selector(created);
   }
 
-  const helper: Partial<LiveTreeCreateHelper> & {
-    prepend(): LiveTreeCreateHelper;
-    at(index: number): LiveTreeCreateHelper;
+  const helper: Partial<HtmlCreateHelper> & {
+    prepend(): HtmlCreateHelper;
+    at(index: number): HtmlCreateHelper;
   } = {
     tags(tags: TagName[], index?: number): TreeSelector {
       return createForTags(tags, index) as TreeSelector;
@@ -141,12 +141,12 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
 
     prepend() {
       nextIndex = 0;
-      return helper as LiveTreeCreateHelper;
+      return helper as HtmlCreateHelper;
     },
 
     at(index: number) {
       nextIndex = index;
-      return helper as LiveTreeCreateHelper;
+      return helper as HtmlCreateHelper;
     },
   };
   function createSvgFromString(source: string, index?: number): LiveTree {
@@ -171,6 +171,7 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
     out.adoptRoots(tree.hostRootNode());
     return out;
   }
+
   for (const rawTag of HTML_TAGS) {
     const tag = rawTag as HtmlTag;
     if (tag === "svg") continue;
@@ -196,10 +197,10 @@ export function make_tree_create(tree: LiveTree): LiveTreeCreateHelper {
       return createSvgFromString(source, ix);
     }
 
-    return createForTags("svg", ix) as LiveTree;
+    return createForTags("svg", ix) as SvgLiveTree;
   };
 
-  return helper as LiveTreeCreateHelper;
+  return helper as HtmlCreateHelper;
 }
 /**
  * Construct the `.create` helper for a `TreeSelector`, providing the same
