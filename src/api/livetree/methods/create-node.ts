@@ -176,6 +176,42 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
     out.adoptRoots(tree.hostRootNode());
     return out as unknown as SvgLiveTree;
   }
+  
+  function createSvgTagFromString(
+  expectedTag: SvgTag,
+  source: string,
+  index?: number,
+): SvgLiveTree {
+  const parsed = hson.fromTrustedHtml(source).toHson().parse();
+  const roots: HsonNode[] = Array.isArray(parsed) ? parsed : [parsed];
+
+  // CHANGED: validate against the actual unwrapped created children,
+  // not the parser wrapper/root node.
+  const createdChildren = roots.flatMap((n) => unwrap_root_elem(n));
+
+  if (createdChildren.length !== 1) {
+    throw new Error(
+      `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`
+    );
+  }
+
+  const node = createdChildren[0];
+  if (!node || node._tag !== expectedTag) {
+    throw new Error(
+      `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`
+    );
+  }
+
+  const branch = create_livetree(node);
+
+  if (typeof index === "number") tree.append(branch, index);
+  else tree.append(branch);
+
+  const out = create_livetree(node);
+  out.adoptRoots(tree.hostRootNode());
+  return out as unknown as SvgLiveTree;
+}
+  
   for (const rawTag of HTML_TAGS) {
     const tag = rawTag as HtmlTag;
     if (tag === "svg") continue;
@@ -190,10 +226,15 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
     const tag = rawTag as TagName;
     if (tag === "svg") continue;
 
-    (helper as any)[tag] = (index?: number): LiveTree => {
-      const ix = typeof index === "number" ? index : consumeIndex();
-      return createSingleTag(tag, ix);
-    };
+   (helper as any)[tag] = (arg?: number | string): SvgLiveTree => {
+  const ix = typeof arg === "number" ? arg : consumeIndex();
+
+  if (typeof arg === "string") {
+    return createSvgTagFromString(tag as SvgTag, arg, ix);
+  }
+
+  return createSingleTag(tag, ix) as unknown as SvgLiveTree;
+};
   }
   (helper as any).svg = (source?: string): SvgLiveTree => {
     const ix = consumeIndex();
