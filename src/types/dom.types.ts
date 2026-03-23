@@ -43,25 +43,18 @@ export type RectFn = {
   (): DOMRect | undefined;
   must(label?: string): DOMRect;
 };
-
-/**
- * ID helper bound to a node’s `id` attribute.
- */
-export type IdApi = Readonly<{
+export type ClassApi<TOwner> = Readonly<{
   get: () => string | undefined;
-  set: (id: string) => LiveTree;
-  clear: () => LiveTree;
+  has: (name: string) => boolean;
+  set: (cls: string | string[]) => TOwner;
+  add: (...names: string[]) => TOwner;
+  remove: (...names: string[]) => TOwner;
+  toggle: (name: string, force?: boolean) => TOwner;
+  clear: () => TOwner;
 }>;
 
-/**
- * Classlist helper bound to a node’s `class` attribute.
- */
-export type ClassApi = Readonly<{
-  get: () => string | undefined;     // raw attr
-  has: (name: string) => boolean;
-  set: (cls: string | string[]) => LiveTree;
-  add: (...names: string[]) => LiveTree;
-  remove: (...names: string[]) => LiveTree;
-  toggle: (name: string, force?: boolean) => LiveTree;
-  clear: () => LiveTree;
+export type IdApi<TOwner> = Readonly<{
+  get: () => string | undefined;
+  set: (id: string) => TOwner;
+  clear: () => TOwner;
 }>;

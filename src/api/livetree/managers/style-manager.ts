@@ -279,10 +279,10 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * This manager is per-node: each `StyleManager` instance operates on
  * the `LiveTree` it was constructed with, not on selections.
  */
-export class StyleManager {
-    private readonly tree: LiveTree;
+export class StyleManager<TTree extends LiveTree> {
+  private readonly tree: TTree;
     private readonly runtimeKeys: ReadonlyArray<AllowedStyleKey>;
-    public readonly setter: StyleSetter<LiveTree>;
+    public readonly setter: StyleSetter<TTree>;
 
     // ADDED: read surface (mirrors your setter pattern)
     public readonly getter: StyleGetter;
@@ -301,11 +301,11 @@ export class StyleManager {
      * @see computeRuntimeKeys
      * @see make_style_setter
      */
-    constructor(tree: LiveTree) {
+    constructor(tree: TTree) {
         this.tree = tree;
         this.runtimeKeys = computeRuntimeKeys();
 
-        this.setter = make_style_setter<LiveTree>(tree, {
+        this.setter = make_style_setter<TTree>(tree, {
             keys: this.runtimeKeys,
 
             apply: (propCanon, value) => {

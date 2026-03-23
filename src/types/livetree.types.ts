@@ -5,6 +5,9 @@ import { HsonAttrs, HsonMeta, HsonNode } from "./node.types.js";
 import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/tree-selector.js";
 import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
+import { ClassApi, IdApi } from "./dom.types.js";
+import { StyleHandle } from "./css.types.js";
+import { AttrHandle } from "./attrs.types.js";
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.
@@ -124,9 +127,17 @@ export type HtmlLiveTree = Omit<LiveTree, "create"> & {
   create: HtmlCreateHelper;
 };
 
-export type SvgLiveTree = Omit<LiveTree, "create"> & {
+export type SvgLiveTree = Omit<
+  LiveTree,
+  "create" | "id" | "classlist" | "style" | "attr"
+> & {
   create: SvgCreateHelper;
+  id: IdApi<SvgLiveTree>;
+  classlist: ClassApi<SvgLiveTree>;
+  style: StyleHandle<SvgLiveTree>;
+  attr: AttrHandle<SvgLiveTree>;
 };
+
 export type HtmlCreateHelper =
   Record<Exclude<HtmlTag, "svg">, (index?: number) => LiveTree> & {
     tags(tags: TagName[], index?: number): TreeSelector;

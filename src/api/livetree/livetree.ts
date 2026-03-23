@@ -28,7 +28,7 @@ import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
 import { is_svg_context_tag } from "../../consts/html-tags.js";
-// NEW: motion.ts (or livetree-methods/motion.ts)
+
 /**
  * Named CSS variables used by `set_motion_transform`.
  *
@@ -37,14 +37,14 @@ import { is_svg_context_tag } from "../../consts/html-tags.js";
  * - `tx` / `ty` → animated offsets
  * - `dx` / `dy` → interactive offsets (e.g. drag)
  */
-export type MotionVars = Readonly<{
-  x?: string;   // "--x"
-  y?: string;   // "--y"
-  tx?: string;  // "--tx" (animated)
-  ty?: string;  // "--ty" (animated)
-  dx?: string;  // "--dx" (interactive)
-  dy?: string;  // "--dy" (interactive)
-}>;
+// export type MotionVars = Readonly<{
+//   x?: string;   // "--x"
+//   y?: string;   // "--y"
+//   tx?: string;  // "--tx" (animated)
+//   ty?: string;  // "--ty" (animated)
+//   dx?: string;  // "--dx" (interactive)
+//   dy?: string;  // "--dy" (interactive)
+// }>;
 
 /**
  * Apply the canonical motion transform to a `LiveTree`.
@@ -55,17 +55,17 @@ export type MotionVars = Readonly<{
  *
  * @param t - LiveTree whose inline style should receive the transform.
  */
-export function set_motion_transform(t: LiveTree): void {
-  // CHANGED: one canonical transform composition.
-  t.style.setMany({
-    transform:
-      "translate3d(" +
-      "calc(var(--x, 0px) + var(--dx, 0px) + var(--tx, 0px))," +
-      "calc(var(--y, 0px) + var(--dy, 0px) + var(--ty, 0px))," +
-      "0)",
-    "will-change": "transform",
-  });
-}
+// export function set_motion_transform(t: LiveTree): void {
+//   // CHANGED: one canonical transform composition.
+//   t.style.setMany({
+//     transform:
+//       "translate3d(" +
+//       "calc(var(--x, 0px) + var(--dx, 0px) + var(--tx, 0px))," +
+//       "calc(var(--y, 0px) + var(--dy, 0px) + var(--ty, 0px))," +
+//       "0)",
+//     "will-change": "transform",
+//   });
+// }
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -127,7 +127,7 @@ export class LiveTree {
   private hostRoot!: HsonNode;
   /* inline style editor */
 
-  private styleApiInternal: StyleHandle | undefined = undefined;
+  private styleApiInternal: StyleHandle<this> | undefined = undefined;
 
   // private styleManagerInternal: StyleManager | undefined = undefined;
   /* .dataset editor */
@@ -135,9 +135,9 @@ export class LiveTree {
   private contentManager: ContentManager | undefined = undefined;
   private cssApiInternal: CssTreeHandle | undefined = undefined;
   private eventsInternal?: TreeEvents;
-  private idApi?: IdApi;
-  private classApi?: ClassApi;
-  private _attr?: AttrHandle;
+  private idApi?: IdApi<this>;
+  private classApi?: ClassApi<this>;
+  private _attr?: AttrHandle<this>;
   private _flag?: FlagHandle;
 
 
@@ -293,7 +293,7 @@ export class LiveTree {
    * @returns A `LiveTreeCreateHelper` scoped to this tree.
    * @see make_tree_create
    */
-  public get create(): HtmlCreateHelper{
+  public get create(): HtmlCreateHelper {
     return make_tree_create(this);
   }
 
@@ -363,10 +363,9 @@ export class LiveTree {
   * @see StyleManager
   */
 
-  public get style(): StyleHandle {
+  public get style(): StyleHandle<this> {
     if (!this.styleApiInternal) {
-      const mgr = new StyleManager(this);
-      // CHANGED: expose both write + read
+      const mgr = new StyleManager<this>(this);
       this.styleApiInternal = {
         ...mgr.setter,
         get: mgr.getter,
@@ -417,7 +416,7 @@ export class LiveTree {
   }
 
   /* ---------- attribute / flags API ---------- */
-  public get attr(): AttrHandle {
+  public get attr(): AttrHandle<this> {
     return (this._attr ??= attr_handle(this));
   }
 
@@ -472,7 +471,7 @@ export class LiveTree {
    * @returns This `LiveTree` instance, for chaining.
    * @see set_form_value
    */
-  public setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): LiveTree {
+  public setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): this {
     set_form_value(this.node, value, opts);
     return this;
   }
@@ -491,7 +490,7 @@ export class LiveTree {
    *
    * Provides `get/set/clear` in a chainable API.
    */
-  public get id(): IdApi {
+  public get id(): IdApi<this> {
     // ADDED: cached id namespace
     if (!this.idApi) this.idApi = make_id_api(this);
     return this.idApi;
@@ -504,7 +503,7 @@ export class LiveTree {
    * API. All mutations are reflected in the underlying HSON attrs (and
    * DOM when mounted).
    */
-  public get classlist(): ClassApi {
+  public get classlist(): ClassApi<this> {
     // ADDED: cached class namespace
     if (!this.classApi) this.classApi = make_class_api(this);
     return this.classApi;

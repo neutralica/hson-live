@@ -321,7 +321,8 @@ function renderCssValue(v: CssValue): string | null {
   }
   return String(v);
 }
-export function make_id_api(tree: LiveTree): IdApi {
+export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
+
   return {
     // CHANGED: read from underlying attr impl to avoid calling tree.id.get() (recursion)
     get: () => {
@@ -342,7 +343,8 @@ export function make_id_api(tree: LiveTree): IdApi {
     },
   };
 }
-export function make_class_api(tree: LiveTree): ClassApi {
+
+export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TTree> {
   // CHANGED: read from attrs, not tree.classlist.get() (avoids self-recursion)
   const getRaw = (): string | undefined => {
     const v = tree.attr.get("class");
@@ -356,7 +358,7 @@ export function make_class_api(tree: LiveTree): ClassApi {
   };
 
   // CHANGED: centralize write semantics (empty => drop)
-  const write = (names: Iterable<string>): LiveTree => {
+  const write = (names: Iterable<string>): TTree => {
     const next = Array.from(names).filter(Boolean).join(" ").trim();
     if (!next) tree.attr.drop("class");
     else tree.attr.set("class", next);

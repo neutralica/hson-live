@@ -7,19 +7,20 @@ import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 
-export function attr_handle(tree: LiveTree): AttrHandle {
+export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTree> {
   return Object.freeze({
     get: (name) => getAttrImpl(tree, name),
 
-    // NOTE: “present” semantics. If you want strict key-exists, implement
-    // it via direct node._attrs check instead of getAttrImpl.
     has: (name) => getAttrImpl(tree, name) !== undefined,
 
-    drop: (name) => removeAttrImpl(tree, name),
+    drop: (name): TTree => removeAttrImpl(tree, name),
 
-    set: (name, value) => setAttrsImpl(tree, name, value),
+    set: (name, value): TTree => {
+      setAttrsImpl(tree, name, value);
+      return tree;
+    },
 
-    setMany: (map) => {
+    setMany: (map): TTree => {
       for (const [k, v] of Object.entries(map)) {
         setAttrsImpl(tree, k, v);
       }
@@ -161,7 +162,7 @@ export function setAttrsImpl(
   return tree;
 }
 
-export function removeAttrImpl(tree: LiveTree, name: string): LiveTree {
+export function removeAttrImpl<TTree extends LiveTree>(tree: TTree, name: string): TTree {
   // CHANGED: removal uses undefined->null normalization inside apply
   applyAttrToNode(tree.node, name, null);
   return tree;
