@@ -257,7 +257,6 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
     else tree.append(branch);
 
     branch.adoptRoots(tree.hostRootNode());
-    console.log("parsed", parsed);
     return branch as unknown as SvgLiveTree;
   }
 
