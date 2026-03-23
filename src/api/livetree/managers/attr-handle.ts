@@ -1,28 +1,43 @@
+import { SVG_TAGS } from "../../../consts/html-tags.js";
 import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
 import { Primitive } from "../../../types/core.types.js";
 import { HsonNode, HsonAttrs, CssMap } from "../../../types/index.js";
+import { SvgTag } from "../../../types/livetree.types.js";
 import { AttrMap, AttrValue } from "../../../types/node.types.js";
 import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
+import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../../utils/html-utils/parse_html_attrs.js";
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 
+function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
+  const lower = name.toLowerCase();
+
+  // TODO change to .svg.isSvg when exists
+  if (!SVG_TAGS.includes(tree.node._tag as SvgTag)) return lower;
+
+  return SVG_ATTR_CASE_MAP[lower] ?? lower;
+}
+
 export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTree> {
   return Object.freeze({
-    get: (name) => getAttrImpl(tree, name),
+    get: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)),
 
-    has: (name) => getAttrImpl(tree, name) !== undefined,
+    has: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)) !== undefined,
 
-    drop: (name): TTree => removeAttrImpl(tree, name),
+    drop: (name): TTree => {
+      removeAttrImpl(tree, canonical_attr_key(tree, name));
+      return tree;
+    },
 
     set: (name, value): TTree => {
-      setAttrsImpl(tree, name, value);
+      setAttrsImpl(tree, canonical_attr_key(tree, name), value);
       return tree;
     },
 
     setMany: (map): TTree => {
       for (const [k, v] of Object.entries(map)) {
-        setAttrsImpl(tree, k, v);
+        setAttrsImpl(tree, canonical_attr_key(tree, k), v);
       }
       return tree;
     },
@@ -56,7 +71,7 @@ export function applyAttrToNode(
   if (!node._attrs) node._attrs = {};
   const attrs = node._attrs as HsonAttrs & { style?: CssMap };
 
-  const key = name.toLowerCase();
+  const key = canonical_svg_attr_name(name);
   const el = element_for_node(node) as HTMLElement | undefined;
 
   // CHANGED: normalize undefined -> null (removal)

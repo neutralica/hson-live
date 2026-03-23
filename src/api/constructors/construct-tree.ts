@@ -3,7 +3,7 @@
 import { JsonValue } from "../../types/core.types.js";
 import { HsonNode } from "../../types/node.types.js";
 import { $_ERROR } from "../../consts/constants.js";
-import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
+import { is_svg_markup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
 import { parse_hson } from "../parsers/parse-hson.js";
@@ -67,7 +67,7 @@ export function construct_tree(
 
       const trimmed = html.trimStart();
 
-      if (isSvgMarkup(trimmed)) {
+      if (is_svg_markup(trimmed)) {
         if (!options.unsafe) {
           // SAFE pipeline: SVG from external HTML is not allowed
           _throw_transform_err(

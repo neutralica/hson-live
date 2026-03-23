@@ -8,18 +8,18 @@ import { STR_TAG } from "../../consts/constants.js";
 /**
  * XML namespace URI for SVG elements.
  */
-export const SVG_NS = "http://www.w3.org/2000/svg";
+export const SVG_NS = "http://www.w3.org/2000/svg"; // used in project_livetree
 /**
  * XML namespace URI for HTML elements.
  */
-export const HTML_NS = "http://www.w3.org/1999/xhtml";
+export const HTML_NS = "http://www.w3.org/1999/xhtml"; // unused
 /**
  * Detect whether a string looks like an SVG fragment.
  *
  * @param s - Raw markup string to test.
  * @returns True when the string begins with an `<svg ...>` tag.
  */
-export const isSvgMarkup = (s: string) => /^<\s*svg[\s>]/i.test(s);
+export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
 
 /**
  * Convert an SVG DOM `Element` subtree into an HSON node tree.

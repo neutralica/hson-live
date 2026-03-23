@@ -11,7 +11,7 @@ import { parse_html } from "../parsers/parse-html.js";
 import { parse_json } from "../parsers/parse-json.js";
 import { construct_output_2 } from "./construct-output-2.js";
 import { SourceConstructor_1 } from "../../types/constructor.types.js";
-import { isSvgMarkup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
+import { is_svg_markup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
 
 /**
  * Per-call HTML parsing options for `construct_source_1.fromHtml()`.
@@ -91,7 +91,7 @@ export function construct_source_1(
       let sanitized = false;
 
       // 1) SVG special case (UNSAFE only)
-      if (isSvgMarkup(trimmed)) {
+      if (is_svg_markup(trimmed)) {
         if (!pipelineOptions.unsafe) {
           _throw_transform_err(
             "fromHtml(): external SVG is only allowed on the UNSAFE pipeline or via internal VSN→SVG nodes.",
@@ -119,7 +119,7 @@ export function construct_source_1(
       }
 
       const meta: Record<string, unknown> = {
-        origin: isSvgMarkup(trimmed) ? "svg-html" : "html",
+        origin: is_svg_markup(trimmed) ? "svg-html" : "html",
         unsafePipeline: pipelineOptions.unsafe,
         sanitized,
         rawInput: raw,

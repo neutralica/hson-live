@@ -39,33 +39,57 @@ export function parse_html_attrs(el: Element): {
   for (const a of Array.from(el.attributes)) {
     const name = a.name;
     const n = name.toLowerCase();
+    const key =
+  el.namespaceURI === "http://www.w3.org/2000/svg"
+    ? canonical_svg_attr_name(name)
+    : n;
     const v = a.value ?? "";
 
     // A) strip transit-only hints outright
-    if (n.startsWith(_TRANSIT_PREFIX)) continue;
+    if (key.startsWith(_TRANSIT_PREFIX)) continue;
 
     // B) _meta-on-wire (reserved)
-    if (n === _DATA_INDEX) { (meta ??= {})[_DATA_INDEX] = v; continue; }
-    if (n === _DATA_QUID) { (meta ??= {})[_DATA_QUID] = v; continue; }
+    if (key === _DATA_INDEX) { (meta ??= {})[_DATA_INDEX] = v; continue; }
+    if (key === _DATA_QUID) { (meta ??= {})[_DATA_QUID] = v; continue; }
 
     // C) style → structured object 
-    if (n === "style") { (attrs as any).style = parse_style_string(v); continue; }
+    if (key === "style") { (attrs as any).style = parse_style_string(v); continue; }
 
     // D) ignore xmlns / xml:* noise
     if (name === "xmlns" || name.startsWith("xmlns:") || name.startsWith("xml:")) continue;
 
     // E) svg alias normalize
-    if (el.namespaceURI === "http://www.w3.org/2000/svg" && n === "xlink:href") {
+    if (el.namespaceURI === "http://www.w3.org/2000/svg" && key === "xlink:href") {
       if (!el.hasAttribute("href")) (attrs as any).href = v;
       continue;
     }
 
     // F) presence-only flags canonicalized as key="key"
-    if (v === "" || v === name) { (attrs as any)[n] = name; continue; }
+    if (v === "" || v === name) { (attrs as any)[key] = name; continue; }
 
     // G) default: normalized user attribute
-    (attrs as any)[n] = normalize_attr_ws(v);
+    (attrs as any)[key] = normalize_attr_ws(v);
   }
 
   return { attrs, meta };
+}
+export const SVG_ATTR_CASE_MAP: Record<string, string> = {
+  viewbox: "viewBox",
+  preserveaspectratio: "preserveAspectRatio",
+  markerwidth: "markerWidth",
+  markerheight: "markerHeight",
+  gradientunits: "gradientUnits",
+  gradienttransform: "gradientTransform",
+  patternunits: "patternUnits",
+  patterncontentunits: "patternContentUnits",
+  patterntransform: "patternTransform",
+  clippathunits: "clipPathUnits",
+  filterunits: "filterUnits",
+  primitiveunits: "primitiveUnits",
+  kernelunitlength: "kernelUnitLength",
+};
+
+export function canonical_svg_attr_name(name: string): string {
+  const lower = name.toLowerCase();
+  return SVG_ATTR_CASE_MAP[lower] ?? lower;
 }
