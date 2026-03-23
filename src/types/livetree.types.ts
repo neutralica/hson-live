@@ -120,11 +120,11 @@ export type LiveTreeCreateHelper =
     at(index: number): LiveTreeCreateHelper;
   };
 
-export type HtmlLiveTree = LiveTree & {
+export type HtmlLiveTree = Omit<LiveTree, "create"> & {
   create: HtmlCreateHelper;
 };
 
-export type SvgLiveTree = LiveTree & {
+export type SvgLiveTree = Omit<LiveTree, "create"> & {
   create: SvgCreateHelper;
 };
 export type HtmlCreateHelper =
@@ -134,7 +134,8 @@ export type HtmlCreateHelper =
     prepend(): HtmlCreateHelper;
     at(index: number): HtmlCreateHelper;
   };
-  export type SvgCreateHelper =
+  
+export type SvgCreateHelper =
   Record<Exclude<SvgTag, "svg">, (index?: number) => SvgLiveTree> & {
     tags(tags: TagName[], index?: number): TreeSelector;
     svg(source?: string): SvgLiveTree;

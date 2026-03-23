@@ -12,7 +12,7 @@ import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
 import { StyleManager } from "./managers/style-manager.js";
-import { HtmlCreateHelper, LiveTreeCreateHelper } from "../../types/livetree.types.js"; // CHANGED
+import { HtmlCreateHelper, LiveTreeCreateHelper, SvgCreateHelper } from "../../types/livetree.types.js"; // CHANGED
 import { append_branch } from "./methods/append-other.js";
 import { make_tree_create } from "./methods/create-node.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
@@ -27,6 +27,7 @@ import { css_for_quids } from "./methods/css-for-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
+import { is_svg_context_tag } from "../../consts/html-tags.js";
 // NEW: motion.ts (or livetree-methods/motion.ts)
 /**
  * Named CSS variables used by `set_motion_transform`.
@@ -292,8 +293,8 @@ export class LiveTree {
    * @returns A `LiveTreeCreateHelper` scoped to this tree.
    * @see make_tree_create
    */
-  public get create(): HtmlCreateHelper {
-    return make_tree_create(this) as HtmlCreateHelper;
+  public get create(): HtmlCreateHelper{
+    return make_tree_create(this);
   }
 
   /**

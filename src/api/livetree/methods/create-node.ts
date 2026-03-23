@@ -1,12 +1,13 @@
 import { hson } from "../../../hson.js";
 import { HsonNode } from "../../../types/node.types.js";
-import { CreateHelper, HtmlCreateHelper, HtmlTag, LiveTreeCreateHelper, SvgLiveTree, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types.js";
+import { CreateHelper, HtmlCreateHelper, HtmlTag, LiveTreeCreateHelper, SvgCreateHelper, SvgLiveTree, SvgTag, TagName, TreeSelectorCreateHelper } from "../../../types/livetree.types.js";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
 import { LiveTree } from "../livetree.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../tree-selector.js";
 import { HTML_TAGS, is_svg_context_tag, SVG_TAGS } from "../../../consts/html-tags.js";
 import { create_livetree } from "../create-livetree.js";
+import { StyleGetter } from "../managers/style-getter.js";
 
 type CreateNs = "html" | "svg";
 
@@ -25,7 +26,7 @@ function build_markup_stub(tag: string, ns: CreateNs): string {
   return `<${tag}></${tag}>`;
 }
 
-export function is_valid_tag_name(name: unknown): name is TagName {
+function is_valid_tag_name(name: unknown): name is TagName {
   if (typeof name !== "string") return false;
 
   const t = name.trim();
@@ -149,7 +150,11 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
       return helper as HtmlCreateHelper;
     },
   };
-  function createSvgFromString(source: string, index?: number): LiveTree {
+  function createSingleTag(tag: TagName, index?: number): LiveTree {
+    return createForTags(tag, index) as LiveTree;
+  }
+
+  function createSvgFromString(source: string, index?: number): SvgLiveTree {
     const parsed = hson.fromTrustedHtml(source).toHson().parse();
     const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
 
@@ -169,35 +174,35 @@ export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
 
     const out = create_livetree(appended[0]);
     out.adoptRoots(tree.hostRootNode());
-    return out;
+    return out as unknown as SvgLiveTree;
   }
-
   for (const rawTag of HTML_TAGS) {
     const tag = rawTag as HtmlTag;
     if (tag === "svg") continue;
+
     (helper as any)[tag] = (index?: number): LiveTree => {
       const ix = typeof index === "number" ? index : consumeIndex();
-      return createForTags(tag, ix) as LiveTree;
+      return createSingleTag(tag, ix);
     };
   }
+
   for (const rawTag of SVG_TAGS) {
     const tag = rawTag as TagName;
     if (tag === "svg") continue;
 
     (helper as any)[tag] = (index?: number): LiveTree => {
       const ix = typeof index === "number" ? index : consumeIndex();
-      return createForTags(tag, ix) as LiveTree;
+      return createSingleTag(tag, ix);
     };
   }
-
-  (helper as any).svg = (source?: string): LiveTree => {
+  (helper as any).svg = (source?: string): SvgLiveTree => {
     const ix = consumeIndex();
 
     if (typeof source === "string") {
       return createSvgFromString(source, ix);
     }
 
-    return createForTags("svg", ix) as SvgLiveTree;
+    return createSingleTag("svg", ix) as unknown as SvgLiveTree;
   };
 
   return helper as HtmlCreateHelper;
@@ -243,7 +248,13 @@ export function make_selector_create(items: LiveTree[]): TreeSelectorCreateHelpe
       const created: LiveTree[] = [];
 
       for (const tree of items) {
-        const childTree = tree.create[tag](/* index */);
+        if (!can_create_tag_on_tree(tree, tag as TagName)) {
+          throw new Error(
+            `[TreeSelector.create.${String(tag)}] incompatible parent tag <${String(tree.node._tag)}>`
+          );
+        }
+
+        const childTree = (tree.create as any)[tag](/* index */);
         created.push(childTree);
       }
 
@@ -253,3 +264,123 @@ export function make_selector_create(items: LiveTree[]): TreeSelectorCreateHelpe
 
   return helper;
 }
+/* 
+export function make_svg_create(tree: LiveTree): SvgCreateHelper {
+  let nextIndex: number | undefined = undefined;
+
+  const consumeIndex = (): number | undefined => {
+    const ix = nextIndex;
+    nextIndex = undefined;
+    return ix;
+  };
+
+  function createForSvgTags(tagOrTags: SvgTag | SvgTag[], index?: number): SvgLiveTree | TreeSelector {
+    const tags: SvgTag[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
+
+    const created: LiveTree[] = [];
+    let insertIx: number | undefined = index;
+
+    for (const t of tags) {
+      assert_valid_tag_name(t, "createForSvgTags");
+
+      const markup = build_markup_stub(t, "svg");
+      const parsed = hson.fromTrustedHtml(markup).toHson().parse();
+      const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
+
+      const branch = create_livetree(root0);
+
+      if (typeof insertIx === "number") tree.append(branch, insertIx);
+      else tree.append(branch);
+
+      const appended = unwrap_root_elem(root0);
+
+      for (const child of appended) {
+        const childTree = create_livetree(child);
+        childTree.adoptRoots(tree.hostRootNode());
+        created.push(childTree);
+      }
+
+      if (typeof insertIx === "number") insertIx += appended.length;
+    }
+
+    if (!Array.isArray(tagOrTags)) {
+      if (!created.length) throw new Error("[LiveTree.create(svg)] no children created");
+      return created[0] as SvgLiveTree;
+    }
+
+    return make_tree_selector(created);
+  }
+
+  const helper: Partial<SvgCreateHelper> & {
+    prepend(): SvgCreateHelper;
+    at(index: number): SvgCreateHelper;
+  } = {
+    tags(tags: TagName[], index?: number): TreeSelector {
+      return createForSvgTags(tags as SvgTag[], index) as TreeSelector;
+    },
+
+    prepend() {
+      nextIndex = 0;
+      return helper as SvgCreateHelper;
+    },
+
+    at(index: number) {
+      nextIndex = index;
+      return helper as SvgCreateHelper;
+    },
+  };
+
+  for (const rawTag of SVG_TAGS) {
+    const tag = rawTag as SvgTag;
+    if (tag === "svg") continue;
+
+    (helper as any)[tag] = (index?: number): SvgLiveTree => {
+      const ix = typeof index === "number" ? index : consumeIndex();
+      return createForSvgTags(tag, ix) as SvgLiveTree;
+    };
+  }
+
+  (helper as any).svg = (source?: string): SvgLiveTree => {
+    const ix = consumeIndex();
+
+    if (typeof source === "string") {
+      const parsed = hson.fromTrustedHtml(source).toHson().parse();
+      const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
+
+      if (!root0 || root0._tag !== "svg") {
+        throw new Error(`[LiveTree.create.svg] expected exactly one <svg> root`);
+      }
+
+      const branch = create_livetree(root0);
+
+      if (typeof ix === "number") tree.append(branch, ix);
+      else tree.append(branch);
+
+      const appended = unwrap_root_elem(root0);
+      if (!appended.length) {
+        throw new Error(`[LiveTree.create.svg] no svg root created`);
+      }
+
+      const out = create_livetree(appended[0]);
+      out.adoptRoots(tree.hostRootNode());
+      return out as SvgLiveTree;
+    }
+
+    return createForSvgTags("svg", ix) as SvgLiveTree;
+  };
+
+  return helper as SvgCreateHelper;
+}
+*/
+function can_create_tag_on_tree(tree: LiveTree, tag: TagName): boolean {
+  const parentTag = String(tree.node._tag);
+  const parentIsSvg = is_svg_context_tag(parentTag);
+  const childIsSvg = is_svg_context_tag(String(tag));
+
+  if (parentIsSvg) {
+    return childIsSvg;
+  }
+
+  // HTML context may create HTML tags, and may also create svg roots
+  return !childIsSvg || tag === "svg";
+} 
