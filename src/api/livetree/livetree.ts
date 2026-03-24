@@ -30,44 +30,6 @@ import { remove_node_children } from "./methods/remove-child.js";
 import { is_svg_context_tag } from "../../consts/html-tags.js";
 
 /**
- * Named CSS variables used by `set_motion_transform`.
- *
- * Each field corresponds to a `--*` custom property:
- * - `x` / `y`   → base position
- * - `tx` / `ty` → animated offsets
- * - `dx` / `dy` → interactive offsets (e.g. drag)
- */
-// export type MotionVars = Readonly<{
-//   x?: string;   // "--x"
-//   y?: string;   // "--y"
-//   tx?: string;  // "--tx" (animated)
-//   ty?: string;  // "--ty" (animated)
-//   dx?: string;  // "--dx" (interactive)
-//   dy?: string;  // "--dy" (interactive)
-// }>;
-
-/**
- * Apply the canonical motion transform to a `LiveTree`.
- *
- * This composes `--x/--y` + `--dx/--dy` + `--tx/--ty` into a single
- * `translate3d(...)` and sets `will-change: transform` for smoother
- * animation.
- *
- * @param t - LiveTree whose inline style should receive the transform.
- */
-// export function set_motion_transform(t: LiveTree): void {
-//   // CHANGED: one canonical transform composition.
-//   t.style.setMany({
-//     transform:
-//       "translate3d(" +
-//       "calc(var(--x, 0px) + var(--dx, 0px) + var(--tx, 0px))," +
-//       "calc(var(--y, 0px) + var(--dy, 0px) + var(--ty, 0px))," +
-//       "0)",
-//     "will-change": "transform",
-//   });
-// }
-
-/**
  * Create a stable `NodeRef` for a given `HsonNode`.
  *
  * Behavior:
@@ -138,7 +100,7 @@ export class LiveTree {
   private idApi?: IdApi<this>;
   private classApi?: ClassApi<this>;
   private _attr?: AttrHandle<this>;
-  private _flag?: FlagHandle;
+  private _flag?: FlagHandle<this>;
 
 
   /**
@@ -420,7 +382,7 @@ export class LiveTree {
     return (this._attr ??= attr_handle(this));
   }
 
-  public get flag(): FlagHandle {
+  public get flag(): FlagHandle<this> {
     return (this._flag ??= flag_handle(this));
   }
 

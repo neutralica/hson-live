@@ -691,14 +691,14 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
                     finalTokens.push(...tokenize_hson(frag, depth + 1));
 
-                    const consumedText = joinedFromHere.slice(0, endIndex + 1);
-                    const linesConsumed = consumedText.split("\n").length - 1;
+                    // const consumedText = joinedFromHere.slice(0, endIndex + 1);
+                    // const linesConsumed = consumedText.split("\n").length - 1;
 
-                    for (let k = currentIx; k <= currentIx + linesConsumed; k++) {
-                        _bump_line(splitLines[k] ?? "");
-                    }
+                    // for (let k = currentIx; k <= currentIx + linesConsumed; k++) {
+                    //     _bump_line(splitLines[k] ?? "");
+                    // }
 
-                    continue;
+                    // continue;
                 } else {
                     const parts = split_array_string(tailRaw, ',');
                     if (parts.length > 1) {

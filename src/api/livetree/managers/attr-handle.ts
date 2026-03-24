@@ -18,7 +18,13 @@ function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): 
 
   return SVG_ATTR_CASE_MAP[lower] ?? lower;
 }
+function canonical_attr_key_from_node(node: HsonNode, name: string): string {
+  const lower = name.toLowerCase();
 
+  if (!SVG_TAGS.includes(node._tag as SvgTag)) return lower;
+
+  return SVG_ATTR_CASE_MAP[lower] ?? lower;
+}
 export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTree> {
   return Object.freeze({
     get: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)),
@@ -44,11 +50,11 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
   });
 }
 
-export function flag_handle(tree: LiveTree): FlagHandle {
+export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {
   return Object.freeze({
-    has: (name) => attr_handle(tree).has(name), // or a direct key-check version
-    set: (...names) => setFlagsImpl(tree, ...names),
-    clear: (...names) => clearFlagsImpl(tree, ...names),
+    has: (name) => attr_handle(tree).has(name),
+    set: (...names): TTree => setFlagsImpl(tree, ...names),
+    clear: (...names): TTree => clearFlagsImpl(tree, ...names),
   });
 }
 
@@ -71,8 +77,8 @@ export function applyAttrToNode(
   if (!node._attrs) node._attrs = {};
   const attrs = node._attrs as HsonAttrs & { style?: CssMap };
 
-  const key = canonical_svg_attr_name(name);
-  const el = element_for_node(node) as HTMLElement | undefined;
+  const key = canonical_attr_key_from_node(node, name);
+  const el = element_for_node(node) as Element | undefined;
 
   // CHANGED: normalize undefined -> null (removal)
   const v: Primitive = (value === undefined ? null : value);
@@ -135,7 +141,7 @@ export function readAttrFromNode(
   const attrs = node._attrs;
   if (!attrs) return undefined;
 
-  const key = name.toLowerCase();
+  const key = canonical_attr_key_from_node(node, name);
   const raw = (attrs as any)[key];
 
   if (raw == null) return undefined;
@@ -156,21 +162,20 @@ export function readAttrFromNode(
  *
  * Overloads kept for ergonomics.
  */
-export function setAttrsImpl(tree: LiveTree, name: string, value: AttrValue): LiveTree;
-export function setAttrsImpl(tree: LiveTree, map: AttrMap): LiveTree;
-export function setAttrsImpl(
-  tree: LiveTree,
+export function setAttrsImpl<TTree extends LiveTree>(tree: TTree, name: string, value: AttrValue): TTree;
+export function setAttrsImpl<TTree extends LiveTree>(tree: TTree, map: AttrMap): TTree;
+export function setAttrsImpl<TTree extends LiveTree>(
+  tree: TTree,
   nameOrMap: string | AttrMap,
   value?: AttrValue,
-): LiveTree {
-  const node = tree.node; // allowed to throw if unbound
+): TTree {
+  const node = tree.node;
 
   if (typeof nameOrMap === "string") {
     applyAttrToNode(node, nameOrMap, value);
     return tree;
   }
 
-  // CHANGED: apply each entry; undefined removes
   for (const [k, v] of Object.entries(nameOrMap)) {
     applyAttrToNode(node, k, v);
   }
@@ -186,7 +191,7 @@ export function removeAttrImpl<TTree extends LiveTree>(tree: TTree, name: string
 /**
  * Set boolean-present attrs. (style treated as clear, per applyAttrToNode)
  */
-export function setFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
+export function setFlagsImpl<TTree extends LiveTree>(tree: TTree, ...names: string[]): TTree {
   const node = tree.node;
   for (const n of names) {
     applyAttrToNode(node, n, true);
@@ -197,7 +202,7 @@ export function setFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
 /**
  * Clear boolean-present attrs (and any attr, really).
  */
-export function clearFlagsImpl(tree: LiveTree, ...names: string[]): LiveTree {
+export function clearFlagsImpl<TTree extends LiveTree>(tree: TTree, ...names: string[]): TTree {
   const node = tree.node;
   for (const n of names) {
     applyAttrToNode(node, n, null);
@@ -217,6 +222,6 @@ export function hasAttrImpl(tree: LiveTree, name: string): boolean {
   // CHANGED: key-exists check avoids edge cases where value could be ""
   const attrs = tree.node._attrs;
   if (!attrs) return false;
-  const key = name.toLowerCase();
+  const key = canonical_attr_key_from_node(tree.node, name);
   return (attrs as any)[key] != null;
 }
