@@ -31,7 +31,7 @@
  * @param separator - The single-character separator to split on (commonly `,`).
  * @returns An array of top-level segments with surrounding whitespace removed.
  *******/
-export function split_top_level(str: string, separator: string): string[] {
+export function split_array_string(str: string, separator: string): string[] {
   /* early out */
   if (!str || str.length === 0) return [];
 

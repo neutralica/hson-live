@@ -6,7 +6,7 @@ import { CLOSE_KIND, ARR_SYMBOL, TOKEN_KIND } from "../../types/token.types.js";
 import { Position, CloseKind, Tokens, RawAttr } from "../../types/token.types.js";
 import { lex_text_piece } from "../../utils/hson-utils/lex-text-piece.js";
 import { slice_balanced_arr } from "../../utils/hson-utils/slice-balance.js";
-import { split_top_level } from "../../utils/hson-utils/split-top-2.js";
+import { split_array_string } from "../../utils/hson-utils/split-array-string.js";
 import { is_quote, scan_quoted_block, scan_tag_header_block } from "../../utils/hson-utils/scan-quoted-block.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
 
@@ -486,7 +486,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             finalTokens.push(CREATE_ARR_OPEN_TOKEN(closerSymbol, pOpen));
 
             /* split the array body by top-level commas (quote/array/header aware) */
-            const items = split_top_level(body, ',');
+            const items = split_array_string(body, ',');
 
             for (const itemRaw of items) {
                 const item = itemRaw.trim();
@@ -668,10 +668,39 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
             /* inline tail (if any) */
             if (tailRaw) {
-                if (tailRaw.startsWith('<') || tailRaw.startsWith('«') || tailRaw.startsWith('[')) {
+                if (tailRaw.startsWith('<')) {
                     finalTokens.push(...tokenize_hson(tailRaw, depth + 1));
+                } else if (tailRaw.startsWith('«') || tailRaw.startsWith('[')) {
+                    const opener = tailRaw.startsWith('«') ? '«' : '[';
+                    const closer = opener === '«' ? '»' : ']';
+
+                    const joinedFromHere = splitLines.slice(currentIx).join('\n');
+
+                    // find opener position in the real remaining source, not just tailRaw
+                    const openerIxInCurrentLine = (splitLines[currentIx] ?? "").indexOf(opener, leadIx0);
+                    const openerIxInJoined = openerIxInCurrentLine;
+
+                    const { body, endIndex } = slice_balanced_arr(
+                        joinedFromHere,
+                        openerIxInJoined + 1,
+                        opener,
+                        closer,
+                    );
+
+                    const frag = `${opener}${body}${closer}`;
+
+                    finalTokens.push(...tokenize_hson(frag, depth + 1));
+
+                    const consumedText = joinedFromHere.slice(0, endIndex + 1);
+                    const linesConsumed = consumedText.split("\n").length - 1;
+
+                    for (let k = currentIx; k <= currentIx + linesConsumed; k++) {
+                        _bump_line(splitLines[k] ?? "");
+                    }
+
+                    continue;
                 } else {
-                    const parts = split_top_level(tailRaw, ',');
+                    const parts = split_array_string(tailRaw, ',');
                     if (parts.length > 1) {
                         _throw_transform_err(
                             `[step f] multiple inline items not allowed after <${tag}>: "${tailRaw}"`,
@@ -781,40 +810,40 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     }
 
     if (_VERBOSE) {
-        logTokens();
+        logTokens(finalTokens);
     }
-
-    function logTokens(): void {
-        if (_VERBOSE) {
-            console.groupCollapsed('returning tokens (summary)');
-            for (const t of finalTokens) {
-                switch (t.kind) {
-                    case TOKEN_KIND.OPEN:
-                        console.log(`OPEN <${t.tag}> @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                    case TOKEN_KIND.CLOSE:
-                        console.log(`END ${t.close} @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                    case TOKEN_KIND.ARR_OPEN:
-                        console.log(`ARR_OPEN ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                    case TOKEN_KIND.ARR_CLOSE:
-                        console.log(`ARR_CLOSE ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                    case TOKEN_KIND.TEXT:
-                        console.log(`TEXT "${t.raw}" @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                    case TOKEN_KIND.EMPTY_OBJ:
-                        console.log(`EMPTY_OBJ "${t}" @ L${t.pos.line}:C${t.pos.col}`);
-                        break;
-                }
-            }
-            console.groupEnd();
-        }
-    }
-
     /* return new tokens; no _root wrapping here — parser will handle it */
     return finalTokens as Tokens[];
 }
 
 
+
+
+function logTokens(tokens: Tokens[]): void {
+    if (_VERBOSE) {
+        console.groupCollapsed('returning tokens (summary)');
+        for (const t of tokens) {
+            switch (t.kind) {
+                case TOKEN_KIND.OPEN:
+                    console.log(`OPEN <${t.tag}> @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+                case TOKEN_KIND.CLOSE:
+                    console.log(`END ${t.close} @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+                case TOKEN_KIND.ARR_OPEN:
+                    console.log(`ARR_OPEN ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+                case TOKEN_KIND.ARR_CLOSE:
+                    console.log(`ARR_CLOSE ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+                case TOKEN_KIND.TEXT:
+                    console.log(`TEXT "${t.raw}" @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+                case TOKEN_KIND.EMPTY_OBJ:
+                    console.log(`EMPTY_OBJ "${t}" @ L${t.pos.line}:C${t.pos.col}`);
+                    break;
+            }
+        }
+        console.groupEnd();
+    }
+}

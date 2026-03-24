@@ -201,8 +201,8 @@ export function scan_tag_header_block(
     // CHANGED: once we're at end-of-line and not inQuote, this logical header is complete.
     // Detect a trailing closer at the end of THIS physical line only.
     const tailLine = cur;
-const mTrail = tailLine.match(/(\/?>)\s*(?:\/\/.*)?$/);
-const closer = mTrail ? (mTrail[1] as TagCloserLex) : null;
+    const mTrail = tailLine.match(/(\/?>)\s*(?:\/\/.*)?$/);
+    const closer = mTrail ? (mTrail[1] as TagCloserLex) : null;
 
     const raw = rawParts.join("");
 
