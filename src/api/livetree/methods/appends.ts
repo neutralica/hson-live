@@ -7,8 +7,10 @@ import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js"
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
 import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
-import { normalize_ix } from "./append.js";
+import { normalize_ix } from "../../../utils/json-utils/normalize-ix.js";
 import { TreeSelector } from "../tree-selector.js";
+import { SVG_TAGS } from "../../../consts/html-tags.js";
+import { SvgTag } from "../../../types/livetree.types.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_elem` container
@@ -96,60 +98,54 @@ function appendNodes(
  *                the target node; normalized consistently with `appendNodesToTree`.
  * @returns The receiver `LiveTree` (for chaining).
  */
-export function append_branch(
-  this: LiveTree,
-  branch: LiveTree,
+type AppendTreeLike = Pick<LiveTree, "node" | "hostRootNode" | "adoptRoots">;
+
+export function append_branch<TTree extends AppendTreeLike>(
+  this: TTree,
+  branch: AppendTreeLike,
   index?: number,
-): LiveTree {
-  const targetNode = this.node;        // throws if unbound
+): TTree {
+  const targetNode = this.node;
   const srcNode = branch.node;
 
-  // optional safety: forbid JSON-ish VSNs if you want HTML-only subtrees
-  // assert_htmlish_subtree(srcNode);
+  if (!can_append_branch_to_tree(this, branch)) {
+    throw new Error(
+      `[LiveTree.append] incompatible branch scope: cannot append <${String(unwrap_root_elem(srcNode)[0]?._tag ?? "?")}> to <${String(targetNode._tag)}>`
+    );
+  }
 
   const nodesToAppend: HsonNode[] = unwrap_root_elem(srcNode);
 
-  // preserve host root for pruning / removal
   branch.adoptRoots(this.hostRootNode());
-
   appendNodes(targetNode, nodesToAppend, index);
   return this;
 }
 
-// /**
-//  * Append multiple `LiveTree` branches as children of the current `LiveTree`'s node.
-//  *
-//  * Accepts either an explicit array of `LiveTree` instances or a `TreeSelector`
-//  * that can be converted to such an array. Each branch is unwrapped via
-//  * `unwrap_root_elem` to strip its root `_elem` wrapper, and its roots are
-//  * re-bound to the current tree via `adoptRoots`. All resulting HSON nodes
-//  * are batched and inserted through `appendNodesToTree`, which also updates
-//  * the DOM.
-//  *
-//  * @this LiveTree
-//  * @param branches - A `TreeSelector` or array of `LiveTree` branches to append.
-//  * @param index - Optional insertion index within the target `_elem` container
-//  *                where the combined branch nodes will be inserted.
-//  * @returns The receiver `LiveTree` (for chaining).
-//  */
-// export function append_multi(
-//   this: LiveTree,
-//   branches: TreeSelector | LiveTree[],
-//   index?: number,
-// ): LiveTree {
-//   const targetNode = this.node;
+function is_svg_tag(tag: string): boolean {
+  return SVG_TAGS.includes(tag as SvgTag);
+}
 
-//   const branchList: LiveTree[] = Array.isArray(branches)
-//     ? branches
-//     : branches.toArray();
+function can_append_branch_to_tree(target: AppendTreeLike, branch: AppendTreeLike): boolean {
+  const targetTag = String(target.node._tag);
 
-//   const nodesToAppend: HsonNode[] = [];
-//   for (const b of branchList) {
-//     const src = b.node;
-//     nodesToAppend.push(...unwrap_root_elem(src));
-//     b.adoptRoots(this.hostRootNode());
-//   }
+  const roots = unwrap_root_elem(branch.node);
+  const first = roots[0];
+  if (!first) return false;
 
-//   append_nodes(targetNode, nodesToAppend, index);
-//   return this;
-// }
+  const branchRootTag = String(first._tag);
+
+  const targetIsSvg = is_svg_tag(targetTag);
+  const branchIsSvg = is_svg_tag(branchRootTag);
+
+  // svg target: only svg-scoped roots allowed
+  if (targetIsSvg) {
+    return branchIsSvg;
+  }
+
+  // html target:
+  // - html roots are fine
+  // - svg root is fine
+  // - bare svg children are not
+  if (!branchIsSvg) return true;
+  return branchRootTag === "svg";
+}

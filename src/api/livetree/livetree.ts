@@ -13,7 +13,7 @@ import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
 import { StyleManager } from "./managers/style-manager.js";
 import { HtmlCreateHelper, LiveTreeCreateHelper, SvgCreateHelper } from "../../types/livetree.types.js"; // CHANGED
-import { append_branch } from "./methods/append-other.js";
+import { append_branch } from "./methods/appends.js";
 import { make_tree_create } from "./methods/create-node.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
 import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter.js";
