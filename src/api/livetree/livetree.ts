@@ -93,7 +93,7 @@ export class LiveTree {
 
   // private styleManagerInternal: StyleManager | undefined = undefined;
   /* .dataset editor */
-  private datasetManagerInternal: DataManager | undefined = undefined;
+  private datasetManagerInternal: DataManager<this> | undefined = undefined;
   private contentManager: ContentManager | undefined = undefined;
   private cssApiInternal: CssTreeHandle | undefined = undefined;
   private eventsInternal?: TreeEvents;
@@ -347,9 +347,9 @@ export class LiveTree {
    *
    * @returns A `DataManager` instance bound to this tree.
    */
-  public get data(): DataManager {
+  public get data(): DataManager<this> {
     if (!this.datasetManagerInternal) {
-      this.datasetManagerInternal = new DataManager(this);
+      this.datasetManagerInternal = new DataManager<this>(this);
     }
     return this.datasetManagerInternal;
   }

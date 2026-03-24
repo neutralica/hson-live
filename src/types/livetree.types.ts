@@ -8,6 +8,7 @@ import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
 import { ClassApi, IdApi } from "./dom.types.js";
 import { StyleHandle } from "./css.types.js";
 import { AttrHandle, FlagHandle } from "./attrs.types.js";
+import { DataManager } from "../api/livetree/managers/data-manager.js";
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.
@@ -129,7 +130,7 @@ export type HtmlLiveTree = Omit<LiveTree, "create"> & {
 
 export type SvgLiveTree = Omit<
   LiveTree,
-  "create" | "id" | "classlist" | "style" | "attr" | "flag"
+  "create" | "id" | "classlist" | "style" | "attr" | "flag" | "data"
 > & {
   create: SvgCreateHelper;
   id: IdApi<SvgLiveTree>;
@@ -137,6 +138,7 @@ export type SvgLiveTree = Omit<
   style: StyleHandle<SvgLiveTree>;
   attr: AttrHandle<SvgLiveTree>;
   flag: FlagHandle<SvgLiveTree>;
+  data: DataManager<SvgLiveTree>;
 };
 
 export type HtmlCreateHelper =

@@ -1,12 +1,19 @@
 // data-manager.utils.ts
 
 import { Primitive } from "../../../types/core.types.js";
+import { AttrValue } from "../../../types/node.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { LiveTree } from "../livetree.js";
 
 
 export type DatasetValue = Primitive | undefined;
 export type DatasetObj = Record<string, DatasetValue>;
+type DataTreeLike<TOwner> = {
+  attr: {
+    set: (name: string, value: AttrValue) => TOwner;
+    get: (name: string) => Primitive | undefined;
+  };
+};
 
 /**
  * DataManager(2)
@@ -33,112 +40,55 @@ export type DatasetObj = Record<string, DatasetValue>;
  *   - No attempt is made to coerce to/from numbers; everything is stored
  *     as strings, matching real HTML.
  */
-export class DataManager {
-    private liveTree: LiveTree;
+export class DataManager<TTree extends DataTreeLike<TTree>> {
+  private liveTree: TTree;
 
-    /**
-     * Creates a DataManager for a specific LiveTree.
-     *
-     * @param liveTree - The LiveTree whose current selection determines
-     *   which nodes receive data-attribute updates.
-     */
-    constructor(liveTree: LiveTree) {
-        this.liveTree = liveTree;
-    }
+  constructor(liveTree: TTree) {
+    this.liveTree = liveTree;
+  }
 
-    // normalize data key → data-* attribute name
-   private formatData(key: string): string {
-    // CHANGED: reject empty / whitespace-only keys before serialization
+  private formatData(key: string): string {
     const raw = String(key).trim();
     if (!raw) {
-        throw new Error("Dataset key must be non-empty");
+      throw new Error("Dataset key must be non-empty");
     }
 
-    // "userId" → "user-id"
     const kebab = camel_to_kebab(raw).trim();
-
-    // CHANGED: guard again in case normalization empties it out
     if (!kebab) {
-        throw new Error("Dataset key must normalize to a non-empty name");
+      throw new Error("Dataset key must normalize to a non-empty name");
     }
 
     return `data-${kebab}`;
-}
+  }
 
-    /**
-     * Sets or removes a `data-*` attribute on all selected nodes.
-     *
-     * @param key - Logical name (e.g. `"userId"`). It will be normalized
-     *   to kebab-case and prefixed with `"data-"`, producing
-     *   `data-user-id`.
-     *
-     * @param value - New value. `null` removes the attribute.
-     *
-     * Behavior:
-     *   - Delegates to `LiveTree.setAttrs`, ensuring both IR and DOM remain
-     *     in sync.
-     *   - Returns the underlying LiveTree to support chaining.
-     *
-     * Important:
-     *   This uses the literal `"data-"` prefix — this is *not* the internal
-     *   HSON metadata prefix and should not be renamed.
-     */
-    set(key: string, value: DatasetValue): LiveTree {
-        const attrName = this.formatData(key); // "state" → "data-state"
+  set(key: string, value: DatasetValue): TTree {
+    const attrName = this.formatData(key);
 
-        // null/undefined → remove the data-* attribute entirely
-        if (value === null || value === undefined) {
-            this.liveTree.attr.set(attrName, null);
-            return this.liveTree;
-        }
+    if (value === null || value === undefined) {
+      this.liveTree.attr.set(attrName, null);
+      return this.liveTree;
+    }
 
-        // everything else → string
+    this.liveTree.attr.set(attrName, String(value));
+    return this.liveTree;
+  }
+
+  setMany(map: DatasetObj): TTree {
+    for (const [key, value] of Object.entries(map)) {
+      const attrName = this.formatData(key);
+
+      if (value === null || value === undefined) {
+        this.liveTree.attr.set(attrName, null);
+      } else {
         this.liveTree.attr.set(attrName, String(value));
-        return this.liveTree;
+      }
     }
 
-    // 2) Multiple keys at once
-    setMany(map: DatasetObj): LiveTree {
-        const patch: Record<string, string | null> = {};
+    return this.liveTree;
+  }
 
-        for (const [key, value] of Object.entries(map)) {
-            const attrName = this.formatData(key);
-
-            if (value === null || value === undefined) {
-                patch[attrName] = null;          // remove this data-* attr
-            } else {
-                patch[attrName] = String(value); // write as string
-            }
-        }
-
-        if (Object.keys(patch).length > 0) {
-            Object.keys(patch).forEach(k => {
-                this.liveTree.attr.set(k, patch[k]);
-            })
-        }
-
-        return this.liveTree;
-    }
-
-    /**
-     * Reads a `data-*` attribute from the first selected node.
-     *
-     * @param key - Attribute suffix (e.g. `"user-id"` or `"state"`). This
-     *   method does not currently apply camel→kebab normalization.
-     *
-     * @returns The stored primitive string value, or `undefined` if the
-     *   attribute does not exist or there is no selection.
-     *
-     * Notes:
-     *   - Only inspects the first selected node.
-     *   - Delegates to `LiveTree.getAttr`, which reads from the IR (not
-     *     computed DOM attributes).
-     *
-     * Important:
-     *   This uses the literal `"data-"` prefix — not the HSON metadata prefix.
-     */
-    get(key: string): Primitive | undefined {
-        const dataAttrName = `data-${key}`;
-        return this.liveTree.attr.get(dataAttrName);
-    }
+  get(key: string): Primitive | undefined {
+    const attrName = this.formatData(key); // CHANGED: be consistent with set()
+    return this.liveTree.attr.get(attrName);
+  }
 }
