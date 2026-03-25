@@ -9,6 +9,12 @@ import { ClassApi, IdApi } from "./dom.types.js";
 import { StyleHandle } from "./css.types.js";
 import { AttrHandle, FlagHandle } from "./attrs.types.js";
 import { DataManager } from "../api/livetree/managers/data-manager.js";
+import { LiveTextApi } from "../api/livetree/managers/text-form-values.js";
+
+
+export type SvgScopeApi = Readonly<{
+  inScope: () => boolean;
+}>;
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.
@@ -130,7 +136,7 @@ export type HtmlLiveTree = Omit<LiveTree, "create"> & {
 
 export type SvgLiveTree = Omit<
   LiveTree,
-  "create" | "id" | "classlist" | "style" | "attr" | "flag" | "data"
+  "create" | "id" | "classlist" | "style" | "attr" | "flag" | "data" | "text"
 > & {
   create: SvgCreateHelper;
   id: IdApi<SvgLiveTree>;
@@ -139,31 +145,31 @@ export type SvgLiveTree = Omit<
   attr: AttrHandle<SvgLiveTree>;
   flag: FlagHandle<SvgLiveTree>;
   data: DataManager<SvgLiveTree>;
+  text: LiveTextApi<SvgLiveTree>;
 };
 
 export type HtmlCreateHelper =
-  Record<Exclude<HtmlTag, "svg">, (index?: number) => LiveTree> & {
-    tags(tags: TagName[], index?: number): TreeSelector;
+  Record<HtmlTag, (source?: string) => LiveTree> & {
     svg(source?: string): SvgLiveTree;
+    tags(tags: TagName[]): TreeSelector;
+    tag(tag: TagName, source?: string): LiveTree;
     prepend(): HtmlCreateHelper;
     at(index: number): HtmlCreateHelper;
   };
-  
+
 export type SvgCreateHelper =
-  Record<Exclude<SvgTag, "svg">, (index?: number) => SvgLiveTree> & {
-    tags(tags: TagName[], index?: number): TreeSelector;
+  Record<NonRootSvgTag, (source?: string) => SvgLiveTree> & {
     svg(source?: string): SvgLiveTree;
     prepend(): SvgCreateHelper;
     at(index: number): SvgCreateHelper;
-    };
-  
+  };
+
 
 // helper exposes methods for HtmlTag only (div(), span(), etc)
 // and keeps tags([...]) for arbitrary tag names.
 export type CreateHelper<Single, Many> =
-  Record<HtmlTag, (index?: number) => Single> & {
-    tags(tags: TagName[], index?: number): Many;
-
+  Record<HtmlTag, (source?: string) => Single> & {
+    tags(tags: TagName[]): Many;
     prepend(): CreateHelper<Single, Many>;
     at(index: number): CreateHelper<Single, Many>;
   };

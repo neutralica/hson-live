@@ -142,8 +142,6 @@ export const HTML_TAGS = [
   "template",
   "canvas",
 
-  // svg
-  "svg",
 
   // Obsolete / legacy (kept for tolerance)
   "menu",

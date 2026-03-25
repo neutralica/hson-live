@@ -22,11 +22,11 @@ export type SetNodeFormOpts = Readonly<{
   strict?: boolean;
 }>;
 
-export type LiveTextApi = Readonly<{
-  set: (value: Primitive) => LiveTree;
-  add: (value: Primitive) => LiveTree;
-  overwrite: (value: Primitive) => LiveTree;
-  insert: (index: number, value: Primitive) => LiveTree;
+export type LiveTextApi<TOwner> = Readonly<{
+  set: (value: Primitive) => TOwner;
+  add: (value: Primitive) => TOwner;
+  overwrite: (value: Primitive) => TOwner;
+  insert: (ix: number, value: Primitive) => TOwner;
   get: () => string;
 }>;
 

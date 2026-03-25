@@ -14,13 +14,13 @@ function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): 
   const lower = name.toLowerCase();
 
   // TODO change to .svg.isSvg when exists
-  if (!SVG_TAGS.includes(tree.node._tag as SvgTag)) return lower;
+  if (tree.svg.inScope()) return lower;
 
   return SVG_ATTR_CASE_MAP[lower] ?? lower;
 }
-function canonical_attr_key_from_node(node: HsonNode, name: string): string {
+function svg_attr_key_from_node_tag(node: HsonNode, name: string): string {
   const lower = name.toLowerCase();
-
+  // TODO FUTURE: replace with real scope check
   if (!SVG_TAGS.includes(node._tag as SvgTag)) return lower;
 
   return SVG_ATTR_CASE_MAP[lower] ?? lower;
@@ -77,7 +77,7 @@ export function applyAttrToNode(
   if (!node._attrs) node._attrs = {};
   const attrs = node._attrs as HsonAttrs & { style?: CssMap };
 
-  const key = canonical_attr_key_from_node(node, name);
+  const key = svg_attr_key_from_node_tag(node, name);
   const el = element_for_node(node) as Element | undefined;
 
   // CHANGED: normalize undefined -> null (removal)
@@ -141,7 +141,7 @@ export function readAttrFromNode(
   const attrs = node._attrs;
   if (!attrs) return undefined;
 
-  const key = canonical_attr_key_from_node(node, name);
+  const key = svg_attr_key_from_node_tag(node, name);
   const raw = (attrs as any)[key];
 
   if (raw == null) return undefined;
@@ -222,6 +222,6 @@ export function hasAttrImpl(tree: LiveTree, name: string): boolean {
   // CHANGED: key-exists check avoids edge cases where value could be ""
   const attrs = tree.node._attrs;
   if (!attrs) return false;
-  const key = canonical_attr_key_from_node(tree.node, name);
+  const key = svg_attr_key_from_node_tag(tree.node, name);
   return (attrs as any)[key] != null;
 }

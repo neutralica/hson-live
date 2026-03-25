@@ -12,9 +12,8 @@ import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
 import { StyleManager } from "./managers/style-manager.js";
-import { HtmlCreateHelper, LiveTreeCreateHelper, SvgCreateHelper } from "../../types/livetree.types.js"; // CHANGED
+import { HtmlCreateHelper, LiveTreeCreateHelper, SvgCreateHelper, SvgScopeApi, SvgTag } from "../../types/livetree.types.js"; // CHANGED
 import { append_branch } from "./methods/appends.js";
-import { make_tree_create } from "./methods/create-node.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
 import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter.js";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types.js";
@@ -27,7 +26,8 @@ import { css_for_quids } from "./methods/css-for-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
-import { is_svg_context_tag } from "../../consts/html-tags.js";
+import { is_svg_context_tag, SVG_TAGS } from "../../consts/html-tags.js";
+import { make_html_tree_create, make_svg_tree_create, make_tree_create2 } from "./methods/create2.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -101,6 +101,8 @@ export class LiveTree {
   private classApi?: ClassApi<this>;
   private _attr?: AttrHandle<this>;
   private _flag?: FlagHandle<this>;
+  private svgApi?: SvgScopeApi;
+
 
 
   /**
@@ -253,11 +255,15 @@ export class LiveTree {
    * Typed element creation helper bound to this tree.
    *
    * @returns A `LiveTreeCreateHelper` scoped to this tree.
-   * @see make_tree_create
+   * @see make_tree_create2
    */
   public get create(): HtmlCreateHelper {
-    return make_tree_create(this);
-  }
+  return (
+    this.svg.inScope()
+      ? make_svg_tree_create(this)
+      : make_html_tree_create(this)
+  ) as unknown as HtmlCreateHelper;
+}
 
   /**
    * Return this tree's QUID, a stable identity string associated with the
@@ -389,14 +395,14 @@ export class LiveTree {
 
 
 
-  public readonly text: LiveTextApi = {
+  public readonly text: LiveTextApi<this> = {
     set: (value) => { set_node_text_content(this.node, value); return this; },
     add: (value) => { add_node_text_content(this.node, value); return this; },
     overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
     insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
     get: (): string => {
       return get_node_text_content(this.node);
-    }
+    },
   };
 
 
@@ -491,5 +497,17 @@ export class LiveTree {
     const firstRef = this.nodeRef;
     if (!firstRef) return undefined;
     return firstRef.resolveElement();
+  }
+
+  public get svg(): SvgScopeApi {
+    if (!this.svgApi) {
+      this.svgApi = Object.freeze({
+        inScope: (): boolean => {
+          return SVG_TAGS.includes(this.node._tag as SvgTag);
+        },
+      });
+    }
+
+    return this.svgApi;
   }
 }
