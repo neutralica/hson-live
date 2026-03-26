@@ -1,8 +1,9 @@
 // remove-child.ts
 
 import { ELEM_TAG, EVERY_VSN } from "../../../consts/constants.js";
-import { HsonNode, Primitive } from "../../../types/index.js";
+import { Primitive } from "../../../types/core.types.js";
 import { HsonQuery } from "../../../types/livetree.types.js";
+import { HsonNode } from "../../../types/node.types.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { detach_node_deep } from "../../../utils/tree-utils/detach-node.js";
 import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";

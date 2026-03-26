@@ -1,7 +1,6 @@
 // css_for_quids.ts
 
 
-import { Primitive } from "hson-live/types";
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
 import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { LiveTree } from "../livetree.js";

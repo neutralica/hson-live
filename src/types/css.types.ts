@@ -295,7 +295,7 @@ export type CssHandleBase<TReturn> = Readonly<
   }
 >;
 
-export type CssTreeHandle = CssHandleBase<LiveTree>;
+export type CssTreeHandle<TOwner = LiveTree> = CssHandleBase<TOwner>;
 
 export type StyleHandle<TOwner> = Readonly<
   StyleSetter<TOwner> & {

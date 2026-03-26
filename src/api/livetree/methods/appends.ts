@@ -11,6 +11,7 @@ import { normalize_ix } from "../../../utils/json-utils/normalize-ix.js";
 import { TreeSelector } from "../tree-selector.js";
 import { SVG_TAGS } from "../../../consts/html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
+import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_elem` container
@@ -63,21 +64,22 @@ function appendNodes(
   // --- DOM SYNC --------------------------------------------------------
   const liveElement = element_for_node(targetNode);
   if (!liveElement) return;
-
+const parentNs: "html" | "svg" =
+  liveElement.namespaceURI === SVG_NS ? "svg" : "html";
   const domChildren = Array.from(liveElement.childNodes);
 
   if (typeof index === "number") {
     let insertIx = normalize_ix(index, domChildren.length);
 
     for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode); // Node | DocumentFragment
+      const dom = project_livetree(newNode, parentNs);
       const refNode = domChildren[insertIx] ?? null;
       liveElement.insertBefore(dom, refNode);
       insertIx += 1;
     }
   } else {
     for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode);
+      const dom = project_livetree(newNode, parentNs);
       liveElement.appendChild(dom);
     }
   }

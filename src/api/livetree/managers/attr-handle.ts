@@ -1,9 +1,9 @@
 import { SVG_TAGS } from "../../../consts/html-tags.js";
 import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
 import { Primitive } from "../../../types/core.types.js";
-import { HsonNode, HsonAttrs, CssMap } from "../../../types/index.js";
+import { CssMap } from "../../../types/css.types.js";
 import { SvgTag } from "../../../types/livetree.types.js";
-import { AttrMap, AttrValue } from "../../../types/node.types.js";
+import { AttrMap, AttrValue, HsonAttrs, HsonNode } from "../../../types/node.types.js";
 import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../../utils/html-utils/parse_html_attrs.js";

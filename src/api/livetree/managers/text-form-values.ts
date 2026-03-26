@@ -8,7 +8,6 @@ import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-e
 import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
 import { make_leaf } from "../../parsers/parse-tokens.js";
 import { Primitive } from "../../../types/core.types.js";
-import { LiveTree } from "hson-live";
 import { CREATE_NODE } from "../../../consts/factories.js";
 
 /**

@@ -31,22 +31,23 @@ import { LiveTree } from "../livetree.js";
  * - This differs from `remove_self`: the node remains in place,
  *   only its interior is cleared.
  */
-export function empty_contents(this: LiveTree): LiveTree {
-    const node = this.node;
+type EmptyTreeLike = Pick<LiveTree, "node">;
 
-    const kids = node._content;
+export function empty_contents<TTree extends EmptyTreeLike>(this: TTree): TTree {
+  const node = this.node;
+  const kids = node._content;
 
-    // 1) deep detach every child (listeners + DOM + map)
-    for (const child of kids) {
-        if (is_Node(child)) detach_node_deep(child);
-    }
+  // 1) deep detach every child (listeners + DOM + map)
+  for (const child of kids) {
+    if (is_Node(child)) detach_node_deep(child);
+  }
 
-    // 2) set model content to empty
-    node._content = [];
+  // 2) set model content to empty
+  node._content = [];
 
-    // 3) ensure the element has no stray DOM children (paranoia; usually already gone)
-    const el = element_for_node(node);
-    if (el) while (el.firstChild) el.removeChild(el.firstChild);
-    return this;
+  // 3) ensure the element has no stray DOM children
+  const el = element_for_node(node);
+  if (el) while (el.firstChild) el.removeChild(el.firstChild);
+
+  return this;
 }
-

@@ -1,13 +1,16 @@
+import { ELEM_TAG, ROOT_TAG } from "../../../consts/constants.js";
+import { CREATE_NODE } from "../../../consts/factories.js";
 import { HTML_TAGS, is_svg_context_tag, SVG_TAGS } from "../../../consts/html-tags.js";
 import { hson } from "../../../hson.js";
-import { HsonNode } from "../../../types/index.js";
 import { TagName, HtmlTag, SvgTag, SvgLiveTree, HtmlCreateHelper, SvgCreateHelper } from "../../../types/livetree.types.js";
+import { HsonNode } from "../../../types/node.types.js";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
+import { node_from_svg } from "../../../utils/node-utils/node-from-svg.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { create_livetree } from "../create-livetree.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { LiveTree } from "../livetree.js";
 import { TreeSelector } from "../tree-selector.js";
-import { assert_valid_tag_name } from "./create-node.js";
 
 export type CreateNs = "html" | "svg";
 
@@ -20,6 +23,36 @@ type CreateCore = {
   createSvgTagFromString: (expectedTag: SvgTag, source: string, index?: number) => SvgLiveTree;
 };
 
+function is_valid_tag_name(name: unknown): name is TagName {
+  if (typeof name !== "string") return false;
+
+  const t = name.trim();
+  if (t.length === 0) return false;
+
+  // reserve xml / XML / Xml...
+  if (/^xml/i.test(t)) return false;
+
+  // CHANGE: keep it simple & strict (works for your underscore tags)
+  // XML allows more Unicode than this; we are choosing a conservative subset.
+  // Start: letter or underscore
+  // Rest: letters/digits/underscore/dot/dash
+  if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(t)) return false;
+
+  // CHANGE: forbid ":" unless you explicitly want namespaces
+  if (t.includes(":")) return false;
+
+  return true;
+}
+
+
+/** Throws early with a clean message (prevents XML parser spam). */
+export function assert_valid_tag_name(name: unknown, ctx?: string): asserts name is TagName {
+  if (is_valid_tag_name(name)) return;
+  const where = ctx ? ` (${ctx})` : "";
+  throw new Error(`[LiveTree.create] invalid tag name${where}: ${String(name)}`);
+}
+
+
 export function inferCreateNs(tree: LiveTree, tag: string): CreateNs {
   if (is_svg_context_tag(tag)) return "svg";
 
@@ -28,13 +61,18 @@ export function inferCreateNs(tree: LiveTree, tag: string): CreateNs {
 
   return "html";
 }
+
 export function build_markup_stub(tag: string, ns: CreateNs): string {
-  if (ns === "svg" && tag === "svg") {
-    return `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
+  if (ns === "svg") {
+    if (tag === "svg") {
+      return `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
+    }
+
+    return `<svg xmlns="http://www.w3.org/2000/svg"><${tag}></${tag}></svg>`;
   }
+
   return `<${tag}></${tag}>`;
 }
-
 function make_create_core(tree: LiveTree): CreateCore {
   let nextIndex: number | undefined = undefined;
 
@@ -48,11 +86,43 @@ function make_create_core(tree: LiveTree): CreateCore {
     return ix;
   };
 
+  // CHANGED: unwrap element payload and keep only real element tags
+  function extract_real_element_children(node: HsonNode): HsonNode[] {
+    const kids = Array.isArray(node._content) ? node._content : [];
+
+    const payload =
+      kids.length === 1 &&
+      is_Node(kids[0]) &&
+      kids[0]._tag === ELEM_TAG &&
+      Array.isArray(kids[0]._content)
+        ? kids[0]._content
+        : kids;
+
+    return payload.filter(
+      (child): child is HsonNode =>
+        is_Node(child) && !child._tag.startsWith("_")
+    );
+  }
+
   function createForTags(tagOrTags: TagName | TagName[], index?: number): LiveTree | TreeSelector {
     const tags: TagName[] = Array.isArray(tagOrTags) ? tagOrTags : [tagOrTags];
 
     const created: LiveTree[] = [];
     let insertIx: number | undefined = index;
+
+    function unwrap_created_children_for_tag(root: HsonNode, tag: TagName, ns: CreateNs): HsonNode[] {
+      const base = unwrap_root_elem(root);
+
+      // CHANGED: for svg child-tag bootstrap wrappers like
+      // <svg xmlns="..."><g/></svg>, unwrap the temporary svg shell
+      if (ns === "svg" && tag !== "svg") {
+        if (base.length === 1 && base[0]?._tag === "svg") {
+          return extract_real_element_children(base[0]);
+        }
+      }
+
+      return base;
+    }
 
     for (const t of tags) {
       assert_valid_tag_name(t, "createForTags");
@@ -62,12 +132,23 @@ function make_create_core(tree: LiveTree): CreateCore {
       const parsed = hson.fromTrustedHtml(markup).toHson().parse();
       const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
 
-      const branch = create_livetree(root0);
+      const appended = unwrap_created_children_for_tag(root0, t, ns);
+
+      // CHANGED: append the intended children, not the temporary wrapper root
+      const tempRoot = CREATE_NODE({
+        _tag: ROOT_TAG,
+        _content: [
+          CREATE_NODE({
+            _tag: ELEM_TAG,
+            _content: appended,
+          }),
+        ],
+      });
+
+      const branch = create_livetree(tempRoot);
 
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);
-
-      const appended = unwrap_root_elem(root0);
 
       for (const child of appended) {
         const childTree = create_livetree(child);
@@ -159,9 +240,14 @@ function make_create_core(tree: LiveTree): CreateCore {
       );
     }
 
+    const wrapped =
+      expectedTag === "svg"
+        ? source
+        : `<svg xmlns="http://www.w3.org/2000/svg">${source}</svg>`;
+
     let parsed: HsonNode | HsonNode[];
     try {
-      parsed = hson.fromTrustedHtml(source).toHson().parse();
+      parsed = parse_svg_fragment_to_hson(wrapped);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
@@ -170,7 +256,23 @@ function make_create_core(tree: LiveTree): CreateCore {
     }
 
     const roots: HsonNode[] = Array.isArray(parsed) ? parsed : [parsed];
-    const createdChildren = roots.flatMap((n) => unwrap_root_elem(n));
+    const baseChildren = roots.flatMap((n) => unwrap_root_elem(n));
+
+    let createdChildren: HsonNode[];
+
+    if (expectedTag === "svg") {
+      createdChildren = baseChildren;
+    } else {
+      if (baseChildren.length !== 1 || baseChildren[0]?._tag !== "svg") {
+        throw new Error(
+          `[LiveTree.create.${expectedTag}] expected temporary <svg> wrapper`,
+        );
+      }
+
+      const svgRoot = baseChildren[0];
+      // CHANGED: ignore _str / _elem / other VSN noise, keep only real element children
+      createdChildren = extract_real_element_children(svgRoot);
+    }
 
     if (createdChildren.length !== 1) {
       throw new Error(
@@ -323,4 +425,15 @@ export function make_svg_tree_create(tree: LiveTree): SvgCreateHelper {
 
 export function make_tree_create2(tree: LiveTree): HtmlCreateHelper {
   return make_html_tree_create(tree);
+}
+
+function parse_svg_fragment_to_hson(source: string): HsonNode {
+  const doc = new DOMParser().parseFromString(source, "image/svg+xml");
+  const root = doc.documentElement;
+
+  if (!root || root.tagName === "parsererror") {
+    throw new Error("failed to parse svg fragment");
+  }
+
+  return node_from_svg(root);
 }

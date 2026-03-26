@@ -12,6 +12,7 @@ import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { Primitive } from "../../../types/core.types.js";
 import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 
 
 
@@ -26,13 +27,15 @@ function graft_node_into_element(
   nodeToRender: HsonNode,
 ): LiveTree {
   linkNodeToElement(nodeToRender, element);
+  const parentNs: "html" | "svg" =
+    element.namespaceURI === SVG_NS ? "svg" : "html";
 
   // reflect attrs from root node onto existing host element
   sync_root_attrs_to_element(nodeToRender, element);
 
   const frag = document.createDocumentFragment();
   for (const child of nodeToRender._content ?? []) {
-    frag.appendChild(project_livetree(child as HsonNode | Primitive));
+    frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
   }
 
   element.replaceChildren(frag);
