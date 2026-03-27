@@ -274,4 +274,4 @@ Sanitization is explicit, predictable, and opt-in outside HTML parsing.
 *	Serialization is not a special case—it is a first-class operation
 *	The API favors explicit intent over convenience
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0

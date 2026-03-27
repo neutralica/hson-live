@@ -168,17 +168,23 @@ npx tsc
 Compiled output is written to dist/.
 
 
-## demo site
-The HSON demo site demonstrates LiveTree in a deliberately minimal environment, without frameworks or any other dependencies. Test it at:
+## LiveDemo
+LiveDemo is the first site made with hson.liveTree. It demonstrates the capabilities of LiveTree in a deliberately minimalist environment, without frameworks or any other dependencies. Explore hson-live's functionality at:
 
-### www.terminalgothic.com
+`https://terminalgothic.com/hson`
 
 
 ## documentation
-Detailed documentation of the HSON syntax, transformer behavior, and LiveTree API is available in /src/docs or at @`www.terminalgothic.com[about]`
+
+See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full ocumentation is also made available at hson::LiveDemo. Navigate to:
+
+`https://terminalgothic.com/hson`
+
+ and click the [about] tab.
+
 
 ## License
 hson-live is licensed under the Public Parity License 7.0.
 See LICENSE for details.
 
-© 2026 Neutralica. All rights reserved except as granted under the Public Parity License 7.0.
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.

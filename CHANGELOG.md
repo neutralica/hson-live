@@ -1,5 +1,87 @@
 // hson changelog.md
 
+27MAR2026
+LiveTree already offered namespace-aware SVG parsing. New updates incorporate typed, namespaced SVG creation and manipulation natively into LiveTree's .create API:
+
+⸻
+
+Added: Native SVG support in LiveTree
+	•	Introduced SVG-aware creation pipeline (create.svg, SVG tag helpers).
+	•	Ensures correct namespace propagation (http://www.w3.org/2000/svg) at creation time.
+	•	Eliminates need for temporary wrapper <svg> shells during construction.
+	•	Aligns SVG creation behavior with HTML creation semantics.
+
+⸻
+
+Fixed: SVG creation + insertion semantics
+	•	Resolved mismatch between:
+	•	parsed root nodes
+	•	appended nodes
+	•	returned LiveTree handles
+	•	Ensured created SVG elements:
+	•	are appended directly (no wrapper leakage)
+	•	maintain correct parentage
+	•	preserve insertion index behavior (at(), prepend())
+
+⸻
+
+Fixed: appendNodes() structural correctness
+	•	Corrected insertion logic to operate on actual child nodes rather than wrapper artifacts.
+	•	Ensures:
+	•	correct _elem container usage
+	•	stable ordering during indexed inserts
+	•	consistent DOM ↔ HSON synchronization
+
+⸻
+
+Added: SVG API on LiveTree (tree.svg)
+	•	Extended existing svg namespace (previously only inScope()).
+	•	Added:
+	•	svg.bbox()
+	•	svg.must.bbox()
+	•	Provides safe access to getBBox() without exposing raw DOM.
+	•	Follows existing dom.must.* pattern for error-safe access.
+
+⸻
+
+Extended: DOM geometry API (tree.dom.rect)
+	•	Expanded DomRectApi to include:
+	•	clientRects()
+	•	scrollSize()
+	•	clientSize()
+	•	Consolidates layout/measurement access under a single API surface.
+	•	Reduces need for direct DOM access for common geometry queries.
+
+⸻
+
+Added: SVG <image> support in creation helpers
+	•	Ensured image is included in SVG tag helpers.
+	•	Enables internal SVG transformations that rely on image replacement workflows.
+
+⸻
+
+Clarified: DOM vs SVG responsibility boundaries
+	•	Formalized separation:
+	•	tree.dom.* → layout, connectivity, HTML-like behavior
+	•	tree.svg.* → SVG-specific geometry and transforms
+	•	Avoids mixing coordinate systems and API semantics.
+
+⸻
+
+Internal: Reduced reliance on direct DOM operations
+	•	Replaced ad hoc DOM usage patterns with LiveTree-native equivalents where possible:
+	•	structured creation (create.*)
+	•	controlled geometry access (dom.rect, svg.bbox)
+	•	Leaves only unavoidable low-level calls (e.g., getBBox) at the boundary.
+
+⸻
+
+Result
+	•	LiveTree now supports SVG as a first-class citizen alongside HTML.
+	•	Geometry and layout access are exposed through consistent, typed APIs.
+	•	Node creation, insertion, and measurement behave uniformly across namespaces.
+	•	Reduced need for direct DOM interaction in higher-level code.
+
 22MAR2026
 
 Transformer Chain — Change Summary
@@ -98,5 +180,7 @@ Result
 
 
 10DEC2025
-- finished docs?
+
 ** first public 'live' release. for previous versions see `hson-unsafe` **
+
+- finished docs v.1

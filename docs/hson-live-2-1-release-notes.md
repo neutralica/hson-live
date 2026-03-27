@@ -1,5 +1,3 @@
-CHANGELOG
-
 2.1.0 — Stability Release
 
 This release focuses on parser robustness, HTML normalization, and strengthening LiveTree’s projection guarantees. It also introduces significantly expanded internal regression coverage.

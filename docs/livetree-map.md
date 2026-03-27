@@ -48,37 +48,37 @@
 │                                      │                  │
 │                                      ▼                  │
 │                           ┌────────────────────┐        │
-│                           │   CssManager       │◀─────--┘
-│                           │  (singleton)       │
-│                           │                    │
-│                           │  rulesByQuid       │
-│                           │  globalCss         │
-│                           │  @property mgr     │
-│                           │  keyframes mgr     │
-│                           └─────────┬──────────┘
-│                                     │
-│                                     ▼
-│                          <style id="hson-_style">        │
-│                                                        │
-│  ┌───────────────┐   ┌──────────────────────────────-┐ │
-│  │ data (lazy)   │──▶│ DataManager                   │ │
-│  │               │   │  - data-* attrs               │ │
-│  │               │   │  - node ↔ DOM sync            │ │
-│  └───────────────┘   └─────────────────────────────-─┘ │
-│                                                        │
-│  ┌───────────────┐   ┌───────────────────────────── ─┐ │
-│  │ listen        │──▶│ ListenerBuilder               │ │
-│  │               │   │  - DOM events                 │ │
-│  │               │   │  - typed handlers             │ │
-│  └───────────────┘   └────────────────────────────-──┘ │
-│                                                        │
-│  ┌───────────────┐   ┌────────────────────────────-──┐ │
-│  │ events        │──▶│ TreeEvents                    │ │
-│  │               │   │  - local pub/sub              │ │
-│  │               │   │  - not DOM                    │ │
-│  └───────────────┘   └───────────────────────────-───┘ │
-│                                                        │
-│  find / findAll / create / attrs / flags / text        │
-└────────────────────────────────────────────────────────┘
+│                           │   CssManager       │        |
+│                           │  (singleton)       │        |
+│                           │                    │        |
+│                           │  rulesByQuid       │        |
+│                           │  globalCss         │        |
+│                           │  @property mgr     │        |
+│                           │  keyframes mgr     │        |
+│                           └─────────┬──────────┘        |
+│                                     │                   │
+│                                     ▼                   │
+│                          <style id="hson-_style">       │
+│                                                         │
+│  ┌───────────────┐   ┌──────────────────────────────-┐  │
+│  │ data (lazy)   │──▶│ DataManager                   │  │
+│  │               │   │  - data-* attrs               │  │
+│  │               │   │  - node ↔ DOM sync            │  │
+│  └───────────────┘   └─────────────────────────────-─┘  │
+│                                                         │
+│  ┌───────────────┐   ┌───────────────────────────── ─┐  │
+│  │ listen        │──▶│ ListenerBuilder               │  │
+│  │               │   │  - DOM events                 │  │
+│  │               │   │  - typed handlers             │  │
+│  └───────────────┘   └────────────────────────────-──┘  │
+│                                                         │
+│  ┌───────────────┐   ┌────────────────────────────-──┐  │
+│  │ events        │──▶│ TreeEvents                    │  │
+│  │               │   │  - local pub/sub              │  │
+│  │               │   │  - not DOM                    │  │
+│  └───────────────┘   └───────────────────────────-───┘  │
+│                                                         │
+│  find / findAll / create / attrs / flags / text         │
+└─────────────────────────────────────────────────────────┘
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.
+© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0
