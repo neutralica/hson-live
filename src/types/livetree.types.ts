@@ -5,15 +5,16 @@ import { HsonAttrs, HsonMeta, HsonNode } from "./node.types.js";
 import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/tree-selector.js";
 import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
-import { ClassApi, IdApi } from "./dom.types.js";
-import { CssTreeHandle, StyleHandle } from "./css.types.js";
-import { AttrHandle, FlagHandle } from "./attrs.types.js";
-import { DataManager } from "../api/livetree/managers/data-manager.js";
-import { LiveTextApi } from "../api/livetree/managers/text-form-values.js";
+import { SvgBox, SvgLiveTree } from "./svg.types.js";
 
 
 export type SvgScopeApi = Readonly<{
   inScope: () => boolean;
+   bbox(): SvgBox | undefined;
+
+  must: Readonly<{
+    bbox: (label?: string) => SvgBox;
+  }>;
 }>;
 
 /**************************************************************
@@ -133,22 +134,6 @@ export type LiveTreeCreateHelper =
 export type HtmlLiveTree = Omit<LiveTree, "create"> & {
   create: HtmlCreateHelper;
 };
-export type SvgLiveTree = Omit<
-  LiveTree,
-  "create" | "id" | "classlist" | "style" | "css" | "attr" | "flag" | "data" | "text" | "empty"
-> & {
-  create: SvgCreateHelper;
-  id: IdApi<SvgLiveTree>;
-  classlist: ClassApi<SvgLiveTree>;
-  style: StyleHandle<SvgLiveTree>;
-  css: CssTreeHandle<SvgLiveTree>;
-  attr: AttrHandle<SvgLiveTree>;
-  flag: FlagHandle<SvgLiveTree>;
-  data: DataManager<SvgLiveTree>;
-  text: LiveTextApi<SvgLiveTree>;
-  empty: () => SvgLiveTree;
-};
-
 export type HtmlCreateHelper =
   Record<HtmlTag, (source?: string) => LiveTree> & {
     svg(source?: string): SvgLiveTree;

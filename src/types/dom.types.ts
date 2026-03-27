@@ -34,15 +34,25 @@ export interface LiveTreeDom {
     treeFromEl?: (domEl: Element, label?: string) => LiveTree;
   }>;
 
-  rect: RectFn;
+  rect: DomRectApi;
   closest: ClosestFn;
   parent: ParentFn;
 }
 
-export type RectFn = {
+export type DomSize = {
+  width: number;
+  height: number;
+};
+
+export type DomRectApi = {
   (): DOMRect | undefined;
   must(label?: string): DOMRect;
+
+  clientRects(): DOMRectList | undefined;
+  scrollSize(): DomSize | undefined;
+  clientSize(): DomSize | undefined;
 };
+
 export type ClassApi<TOwner> = Readonly<{
   get: () => string | undefined;
   has: (name: string) => boolean;

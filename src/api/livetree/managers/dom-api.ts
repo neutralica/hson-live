@@ -1,6 +1,7 @@
 import { LiveTree } from "../livetree.js";
-import { ClosestFn, LiveTreeDom, ParentFn, RectFn } from "../../../types/dom.types.js";
+import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi } from "../../../types/dom.types.js";
 import { _snip } from "../../../utils/sys-utils/snip.utils.js";
+import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
 
 // CHANGED: honest maybe-returning lookup from DOM element back to tree node
 function tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
@@ -19,6 +20,32 @@ function tree_from_el_must(tree: LiveTree, el: Element, label?: string): LiveTre
     throw new Error(`[LiveTree.dom.must] expected element to belong to this tree: ${desc}`);
   }
   return hit;
+}
+
+export function make_svg_manager(tree: LiveTree): LiveTreeSvgDom {
+  function bbox(): SvgBox | undefined {
+    const el = tree.dom.el();
+    if (!(el instanceof SVGGraphicsElement)) return undefined;
+
+    const b = el.getBBox();
+    return {
+      x: b.x,
+      y: b.y,
+      width: b.width,
+      height: b.height,
+    };
+  }
+
+  return {
+    bbox,
+    must: {
+      bbox(label?: string) {
+        const b = bbox();
+        if (!b) throw new Error(`[svg.bbox.must] no bbox${label ? `: ${label}` : ""}`);
+        return b;
+      },
+    },
+  };
 }
 
 export function make_dom_api(tree: LiveTree): LiveTreeDom {
@@ -55,7 +82,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     if (typeof e.getBoundingClientRect !== "function") return undefined;
 
     return e.getBoundingClientRect();
-  }) as RectFn;
+  }) as DomRectApi;
 
   const closest = ((sel: string) => {
     const e = el();

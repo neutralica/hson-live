@@ -1,16 +1,18 @@
-import { ELEM_TAG, ROOT_TAG } from "../../../consts/constants.js";
-import { CREATE_NODE } from "../../../consts/factories.js";
-import { HTML_TAGS, is_svg_context_tag, SVG_TAGS } from "../../../consts/html-tags.js";
-import { hson } from "../../../hson.js";
-import { TagName, HtmlTag, SvgTag, SvgLiveTree, HtmlCreateHelper, SvgCreateHelper } from "../../../types/livetree.types.js";
-import { HsonNode } from "../../../types/node.types.js";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
-import { node_from_svg } from "../../../utils/node-utils/node-from-svg.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { create_livetree } from "../create-livetree.js";
-import { make_tree_selector } from "../creation/make-tree-selector.js";
-import { LiveTree } from "../livetree.js";
-import { TreeSelector } from "../tree-selector.js";
+import { ELEM_TAG, ROOT_TAG } from "../../../../consts/constants.js";
+import { CREATE_NODE } from "../../../../consts/factories.js";
+import { is_svg_context_tag } from "../../../../consts/html-tags.js";
+import { hson } from "../../../../hson.js";
+import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
+import { SvgLiveTree } from "../../../../types/svg.types.js";
+import { HsonNode } from "../../../../types/node.types.js";
+import { unwrap_root_elem } from "../../../../utils/html-utils/unwrap-root-elem.js";
+import { node_from_svg } from "../../../../utils/node-utils/node-from-svg.js";
+import { is_Node } from "../../../../utils/node-utils/node-guards.js";
+import { create_livetree } from "../../create-livetree.js";
+import { make_tree_selector } from "../../creation/make-tree-selector.js";
+import { LiveTree } from "../../livetree.js";
+import { TreeSelector } from "../../tree-selector.js";
+import { make_html_tree_create } from "./create-html.js";
 
 export type CreateNs = "html" | "svg";
 
@@ -73,7 +75,8 @@ export function build_markup_stub(tag: string, ns: CreateNs): string {
 
   return `<${tag}></${tag}>`;
 }
-function make_create_core(tree: LiveTree): CreateCore {
+
+export function make_create_core(tree: LiveTree): CreateCore {
   let nextIndex: number | undefined = undefined;
 
   const setNextIndex = (index: number): void => {
@@ -92,9 +95,9 @@ function make_create_core(tree: LiveTree): CreateCore {
 
     const payload =
       kids.length === 1 &&
-      is_Node(kids[0]) &&
-      kids[0]._tag === ELEM_TAG &&
-      Array.isArray(kids[0]._content)
+        is_Node(kids[0]) &&
+        kids[0]._tag === ELEM_TAG &&
+        Array.isArray(kids[0]._content)
         ? kids[0]._content
         : kids;
 
@@ -310,117 +313,6 @@ function make_create_core(tree: LiveTree): CreateCore {
     createHtmlTagFromString,
     createSvgTagFromString,
   };
-}
-
-export function make_html_tree_create(tree: LiveTree): HtmlCreateHelper {
-  const core = make_create_core(tree);
-
-  const helper: Partial<HtmlCreateHelper> & {
-    prepend(): HtmlCreateHelper;
-    at(index: number): HtmlCreateHelper;
-  } = {
-    tag(tag: TagName, source?: string): LiveTree {
-      const ix = core.consumeIndex();
-
-      assert_valid_tag_name(tag, "create.tag");
-
-      if (typeof source === "string") {
-        if (tag === "svg") {
-          return core.createSvgTagFromString("svg", source, ix) as unknown as LiveTree;
-        }
-
-        return core.createHtmlTagFromString(tag as HtmlTag, source, ix);
-      }
-
-      return core.createSingleTag(tag, ix);
-    },
-
-    tags(tags: TagName[]): TreeSelector {
-      return core.createForTags(tags, core.consumeIndex()) as TreeSelector;
-    },
-
-    prepend() {
-      core.setNextIndex(0);
-      return helper as HtmlCreateHelper;
-    },
-
-    at(index: number) {
-      core.setNextIndex(index);
-      return helper as HtmlCreateHelper;
-    },
-  };
-
-  for (const rawTag of HTML_TAGS) {
-    const tag = rawTag as HtmlTag;
-
-    (helper as any)[tag] = (source?: string): LiveTree => {
-      const ix = core.consumeIndex();
-
-      if (typeof source === "string") {
-        return core.createHtmlTagFromString(tag, source, ix);
-      }
-
-      return core.createSingleTag(tag, ix);
-    };
-  }
-
-  (helper as any).svg = (source?: string): SvgLiveTree => {
-    const ix = core.consumeIndex();
-
-    if (typeof source === "string") {
-      return core.createSvgTagFromString("svg", source, ix);
-    }
-
-    return core.createSingleTag("svg", ix) as unknown as SvgLiveTree;
-  };
-
-  return helper as HtmlCreateHelper;
-}
-
-export function make_svg_tree_create(tree: LiveTree): SvgCreateHelper {
-  const core = make_create_core(tree);
-
-  const helper: Partial<SvgCreateHelper> & {
-    prepend(): SvgCreateHelper;
-    at(index: number): SvgCreateHelper;
-  } = {
-    prepend() {
-      core.setNextIndex(0);
-      return helper as SvgCreateHelper;
-    },
-
-    at(index: number) {
-      core.setNextIndex(index);
-      return helper as SvgCreateHelper;
-    },
-  };
-
-  for (const rawTag of SVG_TAGS) {
-    const tag = rawTag as SvgTag;
-    if (tag === "svg") continue;
-
-    (helper as any)[tag] = (source?: string): SvgLiveTree => {
-      const ix = core.consumeIndex();
-
-      if (typeof source === "string") {
-        return core.createSvgTagFromString(tag, source, ix);
-      }
-
-      return core.createSingleTag(tag, ix) as unknown as SvgLiveTree;
-    };
-  }
-
-  (helper as any).svg = (source?: string): SvgLiveTree => {
-    const ix = core.consumeIndex();
-
-    if (typeof source === "string") {
-      return core.createSvgTagFromString("svg", source, ix);
-    }
-
-    return core.createSingleTag("svg", ix) as unknown as SvgLiveTree;
-  };
-
-  return helper as SvgCreateHelper;
 }
 
 export function make_tree_create2(tree: LiveTree): HtmlCreateHelper {

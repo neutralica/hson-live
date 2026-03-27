@@ -17,7 +17,7 @@ import { append_branch } from "./methods/appends.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
 import { make_class_api, make_id_api, StyleSetter } from "./managers/style-setter.js";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types.js";
-import { make_dom_api } from "./managers/dom-manager.js";
+import { make_dom_api } from "./managers/dom-api.js";
 import { TreeEvents } from "../../types/events.types.js";
 import { make_tree_events } from "./managers/events-handler.js";
 import { clone_branch_method } from "./methods/clone.js";
@@ -27,7 +27,10 @@ import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
 import { is_svg_context_tag, SVG_TAGS } from "../../consts/html-tags.js";
-import { make_html_tree_create, make_svg_tree_create, make_tree_create2 } from "./methods/create2.js";
+import { make_tree_create2 } from "./methods/create/create-core.js";
+import { make_svg_tree_create } from "./methods/create/create-svg.js";
+import { make_html_tree_create } from "./methods/create/create-html.js";
+import { SvgBox } from "../../types/svg.types.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -500,14 +503,40 @@ export class LiveTree {
   }
 
   public get svg(): SvgScopeApi {
-    if (!this.svgApi) {
-      this.svgApi = Object.freeze({
-        inScope: (): boolean => {
-          return SVG_TAGS.includes(this.node._tag as SvgTag);
-        },
-      });
-    }
+  if (!this.svgApi) {
+    const bbox = (): SvgBox | undefined => {
+      const el = this.dom.el();
+      if (!(el instanceof SVGGraphicsElement)) return undefined;
 
-    return this.svgApi;
+      const b = el.getBBox();
+      return {
+        x: b.x,
+        y: b.y,
+        width: b.width,
+        height: b.height,
+      };
+    };
+
+    this.svgApi = Object.freeze({
+      inScope: (): boolean => {
+        return SVG_TAGS.includes(this.node._tag as SvgTag);
+      },
+
+      // ADD
+      bbox,
+
+      must: {
+        bbox: (label?: string): SvgBox => {
+          const b = bbox();
+          if (!b) {
+            throw new Error(label ?? `[LiveTree.svg.must.bbox] no bbox available`);
+          }
+          return b;
+        },
+      },
+    });
   }
+
+  return this.svgApi;
+}
 }
