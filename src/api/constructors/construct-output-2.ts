@@ -43,7 +43,6 @@ import { make_branch_from_node } from "../livetree/creation/create-branch.js";
  * @returns Stage-2 constructor API for selecting output formats.
  */
 export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
-
   function makeFinalizer<K extends RenderFormats>(
     context: FrameRender<K>
   ): OptionsConstructor_3<K> & RenderConstructor_4<K> {
@@ -57,58 +56,47 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
     return {
       toHson() {
         const hson = serialize_hson(currentFrame.node);
+
         const ctx: FrameRender<(typeof $RENDER)["HSON"]> = {
           frame: { ...currentFrame, hson },
           output: $RENDER.HSON,
         };
+
         return makeFinalizer(ctx);
       },
 
       toJson() {
         const json = serialize_json(currentFrame.node);
+
         const ctx: FrameRender<(typeof $RENDER)["JSON"]> = {
           frame: { ...currentFrame, json },
           output: $RENDER.JSON,
         };
+
         return makeFinalizer(ctx);
       },
 
-      toHtml(){
+      toHtml() {
         const html = serialize_html(currentFrame.node);
+
         const ctx: FrameRender<(typeof $RENDER)["HTML"]> = {
           frame: { ...currentFrame, html },
           output: $RENDER.HTML,
         };
+
         return makeFinalizer(ctx);
       },
 
-     get liveTree(): LiveTreeConstructor_3 {
-        return {
-          asBranch(): LiveTree {
-            const node: HsonNode | undefined = currentFrame.node;
-            if (!node) {
-              throw new Error("liveTree().asBranch(): frame is missing HSON node data");
-            }
-            // Populate NODE_ELEMENT_MAP; actual attach happens later via graft/append.
-            
-            return make_branch_from_node(node);
-          },
-        };
-      },
-
       sanitizeBEWARE(): OutputConstructor_2 {
-        const node: HsonNode | undefined = currentFrame.node;
+        const node = currentFrame.node;
         if (!node) {
           throw new Error("sanitizeBEWARE(): frame is missing HSON node data");
         }
 
-        // 1) Node → HTML string
-        const rawHtml: string = serialize_html(node);
+        // CHANGED: Node → HTML → sanitized Node, then continue from a fresh frame
+        const rawHtml = serialize_html(node);
+        const sanitizedNode = parse_external_html(rawHtml);
 
-        // 2) Untrusted HTML path: DOMPurify + parse_external_html
-        const sanitizedNode: HsonNode = parse_external_html(rawHtml);
-
-        // 3) Build a new frame rooted at the sanitized Node
         const nextFrame: FrameConstructor = {
           input: rawHtml,
           node: sanitizedNode,
@@ -120,7 +108,6 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
           },
         };
 
-        // 4) Return a fresh builder for the sanitized frame
         return makeBuilder(nextFrame);
       },
     };

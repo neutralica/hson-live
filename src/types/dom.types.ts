@@ -46,8 +46,6 @@ export type DomSize = {
 
 export type DomRectApi = {
   (): DOMRect | undefined;
-  must(label?: string): DOMRect;
-
   clientRects(): DOMRectList | undefined;
   scrollSize(): DomSize | undefined;
   clientSize(): DomSize | undefined;

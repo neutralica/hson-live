@@ -12,7 +12,9 @@ import { parse_json } from "../parsers/parse-json.js";
 import { make_branch_from_node } from "../livetree/creation/create-branch.js";
 import { graft } from "../livetree/creation/graft.js";
 import { LiveTree } from "../livetree/livetree.js";
-import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../../types/constructor.types.js";
+import { GraftConstructor, TreeConstructor_Source } from "../../types/constructor.types.js";
+import { construct_source_1 } from "./construct-source-1.js";
+import { make_detached_livetree_create } from "./make-detached-livetree.js";
 
 /**
  * Build the entry point for the LiveTree creation and grafting pipeline.
@@ -54,93 +56,88 @@ import { BranchConstructor, GraftConstructor, TreeConstructor_Source } from "../
  * @returns An object exposing the LiveTree construction and grafting API.
  * @see make_branch_from_node
  * @see graft
- */
-export function construct_tree(
+ */export function construct_tree(
   options: { unsafe: boolean } = { unsafe: false }
 ): TreeConstructor_Source {
-
-  /* the main object returned by construct_tree */
   return {
-    /* methods for creating detached branches from data */
-    fromHtml(html: string): BranchConstructor {
-      let node: HsonNode;
+    fromTrustedHtml(input): LiveTree {
+      const raw = typeof input === "string" ? input : input.innerHTML;
+      const trimmed = raw.trimStart();
 
-      const trimmed = html.trimStart();
+      let node: HsonNode;
 
       if (is_svg_markup(trimmed)) {
         if (!options.unsafe) {
-          // SAFE pipeline: SVG from external HTML is not allowed
           _throw_transform_err(
-            "liveTree.fromHtml(): SVG markup is only allowed on UNSAFE pipeline or via internal node_from_svg.",
-            "liveTree.fromHtml",
-            html.slice(0, 200)
+            "liveTree.fromTrustedHtml(): SVG markup is only allowed on UNSAFE pipeline or via internal node_from_svg.",
+            "liveTree.fromTrustedHtml",
+            raw.slice(0, 200)
           );
         }
 
-        // UNSAFE: legacy SVG path (internal demo content)
         const el = new DOMParser()
-          .parseFromString(html, "image/svg+xml")
+          .parseFromString(raw, "image/svg+xml")
           .documentElement;
+
         node = node_from_svg(el);
       } else {
-        // NON-SVG HTML: safe pipeline → sanitized; unsafe → raw
         node = options.unsafe
-          ? parse_html(html)
-          : parse_external_html(html);
+          ? parse_html(raw)
+          : parse_external_html(raw);
       }
 
-      const branch = make_branch_from_node(node);
-      return {
-        asBranch: () => branch,
-      };
+      return make_branch_from_node(node);
     },
 
-    fromJson(json: string | JsonValue): BranchConstructor {
-      const rootNode = parse_json(json as string);
-      const branch = make_branch_from_node(rootNode);
-      return {
-        asBranch: () => branch,
-      };
+    fromUntrustedHtml(input): LiveTree {
+      const raw = typeof input === "string" ? input : input.innerHTML;
+      const node = parse_external_html(raw);
+      return make_branch_from_node(node);
     },
 
-
-    fromHson(hson: string): BranchConstructor {
-      // assumes tokenize_hson and parse_tokens available
-      const rootNode = parse_hson(hson);
-      const branch = make_branch_from_node(rootNode);
-      return {
-        asBranch: () => branch,
-      };
+    fromJson(input: string | JsonValue): LiveTree {
+      const raw = typeof input === "string" ? input : JSON.stringify(input);
+      const node = parse_json(raw);
+      return make_branch_from_node(node);
     },
 
-    /* --- methods for targeting and replacing live dom elements --- */
+    fromHson(input: string): LiveTree {
+      const node = parse_hson(input);
+      return make_branch_from_node(node);
+    },
+
+    fromNode(input: HsonNode): LiveTree {
+      return make_branch_from_node(input);
+    },
 
     queryDom(selector: string): GraftConstructor {
-      const element = document.querySelector<HTMLElement>(selector);
-
-      /* return the graft constructor object */
       return {
-        graft: (): LiveTree => {
-          /* the null check here inside the final method call */
+        graft(): LiveTree {
+          const element = document.querySelector<HTMLElement>(selector);
+
           if (!element) {
-          throw new Error (`hson.liveTree.queryDom: selector "${selector}" not found.`);
+            throw new Error(`hson.liveTree.queryDom: selector "${selector}" not found.`);
           }
-          // only call the main graft function if the element was found
+
           return graft(element, options);
-        }
+        },
       };
     },
 
     queryBody(): GraftConstructor {
-      const element = document.body;
-
-      /* return the graft constructor object */
       return {
-        graft: (): LiveTree => {
+        graft(): LiveTree {
+          const element = document.body;
+
+          if (!element) {
+            throw new Error("hson.liveTree.queryBody: document.body is not available.");
+          }
+
           return graft(element, options);
-        }
+        },
       };
     },
 
+    create: make_detached_livetree_create(),
   };
 }

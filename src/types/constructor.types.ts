@@ -3,6 +3,7 @@ import { $HSON_FRAME, $RENDER, } from "../consts/constants.js";
 import { HsonNode } from "./node.types.js";
 import { JsonValue } from "./core.types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
+import { HtmlCreateHelper } from "./livetree.types.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.
@@ -182,11 +183,14 @@ export interface SourceConstructor_1 {
  *      as queryDom, but for the whole document body.
  ***************/
 export interface TreeConstructor_Source {
-  fromHtml(htmlString: string): BranchConstructor;
-  fromJson(json: string | JsonValue): BranchConstructor;
-  fromHson(hsonString: string): BranchConstructor;
+  fromTrustedHtml(input: string | Element): LiveTree;
+  fromUntrustedHtml(input: string | Element): LiveTree;
+  fromJson(input: string | JsonValue): LiveTree;
+  fromHson(input: string): LiveTree;
+  fromNode(input: HsonNode): LiveTree;
   queryDom(selector: string): GraftConstructor;
   queryBody(): GraftConstructor;
+  create: HtmlCreateHelper
 }
 
 /***************
@@ -251,8 +255,6 @@ export interface OutputConstructor_2 {
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
   toHson(): OptionsConstructor_3<(typeof $RENDER)["HSON"]> & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
-  liveTree: LiveTreeConstructor_3;
-
   /**
    * 🔥 HTML-style sanitization applied *after* source selection.
    *
@@ -306,20 +308,6 @@ export interface GraftConstructor {
   graft(): LiveTree;
 }
 
-/***************
- * BranchConstructor
- *
- * Returned by data-based source constructors (`fromJson`, `fromHson`,
- * `fromHtml`, `fromNode`).
- *
- *  - asBranch()
- *      Creates and returns a *detached* LiveTree rooted at the frame’s
- *      nodes. The caller is responsible for grafting / appending it
- *      into some host LiveTree or DOM.
- ***************/
-export interface BranchConstructor {
-  asBranch(): LiveTree;
-}
 
 /***************
  * LiveTreeConstructor_3

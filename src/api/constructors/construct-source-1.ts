@@ -86,7 +86,6 @@ export function construct_source_1(
         typeof input === "string" ? input : input.innerHTML;
 
       const trimmed = raw.trimStart();
-
       let node: HsonNode;
       let sanitized = false;
 
