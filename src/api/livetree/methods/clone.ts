@@ -4,7 +4,7 @@ import { LiveTree } from "../livetree.js";
 import { hson } from "../../../hson.js";
 
 
-// CHANGED: clone + remint in one traversal so mapping is correct by construction
+// clone + remint in one traversal so mapping is correct by construction
 type QuidMap = Map<string, string>;
 
 type CloneOpts = {
@@ -19,11 +19,11 @@ function clone_branch_inner(
   // shallow copy of the node object
   const dst: HsonNode = { ...src };
 
-  // CHANGED: deep clone containers you mutate later
+  // deep clone containers you mutate later
   if (src._attrs) dst._attrs = { ...src._attrs };
   if (src._meta)  dst._meta  = { ...src._meta };
 
-  // CHANGED: deep clone content
+  // deep clone content
   if (src._content) {
     dst._content = src._content.map((c) => {
       if (typeof c === "object" && c !== null) {
@@ -33,7 +33,7 @@ function clone_branch_inner(
     });
   }
 
-  // CHANGED: mint a new quid for dst, and record mapping from src's quid (if any)
+  // mint a new quid for dst, and record mapping from src's quid (if any)
   const oldQ = get_quid(src);
   const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true });
 

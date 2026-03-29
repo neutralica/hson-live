@@ -67,7 +67,7 @@ function detach_subtree(node: HsonNode): void {
  * @returns True when the node has a mapped DOM element.
  */
 function is_attached(node: HsonNode): boolean {
-  // CHANGED: replace this with your real invariant.
+  // replace this with your real invariant.
   // Common options:
   // - node._parent exists
   // - hostRoot traversal can find it (slower)
@@ -77,7 +77,7 @@ function is_attached(node: HsonNode): boolean {
 export function remove_livetree(this: LiveTree): number {
   const node = this.node;
 
-  // CHANGED: idempotence should be based on graph membership, not DOM attachment.
+  // idempotence should be based on graph membership, not DOM attachment.
   const root = this.hostRootNode();
 
   // If we have a root, we only count removal if we actually pruned it out.
@@ -85,7 +85,7 @@ export function remove_livetree(this: LiveTree): number {
   const pruned = root ? pruneNodeFromRoot(root, node) : true;
   if (!pruned) return 0;
 
-  // CHANGED: only clear per-quid CSS if quids exist
+  // only clear per-quid CSS if quids exist
   const css = CssManager.invoke();
   const quids = collectQuidsForSubtree(node); // should return [] if none
   for (const q of quids) css.clearQuid(q);
@@ -117,7 +117,7 @@ export function remove_livetree(this: LiveTree): number {
 //   const toRemove = search_nodes(nodeKids, q, { findFirst: false });
 //   if (!toRemove.length) return 0;
 
-//   // CHANGED: centralized cleanup
+//   // centralized cleanup
 //   for (const child of toRemove) detach_subtree(child);
 
 //   // Keep your Set-based filter (good).

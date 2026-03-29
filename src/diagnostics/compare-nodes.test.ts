@@ -15,7 +15,7 @@ export type CompareNodesOpts = Readonly<{
     // (future: other narrowly-scoped normalizations)
 }>;
 
-// CHANGED: small helper; keep it local to compare_nodes to avoid broad reuse
+// small helper; keep it local to compare_nodes to avoid broad reuse
 function normalize_newlines_lf(s: string): string {
     return s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
@@ -45,7 +45,7 @@ function compareLeaf(a: HsonNode, b: HsonNode, path: string, diffs: string[], op
 
     if (va === vb) return true;
 
-    // CHANGED: allow HTML/XML newline normalization ONLY when explicitly enabled,
+    // allow HTML/XML newline normalization ONLY when explicitly enabled,
     // ONLY for string leaves, and ONLY when CR exists on either side.
     if (
         opts?.allow_html_newline_norm === true &&
@@ -160,7 +160,7 @@ function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareN
     // BUGFIX: compare A vs B (was A vs A)
     diffs.push(...compareAttrs(collapseA._attrs, collapseB._attrs, `${path}._attrs`));
 
-    // CHANGED: compareLeaf now gets opts
+    // compareLeaf now gets opts
     if (compareLeaf(collapseA, collapseB, path, diffs, opts)) return diffs;
 
     const aKids = semanticChildren(collapseA);

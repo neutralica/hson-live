@@ -25,19 +25,19 @@ const ELEMENT_NODE_MAP = new WeakMap<Element, HsonNode>();
  * Link one node to one element, cleaning up any stale prior pairings on either side.
  */
 export function linkNodeToElement(node: HsonNode, el: Element): void {
-  // CHANGED: clear any previous element for this node
+  // clear any previous element for this node
   const prevEl = NODE_ELEMENT_MAP.get(node);
   if (prevEl && prevEl !== el) {
     ELEMENT_NODE_MAP.delete(prevEl);
   }
 
-  // CHANGED: clear any previous node for this element
+  // clear any previous node for this element
   const prevNode = ELEMENT_NODE_MAP.get(el);
   if (prevNode && prevNode !== node) {
     unlinkNode(prevNode);
   }
 
-  // CHANGED: write both directions
+  // write both directions
   NODE_ELEMENT_MAP.set(node, el);
   ELEMENT_NODE_MAP.set(el, node);
 }

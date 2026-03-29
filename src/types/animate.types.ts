@@ -25,7 +25,7 @@ export type AnimAdapters<TTree> = Readonly<{
   getFirstDomElement: (tree: TTree) => Element | undefined;
 }>;
 
-// CHANGED: AnimApi is bound to a particular tree via closure,
+// AnimApi is bound to a particular tree via closure,
 // so methods do NOT accept `tree` but DO return `TTree` for chaining.
 export type AnimApi<TTree> = Readonly<{
   begin: (spec: AnimSpec) => TTree;

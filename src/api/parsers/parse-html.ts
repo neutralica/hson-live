@@ -112,10 +112,10 @@ export function parse_html(input: string | Element): HsonNode {
         const errText = () => (err?.textContent ?? "");
         const hasErr = () => Boolean(err);
 
-        // CHANGED: single helper to reduce drift + ensure we re-read parsererror each time
+        // single helper to reduce drift + ensure we re-read parsererror each time
 
         const tryParse = (candidate: string, label: string) => {
-            // CHANGED: commit the candidate to xmlSrc *before* parsing, so later steps repair the current text
+            // commit the candidate to xmlSrc *before* parsing, so later steps repair the current text
             xmlSrc = candidate;
 
             parsed = parser.parseFromString(xmlSrc, "application/xml");
@@ -125,7 +125,7 @@ export function parse_html(input: string | Element): HsonNode {
             // console.log(`tryParse:${label} err=${!!err}`);
         };
 
-        // CHANGED: amp-fix is dangerous; only apply when parser error looks entity-related
+        // amp-fix is dangerous; only apply when parser error looks entity-related
         const amp_fix = (src: string) =>
             src.replace(
                 /&(?!(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});)/g,
@@ -216,7 +216,7 @@ export function parse_html(input: string | Element): HsonNode {
 
             // 6) Multiple top-level nodes ("extra content"): wrap a root and retry.
             if (/extra content|junk after document element|no root element found/i.test(msg)) {
-                // CHANGED: keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
+                // keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
                 let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
 
                 // Keep your existing optional endtag pass (safe-ish) on the wrapped source.
@@ -225,7 +225,7 @@ export function parse_html(input: string | Element): HsonNode {
                 // Attempt parse of the wrapped source.
                 tryParse(wrapped, "wrap_root(+optional_endtag_preflight)");
 
-                // CHANGED: If wrapping exposed a void-tag mismatch (embed/input/meta/etc),
+                // If wrapping exposed a void-tag mismatch (embed/input/meta/etc),
                 // apply expand_void_tags to the *wrapped* string (NOT the old xmlSrc) and retry.
                 if (hasErr()) {
                     const msg2 = errText();

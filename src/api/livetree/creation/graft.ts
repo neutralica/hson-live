@@ -57,7 +57,7 @@ export function graft(
   element?: HTMLElement,
   options: { unsafe: boolean } = { unsafe: false },
 ): LiveTree {
-  void options; // CHANGED: currently unused; keep only if you expect it soon
+  void options; // currently unused; keep only if you expect it soon
 
   const targetElement = element;
   if (!targetElement) {

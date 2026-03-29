@@ -88,7 +88,7 @@ export class DataManager<TTree extends DataTreeLike<TTree>> {
   }
 
   get(key: string): Primitive | undefined {
-    const attrName = this.formatData(key); // CHANGED: be consistent with set()
+    const attrName = this.formatData(key); // be consistent with set()
     return this.liveTree.attr.get(attrName);
   }
 }

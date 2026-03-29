@@ -123,10 +123,10 @@ export type LiveTreeCreateHelper =
   Record<NonRootSvgTag, (index?: number) => LiveTree> & {
     tags(tags: TagName[], index?: number): TreeSelector;
 
-    // CHANGED: svg is special
+    // svg is special
     svg(source?: string): LiveTree;
 
-    // CHANGED: recursive to itself, not CreateHelper
+    // recursive to itself, not CreateHelper
     prepend(): LiveTreeCreateHelper;
     at(index: number): LiveTreeCreateHelper;
   };

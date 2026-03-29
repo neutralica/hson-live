@@ -2,7 +2,7 @@
 
 
 
-// CHANGED: one canonical map for convenience methods -> DOM event name
+// one canonical map for convenience methods -> DOM event name
 const LISTEN_CONVENIENCE = {
   // Form
   onInput: "input",

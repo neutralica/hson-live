@@ -157,7 +157,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     const contextStack: ContextStackItem[] = [];
     const splitLines = hson.split(/\r\n|\r|\n/);
     let ix = 0;
-    // CHANGED: absolute start offset for each physical line in splitLines
+    // absolute start offset for each physical line in splitLines
     const lineOffsets: number[] = [];
     {
         let acc = 0;
@@ -171,7 +171,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     function ensureQuotedLiteral(lit: string, where: string) {
         const t = lit.trim();
 
-        // CHANGED: if it looks like a quoted literal, it must be JSON-style: "..."
+        // if it looks like a quoted literal, it must be JSON-style: "..."
         if (t.startsWith("'") || t.startsWith("`")) {
             _throw_transform_err(
                 `[${where}] unsupported quote delimiter (use double quotes only): ${lit}`,
@@ -181,7 +181,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
         const piece = lex_text_piece(lit);
 
-        // CHANGED: starts with " but not properly closed => hard error
+        // starts with " but not properly closed => hard error
         if (t.startsWith('"') && !piece.quoted) {
             _throw_transform_err(
                 `[${where}] unterminated quoted literal: ${lit}`,
@@ -315,7 +315,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             _skip_whitespace();
             if (ix >= end) break;
 
-            // CHANGED: attr name must start with letter/_/:
+            // attr name must start with letter/_/:
             if (!/[A-Za-z_:]/.test(source[ix])) break;
             if (!/[A-Za-z_:]/.test(source[ix])) {
                 break;
@@ -587,7 +587,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 continue;
             }
 
-            // CHANGED: scan logical tag header across lines if quoted attrs stay open
+            // scan logical tag header across lines if quoted attrs stay open
             const leadIx0 = currentLine.search(/\S|$/); // 0-based
             const leadCol = leadIx0 + 1;
 
@@ -603,7 +603,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             const endCol = scanned.endCol;
             const posAt = scanned.posAt;
 
-            // CHANGED: only whitespace or //comment may follow the consumed header on its ending line
+            // only whitespace or //comment may follow the consumed header on its ending line
             const tailAfterHeader = (splitLines[endLine] ?? "").slice(endCol - 1);
 
             if (!closerLex) {
@@ -727,7 +727,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
                 finalTokens.push(CREATE_END_TOKEN(closeKind, posClose));
 
-                // CHANGED: bump all consumed physical lines
+                // bump all consumed physical lines
                 for (let k = currentIx; k <= endLine; k++) {
                     _bump_line(splitLines[k] ?? "");
                 }
@@ -735,7 +735,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             } else {
                 contextStack.push({ type: 'CLUSTER' });
 
-                // CHANGED: bump all consumed physical lines
+                // bump all consumed physical lines
                 for (let k = currentIx; k <= endLine; k++) {
                     _bump_line(splitLines[k] ?? "");
                 }

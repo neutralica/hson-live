@@ -83,7 +83,7 @@ const isPseudoDecls = (v: unknown): v is CssMapBase => {
   return !!v && typeof v === "object" && !Array.isArray(v) && !isCssValueObject(v);
 };
 
-// CHANGED: generic “proxy surface” builder that returns whatever your setProp returns.
+// generic “proxy surface” builder that returns whatever your setProp returns.
 export function make_set_surface<TReturn>(
   setProp: (prop: CssKey, v: CssValue) => TReturn,
 ): SetSurface<TReturn> {
@@ -239,7 +239,7 @@ export function make_style_setter<TReturn>(
   };
 
   const api: StyleSetter<TReturn> = {
-    // CHANGED: build proxy surface right here; it returns host for chaining
+    // build proxy surface right here; it returns host for chaining
     set: make_set_surface<TReturn>((prop, v) => setProp(prop, v)),
 
     setProp,
@@ -253,10 +253,10 @@ export function make_style_setter<TReturn>(
           continue;
         }
 
-        // CHANGED: narrow to CssValue before calling setProp
+        // narrow to CssValue before calling setProp
         if (!isCssValue(v)) continue;
 
-        // CHANGED: k from Object.entries is string; cast is fine because setProp normalizes anyway
+        // k from Object.entries is string; cast is fine because setProp normalizes anyway
         if (v !== undefined && v !== null) setProp(k as CssKey, v);
       }
       return host;
@@ -324,19 +324,19 @@ function renderCssValue(v: CssValue): string | null {
 export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
 
   return {
-    // CHANGED: read from underlying attr impl to avoid calling tree.id.get() (recursion)
+    // read from underlying attr impl to avoid calling tree.id.get() (recursion)
     get: () => {
       const v = getAttrImpl(tree, "id");
       return typeof v === "string" ? v : undefined;
     },
 
-    // CHANGED: write via attr impl (id is just an attribute)
+    // write via attr impl (id is just an attribute)
     set: (id: string) => {
       setAttrsImpl(tree, "id", id);
       return tree;
     },
 
-    // CHANGED: clear via remove impl
+    // clear via remove impl
     clear: () => {
       removeAttrImpl(tree, "id");
       return tree;
@@ -345,19 +345,19 @@ export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
 }
 
 export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TTree> {
-  // CHANGED: read from attrs, not tree.classlist.get() (avoids self-recursion)
+  // read from attrs, not tree.classlist.get() (avoids self-recursion)
   const getRaw = (): string | undefined => {
     const v = tree.attr.get("class");
     return (typeof v === "string" && v.trim().length > 0) ? v : undefined;
   };
 
-  // CHANGED: keep parsing centralized; uses getRaw() once per op
+  // keep parsing centralized; uses getRaw() once per op
   const getSet = (): Set<string> => {
     const s = getRaw() ?? "";
     return new Set(s.split(/\s+/).filter(Boolean));
   };
 
-  // CHANGED: centralize write semantics (empty => drop)
+  // centralize write semantics (empty => drop)
   const write = (names: Iterable<string>): TTree => {
     const next = Array.from(names).filter(Boolean).join(" ").trim();
     if (!next) tree.attr.drop("class");
@@ -375,7 +375,7 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
         ? cls.filter(Boolean).join(" ").trim()
         : (cls ?? "").trim();
 
-      // CHANGED: write via attrs (no tree.classlist.*)
+      // write via attrs (no tree.classlist.*)
       if (!next) tree.attr.drop("class");
       else tree.attr.set("class", next);
 
@@ -406,7 +406,7 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
     },
 
     clear: () => {
-      // CHANGED: drop via attrs
+      // drop via attrs
       tree.attr.drop("class");
       return tree;
     },

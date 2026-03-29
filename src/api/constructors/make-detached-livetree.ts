@@ -8,7 +8,7 @@ import { LiveTree } from "../livetree/livetree.js";
 import { TreeSelector } from "../livetree/tree-selector.js";
 
 export function make_detached_livetree_create(): HtmlCreateHelper {
-  // CHANGED: keep API shape consistent with normal create helper
+  // keep API shape consistent with normal create helper
   let nextIndex: number | undefined = undefined;
 
   const consumeIndex = (): number | undefined => {
@@ -17,7 +17,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
     return ix;
   };
 
-  // CHANGED: mint a fresh detached HTML host per call
+  // mint a fresh detached HTML host per call
   function makeHtmlHost(): LiveTree {
     const node = CREATE_NODE({
       _tag: "div",
@@ -27,7 +27,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
     return create_livetree(node);
   }
 
-  // CHANGED: mint a fresh detached SVG host per call
+  // mint a fresh detached SVG host per call
   function makeSvgHost(): SvgLiveTree {
     const node = CREATE_NODE({
       _tag: "svg",
@@ -47,7 +47,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
     tag(tag: TagName, source?: string): LiveTree {
       const ix = consumeIndex();
 
-      // CHANGED: detached svg root creation gets its own host
+      // detached svg root creation gets its own host
       if (tag === "svg") {
         const host = makeHtmlHost();
         const create = typeof ix === "number" ? host.create.at(ix) : host.create;
@@ -56,7 +56,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
           : (create.svg() as unknown as LiveTree);
       }
 
-      // CHANGED: allow detached SVG child-tag creation via tag("circle"), etc.
+      // allow detached SVG child-tag creation via tag("circle"), etc.
       if (SVG_TAGS.includes(tag as SvgTag)) {
         const host = makeSvgHost();
         const create = typeof ix === "number" ? host.create.at(ix) : host.create;
@@ -93,7 +93,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
     },
   };
 
-  // CHANGED: wire native HTML tag helpers through fresh detached hosts
+  // wire native HTML tag helpers through fresh detached hosts
   for (const rawTag of HTML_TAGS) {
     const tag = rawTag as HtmlTag;
 
@@ -109,7 +109,7 @@ export function make_detached_livetree_create(): HtmlCreateHelper {
     };
   }
 
-  // CHANGED: explicit detached svg root helper
+  // explicit detached svg root helper
   (helper as Record<string, unknown>).svg = (source?: string): SvgLiveTree => {
     const ix = consumeIndex();
     const host = makeHtmlHost();

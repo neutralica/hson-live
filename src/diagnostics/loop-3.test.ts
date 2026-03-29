@@ -402,7 +402,7 @@ function looks_like_hson(s: string): boolean {
   return false;
 }
 
-// CHANGED: only try HTML when it actually looks like markup.
+// only try HTML when it actually looks like markup.
 // (Keep this conservative; “false negatives” are better than HTML swallowing JSON.)
 function looks_like_html(s: string): boolean {
   const t = s.trim();
@@ -449,13 +449,13 @@ function resolve_entry(
   }
 
   const s = atom.trim();
-  // CHANGED: commit by shape first, but give explicit HTML closer syntax priority
+  // commit by shape first, but give explicit HTML closer syntax priority
   // over HSON because some HTML is parseable as HSON and contaminates source-sensitive tests.
   const likeJson = looks_like_json(s);
   const likeHson = looks_like_hson(s);
   const likeHtml = looks_like_html(s);
 
-  // CHANGED: strong HTML signal for auto-detect in diagnostics/tests
+  // strong HTML signal for auto-detect in diagnostics/tests
   const hasHtmlCloser = s.includes("</");
 
   // Prefer JSON if it looks JSON-ish.
@@ -475,7 +475,7 @@ function resolve_entry(
     }
   }
 
-  // CHANGED: explicit HTML closing tags are a strong diagnostic signal.
+  // explicit HTML closing tags are a strong diagnostic signal.
   // HSON normally does not use </tag> closers, so prefer HTML here.
   if (hasHtmlCloser) {
     try {
@@ -494,7 +494,7 @@ function resolve_entry(
 
   let hsonErr: unknown = undefined;
 
-  // CHANGED: prefer HSON for remaining markup-ish input
+  // prefer HSON for remaining markup-ish input
   if (likeHson || likeHtml) {
     try {
       const n = SPIN.hson.parse(s);
@@ -509,7 +509,7 @@ function resolve_entry(
     }
   }
 
-  // CHANGED: HTML fallback only after HSON fails, unless the strong </ signal already handled it above
+  // HTML fallback only after HSON fails, unless the strong </ signal already handled it above
   if (likeHtml) {
     try {
       const n = SPIN.html.parse(s);
@@ -636,13 +636,13 @@ function safe_emit(
   node: HsonNode,
   stepName: string,
   opt: CoreOpt,
-  mark?: { lap: number; dir?: "cw" | "ccw"; phase: "emit" } // CHANGED: add lap/dir context
+  mark?: { lap: number; dir?: "cw" | "ccw"; phase: "emit" } // add lap/dir context
 ): string | undefined {
   try {
     const s = SPIN[fmt].emit(node);
     step_ok(opt, stepName);
 
-    // CHANGED: capture emitted string immediately, even if subsequent parse fails
+    // capture emitted string immediately, even if subsequent parse fails
     if (opt.capture && mark) {
       opt.capture.artifacts.push({
         lap: mark.lap,

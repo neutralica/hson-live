@@ -274,10 +274,10 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
   const onAny = <E extends Event>(type: string, handler: (ev: E) => void): ListenerSub => {
     // NOTE: this is the same as `on`, but without keyof ElemMap constraint.
     return on(type as keyof ElemMap, handler as (ev: any) => void);
-    // CHANGED: we deliberately reuse `on(...)` so queue/attach logic stays 1-source-of-truth.
+    // we deliberately reuse `on(...)` so queue/attach logic stays 1-source-of-truth.
   };
 
-  // CHANGED: add convenience wrappers so api satisfies ListenerBuilder
+  // add convenience wrappers so api satisfies ListenerBuilder
   api = {
     on,
 

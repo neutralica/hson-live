@@ -34,7 +34,7 @@ function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
     return Array.isArray(q);
 }
 
-// CHANGED: no overloads; just accept the union and narrow.
+// no overloads; just accept the union and narrow.
 function asManyQuery(q: FindQueryMany): readonly FindQuery[] {
     return isManyQuery(q) ? q : [q];
 }
@@ -85,7 +85,7 @@ export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSel
     const out: LiveTree[] = [];
     for (const one of qs) {
         const sel = find_all_in_tree(tree, one);  // returns TreeSelector
-        out.push(...sel.toArray());              // CHANGED: use TreeSelector primitive
+        out.push(...sel.toArray());              // use TreeSelector primitive
     }
 
     return make_tree_selector(out);
@@ -122,7 +122,7 @@ export function make_find_for(tree: LiveTree): FindWithById {
     return res;
   }) as FindWithById["must"];
 
-  // CHANGED: sugar parity with findAll
+  // sugar parity with findAll
   base.byId = (id: string): LiveTree | undefined =>
     base({ attrs: { id } });
 
@@ -185,7 +185,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
         return sel;
     }) as FindMany["must"];
 
-    // CHANGED: make sure these param types are explicit (no implicit any)
+    // make sure these param types are explicit (no implicit any)
     base.id = (ids: string | readonly string[]): TreeSelector => {
         const list: readonly string[] = Array.isArray(ids) ? ids : [ids];
         return base(list.map((id) => ({ attrs: { id } })));

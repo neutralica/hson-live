@@ -2,7 +2,7 @@
 
 import { AnimAdapters, AnimApi, AnimApiCore, AnimSpec, AnimationName, AnimationEndMode } from "../../../types/animate.types.js";
 
-// CHANGED: single type parameter; output API matches the core + target type
+// single type parameter; output API matches the core + target type
 export function bind_anim_api<TTarget>(
   target: TTarget,
   core: AnimApiCore<TTarget>,
@@ -242,7 +242,7 @@ function forceReflow(tree: unknown, el: Element): void {
  * @returns
  *   An `AnimApi<TTree>` implementing begin/restart/end operations over the scope.
  */
-// CHANGED: return core for the same TTarget the adapters operate on
+// return core for the same TTarget the adapters operate on
 export function apply_animation<TTarget>(
   adapters: AnimAdapters<TTarget>,
 ): AnimApiCore<TTarget> {

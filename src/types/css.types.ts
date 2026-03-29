@@ -188,7 +188,7 @@ export type CssPseudoKey =
 
 
 interface CssMapBase_ extends Partial<Record<AllowedStyleKey | "float", CssValue>> {
-  // CHANGED: allow nested maps (for pseudos) *and* regular css values
+  // allow nested maps (for pseudos) *and* regular css values
   // NOTE: include undefined so `Partial<>` behaves sanely with the index signature.
   [k: string]: CssValue | CssMapBase_ | undefined;
 }

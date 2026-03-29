@@ -13,11 +13,11 @@ import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 
 type ContentItem = HsonNode | Primitive;
 
-// CHANGED: cached set for “is this a structural tag?”
+// cached set for “is this a structural tag?”
 const VSN_SET: ReadonlySet<string> = new Set(EVERY_VSN);
 const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 
-// CHANGED: semantic container = unwrap single _elem
+// semantic container = unwrap single _elem
 function unwrap_single_elem(node: HsonNode): HsonNode {
   const kids = node._content;
   if (!Array.isArray(kids)) return node;
@@ -70,7 +70,7 @@ export function remove_node_children(parent: HsonNode): number {
   return toRemove.length;
 }
 
-// CHANGED: if you have empty() that should clear EVERYTHING (nodes + primitives),
+// if you have empty() that should clear EVERYTHING (nodes + primitives),
 // implement it separately so semantics are explicit.
 export function empty_contents(this: LiveTree): LiveTree {
   const parent = this.node;
@@ -91,7 +91,7 @@ export function empty_contents(this: LiveTree): LiveTree {
   return this;
 }
 
-// CHANGED: factor out “does this node match the query”
+// factor out “does this node match the query”
 function matches_query(node: HsonNode, query: HsonQuery): boolean {
   const tagOK = !query.tag || node._tag.toLowerCase() === query.tag.toLowerCase();
   return tagOK && matchAttrs(node, query) && matchMeta(node, query) && matchText(node, query);

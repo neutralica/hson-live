@@ -176,8 +176,8 @@ export class CssManager {
   }
 
   // ADDED: coalescing state
-  private scheduled: boolean = false;        // CHANGED: prevents multiple schedules
-  private rafId: number | null = null;       // CHANGED: lets us cancel when forcing sync
+  private scheduled: boolean = false;        // prevents multiple schedules
+  private rafId: number | null = null;       // lets us cancel when forcing sync
 
   private boundDoc: Document | null = null;
 
@@ -198,10 +198,10 @@ export class CssManager {
    *   from “eager” to “scheduled” syncing.
    */
   private markChanged(): void {
-    // CHANGED: mark dirty, but DO NOT write immediately
+    // mark dirty, but DO NOT write immediately
     this.changed = true;
 
-    // CHANGED: schedule a single flush
+    // schedule a single flush
     this.scheduleSync();
   }
 
@@ -211,7 +211,7 @@ export class CssManager {
   private scheduleSync(): void {
     if (this.scheduled) return;
 
-    // CHANGED: in Node (tests), flush immediately for determinism
+    // in Node (tests), flush immediately for determinism
     if (this.isNodeRuntime()) {
       this.syncNow();
       return;
@@ -221,7 +221,7 @@ export class CssManager {
       | ((cb: FrameRequestCallback) => number)
       | undefined;
 
-    // CHANGED: if no RAF in a browser-ish env, fallback to immediate
+    // if no RAF in a browser-ish env, fallback to immediate
     if (!raf) {
       this.syncNow();
       return;
@@ -314,7 +314,7 @@ export class CssManager {
     if (!doc) return undefined;
 
 
-    // CHANGED: use the local doc var instead of global `document`
+    // use the local doc var instead of global `document`
     if (this.boundDoc !== doc) {
       this.boundDoc = doc;
       this.styleEl = null;
@@ -502,7 +502,7 @@ export class CssManager {
       },
 
       forEachDomElement: (scope, fn) => {
-        // CHANGED: guard document
+        // guard document
         const doc = (globalThis as any).document as Document | undefined;
         if (!doc) return;
 
@@ -513,7 +513,7 @@ export class CssManager {
       },
 
       getFirstDomElement: (scope) => {
-        // CHANGED: guard document
+        // guard document
         const doc = (globalThis as any).document as Document | undefined;
         if (!doc) return undefined;
 
@@ -538,7 +538,7 @@ export class CssManager {
   public static invoke(): CssManager {
     if (!CssManager.instance) CssManager.instance = new CssManager();
 
-    // CHANGED: bind doc if present, but do NOT create <style> here
+    // bind doc if present, but do NOT create <style> here
     CssManager.instance.ensureBoundDoc();
 
     return CssManager.instance;
@@ -653,7 +653,7 @@ export class CssManager {
         prop: p,
         value: v,
       });
-      return; // CHANGED: do not store invalid decl
+      return; // do not store invalid decl
     }
 
     let props = this.rulesByQuid.get(q);
@@ -876,16 +876,16 @@ export class CssManager {
    */
   // TODO make private/dev mode
   public syncNow(): void {
-    // CHANGED: cancel any pending scheduled flush to avoid double work
+    // cancel any pending scheduled flush to avoid double work
     if (this.rafId !== null && typeof cancelAnimationFrame === "function") {
       cancelAnimationFrame(this.rafId);
     }
     this.rafId = null;
     this.scheduled = false;
-    // CHANGED: no-op if nothing changed
+    // no-op if nothing changed
     if (!this.changed) return;
 
-    // CHANGED: perform the actual write
+    // perform the actual write
     this.syncToDom();
   }
 
@@ -922,7 +922,7 @@ export class CssManager {
       const rules = this.rulesByQuid.get(oldQ);
       if (!rules) continue;
 
-      // CHANGED: clone the inner map so edits don’t alias
+      // clone the inner map so edits don’t alias
       this.rulesByQuid.set(newQ, new Map(rules));
     }
     this.markChanged();

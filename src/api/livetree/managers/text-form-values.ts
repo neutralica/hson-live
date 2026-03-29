@@ -14,7 +14,7 @@ import { CREATE_NODE } from "../../../consts/factories.js";
  * Options for form state writers that mirror to the DOM when available.
  */
 export type SetNodeFormOpts = Readonly<{
-  // CHANGED: default should be "silent" (missing DOM is normal pre-mount)
+  // default should be "silent" (missing DOM is normal pre-mount)
   silent?: boolean;
 
   // ADDED: for callers that want the old strict behavior
@@ -151,7 +151,7 @@ export function set_form_value(node: HsonNode, value: string, opts?: SetNodeForm
     return;
   }
 
-  // CHANGED: always mirror when we can
+  // always mirror when we can
   const ctl = resolve_form_control(el as Element);
   if (ctl) {
     ctl.value = value;
@@ -300,13 +300,13 @@ export function get_input_selected(node: HsonNode): string | readonly string[] {
 // -----------------------------------------------------------------------------//.. DOM helpers (CHANGED): project text leaves as *Text nodes*, never <_str>/< _val >
 // -----------------------------------------------------------------------------
 
-// CHANGED: was creating document.createElement("_str") which injects <_str> into DOM.
+// was creating document.createElement("_str") which injects <_str> into DOM.
 // Now: always create a Text node.
 function make_dom_text(value: Primitive): Text {
   return document.createTextNode(value === null ? "" : String(value));
 }
 
-// CHANGED: remove direct child Text nodes (these represent projected text leaves).
+// remove direct child Text nodes (these represent projected text leaves).
 // We do NOT touch element children, so non-leaf content remains.
 function remove_dom_text_leaves(host: Element): void {
   const toRemove: ChildNode[] = [];
@@ -342,16 +342,16 @@ function isLeafTag(tag: unknown): boolean {
 export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
 
-  // CHANGED: always edit inside the VSN bucket
+  // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
 
-  // CHANGED: remove only leaf nodes; keep everything else intact
+  // remove only leaf nodes; keep everything else intact
   bucket._content = bucket._content.filter((c) => {
     if (!is_Node(c)) return true;               // if you truly never have non-nodes, fine
     return !isLeafTag(c._tag);                  // remove _str/_val only
   });
 
-  // CHANGED: append exactly one new leaf
+  // append exactly one new leaf
   bucket._content.push(leaf);
 
   // --- DOM projection (CHANGED): Text nodes only ---
@@ -370,7 +370,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
 export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
 
-  // CHANGED: always edit inside the VSN bucket
+  // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
   bucket._content.push(leaf);
 
@@ -391,7 +391,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
   const leaf = make_leaf(value);
 
-  // CHANGED: always edit inside the VSN bucket
+  // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
 
   const len = bucket._content.length;
@@ -422,7 +422,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
 export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);
 
-  // CHANGED: always overwrite the VSN bucket, not node._content
+  // always overwrite the VSN bucket, not node._content
   const bucket = ensureVsn(node);
   bucket._content = [leaf];
 

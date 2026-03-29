@@ -24,7 +24,7 @@ export function scan_quoted_block(
   const line = lines[lineIdx] ?? "";
   const opener = line[colIdx];
 
-  // CHANGED: only support double-quoted blocks
+  // only support double-quoted blocks
   if (opener !== '"') {
     _throw_transform_err(
       `scan_quoted_block: unsupported quote delimiter (use " only) at ${lineIdx + 1}:${colIdx + 1}`,
@@ -37,10 +37,10 @@ export function scan_quoted_block(
   let i = lineIdx;
   let j = colIdx + 1;
 
-  // CHANGED: full-literal contract; include opening quote
+  // full-literal contract; include opening quote
   let raw = '"';
 
-  // CHANGED: track whether the previous char was a backslash in source
+  // track whether the previous char was a backslash in source
   let escaped = false;
 
   while (i < lines.length) {
@@ -50,7 +50,7 @@ export function scan_quoted_block(
       const ch = cur[j];
 
       if (escaped) {
-        // CHANGED: preserve authored escape exactly as a JSON-style escape pair
+        // preserve authored escape exactly as a JSON-style escape pair
         raw += "\\" + ch;
         escaped = false;
         j++;
@@ -58,19 +58,19 @@ export function scan_quoted_block(
       }
 
       if (ch === "\\") {
-        // CHANGED: defer emission until we know the escaped char
+        // defer emission until we know the escaped char
         escaped = true;
         j++;
         continue;
       }
 
       if (ch === delim) {
-        // CHANGED: close the normalized literal
+        // close the normalized literal
         raw += '"';
         return { raw, endLine: i, endCol: j + 1, delim };
       }
 
-      // CHANGED: normalize control chars/newlines into JSON-safe escapes
+      // normalize control chars/newlines into JSON-safe escapes
       if (ch === "\t") {
         raw += "\\t";
         j++;
@@ -83,19 +83,19 @@ export function scan_quoted_block(
         continue;
       }
 
-      // CHANGED: a bare double quote should only terminate; reaching here means just emit content
+      // a bare double quote should only terminate; reaching here means just emit content
       raw += ch;
       j++;
     }
 
-    // CHANGED: if the source line ends with a dangling backslash, preserve it literally
+    // if the source line ends with a dangling backslash, preserve it literally
     // rather than silently carrying escape state across the physical newline.
     if (escaped) {
       raw += "\\\\";
       escaped = false;
     }
 
-    // CHANGED: preserve physical line breaks as \n inside the normalized literal
+    // preserve physical line breaks as \n inside the normalized literal
     raw += "\\n";
     i++;
     j = 0;
@@ -185,7 +185,7 @@ export function scan_tag_header_block(
       j++;
     }
 
-    // CHANGED: if quote is still open, preserve newline and continue scanning
+    // if quote is still open, preserve newline and continue scanning
     if (inQuote) {
       rawParts.push("\n");
       posMap.push({
@@ -198,7 +198,7 @@ export function scan_tag_header_block(
       continue;
     }
 
-    // CHANGED: once we're at end-of-line and not inQuote, this logical header is complete.
+    // once we're at end-of-line and not inQuote, this logical header is complete.
     // Detect a trailing closer at the end of THIS physical line only.
     const tailLine = cur;
     const mTrail = tailLine.match(/(\/?>)\s*(?:\/\/.*)?$/);

@@ -93,7 +93,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
           throw new Error("sanitizeBEWARE(): frame is missing HSON node data");
         }
 
-        // CHANGED: Node → HTML → sanitized Node, then continue from a fresh frame
+        // Node → HTML → sanitized Node, then continue from a fresh frame
         const rawHtml = serialize_html(node);
         const sanitizedNode = parse_external_html(rawHtml);
 

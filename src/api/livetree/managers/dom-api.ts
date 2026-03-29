@@ -3,16 +3,16 @@ import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi } from "../../../types/dom
 import { _snip } from "../../../utils/sys-utils/snip.utils.js";
 import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
 
-// CHANGED: honest maybe-returning lookup from DOM element back to tree node
+// honest maybe-returning lookup from DOM element back to tree node
 function tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
   const quid = el.getAttribute("data-_quid") ?? undefined;
   if (!quid) return undefined;
 
-  // CHANGED: keep using existing find path until a quid index exists
+  // keep using existing find path until a quid index exists
   return tree.find.byAttrs("data-_quid", quid) ?? undefined;
 }
 
-// CHANGED: strict helper for internal use
+// strict helper for internal use
 function tree_from_el_must(tree: LiveTree, el: Element, label?: string): LiveTree {
   const hit = tree_from_el(tree, el);
   if (!hit) {
@@ -77,7 +77,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
   const rect = (() => {
     const e = el();
 
-    // CHANGED: geometry only exists for rendered elements
+    // geometry only exists for rendered elements
     if (!e) return undefined;
     if (typeof e.getBoundingClientRect !== "function") return undefined;
 
@@ -101,7 +101,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     return tree_from_el(tree, e.parentElement);
   }) as ParentFn;
 
-  // CHANGED: strict variants grouped under dom.must.* for API symmetry
+  // strict variants grouped under dom.must.* for API symmetry
   const must = {
     el(label?: string): Element {
       const hit = el();

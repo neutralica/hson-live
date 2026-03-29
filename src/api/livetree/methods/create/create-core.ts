@@ -89,7 +89,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     return ix;
   };
 
-  // CHANGED: unwrap element payload and keep only real element tags
+  // unwrap element payload and keep only real element tags
   function extract_real_element_children(node: HsonNode): HsonNode[] {
     const kids = Array.isArray(node._content) ? node._content : [];
 
@@ -116,7 +116,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     function unwrap_created_children_for_tag(root: HsonNode, tag: TagName, ns: CreateNs): HsonNode[] {
       const base = unwrap_root_elem(root);
 
-      // CHANGED: for svg child-tag bootstrap wrappers like
+      // for svg child-tag bootstrap wrappers like
       // <svg xmlns="..."><g/></svg>, unwrap the temporary svg shell
       if (ns === "svg" && tag !== "svg") {
         if (base.length === 1 && base[0]?._tag === "svg") {
@@ -137,7 +137,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
       const appended = unwrap_created_children_for_tag(root0, t, ns);
 
-      // CHANGED: append the intended children, not the temporary wrapper root
+      // append the intended children, not the temporary wrapper root
       const tempRoot = CREATE_NODE({
         _tag: ROOT_TAG,
         _content: [
@@ -273,7 +273,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       }
 
       const svgRoot = baseChildren[0];
-      // CHANGED: ignore _str / _elem / other VSN noise, keep only real element children
+      // ignore _str / _elem / other VSN noise, keep only real element children
       createdChildren = extract_real_element_children(svgRoot);
     }
 

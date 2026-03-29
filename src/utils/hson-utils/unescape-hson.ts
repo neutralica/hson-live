@@ -15,7 +15,7 @@
 * @returns The decoded string with supported escapes resolved.
 *******/
 export function unescape_hson_string(s: string): string {
-  // CHANGED: preserve authored whitespace; do not trim quoted content
+  // preserve authored whitespace; do not trim quoted content
   const t = s;
 
   // Case A: full JSON string literal already
@@ -28,7 +28,7 @@ export function unescape_hson_string(s: string): string {
   }
 
   // Case B: inner text from a quoted HSON region.
-  // CHANGED: decode explicit escape sequences, but preserve literal newlines/spaces.
+  // decode explicit escape sequences, but preserve literal newlines/spaces.
   let out = "";
   let i = 0;
 
@@ -74,7 +74,7 @@ export function unescape_hson_string(s: string): string {
       }
 
       default:
-        // CHANGED: preserve unknown escapes literally, but drop the escape slash
+        // preserve unknown escapes literally, but drop the escape slash
         // only if you want JS-like behavior. Safer here is to preserve both.
         out += "\\" + nxt;
         break;

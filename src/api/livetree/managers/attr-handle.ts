@@ -80,11 +80,11 @@ export function applyAttrToNode(
   const key = svg_attr_key_from_node_tag(node, name);
   const el = element_for_node(node) as Element | undefined;
 
-  // CHANGED: normalize undefined -> null (removal)
+  // normalize undefined -> null (removal)
   const v: Primitive = (value === undefined ? null : value);
 
   // ---- remove / delete ----------------------------------------
-  // CHANGED: `false` means remove (if you want literal "false", pass "false")
+  // `false` means remove (if you want literal "false", pass "false")
   if (v === null || v === false) {
     if (key === "style") {
       delete attrs.style;
@@ -110,11 +110,11 @@ export function applyAttrToNode(
   }
 
   // ---- normal value -------------------------------------------
-  // CHANGED: numbers become strings here
+  // numbers become strings here
   const s = String(v);
 
   if (key === "style") {
-    // CHANGED: parse+store structured style map, mirror canonical text to DOM
+    // parse+store structured style map, mirror canonical text to DOM
     const cssObj = parse_style_string(s) as CssMap;
     attrs.style = cssObj;
 
@@ -183,7 +183,7 @@ export function setAttrsImpl<TTree extends LiveTree>(
 }
 
 export function removeAttrImpl<TTree extends LiveTree>(tree: TTree, name: string): TTree {
-  // CHANGED: removal uses undefined->null normalization inside apply
+  // removal uses undefined->null normalization inside apply
   applyAttrToNode(tree.node, name, null);
   return tree;
 }
@@ -219,7 +219,7 @@ export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined
  * even for flags stored as key="key".
  */
 export function hasAttrImpl(tree: LiveTree, name: string): boolean {
-  // CHANGED: key-exists check avoids edge cases where value could be ""
+  // key-exists check avoids edge cases where value could be ""
   const attrs = tree.node._attrs;
   if (!attrs) return false;
   const key = svg_attr_key_from_node_tag(tree.node, name);

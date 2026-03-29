@@ -49,7 +49,7 @@ type NodeWithKids = { _content?: unknown[] };
     el.remove();
   }
 
-  // CHANGED: clear any QUID-scoped CSS for this node (if present)
+  // clear any QUID-scoped CSS for this node (if present)
   // (Put your actual “get quid from node” logic here.)
   const quid = (node as any)?._meta?.["data-_quid"];
   if (typeof quid === "string" && quid.length) {

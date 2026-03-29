@@ -42,13 +42,13 @@ const voidTags = [
  *******/
 // src/utils/html-utils/expand-void-tags.ts (or wherever yours lives)
 export function expand_void_tags(src: string): string {
-  // CHANGED: include embed + full HTML void set; keep lowercase canonical
+  // include embed + full HTML void set; keep lowercase canonical
   const VOID = new Set([
     "area", "base", "br", "col", "embed", "hr", "img", "input",
     "link", "meta", "param", "source", "track", "wbr",
   ]);
 
-  // CHANGED: self-close <void ...> into <void ... />
+  // self-close <void ...> into <void ... />
   // - handles attributes
   // - handles adjacency like </object><embed ...>
   // - does NOT touch already-self-closed tags
@@ -69,7 +69,7 @@ export function expand_void_tags(src: string): string {
       const closer = new RegExp(`</\\s*${tagRaw}\\s*>`, "i");
       if (closer.test(src)) return m;
 
-      // CHANGED: self-close
+      // self-close
       return `<${tagRaw}${rest} />`;
     }
   );

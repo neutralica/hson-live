@@ -6,7 +6,7 @@ export function lex_text_piece(s: string): { text: string; quoted: boolean } {
   const t = s.trim();
   if (!t) return { text: "", quoted: false };
 
-  // CHANGED: only accept JSON-style double quotes for quoted literals
+  // only accept JSON-style double quotes for quoted literals
   const q = t[0];
   if (q === "'" && t[t.length - 1] === "'") {
     const inner = t.slice(1, -1);

@@ -12,7 +12,7 @@ type ContentItem = HsonNode | Primitive;
 const VSN_SET: ReadonlySet<string> = new Set(EVERY_VSN);
 const LEAF_SET: ReadonlySet<string> = new Set(LEAF_NODES);
 
-// CHANGED: helper
+// helper
 const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 const is_leaf_vsn = (tag: string): boolean => LEAF_SET.has(tag);
 
@@ -45,19 +45,19 @@ export class ContentManager {
 
         const tag = it._tag;
 
-        // CHANGED: leaf wrappers are invisible at the “element-children” level
+        // leaf wrappers are invisible at the “element-children” level
         if (is_leaf_vsn(tag)) {
           continue;
         }
 
-        // CHANGED: container wrappers are invisible; descend into their content
+        // container wrappers are invisible; descend into their content
         if (is_vsn_tag(tag)) {
           const kids = (it._content ?? []) as readonly ContentItem[];
           walk_items(kids);
           continue;
         }
 
-        // CHANGED: normal element node
+        // normal element node
         out.push(it);
       }
     };

@@ -240,7 +240,7 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
 function applyStyleToNode(node: HsonNode, kebabName: string, value: string): void {
     const el = element_for_node(node);
 
-    // CHANGED: allow SVGElement too (and any Element with a style decl)
+    // allow SVGElement too (and any Element with a style decl)
     if (el instanceof Element) {
         if (value === "") {
             (el as any).style.removeProperty(kebabName);
@@ -324,7 +324,7 @@ export class StyleManager<TTree extends LiveTree> {
         // ADDED: getter reads from the node’s style attr (internal truth)
         this.getter = make_style_getter({
             read: (propCanon: string) => {
-                // CHANGED: StyleManager stores inline style in kebab form
+                // StyleManager stores inline style in kebab form
                 const attr = this.tree.attr.get("style");
                 const raw = typeof attr === "string" ? attr : undefined;
 

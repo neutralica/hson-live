@@ -36,7 +36,7 @@ export type StyleGetter = Readonly<{
  */
 export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
   const getProp = (prop: CssKey): string | undefined => {
-    // CHANGED: reuse your canonicalization; MUST match whatever set uses
+    // reuse your canonicalization; MUST match whatever set uses
     const canon = nrmlz_cssom_prop_key(prop);
     return adapters.read(canon);
   };

@@ -42,7 +42,7 @@ export function mangle_illegal_attrs(src: string): string {
 
     const tagEnd = find_tag_end(src, lt);
     if (tagEnd < 0) {
-      // CHANGED: if malformed (no closing '>'), bail by copying rest
+      // if malformed (no closing '>'), bail by copying rest
       out += src.slice(lt);
       break;
     }
@@ -70,7 +70,7 @@ export function mangle_illegal_attrs(src: string): string {
 
 function is_skippable_tag(tag: string): boolean {
   // tag includes leading '<' and trailing '>'
-  // CHANGED: more explicit + correct ordering for "<!--"
+  // more explicit + correct ordering for "<!--"
   if (tag.startsWith("</")) return true;
   if (tag.startsWith("<!--")) return true;
   if (tag.startsWith("<!")) return true;   // doctype, CDATA in some contexts, etc.
@@ -79,7 +79,7 @@ function is_skippable_tag(tag: string): boolean {
 }
 
 function find_tag_end(src: string, lt: number): number {
-  // CHANGED: scan until '>' not inside quotes
+  // scan until '>' not inside quotes
   let inQuote: "'" | '"' | null = null;
 
   for (let i = lt + 1; i < src.length; i++) {
@@ -124,7 +124,7 @@ function rewrite_start_tag_attrs(tag: string): string {
 
   const { attrsOut, attrMap, hasTransitAlready } = rewrite_attrs(attrsSrc);
 
-  // CHANGED: only append transit map if we changed something AND transit attr isn't already present
+  // only append transit map if we changed something AND transit attr isn't already present
   if (!hasTransitAlready && Object.keys(attrMap).length > 0) {
     const mapJson = JSON.stringify(attrMap)
       .replace(/</g, "\\u003C")
@@ -188,7 +188,7 @@ function rewrite_attrs(attrsSrc: string): {
   const attrMap: Record<string, string> = Object.create(null);
   const usedSafe = new Set<string>();
 
-  // CHANGED: detect if _TRANSIT_ATTRS already exists on this element;
+  // detect if _TRANSIT_ATTRS already exists on this element;
   // if so, do not add another mapping attribute.
   let hasTransitAlready = false;
 
@@ -248,7 +248,7 @@ function rewrite_attrs(attrsSrc: string): {
       // i currently at first non-ws or end; but we consumed ws after name.
       // We want to preserve that ws we skipped; so we reconstruct as:
       // name + (whatever ws existed) + (rest)
-      // CHANGED: keep the exact whitespace between name and next token:
+      // keep the exact whitespace between name and next token:
       // we already skipped it, so re-add from attrsSrc.
       // eqStart points to original i before skipping ws.
       const wsBetween = attrsSrc.slice(eqStart, i);
@@ -257,12 +257,12 @@ function rewrite_attrs(attrsSrc: string): {
       eqval = wsBetween;
     }
 
-    // CHANGED: namespace-aware attribute name policy:
+    // namespace-aware attribute name policy:
     // - allow xml:* and xmlns:* untouched (real XML namespace machinery)
     // - everything else containing ":" must be mangled (via xHHHdisallowed, presumably)
     const safe0 = safe_attr_name(rawName);
 
-    // CHANGED: avoid collisions: if safe name already used for a different raw name, disambiguate.
+    // avoid collisions: if safe name already used for a different raw name, disambiguate.
     let safe = safe0;
     if (safe !== rawName) {
       safe = disambiguate_safe_name(safe0, usedSafe, rawName, attrMap);
@@ -291,7 +291,7 @@ function safe_attr_name(name: string): string {
   if (name.startsWith("xmlns:")) return name;
   if (name.startsWith("xml:")) return name;
 
-  // CHANGED: colon in attr name => XML namespace syntax; treat as illegal for HTML-origin attrs
+  // colon in attr name => XML namespace syntax; treat as illegal for HTML-origin attrs
   if (name.includes(":")) {
     // pick a stable encoding that is XML-name-safe
     // (don’t use ":"; don’t introduce leading digits; keep it readable)
@@ -307,7 +307,7 @@ function disambiguate_safe_name(
   rawName: string,
   map: Record<string, string>
 ): string {
-  // CHANGED: stable-ish disambiguation that avoids collisions.
+  // stable-ish disambiguation that avoids collisions.
   // Prefer suffixes that are XML-name friendly.
   if (!used.has(base) && !(base in map)) return base;
 

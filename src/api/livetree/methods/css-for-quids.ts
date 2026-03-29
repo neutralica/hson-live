@@ -8,7 +8,7 @@ import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../m
 import { make_style_getter } from "../managers/style-getter.js";
 import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
-// CHANGED: one canonical adapter builder for CssManager-backed setters.
+// one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
 const mk_css_quids_adapters = (
   mgr: CssManager,
@@ -113,7 +113,7 @@ function make_selector_style_setter<TReturn>(
       handle.clear();
     },
 
-    // CHANGED: keep pseudo support working on selector-scoped rules too
+    // keep pseudo support working on selector-scoped rules too
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
       const suf = pseudo_to_suffix(pseudo);
       const pseudoHandle = gcss.rule(`${ruleKey}${suf}`, `${selector}${suf}`);
@@ -178,7 +178,7 @@ export function css_for_quids(
 
     const setter = make_style_setter<LiveTree>(
       host,
-      mk_css_quids_adapters(mgr, ids), // CHANGED: single source of truth
+      mk_css_quids_adapters(mgr, ids), // single source of truth
     );
 
     const getter = mk_getter_for_ids(ids);
@@ -199,7 +199,7 @@ export function css_for_quids(
 
   const setter = make_style_setter<void>(
     undefined,
-    mk_css_quids_adapters(mgr, ids), // CHANGED: same helper here too
+    mk_css_quids_adapters(mgr, ids), // same helper here too
   );
 
   const getter = mk_getter_for_ids(ids);

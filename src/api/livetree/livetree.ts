@@ -219,7 +219,7 @@ export class LiveTree {
   public empty = empty_contents;
 
   public removeChildren(): number {
-    // CHANGED: minimal wrapper; semantics live in helper
+    // minimal wrapper; semantics live in helper
     const parent = this.nodeRef.resolveNode();
     if (!parent) return 0;
     return remove_node_children(parent);
@@ -231,7 +231,7 @@ export class LiveTree {
    * @see remove_livetree
    */
   public removeSelf(): number {
-    // CHANGED: funnel through the one implementation
+    // funnel through the one implementation
     return remove_livetree.call(this);
   }
 

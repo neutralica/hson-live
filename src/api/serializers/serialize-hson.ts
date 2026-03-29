@@ -115,7 +115,7 @@ function assertAndReturnMeta(meta?: HsonMeta): Record<string, string> {
 }
 
 function escape_hson_quoted_attr_value(v: string): string {
-    // CHANGED: use JSON string escaping, then strip the outer quotes
+    // use JSON string escaping, then strip the outer quotes
     return JSON.stringify(v).slice(1, -1);
 }
 /**
@@ -134,13 +134,13 @@ function formatAttrsNEW(attrs: HsonAttrs | undefined): string {
 
     const kv = (k: string, v: Primitive | Record<string, string>) => {
         if (k === "style" && v && typeof v === "object" && !Array.isArray(v)) {
-            // CHANGED: style object → canonical CSS string, then fully escape for quoted attr transport
+            // style object → canonical CSS string, then fully escape for quoted attr transport
             const css = serialize_style(v as Record<string, string>);
             return ` ${k}="${escape_hson_quoted_attr_value(css)}"`;
         }
 
         if (typeof v === "string") {
-            // CHANGED: escape backslashes, quotes, control chars, newlines, etc.
+            // escape backslashes, quotes, control chars, newlines, etc.
             return ` ${k}="${escape_hson_quoted_attr_value(v)}"`;
         }
 
@@ -165,7 +165,7 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
         const m = assertAndReturnMeta(meta);
         if (!Object.keys(m).length) return "";
 
-        // CHANGED: system/meta attrs need the same full quoted-string escaping
+        // system/meta attrs need the same full quoted-string escaping
         const parts = Object.keys(m)
             .sort()
             .map(k => ` ${k}="${escape_hson_quoted_attr_value(m[k])}"`);
@@ -494,7 +494,7 @@ function emitNode(
 
                     const renderedRaw = rendered.trim();
 
-                    // CHANGED: allow one-line “simple” values in OBJ property emission
+                    // allow one-line “simple” values in OBJ property emission
                     const canInline =
                         // renderedRaw === "<>" ||
                         (renderedRaw.length > 0 && !renderedRaw.includes("\n"));
@@ -572,7 +572,7 @@ function emitNode(
         const shape = inlineShape(node);
         if (shape !== undefined) {
             if (parentCluster === OBJ_TAG) {
-                // CHANGED: OBJ-mode should be inline for primitive/void too.
+                // OBJ-mode should be inline for primitive/void too.
                 // This removes the inconsistent newline policy vs getSelfCloseValueNEW.
                 if (shape.kind === "void") {
                     return `${pad}<${node._tag}${attrsStr}  <>`; // OBJ closer implied by ">"
