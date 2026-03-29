@@ -32,7 +32,7 @@ const mk_css_quids_adapters = (
       }
     },
 
-    // ADDED: pseudo routing for quid-scoped rules
+    // pseudo routing for quid-scoped rules
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
       for (const quid of ids) {
         for (const [k, v] of Object.entries(pseudoDecls)) {
@@ -48,7 +48,7 @@ const mk_css_quids_adapters = (
           }
         }
 
-        // ADDED: auto-content for ::before/::after if omitted
+        // auto-content for ::before/::after if omitted
         if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
           mgr.setPseudoForQuid(quid, pseudo, "content", `""`);
         }

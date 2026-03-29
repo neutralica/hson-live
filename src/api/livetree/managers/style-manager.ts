@@ -284,7 +284,7 @@ export class StyleManager<TTree extends LiveTree> {
     private readonly runtimeKeys: ReadonlyArray<AllowedStyleKey>;
     public readonly setter: StyleSetter<TTree>;
 
-    // ADDED: read surface (mirrors your setter pattern)
+    // read surface mirrors setter pattern
     public readonly getter: StyleGetter;
 
     /**
@@ -321,7 +321,7 @@ export class StyleManager<TTree extends LiveTree> {
             },
         });
 
-        // ADDED: getter reads from the node’s style attr (internal truth)
+        // getter reads from the node’s style attr (internal truth)
         this.getter = make_style_getter({
             read: (propCanon: string) => {
                 // StyleManager stores inline style in kebab form

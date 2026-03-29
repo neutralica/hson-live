@@ -175,7 +175,7 @@ export class CssManager {
     // this.syncToDom();           // immediate
   }
 
-  // ADDED: coalescing state
+  // coalescing state
   private scheduled: boolean = false;        // prevents multiple schedules
   private rafId: number | null = null;       // lets us cancel when forcing sync
 
@@ -206,7 +206,7 @@ export class CssManager {
   }
 
   // -------------------------
-  // ADDED: scheduling layer
+  // scheduling layer
   // -------------------------
   private scheduleSync(): void {
     if (this.scheduled) return;
@@ -357,7 +357,7 @@ export class CssManager {
     return styleEl;
   }
 
-  // ADDED
+
   private getPseudoBucket(quid: string, pseudo: CssPseudoKey): Map<string, string> {
     let byPseudo = this.pseudoRulesByQuid.get(quid);
     if (!byPseudo) {
@@ -374,7 +374,7 @@ export class CssManager {
     return decls;
   }
 
-  // ADDED
+
   private clearPseudoForQuid(quid: string): void {
     if (this.pseudoRulesByQuid.delete(quid)) this.markChanged();
   }
@@ -462,7 +462,7 @@ export class CssManager {
     return parts.join("\n\n");
   }
 
-  // added
+
   private isNodeRuntime(): boolean {
     return typeof (globalThis as any).process !== "undefined"
       && !!(globalThis as any).process?.versions?.node;

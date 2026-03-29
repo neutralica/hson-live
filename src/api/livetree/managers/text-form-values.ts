@@ -17,7 +17,7 @@ export type SetNodeFormOpts = Readonly<{
   // default should be "silent" (missing DOM is normal pre-mount)
   silent?: boolean;
 
-  // ADDED: for callers that want the old strict behavior
+  // for callers that want the old strict behavior
   strict?: boolean;
 }>;
 
@@ -37,7 +37,7 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 /* ------------------------------------------------------------------------------------------------
  * Internal helpers
  * ---------------------------------------------------------------------------------------------- */
-// ADDED: leaf tags
+// leaf tags
 
 const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
@@ -94,7 +94,7 @@ function form_el_for_node(node: HsonNode): FormEl | null {
   return null;
 }
 
-// ADDED: optional strictness helper (keep your current error style)
+// optional strictness helper (keep your current error style)
 function throw_missing_el(node: HsonNode, source: string): never {
   const quid = node._meta?._quid ?? "<no-quid>";
   _throw_transform_err(
@@ -239,13 +239,13 @@ export function set_input_selected(
 
   const isMany = Array.isArray(selected);
   if (isMany) {
-    // ADDED: multi-select storage
+    // multi-select storage
     attrs.values = selected.slice();
     // optional: also set value to first for convenience
     attrs.value = selected[0] ?? "";
   } else {
     attrs.value = selected;
-    // ADDED: keep values in sync if present
+    // keep values in sync if present
     attrs.values = [selected];
   }
 

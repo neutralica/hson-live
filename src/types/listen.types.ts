@@ -207,7 +207,7 @@ export interface ListenerBuilder {
   onMouseMove(fn: (ev: MouseEvent) => void): ListenerSub;
   onMouseDown(fn: (ev: MouseEvent) => void): ListenerSub;
   onMouseUp(fn: (ev: MouseEvent) => void): ListenerSub;
-  onMouseEnter(fn: (ev: MouseEvent) => void): ListenerSub;       // ADDED (non-bubbling but still useful)
+  onMouseEnter(fn: (ev: MouseEvent) => void): ListenerSub;      
   onMouseLeave(fn: (ev: MouseEvent) => void): ListenerSub;       
 
   // Pointer (preferred modern input)
@@ -239,16 +239,16 @@ export interface ListenerBuilder {
   onFocusOut(fn: (ev: FocusEvent) => void): ListenerSub;
 
   // Drag & drop (very commonly needed unexpectedly)
-  onDragStart(fn: (ev: DragEvent) => void): ListenerSub;         // ADDED
-  onDragOver(fn: (ev: DragEvent) => void): ListenerSub;          // ADDED
-  onDrop(fn: (ev: DragEvent) => void): ListenerSub;              // ADDED
-  onDragEnd(fn: (ev: DragEvent) => void): ListenerSub;           // ADDED
+  onDragStart(fn: (ev: DragEvent) => void): ListenerSub;         
+  onDragOver(fn: (ev: DragEvent) => void): ListenerSub;          
+  onDrop(fn: (ev: DragEvent) => void): ListenerSub;              
+  onDragEnd(fn: (ev: DragEvent) => void): ListenerSub;          
 
   // CSS animation lifecycle
-  onAnimationStart(fn: (ev: AnimationEvent) => void): ListenerSub;      // ADDED (typed)
-  onAnimationIteration(fn: (ev: AnimationEvent) => void): ListenerSub;  // ADDED
-  onAnimationEnd(fn: (ev: AnimationEvent) => void): ListenerSub;        // ADDED
-  onAnimationCancel(fn: (ev: AnimationEvent) => void): ListenerSub;     // ADDED
+  onAnimationStart(fn: (ev: AnimationEvent) => void): ListenerSub;      
+  onAnimationIteration(fn: (ev: AnimationEvent) => void): ListenerSub;  
+  onAnimationEnd(fn: (ev: AnimationEvent) => void): ListenerSub;        
+  onAnimationCancel(fn: (ev: AnimationEvent) => void): ListenerSub;     
 
   // CSS transition lifecycle (pairs well with animation; comes up a lot)
   onTransitionStart(fn: (ev: TransitionEvent) => void): ListenerSub;   

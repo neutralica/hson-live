@@ -319,7 +319,7 @@ export class GlobalCss {
         applyNow();
       },
 
-      // ADDED: GlobalCss supports pseudos by emitting sibling rules
+      // GlobalCss supports pseudos by emitting sibling rules
       applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
         const suf = pseudo_to_suffix(pseudo);
         const pseudoKey = `${ruleKey}${suf}`;
@@ -334,7 +334,7 @@ export class GlobalCss {
       },
     });
 
-    // ADDED: you were missing this return entirely
+    // you were missing this return entirely
     return {
       ...setter,
       ruleKey,

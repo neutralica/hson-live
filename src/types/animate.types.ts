@@ -36,7 +36,7 @@ export type AnimApi<TTree> = Readonly<{
 
   end: (mode?: AnimationEndMode) => TTree;
 
-  // ADDED:
+
   setPlayState: (state: "running" | "paused") => TTree;
   pause: () => TTree;
   resume: () => TTree;
@@ -50,7 +50,7 @@ export type AnimApiCore<TTree> = Readonly<{
 
   end: (tree: TTree, mode?: AnimationEndMode) => TTree;
 
-  // ADDED:
+
   setPlayState: (tree: TTree, state: "running" | "paused") => TTree;
   pause: (tree: TTree) => TTree;
   resume: (tree: TTree) => TTree;

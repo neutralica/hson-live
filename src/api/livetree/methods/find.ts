@@ -29,7 +29,7 @@ export type FindMany = ((q: FindQueryMany) => TreeSelector) & FindManyHelpers & 
     must: FindManyMust;
 };
 
-// ADDED: array type-guard so TS narrows correctly.
+// array type-guard so TS narrows correctly.
 function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
     return Array.isArray(q);
 }

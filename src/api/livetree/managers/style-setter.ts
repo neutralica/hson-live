@@ -245,7 +245,7 @@ export function make_style_setter<TReturn>(
     setProp,
     setMany(map: CssMap): TReturn {
       for (const [k, v] of Object.entries(map)) {
-        // ADDED: pseudo blocks routed to adapter hook (CssManager only)
+        // pseudo blocks routed to adapter hook (CssManager only)
         if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
           const pseudo = k as CssPseudoKey;
 

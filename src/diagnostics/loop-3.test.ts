@@ -46,7 +46,7 @@ export type LoopOpts = {
   stopOnFirstFail?: boolean; // default true
   capture?: boolean;         // capture emitted artifacts (strings)
   dual?: boolean;            //  run both cw + ccw and compare final nodes (default true)
-  paranoid?: boolean;        // ADDED: also compare per-step parsed nodes across dirs (requires captureNodes)
+  paranoid?: boolean;        // also compare per-step parsed nodes across dirs (requires captureNodes)
 };
 
 /**
@@ -94,7 +94,7 @@ export type LoopReport = {
 
   final?: { fmt: Fmt; text: string };
 
-  // ADDED: dual summary
+  // dual summary
   dualFinals?: {
     cw: { fmt: Fmt; text: string };
     ccw: { fmt: Fmt; text: string };
@@ -149,7 +149,7 @@ type CoreOpt = {
 type RunResult = {
   ok: boolean;
   final: { fmt: Fmt; text: string };
-  finalNode: HsonNode;                 // ADDED: needed for dual compare
+  finalNode: HsonNode;                 // needed for dual compare
 };
 
 function runRing(
@@ -325,7 +325,7 @@ export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopRep
     step_ok({ trace, failures, verbose: !!opts.verbose }, "dual:finalNode cw == ccw");
   }
 
-  // ADDED: paranoid cross-check at each checkpoint (lap, fmt, phase)
+  // paranoid cross-check at each checkpoint (lap, fmt, phase)
   if (opts.paranoid) {
     const byKey = (m: NodeMark) => `${m.lap}|${m.fmt}|${m.phase}`;
 
@@ -666,14 +666,14 @@ function safe_parse(
   text: string,
   stepName: string,
   opt: CoreOpt,
-  mark?: { lap: number; fmt: Fmt; phase: "parse" | "closure" } // ADDED
+  mark?: { lap: number; fmt: Fmt; phase: "parse" | "closure" } 
 ): HsonNode | undefined {
   try {
     const n = SPIN[fmt].parse(text);
     assert_invariants(n, `loop_test:${fmt}`);
     step_ok(opt, stepName);
 
-    // ADDED: capture parsed nodes for paranoid cross-direction comparisons
+    // capture parsed nodes for paranoid cross-direction comparisons
     if (opt.marks && mark) {
       opt.marks.nodes.push({ ...mark, node: n });
     }

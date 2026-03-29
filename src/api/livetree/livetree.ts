@@ -177,7 +177,7 @@ export class LiveTree {
 
   private domApiInternal: LiveTreeDom | undefined = undefined;
 
-  // ADDED: public accessor
+  // public accessor
   /**
    * DOM adapter bound to this tree.
    *
@@ -191,12 +191,11 @@ export class LiveTree {
     return this.domApiInternal;
   }
 
-  // OPTIONAL: if the underlying bound element can change during lifetime
-  // ADDED
+  //  if the underlying bound element can change during lifetime:
   private invalidate_dom_api(): void {
     // existing
     this.domApiInternal = undefined;
-    // ADDED: css handle depends on the current nodeRef/quid context
+    // css handle depends on the current nodeRef/quid context
     this.cssApiInternal = undefined;
   }
 
@@ -462,7 +461,7 @@ export class LiveTree {
    * Provides `get/set/clear` in a chainable API.
    */
   public get id(): IdApi<this> {
-    // ADDED: cached id namespace
+    // cached id namespace
     if (!this.idApi) this.idApi = make_id_api(this);
     return this.idApi;
   }
@@ -475,7 +474,7 @@ export class LiveTree {
    * DOM when mounted).
    */
   public get classlist(): ClassApi<this> {
-    // ADDED: cached class namespace
+    // cached class namespace
     if (!this.classApi) this.classApi = make_class_api(this);
     return this.classApi;
   }

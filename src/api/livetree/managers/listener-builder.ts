@@ -288,43 +288,43 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
     // Mouse
     onClick: (fn) => on("click", (ev) => fn(ev as MouseEvent)),
-    // ADDED
+
     onDblClick: (fn) => on("dblclick", (ev) => fn(ev as MouseEvent)),
-    // ADDED
+
     onContextMenu: (fn) => on("contextmenu", (ev) => fn(ev as MouseEvent)),
     onMouseMove: (fn) => on("mousemove", (ev) => fn(ev as MouseEvent)),
     onMouseDown: (fn) => on("mousedown", (ev) => fn(ev as MouseEvent)),
     onMouseUp: (fn) => on("mouseup", (ev) => fn(ev as MouseEvent)),
-    // ADDED (note: non-bubbling)
+    // (non-bubbling)
     onMouseEnter: (fn) => on("mouseenter", (ev) => fn(ev as MouseEvent)),
-    // ADDED (note: non-bubbling)
+    // ( non-bubbling)
     onMouseLeave: (fn) => on("mouseleave", (ev) => fn(ev as MouseEvent)),
 
     // Pointer
     onPointerDown: (fn) => on("pointerdown", (ev) => fn(ev as PointerEvent)),
     onPointerMove: (fn) => on("pointermove", (ev) => fn(ev as PointerEvent)),
     onPointerUp: (fn) => on("pointerup", (ev) => fn(ev as PointerEvent)),
-    // ADDED
+
     onPointerEnter: (fn) => on("pointerenter", (ev) => fn(ev as PointerEvent)),
-    // ADDED
+
     onPointerLeave: (fn) => on("pointerleave", (ev) => fn(ev as PointerEvent)),
-    // ADDED
+
     onPointerCancel: (fn) => on("pointercancel", (ev) => fn(ev as PointerEvent)),
 
-    // Touch (ADDED)
+    // Touch
     onTouchStart: (fn) => on("touchstart", (ev) => fn(ev as TouchEvent)),
     onTouchMove: (fn) => on("touchmove", (ev) => fn(ev as TouchEvent)),
     onTouchEnd: (fn) => on("touchend", (ev) => fn(ev as TouchEvent)),
     onTouchCancel: (fn) => on("touchcancel", (ev) => fn(ev as TouchEvent)),
 
-    // Wheel / scroll (ADDED)
+    // Wheel / scroll 
     onWheel: (fn) => on("wheel", (ev) => fn(ev as WheelEvent)),
     onScroll: (fn) => on("scroll", (ev) => fn(ev as Event)),
 
     // Focus
-    // ADDED (non-bubbling)
+    // (non-bubbling)
     onFocus: (fn) => on("focus", (ev) => fn(ev as FocusEvent)),
-    // ADDED (non-bubbling)
+    // (non-bubbling)
     onBlur: (fn) => on("blur", (ev) => fn(ev as FocusEvent)),
     onFocusIn: (fn) => on("focusin", (ev) => fn(ev as FocusEvent)),
     onFocusOut: (fn) => on("focusout", (ev) => fn(ev as FocusEvent)),
@@ -333,25 +333,25 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     onKeyDown: (fn) => on("keydown", (ev) => fn(ev as KeyboardEvent)),
     onKeyUp: (fn) => on("keyup", (ev) => fn(ev as KeyboardEvent)),
 
-    // Drag & drop (ADDED)
+    // Drag & drop 
     onDragStart: (fn) => on("dragstart", (ev) => fn(ev as DragEvent)),
     onDragOver: (fn) => on("dragover", (ev) => fn(ev as DragEvent)),
     onDrop: (fn) => on("drop", (ev) => fn(ev as DragEvent)),
     onDragEnd: (fn) => on("dragend", (ev) => fn(ev as DragEvent)),
 
-    // Animation lifecycle (ADDED)
+    // Animation lifecycle 
     onAnimationStart: (fn) => on("animationstart", (ev) => fn(ev as AnimationEvent)),
     onAnimationIteration: (fn) => on("animationiteration", (ev) => fn(ev as AnimationEvent)),
     onAnimationEnd: (fn) => on("animationend", (ev) => fn(ev as AnimationEvent)),
     onAnimationCancel: (fn) => on("animationcancel", (ev) => fn(ev as AnimationEvent)),
 
-    // Transition lifecycle (ADDED)
+    // Transition lifecycle 
     onTransitionStart: (fn) => on("transitionstart", (ev) => fn(ev as TransitionEvent)),
     onTransitionEnd: (fn) => on("transitionend", (ev) => fn(ev as TransitionEvent)),
     onTransitionCancel: (fn) => on("transitioncancel", (ev) => fn(ev as TransitionEvent)),
     onTransitionRun: (fn) => on("transitionrun", (ev) => fn(ev as TransitionEvent)),
 
-    // Clipboard (ADDED)
+    // Clipboard
     onCopy: (fn) => on("copy", (ev) => fn(ev as ClipboardEvent)),
     onCut: (fn) => on("cut", (ev) => fn(ev as ClipboardEvent)),
     onPaste: (fn) => on("paste", (ev) => fn(ev as ClipboardEvent)),
