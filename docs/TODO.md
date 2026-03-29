@@ -21,10 +21,10 @@ find.query/queryAll(CSSSelector)
 	•	tree.root (graph root of the node universe)
 	•	hson.getRoot / global manager direction
 
- DOM geometry + animation affordances
-	•	getBoundingClientRect and friends, maybe under .dom
-	•	getAnimations
-	•	elementFromPoint, etc
+ ~~DOM geometry + animation affordances~~
+~~•	getBoundingClientRect and friends, maybe under .dom~~
+•	getAnimations
+•	elementFromPoint, etc~~
 
  Keyframes teardown + keyframe ownership maps
 
@@ -63,7 +63,7 @@ find.query/queryAll(CSSSelector)
 
 ## 18JAN2026
 + ~~change .setText so that it does not check element_for_node and instead writes node and updates if applicable~~
-+ create.textnode
+XXX  ~~+ create.textnode~~
 ~~+ pseudoelements ~~
 
 ## 17JAN
@@ -86,7 +86,7 @@ find.query/queryAll(CSSSelector)
 ✅ ~~.css.apply() for RAF calls~~
 
 ## 13JAN2026 
-✅ ~~add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)~~ (no - out of scope for library)
+XXX ~~add Promise-based 'await' listener for timing sequenced listeners (see hson-demo2 for examples)~~ (no - out of scope for library)
 
 
 
