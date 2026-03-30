@@ -188,19 +188,7 @@ These VSNs never overlap in responsibility.
 A node representing HTML always uses <_elem>.
 A node representing JSON structure never does.
 
-####  Node graphs that mix _elem and _obj types are invalid and will cause parser errors. 
+####  Node graphs that mix _elem and _obj types are invalid and may cause parser errors. 
 
-⸻
-
-## 3.11 Non-Objectives
-
-This mapping does not attempt to:
-*	enforce HTML semantic validity or browser-specific correction rules
-*	infer meaning or structure from tag names (non-VSN)
-*	repair broken markup except to require XML well-formedness 
-*	impose rendering rules
-*	normalize authoring style
-
-It describes representation only.
 
 © 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0

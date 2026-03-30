@@ -141,9 +141,7 @@ At some point in the future, animation and keyframes may both be relocated under
 
 ### PropertyManager
 
-The `atProperty` manager owns `@property` registrations. It is intended for declaring custom
-properties with type, syntax, and inheritance metadata so animations and transitions can
-interpolate correctly.
+The `atProperty` manager owns `@property` registrations. It is intended for declaring custom properties with type, syntax, and inheritance metadata so animations and transitions can interpolate correctly.
 
 #### Usage pattern:
 ```ts
@@ -188,9 +186,7 @@ Automated teardown and cleanup of keyframes is planned but not begun.
 
 ### AnimationManager
 
-`CssHandle.anim` and `CssManager.animForQuids(...)` return a `CssAnimHandle` bound to one
-or more QUIDs. It is a small control surface for applying, starting, or clearing animations
-against those targets.
+`CssHandle.anim` and `CssManager.animForQuids(...)` return a `CssAnimHandle` bound to one or more QUIDs. It is a small control surface for applying, starting, or clearing animationsagainst those targets.
 
 #### Typical usage:
 
@@ -208,8 +204,7 @@ anim.begin({ name: "fade", duration: "300ms", easing: "ease-out" });
 
 ## Globals
 
-Global rules are selector-based (not QUID-scoped) and can be rendered into the same
-stylesheet when used through `CssManager.globals`.
+Global rules are selector-based (not QUID-scoped) and can be rendered into the same stylesheet when used through `CssManager.globals`.
 
 Recommended entry:
 
@@ -244,8 +239,7 @@ Automated rule teardown & cleanup is on the roadmap but not begun.
 
 ## Pseudos in globals
 
-`setMany` supports the same pseudo block keys as `StyleSetter` and will create sibling rules
-like `selector:hover` or `selector::before`.
+`setMany` supports the same pseudo block keys as `StyleSetter` and will create sibling rules like `selector:hover` or `selector::before`.
 
 For `::before` and `::after`, `GlobalCss` will default to `content: ""` if it is not provided.
 
@@ -259,10 +253,7 @@ Key differences from `LiveTree.css`:
 
 * Inline only. Does not touch QUID-scoped rules or global rules.
 * No pseudo blocks. `_hover` or `_before` maps in `style.setMany` are ignored.
-* The `set` proxy is constrained by runtime keys. In browser runtimes it uses
-  `document.documentElement.style` for the key list; in Node/tests it falls back to a small,
-  fixed list.
-* `style.get.*` reads from the serialized inline style attribute, not computed style.
-  It will not reflect rules set through `CssManager` or `GlobalCss`.
+* The `set` proxy is constrained by runtime keys. In browser runtimes it uses `document.documentElement.style` for the key list; in Node/tests it falls back to a small, fixed list.
+* `style.get.*` reads from the serialized inline style attribute, not computed style. It will not reflect rules set through `CssManager` or `GlobalCss`.
 
 © 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0

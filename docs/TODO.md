@@ -1,30 +1,35 @@
 // hson-todo
 
+# 2DÜ
+
+## 28MAR2026
+- 
+
 ## 19MAR2026
 ~~dom.el.must~~
 - (remove livetree.asDomElement() in favor of the above)
 
 ## 18MAR2026
-scrollHeight/width
-scrollTop
-similar
-find/findall.byClass
-find/findall.byData?
-find/findall.byTag
-find.query/queryAll(CSSSelector)
++ scrollHeight/width
++ scrollTop
++ similar
++ find/findall.byClass
++ find/findall.byData?
++ find/findall.byTag
++ find.query/queryAll(CSSSelector)
 
 **data.remove**
 
 ## 11MAR2026 still remaining from refactor:
- document / globals surfaces:
-	•	tree.doc (curated document methods, useful for lifecycle/teardown wiring)
-	•	tree.root (graph root of the node universe)
-	•	hson.getRoot / global manager direction
++ document / globals surfaces:
+• tree.doc (curated document methods, useful for lifecycle/teardown wiring)
+• tree.root (graph root of the node universe)
+• hson.getRoot / global manager direction
 
  ~~DOM geometry + animation affordances~~
 ~~•	getBoundingClientRect and friends, maybe under .dom~~
-•	getAnimations
-•	elementFromPoint, etc~~
+• getAnimations
+• elementFromPoint, etc
 
  Keyframes teardown + keyframe ownership maps
 
