@@ -1,20 +1,27 @@
 import { LiveTree } from "../livetree.js";
-import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi } from "../../../types/dom.types.js";
+import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi, DomSize } from "../../../types/dom.types.js";
 import { _snip } from "../../../utils/sys-utils/snip.utils.js";
 import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
+import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
+import { make_tree_selector } from "../creation/make-tree-selector.js";
+import { TreeSelector } from "../tree-selector.js";
 
 // honest maybe-returning lookup from DOM element back to tree node
-function tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
-  const quid = el.getAttribute("data-_quid") ?? undefined;
+function resolve_tree_el(tree: LiveTree, el: Element): LiveTree | undefined {
+  const quid = get_el_by_quid(el);
   if (!quid) return undefined;
 
-  // keep using existing find path until a quid index exists
-  return tree.find.byAttrs("data-_quid", quid) ?? undefined;
+  const node = get_node_by_quid(quid);
+  if (!node) return undefined;
+
+  // CHANGED: ensure the resolved node actually belongs to this tree/root
+  const hit = tree.find.byAttrs(_DATA_QUID, quid);
+  return hit ?? undefined;
 }
 
 // strict helper for internal use
-function tree_from_el_must(tree: LiveTree, el: Element, label?: string): LiveTree {
-  const hit = tree_from_el(tree, el);
+function resolve_tree_el_must(tree: LiveTree, el: Element, label?: string): LiveTree {
+  const hit = resolve_tree_el(tree, el);
   if (!hit) {
     const desc = label ?? el.tagName.toLowerCase();
     throw new Error(`[LiveTree.dom.must] expected element to belong to this tree: ${desc}`);
@@ -76,13 +83,47 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
 
   const rect = (() => {
     const e = el();
-
-    // geometry only exists for rendered elements
     if (!e) return undefined;
     if (typeof e.getBoundingClientRect !== "function") return undefined;
-
     return e.getBoundingClientRect();
   }) as DomRectApi;
+
+  const clientRects = (() => {
+    const e = el();
+    if (!e) return undefined;
+    if (typeof e.getClientRects !== "function") return undefined;
+    return e.getClientRects();
+  }) as (() => DOMRectList | undefined);
+
+  const scrollSize = (() => {
+    const e = html();
+    if (!e) return undefined;
+    return {
+      width: e.scrollWidth,
+      height: e.scrollHeight,
+    };
+  }) as (() => DomSize | undefined);
+
+  const clientSize = (() => {
+    const e = html();
+    if (!e) return undefined;
+    return {
+      width: e.clientWidth,
+      height: e.clientHeight,
+    };
+  }) as (() => DomSize | undefined);
+
+  const computed = (() => {
+    const e = el();
+    if (!e) return undefined;
+    return getComputedStyle(e);
+  }) as (() => CSSStyleDeclaration | undefined);
+
+  const computedProp = ((name: string) => {
+    const cs = computed();
+    if (!cs) return undefined;
+    return cs.getPropertyValue(name);
+  }) as ((name: string) => string | undefined);
 
   const closest = ((sel: string) => {
     const e = el();
@@ -91,17 +132,57 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     const hit = e.closest(sel);
     if (!hit) return undefined;
 
-    return tree_from_el(tree, hit);
+    return resolve_tree_el(tree, hit);
   }) as ClosestFn;
 
   const parent = (() => {
     const e = el();
     if (!e?.parentElement) return undefined;
-
-    return tree_from_el(tree, e.parentElement);
+    return resolve_tree_el(tree, e.parentElement);
   }) as ParentFn;
 
-  // strict variants grouped under dom.must.* for API symmetry
+  const doc = (() => {
+    const e = el();
+    if (!e?.ownerDocument) {
+      throw new Error(`[LiveTree.dom.doc] no ownerDocument available`);
+    }
+
+    const elementAtPoint = (x: number, y: number): Element | undefined => {
+      const hit = e.ownerDocument.elementFromPoint(x, y);
+      return hit instanceof Element ? hit : undefined;
+    };
+
+    const elementsFromPoint = (x: number, y: number): Element[] => {
+      return e.ownerDocument
+        .elementsFromPoint(x, y)
+        .filter((hit): hit is Element => hit instanceof Element);
+    };
+
+    const treeAtPoint = (x: number, y: number): LiveTree | undefined => {
+      const hit = elementAtPoint(x, y);
+      if (!hit) return undefined;
+      return resolve_tree_el(tree, hit);
+    };
+
+    const treesFromPoint = (x: number, y: number): TreeSelector => {
+      const trees: LiveTree[] = [];
+
+      for (const hit of elementsFromPoint(x, y)) {
+        const resolved = resolve_tree_el(tree, hit);
+        if (resolved) trees.push(resolved);
+      }
+
+      return make_tree_selector(trees);
+    };
+
+    return Object.freeze({
+      elementAtPoint,
+      elementsFromPoint,
+      treeAtPoint,
+      treesFromPoint,
+    });
+  })();
+
   const must = {
     el(label?: string): Element {
       const hit = el();
@@ -143,11 +224,71 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
       return hit;
     },
 
-    // OPTIONAL: useful if you want the reverse-mapping strict helper public
     treeFromEl(domEl: Element, label?: string): LiveTree {
-      return tree_from_el_must(tree, domEl, label);
+      const hit = resolve_tree_el(tree, domEl);
+      if (!hit) {
+        const desc = label ?? domEl.tagName.toLowerCase();
+        throw new Error(`[LiveTree.dom.must] expected element to belong to this tree: ${desc}`);
+      }
+      return hit;
+    },
+
+    computed(label?: string): CSSStyleDeclaration {
+      const hit = computed();
+      if (!hit) {
+        throw new Error(label ?? `[LiveTree.dom.must.computed] no computed style available`);
+      }
+      return hit;
+    },
+
+    computedProp(name: string, label?: string): string {
+      const hit = computedProp(name);
+      if (hit == null) {
+        throw new Error(label ?? `[LiveTree.dom.must.computedProp] no computed property "${name}"`);
+      }
+      return hit;
+    },
+
+    clientRects(label?: string): DOMRectList {
+      const hit = clientRects();
+      if (!hit) {
+        throw new Error(label ?? `[LiveTree.dom.must.clientRects] no client rects available`);
+      }
+      return hit;
+    },
+
+    scrollSize(label?: string): DomSize {
+      const hit = scrollSize();
+      if (!hit) {
+        throw new Error(label ?? `[LiveTree.dom.must.scrollSize] no scroll size available`);
+      }
+      return hit;
+    },
+
+    clientSize(label?: string): DomSize {
+      const hit = clientSize();
+      if (!hit) {
+        throw new Error(label ?? `[LiveTree.dom.must.clientSize] no client size available`);
+      }
+      return hit;
     },
   };
 
-  return { el, html, matches, contains, isConnected, rect, closest, parent, must };
+  return {
+    el,
+    html,
+    matches,
+    contains,
+    isConnected,
+    rect,
+    closest,
+    parent,
+    computed,
+    computedProp,
+    clientRects,
+    scrollSize,
+    clientSize,
+    doc,
+    must,
+  };
 }

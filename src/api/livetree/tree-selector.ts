@@ -8,18 +8,18 @@ type LiveTreeListen = LiveTree["listen"];
 
 
 export interface TreeSelectorType {
-  toArray(): LiveTree[];
+  items(): LiveTree[];
   count(): number;
   first(): LiveTree | undefined;
 
-  forEach(fn: (tree: LiveTree, index: number) => void): void;
+  each(fn: (tree: LiveTree, index: number) => void): void;
   map<T>(fn: (tree: LiveTree, index: number) => T): T[];
   filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector;
 
-  removeSelf(): number;
-  remove(): number;
+  removeAt(ix: number): boolean;
+  removeAll(): number;
 
-  readonly listen: LiveTreeListen; 
+  readonly listen: LiveTreeListen;
   readonly style: LiveTreeStyle;
   readonly css: LiveTreeCss;
 
@@ -51,7 +51,7 @@ function makeBroadcastProxy<T extends object>(
       },
     );
     // TS can’t infer Proxy shape; this is one contained cast.
-    return noop as unknown as T; 
+    return noop as unknown as T;
   }
 
   const proxy = new Proxy(base, {
@@ -84,7 +84,7 @@ function makeBroadcastProxy<T extends object>(
 }
 
 export class TreeSelector implements TreeSelectorType {
-  private readonly items: LiveTree[];
+  private readonly contents: LiveTree[];
 
   public readonly listen: LiveTreeListen;
   public readonly style: LiveTreeStyle;
@@ -93,72 +93,64 @@ export class TreeSelector implements TreeSelectorType {
 
   public constructor(trees: LiveTree[]) {
     // Defensive copy to avoid external mutation.
-    this.items = [...trees];
+    this.contents = [...trees];
 
     // Broadcast proxies.
     // If you already have a dedicated makeMultiListener(items), you can swap this line.
-    this.listen = makeBroadcastProxy(this.items, (t) => t.listen);
+    this.listen = makeBroadcastProxy(this.contents, (t) => t.listen);
 
-    this.style = makeBroadcastProxy(this.items, (t) => t.style);
-    this.css = makeBroadcastProxy(this.items, (t) => t.css);
+    this.style = makeBroadcastProxy(this.contents, (t) => t.style);
+    this.css = makeBroadcastProxy(this.contents, (t) => t.css);
 
     // If your LiveTree uses `dataset` not `data`, change to (t) => t.dataset
-    this.data = makeBroadcastProxy(this.items, (t) => t.data);
+    this.data = makeBroadcastProxy(this.contents, (t) => t.data);
   }
 
-  public toArray(): LiveTree[] {
-    return [...this.items];
+  public items(): LiveTree[] {
+    return [...this.contents];
   }
 
   public count(): number {
-    return this.items.length;
+    return this.contents.length;
   }
 
   public first(): LiveTree | undefined {
-    return this.items[0];
+    return this.contents[0];
   }
 
-  public forEach(fn: (tree: LiveTree, index: number) => void): void {
-    for (let i = 0; i < this.items.length; i += 1) fn(this.items[i], i);
+  public each(fn: (tree: LiveTree, index: number) => void): void {
+    for (let i = 0; i < this.contents.length; i += 1) fn(this.contents[i], i);
   }
 
   public map<T>(fn: (tree: LiveTree, index: number) => T): T[] {
     const out: T[] = [];
-    for (let i = 0; i < this.items.length; i += 1) out.push(fn(this.items[i], i));
+    for (let i = 0; i < this.contents.length; i += 1) out.push(fn(this.contents[i], i));
     return out;
   }
 
   public filter(fn: (tree: LiveTree, index: number) => boolean): TreeSelector {
     const next: LiveTree[] = [];
-    for (let i = 0; i < this.items.length; i += 1) {
-      if (fn(this.items[i], i)) next.push(this.items[i]);
+    for (let i = 0; i < this.contents.length; i += 1) {
+      if (fn(this.contents[i], i)) next.push(this.contents[i]);
     }
     return new TreeSelector(next);
   }
+  public removeAt(ix: number): boolean {
+    const hit = this.contents[ix];
+    if (!hit) return false;
 
-  public removeSelf(): number {
+    hit.removeSelf();
+    return true;
+  }
+
+  public removeAll(): number {
     let n = 0;
 
-    for (let i = 0; i < this.items.length; i += 1) {
-      const t = this.items[i] as unknown as { removeSelf?: () => unknown; remove?: () => unknown };
-
-      // Prefer your explicit method if it exists.
-      if (typeof t.removeSelf === "function") {
-        t.removeSelf();
-        n += 1;
-        continue;
-      }
-
-      if (typeof t.remove === "function") {
-        t.remove();
-        n += 1;
-      }
+    for (const t of this.contents) {
+      t.removeSelf();
+      n += 1;
     }
 
     return n;
-  }
-
-  public remove(): number {
-    return this.removeSelf();
   }
 }

@@ -1,5 +1,6 @@
 // dom.ts
 import { LiveTree } from "../api/livetree/livetree.js";
+import { TreeSelector } from "../api/livetree/tree-selector.js";
 
 /**
  * Callable `closest` helper with a `.must` variant.
@@ -15,6 +16,13 @@ export type ParentFn = (() => LiveTree | undefined) & {
   must: (label?: string) => LiveTree;
 };
 
+export interface LiveTreeDocument {
+  elementAtPoint(x: number, y: number): Element | undefined;
+  elementsFromPoint(x: number, y: number): Element[];
+
+  treeAtPoint(x: number, y: number): LiveTree | undefined;
+  treesFromPoint(x: number, y: number): TreeSelector;
+}
 /**
  * DOM adapter surface returned by `LiveTree.dom`.
  */
@@ -25,6 +33,22 @@ export interface LiveTreeDom {
   contains(other: LiveTree): boolean;
   isConnected(): boolean;
 
+  rect: DomRectApi;
+  closest: ClosestFn;
+  parent: ParentFn;
+
+  // ADDED
+  computed(): CSSStyleDeclaration | undefined;
+  computedProp(name: string): string | undefined;
+
+  // ADDED
+  clientRects(): DOMRectList | undefined;
+  scrollSize(): DomSize | undefined;
+  clientSize(): DomSize | undefined;
+
+  // ADDED
+  doc: LiveTreeDocument;
+
   must: Readonly<{
     el: (label?: string) => Element;
     html: (label?: string) => HTMLElement;
@@ -32,11 +56,14 @@ export interface LiveTreeDom {
     closest: (sel: string, label?: string) => LiveTree;
     parent: (label?: string) => LiveTree;
     treeFromEl?: (domEl: Element, label?: string) => LiveTree;
-  }>;
 
-  rect: DomRectApi;
-  closest: ClosestFn;
-  parent: ParentFn;
+    // ADDED
+    computed: (label?: string) => CSSStyleDeclaration;
+    computedProp: (name: string, label?: string) => string;
+    clientRects: (label?: string) => DOMRectList;
+    scrollSize: (label?: string) => DomSize;
+    clientSize: (label?: string) => DomSize;
+  }>;
 }
 
 export type DomSize = {

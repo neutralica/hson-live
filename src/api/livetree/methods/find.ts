@@ -85,7 +85,7 @@ export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSel
     const out: LiveTree[] = [];
     for (const one of qs) {
         const sel = find_all_in_tree(tree, one);  // returns TreeSelector
-        out.push(...sel.toArray());              // use TreeSelector primitive
+        out.push(...sel.items());              // use TreeSelector primitive
     }
 
     return make_tree_selector(out);

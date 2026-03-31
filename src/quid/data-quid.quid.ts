@@ -4,7 +4,7 @@ import { HsonNode } from '../types/node.types.js';
 import { _DATA_QUID} from '../consts/constants.js';
 import { element_for_node } from '../utils/tree-utils/node-map-helpers.js';
 
-// Use type-only imports and .js specifiers to play nice with verbatimModuleSyntax
+
 
 /** node <-> quid maps (WeakMap allows GC) */
 const QUID_TO_NODE = new Map<string, HsonNode>();
@@ -181,4 +181,8 @@ export function remint_quid(
     (n._meta ??= {})[_DATA_QUID] = q;
   }
   return q;
+}
+
+export function get_el_if_quid(el: Element): string | undefined {
+  return el.getAttribute(_DATA_QUID) ?? undefined;
 }
