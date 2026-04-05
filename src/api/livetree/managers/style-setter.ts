@@ -1,7 +1,7 @@
 // style-setter.ts
 
 import { CssMap, CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types.js";
-import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { SetSurface } from "../../../types/css.types.js";
 import { CssKey } from "../../../types/css.types.js";
 import { ClassApi, IdApi } from "../../../types/dom.types.js";
@@ -226,7 +226,7 @@ export function make_style_setter<TReturn>(
 ): StyleSetter<TReturn> {
 
   const setProp = (prop: CssKey, v: CssValue): TReturn => {
-    const canon = nrmlz_cssom_prop_key(prop);
+    const canon = normalize_css_key(prop);
     const rendered = renderCssValue(v);
 
     if (rendered == null) {
@@ -262,7 +262,7 @@ export function make_style_setter<TReturn>(
       return host;
     },
     remove(prop: CssKey): TReturn {
-      adapters.remove(nrmlz_cssom_prop_key(prop));
+      adapters.remove(normalize_css_key(prop));
       return host;
     },
 

@@ -1,7 +1,7 @@
 // style.getter.ts (new file)
 
 import { CssKey } from "../../../types/css.types.js";
-import { nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 
 /**
  * Backend contract for style reads.
@@ -37,7 +37,7 @@ export type StyleGetter = Readonly<{
 export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
   const getProp = (prop: CssKey): string | undefined => {
     // reuse your canonicalization; MUST match whatever set uses
-    const canon = nrmlz_cssom_prop_key(prop);
+    const canon = normalize_css_key(prop);
     return adapters.read(canon);
   };
 

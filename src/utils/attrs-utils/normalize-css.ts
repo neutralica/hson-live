@@ -65,7 +65,7 @@ export function canon_to_css_prop(propCanon: string): string {
  *   A canonicalized property key suitable for internal style application.
  *   Returns an empty string if the input trims to empty.
  */
-export function nrmlz_cssom_prop_key(raw: string): string {
+export function normalize_css_key(raw: string): string {
   const p = raw.trim();
   if (p === "") return "";
 
@@ -90,4 +90,33 @@ export function nrmlz_cssom_prop_key(raw: string): string {
 
   // kebab -> camel
   return kebab_to_camel(p);
+}
+
+export function normalize_css_value(prop: string, value: string): string {
+  if (prop !== "content") return value;
+
+  const v = value.trim();
+
+  // already quoted string
+  if (
+    (v.startsWith(`"`) && v.endsWith(`"`)) ||
+    (v.startsWith(`'`) && v.endsWith(`'`))
+  ) return v;
+
+  // raw CSS content forms / keywords
+  if (
+    v === "none" ||
+    v === "normal" ||
+    v === "open-quote" ||
+    v === "close-quote" ||
+    v === "no-open-quote" ||
+    v === "no-close-quote" ||
+    /^attr\(/.test(v) ||
+    /^counter\(/.test(v) ||
+    /^counters\(/.test(v) ||
+    /^url\(/.test(v)
+  ) return v;
+
+  // otherwise treat as literal text content
+  return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }

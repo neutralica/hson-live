@@ -12,6 +12,7 @@ import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss } from "./global-css.js";
 import { css_supports_decl } from "./style-setter.js";
+import { normalize_css_value } from "../../../utils/attrs-utils/normalize-css.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -857,13 +858,13 @@ export class CssManager {
     const keys = Object.keys(decls);
     if (keys.length === 0) return "";
 
-    // stable-ish order so rebuilds don't churn
     keys.sort();
 
     const body = keys
       .map((k) => {
-        const prop = canon_to_css_prop(k);   // ADDED
-        return `${prop}:${decls[k]};`;
+        const prop = canon_to_css_prop(k);
+        const val = normalize_css_value(prop, decls[k]); // CHANGED
+        return `${prop}:${val};`;
       })
       .join("");
 

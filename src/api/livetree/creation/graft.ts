@@ -11,7 +11,7 @@ import { linkNodeToElement, node_for_element } from "../../../utils/tree-utils/n
 import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { Primitive } from "../../../types/core.types.js";
-import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { canon_to_css_prop, normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 
 
@@ -133,7 +133,7 @@ function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
         const obj = raw as Record<string, string | number | null>;
         for (const [prop, v] of Object.entries(obj)) {
           const val = v == null ? "" : String(v);
-          const cssProp = canon_to_css_prop(nrmlz_cssom_prop_key(prop));
+          const cssProp = canon_to_css_prop(normalize_css_key(prop));
           if (!cssProp) continue;
           if (val === "") el.style.removeProperty(cssProp);
           else el.style.setProperty(cssProp, val);

@@ -2,8 +2,11 @@
 
 # 2DÜ
 
-## 28MAR2026
-- 
+## 02APR2026
++ inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?
+
+## 01APR2026
++ gcss.ALL.rule.set / gcss.rule.ALL.set
 
 ## 19MAR2026
 ~~dom.el.must~~

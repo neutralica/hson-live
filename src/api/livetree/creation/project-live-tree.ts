@@ -6,7 +6,7 @@ import { HsonNode } from "../../../types/node.types.js";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { linkNodeToElement } from "../../../utils/tree-utils/node-map-helpers.js";
-import { canon_to_css_prop, nrmlz_cssom_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { canon_to_css_prop, normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import {
   _DATA_QUID,
   ARR_TAG,
@@ -154,7 +154,7 @@ export function project_livetree(
           const obj = raw as Record<string, string | number | null>;
           for (const [prop, v] of Object.entries(obj)) {
             const val = v == null ? "" : String(v);
-            const cssProp = canon_to_css_prop(nrmlz_cssom_prop_key(prop));
+            const cssProp = canon_to_css_prop(normalize_css_key(prop));
             if (!cssProp) continue;
             if (val === "") elt.style.removeProperty(cssProp);
             else elt.style.setProperty(cssProp, val);

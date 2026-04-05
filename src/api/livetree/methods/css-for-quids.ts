@@ -2,7 +2,7 @@
 
 
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
-import { nrmlz_cssom_prop_key as nrmlz_css_prop_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../managers/css-manager.js";
 import { make_style_getter } from "../managers/style-getter.js";
@@ -38,7 +38,7 @@ const mk_css_quids_adapters = (
         for (const [k, v] of Object.entries(pseudoDecls)) {
           if (v == null) continue;
 
-          const propCanon = nrmlz_css_prop_key(k as CssKey);
+          const propCanon = normalize_css_key(k as CssKey);
           const rendered = render_css_value(v as CssValue);
 
           if (rendered == null) {
