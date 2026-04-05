@@ -34,7 +34,9 @@
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
-    }
+    },
+      "./_tests": "./dist/_tests/test-exports.js"
+
   },
   "scripts": {
     "clean": "rm -rf dist",
