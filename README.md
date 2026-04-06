@@ -164,23 +164,19 @@ hson-live is written in TypeScript.
 npm install
 npx tsc
 ```
-
 Compiled output is written to dist/.
 
+## GitHub & documentation
+The project repo can be found at 
+`https://github.com/neutralica/hson-live`
+
+See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full documentation is also made available at hson::LiveDemo. 
 
 ## LiveDemo
-LiveDemo is the first site made with hson.liveTree. It demonstrates the capabilities of LiveTree in a deliberately minimalist environment, without frameworks or any other dependencies. Explore hson-live's functionality at:
+LiveDemo is the first site made with hson.liveTree. It demonstrates the capabilities of LiveTree in a deliberately minimalist environment without frameworks or any other dependencies. Explore hson-live's functionality at:
 
 `https://terminalgothic.com/hson`
 
-
-## documentation
-
-See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full ocumentation is also made available at hson::LiveDemo. Navigate to:
-
-`https://terminalgothic.com/hson`
-
- and click the [about] tab.
 
 
 ## License
