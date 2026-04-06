@@ -10,9 +10,8 @@ import { manage_keyframes } from "./keyframes-manager.js";
 import { KeyframesManager } from "../../../types/keyframes.types.js";
 import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
-import { GlobalCss } from "./global-css.js";
+import { GlobalCss, render_rule } from "./global-css.js";
 import { css_supports_decl } from "./style-setter.js";
-import { normalize_css_value } from "../../../utils/attrs-utils/normalize-css.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -89,7 +88,7 @@ export function render_css_value(v: CssValue): string {
  * @param quid QUID to target.
  * @returns A selector string of the form `[data-_quid="..."]` (or whatever `_DATA_QUID` encodes).
  */
-function selectorForQuid(quid: string): string {
+export function selector_for_quid(quid: string): string {
   // SINGLE place where we define how a QUID maps to a CSS selector
   return `[${_DATA_QUID}="${quid}"]`;
 }
@@ -440,7 +439,7 @@ export class CssManager {
         decls.push(`${prop}: ${value};`);
       }
 
-      blocks.push(`${selectorForQuid(quid)} { ${decls.join(" ")} }`);
+      blocks.push(`${selector_for_quid(quid)} { ${decls.join(" ")} }`);
     }
 
     const quidCss = blocks.join("\n\n").trim();
@@ -455,7 +454,7 @@ export class CssManager {
     if (quidCss) parts.push(quidCss);
     for (const [quid, byPseudo] of this.pseudoRulesByQuid) {
       for (const [pseudo, decls] of byPseudo) {
-        const selector = `${selectorForQuid(quid)}${pseudo_to_suffix(pseudo as CssPseudoKey)}`;
+        const selector = `${selector_for_quid(quid)}${pseudo_to_suffix(pseudo as CssPseudoKey)}`;
         const cssText = this.renderRule(selector, Object.fromEntries(decls)).trim();
         if (cssText) parts.push(cssText);
       }
@@ -508,7 +507,7 @@ export class CssManager {
         if (!doc) return;
 
         for (const quid of scope.quids) {
-          const el = doc.querySelector(selectorForQuid(quid));
+          const el = doc.querySelector(selector_for_quid(quid));
           if (el) fn(el);
         }
       },
@@ -519,7 +518,7 @@ export class CssManager {
         if (!doc) return undefined;
 
         for (const quid of scope.quids) {
-          const el = doc.querySelector(selectorForQuid(quid));
+          const el = doc.querySelector(selector_for_quid(quid));
           if (el) return el;
         }
         return undefined;
@@ -855,20 +854,7 @@ export class CssManager {
   }
 
   private renderRule(selector: string, decls: Record<string, string>): string {
-    const keys = Object.keys(decls);
-    if (keys.length === 0) return "";
-
-    keys.sort();
-
-    const body = keys
-      .map((k) => {
-        const prop = canon_to_css_prop(k);
-        const val = normalize_css_value(prop, decls[k]); // CHANGED
-        return `${prop}:${val};`;
-      })
-      .join("");
-
-    return `${selector}{${body}}`;
+    return render_rule(selector, decls);
   }
 
   /** 
@@ -912,7 +898,7 @@ export class CssManager {
 
 
 
-  public devSnapshot(): string {
+  public snapshot(): string {
     return this.renderCss()
   }
 

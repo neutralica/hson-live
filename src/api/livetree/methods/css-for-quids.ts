@@ -189,7 +189,7 @@ export function css_for_quids(
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
-      devSnapshot: () => mgr.devSnapshot(),
+      devSnapshot: () => mgr.snapshot(),
       selector: (pattern: string) =>
         make_selector_style_setter<LiveTree>(host, ids, pattern),
     };
@@ -207,7 +207,7 @@ export function css_for_quids(
   return {
     ...setter,
     get: getter,
-    devSnapshot: () => mgr.devSnapshot(),
+    devSnapshot: () => mgr.snapshot(),
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),

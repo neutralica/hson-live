@@ -87,7 +87,7 @@ function assertValidSelector(at: KeyframeSelector): void {
  *   A fresh declaration map containing only non-empty keys and values,
  *   with all keys/values trimmed.
  */
-function normalizeDecls(decls: CssDeclMap): CssDeclMap {
+export function normalize_decls(decls: CssDeclMap): CssDeclMap {
   // create a fresh object with trimmed values.
   const out: Record<string, string> = {};
 
@@ -197,7 +197,7 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
   if (isKeyframesTupleInput(input)) {
     for (const [at, decls] of input.steps) {
       assertValidSelector(at);
-      steps.push({ at, decls: normalizeDecls(decls) });
+      steps.push({ at, decls: normalize_decls(decls) });
     }
   } else {
     // object input path.
@@ -207,7 +207,7 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
       const at = atRaw as KeyframeSelector;
       assertValidSelector(at);
 
-      steps.push({ at, decls: normalizeDecls(decls) });
+      steps.push({ at, decls: normalize_decls(decls) });
     }
   }
 

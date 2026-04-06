@@ -1,5 +1,6 @@
 // global_css.ts
 
+import { canon_to_css_prop, normalize_css_value } from "../../../_tests/test-exports.js";
 import { CssMapBase, CssPseudoKey } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
@@ -95,27 +96,22 @@ export function render_rule(selector: string, decls: Record<string, string>): st
 
   if (keys.length === 0) return "";
 
-  const lines: string[] = [];
-  lines.push(`${selector} {`);
+  const body = keys
+    .map((canon) => {
+      const raw = decls[canon];
+      const trimmed = raw == null ? "" : String(raw).trim();
+      if (trimmed.length === 0) return "";
 
-  let any = false;
+      const prop = canon_to_css_prop(canon);
+      const val = normalize_css_value(prop, trimmed);
 
-  for (const canon of keys) {
-    const raw = decls[canon];
-    const v = raw == null ? "" : String(raw).trim();
+      return `${prop}:${val};`;
+    })
+    .filter(Boolean)
+    .join("");
 
-    // NOTE: we assume empties have already been deleted upstream.
-    // If you *want* to treat "" as delete, do it in the setter, not here.
-    if (v.length === 0) continue;
-
-    any = true;
-    const prop = canon.startsWith("--") ? canon : camel_to_kebab(canon);
-    lines.push(`  ${prop}: ${v};`);
-  }
-
-  if (!any) return "";
-  lines.push(`}`);
-  return lines.join("\n");
+  if (!body) return "";
+  return `${selector}{${body}}`;
 }
 
 function render_scoped_rule(
