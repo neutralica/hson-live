@@ -63,6 +63,7 @@ export interface LiveTreeDom {
     clientRects: (label?: string) => DOMRectList;
     scrollSize: (label?: string) => DomSize;
     clientSize: (label?: string) => DomSize;
+    doc: LiveTreeDocument;
   }>;
 }
 
