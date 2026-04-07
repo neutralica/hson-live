@@ -1,5 +1,5 @@
 import { LiveTree } from "../livetree.js";
-import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi, DomSize } from "../../../types/dom.types.js";
+import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi, DomSize, LiveTreeDocument } from "../../../types/dom.types.js";
 import { _snip } from "../../../utils/sys-utils/snip.utils.js";
 import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
 import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
@@ -140,20 +140,19 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     if (!e?.parentElement) return undefined;
     return resolve_tree_el(tree, e.parentElement);
   }) as ParentFn;
-
-  const doc = (() => {
+  function get_doc(): LiveTreeDocument | undefined {
     const e = el();
-    if (!e?.ownerDocument) {
-      throw new Error(`[LiveTree.dom.doc] no ownerDocument available`);
-    }
+    if (!e?.ownerDocument) return undefined;
+
+    const owner = e.ownerDocument;
 
     const elementAtPoint = (x: number, y: number): Element | undefined => {
-      const hit = e.ownerDocument.elementFromPoint(x, y);
+      const hit = owner.elementFromPoint(x, y);
       return hit instanceof Element ? hit : undefined;
     };
 
     const elementsFromPoint = (x: number, y: number): Element[] => {
-      return e.ownerDocument
+      return owner
         .elementsFromPoint(x, y)
         .filter((hit): hit is Element => hit instanceof Element);
     };
@@ -181,7 +180,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
       treeAtPoint,
       treesFromPoint,
     });
-  })();
+  }
 
   const must = {
     el(label?: string): Element {
@@ -272,8 +271,16 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
       }
       return hit;
     },
-  };
 
+
+    get doc(): LiveTreeDocument {
+      const hit = get_doc();
+      if (!hit) {
+        throw new Error(`[LiveTree.dom.must.doc] no ownerDocument available`);
+      }
+      return hit;
+    },
+  };
   return {
     el,
     html,
@@ -288,7 +295,11 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     clientRects,
     scrollSize,
     clientSize,
-    doc,
+
+    get doc() {
+      return get_doc();
+    },
+
     must,
   };
 }

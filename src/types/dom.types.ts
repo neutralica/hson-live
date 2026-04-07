@@ -47,7 +47,7 @@ export interface LiveTreeDom {
   clientSize(): DomSize | undefined;
 
   // ADDED
-  doc: LiveTreeDocument;
+  doc: LiveTreeDocument | undefined
 
   must: Readonly<{
     el: (label?: string) => Element;

@@ -195,6 +195,10 @@ export interface ListenerSub {
 export interface ListenerBuilder {
   on<K extends keyof ElemMap>(type: K, handler: (ev: ElemMap[K]) => void): ListenerSub;
 
+  document: ListenerBuilder;
+  window:  ListenerBuilder;
+  element:  ListenerBuilder;
+
   // Form / input
   onInput(fn: (ev: InputEvent) => void): ListenerSub;
   onChange(fn: (ev: Event) => void): ListenerSub;
@@ -202,64 +206,64 @@ export interface ListenerBuilder {
 
   // Mouse
   onClick(fn: (ev: MouseEvent) => void): ListenerSub;
-  onDblClick(fn: (ev: MouseEvent) => void): ListenerSub;         
-  onContextMenu(fn: (ev: MouseEvent) => void): ListenerSub;      
+  onDblClick(fn: (ev: MouseEvent) => void): ListenerSub;
+  onContextMenu(fn: (ev: MouseEvent) => void): ListenerSub;
   onMouseMove(fn: (ev: MouseEvent) => void): ListenerSub;
   onMouseDown(fn: (ev: MouseEvent) => void): ListenerSub;
   onMouseUp(fn: (ev: MouseEvent) => void): ListenerSub;
-  onMouseEnter(fn: (ev: MouseEvent) => void): ListenerSub;      
-  onMouseLeave(fn: (ev: MouseEvent) => void): ListenerSub;       
+  onMouseEnter(fn: (ev: MouseEvent) => void): ListenerSub;
+  onMouseLeave(fn: (ev: MouseEvent) => void): ListenerSub;
 
   // Pointer (preferred modern input)
   onPointerDown(fn: (ev: PointerEvent) => void): ListenerSub;
   onPointerMove(fn: (ev: PointerEvent) => void): ListenerSub;
   onPointerUp(fn: (ev: PointerEvent) => void): ListenerSub;
-  onPointerEnter(fn: (ev: PointerEvent) => void): ListenerSub;   
-  onPointerLeave(fn: (ev: PointerEvent) => void): ListenerSub;   
-  onPointerCancel(fn: (ev: PointerEvent) => void): ListenerSub;  
+  onPointerEnter(fn: (ev: PointerEvent) => void): ListenerSub;
+  onPointerLeave(fn: (ev: PointerEvent) => void): ListenerSub;
+  onPointerCancel(fn: (ev: PointerEvent) => void): ListenerSub;
 
   // Touch (optional; pointer events often cover it, but nice to have)
-  onTouchStart(fn: (ev: TouchEvent) => void): ListenerSub;       
-  onTouchMove(fn: (ev: TouchEvent) => void): ListenerSub;        
-  onTouchEnd(fn: (ev: TouchEvent) => void): ListenerSub;         
-  onTouchCancel(fn: (ev: TouchEvent) => void): ListenerSub;      
+  onTouchStart(fn: (ev: TouchEvent) => void): ListenerSub;
+  onTouchMove(fn: (ev: TouchEvent) => void): ListenerSub;
+  onTouchEnd(fn: (ev: TouchEvent) => void): ListenerSub;
+  onTouchCancel(fn: (ev: TouchEvent) => void): ListenerSub;
 
   // Wheel / scroll
-  onWheel(fn: (ev: WheelEvent) => void): ListenerSub;            
-  onScroll(fn: (ev: Event) => void): ListenerSub;                
+  onWheel(fn: (ev: WheelEvent) => void): ListenerSub;
+  onScroll(fn: (ev: Event) => void): ListenerSub;
 
   // Keyboard
   onKeyDown(fn: (ev: KeyboardEvent) => void): ListenerSub;
   onKeyUp(fn: (ev: KeyboardEvent) => void): ListenerSub;
 
   // Focus
-  onFocus(fn: (ev: FocusEvent) => void): ListenerSub;         
-  onBlur(fn: (ev: FocusEvent) => void): ListenerSub;          
+  onFocus(fn: (ev: FocusEvent) => void): ListenerSub;
+  onBlur(fn: (ev: FocusEvent) => void): ListenerSub;
   onFocusIn(fn: (ev: FocusEvent) => void): ListenerSub;
   onFocusOut(fn: (ev: FocusEvent) => void): ListenerSub;
 
   // Drag & drop (very commonly needed unexpectedly)
-  onDragStart(fn: (ev: DragEvent) => void): ListenerSub;         
-  onDragOver(fn: (ev: DragEvent) => void): ListenerSub;          
-  onDrop(fn: (ev: DragEvent) => void): ListenerSub;              
-  onDragEnd(fn: (ev: DragEvent) => void): ListenerSub;          
+  onDragStart(fn: (ev: DragEvent) => void): ListenerSub;
+  onDragOver(fn: (ev: DragEvent) => void): ListenerSub;
+  onDrop(fn: (ev: DragEvent) => void): ListenerSub;
+  onDragEnd(fn: (ev: DragEvent) => void): ListenerSub;
 
   // CSS animation lifecycle
-  onAnimationStart(fn: (ev: AnimationEvent) => void): ListenerSub;      
-  onAnimationIteration(fn: (ev: AnimationEvent) => void): ListenerSub;  
-  onAnimationEnd(fn: (ev: AnimationEvent) => void): ListenerSub;        
-  onAnimationCancel(fn: (ev: AnimationEvent) => void): ListenerSub;     
+  onAnimationStart(fn: (ev: AnimationEvent) => void): ListenerSub;
+  onAnimationIteration(fn: (ev: AnimationEvent) => void): ListenerSub;
+  onAnimationEnd(fn: (ev: AnimationEvent) => void): ListenerSub;
+  onAnimationCancel(fn: (ev: AnimationEvent) => void): ListenerSub;
 
   // CSS transition lifecycle (pairs well with animation; comes up a lot)
-  onTransitionStart(fn: (ev: TransitionEvent) => void): ListenerSub;   
-  onTransitionEnd(fn: (ev: TransitionEvent) => void): ListenerSub;      
-  onTransitionCancel(fn: (ev: TransitionEvent) => void): ListenerSub;   
-  onTransitionRun(fn: (ev: TransitionEvent) => void): ListenerSub;      
+  onTransitionStart(fn: (ev: TransitionEvent) => void): ListenerSub;
+  onTransitionEnd(fn: (ev: TransitionEvent) => void): ListenerSub;
+  onTransitionCancel(fn: (ev: TransitionEvent) => void): ListenerSub;
+  onTransitionRun(fn: (ev: TransitionEvent) => void): ListenerSub;
 
   // Clipboard (surprisingly common in apps)
-  onCopy(fn: (ev: ClipboardEvent) => void): ListenerSub;          
-  onCut(fn: (ev: ClipboardEvent) => void): ListenerSub;           
-  onPaste(fn: (ev: ClipboardEvent) => void): ListenerSub;         
+  onCopy(fn: (ev: ClipboardEvent) => void): ListenerSub;
+  onCut(fn: (ev: ClipboardEvent) => void): ListenerSub;
+  onPaste(fn: (ev: ClipboardEvent) => void): ListenerSub;
 
   // Custom events / escape hatches
   onCustom<E extends Event = Event>(type: string, handler: (ev: E) => void): ListenerSub;

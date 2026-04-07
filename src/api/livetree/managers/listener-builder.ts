@@ -121,15 +121,34 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     lastHandle = attach(); // perform real attach immediately so handlers fire in same tick
   };
 
-  const resolveTarget = (el: Element): EventTarget =>
-    opts.target === "window" ? window :
-      opts.target === "document" ? document :
-        el;
+  const resolveTarget = (target: EventTarget): EventTarget => target;
 
-  const collectTargets = (): Element[] => {
+  const resolveAmbientTarget = (): EventTarget | null => {
+    try {
+      if (opts.target === "window") {
+        return typeof window !== "undefined" ? window : null;
+      }
+
+      if (opts.target === "document") {
+        return typeof document !== "undefined" ? document : null;
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const collectTargets = (): EventTarget[] => {
+    if (opts.target === "window" || opts.target === "document") {
+      const tgt = resolveAmbientTarget();
+      return tgt ? [tgt] : [];
+    }
+
     const el = tree.asDomElement();
     return el ? [el] : [];
   };
+
   const on = <K extends keyof ElemMap>(
     type: K,
     handler: (ev: ElemMap[K]) => void
@@ -195,13 +214,11 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     // Jobs are snapshotted and the queue cleared so schedule() / subsequent ticks
     // cannot reattach old jobs, which causes duplicate listeners and “haunting” behavior.
     // If attach() is called with an empty selection, jobs are finalized as unattached.
-
     const targets = collectTargets();
 
-    // Optional sanity check (no process.env, and doesn't assume QUID exists):
-    for (const el of targets) {
-      if (!(el instanceof Element)) {
-        throw new Error("listen.attach(): non-Element target in selection");
+    for (const tgt of targets) {
+      if (!(tgt instanceof EventTarget)) {
+        throw new Error("listen.attach(): non-EventTarget in selection");
       }
     }
 
@@ -247,8 +264,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
       const jobOffs: Array<() => void> = [];
 
-      for (const el of targets) {
-        const tgt = resolveTarget(el);
+      for (const tgt of targets) {
         jobOffs.push(addWithOff(tgt, job.type, job.handler, aelo));
       }
 
@@ -280,6 +296,22 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
   // add convenience wrappers so api satisfies ListenerBuilder
   api = {
     on,
+
+    // target selection
+    get document() {
+      opts.target = "document";
+      return api;
+    },
+
+    get window() {
+      opts.target = "window";
+      return api;
+    },
+
+    get element() {
+      opts.target = undefined;
+      return api;
+    },
 
     // Form / input
     onInput: (fn) => on("input", (ev) => fn(ev as InputEvent)),
