@@ -321,4 +321,4 @@ This enforces a modicum of consistency and reliability in markup structure; it a
 
 It exists to serialize HsonNode graphs without introducing format-specific scaffolding, not to replace HTML or JSON as external interchange formats.
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

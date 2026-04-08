@@ -183,4 +183,4 @@ LiveDemo is the first site made with hson.liveTree. It demonstrates the capabili
 hson-live is licensed under the Public Parity License 7.0.
 See LICENSE for details.
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0.
+© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0.

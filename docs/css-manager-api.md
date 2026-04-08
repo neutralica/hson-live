@@ -256,4 +256,4 @@ Key differences from `LiveTree.css`:
 * The `set` proxy is constrained by runtime keys. In browser runtimes it uses `document.documentElement.style` for the key list; in Node/tests it falls back to a small, fixed list.
 * `style.get.*` reads from the serialized inline style attribute, not computed style. It will not reflect rules set through `CssManager` or `GlobalCss`.
 
-© 2026 terminal_gothic LLC. All rights reserved except as granted under the Public Parity License 7.0
+© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
