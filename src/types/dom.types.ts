@@ -55,7 +55,7 @@ export interface LiveTreeDom {
     rect: (label?: string) => DOMRect;
     closest: (sel: string, label?: string) => LiveTree;
     parent: (label?: string) => LiveTree;
-    treeFromEl?: (domEl: Element, label?: string) => LiveTree;
+    treeFromEl: (domEl: Element, label?: string) => LiveTree;
 
     // ADDED
     computed: (label?: string) => CSSStyleDeclaration;

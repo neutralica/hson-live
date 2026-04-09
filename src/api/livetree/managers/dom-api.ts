@@ -225,8 +225,10 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
       return hit;
     },
 
-    treeFromEl(domEl: Element, label?: string): LiveTree {
-      return resolve_tree_el_must(tree, domEl, label);
+    treeFromEl(domEl: Element, label?: string):  LiveTree {
+      const el = resolve_tree_el_must(tree, domEl, label);
+      if (!el) {throw new Error (label || "[LiveTree.dom.must.treeFromEl] no el found")}
+      return el as LiveTree;
     },
 
     computed(label?: string): CSSStyleDeclaration {
