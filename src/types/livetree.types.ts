@@ -161,6 +161,13 @@ export type CreateHelper<Single, Many> =
     at(index: number): CreateHelper<Single, Many>;
   };
 
+  export type DetachedCreateHelper =
+  HtmlCreateHelper &
+  SvgCreateHelper & {
+    prepend(): DetachedCreateHelper;
+    at(index: number): DetachedCreateHelper;
+    };
+  
 /**************************************************************
  * Creation helper exposed as `selector.create` on a
  * `TreeSelector`.
