@@ -48,6 +48,7 @@ export interface LiveTreeDom {
 
   // ADDED
   doc: LiveTreeDocument | undefined
+  treeFromEl: (domEl: Element, label?: string) => LiveTree | undefined;
 
   must: Readonly<{
     el: (label?: string) => Element;

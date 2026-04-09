@@ -8,8 +8,9 @@ import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../tree-selector.js";
 import { search_nodes } from "./search.js";
 import { FindWithById } from "../../../types/livetree.types.js";
-import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
+import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
 import { wrap_in_tree } from "../create-livetree.js";
+import { is_Node } from "../../../utils/node-utils/node-guards.js";
 
 // “batching” helpers + queryish types
 
@@ -32,6 +33,14 @@ export type FindMany = ((q: FindQueryMany) => TreeSelector) & FindManyHelpers & 
 // array type-guard so TS narrows correctly.
 function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
   return Array.isArray(q);
+}
+function node_in_subtree(root: HsonNode, target: HsonNode): boolean {
+  if (root === target) return true;
+  for (const child of root._content ?? []) {
+    if (typeof child === "string") continue;
+    if (is_Node(child) && node_in_subtree(child, target)) return true;
+  }
+  return false;
 }
 
 // no overloads; just accept the union and narrow.
@@ -148,12 +157,21 @@ export function make_find_for(tree: LiveTree): FindWithById {
     mustBase({ tag });
 
   base.must = mustBase;
-  
-  base.byQuid = (quid: string): LiveTree | undefined =>
-    base({ attrs: { [_DATA_QUID]: quid } });
 
-  mustBase.byQuid = (quid: string): LiveTree =>
-    mustBase({ attrs: { [_DATA_QUID]: quid } });
+  base.byQuid = (quid: string): LiveTree | undefined => {
+    const node = get_node_by_quid(quid);
+    if (!node) return undefined;
+    if (!node_in_subtree(tree.node, node)) return undefined;
+    return wrap_in_tree(tree, node);
+  };
+
+  mustBase.byQuid = (quid: string): LiveTree => {
+    const hit = base.byQuid(quid);
+    if (!hit) {
+      throw new Error(`[LiveTree.find.must] expected match for quid:${quid}`);
+    }
+    return hit;
+  };
 
   return base;
 }

@@ -106,6 +106,11 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     };
   }) as (() => DomSize | undefined);
 
+  const treeFromEl = (domEl: Element, label?: string) => {
+    const el = resolve_tree_from_el(tree, domEl);
+    return el as LiveTree;
+  };
+
   const clientSize = (() => {
     const e = html();
     if (!e) return undefined;
@@ -225,9 +230,9 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
       return hit;
     },
 
-    treeFromEl(domEl: Element, label?: string):  LiveTree {
+    treeFromEl(domEl: Element, label?: string): LiveTree {
       const el = resolve_tree_el_must(tree, domEl, label);
-      if (!el) {throw new Error (label || "[LiveTree.dom.must.treeFromEl] no el found")}
+      if (!el) { throw new Error(label || "[LiveTree.dom.must.treeFromEl] no el found") }
       return el as LiveTree;
     },
 
@@ -291,6 +296,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     parent,
     computed,
     computedProp,
+    treeFromEl,
     clientRects,
     scrollSize,
     clientSize,
