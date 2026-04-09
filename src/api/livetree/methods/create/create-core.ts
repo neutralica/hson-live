@@ -69,7 +69,6 @@ export function build_markup_stub(tag: string, ns: CreateNs): string {
     if (tag === "svg") {
       return `<svg xmlns="http://www.w3.org/2000/svg"></svg>`;
     }
-
     return `<svg xmlns="http://www.w3.org/2000/svg"><${tag}></${tag}></svg>`;
   }
 

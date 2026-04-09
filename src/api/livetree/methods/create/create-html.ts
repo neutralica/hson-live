@@ -1,5 +1,5 @@
-import { HTML_TAGS } from "../../../../consts/html-tags.js";
-import { HtmlCreateHelper, TagName, HtmlTag } from "../../../../types/livetree.types.js";
+import { HTML_TAGS, SVG_TAGS } from "../../../../consts/html-tags.js";
+import { HtmlCreateHelper, TagName, HtmlTag, SvgCreateHelper, SvgTag } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { LiveTree } from "../../livetree.js";
 import { TreeSelector } from "../../tree-selector.js";
@@ -56,8 +56,8 @@ export function make_html_tree_create(tree: LiveTree): HtmlCreateHelper {
 
       return core.createSingleTag(tag, ix);
     };
-  }
 
+  }
   (helper as any).svg = (source?: string): SvgLiveTree => {
     const ix = core.consumeIndex();
 

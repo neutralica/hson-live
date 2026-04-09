@@ -260,12 +260,12 @@ export class LiveTree {
    * @see make_tree_create2
    */
   public get create(): HtmlCreateHelper {
-  return (
-    this.svg.inScope()
-      ? make_svg_tree_create(this)
-      : make_html_tree_create(this)
-  ) as unknown as HtmlCreateHelper;
-}
+    return (
+      this.svg.inScope()
+        ? make_svg_tree_create(this)
+        : make_html_tree_create(this)
+    ) as unknown as HtmlCreateHelper;
+  }
 
   /**
    * Return this tree's QUID, a stable identity string associated with the
@@ -502,40 +502,40 @@ export class LiveTree {
   }
 
   public get svg(): SvgScopeApi {
-  if (!this.svgApi) {
-    const bbox = (): SvgBox | undefined => {
-      const el = this.dom.el();
-      if (!(el instanceof SVGGraphicsElement)) return undefined;
+    if (!this.svgApi) {
+      const bbox = (): SvgBox | undefined => {
+        const el = this.dom.el();
+        if (!(el instanceof SVGGraphicsElement)) return undefined;
 
-      const b = el.getBBox();
-      return {
-        x: b.x,
-        y: b.y,
-        width: b.width,
-        height: b.height,
+        const b = el.getBBox();
+        return {
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
+        };
       };
-    };
 
-    this.svgApi = Object.freeze({
-      inScope: (): boolean => {
-        return SVG_TAGS.includes(this.node._tag as SvgTag);
-      },
-
-      // ADD
-      bbox,
-
-      must: {
-        bbox: (label?: string): SvgBox => {
-          const b = bbox();
-          if (!b) {
-            throw new Error(label ?? `[LiveTree.svg.must.bbox] no bbox available`);
-          }
-          return b;
+      this.svgApi = Object.freeze({
+        inScope: (): boolean => {
+          return SVG_TAGS.includes(this.node._tag as SvgTag);
         },
-      },
-    });
-  }
 
-  return this.svgApi;
-}
+        // ADD
+        bbox,
+
+        must: {
+          bbox: (label?: string): SvgBox => {
+            const b = bbox();
+            if (!b) {
+              throw new Error(label ?? `[LiveTree.svg.must.bbox] no bbox available`);
+            }
+            return b;
+          },
+        },
+      });
+    }
+
+    return this.svgApi;
+  }
 }
