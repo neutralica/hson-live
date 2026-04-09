@@ -191,7 +191,7 @@ export class LiveTree {
     return this.domApiInternal;
   }
 
-  //  if the underlying bound element can change during lifetime:
+  //  the underlying bound element can change during lifetime:
   private invalidate_dom_api(): void {
     // existing
     this.domApiInternal = undefined;

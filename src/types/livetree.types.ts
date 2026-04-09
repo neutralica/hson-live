@@ -88,6 +88,7 @@ export interface NodeRef {
  *   - maintain the host root identity across branches.
  **************************************************************/
 type FindOneHelpers<Return> = {
+  byQuid: (quid: string) => Return;
   byId: (id: string) => Return;
   byAttrs: (attr: string, value: string) => Return;
   byFlags: (flag: string) => Return;

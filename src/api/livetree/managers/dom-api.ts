@@ -5,23 +5,25 @@ import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
 import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../tree-selector.js";
+import { create_livetree } from "../create-livetree.js";
 
 // honest maybe-returning lookup from DOM element back to tree node
-function resolve_tree_el(tree: LiveTree, el: Element): LiveTree | undefined {
+function resolve_tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
   const quid = get_el_by_quid(el);
   if (!quid) return undefined;
 
   const node = get_node_by_quid(quid);
   if (!node) return undefined;
 
-  // CHANGED: ensure the resolved node actually belongs to this tree/root
-  const hit = tree.find.byAttrs(_DATA_QUID, quid);
-  return hit ?? undefined;
+  const t = create_livetree(node);
+  t.adoptRoots(tree.hostRootNode());
+
+  return t;
 }
 
 // strict helper for internal use
 function resolve_tree_el_must(tree: LiveTree, el: Element, label?: string): LiveTree {
-  const hit = resolve_tree_el(tree, el);
+  const hit = resolve_tree_from_el(tree, el);
   if (!hit) {
     const desc = label ?? el.tagName.toLowerCase();
     throw new Error(`[LiveTree.dom.must] expected element to belong to this tree: ${desc}`);
@@ -132,13 +134,13 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     const hit = e.closest(sel);
     if (!hit) return undefined;
 
-    return resolve_tree_el(tree, hit);
+    return resolve_tree_from_el(tree, hit);
   }) as ClosestFn;
 
   const parent = (() => {
     const e = el();
     if (!e?.parentElement) return undefined;
-    return resolve_tree_el(tree, e.parentElement);
+    return resolve_tree_from_el(tree, e.parentElement);
   }) as ParentFn;
   function get_doc(): LiveTreeDocument | undefined {
     const e = el();
@@ -160,14 +162,14 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     const treeAtPoint = (x: number, y: number): LiveTree | undefined => {
       const hit = elementAtPoint(x, y);
       if (!hit) return undefined;
-      return resolve_tree_el(tree, hit);
+      return resolve_tree_from_el(tree, hit);
     };
 
     const treesFromPoint = (x: number, y: number): TreeSelector => {
       const trees: LiveTree[] = [];
 
       for (const hit of elementsFromPoint(x, y)) {
-        const resolved = resolve_tree_el(tree, hit);
+        const resolved = resolve_tree_from_el(tree, hit);
         if (resolved) trees.push(resolved);
       }
 
@@ -224,12 +226,7 @@ export function make_dom_api(tree: LiveTree): LiveTreeDom {
     },
 
     treeFromEl(domEl: Element, label?: string): LiveTree {
-      const hit = resolve_tree_el(tree, domEl);
-      if (!hit) {
-        const desc = label ?? domEl.tagName.toLowerCase();
-        throw new Error(`[LiveTree.dom.must] expected element to belong to this tree: ${desc}`);
-      }
-      return hit;
+      return resolve_tree_el_must(tree, domEl, label);
     },
 
     computed(label?: string): CSSStyleDeclaration {
