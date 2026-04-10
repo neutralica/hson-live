@@ -36,7 +36,6 @@ function owner_reg_remove(ownerQuid: string, off: () => void): void {
 
 export function listeners_off_for_owner_quid(ownerQuid: string): void {
   const set = OWNER_REG.get(ownerQuid);
-  console.log("OWNER CLEANUP", ownerQuid, set?.size);
   if (!set) return;
 
   for (const off of set) off();
