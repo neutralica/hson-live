@@ -10,19 +10,38 @@ type QueuedListener = {
   type: string;
   handler: EventListener;
   cancelled: boolean;
+  ambientOwnerQuid?: string;
+  isAmbient?: boolean;
   offs: Array<() => void> | null; // filled after attach
 };
 
-/**
- * Internal registry mapping EventTargets → Sets of "off" callbacks.
- *
- * LiveTree uses this to provide reliable teardown for any listeners it creates.
- * Each target holds a Set of functions that, when called, remove exactly the
- * listener that was added. This allows bulk-cleanup without needing to track
- * the original handlers or options externally.
- */
 const REG = new WeakMap<EventTarget, Set<() => void>>();
+const OWNER_REG = new Map<string, Set<() => void>>();
 
+function owner_reg_add(ownerQuid: string, off: () => void): void {
+  let set = OWNER_REG.get(ownerQuid);
+  if (!set) {
+    set = new Set();
+    OWNER_REG.set(ownerQuid, set);
+  }
+  set.add(off);
+}
+
+function owner_reg_remove(ownerQuid: string, off: () => void): void {
+  const set = OWNER_REG.get(ownerQuid);
+  if (!set) return;
+  set.delete(off);
+  if (set.size === 0) OWNER_REG.delete(ownerQuid);
+}
+
+export function listeners_off_for_owner_quid(ownerQuid: string): void {
+  const set = OWNER_REG.get(ownerQuid);
+  console.log("OWNER CLEANUP", ownerQuid, set?.size);
+  if (!set) return;
+
+  for (const off of set) off();
+  OWNER_REG.delete(ownerQuid);
+}
 
 /**
  * Adds an event listener and returns an `off()` function that removes it.
@@ -73,8 +92,21 @@ function addWithOff(
 export function _listeners_off_for_target(target: EventTarget): void {
   const set = REG.get(target);
   if (!set) return;
-  for (const off of set) off();
-  REG.delete(target);
+
+  for (const off of [...set]) off();
+  set.clear();
+}
+
+export function _listeners_debug_hard_reset(): void {
+  if (typeof document !== "undefined") {
+    _listeners_off_for_target(document);
+  }
+
+  if (typeof window !== "undefined") {
+    _listeners_off_for_target(window);
+  }
+
+  OWNER_REG.clear();
 }
 
 /**
@@ -120,8 +152,6 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     if (!autoEnabled) return;
     lastHandle = attach(); // perform real attach immediately so handlers fire in same tick
   };
-
-  const resolveTarget = (target: EventTarget): EventTarget => target;
 
   const resolveAmbientTarget = (): EventTarget | null => {
     try {
@@ -174,6 +204,13 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
     };
 
     // queue this binding; attach() will call addEventListener with current opts
+    const isAmbient = opts.target === "window" || opts.target === "document";
+    const ownerQuid = isAmbient ? tree.quid : undefined;
+    console.warn("REGISTER AMBIENT", {
+  ownerQuid,
+  target: opts.target,
+  id: tree.dom.el()?.getAttribute("id"),
+});
     const job: QueuedListener = {
       id: nextId++,
       sub: null,
@@ -181,6 +218,8 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       handler: wrapped,
       cancelled: false,
       offs: null,
+      isAmbient,
+      ambientOwnerQuid: isAmbient ? tree.quid : undefined,
     };
 
     queue.push(job);
@@ -194,7 +233,13 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
         // detach immediately if already attached
         if (job.offs) {
-          for (const f of job.offs) f();
+          for (const f of job.offs) {
+            f();
+
+            if (opts.target === "window" || opts.target === "document") {
+              owner_reg_remove(tree.quid, f);
+            }
+          }
           job.offs = null;
         }
 
@@ -265,7 +310,11 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       const jobOffs: Array<() => void> = [];
 
       for (const tgt of targets) {
-        jobOffs.push(addWithOff(tgt, job.type, job.handler, aelo));
+        const off = addWithOff(tgt, job.type, job.handler, aelo);
+        jobOffs.push(off);
+        if (job.isAmbient && job.ambientOwnerQuid) {
+          owner_reg_add(job.ambientOwnerQuid, off);
+        }
       }
 
       job.offs = jobOffs;
@@ -275,9 +324,27 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       }
       for (const f of jobOffs) offsAll.push(f);
     }
-
     const handle: ListenerSub = {
-      off: () => { for (const f of offsAll) f(); },
+      off: () => {
+        for (const job of jobs) {
+          if (!job.offs) continue;
+
+          for (const f of job.offs) {
+            f();
+
+            if (job.isAmbient && job.ambientOwnerQuid) {
+              owner_reg_remove(job.ambientOwnerQuid, f);
+            }
+          }
+
+          job.offs = null;
+
+          if (job.sub) {
+            job.sub.count = 0;
+            job.sub.ok = false;
+          }
+        }
+      },
       count: offsAll.length,
       ok: offsAll.length > 0,
     };

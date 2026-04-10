@@ -1,6 +1,6 @@
 // detach-node.ts
 
-import { _listeners_off_for_target } from "../../api/livetree/managers/listener-builder.js";
+import { _listeners_off_for_target, listeners_off_for_owner_quid } from "../../api/livetree/managers/listener-builder.js";
 import { HsonNode } from "../../types/node.types.js";
 import { is_Node } from "../node-utils/node-guards.js";
 import { element_for_node, unlinkNode } from "./node-map-helpers.js";
@@ -54,8 +54,9 @@ type NodeWithKids = { _content?: unknown[] };
   const quid = (node as any)?._meta?.["data-_quid"];
   if (typeof quid === "string" && quid.length) {
     CssManager.invoke().clearQuid(quid);
+    listeners_off_for_owner_quid(quid); // NEW
   }
 
   // 3) finally drop the map entry
   unlinkNode(node);
- }
+}
