@@ -62,22 +62,6 @@ export function construct_source_1(
   pipelineOptions: { unsafe: boolean } = { unsafe: false }
 ): SourceConstructor_1 {
   return {
-    /**
-     * HTML → HSON Node.
-     *
-     * Accepts an HTML string or Element and produces a normalized HsonNode frame.
-     *
-     * SAFE pipeline (`pipelineOptions.unsafe === false`):
-     *   - `options.sanitize !== false` → `parse_external_html` (DOMPurify + parser).
-     *   - `options.sanitize === false` → `parse_html` (raw HTML, no DOMPurify).
-     *
-     * UNSAFE pipeline (`pipelineOptions.unsafe === true`):
-     *   - always `parse_html` (no DOMPurify), regardless of `options.sanitize`.
-     *
-     * This only prepares Node + meta; later steps choose whether to:
-     *   - serialize (`.toHtml()`, `.toJson()`, `.toHson()`),
-     *   - or project into a LiveTree (`.asBranch()`).
-     */
     fromHtml(
       input: string | Element,
       options: HtmlSourceOptions = { sanitize: true }

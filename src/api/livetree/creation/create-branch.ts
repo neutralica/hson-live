@@ -8,29 +8,17 @@ import { LiveTree } from "../livetree.js";
 import { create_livetree } from "../create-livetree.js";
 
 /**
- * Convert a raw HSON node into a `LiveTree` branch and eagerly construct
- * its corresponding DOM subtree.
+ * Normalize a parsed HSON root into a detached `LiveTree` branch.
  *
- * Behavior:
- * - Calls `unwrap_root_elem(rootNode)` to remove structural wrappers such
- *   as `_root` or `_elem`, ensuring that only a real element node is used
- *   as the branch root.
- * - If unwrapping yields no element nodes, logs a warning and falls back
- *   to using `rootNode` directly.
- * - If unwrapping yields more than one node, throws, since a `LiveTree`
- *   branch must have exactly one concrete root.
- * - For the resulting root element, calls `create_live_tree2` to build the
- *   DOM subtree and populate `NODE_ELEMENT_MAP`.
+ * Structural wrapper nodes such as `_root` and `_elem` are unwrapped first so
+ * the returned tree always points at one concrete branch root. Exactly one
+ * concrete root element must remain after unwrapping.
  *
- * This function makes structural VSNs invisible to callers, guaranteeing
- * that the returned `LiveTree` always references a single, concrete,
- * DOM-backed element node.
+ * This is the detached-branch path used by `hson.liveTree.from*` entrypoints.
+ * It does not graft into the existing live DOM.
  *
- * @param rootNode - The raw HSON node to normalize into a `LiveTree` root.
- * @returns A new `LiveTree` instance rooted at the unwrapped element node.
- * @see unwrap_root_elem
- * @see project_livetree
- * @see LiveTree
+ * @param rootNode - Raw HSON root to normalize.
+ * @returns A detached `LiveTree` rooted at the unwrapped concrete node.
  */
 export function make_branch_from_node(rootNode: HsonNode): LiveTree {
   const unwrapped = unwrap_root_elem(rootNode);

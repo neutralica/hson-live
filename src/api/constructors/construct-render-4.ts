@@ -7,24 +7,22 @@ import { ParsedResult, RenderConstructor_4 } from "../../types/constructor.types
 import { FrameRender } from "../../types/constructor.types.js";
 
 /**
- * Stage 4 (NEW, terminal): serialize or project the final data.
+ * HSON pipeline, stage 4: finalize the selected output.
  *
- * This is the final stage of the fluent API chain.
+ * This is the terminal stage of the transformer chain. The incoming context
+ * already contains:
+ * - the chosen render format,
+ * - the materialized representation on the frame,
+ * - and any formatting options applied in stage 3.
  *
- * The `FrameRender` context coming in here already knows:
- * - which format was chosen in stage 2 (`output: RenderΔ`),
- * - which representation(s) were materialized on the frame
- *   (`frame.html` / `frame.json` / `frame.hson`),
- * - any formatting options that were set in stage 3 (`frame.options`).
+ * This stage exposes only the final data operations:
+ * - `serialize()` → string output in the chosen format
+ * - `parse()` → structured output for JSON or HSON
  *
- * This constructor exposes three terminal operations:
+ * LiveTree creation is not part of this final render stage.
  *
- * - `serialize()` → string in the chosen format,
- * - `parse()`     → structured value (JSON / Nodes),
- * - `asBranch()`  → LiveTree projection for DOM interaction.
- *
- * @param context - Render context containing the frame and output format.
- * @returns Stage-4 terminal render API for the chosen format.
+ * @param context - Render context containing the frame and chosen format.
+ * @returns Stage-4 terminal render API.
  */
 export function construct_render_4<K extends RenderFormats>(
   context: FrameRender<K>
@@ -36,7 +34,7 @@ export function construct_render_4<K extends RenderFormats>(
      * Return the final output as a string in the chosen format,
      * formatted according to any options supplied in stage 3.
      *
-     * - After `.toHson()` → HSON source text.
+     * - After `.toHson()` → HSON string.
      * - After `.toJson()` → JSON string.
      * - After `.toHtml()` → HTML string.
      */
@@ -80,7 +78,7 @@ export function construct_render_4<K extends RenderFormats>(
      * - After `.toHson()`:
      *     → the internal HsonNode tree (Nodes).
      * - After `.toHtml()`:
-     *     → not supported; HTML is inherently stringy, so `.parse()` throws.
+     *     → not supported to minimize XSS risk.
      *
      * This is intentionally typed as `unknown`; callers should narrow
      * based on which `toX()` they used:

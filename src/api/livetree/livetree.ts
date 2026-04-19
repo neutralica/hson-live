@@ -91,20 +91,27 @@ export class LiveTree {
   /* the root node or historic root node */
   private hostRoot!: HsonNode;
   /* inline style editor */
-
   private styleApiInternal: StyleHandle<this> | undefined = undefined;
-
-  // private styleManagerInternal: StyleManager | undefined = undefined;
-  /* .dataset editor */
+  /* dataset property manager */
   private datasetManagerInternal: DataManager<this> | undefined = undefined;
+  /* accessor api for a node's effective children (skips _VSNs) */
   private contentManager: ContentManager | undefined = undefined;
+  /* provides api for quid-scoped stylesheet editing */
   private cssApiInternal: CssTreeHandle | undefined = undefined;
+  /* tree-scoped event emitter (separate from DOM listeners) */
   private eventsInternal?: TreeEvents;
+  /* convenience handle for the `id` _attr */
   private idApi?: IdApi<this>;
+  /* convenience handle for the `class` _attr */
   private classApi?: ClassApi<this>;
+  /* attribute (_attr) API handle */
   private _attr?: AttrHandle<this>;
+  /* "flag" (HTML boolean attributes) API handle */
   private _flag?: FlagHandle<this>;
+  /* namespace for SvgLiveTree-specific operations */
   private svgApi?: SvgScopeApi;
+  /* LiveTree DOM api */
+  private domApiInternal: LiveTreeDom | undefined = undefined;
 
 
 
@@ -175,18 +182,24 @@ export class LiveTree {
     this.setRef(input);
   }
 
-  private domApiInternal: LiveTreeDom | undefined = undefined;
 
-  // public accessor
   /**
-   * DOM adapter bound to this tree.
+   * DOM adapter bound to this tree's current mounted element, if any.
    *
-   * Provides element-oriented helpers (`el`, `closest`, `parent`, etc.)
-   * while remaining safe to call when the node is not mounted.
+   * Soft methods return `undefined` or `false` when the tree has no mapped
+   * DOM element; corresponding `must.*` helpers throw instead.
+   *
+   * The surface includes:
+   * - element resolution: `el`, `html`, `rect`, `closest`, `parent`, `treeFromEl`
+   * - state / layout reads: `isConnected`, `computed`, `computedProp`,
+   *   `clientRects`, `scrollSize`, `clientSize`
+   * - owner-document queries via `doc`: `elementAtPoint`, `elementsFromPoint`,
+   *   `treeAtPoint`, and `treesFromPoint`
    */
+
   public get dom(): LiveTreeDom {
     if (!this.domApiInternal) {
-      this.domApiInternal = make_dom_api(this);
+      this.domApiInternal = make_dom_api(this, () => this.resolveDomElement());
     }
     return this.domApiInternal;
   }
@@ -217,6 +230,15 @@ export class LiveTree {
    */
   public empty = empty_contents;
 
+  /**
+   * Remove this node's direct child nodes and return the number removed.
+   *
+   * This is a structural child-node operation. Removal semantics are defined by
+   * `remove_node_children`, and DOM state is kept in sync when mounted.
+   *
+   * @returns The number of direct node-children removed.
+   */
+
   public removeChildren(): number {
     // minimal wrapper; semantics live in helper
     const parent = this.nodeRef.resolveNode();
@@ -234,14 +256,24 @@ export class LiveTree {
     return remove_livetree.call(this);
   }
 
-
   /**
    * Find the first matching descendant in this subtree.
    *
+   * Supports structural queries plus convenience helpers:
+   * - `find(q)`
+   * - `find.byId(id)`
+   * - `find.byAttrs(attr, value)`
+   * - `find.byFlags(flag)`
+   * - `find.byTag(tag)`
+   * - `find.byQuid(quid)`
+   * - `find.must(...)` and matching `.must.*` variants
+   * (TODO: find.byClass, find.bySel)
+   *
    * @param q - Selector string or `HsonQuery`.
-   * @returns Matching `LiveTree`, or `undefined` if none.
+   * @returns The first matching `LiveTree`, or `undefined`.
    * @see make_find_for
    */
+
   public find: FindWithById = make_find_for(this);
 
   /**
@@ -254,11 +286,22 @@ export class LiveTree {
   public findAll: FindMany = make_find_all_for(this);
 
   /**
-   * Typed element creation helper bound to this tree.
+   * Child-creation helper bound to this tree.
    *
-   * @returns A `LiveTreeCreateHelper` scoped to this tree.
-   * @see make_tree_create2
+   * In HTML scope, this exposes HTML tag helpers plus `svg(...)`.
+   * In SVG scope, this exposes SVG tag helpers appropriate to the current
+   * namespace context.
+   *
+   * Supported patterns include:
+   * - creating empty children by tag helper, e.g. `tree.create.div()`
+   * - creating from trusted markup source strings, e.g. `tree.create.div("<div>...</div>")`
+   * - creating multiple children via `tree.create.tags([...])`
+   * - controlling insertion position for the next creation call with
+   *   `.prepend()` or `.at(index)`
+   *
+   * Returned child trees adopt this tree's host-root context.
    */
+
   public get create(): HtmlCreateHelper {
     return (
       this.svg.inScope()
@@ -326,13 +369,13 @@ export class LiveTree {
   }
 
   /*---------- managers & adapters ---------- */
-  /**
-  * Inline style setter for this node (lazy).
-  *
-  * @returns A `StyleSetter` bound to this tree’s node.
-  * @see StyleManager
-  */
 
+  /**
+    * Inline style setter for this node (lazy).
+    *
+    * @returns A `StyleSetter` bound to this tree’s node.
+    * @see StyleManager
+    */
   public get style(): StyleHandle<this> {
     if (!this.styleApiInternal) {
       const mgr = new StyleManager<this>(this);
@@ -344,6 +387,13 @@ export class LiveTree {
     return this.styleApiInternal;
   }
 
+  /**
+   * Internal event bus for non-DOM tree events.
+   *
+   * This is separate from `.listen`, which attaches browser event listeners.
+   * Use `.events` for library-level or lifecycle-style signaling where no DOM
+   * `EventTarget` is involved.
+   */
   public get events(): TreeEvents {
     if (!this.eventsInternal) {
       this.eventsInternal = make_tree_events();
@@ -376,9 +426,20 @@ export class LiveTree {
   }
 
   /**
-   * Event listener builder bound to this tree’s DOM element.
+   * Event-listener builder for this tree.
    *
-   * @returns A `ListenerBuilder` for attaching events.
+   * Registrations attach immediately when declared. By default listeners target
+   * this tree's current DOM element, but `.document`, `.window`, and `.element`
+   * can be used to choose the target for the next registration.
+   *
+   * Chainable modifiers such as `.once()`, `.capture()`, `.passive()`,
+   * `.preventDefault()`, `.stopProp()`, and `.stopImmediateProp()` configure
+   * the next listener registration.
+   *
+   * Ambient `document` / `window` listeners are tracked under this tree's QUID
+   * and are removed automatically when the owning tree is removed.
+   *
+   * @returns A `ListenerBuilder` for attaching DOM listeners.
    * @see build_listener
    */
   public get listen(): ListenerBuilder {
@@ -386,16 +447,38 @@ export class LiveTree {
   }
 
   /* ---------- attribute / flags API ---------- */
+
+  /**
+   * Attribute helper bound to this node.
+   *
+   * Use `attr.get`, `attr.has`, `attr.set`, `attr.setMany`, and `attr.drop`
+   * to read and mutate HSON / DOM attributes through one consistent surface.
+   */
   public get attr(): AttrHandle<this> {
     return (this._attr ??= attr_handle(this));
   }
 
+  /**
+   * Boolean-attribute helper bound to this node.
+   *
+   * Flags are represented as present-style attributes and provide a small
+   * convenience surface for `has`, `set`, and `clear`.
+   */
   public get flag(): FlagHandle<this> {
     return (this._flag ??= flag_handle(this));
   }
 
-
-
+  /**
+   * Text-content helper namespace for this node.
+   *
+   * These methods operate on HSON text/value leaves rather than replacing the
+   * tree object itself:
+   * - `set(value)` updates existing text/value leaves while preserving element children
+   * - `add(value)` appends a new text leaf
+   * - `insert(ix, value)` inserts a text leaf at the requested content index
+   * - `overwrite(value)` replaces all content with a single text/value leaf
+   * - `get()` returns concatenated text content under the node
+   */
 
   public readonly text: LiveTextApi<this> = {
     set: (value) => { set_node_text_content(this.node, value); return this; },
@@ -479,6 +562,13 @@ export class LiveTree {
     return this.classApi;
   }
 
+  /**
+   * Deep-clone this subtree into a detached `LiveTree`.
+   *
+   * The cloned branch receives fresh QUID identity and is not mounted into the
+   * DOM until it is appended or otherwise inserted elsewhere.
+   */
+
   public cloneBranch(): LiveTree {
     return clone_branch_method.call(this);
   }
@@ -494,13 +584,19 @@ export class LiveTree {
    *          `undefined` if not mounted.
    * @see NodeRef.resolveElement
    */
-  // TODO should this return an HtmlElement to prevent constant typeof checks?
-  public asDomElement(): Element | undefined {
+  private resolveDomElement(): Element | undefined {
     const firstRef = this.nodeRef;
     if (!firstRef) return undefined;
     return firstRef.resolveElement();
   }
 
+  /**
+   * SVG-scoped helpers for trees in SVG context.
+   *
+   * - `inScope()` reports whether the current node belongs to SVG scope
+   * - `bbox()` returns the mounted element's `getBBox()` result when available
+   * - `must.bbox()` throws when no SVG bounding box can be resolved
+   */
   public get svg(): SvgScopeApi {
     if (!this.svgApi) {
       const bbox = (): SvgBox | undefined => {

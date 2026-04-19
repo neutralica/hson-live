@@ -109,26 +109,23 @@ export function _listeners_debug_hard_reset(): void {
 }
 
 /**
- * Constructs a ListenerBuilder for a given LiveTree selection.
+ * Construct the `ListenerBuilder` used by `LiveTree.listen`.
  *
- * The builder accumulates listener declarations (event type, handler,
- * options) and attaches them either:
- *   - automatically in a microtask (default), or
- *   - manually via `.attach()`.
+ * The builder accumulates one registration at a time and attaches it
+ * immediately when an `on...` method is called. By default the target is the
+ * tree's current DOM element; `.document`, `.window`, and `.element` switch
+ * the target for the next registration.
  *
- * Implementation details:
- * - `queue`: holds pending listener specs until attachment.
- * - `opts`: per-listener options (`{ capture, once, passive }`, etc.).
- * - prevent / stop / stopImmediate: convenience flags that wrap the
- *   handler to call `preventDefault()`, `stopPropagation()`,
- *   or `stopImmediatePropagation()`.
- * - Listeners always resolve their DOM targets lazily using the LiveTree’s
- *   current selection and QUID → Element mapping.
- * - `missingPolicy`: controls what happens if a selected node is not yet
- *   mounted in the DOM (`'ignore' | 'warn' | 'throw'`).
+ * Supported builder concerns include:
+ * - native listener options: `once`, `capture`, `passive`
+ * - event-flow modifiers: `preventDefault`, `stopProp`, `stopImmediateProp`
+ * - missing-target handling via `strict('ignore' | 'warn' | 'throw')`
  *
- * Returns a fluent API for describing one or many listeners and then
- * attaching them in a controlled, predictable way.
+ * Ambient `document` and `window` listeners are tracked by owner QUID so they
+ * can be removed automatically when the owning tree is removed.
+ *
+ * @param tree - The owning `LiveTree`.
+ * @returns A fluent listener-registration surface.
  */
 export function build_listener(tree: LiveTree): ListenerBuilder {
 
@@ -174,7 +171,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       return tgt ? [tgt] : [];
     }
 
-    const el = tree.asDomElement();
+    const el = tree.dom.el();
     return el ? [el] : [];
   };
 
@@ -204,12 +201,6 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
     // queue this binding; attach() will call addEventListener with current opts
     const isAmbient = opts.target === "window" || opts.target === "document";
-    const ownerQuid = isAmbient ? tree.quid : undefined;
-    console.warn("REGISTER AMBIENT", {
-  ownerQuid,
-  target: opts.target,
-  id: tree.dom.el()?.getAttribute("id"),
-});
     const job: QueuedListener = {
       id: nextId++,
       sub: null,

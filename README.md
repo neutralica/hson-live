@@ -85,13 +85,13 @@ Once grafted onto document.body, mutations to LiveTree’s node graph are immedi
 
 ### API example
 ```ts
-const tree = hson.queryBody()  // or `.queryDom(/*selector*/)`
-    .liveTree. // initialize LiveTree creation
+const tree = hson.liveTree.queryBody()  
+    // or `.queryDom(/*selector*/)`
     .graft();  // replace document.body with identical LiveTree projection
 
 // LiveTree extends many basic JS document methods
 const branchDiv = tree.create.div()
-    .setText("hello world")
+    .text.set("hello world")
       // methods return `this`, enabling complex chained operations
     .css.set.backgroundColor("pink");
 
@@ -102,7 +102,7 @@ tree.listen
       // event listener options are fully represented in liveTree's .listen toolchain 
     .onClick(() => {
           // changes to the node graph are rendered to the DOM in realtime
-        branchDiv.setText("goodbye world")
+        branchDiv.text.set("goodbye world")
             .css.set.backgroundColor("blue");
     }); 
 ```

@@ -2,6 +2,9 @@
 
 # 2DÜ
 
+## 19APR2026
++ hson.liveTree.from*("") returns a LiveTree directly. Is that good? Do we want 'asBranch()' to finalize call??
+
 ## 02APR2026
 + inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?
 
@@ -10,29 +13,29 @@
 
 ## 19MAR2026
 ~~dom.el.must~~
-- (remove livetree.asDomElement() in favor of the above)
+~~- (remove livetree.asDomElement() in favor of the above)~~
 
 ## 18MAR2026
-+ scrollHeight/width
-+ scrollTop
-+ similar
 + find/findall.byClass
 + find/findall.byData?
 + find/findall.byTag
-+ find.query/queryAll(CSSSelector)
+~~+ scrollHeight/width~~
+~~+ scrollTop~~
+~~+ similar~~
+~~+ find.query/queryAll(CSSSelector)~~
 
 **data.remove**
 
 ## 11MAR2026 still remaining from refactor:
-+ document / globals surfaces:
-• tree.doc (curated document methods, useful for lifecycle/teardown wiring)
-• tree.root (graph root of the node universe)
-• hson.getRoot / global manager direction
+~~+ document / globals surfaces:~~
+~~• tree.doc (curated document methods, useful for lifecycle/teardown wiring)~~
+~~• tree.root (graph root of the node universe)~~
+~~• hson.getRoot / global manager direction~~
 
  ~~DOM geometry + animation affordances~~
 ~~•	getBoundingClientRect and friends, maybe under .dom~~
 • getAnimations
-• elementFromPoint, etc
+~~• elementFromPoint, etc~~
 
  Keyframes teardown + keyframe ownership maps
 
@@ -42,11 +45,11 @@
 
 ## 14FEB2026
 + (HTMLElement).focus() (see: getBoundingRect, below)
-+ hasFlag()
-+ document.getElementByPoint? (add to getClientBoundingRect etc -- .dom? )
+~~+ hasFlag()~~
+~~+ document.getElementByPoint? (add to getClientBoundingRect etc -- .dom? )~~
 
 ## 12FEB2025
-+ break up CssManager similar to livetree
++ break up CssManager similar to livetree (break out methods)
 
 ## 07FEB2026
 + add 'role' special-casing?? 
@@ -55,7 +58,7 @@
 + automatic teardown of keyframes when possible
 
 ## 29JAN2026
-+ needed on LiveTree somewhere:
+~~+ needed on LiveTree somewhere:~~
  ~~-- getBoundingRect & co.~~
  -- getAnimations
  ~~-- setTimeout?~~
@@ -65,7 +68,7 @@
 + hson.keyframes/hson.anim currently coerce underscores to hyphens? fix 
 
 ## 24JAN2026
-+ move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css
++ move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css (?)
 + .anim.setMany({})
 √ ~~getAttrs/setAttrs => attrs.set/get~~
 

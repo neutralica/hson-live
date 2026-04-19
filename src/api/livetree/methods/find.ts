@@ -105,14 +105,21 @@ function normalizeOne(q: FindQuery): HsonQuery {
 }
 
 /**
- * Build a single-result finder (`find`) bound to a `LiveTree` subtree.
+ * Build a single-result finder bound to a `LiveTree` subtree.
  *
- * The returned function accepts a query and exposes helpers
- * (`byId`, `byAttrs`, `byFlags`, `byTag`) plus a `.must(...)` variant that
- * throws when no match is found.
+ * The returned function searches only within `tree.node` and exposes helper
+ * lookups for common cases:
+ * - `byId(id)`
+ * - `byAttrs(attr, value)`
+ * - `byFlags(flag)`
+ * - `byTag(tag)`
+ * - `byQuid(quid)`
+ *
+ * A matching `.must(...)` surface is also provided and throws when no match
+ * exists.
  *
  * @param tree - The `LiveTree` whose subtree will be searched.
- * @returns A `FindWithById` helper bound to that tree.
+ * @returns A `find` helper bound to that subtree.
  */
 export function make_find_for(tree: LiveTree): FindWithById {
   const base = ((q: FindQuery): LiveTree | undefined => {

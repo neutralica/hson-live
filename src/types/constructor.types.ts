@@ -151,6 +151,25 @@ export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
 export interface SourceConstructor_1 {
   fromHson(input: string): OutputConstructor_2;
   fromJson(input: string | JsonValue): OutputConstructor_2;
+     /**
+     * HTML → normalized HSON frame.
+     *
+     * Accepts an HTML string or `Element` and produces the stage-1 frame used
+     * by the transformer pipeline.
+     *
+     * SAFE pipeline (`pipelineOptions.unsafe === false`):
+     * - `options.sanitize !== false` → sanitize and parse via `parse_external_html`
+     * - `options.sanitize === false` → parse raw HTML via `parse_html`
+     *
+     * UNSAFE pipeline (`pipelineOptions.unsafe === true`):
+     * - parses raw HTML via `parse_html`
+     * - external SVG markup is allowed and is converted through the SVG path
+     *
+     * This stage does not create `LiveTree` instances. It only prepares the
+     * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
+     * `serialize()`, or `parse()` calls.
+     */
+
   fromHtml(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
   fromNode(input: HsonNode): OutputConstructor_2;
   queryDOM(selector: string): OutputConstructor_2;

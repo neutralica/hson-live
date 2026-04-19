@@ -18,30 +18,25 @@ import { LiveTreeConstructor_3 } from "../../types/constructor.types.js";
 import { make_branch_from_node } from "../livetree/creation/create-branch.js";
 
 /**
- * HSON pipeline – stage 2: select output format.
+ * HSON pipeline, stage 2: choose an output representation.
  *
- * This takes a normalized HSON "frame" (Node + meta) produced by
- * `construct_source_1` and produces the format-selection surface:
+ * Given a normalized frame from stage 1, this stage materializes one of the
+ * supported output forms:
+ * - `toHtml()`
+ * - `toJson()`
+ * - `toHson()`
+ * - `sanitizeBEWARE()` for explicit HTML-style sanitization of node content
  *
- *   hson.fromJson(data)
- *       .toHtml()        // ← this function
- *       .spaced()        // optional options (stage 3)
- *       .serialize();    // final action (stage 4)
+ * Each `toX()` call stores the chosen representation on the frame and returns
+ * the merged stage-3 / stage-4 surface used for formatting, `serialize()`,
+ * and `parse()`.
  *
- * Each `toX()` call:
- * - serializes the current Node into the chosen format,
- * - stores that representation on the frame (`frame.html` / `frame.json` / `frame.hson`),
- * - and returns a merged object that supports both:
- *   - configuration (OptionsConstructor_3),
- *   - final actions (RenderConstructor_4).
- * Given a normalized frame (Node + meta), this exposes:
- * - text outputs:  .toHtml() / .toJson() / .toHson()
- * - LiveTree:      .liveTree().asBranch()
- * - cross-format transform: .sanitizeBEWARE() (Node → HTML → DOMPurify → Node)
+ * LiveTree construction is handled separately by the `hson.liveTree` facade.
  *
- * @param frame - Normalized frame from stage 1 (node + meta).
- * @returns Stage-2 constructor API for selecting output formats.
+ * @param frame - Normalized frame from stage 1.
+ * @returns Stage-2 output-selection API.
  */
+ 
 export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
   function makeFinalizer<K extends RenderFormats>(
     context: FrameRender<K>

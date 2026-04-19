@@ -57,8 +57,28 @@ export function make_svg_manager(tree: LiveTree): LiveTreeSvgDom {
   };
 }
 
-export function make_dom_api(tree: LiveTree): LiveTreeDom {
-  const el = () => tree.asDomElement();
+/**
+ * Build the mount-safe DOM adapter used by `LiveTree.dom`.
+ *
+ * All soft accessors return `undefined` or `false` when the tree has no mapped
+ * DOM element. Matching `must.*` helpers throw instead.
+ *
+ * The adapter combines:
+ * - direct element lookups (`el`, `html`, `rect`, `closest`, `parent`)
+ * - computed/layout reads (`computed`, `computedProp`, `clientRects`,
+ *   `scrollSize`, `clientSize`, `isConnected`)
+ * - reverse DOM-to-tree lookup via `treeFromEl`
+ * - owner-document query helpers via `doc`
+ *
+ * Reverse lookups preserve the caller's host-root context when a DOM element
+ * can be resolved back to a known `LiveTree`.
+ */
+export function make_dom_api(
+  tree: LiveTree,
+  resolveEl: () => Element | undefined,
+): LiveTreeDom {
+
+  const el = () => resolveEl();
 
   const html = (() => {
     const e = el();

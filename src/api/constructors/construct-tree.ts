@@ -17,46 +17,25 @@ import { construct_source_1 } from "./construct-source-1.js";
 import { make_detached_livetree_create } from "./make-detached-livetree.js";
 
 /**
- * Build the entry point for the LiveTree creation and grafting pipeline.
+ * HSON pipeline, stage 4: finalize the selected output.
  *
- * The returned object provides a uniform API for constructing `LiveTree`
- * branches from multiple input formats (HTML, JSON, HSON) and for grafting
- * into existing DOM elements.
+ * This is the terminal stage of the transformer chain. The incoming context
+ * already contains:
+ * - the chosen render format,
+ * - the materialized representation on the frame,
+ * - and any formatting options applied in stage 3.
  *
- * Behavior:
- * - The `options` parameter controls safety rules, notably whether
- *   external SVG markup may be parsed (`unsafe: true`) or must be rejected.
+ * This stage exposes only the final data operations:
+ * - `serialize()` → string output in the chosen format
+ * - `parse()` → structured output for JSON or HSON
  *
- * Branch constructors:
- * - `fromHtml(html)`:
- *     - Detects whether input is SVG or HTML.
- *     - SVG parsing is allowed only when `unsafe: true`; otherwise a
- *       transform error is thrown.
- *     - Non-SVG HTML is routed through either the safe external parser
- *       (`parse_external_html`) or the raw parser (`parse_html`).
- *     - Produces a detached `LiveTree` branch via `make_branch_from_node`.
- * - `fromJson(json)` and `fromHson(hson)`:
- *     - Parse into an HSON root node and normalize through
- *       `make_branch_from_node`.
+ * `LiveTree` creation is not part of this terminal render stage.
  *
- * Grafting helpers:
- * - `queryDom(selector)`:
- *     - Returns a lightweight object whose `graft()` method binds the
- *       selected DOM element into the LiveTree pipeline.
- *     - Throws at graft-time if the selector matches no element.
- * - `queryBody()`:
- *     - Convenience form targeting `document.body`.
- *
- * All constructors return small wrapper objects whose `.asBranch()` or
- * `.graft()` methods finalize the creation of a `LiveTree` rooted at
- * either newly parsed content or an existing DOM element.
- *
- * @param options - Configuration flags, e.g. `{ unsafe: boolean }`,
- *                  controlling parsing and sanitization behavior.
- * @returns An object exposing the LiveTree construction and grafting API.
- * @see make_branch_from_node
- * @see graft
- */export function construct_tree(
+ * @param context - Render context containing the frame and chosen format.
+ * @returns Stage-4 terminal render API.
+ */
+
+export function construct_tree(
   options: { unsafe: boolean } = { unsafe: false }
 ): TreeConstructor_Source {
   return {

@@ -31,9 +31,7 @@ All supported formats—HTML, JSON, SVG, XML-like markup, and HSON itself—are 
 
 ##  1. Choosing a Source
 
-Every transformation begins by declaring the format of provided input.
-
-This step is mandatory and establishes both parsing semantics and the security model.
+Declare the format of provided input; establish both parsing semantics and the security model.
 
 ### HTML Sources
 
@@ -65,7 +63,7 @@ This path exists to avoid silently degrading internal documents.
 
 ⸻
 
-### Data Sources
+### JSON Sources
 ```ts
 hson.fromJson(value: JSONValue)
 ```
@@ -102,14 +100,14 @@ Useful for:
 To create LiveTree, hson-live queries the DOM and uses the selected node and all descendants as its target. The target and all elements it contains are parsed into a faithful representation of the existing DOM which is then projected to replace the original. 
 
 ```ts
-hson.queryDOM(selector: string)
+hson.liveTree.queryDOM(selector: string)
 ```
 Selects an existing DOM subtree and parses it into nodes.
 
 ⸻
 
 ```ts
-hson.queryBody()
+hson.liveTree.queryBody()
 ```
 A convenience wrapper for document.body.
 
@@ -147,16 +145,6 @@ Produces structured JSON values derived from the node graph.
 .toHson()
 ```
 Returns HSON’s pared syntax or underlying nodes, depending on finalization.
-
-⸻
-
-### LiveTree getter
-```ts
-.liveTree
-```
-Prepares a LiveTree projection of the node graph.
-
-This path diverges slightly in finalization (see below).
 
 ⸻
 
@@ -208,7 +196,7 @@ Important notes:
 
 ### 4. Finalizing the Transformation
 
-The final step materializes the result.
+The final step of the transformation outputs the result, either as a string or as structured data.
 
 ### String Serialization
 ```ts
@@ -226,21 +214,18 @@ Returns a string:
 .parse()
 ```
 Returns structured data:
-*	JSONValue
-*	HsonNode
+*	JsonValue (if `toJson ()`) - a typed JSON object
+*	HsonNode (if `toHson()`) - the HsonNode graph (as JS object)
 
-No stringification occurs. To avoid enabling XSS and UI injection, hson-live does not make available a 'mount to DOM' method. 
+No stringification occurs. 
 
+To reduce XSS and UI-injection risk, this API surface does not expose HTML as a direct output format, nor does it provide a direct “mount to DOM” shortcut.
+
+If HTML output is required, it should be explicitly serialized and parsed by the caller using their own chosen tooling, at a deliberate integration boundary.
 ⸻
 
 ### LiveTree - Finalization
 
-```ts
-.asBranch()
-```
-For .liveTree() outputs: creates an unattached LiveTree instance without mutating the DOM.
-
-⸻
 
 ```ts
 .graft()
