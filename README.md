@@ -106,7 +106,20 @@ tree.listen
             .css.set.backgroundColor("blue");
     }); 
 ```
+Detached branches can also be created directly:
 
+```ts
+const badge = hson.liveTree.create.span().text.set("new");
+  // then e.g.:
+  // tree.append(badge); 
+```
+LiveTree exposes various DOM and CSS helpers including:
+
+- tree.dom.computed() // (getComputedStyle)
+- tree.dom.treeFromEl(...) // (returns existing LiveTree for element)
+- tree.dom.doc?.treeAtPoint(...) // (document.elementFromPoint)
+- tree.find.byQuid(...) // node graph query method
+- tree.css.selector("& > .label") // global css stylesheet accessor
 
 ## LiveTree capabilities
 LiveTree supports:

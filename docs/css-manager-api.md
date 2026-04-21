@@ -14,20 +14,18 @@ StyleSetter is the shared fluent write surface used by `LiveTree.style` (StyleMa
 
 * `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
 * `set.var("--x", 10)` convenience setter for CSS variables.
-* `setProp(prop: string, value: string)` write one property.
+* `setProp(prop: string, value: CssValue)` write one property.
 * `setMany(map)` write many properties in one call.
 * `remove(prop: string)` remove one property.
 * `clear()` clear all properties for the handle.
- 
-Methods usually return `this`, enabling chaining with other LiveTree methods.
 
+Methods usually return `this`, enabling chaining with other LiveTree methods.
 
 ### Key normalization
 
-* setMany accepts only camelCase.
+* Keys may be camelCase, kebab-case, vendor-prefixed kebab-case, or CSS custom properties.
 * `float` and `css-float` normalize to `cssFloat`.
 * Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
-
 
 ### Value normalization
 `CssValue` is `string | number | boolean | null | undefined | { value, unit? }`.
@@ -37,12 +35,28 @@ Methods usually return `this`, enabling chaining with other LiveTree methods.
 * `{ value, unit }` renders as `${value}: ${unit}`.
 * `setMany` skips `null` and `undefined`
 
-### Pseudo blocks in `setMany()`
-`setMany` can write route pseudoelement rule blocks. As pseudo-elements are not accepted in inline style attributes, only managers with access to the hson-_style stylesheet element (CssManager & GlobalCss) can manipulate them.
-Supported keys are:
-`_hover`, `_active`, `_focus`, `_focusWithin`, `_disabled`, `_before`, `_after`.
 
-A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object. Psuedoelements are only supported via get/setMany. 
+### Pseudo blocks in `setMany()`
+
+`setMany` can route pseudo-class and pseudo-element declaration blocks. As pseudo-elements are not accepted in inline style attributes, only managers using the stylesheet-backed path (`CssManager` and `GlobalCss`) can manipulate them.
+
+Supported keys are:
+`_hover`, `_active`, `_focus`, `_focusWithin`, `_focusVisible`, `_visited`, `_checked`, `_disabled`, `__before`, `__after`.
+
+A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object. This appears in the managed stylesheet as:
+```ts
+[data-_quid="dbb9b6ce017707c9"]:hover{background:orange;opacity:1;}
+```
+
+
+#### Example:
+```ts
+tree.css.setMany({
+  _hover: {
+    opacity: 1,
+    background: "orange",
+  },
+});
 
 #### Example:
 ```ts
@@ -77,9 +91,7 @@ Using liveTree.css.setMany, CSS can be set locally, per-node.
 * `LiveTree.css` returns a `CssHandle` bound to the node's QUID.
 * `CssManager.invoke()` returns the singleton manager.
 
-A `CssHandle` is `StyleSetter + get + atProperty + keyframes + anim`.
-
-( **In the near future, `.css` may only return `StyleSetter + get + atProperty`, and keyframes + animation would be under the `.anim` namespace** )
+A `CssHandle` is `StyleSetter + get + atProperty + keyframes + anim + devSnapshot + selector`.
 
 ### Setting CSS rules
 
@@ -127,6 +139,17 @@ For multi-QUID handles, `get.property(...)` returns a consensus value:
 * `syncNow()` forces an immediate flush if anything changed.
 * `renderCss()` returns the combined CSS text for inspection.
 * `debug_hardReset()` clears all CSS state and the managed style element.
+
+### Selector-scoped rules
+
+`CssHandle.selector(pattern)` creates a stylesheet-backed `StyleSetter` scoped relative to the handle's current QUID selector(s).
+
+Examples:
+
+```ts
+tree.css.selector(":hover").set.opacity(1);
+tree.css.selector("& > .label").set.color("red");
+
 
 ## Sub-managers
 
@@ -247,12 +270,12 @@ For `::before` and `::after`, `GlobalCss` will default to `content: ""` if it is
 
 ### StyleManager Differences
 
-`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element - `_attrs.style` on the HSON node.
+`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element, i.e. `_attrs.style` on the HSON node.
 
 Key differences from `LiveTree.css`:
 
 * Inline only. Does not touch QUID-scoped rules or global rules.
-* No pseudo blocks. `_hover` or `_before` maps in `style.setMany` are ignored.
+* No pseudo blocks. `_hover` or `__before` maps in `style.setMany` are ignored.
 * The `set` proxy is constrained by runtime keys. In browser runtimes it uses `document.documentElement.style` for the key list; in Node/tests it falls back to a small, fixed list.
 * `style.get.*` reads from the serialized inline style attribute, not computed style. It will not reflect rules set through `CssManager` or `GlobalCss`.
 

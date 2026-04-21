@@ -12,10 +12,20 @@ LiveTree is a mutable handle to a HsonNode and its surrounding graph. LiveTree p
 
 ## Construction
 
-`new LiveTree(input: HsonNode | LiveTree)`
+Primary public construction happens through `hson.liveTree`:
 
-- If constructed from a HsonNode, that node becomes both the reference node and host root.
-- If constructed from another LiveTree, the new instance points at the same node and adopts the same host root.
+- `hson.liveTree.fromTrustedHtml(input)`
+- `hson.liveTree.fromUntrustedHtml(input)`
+- `hson.liveTree.fromJson(input)`
+- `hson.liveTree.fromHson(input)`
+- `hson.liveTree.fromNode(node)`
+- `hson.liveTree.queryDom(selector).graft()`
+- `hson.liveTree.queryBody().graft()`
+- `hson.liveTree.create.<tag>()`
+- `hson.liveTree.create.tag("...")`
+- `hson.liveTree.create.tags(["...","..."])`
+
+`new LiveTree(...)` is the class constructor, but it is not the main user-facing entrypoint.
 
 ---
 
@@ -31,18 +41,30 @@ Returns the current host root.
 Rebinds host root (advanced/internal usage).
 
 ---
-
 ## DOM Access
 
 - `dom: LiveTreeDom`
 Lazily created DOM helper API for this node.
+
 ### Methods:
 - `el(): Element | undefined`
 - `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
+- `isConnected(): boolean`
+- `rect(): DOMRect | undefined` with `rect.must(label?)`
 - `matches(sel: string): boolean`
 - `contains(other: LiveTree): boolean`
 - `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
 - `parent(): LiveTree | undefined` with `parent.must(label?)`
+- `computed(): CSSStyleDeclaration | undefined`
+- `computedProp(name: string): string | undefined`
+- `clientRects(): DOMRectList | undefined`
+- `scrollSize(): { width: number, height: number } | undefined`
+- `clientSize(): { width: number, height: number } | undefined`
+- `treeFromEl(domEl: Element): LiveTree | undefined`
+- `doc?.elementAtPoint(x, y): Element | undefined`
+- `doc?.elementsFromPoint(x, y): Element[]`
+- `doc?.treeAtPoint(x, y): LiveTree | undefined`
+- `doc?.treesFromPoint(x, y): TreeSelector`
 - `asDomElement(): Element | undefined` Returns the underlying DOM element if it exists (undefined when not mounted).
 
 ---
@@ -61,11 +83,11 @@ Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
 Deep-clones subtree with new QUIDs; returns a detached branch.
 
 ---
-
 ## Querying
 
 - `find(q: string | HsonQuery): LiveTree | undefined`
 - `find.byId(id: string): LiveTree | undefined`
+- `find.byQuid(quid: string): LiveTree | undefined`
 - `find.byAttrs(attr: string, value: string): LiveTree | undefined`
 - `find.byFlags(flag: string): LiveTree | undefined`
 - `find.byTag(tag: string): LiveTree | undefined`
@@ -77,8 +99,7 @@ Deep-clones subtree with new QUIDs; returns a detached branch.
 `TreeSelector` supports iteration and broadcast APIs (see below).
 
 ---
-
-## Creation Helpers
+## Node Creation
 
 - `create: LiveTreeCreateHelper`
 Bound creation helper for appending new nodes under this tree.
@@ -86,9 +107,12 @@ Bound creation helper for appending new nodes under this tree.
 #### Examples:
 - `create.prepend()`
 - `create.at(index)`
-- `create.tags(tags: string[], index?)`
-- `create.<tag>(index?)`
-Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
+- `create.tags(tags: string[])`
+- `create.tag(tag: string, source?: string)`
+- `create.<tag>(source?: string)`
+- `create.svg(source?: string)`
+
+Supported tags are defined by the LiveTree create helper.
 
 ---
 
@@ -148,7 +172,6 @@ Sets boolean-present attributes (same semantics as `attr.set(name, true)`).
 Clears boolean-present attributes (same semantics as remove).
 
 ---
-
 ## DataManager (dataset)
 
 `data: DataManager` manages `data-*` attributes.
@@ -159,7 +182,7 @@ Clears boolean-present attributes (same semantics as remove).
 - `data.setMany(map: Record<string, Primitive | undefined>): LiveTree`
 Batch set/remove using the same rules as `data.set`.
 - `data.get(key: string): Primitive | undefined`
-Reads `data-${key}` as-is. (No camel-to-kebab normalization on read.)
+Reads the normalized `data-*` attribute for the provided key.
 
 Notes:
 - Values are stored as strings, matching HTML attribute behavior.
@@ -210,27 +233,29 @@ See `css-manager-api.md` for full details.
 
 - `listen: ListenerBuilder`
 Fluent, typed DOM event registration (mouse, pointer, keyboard, focus, animation, transition, clipboard, custom, etc.).
+Supports `listen.element`, `listen.document`, and `listen.window`.
 Supports options (`once`, `passive`, `capture`) and modifiers (`preventDefault`, `stopProp`, etc.).
+Supports `onCustom(...)` and `onCustomDetail(...)`.
 
 - `events: TreeEvents`
- Internal, non-DOM event bus:
+Internal, non-DOM event bus:
 - `events.on(type, handler): () => void`
 - `events.once(type, handler): () => void`
 - `events.emit(type, payload?): void`
 
 ---
-
 ## TreeSelector (from `findAll`)
 
 Returned by `findAll(...)`.
 
-- `toArray(): LiveTree[]`
+- `items(): LiveTree[]`
 - `count(): number`
 - `first(): LiveTree | undefined`
-- `forEach(fn)`
+- `each(fn)`
 - `map(fn)`
 - `filter(fn): TreeSelector`
-- `removeSelf(): number` (alias `remove()`)
+- `removeAt(ix): boolean`
+- `removeAll(): number`
 
 Broadcast proxies (apply to all selected nodes):
 

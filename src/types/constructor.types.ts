@@ -149,7 +149,32 @@ export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
  *      Same as queryDOM, but for `document.body.innerHTML`.
  ***************/
 export interface SourceConstructor_1 {
+  /**
+   * HSON text → normalized HSON frame.
+   *
+   * Accepts a raw HSON source string and parses it into the stage-1 frame
+   * used by the transformer pipeline.
+   *
+   * This stage does not create `LiveTree` instances. It only prepares the
+   * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
+   * `serialize()`, or `parse()` calls.
+   */
   fromHson(input: string): OutputConstructor_2;
+  
+   /**
+   * JSON → normalized HSON frame.
+   *
+   * Accepts either a JSON string or an already-parsed `JsonValue` and
+   * converts it into the stage-1 frame used by the transformer pipeline.
+   *
+   * JSON is treated as structured data here, not markup:
+   * - no HTML sanitization is applied at this stage
+   * - object / array / primitive structure is preserved
+   *
+   * This stage does not create `LiveTree` instances. It only prepares the
+   * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
+   * `serialize()`, or `parse()` calls.
+   */
   fromJson(input: string | JsonValue): OutputConstructor_2;
      /**
      * HTML → normalized HSON frame.
@@ -169,37 +194,68 @@ export interface SourceConstructor_1 {
      * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
      * `serialize()`, or `parse()` calls.
      */
-
   fromHtml(input: string | Element, options?: HtmlSourceOptions): OutputConstructor_2;
+  /**
+   * Existing `HsonNode` → normalized HSON frame.
+   *
+   * Accepts an already-constructed `HsonNode` graph and wraps it as the
+   * stage-1 frame used by the transformer pipeline.
+   *
+   * This is the identity-style entrypoint for callers that already have
+   * HSON in memory and want to use the same output pipeline as the parsers.
+   *
+   * This stage does not create `LiveTree` instances. It only prepares the
+   * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
+   * `serialize()`, or `parse()` calls.
+   */
   fromNode(input: HsonNode): OutputConstructor_2;
+  
+  /**
+   * Existing DOM subtree → normalized HSON frame.
+   *
+   * Selects an element via `document.querySelector(selector)`, reads its
+   * `innerHTML`, and converts that markup into the stage-1 frame used by
+   * the transformer pipeline.
+   *
+   * Parsing still follows the current safe/unsafe pipeline rules:
+   * - SAFE pipelines sanitize by default
+   * - UNSAFE pipelines parse raw HTML
+   *
+   * This method snapshots DOM content into the transform pipeline. It does
+   * not graft or construct `LiveTree` directly.
+   */
   queryDOM(selector: string): OutputConstructor_2;
+  
+  /**
+   * `document.body` subtree → normalized HSON frame.
+   *
+   * Reads `document.body.innerHTML` and converts it into the stage-1 frame
+   * used by the transformer pipeline.
+   *
+   * Parsing follows the current safe/unsafe pipeline rules, just like
+   * `queryDOM(...)`.
+   *
+   * This method snapshots the current body content into the transform
+   * pipeline. It does not graft or construct `LiveTree` directly.
+   */
   queryBody(): OutputConstructor_2;
 }
 
 /***************
  * TreeConstructor_Source
  *
- * High-level façade for choosing a *source* and then immediately
- * getting either a LiveTree branch or graft handle.
+ * Direct `LiveTree` construction facade.
  *
- * Creation flows:
+ * Source-format semantics are the same as `SourceConstructor_1`; see that
+ * interface for the detailed parsing / trust / normalization behavior of
+ * `fromTrustedHtml`, `fromUntrustedHtml`, `fromJson`, `fromHson`, and `fromNode`.
  *
- *  - fromHtml(html)
- *      Parse HTML/HSON-HTML into nodes, return BranchConstructor.
+ * The difference here is the return type:
+ * - source constructors return detached `LiveTree` branches directly
+ * - DOM query constructors return `GraftConstructor`, whose `.graft()`
+ *   binds an existing DOM subtree into LiveTree
  *
- *  - fromJson(json)
- *      Parse JSON into nodes, return BranchConstructor.
- *
- *  - fromHson(hson)
- *      Parse HSON text into nodes, return BranchConstructor.
- *
- *  - queryDom(selector)
- *      Use `document.querySelector(selector).innerHTML` as HTML
- *      source; return a GraftConstructor for replacement.
- *
- *  - queryBody()
- *      Use `document.body.innerHTML` as HTML source; same semantics
- *      as queryDom, but for the whole document body.
+ * Use this interface when the goal is `LiveTree`, not the transform pipeline.
  ***************/
 export interface TreeConstructor_Source {
   fromTrustedHtml(input: string | Element): LiveTree;

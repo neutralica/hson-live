@@ -2,8 +2,45 @@
 
 # 2DÜ
 
+## 21APR2026
+SVG — still missing:
+
+1. ViewBox / coordinate helpers
+* get/set viewBox
+* pan/zoom helpers
+*  coordinate conversion helpers
+
+2. Path helpers
+* append path segments
+* maybe a path-string utility layer
+* helpers for common commands
+
+
+3. Transform helpers
+* translate / rotate / scale composition
+* maybe transform-origin-ish helpers
+* matrix parsing?
+
+
+4. Namespace / tag guarantees
+* SVG tag creation correctness
+* mixed HTML/SVG boundary correctness
+* serialization correctness
+
+
+5. Geometry reads
+
+Possibly:
+
+* bbox
+* path length
+* point-at-length
+* hit testing helpers
+
+
+
 ## 19APR2026
-+ hson.liveTree.from*("") returns a LiveTree directly. Is that good? Do we want 'asBranch()' to finalize call??
+~~+ hson.liveTree.from*("") returns a LiveTree directly. Is that good? Do we want 'asBranch()' to finalize call??~~
 
 ## 02APR2026
 + inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?
