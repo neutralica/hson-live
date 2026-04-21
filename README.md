@@ -145,7 +145,11 @@ Cleanup is built-in: rules are automatically deleted from the <hson-_style> styl
 
 
 ## significance
-Treating JSON and HTML as representations of the same underlying structure offers a novel solution to a long-standing challenge: how best to align UI and state data. hson-live suggests a new paradigm:
+Treating JSON and HTML as representations of the same underlying structure offers a novel solution to a long-standing challenge: how best to align UI and state data. Instead of 'UI as a function of state' hson-live suggests a new paradigm:
+
+### view ≡ state
+
+In LiveTree this means:
 
 * state and view cannot diverge; there is only one data node structure of which they are both projections
 * serialization is not an edge case operation but core functionality
