@@ -68,7 +68,7 @@ Unifying two non-interchangeable notations in one representation suggests new wa
 LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made.
 
 Rather than maintaining separate virtual UI and state models that must be kept in sync, LiveTree works by:
-1.	ingesting any existing HTMLElement within document.body (or <body> itself) and parsing it — along with all nested content — into a HsonNode graph
+1.	ingesting document.body, or any HTMLElement within it, and parsing it — along with all nested content — into a HsonNode graph
 2.	re-emitting those nodes back into the DOM as HTML that is structurally identical to the original document
 3.	binding a fluent, typed API to the underlying node graph that synchronously reflects node graph mutations to the DOM
 
