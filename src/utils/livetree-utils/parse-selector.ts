@@ -31,7 +31,10 @@ import { HsonQuery } from "../../types/livetree.types.js";
  * @param selector - A simple selector string (e.g. `div#app.item[data-x="1"]`)
  * @returns A normalized `HsonQuery` object
  */
-export function parse_selector(selector: string): HsonQuery {
+export function parse_selector(sel: string): HsonQuery {
+    const selector = sel.trim();
+
+
     const query: HsonQuery = { attrs: {} };
 
     /* regular expression matches the parts of a selector */
