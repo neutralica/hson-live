@@ -5,8 +5,8 @@ import { Primitive } from "../../../types/core.types.js";
 import { HsonQuery } from "../../../types/livetree.types.js";
 import { HsonNode } from "../../../types/node.types.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { detach_node_deep } from "../../../utils/tree-utils/detach-node.js";
-import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
+import { detach_node_deep } from "../../../utils/livetree-utils/detach-node.js";
+import { parse_selector } from "../../../utils/livetree-utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 

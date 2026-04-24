@@ -109,7 +109,6 @@ export function node_for_element(el: Element): HsonNode | undefined {
   return ELEMENT_NODE_MAP.get(el);
 }
 
-// NEW: opt-in tripwire
 /**
  * Resolve the mapped DOM element and optionally assert tag invariants.
  *

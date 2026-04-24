@@ -2,7 +2,7 @@
 
 import { HsonNode } from '../types/node.types.js';
 import { _DATA_QUID} from '../consts/constants.js';
-import { element_for_node } from '../utils/tree-utils/node-map-helpers.js';
+import { element_for_node } from '../utils/livetree-utils/node-map-helpers.js';
 
 
 

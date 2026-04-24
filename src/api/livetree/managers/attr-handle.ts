@@ -7,7 +7,7 @@ import { AttrMap, AttrValue, HsonAttrs, HsonNode } from "../../../types/node.typ
 import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../../utils/html-utils/parse_html_attrs.js";
-import { element_for_node } from "../../../utils/tree-utils/node-map-helpers.js";
+import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {

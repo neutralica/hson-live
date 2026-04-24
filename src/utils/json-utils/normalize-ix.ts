@@ -8,7 +8,7 @@ import { CREATE_NODE } from "../../consts/factories.js";
 import { make_string } from "../primitive-utils/make-string.nodes.utils.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 import { LiveTree } from "../../api/livetree/livetree.js";
-import { element_for_node } from "../tree-utils/node-map-helpers.js";
+import { element_for_node } from "../livetree-utils/node-map-helpers.js";
 import { project_livetree } from "../../api/livetree/creation/project-live-tree.js";
 
 /**

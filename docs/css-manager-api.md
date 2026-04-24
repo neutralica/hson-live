@@ -135,7 +135,10 @@ For multi-QUID handles, `get.property(...)` returns a consensus value:
 
 * Mutations mark the manager as changed.
 * In browsers, a single `requestAnimationFrame` flush batches updates.
-* In Node/test environments, writes flush immediately.
+* In environments with a DOM render loop (requestAnimationFrame), writes are batched.
+* Otherwise, writes flush immediately for deterministic behavior.
+
+ 
 * `syncNow()` forces an immediate flush if anything changed.
 * `renderCss()` returns the combined CSS text for inspection.
 * `debug_hardReset()` clears all CSS state and the managed style element.

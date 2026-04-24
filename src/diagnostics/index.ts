@@ -9,5 +9,5 @@ export { CREATE_NODE as _CREATE_NODE } from "../consts/factories.js";
 export { _listeners_off_for_target, _listeners_debug_hard_reset as listeners_debug_hard_reset } from "../api/livetree/managers/listener-builder.js";
 
 export { parse_style_string } from "../utils/attrs-utils/parse-style.js";
-export { parse_selector } from "../utils/tree-utils/parse-selector.js";
+export { parse_selector } from "../utils/livetree-utils/parse-selector.js";
 export { serialize_style } from "../utils/attrs-utils/serialize-style.js";

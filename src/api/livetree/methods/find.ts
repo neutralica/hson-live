@@ -2,7 +2,7 @@
 
 import { HsonQuery } from "../../../types/livetree.types.js";;
 import { HsonNode } from "../../../types/node.types.js";
-import { parse_selector } from "../../../utils/tree-utils/parse-selector.js";
+import { parse_selector } from "../../../utils/livetree-utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../tree-selector.js";

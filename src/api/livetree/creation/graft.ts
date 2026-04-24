@@ -7,7 +7,7 @@ import { parse_html } from "../../parsers/parse-html.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "../create-livetree.js";
-import { linkNodeToElement, node_for_element } from "../../../utils/tree-utils/node-map-helpers.js";
+import { linkNodeToElement, node_for_element } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { Primitive } from "../../../types/core.types.js";

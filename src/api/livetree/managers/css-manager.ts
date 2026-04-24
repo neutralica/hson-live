@@ -185,6 +185,7 @@ export class CssManager {
     this.atPropManager = manage_property({ onChange: () => this.markChanged() });
     this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
   }
+
   /**
    * Marks the stylesheet state as updated and triggers a DOM sync.
    *
@@ -193,9 +194,8 @@ export class CssManager {
    * need to refresh the generated `<style>` text.
    *
    * Implementation note:
-   * - This currently calls `syncToDom()` immediately. If you later introduce
-   *   batching (e.g. microtask/RAF), this is the natural choke point to flip
-   *   from “eager” to “scheduled” syncing.
+   * - DOM-capable rendering contexts coalesce writes through requestAnimationFrame.
+   * - Contexts without a DOM render loop flush immediately for deterministic behavior.
    */
   private markChanged(): void {
     // mark dirty, but DO NOT write immediately
@@ -205,30 +205,29 @@ export class CssManager {
     this.scheduleSync();
   }
 
+
+  private hasDomRenderLoop(): boolean {
+    return (
+      typeof globalThis.document !== "undefined" &&
+      typeof globalThis.requestAnimationFrame === "function"
+    );
+  }
+
   // -------------------------
   // scheduling layer
   // -------------------------
   private scheduleSync(): void {
     if (this.scheduled) return;
 
-    // in Node (tests), flush immediately for determinism
-    if (this.isNodeRuntime()) {
-      this.syncNow();
-      return;
-    }
-
-    const raf = (globalThis as any).requestAnimationFrame as
-      | ((cb: FrameRequestCallback) => number)
-      | undefined;
-
-    // if no RAF in a browser-ish env, fallback to immediate
-    if (!raf) {
+    // If there is no DOM render loop, flush immediately.
+    // This covers Node-only contexts, tests without RAF, and other non-rendering runtimes.
+    if (!this.hasDomRenderLoop()) {
       this.syncNow();
       return;
     }
 
     this.scheduled = true;
-    this.rafId = raf(() => {
+    this.rafId = globalThis.requestAnimationFrame(() => {
       this.scheduled = false;
       this.rafId = null;
       this.syncNow();
@@ -460,12 +459,6 @@ export class CssManager {
       }
     }
     return parts.join("\n\n");
-  }
-
-
-  private isNodeRuntime(): boolean {
-    return typeof (globalThis as any).process !== "undefined"
-      && !!(globalThis as any).process?.versions?.node;
   }
 
   private syncToDom(): void {
