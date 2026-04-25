@@ -16,23 +16,6 @@ const boundLog = console.log.bind(console, '%c[hson tokenizer]', 'color: maroon;
 const _log = _VERBOSE ? boundLog : () => { };
 
 /**
- * Construct a `Position` object representing a concrete source location
- * within the original HSON text.
- *
- * The returned position is used by the tokenizer and parser to annotate
- * tokens and errors with:
- * - `line`  - 1-based line number.
- * - `col`   - 1-based column number on that line.
- * - `index` - 0-based absolute character offset in the full string.
- *
- * @param lineno - 1-based line number.
- * @param colno - 1-based column (character) index within the line.
- * @param posix - 0-based absolute character index in the whole input.
- * @returns A `Position` triple capturing all three coordinates.
- */
-const _pos = (lineno: number, colno: number, posix: number): Position => ({ line: lineno, col: colno, index: posix });
-
-/**
  * Union type for items pushed on the tokenizer's context stack.
  *
  * Variants:
@@ -59,6 +42,48 @@ type ContextStackItem =
     | { type: 'CLUSTER'; close?: CloseKind; implicit?: boolean } /* replaces the old _obj/_elem sentinels */
     | { type: 'IMPLICIT_OBJECT' };
 
+/**
+ * Construct a `Position` object representing a concrete source location
+ * within the original HSON text.
+ *
+ * The returned position is used by the tokenizer and parser to annotate
+ * tokens and errors with:
+ * - `line`  - 1-based line number.
+ * - `col`   - 1-based column number on that line.
+ * - `index` - 0-based absolute character offset in the full string.
+ *
+ * @param lineno - 1-based line number.
+ * @param colno - 1-based column (character) index within the line.
+ * @param posix - 0-based absolute character index in the whole input.
+ * @returns A `Position` triple capturing all three coordinates.
+ */
+const _pos = (lineno: number, colno: number, posix: number): Position => ({ line: lineno, col: colno, index: posix });
+
+/**
+ * Decide whether a bare token in attribute position should be treated as
+ * a *primitive value* rather than a flag-style attribute.
+ *
+ * Rules (after trimming):
+ * - Empty string → `false` (not a primitive).
+ * - `"true" | "false" | "null"` → primitive.
+ * - Numeric-like forms matching:
+ *     /^-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$/
+ *   (integers, floats, scientific notation) → primitive.
+ *
+ * This is used when encountering an attribute-like token without an
+ * explicit `=`. If it passes this check, the tokenizer treats it as
+ * a bare value rather than as a boolean/flag attribute.
+ *
+ * @param string - Raw token text.
+ * @returns `true` if the token represents a primitive literal, `false` otherwise.
+ */
+function isPrimitiveLex(string: string): boolean {
+    const t = string.trim();
+    if (!t) return false;
+    if (t === 'true' || t === 'false' || t === 'null') return true;
+    // number-ish (int, float, sci). no +/- signs for attrs; fine to accept here
+    return /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
+}
 /**
  * Detects a line that is *only* a lone `<` (with optional trailing
  * whitespace), e.g.:
@@ -137,7 +162,6 @@ let tokenFirst: boolean = true;
  * @see readAttrs
  */
 export function tokenize_hson(hson: string, depth = 0): Tokens[] {
-
     const maxDepth = 75;
     _log(`[token_from_hson called with depth=${depth}]`);
     if (tokenFirst) {
@@ -192,31 +216,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         return piece; // { text: full literal OR unquoted text, quoted flag }
     }
 
-    /**
-     * Decide whether a bare token in attribute position should be treated as
-     * a *primitive value* rather than a flag-style attribute.
-     *
-     * Rules (after trimming):
-     * - Empty string → `false` (not a primitive).
-     * - `"true" | "false" | "null"` → primitive.
-     * - Numeric-like forms matching:
-     *     /^-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$/
-     *   (integers, floats, scientific notation) → primitive.
-     *
-     * This is used when encountering an attribute-like token without an
-     * explicit `=`. If it passes this check, the tokenizer treats it as
-     * a bare value rather than as a boolean/flag attribute.
-     *
-     * @param string - Raw token text.
-     * @returns `true` if the token represents a primitive literal, `false` otherwise.
-     */
-    function isPrimitiveLex(string: string): boolean {
-        const t = string.trim();
-        if (!t) return false;
-        if (t === 'true' || t === 'false' || t === 'null') return true;
-        // number-ish (int, float, sci). no +/- signs for attrs; fine to accept here
-        return /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
-    }
 
     /**
      * Advance the tokenizer’s line/offset cursors by a single line.
@@ -307,19 +306,37 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         let ix = startIx;
         const end = endIx;
 
-        const _skip_whitespace = (): void => {
+        const skipWhitespace = (): void => {
             while (ix < end && /\s/.test(source[ix])) ix++;
         };
 
         while (ix < end) {
-            _skip_whitespace();
+            skipWhitespace();
             if (ix >= end) break;
 
             // attr name must start with letter/_/:
-            if (!/[A-Za-z_:]/.test(source[ix])) break;
             if (!/[A-Za-z_:]/.test(source[ix])) {
-                break;
+                const ch = source[ix];
+
+                // valid inline content starters
+                if (
+                    ch === "<" ||
+                    ch === '"' ||
+                    ch === "«" ||
+                    ch === "[" ||
+                    ch === "-" ||
+                    ch === "+" ||
+                    /\d/.test(ch)
+                ) {
+                    break;
+                }
+
+                _throw_transform_err(
+                    `unexpected token in tag header: "${ch}"`,
+                    "tokenize_hson.readAttrsFromSource"
+                );
             }
+
             const nameStart = ix;
             ix++;
             while (ix < end && /[\w:.\-]/.test(source[ix])) ix++;
@@ -327,12 +344,17 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             const name = source.slice(nameStart, ix);
             const startPos = posAt(nameStart);
 
-            _skip_whitespace();
+            skipWhitespace();
 
             if (ix < end && source[ix] === "=") {
                 ix++;
-                _skip_whitespace();
-
+                skipWhitespace();
+                if (ix >= end) {
+                    _throw_transform_err(
+                        `missing attribute value for "${name}"`,
+                        "tokenize_hson.readAttrsFromSource"
+                    );
+                }
                 const valStartIx = ix;
 
                 if (source[ix] === "'") {
@@ -389,7 +411,19 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
                     const inner = source.slice(valStartIx, ix);
                     const endPos = posAt(Math.max(0, ix - 1));
+                    if (!inner) {
+                        _throw_transform_err(
+                            `missing attribute value for "${name}"`,
+                            "tokenize_hson.readAttrsFromSource"
+                        );
+                    }
 
+                    if (inner.includes("=")) {
+                        _throw_transform_err(
+                            `malformed unquoted attribute value for "${name}": "${inner}"`,
+                            "tokenize_hson.readAttrsFromSource"
+                        );
+                    }
                     out.push({
                         name,
                         value: { text: inner, quoted: false },
@@ -520,14 +554,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 const col = currentLine.indexOf(closerLex) + 1;
                 const pos = _pos(currentIx + 1, col, _offset + col - 1);
 
-                // const top = contextStack[contextStack.length - 1];
-                // if (!top || top.type !== 'CLUSTER') {
-                //     _throw_transform_err(`[step e] closer '${closerLex}' but stack top is ${make_string(top)}`, 'tokenize-hson');
-                // }
-                // if (top.close && top.close !== close) {
-                //     _throw_transform_err(`[step e] mismatched closer '${closerLex}' for cluster '${top.close}'`, 'tokenize-hson');
-                // }
-
                 // pop cluster and optionally emit END
                 const popped = contextStack.pop() as Extract<ContextStackItem, { type: 'CLUSTER' }>;
                 const isObjClose = (close === CLOSE_KIND.obj);
@@ -656,6 +682,12 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             rawAttrs = parsedAttrs.attrs;
 
             const preCloserTail = headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim();
+            // if (/^[=.,;:!?]/.test(preCloserTail)) {
+            //     _throw_transform_err(
+            //         `[step f] unexpected trailing header content in <${tag}>: "${preCloserTail}"`,
+            //         "tokenize_hson.stepF"
+            //     );
+            // }
             const postCloserTail = closerLex ? tailAfterHeader.trim() : "";
 
             tailRaw = [preCloserTail, postCloserTail]

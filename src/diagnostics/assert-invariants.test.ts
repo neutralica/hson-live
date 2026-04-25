@@ -49,7 +49,7 @@ export function assert_invariants(root: HsonNode, fn = '[source fn not given]', 
   }
 }
 
- /* ---------- core ---------- */
+/* ---------- core ---------- */
 /**********************************************************
  * Recursive invariant checker over a HSON tree.
  *
@@ -154,23 +154,37 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     }
     return;
   }
-
-  //  _elem validation — only element nodes (non-VSN) or _str/_val are allowed
+  // _elem validation — only normal element nodes or _str are allowed.
+  // _val belongs to data-space (_obj/_arr), not renderable element content.
   if (n._tag === ELEM_TAG) {
     const kids = n._content;
+
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];
       const childPath = `${path}/_elem/[${i}]`;
 
-      if (!is_Node(k)) { push(errs, cfg, `${childPath}: primitive/null outside _str/_val`); if (cfg.throwOnFirst) return; continue; }
-
-      if (k._tag === OBJ_TAG || k._tag === ARR_TAG || k._tag === II_TAG) {
-        push(errs, cfg, `${childPath}: _elem cannot contain ${k._tag} (only _str/_val or normal element tags allowed)`); if (cfg.throwOnFirst) return; continue;
+      if (!is_Node(k)) {
+        push(errs, cfg, `${childPath}: primitive/null outside _str`);
+        if (cfg.throwOnFirst) return;
+        continue;
       }
 
-      walk(k as HsonNode, childPath, ELEM_TAG, cfg, errs);
+      if (k._tag === VAL_TAG) {
+        push(errs, cfg, `${childPath}: _elem cannot contain _val; quote scalar text as _str instead`);
+        if (cfg.throwOnFirst) return;
+        continue;
+      }
+
+      if (k._tag === OBJ_TAG || k._tag === ARR_TAG || k._tag === II_TAG) {
+        push(errs, cfg, `${childPath}: _elem cannot contain ${k._tag} (only _str or normal element tags allowed)`);
+        if (cfg.throwOnFirst) return;
+        continue;
+      }
+
+      walk(k, childPath, ELEM_TAG, cfg, errs);
       if (cfg.throwOnFirst && errs.length) return;
     }
+
     return;
   }
 
