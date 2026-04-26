@@ -111,7 +111,7 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
     const val: string = decode_hson_value(ra.value.text, ra.value.quoted);
 
     // Maintain disabled="" / disabled="disabled" → key flag behavior
-    if (val === "" || val === k) {
+    if (val === k) {
       attrs[k] = k as unknown as Primitive;
     } else {
       attrs[k] = val as unknown as Primitive;
