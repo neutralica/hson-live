@@ -19,10 +19,6 @@ const _log = _VERBOSE ? boundLog : () => { };
  * Union type for items pushed on the tokenizer's context stack.
  *
  * Variants:
- * - `{ type: "TAG"; tag: string }`
- *   Represents an open tag (`<foo ...>`) whose close delimiter has not yet
- *   been seen. The `tag` is the raw tag name.
- *
  * - `{ type: "CLUSTER"; close?: CloseKind; implicit?: boolean }`
  *   Represents a cluster context such as an object or element block, tracking:
  *   - `close`    - the close kind (e.g. object vs element semantics).
@@ -38,7 +34,6 @@ const _log = _VERBOSE ? boundLog : () => { };
  * delimiters back to their originating context.
  */
 type ContextStackItem =
-    | { type: 'TAG'; tag: string }
     | { type: 'CLUSTER'; close?: CloseKind; implicit?: boolean } /* replaces the old _obj/_elem sentinels */
     | { type: 'IMPLICIT_OBJECT' };
 
@@ -681,12 +676,6 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             rawAttrs = parsedAttrs.attrs;
 
             const preCloserTail = headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim();
-            // if (/^[=.,;:!?]/.test(preCloserTail)) {
-            //     _throw_transform_err(
-            //         `[step f] unexpected trailing header content in <${tag}>: "${preCloserTail}"`,
-            //         "tokenize_hson.stepF"
-            //     );
-            // }
             const postCloserTail = closerLex ? tailAfterHeader.trim() : "";
 
             tailRaw = [preCloserTail, postCloserTail]
@@ -795,6 +784,22 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             const m = currentLine.match(/^\s*(.+?)(?:\s*\/\/.*)?\s*$/);
             const body = m ? m[1] : '';
 
+            // attributes are only legal inside tag headers.
+
+            if (/^[A-Za-z_:][A-Za-z0-9:._-]*\s*=/.test(body)) {
+                _throw_transform_err(
+                    `attribute assignment outside tag header: "${body}"`,
+                    "tokenize_hson.stepG"
+
+                );
+
+            }
+            if (/^[=.,;:!?]+$/.test(body)) {
+                _throw_transform_err(
+                    `unexpected punctuation content line: "${body}"`,
+                    "tokenize_hson.stepG"
+                );
+            }
             // quick primitive check (true/false/null/number with optional exp)
             const isPrim = /^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(body);
 
@@ -804,7 +809,12 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                 _bump_line(currentLine);
                 continue;
             }
-
+            if (body.length > 0) {
+                _throw_transform_err(
+                    `unexpected bare token outside tag header: "${body}"`,
+                    "tokenize_hson.stepG"
+                );
+            }
             // fall through: not a standalone text/primitive line; other steps (F, etc.) handle it
         }
 

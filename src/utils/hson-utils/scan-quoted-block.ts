@@ -197,20 +197,59 @@ export function scan_tag_header_block(
       j = 0;
       continue;
     }
+    // If this physical line ends with > or />, the logical header is complete.
+    const mTrail = cur.match(/(\/?>)\s*(?:\/\/.*)?$/);
 
-    // once we're at end-of-line and not inQuote, this logical header is complete.
-    // Detect a trailing closer at the end of THIS physical line only.
-    const tailLine = cur;
-    const mTrail = tailLine.match(/(\/?>)\s*(?:\/\/.*)?$/);
-    const closer = mTrail ? (mTrail[1] as TagCloserLex) : null;
+    if (mTrail) {
+      const closer = mTrail[1] as TagCloserLex;
+      const raw = rawParts.join("");
+
+      return {
+        raw,
+        endLine: i,
+        endCol: cur.length + 1,
+        closer,
+        posAt: (ix: number): Position => {
+          const p = posMap[ix];
+          if (!p) {
+            _throw_transform_err(
+              `scan_tag_header_block.posAt: index ${ix} out of range`,
+              "tokenize_hson.scan_tag_header_block"
+            );
+          }
+          return p;
+        },
+      };
+    }
+
+    // No closer. Continue the header only if the next non-empty line looks like
+    // an attribute/flag continuation. Otherwise, this header ends here.
+    const next = lines[i + 1] ?? "";
+    const nextTrim = next.trim();
+
+    const nextLooksLikeAttr =
+      /^[A-Za-z_:][A-Za-z0-9:._-]*(?:\s*=|\s*$)/.test(nextTrim);
+
+    if (nextTrim.length > 0 && nextLooksLikeAttr) {
+      rawParts.push("\n");
+      posMap.push({
+        line: i + 1,
+        col: cur.length + 1,
+        index: lineOffsets[i] + cur.length,
+      });
+
+      i++;
+      j = 0;
+      continue;
+    }
 
     const raw = rawParts.join("");
 
     return {
       raw,
       endLine: i,
-      endCol: cur.length + 1, // 1-based col after last physical char
-      closer,
+      endCol: cur.length + 1,
+      closer: null,
       posAt: (ix: number): Position => {
         const p = posMap[ix];
         if (!p) {
