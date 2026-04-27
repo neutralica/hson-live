@@ -688,6 +688,12 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
             /* inline tail (if any) */
             if (tailRaw) {
+                if (/^[^\s"'<>[\]«»]+\s*=/.test(tailRaw)) {
+                    _throw_transform_err(
+                        `[step f] malformed attribute assignment after content/attrs: "${tailRaw}"`,
+                        "tokenize_hson.stepF"
+                    );
+                }
                 if (tailRaw.startsWith('<')) {
                     finalTokens.push(...tokenize_hson(tailRaw, depth + 1));
                 } else if (tailRaw.startsWith('«') || tailRaw.startsWith('[')) {
