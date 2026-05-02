@@ -69,13 +69,13 @@ export const $_ERROR = '_error' as const;
  * These tags are used by the parser, serializer, validator
  * (assert_invariants), LiveTree, and all transformation passes.
  ***************************************************************/
-export const STR_TAG = '_str' as const;
-export const VAL_TAG = '_val' as const;
-export const ROOT_TAG = '_root' as const;
-export const II_TAG = '_ii' as const;
-export const OBJ_TAG = '_obj' as const;
-export const ARR_TAG = '_arr' as const;
-export const ELEM_TAG = '_elem' as const;
+export const STR_TAG = '_-str' as const;
+export const VAL_TAG = '_-val' as const;
+export const ROOT_TAG = '_-root' as const;
+export const II_TAG = '_-ii' as const;
+export const OBJ_TAG = '_-obj' as const;
+export const ARR_TAG = '_-arr' as const;
+export const ELEM_TAG = '_-elem' as const;
 
 /***************************************************************
  * VSN_TAGS

@@ -12,7 +12,7 @@ Unlike JSON, HTML does not purely describe key-value pairs. It includes:
 *	namespaces such as SVG,
 *	ordering that is semantically meaningful.
 
-The <_elem> VSN exists to preserve these properties when parsing HTML to JSON and back.
+The <_-elem> VSN exists to preserve these properties when parsing HTML to JSON and back.
 
 ⸻
 
@@ -27,21 +27,21 @@ This section does not describe runtime projection, sanitization policy, or DOM A
 
 ⸻
 
-## 3.2 <_elem> as the Structural Boundary
+## 3.2 <_-elem> as the Structural Boundary
 
-All HTML content in HSON is represented within <_elem> VSN wrappers.
+All HTML content in HSON is represented within <_-elem> VSN wrappers.
 
 #### Rule
-*	Except for primitive nodes, any node containing markup content must contain exactly one <_elem> VSN as its structural 'cluster' wrapper. <_elem> nodes, like <_obj> and <_arr> nodes, may contain any number of children (which is why they're described as 'clusters') 
-*	No HTML element, text node, or attribute may exist outside an <_elem> context.
+*	Except for primitive nodes, any node containing markup content must contain exactly one <_-elem> VSN as its structural 'cluster' wrapper. <_-elem> nodes, like <_-obj> and <_-arr> nodes, may contain any number of children (which is why they're described as 'clusters') 
+*	No HTML element, text node, or attribute may exist outside an <_-elem> context.
 
-<_elem> establishes:
+<_-elem> establishes:
 *	child ordering,
 *	mixed content boundaries,
 *	element nesting,
 *	the distinction between data and markup semantics.
 
-Without <_elem>, HTML cannot be represented faithfully; elements would be treated as objects and the mismatches between the two types (no duplicate keys/_tags in JSON; raw text content in HTML) would cause fatal runtime errors.
+Without <_-elem>, HTML cannot be represented faithfully; elements would be treated as objects and the mismatches between the two types (no duplicate keys/_tags in JSON; raw text content in HTML) would cause fatal runtime errors.
 
 ⸻
 
@@ -49,7 +49,7 @@ Without <_elem>, HTML cannot be represented faithfully; elements would be treate
 
 Each HTML element maps to:
 *	a node whose tag name is the element name
-*	whose _content is wrapped within an <_elem>
+*	whose _content is wrapped within an <_-elem>
 
 Example:
 
@@ -61,11 +61,11 @@ maps to:
 
 ```
 <p>
- └─ <_elem>
-     ├─<_str>("Hello ")
+ └─ <_-elem>
+     ├─<_-str>("Hello ")
      ├─ em
-     │   └─ <_elem>
-     │       └─<_str>("world")
+     │   └─ <_-elem>
+     │       └─<_-str>("world")
 ```
 
 #### Rules
@@ -77,12 +77,12 @@ maps to:
 
 ## 3.4 Text Nodes
 
-Text nodes are represented using either <_str> or <_val> VSNs. Lacking types, HTML-native content is always parsed into <_str> tags. For JSON-native data, <_val> nodes exist as a parser hint to preserve types across transformations.
+Text nodes are represented using either <_-str> or <_-val> VSNs. Lacking types, HTML-native content is always parsed into <_-str> tags. For JSON-native data, <_-val> nodes exist as a parser hint to preserve types across transformations.
 
 #### Rules
-*	String text content must be wrapped in <_str>.
-*	When parsing typed data from JSON, such as numbers, <_val> tags keep it separate and safe from stringification.
-*	Text nodes may appear anywhere within <_elem> VSNs.
+*	String text content must be wrapped in <_-str>.
+*	When parsing typed data from JSON, such as numbers, <_-val> tags keep it separate and safe from stringification.
+*	Text nodes may appear anywhere within <_-elem> VSNs.
 *	Whitespace is preserved as encountered by the parser.
 
 Text is not normalized, merged, or reordered.
@@ -108,7 +108,7 @@ input
  ├─ _attrs:
  │   ├─ disabled: true
  │   └─ value: "x"
- └─ <_elem>
+ └─ <_-elem>
 ```
 Notes
 *	Attribute presence vs value is preserved.
@@ -118,11 +118,11 @@ Notes
 
 ## 3.6 Void Elements
 
-Void elements (e.g. img, br, input) are represented as nodes with an empty <_elem>.
+Void elements (e.g. img, br, input) are represented as nodes with an empty <_-elem>.
 
 #### Rules
-*	Void elements still contain <_elem>.
-*	<_elem> is empty and must not contain children.
+*	Void elements still contain <_-elem>.
+*	<_-elem> is empty and must not contain children.
 *	The voidness is inferred from tag semantics, not from structure.
 
 This ensures uniform handling of all elements.
@@ -134,9 +134,9 @@ This ensures uniform handling of all elements.
 HTML allows arbitrary interleaving of text and elements.
 
 HSON preserves this exactly by:
-*	using <_elem> as an ordered container,
-*	representing text (and all HTML-native textcontent) as <_str>,
-*	representing typed primitives as <_val>,
+*	using <_-elem> as an ordered container,
+*	representing text (and all HTML-native textcontent) as <_-str>,
+*	representing typed primitives as <_-val>,
 *	representing elements as child nodes.
 
 No flattening or normalization occurs.
@@ -180,15 +180,15 @@ HTML and JSON differ structurally:
 *	HTML is content-oriented and ordered
 
 HSON reconciles this by:
-*	using <_obj> / <_arr> for JSON semantics
-*	using <_elem> for markup semantics
+*	using <_-obj> / <_-arr> for JSON semantics
+*	using <_-elem> for markup semantics
 
 These VSNs never overlap in responsibility.
 
-A node representing HTML always uses <_elem>.
+A node representing HTML always uses <_-elem>.
 A node representing JSON structure never does.
 
-####  Node graphs that mix _elem and _obj types are invalid and may cause parser errors. 
+####  Node graphs that mix _-elem and _-obj types are invalid and may cause parser errors. 
 
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

@@ -327,7 +327,7 @@ function remove_dom_text_leaves(host: Element): void {
 // If you don't already have an isLeafNode(tag) helper, this is safe and tiny.
 // Uses your leaf tags invariant.
 function isLeafTag(tag: unknown): boolean {
-  return tag === "_str" || tag === "_val";
+  return tag === STR_TAG || tag === VAL_TAG;
 }
 
 // -----------------------------------------------------------------------------//.. Text operations

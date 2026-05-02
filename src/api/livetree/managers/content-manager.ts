@@ -31,7 +31,7 @@ export class ContentManager {
 
   /**
    * CHANGED: “content” means element-children, with VSN wrappers invisible:
-   * - flatten VSN containers: _root, _elem, _obj, _arr, _ii
+   * - flatten VSN containers: _root, _elem, _-obj, _arr, _ii
    * - skip VSN leaves: _str, _val
    * - include non-VSN nodes
    * - ignore primitives

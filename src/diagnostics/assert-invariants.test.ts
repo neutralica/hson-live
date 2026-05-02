@@ -247,7 +247,6 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     return;
   }
 
-
   // recurse (nodes only); primitives are illegal outside _str/_val
   const kids = n._content ?? [];
   for (let i = 0; i < kids.length; i++) {

@@ -47,7 +47,7 @@ An ordered list of child entries.
 _content values may be:
 *	other HsonNodes
 *	primitive values (string, number, boolean, null) -- IF contained in the _content of a string or value node (see below)
-*	HSON accepts all valid JSON values. Typed values (1 vs "1") are preserved via the use of <_str> and <_val> VSNs (see §4, below)
+*	HSON accepts all valid JSON values. Typed values (1 vs "1") are preserved via the use of <_-str> and <_-val> VSNs (see §4, below)
 
 HSON's `_tag:_content` structure mirrors JSON's `key:value` pair and HTML's `parent/child node` relationships exactly. 
 
@@ -74,40 +74,40 @@ Certain _tag values are reserved to encode structure that does not correspond to
 
 VSNs define and preserve the structural meaning of content in the node graph. The following VSN tags are normative:
 
-#### <_elem>
+#### <_-elem>
 Element: Represents an HTML Element 'cluster'.
-* <_elem> tags can contain multiple nodes with the same key/_tag.
-* <_elem> tags can contain array-like items that have no key/_tag.
-* <_elem> is represented as an array in the node graph structure
+* <_-elem> tags can contain multiple nodes with the same key/_tag.
+* <_-elem> tags can contain array-like items that have no key/_tag.
+* <_-elem> is represented as an array in the node graph structure
 
-#### <_obj>
+#### <_-obj>
 Object: Represents a JSON object 'cluster'.
-* <_obj> tags encodes key–value pairs as child nodes.
-* <_obj> tags must contain unique keys/_tags; duplicate keys are invalid and will throw
-* <_obj> is represented as a JS object in the node graph structure
+* <_-obj> tags encodes key–value pairs as child nodes.
+* <_-obj> tags must contain unique keys/_tags; duplicate keys are invalid and will throw
+* <_-obj> is represented as a JS object in the node graph structure
 
-<_obj> and <_elem> are required for disambiguation of HsonNode 'clusters'. Though the shapes of <_elem> and <_obj> structures are very similar, each have differences that cause fatal errors in the other (such as JSON objects' requirement for unique keys, whereas HTML elements may contain multiple 'button' tags).
+<_-obj> and <_-elem> are required for disambiguation of HsonNode 'clusters'. Though the shapes of <_-elem> and <_-obj> structures are very similar, each have differences that cause fatal errors in the other (such as JSON objects' requirement for unique keys, whereas HTML elements may contain multiple 'button' tags).
 
-When serializing HTML as JSON (or vice-versa), <_obj> or <_elem> tags (depending) will clutter the node structure visually. These tags are essential for the transformers to correctly type node clusters correctly across round-trip conversions. 
+When serializing HTML as JSON (or vice-versa), <_-obj> or <_-elem> tags (depending) will clutter the node structure visually. These tags are essential for the transformers to correctly type node clusters correctly across round-trip conversions. 
 
 HSON is a notation that can faithfully serialize either JSON or HTML without this structural node clutter.
 
-#### <_arr>
+#### <_-arr>
 Array: Represents a JSON array.
-*	must contain only <_ii>-wrapped children.
-*	Order of items is preserved by <_ii> nodes' _meta.data-_index properties.
+*	must contain only <_-ii>-wrapped children.
+*	Order of items is preserved by <_-ii> nodes' _meta.data-_index properties.
 
-#### <_ii>
+#### <_-ii>
 Index Item: Represents a single array item and carries the index number.
-*	must appear only as a child of <_arr>.
+*	must appear only as a child of <_-arr>.
 *	must contain exactly one semantic value (primitive or node).
 *	must have a '_meta.data-_index' property carrying the item's order in the array sequence
 
-#### <_str>
-String: Represents a string literal. Only <<_str>> tags may contain raw string primitives in its _content property.
+#### <_-str>
+String: Represents a string literal. Only <<_-str>> tags may contain raw string primitives in its _content property.
 
-#### <_val>
-Value: Represents a non-string primitive literal (number, boolean, null). Only <_val> tags may contain raw non-string data in its _content property
+#### <_-val>
+Value: Represents a non-string primitive literal (number, boolean, null). Only <_-val> tags may contain raw non-string data in its _content property
 
 #### <_root>
 Root: Represents the base 'wrapper' node of a HSON tree undergoing transformation. 
@@ -116,14 +116,14 @@ Root: Represents the base 'wrapper' node of a HSON tree undergoing transformatio
 
 
 ### Note:
-<_elem> tags, as well as _attrs properties, will only be derived from HTML sources of data. 
-<_obj> tags, <_arr>/<_ii> tags will only be derived from JSON data. 
+<_-elem> tags, as well as _attrs properties, will only be derived from HTML sources of data. 
+<_-obj> tags, <_-arr>/<_-ii> tags will only be derived from JSON data. 
 
 ⸻
 
 ## 5. Primitive Values
 
-Primitive values may only appear wrapped inside <_str> or <_val> nodes. Primitives appearing in the _content of other tags will cause an error in the HSON parser. HSON's transformer chain handles all creation of such nodes and they are effectively hidden from the user. 
+Primitive values may only appear wrapped inside <_-str> or <_-val> nodes. Primitives appearing in the _content of other tags will cause an error in the HSON parser. HSON's transformer chain handles all creation of such nodes and they are effectively hidden from the user. 
 
 #### Maxims:
 *	Strings must be representable without loss of encoding.
@@ -145,11 +145,11 @@ Attribute ordering is canonicalized on first parsing for consistency. Attribute 
 
 ## 7. Mixed Content
 
-Especially When derived from native HTML, HsonNode _content may contain a mix of HsonNodes and primitive values (typically strings) - these must always be contained within <_str> or <_val> tags, as noted above
+Especially When derived from native HTML, HsonNode _content may contain a mix of HsonNodes and primitive values (typically strings) - these must always be contained within <_-str> or <_-val> tags, as noted above
 
 Attempting this mixed content within a JSON could lead to creation of an invalid object with duplicated keys, or a keyless value like an array:
 {a: "1", b: "2", "no key", d: "4"  }
-Permitting and preserving this mixed structure in <_elem>, but not in <_obj> - even when that HTML element is parsed into JSON - is one of the main reasons for the existence of these VSN tags and allows faithful representation of:
+Permitting and preserving this mixed structure in <_-elem>, but not in <_-obj> - even when that HTML element is parsed into JSON - is one of the main reasons for the existence of these VSN tags and allows faithful representation of:
 *	HTML mixed content
 *	text interleaved with elements
 *	markup embedded within data structures

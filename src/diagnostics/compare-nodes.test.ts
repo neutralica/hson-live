@@ -1,11 +1,12 @@
 // compare-nodes.ts
 
+import { ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../consts/constants.js";
 import type { HsonNode } from "../types/node.types.js";
 import { is_Node } from "../utils/node-utils/node-guards.js";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 
-const LEAF = new Set(["_str", "_val"]);
+const LEAF = new Set([STR_TAG, VAL_TAG] as string[]);
 const MAX_SNIP = 500;
 const ELLIPSIS = " …";
 
@@ -166,12 +167,12 @@ function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareN
     const aKids = semanticChildren(collapseA);
     const bKids = semanticChildren(collapseB);
 
-    if (collapseA._tag === "_obj" && collapseB._tag === "_obj") {
-        compareChildrenByKeyForObj(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
-    } else if (collapseA._tag === "_arr" && collapseB._tag === "_arr") {
-        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
+    if (collapseA._tag === OBJ_TAG && collapseB._tag === OBJ_TAG) {
+        compareChildrenByKeyForObj(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
+    } else if (collapseA._tag === ARR_TAG && collapseB._tag === ARR_TAG) {
+        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
     } else {
-        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); // CHANGED
+        compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
     }
 
     return diffs;

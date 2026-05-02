@@ -276,7 +276,7 @@ export function parse_html(input: string | Element): HsonNode {
  *
  * Responsibilities:
  * - Validate tag semantics and VSN usage:
- *   - Reject literal `<_str>` elements.
+ *   - Reject literal `<_-str>` elements.
  *   - Reject unknown tags starting with `_` that are not recognized VSNs.
  * - Parse attributes and meta via `parse_html_attrs`.
  * - Handle special raw-text elements (`<style>`, `<script>`):
@@ -291,21 +291,21 @@ export function parse_html(input: string | Element): HsonNode {
  *       - Enforce exactly one payload value.
  *       - Coerce strings to non-string primitives via `coerce`.
  *       - Reject any payload that still resolves to a string.
- *   - `<_obj>`:
- *       - Children treated as property nodes, returned as `_obj`.
- *   - `<_arr>`:
- *       - Children must be valid index tags, returned as `_arr`.
- *   - `<_ii>`:
- *       - Must have exactly one child, returned as `_ii` with optional meta.
- *   - `<_elem>`:
+ *   - `<_-obj>`:
+ *       - Children treated as property nodes, returned as `_-obj`.
+ *   - `<_-arr>`:
+ *       - Children must be valid index tags, returned as `_-arr`.
+ *   - `<_-ii>`:
+ *       - Must have exactly one child, returned as `_-ii` with optional meta.
+ *   - `<_-elem>`:
  *       - Disallowed in incoming HTML (internal-only wrapper).
  * - Default HTML element path:
  *   - For zero children:
- *       - Produce an element with an empty `_elem` cluster.
- *   - For a single cluster child (`_obj`, `_arr`, `_elem`):
+ *       - Produce an element with an empty `_-elem` cluster.
+ *   - For a single cluster child (`_-obj`, `_-arr`, `_-elem`):
  *       - Pass through the cluster unchanged.
  *   - For mixed/multiple non-cluster children:
- *       - Wrap once in `_elem` to form a pure element-mode cluster.
+ *       - Wrap once in `_-elem` to form a pure element-mode cluster.
  *
  * @param el - DOM element to convert.
  * @returns A `HsonNode` representing the converted subtree.
@@ -322,7 +322,7 @@ function convert(el: Element): HsonNode {
     const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
 
     if (tagLower === STR_TAG) {
-        _throw_transform_err('literal <_str> is not allowed in input HTML', 'parse-html');
+        _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');
     }
     if (tagLower.startsWith('_') && !EVERY_VSN.includes(tagLower)) {
         _throw_transform_err(`unknown VSN-like tag: <${tagLower}>`, 'parse-html');
@@ -348,7 +348,7 @@ function convert(el: Element): HsonNode {
                 _tag: baseTag,
                 _attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-                // no inner _elem — children go directly
+                // no inner _-elem — children go directly
                 _content: [
                     CREATE_NODE({
                         _tag: ELEM_TAG,
@@ -420,14 +420,14 @@ function convert(el: Element): HsonNode {
 
     if (tagLower === ARR_TAG) {
         if (!childNodes.every(node => is_indexed(node))) {
-            _throw_transform_err('_array children are not valid index tags', 'parse-html');
+            _throw_transform_err('_-array children are not valid index tags', 'parse-html');
         }
         return CREATE_NODE({ _tag: ARR_TAG, _content: childNodes });
     }
 
     if (tagLower === II_TAG) {
         if (childNodes.length !== 1) {
-            _throw_transform_err('<_ii> must have exactly one child', 'parse-html');
+            _throw_transform_err('<_-ii> must have exactly one child', 'parse-html');
         }
         return CREATE_NODE({
             _tag: II_TAG,
@@ -437,7 +437,7 @@ function convert(el: Element): HsonNode {
     }
 
     if (tagLower === ELEM_TAG) {
-        _throw_transform_err('_elem tag found in html', 'parse-html');
+        _throw_transform_err('_-elem tag found in html', 'parse-html');
     }
 
     // ---------- Default: normal HTML element ----------
@@ -469,7 +469,7 @@ function convert(el: Element): HsonNode {
     }
 
     // Otherwise, we have multiple non-cluster children (text/elements):
-    // wrap once in _elem (pure element mode).
+    // wrap once in _-elem (pure element mode).
     return CREATE_NODE({
         _tag: baseTag,
         _attrs: sortedAcc,
@@ -490,12 +490,12 @@ function convert(el: Element): HsonNode {
  * Rules:
  * - If `node._tag === ROOT_TAG`:
  *     - Return the node as-is (already rooted).
- * - If `node` is a cluster node (`_obj`, `_arr`, `_elem`):
+ * - If `node` is a cluster node (`_-obj`, `_-arr`, `_-elem`):
  *     - Wrap directly under a new `_root`:
  *       `{ _tag: _root, _content: [node] }`.
  * - Otherwise (normal HTML-ish element/leaf):
- *     - Wrap in an `_elem` cluster, then under `_root`:
- *       `{ _tag: _root, _content: [ { _tag: _elem, _content: [node] } ] }`.
+ *     - Wrap in an `_-elem` cluster, then under `_root`:
+ *       `{ _tag: _root, _content: [ { _tag: _-elem, _content: [node] } ] }`.
  *
  * This keeps `_root` as a pure structural top-level wrapper while
  * preserving the intended element vs. cluster semantics.
@@ -525,7 +525,7 @@ function wrap_as_root(node: HsonNode): HsonNode {
  *   - `TEXT_NODE`:
  *       - Reads `textContent` and handles it in context:
  *         - If `trimmed === '""'`, emit an explicit `_str` with `""`.
- *         - If `parentTag === "_obj"`:
+ *         - If `parentTag === "_-obj"`:
  *             - Whitespace is *data*, not layout.
  *             - Remove at most one leading newline and one trailing newline.
  *             - Do **not** trim; emit the remaining raw string if non-empty.
@@ -564,9 +564,9 @@ function elementToNode(
                 continue;
             }
 
-            /* inside <_obj>, whitespace is *data*, not layout;
+            /* inside <_-obj>, whitespace is *data*, not layout;
                  remove a single leading/trailing newline wrapper, keep everything else */
-            if (parentTag === "_obj") {
+            if (parentTag === "_-obj") {
                 let unboxed = raw;
 
                 /* remove exactly one leading newline (and one trailing newline), if present */

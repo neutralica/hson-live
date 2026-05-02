@@ -18,7 +18,7 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
  *
  * Mapping rules:
  * - Arrays → `_arr`
- * - Plain objects → `_obj`
+ * - Plain objects → `_-obj`
  * - Strings → `_str`
  * - `null`, numbers, booleans → `_val`
  *
@@ -48,7 +48,7 @@ function getTag(value: JsonValue): string {
 
 
 const FORBIDDEN_JSON_VSN = new Set([
-    '_obj', '_arr', '_ii', '_str', '_val',
+    '_-obj', '_arr', '_ii', '_str', '_val',
 ]); // _attrs is HTML-source only
 
 /**
@@ -68,7 +68,7 @@ function nonUnderscoreKeys(obj: Record<string, unknown>): string[] {
  * Assert that a JSON object does not use reserved HSON/VSN keys.
  *
  * Reserved keys:
- * - `_obj`, `_arr`, `_ii`, `_str`, `_val`
+ * - `_-obj`, `_arr`, `_ii`, `_str`, `_val`
  *
  * These are reserved for HSON/HTML internal structures and must not
  * appear directly in user-provided JSON. If any such key is found,
@@ -96,8 +96,8 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
 
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
- * to decide which HSON shape to build (`_str`, `_val`, `_arr`, `_obj`,
- * `_elem`, `_root`).
+ * to decide which HSON shape to build (`_str`, `_val`, `_arr`, `_-obj`,
+ * `_-elem`, `_root`).
  *
  * Dispatch rules (by `$parentTag`):
  *
@@ -127,11 +127,11 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *       - Forbids non-underscore siblings alongside `_root`.
  *       - Recursively parses `<payload>` via `nodeFromJson`.
  *       - Ensures the `_root` child is a cluster:
- *         - Scalar children (`_str` / `_val`) are wrapped in `<_elem>`.
+ *         - Scalar children (`_str` / `_val`) are wrapped in `<_-elem>`.
  *       - Returns `<_root>` containing a single cluster child.
  *
- *    B) Element form: `{ "_elem": [ ... ] }`
- *       - Requires `_elem` value to be an array.
+ *    B) Element form: `{ "_-elem": [ ... ] }`
+ *       - Requires `_-elem` value to be an array.
  *       - Each item must be one of:
  *         - `string` → `<_str>` child,
  *         - `number | boolean | null` → `<_val>` child,
@@ -147,7 +147,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *             - null/undefined → dropped.
  *           - Recursively builds the child subtree from `payload` using
  *             `nodeFromJson(...)`.
- *       - Returns a single `<_elem>` node with these children.
+ *       - Returns a single `<_-elem>` node with these children.
  *
  *    C) Generic object form (plain JSON object)
  *       - Forbids reserved VSN keys via
@@ -157,18 +157,18 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *           - `string` → `<_str>`,
  *           - `number | boolean | null` → `<_val>`,
  *           - array → recurse with parent `_arr`,
- *           - object → recurse with parent `_obj`.
- *         - Wraps non-cluster children in an `<_obj>` to enforce JSON-mode
+ *           - object → recurse with parent `_-obj`.
+ *         - Wraps non-cluster children in an `<_-obj>` to enforce JSON-mode
  *           “object cluster” semantics.
  *         - Wraps that in a property node `<key>` whose `_content` is the
  *           cluster payload.
- *       - Returns a single `<_obj>` node containing all property nodes.
+ *       - Returns a single `<_-obj>` node containing all property nodes.
  *
  * Errors:
  * - Throws via `_throw_transform_err` when:
  *   - `srcJson` type does not match the expected parent tag.
  *   - `_root` objects have illegal siblings.
- *   - `_elem` is not an array or has invalid items.
+ *   - `_-elem` is not an array or has invalid items.
  *   - A generic object contains reserved VSN keys.
  *   - A value is not representable as a supported HSON shape.
  *
@@ -253,7 +253,7 @@ export function nodeFromJson(
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
 
-            // Enforce: _root child must be a cluster (_obj|_arr|_elem). If scalar, coerce to _elem wrapper.
+            // Enforce: _root child must be a cluster (_-obj|_arr|_-elem). If scalar, coerce to _-elem wrapper.
             const isScalar = (child._tag === STR_TAG || child._tag === VAL_TAG);
             const clusterChild = isScalar
                 ? CREATE_NODE({ _tag: ELEM_TAG, _content: [child] })
@@ -262,11 +262,11 @@ export function nodeFromJson(
             return { node: CREATE_NODE({ _tag: ROOT_TAG, _content: [clusterChild] }) };
         }
 
-        // B) ELEMENT HANDLING { _elem: [...] } 
+        // B) ELEMENT HANDLING { _-elem: [...] } 
         if (Object.prototype.hasOwnProperty.call(obj, ELEM_TAG)) {
             const list = obj[ELEM_TAG];
             if (!Array.isArray(list)) {
-                _throw_transform_err('"_elem" must contain an array', 'parse_json', make_string(list));
+                _throw_transform_err('"_-elem" must contain an array', 'parse_json', make_string(list));
             }
 
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
@@ -283,7 +283,7 @@ export function nodeFromJson(
                     const elObj = val as Record<string, unknown>;
 
                     // guard against raw VSN misuse
-                    assertNoForbiddenVSNKeysInJSON(elObj, `"_elem"[${ix}]`);
+                    assertNoForbiddenVSNKeysInJSON(elObj, `"_-elem"[${ix}]`);
 
                     // Exactly one non-underscore tag key required
                     const tagKeys = nonUnderscoreKeys(elObj);
@@ -336,7 +336,7 @@ export function nodeFromJson(
                 }
 
                 _throw_transform_err(
-                    `invalid item in "_elem"[${ix}] (must be string|number|boolean/null or element-object)`,
+                    `invalid item in "_-elem"[${ix}] (must be string|number|boolean/null or element-object)`,
                     'parse_json',
                     make_string(val)
                 );
@@ -346,7 +346,7 @@ export function nodeFromJson(
 
         }
 
-        // C) GENERIC OBJECT HANDLING → _obj
+        // C) GENERIC OBJECT HANDLING → _-obj
         assertNoForbiddenVSNKeysInJSON(obj, '[generic object check, parseJSON]');
         const propKeys = Object.keys(obj);
 
