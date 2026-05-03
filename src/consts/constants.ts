@@ -54,15 +54,15 @@ export const $_ERROR = "_error" as const;
  * Virtual Structural Node (VSN) tags
  *
  * HSON defines a small, closed set of structural markers
- * (`_str`, `_val`, `_-obj`, `_arr`, `_-elem`, `_ii`, `_-root`) that
+ * (`_-str`, `_-val`, `_-obj`, `_-arr`, `_-elem`, `_-ii`, `_-root`) that
  * encode the logical shape of the document tree. These tags are
  * the *only* valid `_tag` values on HsonNode objects.
  *
- *   - `_str`   : leaf wrapper for string primitives
- *   - `_val`   : leaf wrapper for non-string primitives
+ *   - `_-str`   : leaf wrapper for string primitives
+ *   - `_-val`   : leaf wrapper for non-string primitives
  *   - `_-obj`   : object-like node holding property nodes
- *   - `_arr`   : array node containing `_ii` index nodes
- *   - `_ii`    : index wrapper (exactly one child), always under `_arr`
+ *   - `_-arr`   : array node containing `_-ii` index nodes
+ *   - `_-ii`    : index wrapper (exactly one child), always under `_-arr`
  *   - `_-elem`  : HTML element bridge node
  *   - `_-root`  : top-level container (0–1 child)
  *
@@ -116,8 +116,8 @@ export type VSNTag = typeof VSN_TAGS[number];
  * LEAF_NODES
  *
  * Convenience list of tags for leaf-value wrappers:
- *   - `_str`
- *   - `_val`
+ *   - `_-str`
+ *   - `_-val`
  *
  * These nodes always contain exactly one primitive in `_content`.
  ***************************************************************/
@@ -127,7 +127,7 @@ export const LEAF_NODES = [STR_TAG, VAL_TAG] as string[];
  * ELEM_OBJ_ARR
  *
  * Small grouping for transforms that treat `_-elem`, `_-obj`,
- * and `_arr` as the “container” trio. For example, node comparison,
+ * and `_-arr` as the “container” trio. For example, node comparison,
  * normalization, and serializer decisions.
  ***************************************************************/
 export const ELEM_OBJ_ARR = [ELEM_TAG, ARR_TAG, OBJ_TAG] as string[];
@@ -135,8 +135,8 @@ export const ELEM_OBJ_ARR = [ELEM_TAG, ARR_TAG, OBJ_TAG] as string[];
 /***************************************************************
  * ELEM_OBJ
  *
- * Mini-group used when `_arr` must be excluded — typically in
- * transforms where array indexing rules (_ii) would complicate
+ * Mini-group used when `_-arr` must be excluded — typically in
+ * transforms where array indexing rules (_-ii) would complicate
  * processing, but element vs. object containers remain compatible.
  ***************************************************************/
 export const ELEM_OBJ = [ELEM_TAG, OBJ_TAG];
@@ -153,7 +153,7 @@ export type ElemObjType = typeof ELEM_TAG | typeof OBJ_TAG;
 /***************************************************************
  * ElemObjArrType (type)
  *
- * Literal tuple-type for `["_-elem","_arr","_-obj"]`. Useful where
+ * Literal tuple-type for `["_-elem","_-arr","_-obj"]`. Useful where
  * array membership or exhaustive mapping is required at the type
  * level instead of runtime.
  ***************************************************************/
@@ -203,7 +203,7 @@ export const $HSON_FRAME = {
  *     Enforced by assert_invariants and assertNewShapeQuick.
  *
  * `_DATA_INDEX`:
- *     Fixed key (`"data-_index"`) used by `_ii` nodes to store
+ *     Fixed key (`"data-_index"`) used by `_-ii` nodes to store
  *     their canonical array index as a string.
  *
  * `_DATA_QUID`:

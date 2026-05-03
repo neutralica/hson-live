@@ -17,10 +17,10 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
  * Infer the appropriate HSON VSN tag for a JSON value.
  *
  * Mapping rules:
- * - Arrays → `_arr`
+ * - Arrays → `_-arr`
  * - Plain objects → `_-obj`
- * - Strings → `_str`
- * - `null`, numbers, booleans → `_val`
+ * - Strings → `_-str`
+ * - `null`, numbers, booleans → `_-val`
  *
  * Anything that does not fit these categories triggers a transform error.
  *
@@ -33,13 +33,13 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
  */
 function getTag(value: JsonValue): string {
     // 1) Collections first (so they aren't misclassified as "not string")
-    if (Array.isArray(value)) return ARR_TAG;            // _arr
+    if (Array.isArray(value)) return ARR_TAG;            // _-arr
     if (is_Object(value)) return OBJ_TAG;              // _-obj
 
     // 2) Scalars
-    if (typeof value === 'string') return STR_TAG;       // _str
+    if (typeof value === 'string') return STR_TAG;       // _-str
     if (value === null || typeof value === 'number' || typeof value === 'boolean') {
-        return VAL_TAG;                                   // _val (num|bool|null)
+        return VAL_TAG;                                   // _-val (num|bool|null)
     }
 
     _throw_transform_err('invalid value provided', 'getTag', '???');
@@ -48,8 +48,8 @@ function getTag(value: JsonValue): string {
 
 
 const FORBIDDEN_JSON_VSN = new Set([
-    '_-obj', '_arr', '_ii', '_str', '_val',
-]); // _attrs is HTML-source only
+    OBJ_TAG, ARR_TAG, II_TAG, STR_TAG,VAL_TAG,
+] as string[]); // _attrs is HTML-source only
 
 /**
  * Return the keys of an object that do not start with `"_"`.
@@ -68,7 +68,7 @@ function nonUnderscoreKeys(obj: Record<string, unknown>): string[] {
  * Assert that a JSON object does not use reserved HSON/VSN keys.
  *
  * Reserved keys:
- * - `_-obj`, `_arr`, `_ii`, `_str`, `_val`
+ * - `_-obj`, `_-arr`, `_-ii`, `_-str`, `_-val`
  *
  * These are reserved for HSON/HTML internal structures and must not
  * appear directly in user-provided JSON. If any such key is found,
@@ -96,7 +96,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
 
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
- * to decide which HSON shape to build (`_str`, `_val`, `_arr`, `_-obj`,
+ * to decide which HSON shape to build (`_-str`, `_-val`, `_-arr`, `_-obj`,
  * `_-elem`, `_-root`).
  *
  * Dispatch rules (by `$parentTag`):
@@ -104,20 +104,20 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  * 1. Primitive branch (`STR_TAG` / `VAL_TAG`)
  *    - `STR_TAG`:
  *      - Requires `srcJson` to be a string, including `""`.
- *      - Returns `<_str>` with `_content: [string]`.
+ *      - Returns `<_-str>` with `_content: [string]`.
  *    - `VAL_TAG`:
  *      - Requires `srcJson` to be a non-string primitive
  *        (`number | boolean | null`).
- *      - Returns `<_val>` with `_content: [primitive]`.
+ *      - Returns `<_-val>` with `_content: [primitive]`.
  *
  * 2. Array branch (`ARR_TAG`)
  *    - Requires `srcJson` to be an array.
  *    - For each item:
  *      - Computes the child tag with `getTag(val)`.
  *      - Recursively calls `nodeFromJson(val, childTag)` to get a child node.
- *      - Wraps the child in an `<_ii>` node with `_meta.data-_index` equal
+ *      - Wraps the child in an `<_-ii>` node with `_meta.data-_index` equal
  *        to the array index.
- *    - Returns `<_arr>` containing the `_ii` children.
+ *    - Returns `<_-arr>` containing the `_-ii` children.
  *
  * 3. Object branch (`OBJ_TAG`)
  *    - Requires `srcJson` to be a non-array object.
@@ -127,14 +127,14 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *       - Forbids siblings alongside `_-root`.
  *       - Recursively parses `<payload>` via `nodeFromJson`.
  *       - Ensures the `_-root` child is a cluster:
- *         - Scalar children (`_str` / `_val`) are wrapped in `<_-elem>`.
+ *         - Scalar children (`_-str` / `_-val`) are wrapped in `<_-elem>`.
  *       - Returns `<_-root>` containing a single cluster child.
  *
  *    B) Element form: `{ "_-elem": [ ... ] }`
  *       - Requires `_-elem` value to be an array.
  *       - Each item must be one of:
- *         - `string` → `<_str>` child,
- *         - `number | boolean | null` → `<_val>` child,
+ *         - `string` → `<_-str>` child,
+ *         - `number | boolean | null` → `<_-val>` child,
  *         - element-object:
  *           `{ tagName: payload, _attrs?, _meta? }`
  *           - Rejects reserved VSN keys via
@@ -154,9 +154,9 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *         `assertNoForbiddenVSNKeysInJSON`.
  *       - For each own key:
  *         - Builds a value node:
- *           - `string` → `<_str>`,
- *           - `number | boolean | null` → `<_val>`,
- *           - array → recurse with parent `_arr`,
+ *           - `string` → `<_-str>`,
+ *           - `number | boolean | null` → `<_-val>`,
+ *           - array → recurse with parent `_-arr`,
  *           - object → recurse with parent `_-obj`.
  *         - Wraps non-cluster children in an `<_-obj>` to enforce JSON-mode
  *           “object cluster” semantics.
@@ -185,9 +185,9 @@ export function nodeFromJson(
     parentTag: string
 ): { node: HsonNode } {
 
-    // ---- 0) Primitive branch (strings → _str, others → _val) ----
+    // ---- 0) Primitive branch (strings → _-str, others → _-val) ----
     if (parentTag === STR_TAG || parentTag === VAL_TAG) {
-        // preserve empty-string as a real scalar (_str([""]))
+        // preserve empty-string as a real scalar (_-str([""]))
         if (parentTag === STR_TAG) {
             if (!is_string(srcJson)) {
                 _throw_transform_err(`expected string for ${STR_TAG}, got ${typeof srcJson}`, 'nodeFromJson.primitive');
@@ -213,7 +213,7 @@ export function nodeFromJson(
         }
     }
 
-    // ---- 1) Array branch (_arr → _ii[data-_index]) ----
+    // ---- 1) Array branch (_-arr → _-ii[data-_index]) ----
     if (parentTag === ARR_TAG) {
         if (!Array.isArray(srcJson)) {
             _throw_transform_err('array expected for ARR_TAG parent', 'parse_json', make_string(srcJson));
@@ -253,7 +253,7 @@ export function nodeFromJson(
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
 
-            // Enforce: _-root child must be a cluster (_-obj|_arr|_-elem). If scalar, coerce to _-elem wrapper.
+            // Enforce: _-root child must be a cluster (_-obj|_-arr|_-elem). If scalar, coerce to _-elem wrapper.
             const isScalar = (child._tag === STR_TAG || child._tag === VAL_TAG);
             const clusterChild = isScalar
                 ? CREATE_NODE({ _tag: ELEM_TAG, _content: [child] })
@@ -270,7 +270,7 @@ export function nodeFromJson(
             }
 
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
-                // string → _str, number|boolean|null → _val
+                // string → _-str, number|boolean|null → _-val
                 if (is_string(val)) {
                     return CREATE_NODE({ _tag: STR_TAG, _meta: {}, _content: [val] });
                 }
@@ -357,7 +357,7 @@ export function nodeFromJson(
             let child: HsonNode;
 
             if (typeof raw === 'string') {
-                // strings (including "") → _str(["..."])
+                // strings (including "") → _-str(["..."])
                 child = CREATE_NODE({
                     _tag: STR_TAG,
                     _meta: {},
@@ -368,14 +368,14 @@ export function nodeFromJson(
                 typeof raw === 'boolean' ||
                 raw === null
             ) {
-                // numbers/booleans/null → _val([...])
+                // numbers/booleans/null → _-val([...])
                 child = CREATE_NODE({
                     _tag: VAL_TAG,
                     _meta: {},
                     _content: [raw]
                 });
             } else if (Array.isArray(raw)) {
-                // arrays recurse under _arr
+                // arrays recurse under _-arr
                 child = nodeFromJson(raw, ARR_TAG).node;
             } else if (raw && typeof raw === 'object') {
                 // objects recurse under _-obj

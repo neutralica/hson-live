@@ -26,7 +26,7 @@ export type SvgScopeApi = Readonly<{
  *   - `attrs` → shallow partial match on `_attrs`, using plain
  *               `===` equality for values.
  *   - `meta`  → shallow partial match on `_meta` keys/values.
- *   - `text`  → matches string payload under `_str`/`_val` or
+ *   - `text`  → matches string payload under `_-str`/`_-val` or
  *               element text:
  *                 • string → substring match,
  *                 • RegExp → `regex.test(...)`.

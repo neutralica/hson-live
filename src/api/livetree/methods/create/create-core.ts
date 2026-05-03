@@ -272,7 +272,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       }
 
       const svgRoot = baseChildren[0];
-      // ignore _str / _-elem / other VSN noise, keep only real element children
+      // ignore _-str / _-elem / other VSN noise, keep only real element children
       createdChildren = extract_real_element_children(svgRoot);
     }
 

@@ -488,7 +488,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
         }
 
         /* Step D */
-        /* handle _array delimiters */
+        /* handle _-arr delimiters */
         if (trimLine.startsWith('«') || trimLine.startsWith('[')) {
             const opener = trimLine.startsWith('«') ? '«' : '[';
             const closer = opener === '«' ? '»' : ']';

@@ -35,7 +35,7 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  *
  * Child handling:
  * - Element children become nested HSON nodes via recursive conversion.
- * - Text nodes become `_str` leaves with the raw text content preserved (including whitespace).
+ * - Text nodes become `_-str` leaves with the raw text content preserved (including whitespace).
  * - Other node types (comments, processing instructions, etc.) are ignored.
  *
  * Output shape:

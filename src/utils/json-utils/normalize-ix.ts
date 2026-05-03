@@ -1,15 +1,6 @@
 // append.ts
 
-import { is_Node } from "../node-utils/node-guards.js";
-import { unwrap_root_elem } from "../html-utils/unwrap-root-elem.js";
-import { STR_TAG, ELEM_TAG } from "../../consts/constants.js";
-import { HsonNode } from "../../types/node.types.js";
-import { CREATE_NODE } from "../../consts/factories.js";
-import { make_string } from "../primitive-utils/make-string.nodes.utils.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
-import { LiveTree } from "../../api/livetree/livetree.js";
-import { element_for_node } from "../livetree-utils/node-map-helpers.js";
-import { project_livetree } from "../../api/livetree/creation/project-live-tree.js";
 
 /**
  * Normalize an insertion index for an array of a given length.

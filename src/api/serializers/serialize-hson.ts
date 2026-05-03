@@ -184,13 +184,13 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
  * - Node has *no* `_attrs` (or only an empty `_attrs`) and *no* `_meta`.
  * - `_content` exists and contains exactly one child, which is a node.
  * - That child is either:
- *   - a leaf `_str` or `_val`, or
+ *   - a leaf `_-str` or `_-val`, or
  *   - a single `_-obj` wrapper around such a leaf.
  * - The leaf has exactly one primitive payload.
  *
  * Return semantics:
- * - `<_str>` leaf → returns a `string` (including `""`).
- * - `<_val>` leaf → returns a `number | boolean | null`.
+ * - `<_-str>` leaf → returns a `string` (including `""`).
+ * - `<_-val>` leaf → returns a `number | boolean | null`.
  * - Any mismatch or structural deviation → returns `undefined`.
  *
  * Callers:
@@ -252,7 +252,7 @@ function getSimpleNodeValue(node: HsonNode): Primitive | undefined {
  * - `OBJ_TAG`  - Parent is in object mode; children typically serialize as
  *                property bodies (e.g. `<key ...>` blocks).
  * - `ELEM_TAG` - Parent is in element mode; children behave like HTML nodes.
- * - `ARR_TAG`  - Parent is array-like; children are `_ii`-wrapped items.
+ * - `ARR_TAG`  - Parent is array-like; children are `_-ii`-wrapped items.
  *
  * `emitNode` uses this context to:
  * - Pick appropriate closers (`>` vs `/>`) in ambiguous cases.
@@ -266,8 +266,8 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  * Recursively serialize a single `HsonNode` into HSON wire format.
  *
  * Responsibilities:
- * - Enforce invariants on all VSNs (`_str`, `_val`, `_-root, `_-obj`, `_arr`,
- *   `_-elem`, `_ii`) and throw structured errors on violations.
+ * - Enforce invariants on all VSNs (`_-str`, `_-val`, `_-root, `_-obj`, `_-arr`,
+ *   `_-elem`, `_-ii`) and throw structured errors on violations.
  * - Encode structural semantics (object vs element vs array) into the
  *   chosen HSON surface syntax (closers, clusters, shorthands).
  * - Respect parent cluster context (`parentCluster`) to avoid accidental
@@ -275,16 +275,16 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  * - Cooperate with `cycleGuard` to detect and prevent graph cycles.
  *
  * Key behaviors:
- * 1. Primitive leaves (`_str`, `_val`):
+ * 1. Primitive leaves (`_-str`, `_-val`):
  *    - Require exactly one primitive in `_content`.
- *    - `_str` → `JSON.stringify(value)` to preserve quoting and escapes.
- *    - `_val` → raw `number | boolean | null` literal.
+ *    - `_-str` → `JSON.stringify(value)` to preserve quoting and escapes.
+ *    - `_-val` → raw `number | boolean | null` literal.
  *
- * 2. `_ii` index nodes:
+ * 2. `_-ii` index nodes:
  *    - Should not appear on the HSON wire; if encountered, unwrap once and
  *      serialize the child at the same depth.
  *
- * 3. `_arr` clusters:
+ * 3. `_-arr` clusters:
  *    - Rendered as `« ... »` blocks.
  *    - Each array item is normalized such that:
  *      - Empty object item → `<>` shorthand.
@@ -292,7 +292,7 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  *        depending on their shape.
  *
  * 4. `_-root:
- *    - Expects a single cluster child (`_-obj | _-elem | _arr`).
+ *    - Expects a single cluster child (`_-obj | _-elem | _-arr`).
  *    - Emits only the child cluster (no `<_-root>` tag on wire).
  *    - Special-cases empty `_-obj` cluster as `<>` shorthand.
  *
@@ -327,7 +327,7 @@ export type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
  *
  * @param node - The current `HsonNode` to serialize.
  * @param depth - Current indentation depth (0-based).
- * @param parentCluster - Parent cluster context (`_-obj`, `_-elem`, `_arr`), or
+ * @param parentCluster - Parent cluster context (`_-obj`, `_-elem`, `_-arr`), or
  *   `undefined` at the top.
  * @param guard - Cycle guard instance from `cycleGuard()`, used to detect
  *   revisiting the same object graph node.
@@ -348,7 +348,7 @@ function emitNode(
             _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "parse-html");
         }
 
-        /* 1) VSN leafs: _str / _val */
+        /* 1) VSN leafs: _-str / _-val */
         if (node._tag === STR_TAG || node._tag === VAL_TAG) {
             _log("leaf node detected: ", node._tag);
             if (!node._content || node._content.length !== 1) {
@@ -360,27 +360,27 @@ function emitNode(
                 if (typeof v !== "string") {
                     const vErr = node._content?.[0];
                     console.warn("STR payload not string:", vErr, node);
-                    _throw_transform_err(`serialize-hson: _str must contain a string`, "serialize_hson.emitNode()")
+                    _throw_transform_err(`serialize-hson: _-str must contain a string`, "serialize_hson.emitNode()")
                 }
                 return pad + JSON.stringify(v);
             }
 
             if (!(typeof v === "number" || typeof v === "boolean" || v === null)) {
-                _throw_transform_err("serialize-hson: _val must contain number|boolean|null : ", "serialize_hson.emitNode()", `${v}`);
+                _throw_transform_err("serialize-hson: _-val must contain number|boolean|null : ", "serialize_hson.emitNode()", `${v}`);
             }
             return pad + String(v);
         }
 
-        /* 2) _ii should not be on HSON wire — unwrap defensively if leaked */
+        /* 2) _-ii should not be on HSON wire — unwrap defensively if leaked */
         if (node._tag === II_TAG) {
             _log("index node detected");
             const c = node._content?.[0];
             if (!is_Node(c)) {
-                _throw_transform_err("serialize-hson: _ii must contain exactly one child node", "serialize_hson.emitNode()");
+                _throw_transform_err("serialize-hson: _-ii must contain exactly one child node", "serialize_hson.emitNode()");
             }
             return emitNode(c, depth, parentCluster, guard);  // <-- same depth
         }
-        /* 3) _arr cluster → « … » */
+        /* 3) _-arr cluster → « … » */
         if (node._tag === ARR_TAG) {
             const items = (node._content ?? []) as HsonNode[];
             if (!items.length) return `${pad}«»`;
@@ -389,19 +389,19 @@ function emitNode(
 
             const inner = items.map((it) => {
                 if (!is_Node(it)) {
-                    _throw_transform_err("serialize-hson: non-node item in _arr", "emitNode");
+                    _throw_transform_err("serialize-hson: non-node item in _-arr", "emitNode");
                 }
 
                 /* is this an appropriate place for this guard? */
                 if (it._tag !== II_TAG) {
-                    _throw_transform_err("serialize-hson: only _ii allowed directly under _arr", "emitNode");
+                    _throw_transform_err("serialize-hson: only _-ii allowed directly under _-arr", "emitNode");
                 }
 
-                // Unwrap expected _ii index wrapper (not on wire)
+                // Unwrap expected _-ii index wrapper (not on wire)
                 let item = it;
                 const c = item._content ?? [];
                 if (c.length !== 1 || !is_Node(c[0])) {
-                    _throw_transform_err("serialize-hson: _ii must contain exactly one child node", "emitNode");
+                    _throw_transform_err("serialize-hson: _-ii must contain exactly one child node", "emitNode");
                 }
                 item = c[0] as HsonNode;
 
@@ -440,7 +440,7 @@ function emitNode(
 
             const cluster = kids[0];
             if (!ELEM_OBJ_ARR.includes(cluster._tag)) {
-                _throw_transform_err("_-root child must be _-obj | _-elem | _arr", "serialize_hson");
+                _throw_transform_err("_-root child must be _-obj | _-elem | _-arr", "serialize_hson");
             }
 
             // emit *only* the child cluster, with no `_-root and no synthetic sentinel.
@@ -538,11 +538,11 @@ function emitNode(
             // empty -> <tag />
             if (c.length === 0) return { kind: "void" };
 
-            // exactly one child: could be _str/_val OR an _-elem wrapper
+            // exactly one child: could be _-str/_-val OR an _-elem wrapper
             if (c.length === 1 && typeof c[0] === "object" && c[0] && "_tag" in c[0]) {
                 let child = c[0] as HsonNode;
 
-                // unwrap a single _-elem wrapper (HTML-origin nodes often look like: tag -> _-elem -> _str/_val)
+                // unwrap a single _-elem wrapper (HTML-origin nodes often look like: tag -> _-elem -> _-str/_-val)
                 if (child._tag === ELEM_TAG) {
                     const ec = child._content ?? [];
                     if (ec.length === 0) return { kind: "void" }; // <tag><_-elem /></tag> -> treat as void
@@ -588,7 +588,7 @@ function emitNode(
                 : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)}/>`; // TODO remove space before closer
         }
 
-        // One-liner primitive value (no attrs/meta; single _str/_val child)
+        // One-liner primitive value (no attrs/meta; single _-str/_-val child)
         const selfVal = getSimpleNodeValue(node);
         if (selfVal !== undefined) {
             if (parentCluster === OBJ_TAG) {

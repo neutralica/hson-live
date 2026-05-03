@@ -224,14 +224,14 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • `_tag` must match (`_tag mismatch @ path: "A" vs "B"`).
  *
  *   - Leaf nodes:
- *       • `_str` and `_val` are treated as leaf VSNs.
+ *       • `_-str` and `_-val` are treated as leaf VSNs.
  *       • If both sides are leaves, compare their single payload;
  *         mismatch → `Leaf mismatch @ path: "va" vs "vb"`.
  *
  *   - `_-elem` semantics:
  *       • `collapseTrivial` unwraps `_-elem` if it contains exactly
- *         one `_str` or `_val`, so:
- *             <_-elem>[_str("x")] ≡ _str("x")
+ *         one `_-str` or `_-val`, so:
+ *             <_-elem>[_-str("x")] ≡ _-str("x")
  *         for the purposes of comparison.
  *       • `semanticChildren` treats a single `_-elem` child as
  *         transparent, comparing its content instead.
@@ -258,7 +258,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  *           `Key missing in A/B @ path.key`.
  *       • Matching keys recurse via `compare(...)` at `path.key`.
  *
- *   - `_arr` nodes:
+ *   - `_-arr` nodes:
  *       • Children are compared by index:
  *           `Child count mismatch @ path: lenA vs lenB`.
  *       • Matching indices recurse at `path._content[i]`.

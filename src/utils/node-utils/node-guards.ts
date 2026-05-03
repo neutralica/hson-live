@@ -48,13 +48,13 @@ export function is_Node(bit: unknown): bit is HsonNode {
  * A primitive node is defined here as:
  * - `_content` contains exactly one item,
  * - that item is a `Primitive`,
- * - and the node’s tag is either `_str` or `_val`.
+ * - and the node’s tag is either `_-str` or `_-val`.
  *
- * This is used to distinguish structural nodes (`_-obj`, `_arr`, `_-elem`, `_ii`, etc.)
+ * This is used to distinguish structural nodes (`_-obj`, `_-arr`, `_-elem`, `_-ii`, etc.)
  * from leaf value carriers in the HSON tree.
  *
  * @param node - Node to inspect.
- * @returns `true` iff the node is a `_str`/`_val` leaf containing a single `Primitive`.
+ * @returns `true` iff the node is a `_-str`/`_-val` leaf containing a single `Primitive`.
  */
 export function is_Primitive_node(node: HsonNode): boolean {
   return (
@@ -66,10 +66,10 @@ export function is_Primitive_node(node: HsonNode): boolean {
 }
 
 /**
- * Check whether a node is an indexed array-item wrapper (`<_ii>`).
+ * Check whether a node is an indexed array-item wrapper (`<_-ii>`).
  *
  * An indexed item is defined as:
- * - tag is `_ii`,
+ * - tag is `_-ii`,
  * - `_content` is an array with exactly one entry (the wrapped item),
  * - and `_meta[data-_index]` is present as a string.
  *
@@ -77,7 +77,7 @@ export function is_Primitive_node(node: HsonNode): boolean {
  * (e.g. for round-tripping order or matching back to source positions).
  *
  * @param node - Node to inspect.
- * @returns `true` iff the node is an `_ii` wrapper with a string `data-_index` meta key.
+ * @returns `true` iff the node is an `_-ii` wrapper with a string `data-_index` meta key.
  */
 export function is_indexed(node: HsonNode): boolean {
   return (

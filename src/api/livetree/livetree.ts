@@ -496,7 +496,7 @@ export class LiveTree {
   /**
    * Replace this node’s content with a single text/leaf value.
    *
-   * `null` is stored as a `_val` payload and rendered as an empty string
+   * `null` is stored as a `_-val` payload and rendered as an empty string
    * when mirrored to the DOM.
    *
    * @param value - The primitive value to render as text for this node.

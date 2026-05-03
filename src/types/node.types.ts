@@ -57,7 +57,7 @@ export type AttrMap = Readonly<Record<string, AttrValue>>;
  * All keys must begin with `"data-_"` and encode information not meant
  * to appear as user-visible attributes:
  *
- * - `data-_index` — canonical string index for `_ii` children inside `_-arr`.
+ * - `data-_index` — canonical string index for `_-ii` children inside `_-arr`.
  * - `data-_quid`  — stable identifier assigned by the QUID system.
  *
  * Additional `data-_…` keys may be used internally, but non-prefixed

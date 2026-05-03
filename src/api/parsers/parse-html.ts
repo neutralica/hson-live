@@ -79,7 +79,7 @@ function snip_context(s: string, at: number, radius = 80): string {
  *    - Escape literal `<` inside attrs (`escape_attr_angles`).
  *    - Expand void tags (`expand_void_tags`) and re-amp-fix.
  *    - Balance optional end tags (`optional_endtag_preflight`).
- *    - If the error is “extra content”, wrap in `<_root>…</_root>` and retry,
+ *    - If the error is “extra content”, wrap in `<_-root>…</_-root>` and retry,
  *      optionally re-running void expansion on the wrapped source.
  * 7. If parsing still fails, throw a transform error with context.
  * 8. Convert `documentElement` via `convert`.
@@ -281,13 +281,13 @@ export function parse_html(input: string | Element): HsonNode {
  * - Parse attributes and meta via `parse_html_attrs`.
  * - Handle special raw-text elements (`<style>`, `<script>`):
  *   - Treat their entire (optionally CDATA-wrapped) text content as a
- *     single `_str` child.
+ *     single `_-str` child.
  * - Convert children:
  *   - Calls `elementToNode` to transform child DOM nodes into a mix of
  *     primitives and `HsonNode`s.
- *   - Wrap primitives into `_str` or `_val` nodes as appropriate.
+ *   - Wrap primitives into `_-str` or `_-val` nodes as appropriate.
  * - Handle VSN tags explicitly:
- *   - `<_val>`:
+ *   - `<_-val>`:
  *       - Enforce exactly one payload value.
  *       - Coerce strings to non-string primitives via `coerce`.
  *       - Reject any payload that still resolves to a string.
@@ -378,9 +378,9 @@ function convert(el: Element): HsonNode {
     // ---------- VSN tags in HTML ----------
 
     if (tagLower === VAL_TAG) {
-        // minimal, canonical <_val> handling (coerce strings → non-string primitive)
+        // minimal, canonical <_-val> handling (coerce strings → non-string primitive)
         if (childNodes.length !== 1) {
-            _throw_transform_err('<_val> must contain exactly one value', 'parse-html');
+            _throw_transform_err('<_-val> must contain exactly one value', 'parse-html');
         }
 
         const only = children[0] as unknown; // pre-wrapped atom from elementToNode
@@ -397,17 +397,17 @@ function convert(el: Element): HsonNode {
         } else if (only && typeof only === 'object' && '_tag' in (only as any)) {
             const n = only as HsonNode;
             if (n._tag !== VAL_TAG && n._tag !== STR_TAG) {
-                _throw_transform_err('<_val> must contain a primitive or _str/_val', 'parse-html');
+                _throw_transform_err('<_-val> must contain a primitive or _-str/_-val', 'parse-html');
             }
             const c = n._content?.[0];
-            if (c === undefined) _throw_transform_err('<_val> payload is empty', 'parse-html');
+            if (c === undefined) _throw_transform_err('<_-val> payload is empty', 'parse-html');
             prim = (typeof c === 'string') ? coerceNonString(c) : (c as Primitive);
         } else {
-            _throw_transform_err('<_val> payload is not an atom', 'parse-html');
+            _throw_transform_err('<_-val> payload is not an atom', 'parse-html');
         }
 
         if (typeof prim === 'string') {
-            _throw_transform_err('<_val> cannot contain a string after coercion', 'parse-html', prim);
+            _throw_transform_err('<_-val> cannot contain a string after coercion', 'parse-html', prim);
         }
 
         return CREATE_NODE({ _tag: VAL_TAG, _content: [prim as Primitive] });
@@ -492,10 +492,10 @@ function convert(el: Element): HsonNode {
  *     - Return the node as-is (already rooted).
  * - If `node` is a cluster node (`_-obj`, `_-arr`, `_-elem`):
  *     - Wrap directly under a new `_-root`:
- *       `{ _tag: _root, _content: [node] }`.
+ *       `{ _tag: _-root, _content: [node] }`.
  * - Otherwise (normal HTML-ish element/leaf):
  *     - Wrap in an `_-elem` cluster, then under `_-root`:
- *       `{ _tag: _root, _content: [ { _tag: _-elem, _content: [node] } ] }`.
+ *       `{ _tag: _-root, _content: [ { _tag: _-elem, _content: [node] } ] }`.
  *
  * This keeps `_-root` as a pure structural top-level wrapper while
  * preserving the intended element vs. cluster semantics.
@@ -524,7 +524,7 @@ function wrap_as_root(node: HsonNode): HsonNode {
  *       - Recursively converted via `convert`, returning a `HsonNode`.
  *   - `TEXT_NODE`:
  *       - Reads `textContent` and handles it in context:
- *         - If `trimmed === '""'`, emit an explicit `_str` with `""`.
+ *         - If `trimmed === '""'`, emit an explicit `_-str` with `""`.
  *         - If `parentTag === "_-obj"`:
  *             - Whitespace is *data*, not layout.
  *             - Remove at most one leading newline and one trailing newline.

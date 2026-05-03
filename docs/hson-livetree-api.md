@@ -163,7 +163,7 @@ Content operations only consider node children (primitives are skipped). `_-elem
 ### Text API
 
 - `text.set(value: Primitive): LiveTree`
-  - Replaces only `_str/_val` leaves (keeps element children).
+  - Replaces only `_-str/_-val` leaves (keeps element children).
 - `text.add(value: Primitive): LiveTree`
   - Appends a new text leaf.
 - `text.insert(index: number, value: Primitive): LiveTree`
@@ -171,7 +171,7 @@ Content operations only consider node children (primitives are skipped). `_-elem
 - `text.overwrite(value: Primitive): LiveTree`
   - Replaces all content with one text leaf (DOM `textContent`).
 - `text.get(): string`
-  - Concatenated text of `_str/_val` leaves.
+  - Concatenated text of `_-str/_-val` leaves.
 
 ### Form Helpers
 

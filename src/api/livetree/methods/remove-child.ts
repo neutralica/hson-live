@@ -51,7 +51,7 @@ export function remove_node_children(parent: HsonNode): number {
   const toRemove: HsonNode[] = [];
   for (const v of kids as ContentItem[]) {
     if (!is_Node(v)) continue;
-    if (is_vsn_tag(v._tag)) continue; // skip _str/_val/_-elem/_-obj/_arr/_ii/_root
+    if (is_vsn_tag(v._tag)) continue; // skip _-str/_-val/_-elem/_-obj/_-arr/_-ii/_-root
     toRemove.push(v);
   }
   if (toRemove.length === 0) return 0;

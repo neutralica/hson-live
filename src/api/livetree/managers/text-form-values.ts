@@ -297,10 +297,11 @@ export function get_input_selected(node: HsonNode): string | readonly string[] {
   const raw = attrs?.value;
   return raw == null ? "" : String(raw);
 }
-// -----------------------------------------------------------------------------//.. DOM helpers (CHANGED): project text leaves as *Text nodes*, never <_str>/< _val >
+// -----------------------------------------------------------------------------
+// //.. DOM helpers: project text leaves as *Text nodes*, never <_-str>/< _-val >
 // -----------------------------------------------------------------------------
 
-// was creating document.createElement("_str") which injects <_str> into DOM.
+// was creating document.createElement("_-str") which injects <_-str> into DOM.
 // Now: always create a Text node.
 function make_dom_text(value: Primitive): Text {
   return document.createTextNode(value === null ? "" : String(value));
@@ -334,7 +335,7 @@ function isLeafTag(tag: unknown): boolean {
 // -----------------------------------------------------------------------------
 
 /**
- * Replace ONLY the text leaves (_str/_val) under this node.
+ * Replace ONLY the text leaves (_-str/_-val) under this node.
  * Keeps non-leaf content untouched.
  *
  * DOM: removes only direct Text children under the host element; keeps element children.
@@ -348,7 +349,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   // remove only leaf nodes; keep everything else intact
   bucket._content = bucket._content.filter((c) => {
     if (!is_Node(c)) return true;               // if you truly never have non-nodes, fine
-    return !isLeafTag(c._tag);                  // remove _str/_val only
+    return !isLeafTag(c._tag);                  // remove _-str/_-val only
   });
 
   // append exactly one new leaf

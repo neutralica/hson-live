@@ -24,7 +24,7 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
  * 2. Structural conversion:
  *    - Delegates to `jsonFromNode(clone)` to convert the HSON tree into a
  *      plain `JsonValue` (object/array/primitive), resolving:
- *        - VSNs (`_-root`, `_-obj`, `_arr`, `_-elem`, `_ii`, `_str`, `_val`)
+ *        - VSNs (`_-root`, `_-obj`, `_-arr`, `_-elem`, `_-ii`, `_-str`, `_-val`)
  *        - Standard tags (HTML-like and user-defined)
  *      into standard JS shapes.
  *
@@ -73,14 +73,14 @@ export function serialize_json($node: HsonNode): string {
  *   - That child is taken as the true data cluster; `_-root` itself is not
  *     reflected in the JSON surface.
  *
- * - `_arr`:
- *   - Expects `_content` to be a list of `_ii` index nodes.
- *   - Each `_ii` is unwrapped and converted; the resulting array preserves
+ * - `_-arr`:
+ *   - Expects `_content` to be a list of `_-ii` index nodes.
+ *   - Each `_-ii` is unwrapped and converted; the resulting array preserves
  *     element order and ignores the index metadata.
  *
  * - `_-obj`:
  *   - If `_content` has a single child that is one of:
- *       `_str`, `_val`, `_arr`, `_-obj`, `_-elem`
+ *       `_-str`, `_-val`, `_-arr`, `_-obj`, `_-elem`
  *     then this wrapper is treated as transparent and the child’s JSON
  *     representation is returned directly. This mirrors the “cluster”
  *     behavior in the rest of the system.
@@ -91,10 +91,10 @@ export function serialize_json($node: HsonNode): string {
  *         and used as the value.
  *     - Produces a plain `JsonObj` whose keys correspond to these tag names.
  *
- * - `_str` / `_val`:
+ * - `_-str` / `_-val`:
  *   - Return their single primitive payload directly:
- *     - `_str` → string
- *     - `_val` → number | boolean | null
+ *     - `_-str` → string
+ *     - `_-val` → number | boolean | null
  *
  * - `_-elem`:
  *   - Represents “element cluster” semantics in JSON form.
@@ -102,8 +102,8 @@ export function serialize_json($node: HsonNode): string {
  *   - The result is wrapped as `{ "_-elem": [ ...items ] }`, so that element
  *     mode remains distinguishable at the JSON layer.
  *
- * - `_ii`:
- *   - Index wrapper used inside `_arr`.
+ * - `_-ii`:
+ *   - Index wrapper used inside `_-arr`.
  *   - Must contain exactly one child node.
  *   - Unwrapped and converted directly via `jsonFromNode` on that child.
  *
@@ -125,9 +125,9 @@ export function serialize_json($node: HsonNode): string {
  * Safety / guardrails:
  * - Rejects any tag that starts with `_` but is not a known VSN
  *   (`EVERY_VSN`), to avoid leaking unknown control tags into JSON.
- * - For `_-root`, `_arr`, `_ii`, `_-elem`, and cluster shapes, checks that
+ * - For `_-root`, `_-arr`, `_-ii`, `_-elem`, and cluster shapes, checks that
  *   structural expectations are met (e.g., `_-root` has exactly one child,
- *   `_ii` has exactly one child, etc.).
+ *   `_-ii` has exactly one child, etc.).
  *
  * @param $node - The HSON node to convert.
  * @returns A `JsonValue` (object, array, or primitive) suitable for
@@ -161,12 +161,12 @@ function jsonFromNode($node: HsonNode): JsonValue {
         case ARR_TAG: {
             let array: JsonValue[] = [];
             if ($node._content) {
-                /*  content of _array node must be _ii nodes */
+                /*  content of _-arr node must be _-ii nodes */
                 for (const iiNode of $node._content as HsonNode[]) {
                     if (is_indexed(iiNode)) {
                         array.push(jsonFromNode(iiNode._content[0] as HsonNode));
                     } else {
-                        _throw_transform_err(`malformed _ii node in _array`, 'serialize-json');
+                        _throw_transform_err(`malformed _-ii node in _-arr`, 'serialize-json');
                     }
                 }
             }
@@ -217,7 +217,7 @@ function jsonFromNode($node: HsonNode): JsonValue {
         }
         case II_TAG: {
             if (!$node._content || $node._content.length !== 1) {
-                _throw_transform_err('misconfigured _ii node', 'serialize_json');
+                _throw_transform_err('misconfigured _-ii node', 'serialize_json');
             }
             return jsonFromNode($node._content[0] as HsonNode);
         }
