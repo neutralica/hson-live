@@ -640,11 +640,69 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             const headerLen = headerRaw.length;
 
             while (ixHeader < headerLen && /\s/.test(headerRaw[ixHeader])) ixHeader++;
+            const isTagStart = (ch: string | undefined): boolean =>
+                ch !== undefined && /[A-Za-z_:]/.test(ch);
 
+            const isTagChar = (ch: string | undefined): boolean =>
+                ch !== undefined && /[A-Za-z0-9:._-]/.test(ch);
+            let tag = "";
             const tagNameStartIx = ixHeader;
-            while (ixHeader < headerLen && /[A-Za-z0-9:._-]/.test(headerRaw[ixHeader])) ixHeader++;
 
-            const tag = headerRaw.slice(tagNameStartIx, ixHeader);
+            if (headerRaw[ixHeader] === "`") {
+                const startIx = ixHeader;
+                ixHeader++;
+
+                let rawKey = "";
+                let escaped = false;
+                let closed = false;
+
+                while (ixHeader < headerLen) {
+                    const ch = headerRaw[ixHeader];
+
+                    if (escaped) {
+                        rawKey += ch;
+                        escaped = false;
+                        ixHeader++;
+                        continue;
+                    }
+
+                    if (ch === "\\") {
+                        escaped = true;
+                        ixHeader++;
+                        continue;
+                    }
+
+                    if (ch === "`") {
+                        closed = true;
+                        ixHeader++;
+                        break;
+                    }
+
+                    rawKey += ch;
+                    ixHeader++;
+                }
+
+                if (!closed) {
+                    _throw_transform_err(
+                        `[step f depth=${depth} L=${currentIx + 1}] unterminated quoted tag name in "${headerRaw}"`,
+                        "tokenize-hson"
+                    );
+                }
+
+                tag = rawKey;
+            } else {
+                if (!isTagStart(headerRaw[ixHeader])) {
+                    _throw_transform_err(
+                        `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
+                        "tokenize-hson"
+                    );
+                }
+
+                ixHeader++;
+                while (isTagChar(headerRaw[ixHeader])) ixHeader++;
+
+                tag = headerRaw.slice(tagNameStartIx, ixHeader);
+            }
             if (!tag) {
                 _throw_transform_err(
                     `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
