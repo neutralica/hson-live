@@ -1,6 +1,6 @@
 {
   "name": "hson-live",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "HSON 2025",
   "files": [
     "dist",
@@ -35,8 +35,7 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
     },
-      "./_tests": "./dist/_tests/test-exports.js"
-
+    "./_tests": "./dist/_tests/test-exports.js"
   },
   "scripts": {
     "clean": "rm -rf dist",
