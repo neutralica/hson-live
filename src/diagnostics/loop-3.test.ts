@@ -408,7 +408,7 @@ function looks_like_html(s: string): boolean {
   const t = s.trim();
   if (!t) return false;
 
-  // starts with a tag-like opener: <a  </a  <!doctype  <?xml  <_obj ...
+  // starts with a tag-like opener: <a  </a  <!doctype  <?xml  <_-obj ...
   if (/^<\s*[A-Za-z_!/??]/.test(t)) return true;
 
   // or contains a tag-ish opener somewhere (avoid treating "< 3" as HTML)

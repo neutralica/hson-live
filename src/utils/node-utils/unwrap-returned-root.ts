@@ -13,7 +13,7 @@ import { is_Node } from "./node-guards.js";
  *   and returned as a one-element array.
  *
  * This function is intentionally shallow:
- * - It does **not** unwrap `_elem`, `_obj`, or other structural containers.
+ * - It does **not** unwrap `_-elem`, `_-obj`, or other structural containers.
  * - It preserves original child order exactly.
  *
  * The return type is `ReadonlyArray` to signal that the fragment is a view over

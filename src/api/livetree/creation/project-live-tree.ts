@@ -26,8 +26,8 @@ import {
  * - When `node` is a primitive (not an `HsonNode`), returns a
  *   `Text` node whose content is `String(node ?? "")`.
  * - When `node` is an `HsonNode`:
- *   - Interprets virtual structural nodes (VSNs) such as `_root`,
- *     `_-obj`, `_arr`, `_elem` as *non-rendered* containers:
+ *   - Interprets virtual structural nodes (VSNs) such as `_-root`,
+ *     `_-obj`, `_arr`, `_-elem` as *non-rendered* containers:
  *     they never become real DOM elements, but their children are
  *     recursively rendered.
  *   - Creates real DOM `Element` nodes for concrete HSON element tags,
@@ -93,7 +93,7 @@ export function project_livetree(
       return frag;
     }
 
-    // _root/_-obj/_elem → render their children directly
+    // _root/_-obj/_-elem → render their children directly
     for (const child of n._content ?? []) {
       frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
     }

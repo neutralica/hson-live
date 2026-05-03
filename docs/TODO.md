@@ -2,6 +2,14 @@
 
 # 2DÜ
 
+## 03MAY2026
+- 3-way test "auto" mode interprets malformed HSON as weird HTML
+- VSN prefix has been changed from `_VSN` to `_-VSN` to permit underscored JSON keys 
+  + this should probably be done for _attrs, _tag, _content, and _meta as well
+- declutter CssManager, GlobalCss, LiveTree as much as possible. 
+  - create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface
+  
+
 ## 21APR2026
 SVG — still missing:
 

@@ -50,7 +50,7 @@ export function is_Node(bit: unknown): bit is HsonNode {
  * - that item is a `Primitive`,
  * - and the node’s tag is either `_str` or `_val`.
  *
- * This is used to distinguish structural nodes (`_obj`, `_arr`, `_elem`, `_ii`, etc.)
+ * This is used to distinguish structural nodes (`_-obj`, `_arr`, `_-elem`, `_ii`, etc.)
  * from leaf value carriers in the HSON tree.
  *
  * @param node - Node to inspect.

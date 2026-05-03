@@ -158,7 +158,7 @@ Notes:
 - `content.all(): readonly LiveTree[]`
 - `content.mustOnly(opts?: { warn?: boolean }): LiveTree`
 
-Content operations only consider node children (primitives are skipped). `_elem` wrappers are unwrapped.
+Content operations only consider node children (primitives are skipped). `_-elem` wrappers are unwrapped.
 
 ### Text API
 

@@ -28,13 +28,13 @@ const _log = _VERBOSE ? boundLog : () => { };
  * - `{ type: "IMPLICIT_OBJECT" }`
  *   Marks an implicit object scope introduced by syntaxes like:
  *     `< <prop val>>`
- *   which are later normalized into the explicit `_obj` layer.
+ *   which are later normalized into the explicit `_-obj` layer.
  *
  * The stack is used to enforce well-formed nesting and resolve close
  * delimiters back to their originating context.
  */
 type ContextStackItem =
-    | { type: 'CLUSTER'; close?: CloseKind; implicit?: boolean } /* replaces the old _obj/_elem sentinels */
+    | { type: 'CLUSTER'; close?: CloseKind; implicit?: boolean } /* replaces the old _-obj/_-elem sentinels */
     | { type: 'IMPLICIT_OBJECT' };
 
 /**
@@ -107,7 +107,7 @@ const LONE_OPEN_ANGLE_REGEX = /^<\s*$/;
  * - Must contain `<` followed by optional whitespace and then another `<`.
  * - The second `<` must be followed by either whitespace or end-of-line.
  *
- * This pattern signals that an `_obj` cluster is being opened implicitly,
+ * This pattern signals that an `_-obj` cluster is being opened implicitly,
  * and instructs the tokenizer to push an `IMPLICIT_OBJECT`/`CLUSTER`
  * context instead of treating the sequence as a normal tag name.
  */
@@ -462,7 +462,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             contextStack.push({ type: 'IMPLICIT_OBJECT' });
             contextStack.push({ type: 'CLUSTER', close: CLOSE_KIND.obj, implicit: true });
 
-            // emit a real OPEN for a synthetic _obj
+            // emit a real OPEN for a synthetic _-obj
             const lineNo = currentIx + 1;
             const leadCol = currentLine.search(/\S|$/) + 1;
             const posOpen = _pos(lineNo, leadCol, _offset + leadCol - 1);
@@ -851,7 +851,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     if (_VERBOSE) {
         logTokens(finalTokens);
     }
-    /* return new tokens; no _root wrapping here — parser will handle it */
+    /* return new tokens; no _-root wrapping here — parser will handle it */
     return finalTokens as Tokens[];
 }
 

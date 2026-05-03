@@ -34,7 +34,7 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
 function getTag(value: JsonValue): string {
     // 1) Collections first (so they aren't misclassified as "not string")
     if (Array.isArray(value)) return ARR_TAG;            // _arr
-    if (is_Object(value)) return OBJ_TAG;              // _obj
+    if (is_Object(value)) return OBJ_TAG;              // _-obj
 
     // 2) Scalars
     if (typeof value === 'string') return STR_TAG;       // _str
@@ -97,7 +97,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
  * to decide which HSON shape to build (`_str`, `_val`, `_arr`, `_-obj`,
- * `_-elem`, `_root`).
+ * `_-elem`, `_-root`).
  *
  * Dispatch rules (by `$parentTag`):
  *
@@ -123,12 +123,12 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *    - Requires `srcJson` to be a non-array object.
  *    - Applies one of three mutually exclusive paths:
  *
- *    A) Root form: `{ "_root": <payload>, ... }`
- *       - Forbids non-underscore siblings alongside `_root`.
+ *    A) Root form: `{ _-root: <payload>, ... }`
+ *       - Forbids siblings alongside `_-root`.
  *       - Recursively parses `<payload>` via `nodeFromJson`.
- *       - Ensures the `_root` child is a cluster:
+ *       - Ensures the `_-root` child is a cluster:
  *         - Scalar children (`_str` / `_val`) are wrapped in `<_-elem>`.
- *       - Returns `<_root>` containing a single cluster child.
+ *       - Returns `<_-root>` containing a single cluster child.
  *
  *    B) Element form: `{ "_-elem": [ ... ] }`
  *       - Requires `_-elem` value to be an array.
@@ -167,7 +167,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  * Errors:
  * - Throws via `_throw_transform_err` when:
  *   - `srcJson` type does not match the expected parent tag.
- *   - `_root` objects have illegal siblings.
+ *   - `_-root` objects have illegal siblings.
  *   - `_-elem` is not an array or has invalid items.
  *   - A generic object contains reserved VSN keys.
  *   - A value is not representable as a supported HSON shape.
@@ -237,23 +237,23 @@ export function nodeFromJson(
         }
         const obj = srcJson as Record<string, unknown>;
 
-        // A) HARD-CODED ROOT: { _root: <cluster-or-primitive> } (exclusive)
+        // A) HARD-CODED ROOT: { _-root: <cluster-or-primitive> } (exclusive)
         if (Object.prototype.hasOwnProperty.call(obj, ROOT_TAG)) {
             // No other non-underscore siblings allowed
             const nonUS = nonUnderscoreKeys(obj);
             if (!(nonUS.length === 0 || (nonUS.length === 1 && nonUS[0] === ROOT_TAG))) {
-                _throw_transform_err('"_root" object must not have non-underscore siblings', 'parse_json', make_string(obj));
+                _throw_transform_err('"_-root object must not have non-underscore siblings', 'parse_json', make_string(obj));
             }
             // Parse the root payload
             const rootPayload = obj[ROOT_TAG] as JsonValue;
             if (rootPayload === undefined) {
-                // Empty _root (allowed) → no children
+                // Empty _-root (allowed) → no children
                 return { node: CREATE_NODE({ _tag: ROOT_TAG, _content: [] }) };
             }
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
 
-            // Enforce: _root child must be a cluster (_-obj|_arr|_-elem). If scalar, coerce to _-elem wrapper.
+            // Enforce: _-root child must be a cluster (_-obj|_arr|_-elem). If scalar, coerce to _-elem wrapper.
             const isScalar = (child._tag === STR_TAG || child._tag === VAL_TAG);
             const clusterChild = isScalar
                 ? CREATE_NODE({ _tag: ELEM_TAG, _content: [child] })
@@ -378,17 +378,17 @@ export function nodeFromJson(
                 // arrays recurse under _arr
                 child = nodeFromJson(raw, ARR_TAG).node;
             } else if (raw && typeof raw === 'object') {
-                // objects recurse under _obj
+                // objects recurse under _-obj
                 child = nodeFromJson(raw, OBJ_TAG).node;
             } else {
                 _throw_transform_err(`unsupported JSON value for key "${key}"`, 'nodeFromJson.object.value');
             }
 
-            // JSON-mode property ⇒ inner _obj wrapper unless the child is already a cluster
+            // JSON-mode property ⇒ inner _-obj wrapper unless the child is already a cluster
             const payload =
                 (child._tag === OBJ_TAG || child._tag === ARR_TAG)
                     ? [child]                                    // passthrough single cluster
-                    : [CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [child] })]; // wrap leaf in _obj
+                    : [CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [child] })]; // wrap leaf in _-obj
 
             return CREATE_NODE({
                 _tag: key,
@@ -418,21 +418,21 @@ export function nodeFromJson(
  *   error is wrapped and rethrown via `_throw_transform_err`.
  * - If `input` is already a `JsonValue`, it is used as-is.
  *
- * Legacy `_root` unwrapping:
+ * Legacy `_-root` unwrapping:
  * - If the top-level value is an object of the form:
- *     `{ "_root": <payload>, "_meta"?: { ... } }`
+ *     `{ "_-root: <payload>, "_meta"?: { ... } }`
  *   then:
  *   - `jsonToProcess` is set to `<payload>`.
  *   - Any `_meta` entries whose keys begin with the data-meta prefix
  *     (`data-_*`) are copied into `rootMeta` and attached to the final
- *     `_root` node.
+ *     `_-root` node.
  * - All other keys (including non-`data-_*` meta) are ignored for the
  *   purposes of root metadata.
  *
  * Conversion:
  * - Delegates to `nodeFromJson(jsonToProcess, getTag(jsonToProcess))`
  *   to build the main HSON subtree.
- * - Wraps the resulting node in a `_root` wrapper:
+ * - Wraps the resulting node in a `_-root` wrapper:
  *   - `_tag: ROOT_TAG`
  *   - `_meta: rootMeta` (if any data-meta was preserved)
  *   - `_content: [node]`
@@ -440,7 +440,7 @@ export function nodeFromJson(
  *   correctness.
  *
  * @param input - JSON string or already-parsed `JsonValue`.
- * @returns A `_root`-wrapped `HsonNode` representing the JSON payload.
+ * @returns A `_-root`-wrapped `HsonNode` representing the JSON payload.
  * @throws If JSON parsing fails or invariants are violated.
  * @see nodeFromJson
  * @see getTag
@@ -454,7 +454,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
     _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
   }
 
-  // unwrap legacy {_root: ...} but keep data-* meta (unchanged)
+  // unwrap legacy {_-root: ...} but keep data-* meta (unchanged)
   let jsonToProcess: JsonValue = parsed;
   let rootMeta: HsonMeta | undefined;
   if (is_Object(parsed)) {

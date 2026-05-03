@@ -10,7 +10,7 @@ import { create_livetree } from "../create-livetree.js";
 /**
  * Normalize a parsed HSON root into a detached `LiveTree` branch.
  *
- * Structural wrapper nodes such as `_root` and `_elem` are unwrapped first so
+ * Structural wrapper nodes such as `_-root` and `_-elem` are unwrapped first so
  * the returned tree always points at one concrete branch root. Exactly one
  * concrete root element must remain after unwrapping.
  *

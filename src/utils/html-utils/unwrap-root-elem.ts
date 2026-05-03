@@ -6,18 +6,18 @@ import { is_Node } from "../node-utils/node-guards.js";
 
 
 /**
- * Unwrap a parsed HSON container shape (`_root` → `_elem`) into its concrete child nodes.
+ * Unwrap a parsed HSON container shape (`_-root` → `_-elem`) into its concrete child nodes.
  *
  * This normalizes inputs that may be wrapped by the parser (or produced by transforms)
  * so downstream mutators can operate on “real” nodes rather than structural wrappers.
  *
  * Behavior:
- * - If a node is `_root` whose first child is an `_elem`, returns the `_elem`’s child nodes.
+ * - If a node is `_-root` whose first child is an `_-elem`, returns the `_-elem`’s child nodes.
  * - Otherwise, returns the node wrapped in a single-item array.
  * - Always returns an array.
  *
- * @param content - A single node or list of nodes that may include `_root`/`_elem` wrappers.
- * @returns The unwrapped concrete child nodes (stripped of `_root`/`_elem` wrapper nodes).
+ * @param content - A single node or list of nodes that may include `_-root`/`_-elem` wrappers.
+ * @returns The unwrapped concrete child nodes (stripped of `_-root`/`_-elem` wrapper nodes).
  */
 export function unwrap_root_elem(content: HsonNode | HsonNode[]): HsonNode[] {
     const nodes = Array.isArray(content) ? content : [content];

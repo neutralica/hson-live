@@ -14,10 +14,10 @@ import { SvgTag } from "../../../types/livetree.types.js";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 
 /**
- * Append one or more HSON nodes into a target node's `_elem` container
+ * Append one or more HSON nodes into a target node's `_-elem` container
  * and mirror the change into the corresponding live DOM subtree.
  *
- * If the first child of `targetNode._content` is not an `_elem` container,
+ * If the first child of `targetNode._content` is not an `_-elem` container,
  * this function will create one and insert it as the first child. All
  * appended nodes are then placed inside that container.
  *
@@ -26,8 +26,8 @@ import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
  * corresponding position, keeping HSON and DOM in sync.
  *
  * @param targetNode - The HSON node that will receive the new children.
- * @param nodesToAppend - The HSON nodes to append into the `_elem` container.
- * @param index - Optional insertion index within the `_elem` content.
+ * @param nodesToAppend - The HSON nodes to append into the `_-elem` container.
+ * @param index - Optional insertion index within the `_-elem` content.
  *                If provided, it is normalized via `normalize_ix` and
  *                used for both HSON and DOM insertion; otherwise nodes
  *                are appended to the end.
@@ -39,7 +39,7 @@ function appendNodes(
 ): void {
   if (!targetNode._content) targetNode._content = [];
 
-  // find or create the `_elem` container
+  // find or create the `_-elem` container
   let containerNode: HsonNode;
   const firstChild = targetNode._content[0];
 
@@ -89,14 +89,14 @@ const parentNs: "html" | "svg" =
  * Append a single `LiveTree` branch as children of the current `LiveTree`'s node,
  * preserving HSON → DOM linkage.
  *
- * The source branch's root `_elem` wrapper is unwrapped via `unwrap_root_elem`,
+ * The source branch's root `_-elem` wrapper is unwrapped via `unwrap_root_elem`,
  * so that only its meaningful children are appended. The source branch then
  * "adopts" the host roots from the current tree so subsequent operations
  * on the branch stay connected to the same host DOM.
  *
  * @this LiveTree
  * @param branch - The `LiveTree` branch whose node subtree will be appended.
- * @param index - Optional insertion index within the `_elem` container of
+ * @param index - Optional insertion index within the `_-elem` container of
  *                the target node; normalized consistently with `appendNodesToTree`.
  * @returns The receiver `LiveTree` (for chaining).
  */

@@ -109,10 +109,10 @@ String: Represents a string literal. Only <<_-str>> tags may contain raw string 
 #### <_-val>
 Value: Represents a non-string primitive literal (number, boolean, null). Only <_-val> tags may contain raw non-string data in its _content property
 
-#### <_root>
+#### <_-root>
 Root: Represents the base 'wrapper' node of a HSON tree undergoing transformation. 
 *	To survive XML parsing, all HSON content must be contained within a single element
-*	To ensure consistency, HSON's transformers wrap content under operation in a <_root> tag during processin. This tag is unwrapped on serialization or appending to other nodes and is usually not exposed publicly. 
+*	To ensure consistency, HSON's transformers wrap content under operation in a <_-root> tag during processin. This tag is unwrapped on serialization or appending to other nodes and is usually not exposed publicly. 
 
 
 ### Note:

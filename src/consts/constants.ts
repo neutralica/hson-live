@@ -46,43 +46,43 @@
  *
  * These values are intentionally string literals, never booleans.
  ***************************************************************/
-export const $_FALSE = '_false' as const;
+export const $_FALSE = "_false" as const;
 export type FalseType = typeof $_FALSE;
-export const $_ERROR = '_error' as const;
+export const $_ERROR = "_error" as const;
 
 /***************************************************************
  * Virtual Structural Node (VSN) tags
  *
  * HSON defines a small, closed set of structural markers
- * (`_str`, `_val`, `_obj`, `_arr`, `_elem`, `_ii`, `_root`) that
+ * (`_str`, `_val`, `_-obj`, `_arr`, `_-elem`, `_ii`, `_-root`) that
  * encode the logical shape of the document tree. These tags are
  * the *only* valid `_tag` values on HsonNode objects.
  *
  *   - `_str`   : leaf wrapper for string primitives
  *   - `_val`   : leaf wrapper for non-string primitives
- *   - `_obj`   : object-like node holding property nodes
+ *   - `_-obj`   : object-like node holding property nodes
  *   - `_arr`   : array node containing `_ii` index nodes
  *   - `_ii`    : index wrapper (exactly one child), always under `_arr`
- *   - `_elem`  : HTML element bridge node
- *   - `_root`  : top-level container (0–1 child)
+ *   - `_-elem`  : HTML element bridge node
+ *   - `_-root`  : top-level container (0–1 child)
  *
  * These tags are used by the parser, serializer, validator
  * (assert_invariants), LiveTree, and all transformation passes.
  ***************************************************************/
-export const STR_TAG = '_-str' as const;
-export const VAL_TAG = '_-val' as const;
-export const ROOT_TAG = '_-root' as const;
-export const II_TAG = '_-ii' as const;
-export const OBJ_TAG = '_-obj' as const;
-export const ARR_TAG = '_-arr' as const;
-export const ELEM_TAG = '_-elem' as const;
+export const STR_TAG = "_-str" as const;
+export const VAL_TAG = "_-val" as const;
+export const ROOT_TAG = "_-root" as const;
+export const II_TAG = "_-ii" as const;
+export const OBJ_TAG = "_-obj" as const;
+export const ARR_TAG = "_-arr" as const;
+export const ELEM_TAG = "_-elem" as const;
 
 /***************************************************************
  * VSN_TAGS
  *
- * Enumerates every Virtual Structural Node tag *except* `_root`.
+ * Enumerates every Virtual Structural Node tag *except* `_-root`.
  * Useful for:
- *   - validating shape without special-casing `_root`,
+ *   - validating shape without special-casing `_-root`,
  *   - filtering nodes for general transforms,
  *   - pattern-matching where the root container is excluded.
  *
@@ -96,7 +96,7 @@ export const VSN_TAGS: string[] = [
  * EVERY_VSN
  *
  * Complete set of all structural HSON node tags, including
- * `_root`. Used in strict validators, generic transforms,
+ * `_-root`. Used in strict validators, generic transforms,
  * and any code requiring exhaustive tag coverage.
  ***************************************************************/
 export const EVERY_VSN: string[] = [
@@ -108,7 +108,7 @@ export const EVERY_VSN: string[] = [
  *
  * Union type of every non-root VSN tag. Provides precise typing
  * for functions that operate on structural nodes but explicitly
- * exclude `_root` (e.g., recursive transforms, node constructors).
+ * exclude `_-root` (e.g., recursive transforms, node constructors).
  ***************************************************************/
 export type VSNTag = typeof VSN_TAGS[number];
 
@@ -126,7 +126,7 @@ export const LEAF_NODES = [STR_TAG, VAL_TAG] as string[];
 /***************************************************************
  * ELEM_OBJ_ARR
  *
- * Small grouping for transforms that treat `_elem`, `_obj`,
+ * Small grouping for transforms that treat `_-elem`, `_-obj`,
  * and `_arr` as the “container” trio. For example, node comparison,
  * normalization, and serializer decisions.
  ***************************************************************/
@@ -144,7 +144,7 @@ export const ELEM_OBJ = [ELEM_TAG, OBJ_TAG];
 /***************************************************************
  * ElemObjType (type)
  *
- * Literal type union of `_elem` | `_obj`. Used for functions that
+ * Literal type union of `_-elem` | `_-obj`. Used for functions that
  * accept only these container forms (e.g., HTML bridge or object
  * normalization routines).
  ***************************************************************/
@@ -153,7 +153,7 @@ export type ElemObjType = typeof ELEM_TAG | typeof OBJ_TAG;
 /***************************************************************
  * ElemObjArrType (type)
  *
- * Literal tuple-type for `['_elem','_arr','_obj']`. Useful where
+ * Literal tuple-type for `["_-elem","_arr","_-obj"]`. Useful where
  * array membership or exhaustive mapping is required at the type
  * level instead of runtime.
  ***************************************************************/
@@ -162,7 +162,7 @@ export type ElemObjArrType = typeof ELEM_OBJ_ARR;;
 /***************************************************************
  * Render-target constants
  *
- * Used by HSON's rendering and transformation framework to select
+ * Used by HSON"s rendering and transformation framework to select
  * an output channel:
  *
  *   - `hson`  : internal HSON tree representation
@@ -173,10 +173,10 @@ export type ElemObjArrType = typeof ELEM_OBJ_ARR;;
  * `$RENDER` bundles these into a single frozen lookup object
  * for ergonomic referencing and exhaustiveness checks.
  ***************************************************************/
-export const $HSON = 'hson' as const;
-export const $JSON = 'json' as const;
-export const $HTML = 'html' as const;
-export const $NODES = 'nodes' as const;
+export const $HSON = "hson" as const;
+export const $JSON = "json" as const;
+export const $HTML = "html" as const;
+export const $NODES = "nodes" as const;
 export const $RENDER = { HSON: $HSON, HTML: $HTML, JSON: $JSON, NODES: $NODES } as const;
 
 /***************************************************************
@@ -190,9 +190,9 @@ export const $RENDER = { HSON: $HSON, HTML: $HTML, JSON: $JSON, NODES: $NODES } 
  * Serializers pick behavior based on these frame constants.
  ***************************************************************/
 export const $HSON_FRAME = {
-  GEN: 'generate',
-  STD: 'standard',
-  SUBSET: 'subset',
+  GEN: "generate",
+  STD: "standard",
+  SUBSET: "subset",
 } as const;
 
 /***************************************************************
@@ -211,9 +211,9 @@ export const $HSON_FRAME = {
  *     when a node receives a QUID (unique identifier).
  *     Enables DOM↔HsonNode tracking and LiveTree operations.
  ***************************************************************/
-export const _META_DATA_PREFIX = 'data-_';
-export const _DATA_INDEX = 'data-_index';
-export const _DATA_QUID = 'data-_quid';
+export const _META_DATA_PREFIX = "data-_";
+export const _DATA_INDEX = "data-_index";
+export const _DATA_QUID = "data-_quid";
 
 /***************************************************************
  * Transit-attribute markers
@@ -227,5 +227,5 @@ export const _DATA_QUID = 'data-_quid';
  *     Canonical key `"data--attrmap"`, storing the temporary
  *     attribute-map snapshot used during node→DOM→node cycles.
  ***************************************************************/
-export const _TRANSIT_PREFIX = 'data--';  
+export const _TRANSIT_PREFIX = "data--";  
 export const _TRANSIT_ATTRS = `${_TRANSIT_PREFIX}attrmap`;

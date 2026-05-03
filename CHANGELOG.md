@@ -28,7 +28,7 @@ Fixed: SVG creation + insertion semantics
 Fixed: appendNodes() structural correctness
 	•	Corrected insertion logic to operate on actual child nodes rather than wrapper artifacts.
 	•	Ensures:
-	•	correct _elem container usage
+	•	correct _-elem container usage
 	•	stable ordering during indexed inserts
 	•	consistent DOM ↔ HSON synchronization
 
@@ -144,7 +144,7 @@ Fixed: Attribute roundtrip stability for JSON-like payloads
 Clarified: Raw-text element handling (script, style)
 	•	Failures traced primarily to incorrect source detection and test assumptions.
 	•	Not a tokenizer regression.
-	•	Highlighted inconsistency: HTML parser returns direct _str without _elem wrapper (known but not blocking).
+	•	Highlighted inconsistency: HTML parser returns direct _str without _-elem wrapper (known but not blocking).
 
 ⸻
 

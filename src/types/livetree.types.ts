@@ -22,7 +22,7 @@ export type SvgScopeApi = Readonly<{
  *
  * Each field is optional; all specified predicates must match:
  *
- *   - `tag`   → exact tag name match (`_obj`, `div`, etc.).
+ *   - `tag`   → exact tag name match (`_-obj`, `div`, etc.).
  *   - `attrs` → shallow partial match on `_attrs`, using plain
  *               `===` equality for values.
  *   - `meta`  → shallow partial match on `_meta` keys/values.

@@ -131,17 +131,17 @@ function primitive_to_xml(p: Primitive): string {
  *   - Rendered as `<_val>…</_val>` with escaped contents to preserve
  *     type boundaries on round trip.
  *
- * - `_elem`:
+ * - `_-elem`:
  *   - Flattened away; serializes each child in `_content` and joins with
- *     newlines. No explicit `<_elem>` tag appears in the XML.
+ *     newlines. No explicit `<_-elem>` tag appears in the XML.
  *
- * - `_root`:
+ * - `_-root`:
  *   - Must contain exactly one child.
- *   - That child is serialized directly; `<_root>` is melted and does not
+ *   - That child is serialized directly; `<_-root>` is melted and does not
  *     appear in the XML surface.
  *
- * - `_obj`:
- *   - Serialized as a literal `<_obj>…</_obj>` wrapper, where each
+ * - `_-obj`:
+ *   - Serialized as a literal `<_-obj>…</_-obj>` wrapper, where each
  *     property child is serialized recursively. This preserves object
  *     structure in the XML form.
  *
@@ -209,11 +209,11 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
       return (content as (HsonNode | Primitive)[]).map(ch => serialize_xml(ch as any)).join('\n');
     }
 
-    // melt _root (must have exactly one cluster child)
+    // melt _-root (must have exactly one cluster child)
     case ROOT_TAG: {
       const kids = content as HsonNode[];
       if (kids.length !== 1) {
-        _throw_transform_err('_root must have exactly one child', 'serialize_html');
+        _throw_transform_err('_-root must have exactly one child', 'serialize_html');
       }
       return serialize_xml(kids[0]);
     }
@@ -269,7 +269,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  *
  * 3. XML stage:
  *    - Delegates to `serialize_xml(clone)` to produce an XML-like string
- *      that faithfully represents HSON semantics (including `_val`, `_obj`,
+ *      that faithfully represents HSON semantics (including `_val`, `_-obj`,
  *      `_arr`, `_ii`, etc.).
  *
  * 4. HTML normalization:
@@ -287,8 +287,8 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  * Characteristics:
  * - `_str` appears only as escaped text in the output.
  * - `_val` uses a `<_val>…</_val>` literal representation.
- * - `_elem` and `_root` are structure-only and never appear as tags.
- * - `_obj` and other clusters remain visible where necessary to preserve
+ * - `_-elem` and `_-root` are structure-only and never appear as tags.
+ * - `_-obj` and other clusters remain visible where necessary to preserve
  *   HSON’s JSON-mode structure.
  *
  * @param node - Root HSON node or primitive to serialize as HTML.

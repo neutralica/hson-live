@@ -47,7 +47,7 @@ export const make_leaf = (v: Primitive): HsonNode =>
  * High-level behavior:
  * - Walks the token array once, maintaining an index (`ix`) into `$tokens`.
  * - Uses `readTag` to parse element/VSN tags (`OPEN`…`CLOSE`) into nodes,
- *   shaping content into `_elem` or `_obj` clusters based on the tag’s
+ *   shaping content into `_-elem` or `_-obj` clusters based on the tag’s
  *   close kind (`CLOSE_KIND.elem` vs `CLOSE_KIND.obj`).
  * - Uses `readArray` to parse `ARR_OPEN`…`ARR_CLOSE` sequences into
  *   `_arr` nodes full of `_ii` children, each tagged with `data-_index`.
@@ -62,22 +62,22 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *
  * Root synthesis:
  * - If the sole top-level node is already `<_root>`, return it directly.
- * - Otherwise, synthesize a `_root` node according to the top-level shape:
- *   - A single cluster node (`_obj`, `_arr`, `_elem`) is wrapped as-is.
- *   - A single standard tag is wrapped in `_obj` or `_elem` depending on
+ * - Otherwise, synthesize a `_-root` node according to the top-level shape:
+ *   - A single cluster node (`_-obj`, `_arr`, `_-elem`) is wrapped as-is.
+ *   - A single standard tag is wrapped in `_-obj` or `_-elem` depending on
  *     its recorded close kind.
- *   - No nodes at all produce a `_root` with an empty `_obj` cluster.
- *   - Multiple top-level nodes are wrapped in `_obj` or `_elem` if the
- *     close kinds are unanimous; mixed modes default to `_elem`.
+ *   - No nodes at all produce a `_-root` with an empty `_-obj` cluster.
+ *   - Multiple top-level nodes are wrapped in `_-obj` or `_-elem` if the
+ *     close kinds are unanimous; mixed modes default to `_-elem`.
  *
  * Error handling:
  * - Any unexpected token kind in a given context (inside tags, arrays,
  *   or at the top level) results in a transform error.
- * - Missing closing tokens, malformed `_root` / VSN shapes, or invalid
+ * - Missing closing tokens, malformed `_-root` / VSN shapes, or invalid
  *   payloads for special tags (e.g. `<_val>`) also throw.
  *
  * @param tokens - Token array produced by `tokenize_hson`.
- * @returns A `_root`-wrapped `HsonNode` representing the parsed HSON tree.
+ * @returns A `_-root`-wrapped `HsonNode` representing the parsed HSON tree.
  * @see tokenize_hson
  * @see make_leaf
  * @see unwrap_root_obj
@@ -196,7 +196,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
 
         // ---------- <_root>: choose cluster by its own closer; never mix modes ----------
         if (open.tag === ROOT_TAG) {
-            //  explicit "<>" under root => single empty _obj cluster
+            //  explicit "<>" under root => single empty _-obj cluster
             if (sawEmptyObjShorthand) {
                 node._content = [CREATE_NODE({ _tag: OBJ_TAG })];
                 if (isTopLevel) topCloseKinds.push(closeKind);
@@ -228,9 +228,9 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             return { node, closeKind };
         }
 
-        // ---------- Normal tag: SINGLE-MODE shaping (no _elem/_obj mixing) ----------
+        // ---------- Normal tag: SINGLE-MODE shaping (no _-elem/_-obj mixing) ----------
         if (closeKind === CLOSE_KIND.obj) {
-            // OBJECT semantics: ensure exactly one inner _obj OR pass through a single _arr/_obj
+            // OBJECT semantics: ensure exactly one inner _-obj OR pass through a single _arr/_-obj
             if (kids.length === 1 && (kids[0]._tag === OBJ_TAG || kids[0]._tag === ARR_TAG)) {
                 node._content = [kids[0]]; // passthrough a single cluster
             } else {
@@ -240,13 +240,13 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 })];
             }
 
-            // Guardrail: object mode must yield a single _obj/_arr
+            // Guardrail: object mode must yield a single _-obj/_arr
             const c = node._content as HsonNode[];
             if (!(c.length === 1 && (c[0]._tag === OBJ_TAG || c[0]._tag === ARR_TAG))) {
-                _throw_transform_err("object semantics must yield a single _obj/_arr child", "parse_tokens.object");
+                _throw_transform_err("object semantics must yield a single _-obj/_arr child", "parse_tokens.object");
             }
         } else {
-            // ELEMENT semantics: ensure exactly one inner _elem (idempotent)
+            // ELEMENT semantics: ensure exactly one inner _-elem (idempotent)
             if (kids.length === 1 && kids[0]._tag === ELEM_TAG) {
                 node._content = kids as NodeContent; // already clustered
             } else {
@@ -256,10 +256,10 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 })];
             }
 
-            // Guardrail: element mode must yield a single _elem
+            // Guardrail: element mode must yield a single _-elem
             const c = node._content as HsonNode[];
             if (!(c.length === 1 && c[0]._tag === ELEM_TAG)) {
-                _throw_transform_err("element semantics must yield a single _elem child", "parse_tokens.element");
+                _throw_transform_err("element semantics must yield a single _-elem child", "parse_tokens.element");
             }
         }
 
@@ -307,7 +307,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
 
             const passThruVSNs = new Set<string>([OBJ_TAG, ARR_TAG, ELEM_TAG, STR_TAG, VAL_TAG]);
             if (!passThruVSNs.has(childNode._tag)) {
-                // standard tag → wrap in _obj to honor always-wrap in JSON-mode
+                // standard tag → wrap in _-obj to honor always-wrap in JSON-mode
                 childNode = CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [childNode] });
             }
             childNode = unwrap_root_obj(childNode);
@@ -391,7 +391,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         // 4) multiple top-level nodes → choose by unanimous closer; mixed ⇒ element
         const allObj = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.obj);
         const allElem = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.elem);
-        const clusterTag = allObj ? OBJ_TAG : (allElem ? ELEM_TAG : ELEM_TAG); // mixed → _elem
+        const clusterTag = allObj ? OBJ_TAG : (allElem ? ELEM_TAG : ELEM_TAG); // mixed → _-elem
 
         return CREATE_NODE({
             _tag: ROOT_TAG, _meta: {},

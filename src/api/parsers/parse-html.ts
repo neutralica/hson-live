@@ -83,11 +83,11 @@ function snip_context(s: string, at: number, radius = 80): string {
  *      optionally re-running void expansion on the wrapped source.
  * 7. If parsing still fails, throw a transform error with context.
  * 8. Convert `documentElement` via `convert`.
- * 9. Wrap the converted tree via `wrap_as_root` to ensure a `_root` node.
+ * 9. Wrap the converted tree via `wrap_as_-root to ensure a `_-root` node.
  * 10. Validate invariants with `assert_invariants`.
  *
  * @param input - Raw HTML/XML string or an existing `Element` subtree.
- * @returns A `_root`-wrapped `HsonNode` tree ready for downstream use.
+ * @returns A `_-root`-wrapped `HsonNode` tree ready for downstream use.
  * @see convert
  * @see wrap_as_root
  * @see assert_invariants
@@ -485,23 +485,23 @@ function convert(el: Element): HsonNode {
 }
 
 /**
- * Ensure a `HsonNode` tree is rooted at `_root` with correct clustering.
+ * Ensure a `HsonNode` tree is rooted at `_-root` with correct clustering.
  *
  * Rules:
  * - If `node._tag === ROOT_TAG`:
  *     - Return the node as-is (already rooted).
  * - If `node` is a cluster node (`_-obj`, `_-arr`, `_-elem`):
- *     - Wrap directly under a new `_root`:
+ *     - Wrap directly under a new `_-root`:
  *       `{ _tag: _root, _content: [node] }`.
  * - Otherwise (normal HTML-ish element/leaf):
- *     - Wrap in an `_-elem` cluster, then under `_root`:
+ *     - Wrap in an `_-elem` cluster, then under `_-root`:
  *       `{ _tag: _root, _content: [ { _tag: _-elem, _content: [node] } ] }`.
  *
- * This keeps `_root` as a pure structural top-level wrapper while
+ * This keeps `_-root` as a pure structural top-level wrapper while
  * preserving the intended element vs. cluster semantics.
  *
  * @param node - The `HsonNode` to normalize as a root.
- * @returns A `_root`-tagged `HsonNode` tree.
+ * @returns A `_-root`-tagged `HsonNode` tree.
  */
 function wrap_as_root(node: HsonNode): HsonNode {
     if (node._tag === ROOT_TAG) return node; // already rooted

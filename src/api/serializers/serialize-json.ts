@@ -24,7 +24,7 @@ import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.
  * 2. Structural conversion:
  *    - Delegates to `jsonFromNode(clone)` to convert the HSON tree into a
  *      plain `JsonValue` (object/array/primitive), resolving:
- *        - VSNs (`_root`, `_obj`, `_arr`, `_elem`, `_ii`, `_str`, `_val`)
+ *        - VSNs (`_-root`, `_-obj`, `_arr`, `_-elem`, `_ii`, `_str`, `_val`)
  *        - Standard tags (HTML-like and user-defined)
  *      into standard JS shapes.
  *
@@ -68,9 +68,9 @@ export function serialize_json($node: HsonNode): string {
  *
  * Tag-by-tag semantics:
  *
- * - `_root`:
+ * - `_-root`:
  *   - Must have exactly one child.
- *   - That child is taken as the true data cluster; `_root` itself is not
+ *   - That child is taken as the true data cluster; `_-root` itself is not
  *     reflected in the JSON surface.
  *
  * - `_arr`:
@@ -78,9 +78,9 @@ export function serialize_json($node: HsonNode): string {
  *   - Each `_ii` is unwrapped and converted; the resulting array preserves
  *     element order and ignores the index metadata.
  *
- * - `_obj`:
+ * - `_-obj`:
  *   - If `_content` has a single child that is one of:
- *       `_str`, `_val`, `_arr`, `_obj`, `_elem`
+ *       `_str`, `_val`, `_arr`, `_-obj`, `_-elem`
  *     then this wrapper is treated as transparent and the child’s JSON
  *     representation is returned directly. This mirrors the “cluster”
  *     behavior in the rest of the system.
@@ -96,10 +96,10 @@ export function serialize_json($node: HsonNode): string {
  *     - `_str` → string
  *     - `_val` → number | boolean | null
  *
- * - `_elem`:
+ * - `_-elem`:
  *   - Represents “element cluster” semantics in JSON form.
  *   - Each child in `_content` is converted recursively.
- *   - The result is wrapped as `{ "_elem": [ ...items ] }`, so that element
+ *   - The result is wrapped as `{ "_-elem": [ ...items ] }`, so that element
  *     mode remains distinguishable at the JSON layer.
  *
  * - `_ii`:
@@ -125,8 +125,8 @@ export function serialize_json($node: HsonNode): string {
  * Safety / guardrails:
  * - Rejects any tag that starts with `_` but is not a known VSN
  *   (`EVERY_VSN`), to avoid leaking unknown control tags into JSON.
- * - For `_root`, `_arr`, `_ii`, `_elem`, and cluster shapes, checks that
- *   structural expectations are met (e.g., `_root` has exactly one child,
+ * - For `_-root`, `_arr`, `_ii`, `_-elem`, and cluster shapes, checks that
+ *   structural expectations are met (e.g., `_-root` has exactly one child,
  *   `_ii` has exactly one child, etc.).
  *
  * @param $node - The HSON node to convert.
@@ -152,7 +152,7 @@ function jsonFromNode($node: HsonNode): JsonValue {
         case ROOT_TAG: {
             if (!$node._content || $node._content.length !== 1) {
                console.error(make_string($node))
-                _throw_transform_err('malformed _root node -  must have exactly one child', 'serialize_json');
+                _throw_transform_err('malformed _-root node -  must have exactly one child', 'serialize_json');
             }
             // The recursive call now expects the child to be in the NEW format.
             return jsonFromNode($node._content[0] as HsonNode);
@@ -205,11 +205,11 @@ function jsonFromNode($node: HsonNode): JsonValue {
         }
 
         case ELEM_TAG: {
-            /* _elem tags are native to HTML and will be carried through the JSON as-is; the only 
-                exceptional handling is the contents of _elem tags are not rewrapped in an _obj */
+            /* _-elem tags are native to HTML and will be carried through the JSON as-is; the only 
+                exceptional handling is the contents of _-elem tags are not rewrapped in an _-obj */
             const elemItems: JsonValue = [];
             for (const itemNode of ($node._content)) {
-                /* recursively convert each item node in the _elem to its JSON equivalent */
+                /* recursively convert each item node in the _-elem to its JSON equivalent */
                 const jsonItem = jsonFromNode(itemNode as HsonNode);
                 elemItems.push(jsonItem);
             }

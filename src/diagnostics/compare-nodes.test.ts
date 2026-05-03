@@ -1,6 +1,6 @@
 // compare-nodes.ts
 
-import { ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../consts/constants.js";
+import { ARR_TAG, ELEM_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../consts/constants.js";
 import type { HsonNode } from "../types/node.types.js";
 import { is_Node } from "../utils/node-utils/node-guards.js";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
@@ -24,14 +24,14 @@ function normalize_newlines_lf(s: string): string {
 
 function semanticChildren(n: HsonNode): HsonNode[] {
     const kids = (n._content ?? []).filter(is_Node);
-    if (kids.length === 1 && kids[0]._tag === "_elem") {
+    if (kids.length === 1 && kids[0]._tag === ELEM_TAG) {
         return (kids[0]._content ?? []).filter(is_Node);
     }
     return kids;
 }
 
 function collapseTrivial(n: HsonNode): HsonNode {
-    if (n._tag === "_elem") {
+    if (n._tag === ELEM_TAG) {
         const c = (n._content ?? []).filter(is_Node);
         if (c.length === 1 && LEAF.has(c[0]._tag)) return c[0];
     }
@@ -216,7 +216,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  * Purpose:
  *   - Compare two HsonNode graphs (A vs B) and produce a list
  *     of human-readable difference strings.
- *   - Treats certain shapes (like trivial `_elem` wrappers) as
+ *   - Treats certain shapes (like trivial `_-elem` wrappers) as
  *     equivalent to keep comparisons aligned with NEW semantics.
  *
  * Comparison rules:
@@ -228,12 +228,12 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • If both sides are leaves, compare their single payload;
  *         mismatch → `Leaf mismatch @ path: "va" vs "vb"`.
  *
- *   - `_elem` semantics:
- *       • `collapseTrivial` unwraps `_elem` if it contains exactly
+ *   - `_-elem` semantics:
+ *       • `collapseTrivial` unwraps `_-elem` if it contains exactly
  *         one `_str` or `_val`, so:
- *             <_elem>[_str("x")] ≡ _str("x")
+ *             <_-elem>[_str("x")] ≡ _str("x")
  *         for the purposes of comparison.
- *       • `semanticChildren` treats a single `_elem` child as
+ *       • `semanticChildren` treats a single `_-elem` child as
  *         transparent, comparing its content instead.
  *
  *   - Attributes (`_attrs`):
@@ -252,7 +252,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  *           `_content length mismatch @ path: lenA vs lenB`.
  *       • Elements compared pairwise with recursive `compareAny`.
  *
- *   - `_obj` nodes:
+ *   - `_-obj` nodes:
  *       • Children are grouped by tag (property name).
  *       • Keys missing on either side produce:
  *           `Key missing in A/B @ path.key`.

@@ -46,7 +46,7 @@ function ensureVsn(node: HsonNode): HsonNode {
   const found = node._content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c._tag));
   if (found) return found;
 
-  // create bucket; prefer `_elem` as the generic container
+  // create bucket; prefer `_-elem` as the generic container
   const bucket = CREATE_NODE({
     _tag: ELEM_TAG,      // from your constants
     _attrs: {},          // or however you represent empty attrs/meta
