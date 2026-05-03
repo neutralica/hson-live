@@ -1,5 +1,14 @@
 // hson changelog.md
 
+## 2.2.0
+
+- Migrated internal VSN tags from `_name` to `_-name`
+  (`_-root`, `_-obj`, `_-arr`, `_-elem`, `_-str`, `_-val`, `_-ii`).
+- Tightened HSON parsing and fixture validation.
+- Updated tests and docs for the new VSN namespace.
+
+Note: serialized data using legacy `_root`, `_obj`, `_elem`, etc. is no longer current.
+
 27MAR2026
 LiveTree already offered namespace-aware SVG parsing. New updates incorporate typed, namespaced SVG creation and manipulation natively into LiveTree's .create API:
 
