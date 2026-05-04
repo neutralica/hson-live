@@ -2,7 +2,7 @@
 
 import { Primitive } from '../../types/core.types.js'
 import { is_Primitive } from '../../utils/core-utils/guards.core.js';
-import { ELEM_TAG, EVERY_VSN, HTML_KEY_PREFIX, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
+import { ELEM_TAG, EVERY_VSN, HSON_INTERNAL_PREFIX, HTML_KEY_PREFIX, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
 import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs.js';
 import { escape_html_text } from '../../utils/html-utils/escape-html.js';
 import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils.js';
@@ -182,7 +182,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
 
   // correct origin label for error
   if (
-    node._tag.startsWith("_-") &&
+    node._tag.startsWith(HSON_INTERNAL_PREFIX) &&
     !node._tag.startsWith(HTML_KEY_PREFIX) &&
     !EVERY_VSN.includes(node._tag)
   ) {

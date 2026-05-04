@@ -1,7 +1,7 @@
 // serialize-hson.new.render.ts
 
 import { Primitive } from "../../types/core.types.js";
-import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../consts/constants.js";
+import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, HSON_INTERNAL_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../consts/constants.js";
 import { _snip } from "../../utils/sys-utils/snip.utils.js";
 import { serialize_style } from "../../utils/attrs-utils/serialize-style.js";
 import { serialize_primitive_hson } from "../../utils/primitive-utils/serialize-primitive.utils.js";
@@ -346,7 +346,7 @@ function emitNode(
     try {
         const pad = "  ".repeat(depth);
 
-        if (node._tag.startsWith("_-") && !EVERY_VSN.includes(node._tag)) {
+        if (node._tag.startsWith(HSON_INTERNAL_PREFIX) && !EVERY_VSN.includes(node._tag)) {
             _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "serialize-hson");
         }
         /* 1) VSN leafs: _-str / _-val */

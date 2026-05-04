@@ -76,7 +76,9 @@ export const II_TAG = "_-ii" as const;
 export const OBJ_TAG = "_-obj" as const;
 export const ARR_TAG = "_-arr" as const;
 export const ELEM_TAG = "_-elem" as const;
-export const HTML_KEY_PREFIX = "_-_-";
+
+export const HSON_INTERNAL_PREFIX = "_-" as const;
+export const HTML_KEY_PREFIX = "_-_-" as const;
 
 /***************************************************************
  * VSN_TAGS

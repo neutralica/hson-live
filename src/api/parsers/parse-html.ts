@@ -1,7 +1,7 @@
 // parse-html.new.transform.hson.ts (new)
 
 import { HsonNode } from "../../types/node.types.js";
-import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG } from "../../consts/constants.js";
+import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_INTERNAL_PREFIX } from "../../consts/constants.js";
 import { CREATE_NODE } from "../../consts/factories.js";
 import { is_Primitive, is_string } from "../../utils/core-utils/guards.core.js";
 import { _snip } from "../../utils/sys-utils/snip.utils.js";
@@ -327,7 +327,7 @@ function convert(el: Element): HsonNode {
     if (dec === STR_TAG) {
         _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');
     }
-    if (dec.startsWith('_-') && !EVERY_VSN.includes(dec)) {
+    if (dec.startsWith(HSON_INTERNAL_PREFIX) && !EVERY_VSN.includes(dec)) {
         _throw_transform_err(`unknown VSN-like tag: <${dec}>`, 'parse-html');
     }
 
