@@ -24,6 +24,7 @@ import { namespace_svg } from "../../utils/html-preflights/namespace-svg.js";
 import { is_indexed } from "../../utils/node-utils/node-guards.js";
 import { Primitive } from "../../types/core.types.js";
 import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers.js";
+import { decode_html_key_tag } from "../../utils/html-utils/encode-html-tag.js";
 
 
 
@@ -316,21 +317,23 @@ function convert(el: Element): HsonNode {
     if (!(el instanceof Element)) {
         _throw_transform_err('input to convert function is not Element', '[(parse-html): convert()]', el);
     }
-
     const baseTag = el.tagName;
     const tagLower = baseTag.toLowerCase();
-    const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
 
-    if (tagLower === STR_TAG) {
+    // NEW: HTML/XML wire tag -> canonical node tag
+    const dec = decode_html_key_tag(tagLower);
+
+    const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
+    if (dec === STR_TAG) {
         _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');
     }
-    if (tagLower.startsWith('_') && !EVERY_VSN.includes(tagLower)) {
-        _throw_transform_err(`unknown VSN-like tag: <${tagLower}>`, 'parse-html');
+    if (dec.startsWith('_-') && !EVERY_VSN.includes(dec)) {
+        _throw_transform_err(`unknown VSN-like tag: <${dec}>`, 'parse-html');
     }
 
     // Raw text elements: treat their textContent as a single string node
     const specialExceptions = ['style', 'script'];
-    if (specialExceptions.includes(tagLower)) {
+    if (specialExceptions.includes(dec)) {
         let text_content = el.textContent?.trim();
 
         //  handle <![CDATA[ ... ]]> safely
@@ -345,7 +348,7 @@ function convert(el: Element): HsonNode {
         if (text_content) {
             const str = CREATE_NODE({ _tag: STR_TAG, _content: [text_content] });
             return CREATE_NODE({
-                _tag: baseTag,
+                _tag: dec,
                 _attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 // no inner _-elem — children go directly
@@ -363,7 +366,7 @@ function convert(el: Element): HsonNode {
 
     // Build children (DOM → HSON)
     const childNodes: HsonNode[] = [];
-    const children = elementToNode(el.childNodes, tagLower);
+    const children = elementToNode(el.childNodes, dec);
 
     for (const child of children) {
         if (is_Primitive(child)) {
@@ -377,7 +380,7 @@ function convert(el: Element): HsonNode {
 
     // ---------- VSN tags in HTML ----------
 
-    if (tagLower === VAL_TAG) {
+    if (dec === VAL_TAG) {
         // minimal, canonical <_-val> handling (coerce strings → non-string primitive)
         if (childNodes.length !== 1) {
             _throw_transform_err('<_-val> must contain exactly one value', 'parse-html');
@@ -413,19 +416,19 @@ function convert(el: Element): HsonNode {
         return CREATE_NODE({ _tag: VAL_TAG, _content: [prim as Primitive] });
     }
 
-    if (tagLower === OBJ_TAG) {
+    if (dec === OBJ_TAG) {
         // Children are property nodes (already produced under this element)
         return CREATE_NODE({ _tag: OBJ_TAG, _content: childNodes });
     }
 
-    if (tagLower === ARR_TAG) {
+    if (dec === ARR_TAG) {
         if (!childNodes.every(node => is_indexed(node))) {
             _throw_transform_err('_-array children are not valid index tags', 'parse-html');
         }
         return CREATE_NODE({ _tag: ARR_TAG, _content: childNodes });
     }
 
-    if (tagLower === II_TAG) {
+    if (dec === II_TAG) {
         if (childNodes.length !== 1) {
             _throw_transform_err('<_-ii> must have exactly one child', 'parse-html');
         }
@@ -436,7 +439,7 @@ function convert(el: Element): HsonNode {
         });
     }
 
-    if (tagLower === ELEM_TAG) {
+    if (dec === ELEM_TAG) {
         _throw_transform_err('_-elem tag found in html', 'parse-html');
     }
 
@@ -445,7 +448,7 @@ function convert(el: Element): HsonNode {
     if (childNodes.length === 0) {
         // Void element, stay in element mode with empty cluster
         return CREATE_NODE({
-            _tag: baseTag,
+            _tag: dec,
             _attrs: sortedAcc,
             _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
             _content: [
@@ -460,7 +463,7 @@ function convert(el: Element): HsonNode {
         // Pass through explicit clusters untouched (no mixing, no extra box)
         if (only._tag === OBJ_TAG || only._tag === ARR_TAG || only._tag === ELEM_TAG) {
             return CREATE_NODE({
-                _tag: baseTag,
+                _tag: dec,
                 _attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 _content: [only]
@@ -471,7 +474,7 @@ function convert(el: Element): HsonNode {
     // Otherwise, we have multiple non-cluster children (text/elements):
     // wrap once in _-elem (pure element mode).
     return CREATE_NODE({
-        _tag: baseTag,
+        _tag: dec,
         _attrs: sortedAcc,
         _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
         _content: [
@@ -542,21 +545,21 @@ function elementToNode(
     els: NodeListOf<ChildNode>,
     parentTag: string, // already lowercased
 ): (HsonNode | Primitive)[] {
-    const children: (HsonNode | Primitive)[] = [];
+    const contents: (HsonNode | Primitive)[] = [];
 
-    for (const kid of Array.from(els)) {
-        if (kid.nodeType === Node.ELEMENT_NODE) {
-            children.push(convert(kid as Element));
+    for (const item of Array.from(els)) {
+        if (item.nodeType === Node.ELEMENT_NODE) {
+            contents.push(convert(item as Element));
             continue;
         }
 
-        if (kid.nodeType === Node.TEXT_NODE) {
-            const raw = kid.textContent ?? "";
+        if (item.nodeType === Node.TEXT_NODE) {
+            const raw = item.textContent ?? "";
 
             /* handle the empty-string sentinel after trimming */
             const trimmed = raw.trim();
             if (trimmed === '""') {
-                children.push(CREATE_NODE({
+                contents.push(CREATE_NODE({
                     _tag: STR_TAG,
                     _meta: {},
                     _content: [""],
@@ -566,7 +569,7 @@ function elementToNode(
 
             /* inside <_-obj>, whitespace is *data*, not layout;
                  remove a single leading/trailing newline wrapper, keep everything else */
-            if (parentTag === "_-obj") {
+            if (parentTag === OBJ_TAG) {
                 let unboxed = raw;
 
                 /* remove exactly one leading newline (and one trailing newline), if present */
@@ -575,19 +578,19 @@ function elementToNode(
 
                 /* IMPORTANT: do NOT trim here. If the payload is "   ", we keep it */
                 if (unboxed.length > 0) {
-                    children.push(unboxed);
+                    contents.push(unboxed);
                 }
                 continue;
             }
 
             /* ignore layout-only whitespace between elements */
             if (trimmed.length > 0) {
-                children.push(trimmed);
+                contents.push(trimmed);
             }
 
             continue;
         }
     }
 
-    return children;
+    return contents;
 }

@@ -16,6 +16,20 @@ export function quote_hson_key(key: string): string {
   return `\`${escaped}\``;
 }
 
+
+
+export function serialize_hson_tag_name(tag: string): string {
+
+  if (is_bare_hson_key(tag)) return tag;
+
+  return "`" + tag
+
+    .replaceAll("\\", "\\\\")
+
+    .replaceAll("`", "\\`") + "`";
+
+}
+
 export function unquote_hson_key(src: string): string {
   if (!src.startsWith("`") || !src.endsWith("`")) {
     return src;

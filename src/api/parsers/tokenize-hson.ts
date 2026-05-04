@@ -646,9 +646,11 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
             const isTagChar = (ch: string | undefined): boolean =>
                 ch !== undefined && /[A-Za-z0-9:._-]/.test(ch);
             let tag = "";
+            let quotedTag = false;
             const tagNameStartIx = ixHeader;
 
             if (headerRaw[ixHeader] === "`") {
+                quotedTag = true;
                 const startIx = ixHeader;
                 ixHeader++;
 
@@ -703,7 +705,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
 
                 tag = headerRaw.slice(tagNameStartIx, ixHeader);
             }
-            if (!tag) {
+            if (!quotedTag && !tag) {
                 _throw_transform_err(
                     `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
                     'tokenize-hson'

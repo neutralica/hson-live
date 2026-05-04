@@ -2,7 +2,7 @@
 
 import { Primitive } from '../../types/core.types.js'
 import { is_Primitive } from '../../utils/core-utils/guards.core.js';
-import { ELEM_TAG, EVERY_VSN, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
+import { ELEM_TAG, EVERY_VSN, HTML_KEY_PREFIX, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
 import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs.js';
 import { escape_html_text } from '../../utils/html-utils/escape-html.js';
 import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils.js';
@@ -12,8 +12,9 @@ import { assert_invariants } from '../../diagnostics/assert-invariants.test.js';
 import { clone_node } from '../../utils/node-utils/clone-node.js';
 import { HsonNode } from '../../types/node.types.js';
 import { _throw_transform_err } from '../../utils/sys-utils/throw-transform-err.utils.js';
+import { encode_html_key_tag } from '../../utils/html-utils/encode-html-tag.js';
 
-  const RAWTEXT = new Set(["style", "script"]);
+const RAWTEXT = new Set(["style", "script"]);
 
 /**
  * Collect raw textual content from a subtree without trimming or escaping.
@@ -171,11 +172,21 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
     _throw_transform_err('undefined node received', 'serialize_html', node);
   }
 
-  const { _tag: tag, _content: content = [] } = node;
+  const {
+    _tag: rawTag,
+    _content: content = [],
+  } = node;
+
+  // NEW: wire-format tag for XML output
+  const tag = encode_html_key_tag(rawTag);
 
   // correct origin label for error
-  if (tag.startsWith('_') && !EVERY_VSN.includes(tag)) {
-    _throw_transform_err(`unknown VSN-like tag: <${tag}>`, 'serialize_html');
+  if (
+    node._tag.startsWith("_-") &&
+    !node._tag.startsWith(HTML_KEY_PREFIX) &&
+    !EVERY_VSN.includes(node._tag)
+  ) {
+    _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "serialize-hson");
   }
 
   switch (tag) {
@@ -231,9 +242,9 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
   let openAttrs = `<${tag}`;
   const attrs = build_wire_attrs(node);
   if (tag === "svg") {
-  // ensure default SVG ns on the root svg element if not present
-  if (!("xmlns" in attrs)) attrs.xmlns = "http://www.w3.org/2000/svg";
-}
+    // ensure default SVG ns on the root svg element if not present
+    if (!("xmlns" in attrs)) attrs.xmlns = "http://www.w3.org/2000/svg";
+  }
 
   for (const k of Object.keys(attrs).sort()) {
     openAttrs += ` ${k}="${escape_attr(attrs[k])}"`;

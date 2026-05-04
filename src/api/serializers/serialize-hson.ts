@@ -10,6 +10,7 @@ import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
 import { _META_DATA_PREFIX } from "../../consts/constants.js";
 import { HsonAttrs, HsonMeta, HsonNode } from "../../types/node.types.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { is_bare_hson_key, serialize_hson_tag_name } from "../../utils/hson-utils/hson-tag-helpers.js";
 
 
 /* debug log */
@@ -341,13 +342,13 @@ function emitNode(
 ): string {
     _log("entering emitNode()");
     guard.enter(node);
+
     try {
         const pad = "  ".repeat(depth);
 
-        if (node._tag.startsWith("_") && !EVERY_VSN.includes(node._tag)) {
-            _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "parse-html");
+        if (node._tag.startsWith("_-") && !EVERY_VSN.includes(node._tag)) {
+            _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "serialize-hson");
         }
-
         /* 1) VSN leafs: _-str / _-val */
         if (node._tag === STR_TAG || node._tag === VAL_TAG) {
             _log("leaf node detected: ", node._tag);
@@ -474,9 +475,10 @@ function emitNode(
                     if (!is_Node(prop)) {
                         _throw_transform_err("serialize-hson: non-node in _-obj._content", "emitNode");
                     }
-                    const key = prop._tag as string;
+                    const rawKey = prop._tag as string;
+                    const keyWire = serialize_hson_tag_name(rawKey);
                     const inner = (Array.isArray(prop._content) ? prop._content[0] : null) as HsonNode | null;
-                    if (!inner) return `${pad}<${key} />`;
+                    if (!inner) return `${pad}<${keyWire} />`;
 
                     // Dive through wrapper _-obj if present
                     const rendered =
@@ -500,10 +502,10 @@ function emitNode(
                         (renderedRaw.length > 0 && !renderedRaw.includes("\n"));
 
                     if (canInline) {
-                        return `${pad}<${key}  ${renderedRaw}>`;
+                        return `${pad}<${keyWire}  ${renderedRaw}>`;
                     }
 
-                    return `${pad}<${key}\n${rendered}\n${pad}>`;
+                    return `${pad}<${keyWire}\n${rendered}\n${pad}>`;
                 }).join("\n");
             }
             return (node._content ?? [])
@@ -515,7 +517,6 @@ function emitNode(
                 ))
                 .join("\n");
         }
-
 
         /* 6) Standard tag element */
         const INLINE_VSNS = new Set<string>([STR_TAG, VAL_TAG]);
@@ -568,24 +569,25 @@ function emitNode(
 
         _log("building attrs string for standard tag");
         const attrsStr = buildAttrString(node._attrs, node._meta);
-
+        const tagWire = serialize_hson_tag_name(node._tag);
         const shape = inlineShape(node);
+
         if (shape !== undefined) {
             if (parentCluster === OBJ_TAG) {
                 // OBJ-mode should be inline for primitive/void too.
                 // This removes the inconsistent newline policy vs getSelfCloseValueNEW.
                 if (shape.kind === "void") {
-                    return `${pad}<${node._tag}${attrsStr}  <>`; // OBJ closer implied by ">"
+                    return `${pad}<${tagWire}${attrsStr}  <>`; // OBJ closer implied by ">"
                     // NOTE: this line already ends with ">" because <> is the value token.
                 } else {
-                    return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(shape.value)}>`;
+                    return `${pad}<${tagWire}${attrsStr}  ${serialize_primitive_hson(shape.value)}>`;
                 }
             }
 
             // ELEM-mode: inline with elem-closer
             return shape.kind === "void"
-                ? `${pad}<${node._tag}${attrsStr} />`
-                : `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(shape.value)}/>`; // TODO remove space before closer
+                ? `${pad}<${tagWire}${attrsStr} />`
+                : `${pad}<${tagWire}${attrsStr} ${serialize_primitive_hson(shape.value)}/>`; // TODO remove space before closer
         }
 
         // One-liner primitive value (no attrs/meta; single _-str/_-val child)
@@ -593,10 +595,10 @@ function emitNode(
         if (selfVal !== undefined) {
             if (parentCluster === OBJ_TAG) {
                 // block in JSON-mode
-                return `${pad}<${node._tag}${attrsStr}  ${serialize_primitive_hson(selfVal)}>`;
+                return `${pad}<${tagWire}${attrsStr}  ${serialize_primitive_hson(selfVal)}>`;
             }
             // element semantics ok to self-close
-            return `${pad}<${node._tag}${attrsStr} ${serialize_primitive_hson(selfVal)}/>`; // TODO -- remove space before closing tag
+            return `${pad}<${tagWire}${attrsStr} ${serialize_primitive_hson(selfVal)}/>`; // TODO -- remove space before closing tag
         }
 
         const children = (node._content ?? []) as HsonNode[];
@@ -604,10 +606,10 @@ function emitNode(
         if (!children.length) {
             if (parentCluster === OBJ_TAG) {
                 // empty property in object semantics → explicit empty object cluster
-                return `${pad}<${node._tag}${attrsStr}\n${pad}  <>\n${pad}>`;
+                return `${pad}<${tagWire}${attrsStr}\n${pad}  <>\n${pad}>`;
             } else {
                 // close on same line in _-elem too
-                return `${pad}<${node._tag}${attrsStr}/>`; // TODO -- remove space before closing />
+                return `${pad}<${tagWire}${attrsStr}/>`; // TODO -- remove space before closing />
             }
         }
 
@@ -635,11 +637,11 @@ function emitNode(
 
         // If nothing actually rendered, self-close regardless of computed closer.
         if (inner.length === 0) {
-            return `${pad}<${node._tag}${attrsStr}${closer}`; // TODO -- remove space before closer
+            return `${pad}<${tagWire}${attrsStr}${closer}`; // TODO -- remove space before closer
         }
 
         // Use the computed closer.
-        return `${pad}<${node._tag}${attrsStr}\n${inner}\n${pad}${closer}`;
+        return `${pad}<${tagWire}${attrsStr}\n${inner}\n${pad}${closer}`;
     } finally {
         guard.leave(node);
     }
