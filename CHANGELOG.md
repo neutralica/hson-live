@@ -1,5 +1,45 @@
 // hson changelog.md
 
+## 2.2.1
+
+### HSON syntax
+
+- HSON now supports backtick-quoted keys:
+
+```
+  <`a b` "value">
+  <__underscored "c">
+  <`-hyphen-led` "d">
+```
+
+- HTML wire now safely encodes object keys that would not survive XML/DOM parsing:
+  - spaces
+  - leading underscores
+  - camelCase / uppercase
+  - UTF and other non-wire-safe characters
+- encoded HTML keys now survive browser lowercasing and decode back to their original JSON keys
+- VSN tags (`_-obj`, `_-arr`, `_-elem`, etc.) are excluded from key encoding
+- underscored tagnames are not permitted in _-elem nodes; they are only possible when source is JSON and are only valid within _-obj nodes. 
+-  backtick tags are permitted in _-elem nodes
+	• BUG - possible bug: leading underscores are still not permitted within backticks 
+
+
+### parsing
+- tokenizer now rejects malformed empty quoted tags:
+  - `<>`
+  - `<`` ...>`
+
+- stricter tag-name handling for invalid punctuation cases
+
+### tests
+- added transform fixtures for:
+  - spaced keys
+  - underscored keys
+  - nested encoded keys
+  - array/object edge cases
+  - empty-string keys
+
+
 ## 2.2.0
 
 - Migrated internal VSN tags from `_name` to `_-name`
