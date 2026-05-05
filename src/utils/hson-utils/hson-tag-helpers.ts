@@ -1,7 +1,7 @@
 
 
 export function is_bare_hson_key(key: string): boolean {
-  return /^[A-Za-z_:][A-Za-z0-9:._-]*$/.test(key);
+  return /^[A-Za-z_][A-Za-z0-9_-]*$/.test(key);
 }
 
 export function needs_quoted_hson_key(key: string): boolean {
@@ -11,23 +11,16 @@ export function needs_quoted_hson_key(key: string): boolean {
 export function quote_hson_key(key: string): string {
   const escaped = key
     .replaceAll("\\", "\\\\")
-    .replaceAll("`", "\\`");
+    .replaceAll("`", "\\`")
+    .replaceAll("\n", "\\n")
+    .replaceAll("\r", "\\r")
+    .replaceAll("\t", "\\t");
 
   return `\`${escaped}\``;
 }
 
-
-
 export function serialize_hson_tag_name(tag: string): string {
-
-  if (is_bare_hson_key(tag)) return tag;
-
-  return "`" + tag
-
-    .replaceAll("\\", "\\\\")
-
-    .replaceAll("`", "\\`") + "`";
-
+  return is_bare_hson_key(tag) ? tag : quote_hson_key(tag);
 }
 
 export function unquote_hson_key(src: string): string {

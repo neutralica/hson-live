@@ -1,10 +1,10 @@
 // parse-json.transform.hson.ts
 
 import { is_Primitive, is_Object, is_string } from "../../utils/core-utils/guards.core.js";
-import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG,  II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants.js";
+import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants.js";
 import { CREATE_NODE } from "../../consts/factories.js";
 import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants.js";
-import { HsonMeta,  HsonAttrs, HsonNode } from "../../types/node.types.js";
+import { HsonMeta, HsonAttrs, HsonNode } from "../../types/node.types.js";
 import { JsonObj, JsonValue, Primitive } from "../../types/core.types.js";
 import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
 import { _snip } from "../../utils/sys-utils/snip.utils.js";
@@ -12,6 +12,7 @@ import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils
 import { parse_style_string } from "../../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../../utils/attrs-utils/serialize-style.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { assert_user_key_allowed } from "../../utils/json-utils/key-prefix-guard.js";
 
 /**
  * Infer the appropriate HSON VSN tag for a JSON value.
@@ -48,7 +49,7 @@ function getTag(value: JsonValue): string {
 
 
 const FORBIDDEN_JSON_VSN = new Set([
-    OBJ_TAG, ARR_TAG, II_TAG, STR_TAG,VAL_TAG,
+    OBJ_TAG, ARR_TAG, II_TAG, STR_TAG, VAL_TAG,
 ] as string[]); // _attrs is HTML-source only
 
 /**
@@ -328,7 +329,7 @@ export function nodeFromJson(
                         tagKids = [kidNode];
                     }
 
-                    const elemNode = CREATE_NODE( { _tag: tagName, _content: tagKids });
+                    const elemNode = CREATE_NODE({ _tag: tagName, _content: tagKids });
                     if (hoistedAttrs && Object.keys(hoistedAttrs).length) elemNode._attrs = hoistedAttrs;  // ← preserve
                     if (hoistedMeta && Object.keys(hoistedMeta).length) elemNode._meta = { ...elemNode._meta, ...hoistedMeta };
 
@@ -351,6 +352,7 @@ export function nodeFromJson(
         const propKeys = Object.keys(obj);
 
         const propertyNodes: HsonNode[] = propKeys.map((key) => {
+            assert_user_key_allowed(key, "parse-json");
             const raw = obj[key] as JsonValue;
 
             // build a child node for the property value WITHOUT collapsing "".
@@ -447,40 +449,40 @@ export function nodeFromJson(
  * @see assert_invariants
  */
 export function parse_json(input: string | JsonValue): HsonNode {
-  let parsed: JsonValue;
-  try {
-    parsed = typeof input === "string" ? JSON.parse(input) : input;
-  } catch (e) {
-    _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
-  }
-
-  // unwrap legacy {_-root: ...} but keep data-* meta (unchanged)
-  let jsonToProcess: JsonValue = parsed;
-  let rootMeta: HsonMeta | undefined;
-  if (is_Object(parsed)) {
-    const obj = parsed as JsonObj;
-    const keys = Object.keys(obj).filter(k => k !== "_meta");
-    if (keys.length === 1 && keys[0] === ROOT_TAG) {
-      jsonToProcess = obj[ROOT_TAG] as JsonValue;
-      if (obj._meta && is_Object(obj._meta)) {
-        const filtered: HsonMeta = {};
-        for (const [k, v] of Object.entries(obj._meta)) {
-          if (k.startsWith(_META_DATA_PREFIX)) (filtered as any)[k] = v;
-        }
-        if (Object.keys(filtered).length) rootMeta = filtered;
-      }
+    let parsed: JsonValue;
+    try {
+        parsed = typeof input === "string" ? JSON.parse(input) : input;
+    } catch (e) {
+        _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
     }
-  }
 
-  
-  // ------------------------------------------------------------------------------
+    // unwrap legacy {_-root: ...} but keep data-* meta (unchanged)
+    let jsonToProcess: JsonValue = parsed;
+    let rootMeta: HsonMeta | undefined;
+    if (is_Object(parsed)) {
+        const obj = parsed as JsonObj;
+        const keys = Object.keys(obj).filter(k => k !== "_meta");
+        if (keys.length === 1 && keys[0] === ROOT_TAG) {
+            jsonToProcess = obj[ROOT_TAG] as JsonValue;
+            if (obj._meta && is_Object(obj._meta)) {
+                const filtered: HsonMeta = {};
+                for (const [k, v] of Object.entries(obj._meta)) {
+                    if (k.startsWith(_META_DATA_PREFIX)) (filtered as any)[k] = v;
+                }
+                if (Object.keys(filtered).length) rootMeta = filtered;
+            }
+        }
+    }
 
-  const { node } = nodeFromJson(jsonToProcess, getTag(jsonToProcess));
-  const root = CREATE_NODE({
-    _tag: ROOT_TAG,
-    _meta: rootMeta,
-    _content: [node],
-  });
-  assert_invariants(root, "root");
-  return root;
+
+    // ------------------------------------------------------------------------------
+
+    const { node } = nodeFromJson(jsonToProcess, getTag(jsonToProcess));
+    const root = CREATE_NODE({
+        _tag: ROOT_TAG,
+        _meta: rootMeta,
+        _content: [node],
+    });
+    assert_invariants(root, "root");
+    return root;
 }

@@ -662,7 +662,11 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
                     const ch = headerRaw[ixHeader];
 
                     if (escaped) {
-                        rawKey += ch;
+                        if (ch === "n") rawKey += "\n";
+                        else if (ch === "r") rawKey += "\r";
+                        else if (ch === "t") rawKey += "\t";
+                        else rawKey += ch;
+
                         escaped = false;
                         ixHeader++;
                         continue;

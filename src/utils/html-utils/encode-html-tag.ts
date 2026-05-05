@@ -4,7 +4,7 @@ import { EVERY_VSN, HTML_KEY_PREFIX } from "../../consts/constants.js";
 
 
 export function is_html_safe_tag_name(tag: string): boolean {
-    return /^[_a-z][a-z0-9:_-]*$/.test(tag);
+  return /^[_a-z][a-z0-9_-]*$/.test(tag);
 }
 
 export function needs_encoded_html_key(tag: string): boolean {
@@ -23,7 +23,7 @@ export function encode_html_key_tag(tag: string): string {
 
     if (cp === undefined) continue;
 
-    const safe = /^[a-z0-9:.-]$/.test(ch);
+    const safe = /^[a-z0-9-]$/.test(ch);
 
     if (safe) {
       out += ch;
