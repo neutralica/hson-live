@@ -75,7 +75,6 @@ export function unescape_hson_string(s: string): string {
 
       default:
         // preserve unknown escapes literally, but drop the escape slash
-        // only if you want JS-like behavior. Safer here is to preserve both.
         out += "\\" + nxt;
         break;
     }

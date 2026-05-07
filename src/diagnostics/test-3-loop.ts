@@ -292,7 +292,7 @@ function looks_like_hson(s: string): boolean {
 }
 
 // only try HTML when it actually looks like markup.
-// (Keep this conservative; “false negatives” are better than HTML swallowing JSON.)
+// (conservative; false negatives are better than HTML swallowing JSON.)
 function looks_like_html(s: string): boolean {
   const t = s.trim();
   if (!t) return false;
@@ -306,8 +306,6 @@ function looks_like_html(s: string): boolean {
   return false;
 }
 
-// OPTIONAL: if you want a “hard” JSON check (syntax-valid JSON), keep it here.
-// Using JSON.parse is fast and gives you crisp “this isn't JSON” classification.
 function is_json_source_text(s: string): boolean {
   const t = s.trim();
   if (!looks_like_json(t)) return false;

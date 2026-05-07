@@ -70,8 +70,6 @@ export function remove_node_children(parent: HsonNode): number {
   return toRemove.length;
 }
 
-// if you have empty() that should clear EVERYTHING (nodes + primitives),
-// implement it separately so semantics are explicit.
 export function empty_contents(this: LiveTree): LiveTree {
   const parent = this.node;
   const kids = parent._content;

@@ -57,7 +57,7 @@ export function graft(
   element?: HTMLElement,
   options: { unsafe: boolean } = { unsafe: false },
 ): LiveTree {
-  void options; // currently unused; keep only if you expect it soon
+  void options; // currently unused
 
   const targetElement = element;
   if (!targetElement) {
@@ -108,8 +108,7 @@ function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
 
   const attrs = node._attrs ?? {};
 
-  // optional but recommended: clear stale attrs first,
-  // except things you explicitly preserve
+  // clear stale attrs first
   for (const name of el.getAttributeNames()) {
     if (name === _DATA_QUID) continue;
     if (!(name in attrs)) {

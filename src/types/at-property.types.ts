@@ -67,8 +67,7 @@ export type PropertyInputTuple =
 export type PropertyInput = PropertyInputObject | PropertyInputTuple;
 
 // ----------------------------------------------
-// A small interface for your manager.
-// Keep the surface area minimal and “CSS-shaped”.
+//  Manager surface area is minimal and “CSS-shaped”.
 // ----------------------------------------------
 export interface PropertyManager {
   // Register or replace a property registration (idempotent by name).

@@ -325,12 +325,12 @@ export class GlobalCss {
         h.setMany(pseudoDecls);
 
         if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-          h.setProp("content", `""`); // NOTE: setProp, not h.set("content", ...) if that’s what your handle exposes
+          h.setProp("content", `""`); 
         }
       },
     });
 
-    // you were missing this return entirely
+
     return {
       ...setter,
       ruleKey,

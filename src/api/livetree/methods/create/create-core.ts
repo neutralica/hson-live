@@ -34,13 +34,12 @@ function is_valid_tag_name(name: unknown): name is TagName {
   // reserve xml / XML / Xml...
   if (/^xml/i.test(t)) return false;
 
-  // CHANGE: keep it simple & strict (works for your underscore tags)
   // XML allows more Unicode than this; we are choosing a conservative subset.
   // Start: letter or underscore
   // Rest: letters/digits/underscore/dot/dash
   if (!/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(t)) return false;
 
-  // CHANGE: forbid ":" unless you explicitly want namespaces
+  // forbid ":"; no namespaces for now
   if (t.includes(":")) return false;
 
   return true;

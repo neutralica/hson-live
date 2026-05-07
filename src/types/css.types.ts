@@ -242,7 +242,7 @@ export type CssMap = Readonly<
  * computed styles from the browser.
  */
 export type CssGetter = Readonly<{
-  // get by canonical key (what you store in rulesByQuid)
+  // get by canonical key (stored in rulesByQuid)
   prop: (propCanon: string) => string | undefined;
 
   // css var convenience

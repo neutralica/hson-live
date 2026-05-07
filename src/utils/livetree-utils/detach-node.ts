@@ -50,7 +50,6 @@ type NodeWithKids = { _content?: unknown[] };
   }
 
   // clear any QUID-scoped CSS for this node (if present)
-  // (Put your actual “get quid from node” logic here.)
   const quid = (node as any)?._meta?.["data-_quid"];
   if (typeof quid === "string" && quid.length) {
     CssManager.invoke().clearQuid(quid);

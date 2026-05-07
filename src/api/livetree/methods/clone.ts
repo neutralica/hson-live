@@ -19,7 +19,7 @@ function clone_branch_inner(
   // shallow copy of the node object
   const dst: HsonNode = { ...src };
 
-  // deep clone containers you mutate later
+  // deep clone containers 
   if (src._attrs) dst._attrs = { ...src._attrs };
   if (src._meta)  dst._meta  = { ...src._meta };
 

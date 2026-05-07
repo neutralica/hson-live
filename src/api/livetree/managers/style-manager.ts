@@ -91,7 +91,7 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
     const internalKey =
         kebabName.startsWith("--")
             ? kebabName
-            : kebab_to_camel(kebabName); // you already have this alongside camel_to_kebab
+            : kebab_to_camel(kebabName); 
 
     // 2) Update node model (_attrs.style is CssObject now)
     const attrs = (node as any)._attrs as HsonAttrs | undefined;
@@ -368,10 +368,6 @@ export class StyleManager<TTree extends LiveTree> {
         const val = value == null ? "" : String(value);
 
         applyStyleToNode(this.tree.node, kebab, val);
-
-        // NOTE: if you also mirror to DOM element, keep it, but it isn’t the “truth”
-        // const el = this.tree.asDomElement() as any;
-
         return this.tree;
     }
 

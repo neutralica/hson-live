@@ -2,7 +2,7 @@
 
 
 export function lex_text_piece(s: string): { text: string; quoted: boolean } {
-  // unchanged: normalize outer whitespace
+  // normalize outer whitespace
   const t = s.trim();
   if (!t) return { text: "", quoted: false };
 

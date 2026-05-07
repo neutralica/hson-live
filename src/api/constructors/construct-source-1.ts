@@ -206,7 +206,7 @@ export function construct_source_1(
      *     - if `pipelineOptions.unsafe === true` → no sanitization,
      *     - if `pipelineOptions.unsafe === false` → sanitize by default.
      *
-     * In the public facade you wired:
+     * In the public facade:
      * - `hson.queryDOM(...)` uses `{ unsafe: true }` → no sanitization
      *   for page snapshots (trusted).
      *
@@ -237,7 +237,6 @@ export function construct_source_1(
      * - Delegates to `.fromHtml(body.innerHTML)` using the *current* pipeline’s
      *   safe/unsafe mode (same as `queryDOM`).
      *
-     * In your new facade:
      * - `hson.queryBody()` uses `{ unsafe: true }`, so body snapshots are
      *   treated as trusted and never sanitized.
      */

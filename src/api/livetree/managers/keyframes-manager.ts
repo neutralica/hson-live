@@ -98,8 +98,6 @@ export function normalize_decls(decls: CssDeclMap): CssDeclMap {
 
     // keep value trimming conservative.
     const vv = String(v).trim();
-
-    // allow empty string values if you want; here we drop empties.
     if (vv === "") continue;
 
     // store.
@@ -217,7 +215,6 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
   }
 
   // merge duplicate selectors by last-wins (simple, predictable).
-  // If you prefer strictness, throw on duplicates instead.
   const byAt: Map<KeyframeSelector, KeyframeStep> = new Map();
   for (const s of steps) byAt.set(s.at, s);
 

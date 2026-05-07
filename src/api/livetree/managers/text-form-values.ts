@@ -39,7 +39,7 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
  * ---------------------------------------------------------------------------------------------- */
 // leaf tags
 
-const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
+// const isLeafNode = (tag: string): boolean => LEAF_NODES.includes(tag);
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
 function ensureVsn(node: HsonNode): HsonNode {
   // find first VSN child
@@ -48,8 +48,8 @@ function ensureVsn(node: HsonNode): HsonNode {
 
   // create bucket; prefer `_-elem` as the generic container
   const bucket = CREATE_NODE({
-    _tag: ELEM_TAG,      // from your constants
-    _attrs: {},          // or however you represent empty attrs/meta
+    _tag: ELEM_TAG,     
+    _attrs: {},         
     _meta: {},
     _content: node._content, // move existing content under the bucket
   });
@@ -58,9 +58,9 @@ function ensureVsn(node: HsonNode): HsonNode {
   return bucket;
 }
 
-function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
-  return document.createTextNode(value === null ? "" : String(value));
-}
+// function make_dom_leaf(_leaf: HsonNode, value: Primitive): Text {
+//   return document.createTextNode(value === null ? "" : String(value));
+// }
 
 function ensure_attrs(node: HsonNode): AttrDict {
   if (!node._attrs) node._attrs = {} as HsonAttrs;
@@ -94,7 +94,7 @@ function form_el_for_node(node: HsonNode): FormEl | null {
   return null;
 }
 
-// optional strictness helper (keep your current error style)
+// optional strictness helper 
 function throw_missing_el(node: HsonNode, source: string): never {
   const quid = node._meta?._quid ?? "<no-quid>";
   _throw_transform_err(
@@ -319,14 +319,11 @@ function remove_dom_text_leaves(host: Element): void {
   for (const n of toRemove) host.removeChild(n);
 }
 
-// Optional helper if you want to *only* remove projected leaves inserted by us,
-// but right now you’re projecting leaves as Text nodes only, so this is correct.
 
 // -----------------------------------------------------------------------------//.. IR helpers
 // -----------------------------------------------------------------------------
 
-// If you don't already have an isLeafNode(tag) helper, this is safe and tiny.
-// Uses your leaf tags invariant.
+
 function isLeafTag(tag: unknown): boolean {
   return tag === STR_TAG || tag === VAL_TAG;
 }
@@ -348,8 +345,8 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
 
   // remove only leaf nodes; keep everything else intact
   bucket._content = bucket._content.filter((c) => {
-    if (!is_Node(c)) return true;               // if you truly never have non-nodes, fine
-    return !isLeafTag(c._tag);                  // remove _-str/_-val only
+    if (!is_Node(c)) return true;              
+    return !isLeafTag(c._tag);                 
   });
 
   // append exactly one new leaf
@@ -384,10 +381,6 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
 /**
  * Insert a text leaf at a specific _content index.
  * Index counts all items in the VSN bucket _content.
- *
- * DOM: attempts to insert among childNodes by index. This only stays “perfect”
- * if your DOM projection preserves 1:1 direct-child ordering for bucket._content.
- * If that's not guaranteed, prefer the safer approach in the comment below.
  */
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
   const leaf = make_leaf(value);
@@ -406,19 +399,12 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
   if (!host) return;
 
   const domText = make_dom_text(value);
-
-  // NOTE: This assumes direct childNodes index aligns with bucket._content.
-  // If that's not a safe invariant, replace this whole insertBefore block with:
-  //   remove_dom_text_leaves(host); host.appendChild(make_dom_text(value));
-  // or build a full reconciliation pass.
   const ref = host.childNodes.item(ix) ?? null;
   host.insertBefore(domText, ref);
 }
 
 /**
  * Destructive overwrite: replace ALL content with one leaf; mirror to DOM using textContent.
- *
- * This matches your old set_node_text_content semantics, but still respects VSN.
  */
 export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
   const leaf = make_leaf(value);

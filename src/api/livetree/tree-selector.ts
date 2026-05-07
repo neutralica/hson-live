@@ -96,13 +96,11 @@ export class TreeSelector implements TreeSelectorType {
     this.contents = [...trees];
 
     // Broadcast proxies.
-    // If you already have a dedicated makeMultiListener(items), you can swap this line.
     this.listen = makeBroadcastProxy(this.contents, (t) => t.listen);
 
     this.style = makeBroadcastProxy(this.contents, (t) => t.style);
     this.css = makeBroadcastProxy(this.contents, (t) => t.css);
 
-    // If your LiveTree uses `dataset` not `data`, change to (t) => t.dataset
     this.data = makeBroadcastProxy(this.contents, (t) => t.data);
   }
 

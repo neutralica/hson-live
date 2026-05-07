@@ -67,8 +67,8 @@ export function safe_emit(
         lap: mark.lap,
         fmt,
         text: s,
-        node: JSON.stringify(node, null, 2), // or your existing node serializer
-        // dir: mark.dir, // only if your Artifact type includes it
+        node: JSON.stringify(node, null, 2), 
+        // dir: mark.dir, 
       });
 
     }

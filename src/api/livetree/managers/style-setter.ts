@@ -83,7 +83,7 @@ const isPseudoDecls = (v: unknown): v is CssMapBase => {
   return !!v && typeof v === "object" && !Array.isArray(v) && !isCssValueObject(v);
 };
 
-// generic “proxy surface” builder that returns whatever your setProp returns.
+// generic “proxy surface” builder 
 export function make_set_surface<TReturn>(
   setProp: (prop: CssKey, v: CssValue) => TReturn,
 ): SetSurface<TReturn> {

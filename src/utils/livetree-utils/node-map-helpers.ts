@@ -1,5 +1,6 @@
 // node-map-helpers.ts
 
+import { HSON_SYS_PREFIX } from "../../consts/constants.js";
 import { HsonNode } from "../../types/node.types.js";
 import { make_string } from "../primitive-utils/make-string.nodes.utils.js";
 
@@ -126,12 +127,11 @@ export function element_for_node_checked(
   if (!el) return undefined;
 
   // DOM tagName comes back uppercase in HTML.
-  // `_TAG` showing up means something created `<_tag>` / `<_TAG>` in the DOM.
+  // `_-TAG` showing up means something created `<_-tag>` / `<_-TAG>` in the DOM.
   const tag = el.tagName;
 
   // Invariant: no HSON virtual/internal tags should ever exist as DOM elements.
-  // If you allow custom elements, they still shouldn't start with "_".
-  if (tag.startsWith("_")) {
+  if (tag.startsWith(HSON_SYS_PREFIX)) {
     const quid = node._meta?._quid ?? "<no-quid>";
     const msg = `[element_for_node_checked] unexpected DOM element tag "${tag}" for purpose="${purpose}" (node._tag=${node._tag}, quid=${quid})`;
 

@@ -220,7 +220,7 @@ export function parse_html(input: string | Element): HsonNode {
                 // keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
                 let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
 
-                // Keep your existing optional endtag pass (safe-ish) on the wrapped source.
+                // optional endtag pass (safe-ish) on the wrapped source.
                 wrapped = optional_endtag_preflight(wrapped);
 
                 // Attempt parse of the wrapped source.
@@ -237,8 +237,7 @@ export function parse_html(input: string | Element): HsonNode {
                     }
                 }
 
-                // OPTIONAL (leave out unless you need it):
-                // If you want to give optional_endtag_preflight a second shot after void-fix:
+                // OPTIONAL: give optional_endtag_preflight a second shot after void-fix:
                 /*
                 if (hasErr()) {
                   const msg3 = errText();
@@ -324,14 +323,6 @@ function convert(el: Element, parentTag?: string): HsonNode {
       "parse-html"
     );
   }
-    console.log({
-        baseTag,
-        tagLower,
-        dec,
-        prefix: HSON_SYS_PREFIX,
-        starts: dec.startsWith(HSON_SYS_PREFIX),
-        isVsn: EVERY_VSN.includes(dec),
-    });
     const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
     if (dec === STR_TAG) {
         _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');

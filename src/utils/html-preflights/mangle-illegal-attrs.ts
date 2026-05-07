@@ -268,8 +268,7 @@ function rewrite_attrs(attrsSrc: string): {
       safe = disambiguate_safe_name(safe0, usedSafe, rawName, attrMap);
     } else if (usedSafe.has(safe)) {
       // Even unchanged names can collide if duplicated attrs exist in source;
-      // you already have a dedupe pass elsewhere, so here we just disambiguate
-      // to keep XML parseable if duplicates slip through.
+      // just disambiguate enough to keep XML parseable if duplicates slip through.
       safe = disambiguate_safe_name(safe0, usedSafe, rawName, attrMap);
     }
 

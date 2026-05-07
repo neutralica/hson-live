@@ -64,7 +64,7 @@ export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTr
  * ------------------------------------------- */
 
 /**
- * CHANGED: accepts Primitive (number supported) and preserves:
+ * accepts Primitive (number supported) and preserves:
  * - null/false/undefined => remove
  * - true => boolean-present attr (key="key") except style clears
  * - string/number => set stringified
@@ -215,8 +215,7 @@ export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined
 }
 
 /**
- * Optional helper if you want a canonical "hasAttr" that means “present”
- * even for flags stored as key="key".
+ * Optional helper: "hasAttr" means “present” even for flags stored as key="key".
  */
 export function hasAttrImpl(tree: LiveTree, name: string): boolean {
   // key-exists check avoids edge cases where value could be ""

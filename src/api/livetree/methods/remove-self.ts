@@ -8,9 +8,6 @@ import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers
 import { LiveTree } from "../livetree.js";
 import { CssManager } from "../managers/css-manager.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { HsonQuery } from "../../../types/livetree.types.js";
-import { search_nodes } from "./search.js";
-import { parse_selector } from "../../../utils/livetree-utils/parse-selector.js";
 
 /**
  * Collect QUID identifiers for the DOM subtree of a given HSON node.
@@ -40,6 +37,7 @@ function collectQuidsForSubtree(rootNode: HsonNode): Set<string> {
 
   return quids;
 }
+
 /**
  * Detach a subtree, cleaning up CSS, DOM, and QUID state.
  *
@@ -58,22 +56,7 @@ function detach_subtree(node: HsonNode): void {
   // 3) Drop any QUID(s) on the root node itself (IR-side cleanup).
   drop_quid(node);
 }
-// remove.ts (or wherever remove_livetree lives)
 
-/**
- * Best-effort check for whether a node is still attached/mounted.
- *
- * @param node - The HSON node to check.
- * @returns True when the node has a mapped DOM element.
- */
-function is_attached(node: HsonNode): boolean {
-  // replace this with your real invariant.
-  // Common options:
-  // - node._parent exists
-  // - hostRoot traversal can find it (slower)
-  // - nodeRef still resolves, etc.
-  return element_for_node(node)!== undefined;
-}
 export function remove_livetree(this: LiveTree): number {
   const node = this.node;
 
@@ -99,38 +82,6 @@ export function remove_livetree(this: LiveTree): number {
   return 1;
 }
 
-/**
- * Remove matching direct child nodes and return how many were removed.
- *
- * @param query - Selector string or `HsonQuery` describing direct children.
- * @returns The number of removed child nodes.
- */
-// export function remove_child(this: LiveTree, query: HsonQuery | string): number {
-//   const parent = this.node;
-//   const kids = parent._content;
-//   if (!Array.isArray(kids) || kids.length === 0) return 0;
-
-//   const nodeKids = kids.filter(is_Node);
-//   if (nodeKids.length === 0) return 0;
-
-//   const q: HsonQuery = typeof query === "string" ? parse_selector(query) : query;
-//   const toRemove = search_nodes(nodeKids, q, { findFirst: false });
-//   if (!toRemove.length) return 0;
-
-//   // centralized cleanup
-//   for (const child of toRemove) detach_subtree(child);
-
-//   // Keep your Set-based filter (good).
-//   const removeSet = new Set(toRemove);
-//   const nextKids: typeof kids = [];
-//   for (const ch of kids) {
-//     if (is_Node(ch) && removeSet.has(ch)) continue;
-//     nextKids.push(ch);
-//   }
-//   parent._content = nextKids;
-
-//   return toRemove.length; // CHANGED
-// }
 /**
  * Recursively remove a specific HSON node from a root subtree.
  *
