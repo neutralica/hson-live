@@ -1,5 +1,5 @@
 import { Primitive } from "../types/core.types.js";
-import { STR_TAG, VAL_TAG, II_TAG, ARR_TAG, ROOT_TAG, OBJ_TAG, ELEM_TAG, VSN_TAGS, EVERY_VSN, ELEM_OBJ_ARR } from "../consts/constants.js";
+import { STR_TAG, VAL_TAG, II_TAG, ARR_TAG, ROOT_TAG, OBJ_TAG, ELEM_TAG, VSN_TAGS, EVERY_VSN, ELEM_OBJ_ARR, HSON_SYS_PREFIX } from "../consts/constants.js";
 import { _META_DATA_PREFIX, _DATA_INDEX } from "../consts/constants.js";
 import { HsonNode, HsonMeta, HsonAttrs, NodeContent } from "../types/node.types.js";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
@@ -8,8 +8,8 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
 
 
 /* 
-   TODO - add 'alreadyAsserted' flag or similar to prevent multiple tree walks ?
-   TODO - add 'dev mode' flag to trigger assert_invariants or not?
+   TODO - add "alreadyAsserted" flag or similar to prevent multiple tree walks ?
+   TODO - add "dev mode" flag to trigger assert_invariants or not?
 */
 
 
@@ -39,12 +39,12 @@ type DevCfg = { throwOnFirst?: boolean };
  *   - cfg:  Optional config:
  *       • throwOnFirst (default: true) – stop at first error vs aggregate.
  **********************************************************/
-export function assert_invariants(root: HsonNode, fn = '[source fn not given]', cfg: DevCfg = { throwOnFirst: true }): void {
+export function assert_invariants(root: HsonNode, fn = "[source fn not given]", cfg: DevCfg = { throwOnFirst: true }): void {
   const errs: string[] = [];
   assertNewShapeQuick(root, fn);
-  walk(root, '', root._tag, cfg, errs);
+  walk(root, "", root._tag, cfg, errs);
   if (errs.length) {
-    const msg = errs.slice(0, 12).join('\n  - ');
+    const msg = errs.slice(0, 12).join("\n  - ");
     _throw_transform_err(`invariant violation(s):\n  - ${msg}`, fn, make_string(root));
   }
 }
@@ -116,10 +116,10 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       push(errs, cfg, `${here}: ${n._tag} must have exactly one item in _content`); if (cfg.throwOnFirst) return;
     } else {
       const v = c[0] as Primitive;
-      if (n._tag === STR_TAG && typeof v !== 'string') {
+      if (n._tag === STR_TAG && typeof v !== "string") {
         push(errs, cfg, `${here}: _-str payload must be string`); if (cfg.throwOnFirst) return;
       }
-      if (n._tag === VAL_TAG && typeof v === 'string') {
+      if (n._tag === VAL_TAG && typeof v === "string") {
         push(errs, cfg, `${here}: _-val payload must be non-string primitive`); if (cfg.throwOnFirst) return;
       }
     }
@@ -131,7 +131,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _-ii must appear directly under _-arr`); if (cfg.throwOnFirst) return; }
     if (n._attrs && Object.keys(n._attrs).length) { push(errs, cfg, `${here}: _-ii must not have _attrs`); if (cfg.throwOnFirst) return; }
     const idx = n._meta?.[`${_META_DATA_PREFIX}index`] ?? n._meta?.[_DATA_INDEX];
-    if (typeof idx !== 'string') { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in _meta`); if (cfg.throwOnFirst) return; }
+    if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in _meta`); if (cfg.throwOnFirst) return; }
 
     const cc = n._content;
     if (cc.length !== 1) { push(errs, cfg, `${here}: _-ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
@@ -231,7 +231,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
 
       // OBJ003 — duplicate *property* names (only enforce for non-VSN tags)
-      if (!p._tag.startsWith('_')) {
+      if (!p._tag.startsWith(HSON_SYS_PREFIX)) {
         if (seen.has(p._tag)) {
           push(errs, cfg, `${pHere}: [ERR: OBJ003] duplicate property tag "${p._tag}" inside _-obj`);
           if (cfg.throwOnFirst) return;
@@ -282,14 +282,14 @@ function isVSN(t: string) {
  * Build a human-readable path segment for an invariant path.
  *
  * Behavior:
- *   - VSN-like tags (starting with "_") → `"/_tag"`,
+ *   - VSN-like tags (starting with "_-") → `"/_tag"`,
  *   - normal tags → `"/tag:<name>"`.
  *
  * Used in:
  *   - `walk`’s `path` tracking to make error messages easier to
  *     interpret when debugging malformed trees.
  **********************************************************/
-function seg(t: string) { return t.startsWith('_') ? `/${t}` : `/tag:${t}`; }
+function seg(t: string) { return t.startsWith(HSON_SYS_PREFIX) ? `/${t}` : `/tag:${t}`; }
 
 /**********************************************************
  * Append a diagnostic string to the current error list.
@@ -355,7 +355,7 @@ export function assertNewShapeQuick(n: any, where: string): void {
 
     // 3) VSNs must not carry _attrs
     if (tag && isVSN(tag) && attrs && Object.keys(attrs).length) {
-      _throw_transform_err(` VSN <${tag}> with _attrs :  ${where}`, 'assertNewShapeQuick', n);
+      _throw_transform_err(` VSN <${tag}> with _attrs :  ${where}`, "assertNewShapeQuick", n);
     }
 
     // 4) Recurse nodes-only
@@ -364,7 +364,7 @@ export function assertNewShapeQuick(n: any, where: string): void {
       // Don’t descend into leaves; main walk already validates payload shape/arity
       if (tag === STR_TAG || tag === VAL_TAG) {
         // optional: enforce arity here, but don’t throw on the primitive itself
-        // if (content.length !== 1) throw new Error('...'); 
+        // if (content.length !== 1) throw new Error("..."); 
       } else {
         for (const c of content) {
           // Only push nodes; ignore primitives here.

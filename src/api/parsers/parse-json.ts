@@ -1,7 +1,7 @@
 // parse-json.transform.hson.ts
 
 import { is_Primitive, is_Object, is_string } from "../../utils/core-utils/guards.core.js";
-import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG } from "../../consts/constants.js";
+import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../consts/constants.js";
 import { CREATE_NODE } from "../../consts/factories.js";
 import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../types/node.types.js";
@@ -38,31 +38,39 @@ function getTag(value: JsonValue): string {
     if (is_Object(value)) return OBJ_TAG;              // _-obj
 
     // 2) Scalars
-    if (typeof value === 'string') return STR_TAG;       // _-str
-    if (value === null || typeof value === 'number' || typeof value === 'boolean') {
+    if (typeof value === "string") return STR_TAG;       // _-str
+    if (value === null || typeof value === "number" || typeof value === "boolean") {
         return VAL_TAG;                                   // _-val (num|bool|null)
     }
 
-    _throw_transform_err('invalid value provided', 'getTag', '???');
+    _throw_transform_err("invalid value provided", "getTag", "???");
 }
 
 
+const JSON_ELEMENT_META_KEYS = new Set<string>([
+    ATTRS_KEY,
+    META_KEY,
+]);
 
 const FORBIDDEN_JSON_VSN = new Set([
     OBJ_TAG, ARR_TAG, II_TAG, STR_TAG, VAL_TAG,
 ] as string[]); // _attrs is HTML-source only
 
 /**
- * Return the keys of an object that do not start with `"_"`.
+ * Return the keys of an object that do not start with `"_-"`.
  *
  * Intended for separating user-facing JSON properties from reserved
  * HSON/VSN metadata, which conventionally use underscore-prefixed keys.
  *
  * @param obj - Object whose keys should be filtered.
- * @returns An array of keys that do not begin with `"_"`.
+ * @returns An array of keys that do not begin with `"_-"`.
  */
-function nonUnderscoreKeys(obj: Record<string, unknown>): string[] {
-    return Object.keys(obj).filter(k => !k.startsWith('_'));
+function jsonElementTagKey(obj: Record<string, unknown>): string[] {
+    return Object.keys(obj).filter((key) => {
+        if (JSON_ELEMENT_META_KEYS.has(key)) return false;
+        if (key.startsWith(HSON_SYS_PREFIX)) return false;
+        return true;
+    });
 }
 
 /**
@@ -88,7 +96,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
         if (FORBIDDEN_JSON_VSN.has(k)) {
             _throw_transform_err(
                 `JSON input must not contain "${k}" (reserved for HSON/HTML)`,
-                'parse_json',
+                "parse_json",
                 `${where}\n${make_string(obj)}`
             );
         }
@@ -191,7 +199,7 @@ export function nodeFromJson(
         // preserve empty-string as a real scalar (_-str([""]))
         if (parentTag === STR_TAG) {
             if (!is_string(srcJson)) {
-                _throw_transform_err(`expected string for ${STR_TAG}, got ${typeof srcJson}`, 'nodeFromJson.primitive');
+                _throw_transform_err(`expected string for ${STR_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
             }
             return {
                 node: CREATE_NODE({
@@ -202,7 +210,7 @@ export function nodeFromJson(
             };
         } else { // VAL_TAG
             if (!is_Primitive(srcJson)) {
-                _throw_transform_err(`expected number|boolean|null for ${VAL_TAG}, got ${typeof srcJson}`, 'nodeFromJson.primitive');
+                _throw_transform_err(`expected number|boolean|null for ${VAL_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
             }
             return {
                 node: CREATE_NODE({
@@ -217,14 +225,14 @@ export function nodeFromJson(
     // ---- 1) Array branch (_-arr → _-ii[data-_index]) ----
     if (parentTag === ARR_TAG) {
         if (!Array.isArray(srcJson)) {
-            _throw_transform_err('array expected for ARR_TAG parent', 'parse_json', make_string(srcJson));
+            _throw_transform_err("array expected for ARR_TAG parent", "parse_json", make_string(srcJson));
         }
         const items = (srcJson as JsonValue[]).map((val, ix) => {
             const childTag = getTag(val);
             const child = nodeFromJson(val, childTag).node;
             return CREATE_NODE({
                 _tag: II_TAG,
-                _meta: { 'data-_index': String(ix) },
+                _meta: { "data-_index": String(ix) },
                 _content: [child]
             });
         });
@@ -233,17 +241,20 @@ export function nodeFromJson(
 
     // ---- 2) Object branch (three mutually exclusive shapes) ----
     if (parentTag === OBJ_TAG) {
-        if (!srcJson || typeof srcJson !== 'object' || Array.isArray(srcJson)) {
-            _throw_transform_err('object expected for OBJ_TAG parent', 'parse_json', make_string(srcJson));
+        if (!srcJson || typeof srcJson !== "object" || Array.isArray(srcJson)) {
+            _throw_transform_err("object expected for OBJ_TAG parent", "parse_json", make_string(srcJson));
         }
         const obj = srcJson as Record<string, unknown>;
-
         // A) HARD-CODED ROOT: { _-root: <cluster-or-primitive> } (exclusive)
+
         if (Object.prototype.hasOwnProperty.call(obj, ROOT_TAG)) {
-            // No other non-underscore siblings allowed
-            const nonUS = nonUnderscoreKeys(obj);
-            if (!(nonUS.length === 0 || (nonUS.length === 1 && nonUS[0] === ROOT_TAG))) {
-                _throw_transform_err('"_-root object must not have non-underscore siblings', 'parse_json', make_string(obj));
+            const siblings = Object.keys(obj).filter((key) => key !== ROOT_TAG);
+            if (siblings.length > 0) {
+                _throw_transform_err(
+                    "'_-root' object must not have siblings",
+                    "parse_json",
+                    make_string(obj)
+                );
             }
             // Parse the root payload
             const rootPayload = obj[ROOT_TAG] as JsonValue;
@@ -267,7 +278,7 @@ export function nodeFromJson(
         if (Object.prototype.hasOwnProperty.call(obj, ELEM_TAG)) {
             const list = obj[ELEM_TAG];
             if (!Array.isArray(list)) {
-                _throw_transform_err('"_-elem" must contain an array', 'parse_json', make_string(list));
+                _throw_transform_err("'_-elem' must contain an array", "parse_json", make_string(list));
             }
 
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
@@ -280,27 +291,27 @@ export function nodeFromJson(
                 }
 
                 // object → element-object (allow _attrs/_meta; preserve them)
-                if (val && typeof val === 'object' && !Array.isArray(val)) {
+                if (val && typeof val === "object" && !Array.isArray(val)) {
                     const elObj = val as Record<string, unknown>;
 
                     // guard against raw VSN misuse
                     assertNoForbiddenVSNKeysInJSON(elObj, `"_-elem"[${ix}]`);
 
                     // Exactly one non-underscore tag key required
-                    const tagKeys = nonUnderscoreKeys(elObj);
+                    const tagKeys = jsonElementTagKey(elObj);
                     if (tagKeys.length !== 1) {
-                        _throw_transform_err('element-object must have exactly one tag key', 'parse_json', make_string(elObj));
+                        _throw_transform_err("element-object may not have multiple tags??", "parse_json", make_string(elObj));
                     }
 
                     const tagName = tagKeys[0];
 
                     // hoist attributes/meta if present
-                    const maybeAttrs = elObj['_attrs'];
-                    const maybeMeta = elObj['_meta'];
-                    const hoistedAttrs = (maybeAttrs && typeof maybeAttrs === 'object' && !Array.isArray(maybeAttrs))
+                    const maybeAttrs = elObj[ATTRS_KEY];
+                    const maybeMeta = elObj[META_KEY];
+                    const hoistedAttrs = (maybeAttrs && typeof maybeAttrs === "object" && !Array.isArray(maybeAttrs))
                         ? (maybeAttrs as HsonAttrs)
                         : undefined;
-                    const hoistedMeta = (maybeMeta && typeof maybeMeta === 'object' && !Array.isArray(maybeMeta))
+                    const hoistedMeta = (maybeMeta && typeof maybeMeta === "object" && !Array.isArray(maybeMeta))
                         ? (maybeMeta as HsonMeta)
                         : undefined;
 
@@ -338,7 +349,7 @@ export function nodeFromJson(
 
                 _throw_transform_err(
                     `invalid item in "_-elem"[${ix}] (must be string|number|boolean/null or element-object)`,
-                    'parse_json',
+                    "parse_json",
                     make_string(val)
                 );
             });
@@ -348,7 +359,7 @@ export function nodeFromJson(
         }
 
         // C) GENERIC OBJECT HANDLING → _-obj
-        assertNoForbiddenVSNKeysInJSON(obj, '[generic object check, parseJSON]');
+        assertNoForbiddenVSNKeysInJSON(obj, "[generic object check, parseJSON]");
         const propKeys = Object.keys(obj);
 
         const propertyNodes: HsonNode[] = propKeys.map((key) => {
@@ -358,7 +369,7 @@ export function nodeFromJson(
             // build a child node for the property value WITHOUT collapsing "".
             let child: HsonNode;
 
-            if (typeof raw === 'string') {
+            if (typeof raw === "string") {
                 // strings (including "") → _-str(["..."])
                 child = CREATE_NODE({
                     _tag: STR_TAG,
@@ -366,8 +377,8 @@ export function nodeFromJson(
                     _content: [raw] // "" preserved
                 });
             } else if (
-                typeof raw === 'number' ||
-                typeof raw === 'boolean' ||
+                typeof raw === "number" ||
+                typeof raw === "boolean" ||
                 raw === null
             ) {
                 // numbers/booleans/null → _-val([...])
@@ -379,11 +390,11 @@ export function nodeFromJson(
             } else if (Array.isArray(raw)) {
                 // arrays recurse under _-arr
                 child = nodeFromJson(raw, ARR_TAG).node;
-            } else if (raw && typeof raw === 'object') {
+            } else if (raw && typeof raw === "object") {
                 // objects recurse under _-obj
                 child = nodeFromJson(raw, OBJ_TAG).node;
             } else {
-                _throw_transform_err(`unsupported JSON value for key "${key}"`, 'nodeFromJson.object.value');
+                _throw_transform_err(`unsupported JSON value for key "${key}"`, "nodeFromJson.object.value");
             }
 
             // JSON-mode property ⇒ inner _-obj wrapper unless the child is already a cluster
@@ -409,7 +420,7 @@ export function nodeFromJson(
     }
 
     // ---- Fallback (should be unreachable if callers set parentTag correctly) ----
-    _throw_transform_err(`unhandled parentTag ${parentTag}`, 'nodeFromJson.dispatch');
+    _throw_transform_err(`unhandled parentTag ${parentTag}`, "nodeFromJson.dispatch");
 }
 
 /**

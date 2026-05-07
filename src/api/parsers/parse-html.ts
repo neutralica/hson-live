@@ -1,7 +1,7 @@
 // parse-html.new.transform.hson.ts (new)
 
 import { HsonNode } from "../../types/node.types.js";
-import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_INTERNAL_PREFIX } from "../../consts/constants.js";
+import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_SYS_PREFIX, HTML_KEY_PREFIX } from "../../consts/constants.js";
 import { CREATE_NODE } from "../../consts/factories.js";
 import { is_Primitive, is_string } from "../../utils/core-utils/guards.core.js";
 import { _snip } from "../../utils/sys-utils/snip.utils.js";
@@ -313,21 +313,30 @@ export function parse_html(input: string | Element): HsonNode {
  * @see elementToNode
  * @see parse_html_attrs
  */
-function convert(el: Element): HsonNode {
-    if (!(el instanceof Element)) {
-        _throw_transform_err('input to convert function is not Element', '[(parse-html): convert()]', el);
-    }
-    const baseTag = el.tagName;
-    const tagLower = baseTag.toLowerCase();
-
-    // NEW: HTML/XML wire tag -> canonical node tag
-    const dec = decode_html_key_tag(tagLower);
-
+function convert(el: Element, parentTag?: string): HsonNode {
+  const baseTag = el.tagName;
+  const tagLower = baseTag.toLowerCase();
+  const encoded = tagLower.startsWith(HTML_KEY_PREFIX);
+  const dec = decode_html_key_tag(tagLower);
+  if (encoded && parentTag !== OBJ_TAG) {
+    _throw_transform_err(
+      `encoded HTML tag prefix "${HTML_KEY_PREFIX}" is only allowed under ${OBJ_TAG}`,
+      "parse-html"
+    );
+  }
+    console.log({
+        baseTag,
+        tagLower,
+        dec,
+        prefix: HSON_SYS_PREFIX,
+        starts: dec.startsWith(HSON_SYS_PREFIX),
+        isVsn: EVERY_VSN.includes(dec),
+    });
     const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
     if (dec === STR_TAG) {
         _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');
     }
-    if (dec.startsWith(HSON_INTERNAL_PREFIX) && !EVERY_VSN.includes(dec)) {
+    if (dec.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(dec)) {
         _throw_transform_err(`unknown VSN-like tag: <${dec}>`, 'parse-html');
     }
 
@@ -346,7 +355,6 @@ function convert(el: Element): HsonNode {
         }
 
         if (text_content) {
-            const str = CREATE_NODE({ _tag: STR_TAG, _content: [text_content] });
             return CREATE_NODE({
                 _tag: dec,
                 _attrs: sortedAcc,
@@ -549,7 +557,7 @@ function elementToNode(
 
     for (const item of Array.from(els)) {
         if (item.nodeType === Node.ELEMENT_NODE) {
-            contents.push(convert(item as Element));
+            contents.push(convert(item as Element, parentTag));
             continue;
         }
 

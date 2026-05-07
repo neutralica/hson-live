@@ -1,6 +1,6 @@
 // parse-tokens.transform.hson.ts
 
-import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG } from "../../consts/constants.js";
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX } from "../../consts/constants.js";
 import { CREATE_NODE } from "../../consts/factories.js";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../../types/token.types.js";
 import { _DATA_INDEX } from "../../consts/constants.js";
@@ -102,7 +102,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const tok = tokens[ix++] as Tokens | undefined;
         if (!tok) return null;
         if (expected && tok.kind !== expected) {
-            _throw_transform_err(`expected ${expected}, got ${tok.kind}`, 'parse_tokens');
+            _throw_transform_err(`expected ${expected}, got ${tok.kind}`, "parse_tokens");
         }
         return tok;
     }
@@ -126,7 +126,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         // NOTE: _take() returning any is sketchy; narrow immediately.
         const tok = _take();
         if (!isTokenOpen(tok)) {
-            _throw_transform_err(`expected OPEN, got ${tok?.kind ?? 'eof'}`, 'parse_tokens');
+            _throw_transform_err(`expected OPEN, got ${tok?.kind ?? "eof"}`, "parse_tokens");
         }
         const open = tok as TokenOpen;
 
@@ -185,12 +185,12 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 continue;
             }
 
-            _throw_transform_err(`unexpected token ${t.kind} inside <${open.tag}>`, 'parse_tokens');
+            _throw_transform_err(`unexpected token ${t.kind} inside <${open.tag}>`, "parse_tokens");
         }
 
         // strong narrow
         if (sawClose === null) {
-            _throw_transform_err(`missing CLOSE for <${open.tag}>`, 'parse_tokens');
+            _throw_transform_err(`missing CLOSE for <${open.tag}>`, "parse_tokens");
         }
         const closeKind: CloseKind = sawClose.close;
 
@@ -274,7 +274,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
     function readArray(): HsonNode {
         const arrOpen = _take();
         if (!arrOpen || arrOpen.kind !== TOKEN_KIND.ARR_OPEN) {
-            _throw_transform_err(`expected ARR_OPEN, got ${arrOpen?.kind ?? 'eof'}`, 'parse_tokens');
+            _throw_transform_err(`expected ARR_OPEN, got ${arrOpen?.kind ?? "eof"}`, "parse_tokens");
         }
         const items: HsonNode[] = [];
         let idx = 0;
@@ -302,7 +302,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             } else if (t.kind === TOKEN_KIND.ARR_OPEN) {
                 childNode = readArray();
             } else {
-                _throw_transform_err(`unexpected ${t.kind} in array`, 'parse_tokens');
+                _throw_transform_err(`unexpected ${t.kind} in array`, "parse_tokens");
             }
 
             const passThruVSNs = new Set<string>([OBJ_TAG, ARR_TAG, ELEM_TAG, STR_TAG, VAL_TAG]);
@@ -335,24 +335,24 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
         if (t.kind === TOKEN_KIND.ARR_OPEN) {
             nodes.push(readArray());
-            topCloseKinds.push('obj'); // arrays are object-closer at top
+            topCloseKinds.push("obj"); // arrays are object-closer at top
             continue;
         }
         if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
             _take(TOKEN_KIND.EMPTY_OBJ);
             nodes.push(CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [] }));
-            topCloseKinds.push('obj');
+            topCloseKinds.push("obj");
             continue;
         }
         if (t.kind === TOKEN_KIND.TEXT) {
             const tt = _take(TOKEN_KIND.TEXT);
             const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
             nodes.push(make_leaf(prim));
-            topCloseKinds.push('elem');
+            topCloseKinds.push("elem");
             continue;
         }
 
-        _throw_transform_err(`unexpected top-level token ${t.kind}`, 'parse_tokens');
+        _throw_transform_err(`unexpected top-level token ${t.kind}`, "parse_tokens");
     }
 
     if (nodes.length === 1 && nodes[0]._tag === ROOT_TAG) {
@@ -372,7 +372,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
 
         // 2) single standard tag → wrap according to its closer
-        if (kids.length === 1 && typeof kids[0]._tag === 'string' && !kids[0]._tag.startsWith('_')) {
+        if (kids.length === 1 && typeof kids[0]._tag === "string" && !kids[0]._tag.startsWith(HSON_SYS_PREFIX)) {
             const mode = topCloseKinds[0] === CLOSE_KIND.obj ? OBJ_TAG : ELEM_TAG; // CHANGED
             return CREATE_NODE({
                 _tag: ROOT_TAG, _meta: {},
