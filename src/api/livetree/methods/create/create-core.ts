@@ -1,4 +1,4 @@
-import { ELEM_TAG, ROOT_TAG } from "../../../../consts/constants.js";
+import { ELEM_TAG, HSON_SYS_PREFIX, ROOT_TAG } from "../../../../consts/constants.js";
 import { CREATE_NODE } from "../../../../consts/factories.js";
 import { is_svg_context_tag } from "../../../../consts/html-tags.js";
 import { hson } from "../../../../hson.js";
@@ -101,7 +101,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     return payload.filter(
       (child): child is HsonNode =>
-        is_Node(child) && !child._tag.startsWith("_")
+        is_Node(child) && !child._tag.startsWith(HSON_SYS_PREFIX)
     );
   }
 

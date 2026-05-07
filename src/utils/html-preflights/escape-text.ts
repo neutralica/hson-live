@@ -1,5 +1,7 @@
 // escape-text.new.ts
 
+import { HSON_SYS_PREFIX } from "../../consts/constants.js";
+
 /*******
  * Escape only *text* segments in an HTML-ish string, leaving markup intact.
  *

@@ -11,6 +11,7 @@ import {
   _DATA_QUID,
   ARR_TAG,
   ELEM_TAG,
+  HSON_SYS_PREFIX,
   OBJ_TAG,
   ROOT_TAG,
   STR_TAG,
@@ -108,9 +109,9 @@ export function project_livetree(
       `[create_live_tree2] illegal DOM tag "${badTag}" (node._tag=${n._tag})`
     );
 
-  // "_" prefixes are reserved for HSON virtual/internal nodes (and meta like `_tag`).
+  // "_-" prefixes are reserved for HSON virtual/internal nodes (and (soon) meta like `_tag`).
   // They must never be materialized as real DOM elements.
-  if (tag.startsWith("_")) {
+  if (tag.startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(tag);
   }
 
@@ -123,8 +124,8 @@ export function project_livetree(
       ? document.createElementNS(SVG_NS, tag)
       : document.createElement(tag);
 
-  // Belt-and-suspenders: guard against any factory emitting "_" DOM tags.
-  if (el.tagName.startsWith("_")) {
+  // Belt-and-suspenders: guard against any factory emitting "_-" DOM tags.
+  if (el.tagName.startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(el.tagName);
   }
 

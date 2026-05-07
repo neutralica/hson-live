@@ -1,3 +1,4 @@
+import { HSON_SYS_PREFIX } from "../../consts/constants.js";
 
 
 type Range = { start: number; end: number };
@@ -36,7 +37,7 @@ function in_ranges(sorted: Range[], i: number): boolean {
 }
 
 function is_vsn(nameLower: string): boolean {
-  return nameLower.startsWith("_");
+  return nameLower.startsWith(HSON_SYS_PREFIX);
 }
 
 function is_void(nameLower: string): boolean {
