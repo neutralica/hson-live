@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / terminalgothic.com
+#### hson-live v2.2.1 / terminalgothic.com / 08MAY2026
 
 # HSON: Hypertext Structured Object Notation
 ## a format that unifies HTML and JSON 
@@ -110,8 +110,7 @@ Detached branches can also be created directly:
 
 ```ts
 const badge = hson.liveTree.create.span().text.set("new");
-  // then e.g.:
-  // tree.append(badge); 
+tree.append(badge); 
 ```
 LiveTree exposes various DOM and CSS helpers including:
 

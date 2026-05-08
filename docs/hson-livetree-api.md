@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / terminalgothic.com
+#### hson-live / terminalgothic.com/hson
 
 # hson.livetree (LiveTree API)
 Updated: 2026-03-07

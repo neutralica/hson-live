@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / neutralica @ terminal_gothic
+#### hson-live / terminalgothic.com/hson
 
 # LiveTree CSS APIs
 

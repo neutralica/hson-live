@@ -1,4 +1,4 @@
-#### hson-live 2.0.26 / terminalgothic.com
+#### hson-live / terminalgothic.com/hson
 
 # hson-live 
 ## Transformer API
