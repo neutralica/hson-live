@@ -44,6 +44,7 @@ Supported keys are:
 `_hover`, `_active`, `_focus`, `_focusWithin`, `_focusVisible`, `_visited`, `_checked`, `_disabled`, `__before`, `__after`.
 
 A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object. This appears in the managed stylesheet as:
+
 ```ts
 [data-_quid="dbb9b6ce017707c9"]:hover{background:orange;opacity:1;}
 ```
@@ -57,6 +58,7 @@ tree.css.setMany({
     background: "orange",
   },
 });
+```
 
 #### Example:
 ```ts
