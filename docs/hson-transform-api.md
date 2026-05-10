@@ -35,9 +35,8 @@ Declare the format of provided input; establish both parsing semantics and the s
 
 ### HTML Sources
 
-```ts
-hson.fromUntrustedHtml(html: string)
-```
+`hson.fromUntrustedHtml(html: string)`
+
 Use this for external, user-supplied, or otherwise untrusted HTML.
 *	HTML is sanitized via DOMPurify
 *	Unsafe elements and attributes are removed
@@ -51,9 +50,7 @@ This is the default choice for:
 
 ⸻
 
-```ts
-hson.fromTrustedHtml(html: string)
-```
+`hson.fromTrustedHtml(html: string)`
 Use this only for developer-authored or fully trusted HTML.
 *	No sanitization is performed
 *	SVG, scripts, and advanced markup are preserved
@@ -64,9 +61,9 @@ This path exists to avoid silently degrading internal documents.
 ⸻
 
 ### JSON Sources
-```ts
-hson.fromJson(value: JSONValue)
-```
+
+`hson.fromJson(value: JSONValue)`
+
 Treats the input strictly as data.
 *	No HTML semantics are assumed
 *	No sanitization is applied
@@ -76,16 +73,12 @@ Optional (destructive) sanitation can be applied via the .sanitizeBEWARE() optio
 
 ⸻
 
-```ts
-hson.fromHson(hsonText: string)
-```
+`hson.fromHson(hsonText: string)`
 Parses HSON syntax strings into nodes.
 
 ⸻
 
-```ts
-hson.fromNode(node: HsonNode)
-```
+`hson.fromNode(node: HsonNode)`
 Accepts and validates an existing HsonNode graph.
 
 Useful for:
@@ -99,16 +92,12 @@ Useful for:
 
 To create LiveTree, hson-live queries the DOM and uses the selected node and all descendants as its target. The target and all elements it contains are parsed into a faithful representation of the existing DOM which is then projected to replace the original. 
 
-```ts
-hson.liveTree.queryDOM(selector: string)
-```
+`hson.liveTree.queryDOM(selector: string)`
 Selects an existing DOM subtree and parses it into nodes.
 
 ⸻
 
-```ts
-hson.liveTree.queryBody()
-```
+`hson.liveTree.queryBody()`
 A convenience wrapper for document.body.
 
 These sources are used as entry points for LiveTree workflows and only return LiveTree creation methods.
@@ -120,9 +109,9 @@ These sources are used as entry points for LiveTree workflows and only return Li
 Every source method returns an output builder.
 
 ### HTML Output
-```ts
-.toHtml()
-```
+
+`.toHtml()`
+
 Prepares an HTML output pipeline.
 *	Produces serialized HTML or parsed DOM
 *	Honors formatting and sanitization options
@@ -130,9 +119,9 @@ Prepares an HTML output pipeline.
 ⸻
 
 ### JSON Output
-```ts
-.toJson()
-```
+
+`.toJson()`
+
 Produces structured JSON values derived from the node graph.
 *	Ordering is preserved
 *	Mixed content is represented explicitly
@@ -141,9 +130,9 @@ Produces structured JSON values derived from the node graph.
 ⸻
 
 ### HSON Output
-```ts
-.toHson()
-```
+
+`.toHson()`
+
 Returns HSON’s pared syntax or underlying nodes, depending on finalization.
 
 ⸻
