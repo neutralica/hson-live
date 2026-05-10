@@ -79,8 +79,7 @@ this appears in the style element as
 
 ## CssManager
 
-`CssManager` owns QUID-scoped stylesheet rules. It stores rule maps in memory and renders a
-single `<style>` element in the current document:
+`CssManager` owns QUID-scoped stylesheet rules. It stores rule maps in memory and renders a single `<style>` element in the current document:
 
 `<hson-_style id="css-manager"><style id="_hson">...</style></hson-_style>`
 
@@ -154,7 +153,7 @@ Examples:
 ```ts
 tree.css.selector(":hover").set.opacity(1);
 tree.css.selector("& > .label").set.color("red");
-
+```
 
 ## Sub-managers
 

@@ -10,7 +10,7 @@ This mapping enables a lossless, deterministic round-trip conversion between JSO
 
 ⸻
 
-## 2.1 Scope
+## Scope
 
 This specification applies to:
 *	JSON values as defined by ECMA-404:
@@ -27,7 +27,7 @@ This section does not describe HTML, markup syntax, or runtime behavior.
 
 ⸻
 
-## 2.2 HSON Node Model (Summary)
+## HSON Node Model (Summary)
 
 All JSON values are represented using HsonNode structures and a fixed set of Virtual Structural Nodes (VSNs).
 
@@ -41,7 +41,7 @@ They are always wrapped in explicit primitive VSNs.
 
 ⸻
 
-## 2.3 JSON Object Mapping
+## JSON Object Mapping
 
 A JSON object is represented as a node containing an <_-obj> VSN. The position of the <_-obj> tag roughly mirrors the position of the curly braces that would delimit the object in JSON, and are serialized to JSON as such.
 Nodes other than 'cluster' VSNs - <_-obj>, <_-elem>, <_-arr> -  may not contain multiple child nodes in their _content properties. Other than primitive-containing <_-str> and <_-val> tags, **every node's _content property is wrapped in its native cluster VSN**, even if the propery contains a single child node. 
@@ -75,7 +75,7 @@ maps to:
 
 ⸻
 
-## 2.4 JSON Array Mapping
+## JSON Array Mapping
 
 A JSON array is represented as a node containing an <_-arr> VSN. 
 
@@ -99,7 +99,7 @@ maps to:
 
 ⸻
 
-## 2.5 Primitive Value Mapping
+## Primitive Value Mapping
 
 Primitive values are represented using dedicated primitive VSNs.
 
@@ -120,7 +120,7 @@ Rules
 
 ⸻
 
-## 2.6 Mixed and Nested Structures
+## Mixed and Nested Structures
 
 JSON values may be nested arbitrarily.
 
@@ -133,7 +133,7 @@ No information is discarded or reinterpreted during nesting.
 
 ⸻
 
-## 2.7 Round-Trip Guarantees
+## Round-Trip Guarantees
 
 Given a valid JSON value J:
 1.	Parsing J into HsonNode IR
@@ -149,7 +149,7 @@ Whitespace, formatting, and source-level ordering are not part of this guarantee
 
 ⸻
 
-## 2.8 Canonicalization
+## Canonicalization
 
 HSON does not impose semantic meaning on:
 *	object property order
@@ -165,7 +165,7 @@ This canonical form is the basis for HTML mapping, runtime projection, and react
 
 ⸻
 
-## 2.9 Non-Goals
+## Non-Goals
 
 This mapping does not attempt to:
 *	validate JSON schemas

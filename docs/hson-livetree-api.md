@@ -41,6 +41,7 @@ Detached branches can be appended to mounted or detached trees:
 ```ts
 tree.append(branch);
 ```
+
 ### Detached tag creation
 
 ```ts
@@ -56,58 +57,70 @@ hson.liveTree.create creates detached LiveTree nodes directly, without first cre
 ## Identity and Core Accessors
 
 `node: HsonNode`
-- Returns the resolved node. Throws if the reference cannot be resolved.
+Returns the resolved node. Throws if the reference cannot be resolved.
+
 `quid: string`
-- Stable identity token for the node.
+Stable identity token for the node.
+
 `hostRootNode(): HsonNode`
-- Returns the current host root.
+Returns the current host root.
+
 `adoptRoots(root: HsonNode): this`
-- Rebinds host root (advanced/internal usage).
+Rebinds host root (advanced/internal usage).
 
 ---
 
 
 ## DOM Access
 
-- `dom: LiveTreeDom`
-  - Lazily created DOM helper API for this node.
-  - Methods:
-    - `el(): Element | undefined`
-    - `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
-    - `isConnected(): boolean`
-    - `rect(): DOMRect | undefined` with `rect.must(label?)`
-    - `matches(sel: string): boolean`
-    - `contains(other: LiveTree): boolean`
-    - `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
-    - `parent(): LiveTree | undefined` with `parent.must(label?)`
-    - `computed(): CSSStyleDeclaration | undefined` with `computed.must(label?)`
-    - `computedProp(name): string | undefined` with `computedProp.must(name, label?)`
-    - `clientRects(): DOMRectList | undefined` with `clientRects.must(label?)`
-    - `scrollSize(): { width: number, height: number } | undefined` with `scrollSize.must(label?)`
-    - `clientSize(): { width: number, height: number } | undefined` with `clientSize.must(label?)`
-    - `treeFromEl(domEl): LiveTree | undefined` with `treeFromEl.must(domEl, label?)`
-    - `doc`
-      - `elementAtPoint(x, y): Element | undefined`
-      - `elementsFromPoint(x, y): Element[]`
-      - `treeAtPoint(x, y): LiveTree | undefined`
-      - `treesFromPoint(x, y): TreeSelector`
-    - `asDomElement(): Element | undefined`
-      - Returns the underlying DOM element if it exists (undefined when not mounted).
+`dom: LiveTreeDom`
+
+Lazily created DOM helper API for this node.
+
+Methods:
+
+- `el(): Element | undefined`
+- `html(): HTMLElement | undefined` *
+- `isConnected(): boolean`
+- `rect(): DOMRect | undefined` *
+- `matches(sel: string): boolean`
+- `contains(other: LiveTree): boolean`
+- `closest(sel: string): LiveTree | undefined` *
+- `parent(): LiveTree | undefined` *
+- `computed(): CSSStyleDeclaration | undefined` *
+- `computedProp(name): string | undefined` *
+- `clientRects(): DOMRectList | undefined` *
+- `scrollSize(): { width: number, height: number } | undefined` 
+- `clientSize(): { width: number, height: number } | undefined` 
+- `treeFromEl(domEl): LiveTree | undefined`
+- `doc` - access to Document properties:
+  - `.elementAtPoint(x, y): Element | undefined`
+  - `.elementsFromPoint(x, y): Element[]`
+  - `.treeAtPoint(x, y): LiveTree | undefined`
+  - `.treesFromPoint(x, y): TreeSelector`
+- `asDomElement(): Element | undefined`
+  - Returns the underlying DOM element if it exists (undefined when not mounted).
+
+(* methods marked with an asterisk return an optional `.must` method that throws if undefined)
 
 ---
 
 ## Tree Mutation
 
-- `append(branch: LiveTree, index?: number): LiveTree`
-  - Appends children from another branch under this node. Mirrors to DOM when present.
-- `empty(): LiveTree`
-  - Removes all content from this node.
-- `removeChildren(): number`
-  - Removes direct node children (ignores primitives). Returns count removed.
-- `removeSelf(): number`
-  - Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
-- `cloneBranch(): LiveTree`
-  - Deep-clones subtree with new QUIDs; returns a detached branch.
+`append(branch: LiveTree, index?: number): LiveTree`
+Appends children from another branch under this node. Mirrors to DOM when present.
+
+`empty(): LiveTree`
+Removes all content from this node.
+
+`removeChildren(): number`
+Removes direct node children (ignores primitives). Returns count removed.
+
+`removeSelf(): number`
+Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
+
+`cloneBranch(): LiveTree`
+Deep-clones subtree with new QUIDs; returns a detached branch.
 
 ---
 
@@ -131,15 +144,17 @@ hson.liveTree.create creates detached LiveTree nodes directly, without first cre
 ## Creation Helpers
 
 - `create: LiveTreeCreateHelper`
-  - Bound creation helper for appending new nodes under this tree.
-  - Examples:
+
+Bound creation helper for appending new nodes under this tree. Examples:
+
     - `create.prepend()`
     - `create.at(index)`
     - `create.tags(tags: string[])`
     - `create.tag(tag: string, source?: string)`
     - `create.<tag>(source?: string)`
     - `create.svg(source?: string)`
-  - Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
+
+  Supported tags are defined by the LiveTree create helper (see `livetree-methods-list.md`).
 
 Notes:
 - In HTML scope, `create` exposes HTML tag helpers plus `svg(...)`.
@@ -162,16 +177,20 @@ Content operations only consider node children (primitives are skipped). `_-elem
 
 ### Text API
 
-- `text.set(value: Primitive): LiveTree`
-  - Replaces only `_-str/_-val` leaves (keeps element children).
-- `text.add(value: Primitive): LiveTree`
-  - Appends a new text leaf.
-- `text.insert(index: number, value: Primitive): LiveTree`
-  - Inserts a text leaf at VSN bucket index.
-- `text.overwrite(value: Primitive): LiveTree`
-  - Replaces all content with one text leaf (DOM `textContent`).
-- `text.get(): string`
-  - Concatenated text of `_-str/_-val` leaves.
+`text.set(value: Primitive): LiveTree`
+Replaces only `_-str/_-val` leaves (keeps element children).
+
+`text.add(value: Primitive): LiveTree`
+Appends a new text leaf.
+
+`text.insert(index: number, value: Primitive): LiveTree`
+Inserts a text leaf at VSN bucket index.
+
+`text.overwrite(value: Primitive): LiveTree`
+Replaces all content with one text leaf (DOM `textContent`).
+
+`text.get(): string`
+Concatenated text of `_-str/_-val` leaves.
 
 ### Form Helpers
 

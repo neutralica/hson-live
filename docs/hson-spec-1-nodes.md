@@ -3,7 +3,7 @@
 # HSON Spec[1]
 ## Nodes, Structure, and Invariants
 
-## 1. Overview
+## Overview
 
 HSON is defined around a single structural intermediate representation (IR): the HsonNode graph.
 
@@ -13,7 +13,7 @@ The HsonNode graph is lossless, order-preserving, and round-trip stable. This se
 
 ⸻
 
-## 2. Fundamental Properties
+## Fundamental Properties
 
 An HsonNode graph must satisfy the following properties:
 
@@ -31,11 +31,11 @@ No node implicitly “belongs” to JSON, HTML, or any other surface syntax.
 
 ⸻
 
-## 3. HsonNode Structure
+## HsonNode Structure
 
 An HsonNode is a structured object with the following conceptual components:
 
-### 3.1 Required Fields
+### Required Fields
 
 Every HsonNode must contain:
 
@@ -51,7 +51,7 @@ _content values may be:
 
 HSON's `_tag:_content` structure mirrors JSON's `key:value` pair and HTML's `parent/child node` relationships exactly. 
 
-### 3.2 Optional Fields
+### Optional Fields
 
 HsonNodes may additionally contain two other properties:
 
@@ -66,11 +66,11 @@ _meta is considered structural support data and not part of the node's semantic 
 
 ⸻
 
-## 4. Virtual Structural  Nodes (VSNs)
+## Virtual Structural  Nodes (VSNs)
 
 Certain _tag values are reserved to encode structure that does not correspond to a literal HTML tag or JSON key. These are referred to as Virtual Structural Nodes (VSNs). Specifically, HSON forbids all underscored tags in user data, reserving those for structure-preserving elements as described below:
 
-### 4.1 Core VSN Tags
+### Core VSN Tags
 
 VSNs define and preserve the structural meaning of content in the node graph. The following VSN tags are normative:
 
@@ -121,7 +121,7 @@ Root: Represents the base 'wrapper' node of a HSON tree undergoing transformatio
 
 ⸻
 
-## 5. Primitive Values
+## Primitive Values
 
 Primitive values may only appear wrapped inside <_-str> or <_-val> nodes. Primitives appearing in the _content of other tags will cause an error in the HSON parser. HSON's transformer chain handles all creation of such nodes and they are effectively hidden from the user. 
 
@@ -132,7 +132,7 @@ Primitive values may only appear wrapped inside <_-str> or <_-val> nodes. Primit
 
 ⸻
 
-## 6. HTML Attributes
+## HTML Attributes
 
 Attributes are represented as data, not syntax.
 *	Attribute ordering must be preserved where the source format defines ordering.
@@ -143,7 +143,7 @@ Attribute ordering is canonicalized on first parsing for consistency. Attribute 
 
 ⸻
 
-## 7. Mixed Content
+## Mixed Content
 
 Especially When derived from native HTML, HsonNode _content may contain a mix of HsonNodes and primitive values (typically strings) - these must always be contained within <_-str> or <_-val> tags, as noted above
 
@@ -156,7 +156,7 @@ Permitting and preserving this mixed structure in <_-elem>, but not in <_-obj> -
 
 ⸻
 
-## 8. Identity and Stability
+## Identity and Stability
 
 HSON nodes may carry a stable identity token, referred to as a QUID (Quantum Unique ID).
 
@@ -167,7 +167,7 @@ QUIDs are optional and assigned lazily. Most transformations do not require it, 
 QUIDs are properties for LiveTree's internal use and are contained within a node's `_meta.data-_quid` property. They may appear in metadata or DOM attributes during debugging or serialization, but users should not need to interact with them directly.
 ⸻
 
-## 9. Invariants
+## Invariants
 
 The following invariants must always hold.
 	
@@ -185,7 +185,7 @@ No transformation may:
 
 ⸻
 
-## 10. Non-Goals
+## Non-Goals
 
 The HsonNode model intentionally does not attempt to:
 *	enforce schemas

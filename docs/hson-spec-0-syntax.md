@@ -8,7 +8,7 @@ This section describes the serialized textual form of HSON: the string format pr
 HSON is an HTML-like notation designed to serialize either JSON-derived or HTML-derived node graphs without introducing format-specific scaffolding. It is not HTML, though it resembles a pared-down dialect of it.
 
 ⸻
-## 1. Basic Form
+## Basic Form
 
 HSON is a tree of nodes. Each node has:
 
@@ -30,22 +30,22 @@ Nodes are terminated by one of two explicit closers. The chosen closer encodes t
 
 ---
 
-## 2. Node Closure Rules
+## Node Closure Rules
 
 HSON's two closure symbols are structural markers that carry strict meaning.
 
-### 2.1 "_-elem" nodes ("/>")
+`_-elem` nodes ("/>")
 
 Nodes sourced from html elements terminate with `/>`. 
 
-### 2.2 "_-obj" nodes (">")
+`_-obj` nodes (">")
 Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON. 
 
 A single serialized HSON string must use one model consistently. Mixing `/>` and `>` within the same document is invalid and will throw.
 
 ---
 
-## 3. Primitive Content and Inline Form
+## Primitive Content and Inline Form
 
 If a node contains either attributes XOR one primitive value it uses the inline closure form:
 
@@ -135,7 +135,7 @@ Within the serialized HSON:
 
 ---
 
-## 4. Children
+## Children
 
 A node’s `_content` property consists of ordered child nodes, which may be:
 
@@ -153,7 +153,7 @@ A node’s `_content` property consists of ordered child nodes, which may be:
 Content order is preserved when parsing HSON. Text and nested nodes coexist naturally, as they do in HTML: text is simply a primitive leaf node within the tree.
 
 
-## 5. Attributes
+## Attributes
 
 Attributes appear inside the opening tag, before content. When attributes and content are both present, the node introduces the content on a newline, to maintain clear visual separation. When only attributes or primitive content is present on a node, it is serialized as a single line
 
@@ -203,7 +203,7 @@ Like attributes--which they are--flags are not child nodes and never appear in _
 
 ⸻
 
-## 6. Arrays (« » syntax)
+## Arrays (« » syntax)
 
 HSON provides a compact array literal syntax.
 ```ts
@@ -231,7 +231,7 @@ Nested arrays and objects within arrays are permitted exactly as with JSON. Arra
 
 ⸻
 
-## 7. Objects as Nodes
+## Objects as Nodes
 
 When serializing JSON-derived data to HSON, object properties are represented as named child nodes.
 
@@ -266,7 +266,7 @@ When serializing JSON-derived data to HSON, object properties are represented as
 hson-lives's HSON parser accepts arrays with or without newline separators; arrays in HSON are reserialized with newlines. Like JSON, commas are required between items.
 ⸻
 
-## 8. Structural Nodes and VSNs
+## Structural Nodes and VSNs
 
 Some nodes exist solely to preserve structure across formats. These are Virtual Structural Nodes (VSNs).
 
@@ -289,7 +289,7 @@ The HSON syntax is designed to express either format cleanly without the need fo
 
 ⸻
 
-## 9. Identity (data-_quid)
+## Identity (data-_quid)
 
 Nodes may carry a stable identity token called a `quantum unique ID` (quid):
 ```ts
@@ -304,7 +304,7 @@ quids are stored in a node's _meta property and may or may not be serialized dep
 
 ⸻
 
-## 10. XML Correctness
+## XML Correctness
 HTML is ultimately parsed via XML and must be XML-valid to be accepted.
 *	tags must be properly nested
 *	attributes must be well-formed
@@ -314,11 +314,8 @@ This enforces a modicum of consistency and reliability in markup structure; it a
 
 ⸻
 
-## 11. What HSON is at the syntax level
-*	HSON is not HTML
-*	HSON is not JSON
-*	HSON is a serialization of a unified node graph that can project cleanly to either
+## What HSON is at the syntax level
 
-It exists to serialize HsonNode graphs without introducing format-specific scaffolding, not to replace HTML or JSON as external interchange formats.
+HSON is a serialization of a unified node graph that can project cleanly to both JSON and HTML. It exists to serialize HsonNode graphs without introducing format-specific scaffolding, not to replace HTML or JSON as external interchange formats.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
