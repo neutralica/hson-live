@@ -6,3 +6,4 @@ export type { HsonQuery } from './livetree.types.js';
 export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";
+export type { SvgLiveTree } from "./svg.types.js";
