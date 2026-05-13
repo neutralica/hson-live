@@ -9,22 +9,22 @@ import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../../utils/html-utils/parse_html_attrs.js";
 import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
-
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
   const lower = name.toLowerCase();
 
-  // TODO change to .svg.isSvg when exists
-  if (tree.svg.inScope()) return lower;
-
-  return SVG_ATTR_CASE_MAP[lower] ?? lower;
+  return tree.svg.inScope()
+    ? canonical_svg_attr_name(name)
+    : lower;
 }
+
 function svg_attr_key_from_node_tag(node: HsonNode, name: string): string {
   const lower = name.toLowerCase();
-  // TODO FUTURE: replace with real scope check
-  if (!SVG_TAGS.includes(node._tag as SvgTag)) return lower;
 
-  return SVG_ATTR_CASE_MAP[lower] ?? lower;
+  return SVG_TAGS.includes(node._tag as SvgTag)
+    ? canonical_svg_attr_name(name)
+    : lower;
 }
+
 export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTree> {
   return Object.freeze({
     get: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)),

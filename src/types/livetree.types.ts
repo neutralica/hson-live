@@ -8,14 +8,14 @@ import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
 import { SvgBox, SvgLiveTree } from "./svg.types.js";
 
 
-export type SvgScopeApi = Readonly<{
-  inScope: () => boolean;
-   bbox(): SvgBox | undefined;
+// export type SvgScopeApi = Readonly<{
+//   inScope: () => boolean;
+//    bbox(): SvgBox | undefined;
 
-  must: Readonly<{
-    bbox: (label?: string) => SvgBox;
-  }>;
-}>;
+//   must: Readonly<{
+//     bbox: (label?: string) => SvgBox;
+//   }>;
+// }>;
 
 /**************************************************************
  * Structural query for selecting `HsonNode` instances.

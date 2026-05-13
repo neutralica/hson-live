@@ -73,6 +73,7 @@ export function parse_html_attrs(el: Element): {
 
   return { attrs, meta };
 }
+
 export const SVG_ATTR_CASE_MAP: Record<string, string> = {
   viewbox: "viewBox",
   preserveaspectratio: "preserveAspectRatio",
@@ -87,6 +88,8 @@ export const SVG_ATTR_CASE_MAP: Record<string, string> = {
   filterunits: "filterUnits",
   primitiveunits: "primitiveUnits",
   kernelunitlength: "kernelUnitLength",
+    strokewidth: "strokeWidth",
+  vectoreffect: "vectorEffect",
 };
 
 export function canonical_svg_attr_name(name: string): string {

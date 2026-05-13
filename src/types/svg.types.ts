@@ -24,6 +24,7 @@ export type SvgBox = {
   width: number;
   height: number;
 };
+
 export type SvgLiveTree = Omit<
   LiveTree, "create" | "id" | "classlist" | "style" | "css" | "attr" | "flag" | "data" | "text" | "empty"
 > & {
