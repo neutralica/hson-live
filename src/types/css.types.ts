@@ -211,7 +211,7 @@ export type CssMapBase = Readonly<CssMapBase_>;
 export type CssMap = Readonly<
   CssMapBase_ &
   Partial<Record<CssPseudoKey, CssMapBase_>>
-  >;
+>;
 
 /**
  * Public-facing handle for working with QUID-scoped stylesheet rules.
@@ -266,10 +266,41 @@ export type CssGlobalRuleHandle = Readonly<
 >;
 
 /**
+ * Media query input accepted by global CSS facades.
+ *
+ * String inputs may include or omit the `@media` prefix. Numeric dimensions
+ * in object inputs are rendered as pixel values.
+ */
+export type CssGlobalMediaQueryInput =
+  | string
+  | {
+    maxWidth?: string | number;
+    minWidth?: string | number;
+    maxHeight?: string | number;
+    minHeight?: string | number;
+    orientation?: "portrait" | "landscape";
+    hover?: "hover" | "none";
+    pointer?: "fine" | "coarse" | "none";
+  };
+
+/**
+ * Supports query input accepted by global CSS facades.
+ *
+ * String inputs may include or omit the `@supports` prefix. Object inputs are
+ * rendered as declaration tests joined with `and`.
+ */
+export type CssGlobalSupportsQueryInput =
+  | string
+  | Record<string, string | number | boolean>;
+
+/**
  * Global stylesheet API used by `CssManager.globals.invoke()`.
  *
  * This surface is rule-based: callers obtain a `CssGlobalRuleHandle` and
  * then use the regular `StyleSetter` API to mutate that rule.
+ *
+ * `scope`, `media`, `supports`, and `layer` return scoped facades. Rules
+ * created from those facades render inside the corresponding at-rule wrapper.
  */
 export type CssGlobalsApi = Readonly<{
   dispose: () => void;
@@ -277,6 +308,11 @@ export type CssGlobalsApi = Readonly<{
   sel: (selector: string) => CssGlobalRuleHandle;
   drop: (ruleKey: string) => void;
   clearAll: () => void;
+  scope: (scopeName: string, atRule: string) => CssGlobalsApi;
+  media: (query: CssGlobalMediaQueryInput) => CssGlobalsApi;
+  supports: (cond: CssGlobalSupportsQueryInput) => CssGlobalsApi;
+  layer: (layerName: string) => CssGlobalsApi;
+
   has: (ruleKey: string) => boolean;
   list: () => readonly string[];
   get: (ruleKey: string) => string | undefined;
@@ -285,7 +321,7 @@ export type CssGlobalsApi = Readonly<{
 
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
-    get: StyleGetter;                
+    get: StyleGetter;
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;

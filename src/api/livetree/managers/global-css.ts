@@ -6,13 +6,25 @@ import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
 import { make_style_setter, StyleSetter } from "./style-setter.js";
 
-
+/**
+ * Stored model for one global CSS rule.
+ *
+ * @property selector CSS selector for the rendered rule.
+ * @property decls Canonical property map for the rule body.
+ * @property scopes At-rule wrappers applied around the rule.
+ */
 type GlobalRule = {
   selector: string;
   decls: Record<string, string>;
   scopes?: string[]; // CHANGED
 };
 
+/**
+ * Media query input accepted by `GlobalCss.media()`.
+ *
+ * String inputs may include or omit the `@media` prefix. Object inputs
+ * are joined with `and`; numeric dimensions are rendered as pixel values.
+ */
 type MediaQueryInput =
   | string
   | {
@@ -25,14 +37,25 @@ type MediaQueryInput =
     pointer?: "fine" | "coarse" | "none";
   };
 
+/**
+* Supports query input accepted by `GlobalCss.supports()`.
+*
+* String inputs may include or omit the `@supports` prefix. Object inputs
+* are rendered as declaration tests joined with `and`.
+*/
 type SupportsQueryInput =
   | string
   | Record<string, string | number | boolean>;
+
 /**
- * Fluent handle for a single global CSS rule.
+ * Fluent handle for one global CSS rule.
  *
- * This is a `StyleSetter` bound to a fixed selector, with extra
- * metadata and a `drop()` helper to delete the rule entirely.
+ * The handle is a `StyleSetter` bound to a fixed selector. Writes update the
+ * stored global rule and notify subscribers when rendered CSS changes.
+ *
+ * @property ruleKey Stable key used to replace, read, or drop the rule.
+ * @property selector CSS selector targeted by the rule.
+ * @property drop Remove the entire rule.
  */
 export type GlobalRuleHandle = Readonly<
   StyleSetter<void> & {
@@ -42,9 +65,24 @@ export type GlobalRuleHandle = Readonly<
   }
 >;
 
+/**
+ * GlobalCss change subscribers.
+ *
+ * Subscribers are notified after rule state changes and are expected to
+ * trigger stylesheet re-rendering.
+ */
 const _listeners = new Set<() => void>();
+
+/**
+ * Whether a subscriber notification is already queued.
+ */
 let _pending = false;
 
+/**
+ * Queue one batched notification for all GlobalCss subscribers.
+ *
+ * Multiple mutations in the same turn are coalesced into one microtask.
+ */
 function notifyChanged(): void {
   if (_pending) return;
   _pending = true;
@@ -55,7 +93,12 @@ function notifyChanged(): void {
   });
 }
 
-//  keep render rules in ONE place (match make_style_setter semantics)
+/**
+ * Render a StyleSetter value into CSS declaration text.
+ *
+ * @param v Value supplied through the StyleSetter surface.
+ * @returns A trimmed CSS value, or `null` when the value represents removal.
+ */
 function render_css_value(v: unknown): string | null {
   if (v == null) return null;
 
@@ -80,13 +123,15 @@ function render_css_value(v: unknown): string | null {
   return String(v).trim();
 }
 
-
 /**
- * Render a selector + canonical declaration map into CSS text.
+ * Render a selector and canonical declaration map into CSS text.
  *
- * - Keys are normalized to kebab-case (except custom properties).
- * - Empty/whitespace values are skipped.
- * - Returns `""` when no declarations remain.
+ * Declaration keys are normalized to CSS property names, values are normalized
+ * through the shared CSS value path, and empty declarations are skipped.
+ *
+ * @param selector CSS selector for the rule.
+ * @param decls Canonical property map for the rule body.
+ * @returns A compact CSS rule, or `""` when no declarations remain.
  */
 export function render_rule(selector: string, decls: Record<string, string>): string {
   const keys = Object.keys(decls)
@@ -114,6 +159,14 @@ export function render_rule(selector: string, decls: Record<string, string>): st
   return `${selector}{${body}}`;
 }
 
+/**
+ * Render a CSS rule inside nested at-rule scopes.
+ *
+ * @param selector CSS selector for the inner rule.
+ * @param decls Canonical property map for the rule body.
+ * @param scopes At-rule wrappers, ordered outermost to innermost.
+ * @returns Scoped CSS text, or `""` when the inner rule is empty.
+ */
 function render_scoped_rule(
   selector: string,
   decls: Record<string, string>,
@@ -132,6 +185,12 @@ function render_scoped_rule(
   return out;
 }
 
+/**
+ * Indent a block of rendered CSS by one nesting level.
+ *
+ * @param src CSS text to indent.
+ * @returns The same text with two spaces added to each line.
+ */
 function indent_block(src: string): string {
   return src
     .split("\n")
@@ -139,6 +198,13 @@ function indent_block(src: string): string {
     .join("\n");
 }
 
+/**
+ * Convert media input into an `@media` rule header.
+ *
+ * @param input Raw media query text or structured media query options.
+ * @returns A normalized `@media ...` string.
+ * @throws If the query is empty.
+ */
 function media_to_at_rule(input: MediaQueryInput): string {
   if (typeof input === "string") {
     const q = input.trim();
@@ -167,6 +233,13 @@ function media_to_at_rule(input: MediaQueryInput): string {
   return `@media ${parts.join(" and ")}`;
 }
 
+/**
+ * Convert supports input into an `@supports` rule header.
+ *
+ * @param input Raw supports condition text or declaration-test map.
+ * @returns A normalized `@supports ...` string.
+ * @throws If the condition is empty.
+ */
 function supports_to_at_rule(input: SupportsQueryInput): string {
   if (typeof input === "string") {
     const q = input.trim();
@@ -186,13 +259,21 @@ function supports_to_at_rule(input: SupportsQueryInput): string {
 }
 
 /**
- * Global stylesheet manager (selector-based, not QUID-scoped).
+ * Global stylesheet manager.
  *
- * Stores a set of named rules and renders them into CSS text for
- * `CssManager` to include in its combined output.
+ * `GlobalCss` stores selector-based rules that are not scoped to LiveTree QUIDs.
+ * `CssManager` includes the rendered output in its managed stylesheet.
  */
 export class GlobalCss {
+  /**
+    * Return the shared GlobalCss singleton.
+  *
+  * @returns The process-local `GlobalCss` instance.
+  */
   private static _inst: GlobalCss | undefined;
+
+  private readonly rules = new Map<string, GlobalRule>();
+  private readonly rendered = new Map<string, string>();
 
   public static invoke(): GlobalCss {
     if (!this._inst) this._inst = new GlobalCss();
@@ -200,13 +281,14 @@ export class GlobalCss {
   }
 
   /**
-   * Return a stable API for managing global CSS rules.
-   *
-   * - Subscribes `onChange` to internal updates (call `dispose()` to remove).
-   * - Rules are keyed by `ruleKey` to allow updates and replacement.
-   * - Use `sel(selector)` when you don't care about rule keys; the selector
-   *   is used to derive a stable key internally.
-   */
+ * Return the public API for managing global CSS rules.
+ *
+ * The supplied callback is subscribed to batched rule changes. Call
+ * `dispose()` on the returned API to remove that subscription.
+ *
+ * @param onChange Callback invoked after rendered global CSS changes.
+ * @returns A stable rule-management API.
+ */
   public static api(onChange: () => void) {
     _listeners.add(onChange);
 
@@ -225,8 +307,12 @@ export class GlobalCss {
     } as const;
   }
 
-  private readonly rules = new Map<string, GlobalRule>();
-  private readonly rendered = new Map<string, string>();
+  /**
+ * Create a rule facade for a specific at-rule scope stack.
+ *
+ * @param scopes At-rule wrappers applied to rules created by this facade.
+ * @returns A facade for creating rules and nested scoped facades.
+ */
   private facade(scopes: readonly string[] = []) {
     const g = () => GlobalCss.invoke();
 
@@ -250,7 +336,20 @@ export class GlobalCss {
         g().facade([...scopes, `@layer ${layerName.trim()}`]),
     } as const;
   }
-  
+
+
+  /**
+   * Create or update a keyed global rule handle.
+   *
+   * If an existing rule uses the same key and selector, its declarations are
+   * reused. If the selector changes, the rule starts with an empty declaration map.
+   *
+   * @param keyStr Stable rule key.
+   * @param selStr CSS selector for the rule.
+   * @param scopes At-rule wrappers applied when rendering.
+   * @returns A StyleSetter-backed global rule handle.
+   * @throws If the key or selector is empty.
+   */
   private rule(
     keyStr: string,
     selStr: string,
@@ -265,6 +364,11 @@ export class GlobalCss {
     const decls: Record<string, string> =
       prior && prior.selector === selector ? { ...prior.decls } : {};
 
+    /**
+     * Commit the current declaration map for this rule.
+     *
+     * Empty declaration maps remove the rule. Unchanged rendered output is ignored.
+     */
     const applyNow = (): void => {
       const cssText = render_rule(selector, decls).trim();
 
@@ -284,6 +388,12 @@ export class GlobalCss {
 
 
     const setter = make_style_setter<void>(undefined, {
+      /**
+       * Apply or remove one declaration from the rule.
+       *
+       * @param propCanon Canonical CSS property name.
+       * @param value StyleSetter value to render.
+       */
       apply: (propCanon, value) => {
         const rendered = render_css_value(value);
 
@@ -301,6 +411,11 @@ export class GlobalCss {
         applyNow();
       },
 
+      /**
+       * Remove one declaration from the rule.
+       *
+       * @param propCanon Canonical CSS property name.
+       */
       remove: (propCanon) => {
         if (propCanon in decls) {
           delete decls[propCanon];
@@ -308,6 +423,9 @@ export class GlobalCss {
         }
       },
 
+      /**
+       * Remove all declarations from the rule.
+       */
       clear: () => {
         const hadAny = Object.keys(decls).length > 0;
         if (!hadAny) return;
@@ -315,7 +433,16 @@ export class GlobalCss {
         applyNow();
       },
 
-      // GlobalCss supports pseudos by emitting sibling rules
+
+      /**
+       * Apply a pseudo-class or pseudo-element declaration block.
+       *
+       * Pseudo declarations are stored as sibling global rules. `::before` and
+       * `::after` receive an empty `content` declaration when none is provided.
+       *
+       * @param pseudo Pseudo selector key.
+       * @param pseudoDecls Declaration map for the pseudo rule.
+       */
       applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
         const suf = pseudo_to_suffix(pseudo);
         const pseudoKey = `${ruleKey}${suf}`;
@@ -325,7 +452,7 @@ export class GlobalCss {
         h.setMany(pseudoDecls);
 
         if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-          h.setProp("content", `""`); 
+          h.setProp("content", `""`);
         }
       },
     });
@@ -342,16 +469,35 @@ export class GlobalCss {
     };
   }
 
+  /**
+   * Build the internal key used for selector-keyed rules.
+   *
+   * @param selStr CSS selector.
+   * @returns Stable `sel:<selector>` key.
+   */
   private static id_for_selector(selStr: string): string {
     return `sel:${selStr.trim()}`;
   }
 
+
+  /**
+   * Return a selector-keyed rule handle.
+   *
+   * @param selStr CSS selector for the rule.
+   * @returns A global rule handle keyed by selector.
+   * @throws If the selector is empty.
+   */
   private sel(selStr: string): GlobalRuleHandle {
     const selector = selStr.trim();
     if (!selector) throw new Error("GlobalCss.sel: empty selector");
     return this.rule(GlobalCss.id_for_selector(selector), selector);
   }
 
+  /**
+   * Remove a global rule by key.
+   *
+   * @param keyStr Rule key to remove.
+   */
   private remove(keyStr: string): void {
     const source = keyStr.trim();
     if (!source) return;
@@ -359,6 +505,9 @@ export class GlobalCss {
     if (had) notifyChanged();
   }
 
+  /**
+   * Remove all global rules.
+   */
   private clear(): void {
     if (this.rules.size === 0 && this.rendered.size === 0) return;
     this.rules.clear();
@@ -366,22 +515,44 @@ export class GlobalCss {
     notifyChanged();
   }
 
+  /**
+   * Test whether a rule currently has rendered CSS.
+   *
+   * @param keyStr Rule key to check.
+   * @returns `true` when a rendered rule exists for the key.
+   */
   private has(keyStr: string): boolean {
     const source = keyStr.trim();
     if (!source) return false;
     return this.rendered.has(source);
   }
 
+  /**
+   * List rendered rule keys in stable order.
+   *
+   * @returns Sorted rule keys.
+   */
   private list(): readonly string[] {
     return Array.from(this.rendered.keys()).sort();
   }
 
+  /**
+   * Read rendered CSS for one rule.
+   *
+   * @param sourceRaw Rule key to read.
+   * @returns Rendered CSS for the rule, or `undefined` when absent.
+   */
   private get(sourceRaw: string): string | undefined {
     const source = sourceRaw.trim();
     if (!source) return undefined;
     return this.rendered.get(source);
   }
 
+  /**
+   * Render all global rules.
+   *
+   * @returns All rendered global CSS, separated by blank lines.
+   */
   private renderAll(): string {
     return this.list()
       .map((k) => this.rules.get(k))
