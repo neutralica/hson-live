@@ -3,7 +3,7 @@
  **/
 
 import { LiveTree } from "../api/livetree/livetree.js";
-import { DataManager } from "../api/livetree/managers/data-manager.js";
+import { DataApi } from "../api/livetree/managers/data-manager.js";
 import { LiveTextApi } from "../api/livetree/managers/text-form-values.js";
 import { AttrHandle, FlagHandle } from "./attrs.types.js";
 import { StyleHandle, CssTreeHandle } from "./css.types.js";
@@ -35,7 +35,7 @@ export type SvgLiveTree = Omit<
   css: CssTreeHandle<SvgLiveTree>;
   attr: AttrHandle<SvgLiveTree>;
   flag: FlagHandle<SvgLiveTree>;
-  data: DataManager<SvgLiveTree>;
+  data: DataApi<SvgLiveTree>;
   text: LiveTextApi<SvgLiveTree>;
   empty: () => SvgLiveTree;
 };

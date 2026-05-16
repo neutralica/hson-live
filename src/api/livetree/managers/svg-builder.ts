@@ -28,27 +28,27 @@ import { LiveTree } from "../livetree.js";
 //     must(label?: string): DOMRect;
 //   };
 // };
-export type SvgApi<TTree extends LiveTree> = {
+export interface SvgApi<TSelf> {
     inScope(): boolean;
 
     viewBox: {
         get(): string | undefined;
-        set(value: string): TTree;
-        set(x: number, y: number, w: number, h: number): TTree;
-        clear(): TTree;
+        set(value: string): TSelf;
+        set(x: number, y: number, w: number, h: number): TSelf;
+        clear(): TSelf;
     };
 
     preserveAspectRatio: {
         get(): string | undefined;
-        set(value: string): TTree;
-        none(): TTree;
-        clear(): TTree;
+        set(value: string): TSelf;
+        none(): TSelf;
+        clear(): TSelf;
     };
 
     d: {
         get(): string | undefined;
-        set(value: string): TTree;
-        clear(): TTree;
+        set(value: string): TSelf;
+        clear(): TSelf;
     };
 
     bbox(): SvgBox | undefined;
@@ -58,28 +58,28 @@ export type SvgApi<TTree extends LiveTree> = {
     };
     fill: {
         get(): string | undefined;
-        set(value: string): TTree;
-        none(): TTree;
-        clear(): TTree;
+        set(value: string): TSelf;
+        none(): TSelf;
+        clear(): TSelf;
     };
 
     stroke: {
         get(): string | undefined;
-        set(value: string): TTree;
-        clear(): TTree;
+        set(value: string): TSelf;
+        clear(): TSelf;
     };
 
     strokeWidth: {
         get(): string | undefined;
-        set(value: string | number): TTree;
-        clear(): TTree;
+        set(value: string | number): TSelf;
+        clear(): TSelf;
     };
 
     vectorEffect: {
         get(): string | undefined;
-        set(value: "none" | "non-scaling-stroke"): TTree;
-        nonScalingStroke(): TTree;
-        clear(): TTree;
+        set(value: "none" | "non-scaling-stroke"): TSelf;
+        nonScalingStroke(): TSelf;
+        clear(): TSelf;
     };
 
 };
