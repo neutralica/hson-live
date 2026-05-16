@@ -33,6 +33,7 @@ import { make_svg_tree_create } from "./methods/create/create-svg.js";
 import { make_html_tree_create } from "./methods/create/create-html.js";
 import { SvgBox } from "../../types/svg.types.js";
 import { make_svg_api, SvgApi } from "./managers/svg-builder.js";
+import { LiveTreeApi } from "../../types/livetree-internals.types.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -87,7 +88,7 @@ function makeRef(node: HsonNode): NodeRef {
  * - hostRoot: HSON node representing the historic root of the subtree.
  * - Lazily constructed managers for style (`StyleManager`) and dataset (`DataManager`).
  */
-export class LiveTree {
+export class LiveTree implements LiveTreeApi<LiveTree> {
   /* the HsonNode being referenced */
   private nodeRef!: NodeRef;
   /* the root node or historic root node */
