@@ -9,6 +9,8 @@ import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers
 import { make_leaf } from "../../parsers/parse-tokens.js";
 import { Primitive } from "../../../types/core.types.js";
 import { CREATE_NODE } from "../../../consts/factories.js";
+import { LiveTree } from "../livetree.js";
+import { LiveFormApi } from "../../../types/livetree-internals.types.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -297,6 +299,40 @@ export function get_input_selected(node: HsonNode): string | readonly string[] {
   const raw = attrs?.value;
   return raw == null ? "" : String(raw);
 }
+
+export function make_form_api<TTree extends LiveTree>(
+    tree: TTree,
+): LiveFormApi<TTree> {
+    return {
+        setValue: (value, opts) => {
+            set_form_value(tree.node, value, opts);
+            return tree;
+        },
+
+        getValue: () => {
+            return get_form_value(tree.node);
+        },
+
+        getChecked: () => {
+            return get_input_checked(tree.node);
+        },
+
+        setChecked: (value, opts) => {
+            set_input_checked(tree.node, value, opts);
+            return tree;
+        },
+
+        getSelected: () => {
+            return get_input_selected(tree.node);
+        },
+
+        setSelected: (value, opts) => {
+            set_input_selected(tree.node, value, opts);
+            return tree;
+        },
+    };
+}
+
 // -----------------------------------------------------------------------------
 // //.. DOM helpers: project text leaves as *Text nodes*, never <_-str>/< _-val >
 // -----------------------------------------------------------------------------
@@ -417,4 +453,30 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
   if (!el) return;
 
   (el as HTMLElement).textContent = value === null ? "" : String(value);
+}
+
+export function make_text_api<TTree extends LiveTree>(
+    tree: TTree,
+): LiveTextApi<TTree> {
+    return {
+        set: (value) => {
+            set_node_text_content(tree.node, value);
+            return tree;
+        },
+        add: (value) => {
+            add_node_text_content(tree.node, value);
+            return tree;
+        },
+        overwrite: (value) => {
+            overwrite_node_text_content(tree.node, value);
+            return tree;
+        },
+        insert: (ix, value) => {
+            insert_node_text_leaf(tree.node, ix, value);
+            return tree;
+        },
+        get: () => {
+            return get_node_text_content(tree.node);
+        },
+    };
 }

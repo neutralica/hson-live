@@ -6,8 +6,8 @@ import { ListenerBuilder } from "../../types/listen.types.js";
 import { element_for_node } from "../../utils/livetree-utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
 import { remove_livetree } from "./methods/remove-self.js";
-import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content } from "./managers/text-form-values.js";
-import { DataApi,  make_data_api } from "./managers/data-manager.js";
+import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content, make_text_api, make_form_api } from "./managers/text-form-values.js";
+import { DataApi, make_data_api } from "./managers/data-manager.js";
 import { empty_contents } from "./methods/empty.js";
 import { build_listener } from "./managers/listener-builder.js";
 import { FindMany, make_find_all_for, make_find_for } from "./methods/find.js"; // CHANGED
@@ -33,7 +33,7 @@ import { make_svg_tree_create } from "./methods/create/create-svg.js";
 import { make_html_tree_create } from "./methods/create/create-html.js";
 import { SvgBox } from "../../types/svg.types.js";
 import { make_svg_api, SvgApi } from "./managers/svg-builder.js";
-import { LiveTreeApi } from "../../types/livetree-internals.types.js";
+import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -117,7 +117,6 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private domApiInternal: LiveTreeDom | undefined = undefined;
 
 
-
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
    * or another `LiveTree`.
@@ -185,15 +184,6 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.setRef(input);
   }
 
-
-
-  public get dom(): LiveTreeDom {
-    if (!this.domApiInternal) {
-      this.domApiInternal = make_dom_api(this, () => this.resolveDomElement());
-    }
-    return this.domApiInternal;
-  }
-
   //  the underlying bound element can change during lifetime:
   private invalidate_dom_api(): void {
     // existing
@@ -202,87 +192,41 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.cssApiInternal = undefined;
   }
 
+
   public append = append_branch;
-
   public empty = empty_contents;
+  public find: FindWithById = make_find_for(this);
+  public findAll: FindMany = make_find_all_for(this);
 
+  public get dom(): LiveTreeDom {
+    return this.domApiInternal ??= make_dom_api(this, () => this.resolveDomElement());
+  }
   public removeChildren(): number {
-    // minimal wrapper; semantics live in helper
     const parent = this.nodeRef.resolveNode();
     if (!parent) return 0;
     return remove_node_children(parent);
   }
   public removeSelf(): number {
-    // funnel through the one implementation
     return remove_livetree.call(this);
   }
-
-  public find: FindWithById = make_find_for(this);
-
-  /**
-   * Find all matching descendants in this subtree.
-   *
-   * @param q - Selector string or `HsonQuery` (or list of queries).
-   * @returns A `TreeSelector` over all matching subtrees.
-   * @see make_find_all_for
-   */
-  public findAll: FindMany = make_find_all_for(this);
-
   public get create(): HtmlCreateHelper {
     return (
-      this.svg.inScope()
-        ? make_svg_tree_create(this)
-        : make_html_tree_create(this)
+      this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
     ) as unknown as HtmlCreateHelper;
   }
-
-  /**
-   * Return this tree's QUID, a stable identity string associated with the
-   * underlying `HsonNode`.
-   *
-   * QUIDs are used to:
-   * - Track node identity across transforms.
-   * - Key CSS and other managers (`css`, `css_for_quids`, etc.).
-   *
-   * @returns The QUID string for this tree's node.
-   * @see makeRef
-   */
   public get quid(): string {
     return this.nodeRef.q;
   }
-
-  /**
-   * Return the historic root node associated with this `LiveTree`.
-   *
-   * The host root represents the top-level HSON node for the tree this
-   * instance belongs to, even if the current node is a nested descendant.
-   *
-   * @returns The root `HsonNode` for this tree's context.
-   */
   public hostRootNode(): HsonNode {
     return this.hostRoot;
   }
-  
   public get content(): ContentManager {
     return (this.contentManager ??= new ContentManager(this));
   }
-  /* internal: allow a branch to inherit host roots when grafted/appended */
   adoptRoots(root: HsonNode): this {
     this.hostRoot = root;
     return this;
   }
-
-  /**
-   * Resolve and return the underlying `HsonNode` for this tree.
-   *
-   * Delegates to `nodeRef.resolveNode()` and throws if the reference
-   * fails to resolve, as this indicates a broken or stale link between
-   * the tree and its node.
-   *
-   * @returns The `HsonNode` currently referenced by this `LiveTree`.
-   * @throws If `resolveNode()` returns a falsy value.
-   * @see NodeRef.resolveNode
-   */
   public get node(): HsonNode {
     const n = this.nodeRef.resolveNode();
     if (!n) {
@@ -290,7 +234,6 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     }
     return n;
   }
-
   /*---------- managers & adapters ---------- */
 
   public get style(): StyleHandle<this> {
@@ -303,75 +246,45 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     }
     return this.styleApiInternal;
   }
-
   public get events(): TreeEvents {
     if (!this.eventsInternal) {
       this.eventsInternal = make_tree_events();
     }
     return this.eventsInternal;
   }
-
   public get data(): DataApi<this> {
     this.dataApiInternal ??= make_data_api(this);
     return this.dataApiInternal;
 
   }
-
   public get css(): CssTreeHandle {
     if (!this.cssApiInternal) {
       this.cssApiInternal = css_for_quids(this, [this.quid]);
     }
     return this.cssApiInternal;
   }
-
   public get listen(): ListenerBuilder {
     return build_listener(this);
   }
 
   /* ---------- attribute / flags API ---------- */
-
   public get attr(): AttrHandle<this> {
     return (this._attr ??= attr_handle(this));
   }
-
-  
   public get flag(): FlagHandle<this> {
     return (this._flag ??= flag_handle(this));
   }
+  private textApiInternal?: LiveTextApi<this>;
 
-  public readonly text: LiveTextApi<this> = {
-    set: (value) => { set_node_text_content(this.node, value); return this; },
-    add: (value) => { add_node_text_content(this.node, value); return this; },
-    overwrite: (value) => { overwrite_node_text_content(this.node, value); return this; },
-    insert: (ix, value) => { insert_node_text_leaf(this.node, ix, value); return this; },
-    get: (): string => {
-      return get_node_text_content(this.node);
-    },
-  };
-
-
-  /**
-   * Set the form value for this node and mirror to DOM when mounted.
-   *
-   * @param value - The string form value to apply.
-   * @param opts - Optional flags (`silent`, `strict`).
-   * @returns This `LiveTree` instance, for chaining.
-   * @see set_form_value
-   */
-  public setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): this {
-    set_form_value(this.node, value, opts);
-    return this;
-  }
-  /**
-   * Read the form value for this node.
-   *
-   * @returns The current form value as a string (possibly empty).
-   * @see get_form_value
-   */
-  public getFormValue(): string {
-    return get_form_value(this.node);
+  public get text(): LiveTextApi<this> {
+    return this.textApiInternal ??= make_text_api(this);
   }
 
+  private formApiInternal?: LiveFormApi<this>;
+
+  public get form(): LiveFormApi<this> {
+    return this.formApiInternal ??= make_form_api(this);
+  }
   public get id(): IdApi<this> {
     // cached id namespace
     if (!this.idApi) this.idApi = make_id_api(this);

@@ -21,21 +21,43 @@ export interface AppendableLiveBranch<TSelf> extends LiveTreeNodeHost {
 }
 
 export interface LiveTreeNodeHost {
-    /**
-     * Stable internal identifier for this live node.
-     *
-     * Used to associate graph nodes, DOM projections, and scoped CSS rules.
-     */
+    
+  /**
+   * Return this tree's QUID, a stable identity string associated with the
+   * underlying `HsonNode`.
+   *
+   * QUIDs are used to:
+   * - Track node identity across transforms.
+   * - Key CSS and other managers (`css`, `css_for_quids`, etc.).
+   *
+   * @returns The QUID string for this tree's node.
+   * @see makeRef
+   */
     readonly quid: string;
 
-    /**
-     * The backing HSON node represented by this LiveTree branch.
-     */
+
+  /**
+   * Resolve and return the underlying `HsonNode` for this tree.
+   *
+   * Delegates to `nodeRef.resolveNode()` and throws if the reference
+   * fails to resolve, as this indicates a broken or stale link between
+   * the tree and its node.
+   *
+   * @returns The `HsonNode` currently referenced by this `LiveTree`.
+   * @throws If `resolveNode()` returns a falsy value.
+   * @see NodeRef.resolveNode
+   */
     readonly node: HsonNode;
 
-    /**
-     * Returns the root HSON node that owns this branch.
-     */
+    
+  /**
+   * Return the historic root node associated with this `LiveTree`.
+   *
+   * The host root represents the top-level HSON node for the tree this
+   * instance belongs to, even if the current node is a nested descendant.
+   *
+   * @returns The root `HsonNode` for this tree's context.
+   */
     hostRootNode(): HsonNode;
 }
 
@@ -130,6 +152,13 @@ export interface LiveTreeQuery {
      * @see make_find_for
      */
     find: FindWithById;
+    /**
+       * Find all matching descendants in this subtree.
+       *
+       * @param q - Selector string or `HsonQuery` (or list of queries).
+       * @returns A `TreeSelector` over all matching subtrees.
+       * @see make_find_all_for
+       */
     findAll: FindMany;
 }
 export interface LiveTreeDomAccess {
@@ -265,12 +294,14 @@ export interface LiveTreeData<TSelf> {
     readonly data: DataApi<TSelf>;
 }
 export interface LiveTreeForm<TSelf> {
-    setFormValue(
-        value: string,
-        opts?: { silent?: boolean; strict?: boolean },
-    ): TSelf;
+    /**
+     * Form/input helper bound to this node.
+     *
+     * Provides value, checked, and selected operations for form-like nodes,
+     * mirroring to DOM when mounted.
+     */
+    readonly form: LiveFormApi<TSelf>;
 
-    getFormValue(): string;
 }
 export interface LiveTreeSvg<TSelf> {
     /**
@@ -282,6 +313,41 @@ export interface LiveTreeSvg<TSelf> {
      */
     readonly svg: SvgApi<TSelf>;
 }
+
+export interface LiveFormApi<TSelf> {
+    /**
+     * Set the form value for this node and mirror to DOM when mounted.
+     */
+    setValue(value: string, opts?: { silent?: boolean; strict?: boolean }): TSelf;
+
+    /**
+     * Read the form value for this node.
+     */
+    getValue(): string;
+
+    /**
+     * Read the checked state for checkbox/radio inputs.
+     */
+    getChecked(): boolean;
+
+    /**
+     * Set the checked state for checkbox/radio inputs.
+     */
+    setChecked(value: boolean, opts?: { silent?: boolean; strict?: boolean }): TSelf;
+
+    /**
+     * Read selected value(s) for select-like inputs.
+     */
+    getSelected(): string | readonly string[];
+
+    /**
+     * Set selected value(s) for select-like inputs.
+     */
+    setSelected(
+        value: string | readonly string[],
+        opts?: { silent?: boolean; strict?: boolean },
+    ): TSelf;
+};
 
 export interface LiveTreeApi<TSelf>
     extends
