@@ -115,7 +115,11 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private svgApi?: SvgApi<this>;
   /* LiveTree DOM api */
   private domApiInternal: LiveTreeDom | undefined = undefined;
-
+  /* text content API */
+  private textApiInternal?: LiveTextApi<this>;
+  /* form-specific API for inputs, form-value, etc */
+  private formApiInternal?: LiveFormApi<this>;
+  
 
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
@@ -192,115 +196,6 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.cssApiInternal = undefined;
   }
 
-
-  public append = append_branch;
-  public empty = empty_contents;
-  public find: FindWithById = make_find_for(this);
-  public findAll: FindMany = make_find_all_for(this);
-
-  public get dom(): LiveTreeDom {
-    return this.domApiInternal ??= make_dom_api(this, () => this.resolveDomElement());
-  }
-  public removeChildren(): number {
-    const parent = this.nodeRef.resolveNode();
-    if (!parent) return 0;
-    return remove_node_children(parent);
-  }
-  public removeSelf(): number {
-    return remove_livetree.call(this);
-  }
-  public get create(): HtmlCreateHelper {
-    return (
-      this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
-    ) as unknown as HtmlCreateHelper;
-  }
-  public get quid(): string {
-    return this.nodeRef.q;
-  }
-  public hostRootNode(): HsonNode {
-    return this.hostRoot;
-  }
-  public get content(): ContentManager {
-    return (this.contentManager ??= new ContentManager(this));
-  }
-  adoptRoots(root: HsonNode): this {
-    this.hostRoot = root;
-    return this;
-  }
-  public get node(): HsonNode {
-    const n = this.nodeRef.resolveNode();
-    if (!n) {
-      throw new Error("LiveTree2.node: ref did not resolve");
-    }
-    return n;
-  }
-  /*---------- managers & adapters ---------- */
-
-  public get style(): StyleHandle<this> {
-    if (!this.styleApiInternal) {
-      const mgr = new StyleManager<this>(this);
-      this.styleApiInternal = {
-        ...mgr.setter,
-        get: mgr.getter,
-      };
-    }
-    return this.styleApiInternal;
-  }
-  public get events(): TreeEvents {
-    if (!this.eventsInternal) {
-      this.eventsInternal = make_tree_events();
-    }
-    return this.eventsInternal;
-  }
-  public get data(): DataApi<this> {
-    this.dataApiInternal ??= make_data_api(this);
-    return this.dataApiInternal;
-
-  }
-  public get css(): CssTreeHandle {
-    if (!this.cssApiInternal) {
-      this.cssApiInternal = css_for_quids(this, [this.quid]);
-    }
-    return this.cssApiInternal;
-  }
-  public get listen(): ListenerBuilder {
-    return build_listener(this);
-  }
-
-  /* ---------- attribute / flags API ---------- */
-  public get attr(): AttrHandle<this> {
-    return (this._attr ??= attr_handle(this));
-  }
-  public get flag(): FlagHandle<this> {
-    return (this._flag ??= flag_handle(this));
-  }
-  private textApiInternal?: LiveTextApi<this>;
-
-  public get text(): LiveTextApi<this> {
-    return this.textApiInternal ??= make_text_api(this);
-  }
-
-  private formApiInternal?: LiveFormApi<this>;
-
-  public get form(): LiveFormApi<this> {
-    return this.formApiInternal ??= make_form_api(this);
-  }
-  public get id(): IdApi<this> {
-    // cached id namespace
-    if (!this.idApi) this.idApi = make_id_api(this);
-    return this.idApi;
-  }
-
-  public get classlist(): ClassApi<this> {
-    // cached class namespace
-    if (!this.classApi) this.classApi = make_class_api(this);
-    return this.classApi;
-  }
-
-  public cloneBranch(): LiveTree {
-    return clone_branch_method.call(this);
-  }
-
   /*  ---------- DOM adapter ---------- */
   /**
    * Resolve this tree's node to its associated DOM `Element`, if any.
@@ -318,6 +213,234 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     if (!firstRef) return undefined;
     return firstRef.resolveElement();
   }
+
+  /***************************************
+   * LiveTree API
+   ***************************************/
+  /***************************************
+   * Core tree operations
+   *
+   * Public branch mutation and query surface.
+   *
+   * @see LiveTreeContent
+   * @see LiveTreeQuery
+   ***************************************/
+
+  /** Append another branch into this branch's content. */
+  public append = append_branch;
+
+  /** Remove all content from this branch. */
+  public empty = empty_contents;
+
+  /** Find the first matching descendant or helper query. */
+  public find: FindWithById = make_find_for(this);
+
+  /** Find all matching descendants or helper query results. */
+  public findAll: FindMany = make_find_all_for(this);
+
+
+  /***************************************
+   * DOM projection
+   *
+   * Access mounted DOM projection helpers.
+   *
+   * @see LiveTreeDomAccess
+   ***************************************/
+
+  /** DOM helper bound to this tree's mounted element. */
+  public get dom(): LiveTreeDom {
+    return this.domApiInternal ??= make_dom_api(this, () => this.resolveDomElement());
+  }
+
+
+  /***************************************
+   * Branch removal
+   *
+   * Structural removal operations against the backing HSON node graph.
+   *
+   * @see LiveTreeContent
+   ***************************************/
+
+  /** Remove all child content from this branch and return the removal count. */
+  public removeChildren(): number {
+    const parent = this.nodeRef.resolveNode();
+    if (!parent) return 0;
+    return remove_node_children(parent);
+  }
+
+  /** Remove this branch from its parent and return the removal count. */
+  public removeSelf(): number {
+    return remove_livetree.call(this);
+  }
+
+
+  /***************************************
+   * Child creation
+   *
+   * Namespace-aware child factory.
+   *
+   * @see LiveTreeDomAccess
+   ***************************************/
+
+  /** Create HTML or SVG children according to the current namespace scope. */
+  public get create(): HtmlCreateHelper {
+    return (
+      this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
+    ) as unknown as HtmlCreateHelper;
+  }
+
+
+  /***************************************
+   * Identity and host-root context
+   *
+   * Stable branch identity and root ownership.
+   *
+   * @see LiveTreeIdentity
+   ***************************************/
+
+  /** Stable QUID for this branch. */
+  public get quid(): string {
+    return this.nodeRef.q;
+  }
+
+  /** Return the host root node for this branch. */
+  public hostRootNode(): HsonNode {
+    return this.hostRoot;
+  }
+
+  /** Content manager bound to this branch. */
+  public get content(): ContentManager {
+    return (this.contentManager ??= new ContentManager(this));
+  }
+
+  /** Adopt a new host-root context for this branch. */
+  public adoptRoots(root: HsonNode): this {
+    this.hostRoot = root;
+    return this;
+  }
+
+  /** Resolve and return the backing HSON node. */
+  public get node(): HsonNode {
+    const n = this.nodeRef.resolveNode();
+    if (!n) {
+      throw new Error("LiveTree2.node: ref did not resolve");
+    }
+    return n;
+  }
+
+  /***************************************
+   * Style and CSS managers
+   *
+   * Inline style, scoped CSS, data, and event helper namespaces.
+   *
+   * @see LiveTreeStyling
+   * @see LiveTreeData
+   * @see LiveTreeEvents
+   ***************************************/
+
+  /** Inline style helper bound to this branch. */
+  public get style(): StyleHandle<this> {
+    if (!this.styleApiInternal) {
+      const mgr = new StyleManager<this>(this);
+      this.styleApiInternal = {
+        ...mgr.setter,
+        get: mgr.getter,
+      };
+    }
+    return this.styleApiInternal;
+  }
+
+  /** Tree-local event registry/helper surface. */
+  public get events(): TreeEvents {
+    if (!this.eventsInternal) {
+      this.eventsInternal = make_tree_events();
+    }
+    return this.eventsInternal;
+  }
+
+  /** Dataset helper for `data-*` attributes. */
+  public get data(): DataApi<this> {
+    return this.dataApiInternal ??= make_data_api(this);
+  }
+
+  /** QUID-scoped stylesheet helper for this branch. */
+  public get css(): CssTreeHandle {
+    if (!this.cssApiInternal) {
+      this.cssApiInternal = css_for_quids(this, [this.quid]);
+    }
+    return this.cssApiInternal;
+  }
+
+  /** Fluent event-listener builder bound to this branch. */
+  public get listen(): ListenerBuilder {
+    return build_listener(this);
+  }
+
+  /***************************************
+   * Attribute helpers
+   * 
+   * getters/setters for attributes and "flags" AKA boolean attributes, plus convenience wrapeprs for e.g. id, class, text
+  *
+   * all helpers are bound to the current LiveTree node
+   *
+   * @see LiveTreeAttrs
+   * @see LiveTreeText
+   * @see LiveTreeForm
+   ***************************************/
+
+  /** Attributes - get/set/setMany/has/drop */
+  public get attr(): AttrHandle<this> {
+    return (this._attr ??= attr_handle(this));
+  }
+
+  /** "Flags" (HTML boolean attributes) - has/get/clear */
+  public get flag(): FlagHandle<this> {
+    return (this._flag ??= flag_handle(this));
+  }
+
+  /** Text-content - set/get/add/overwrite/insert */
+  public get text(): LiveTextApi<this> {
+    return this.textApiInternal ??= make_text_api(this);
+  }
+
+
+  /** Form - set/get for value, checked, selected */
+  public get form(): LiveFormApi<this> {
+    return this.formApiInternal ??= make_form_api(this);
+  }
+
+  /** ID - convenience wrapper for 'id' attribute */
+  public get id(): IdApi<this> {
+  return this.idApi ??= make_id_api(this);
+}
+
+  /** Classlist - convenience wrapper for 'class' attribute */
+  public get classlist(): ClassApi<this> {
+  return this.classApi ??= make_class_api(this);
+}
+
+  /***************************************
+   * Branch cloning
+   *
+   * Deep branch duplication with fresh identity.
+   *
+   * @see LiveTreeContent
+   ***************************************/
+
+  /** Clone this branch as a new unattached LiveTree branch. */
+  public cloneBranch(): LiveTree {
+    return clone_branch_method.call(this);
+  }
+
+  /***************************************
+   * SVG namespace helper
+   *
+   * SVG-specific inspection and mounted geometry helpers. Exposes typed API surface wrapping common SVG-specific attribute calls, respecting camelCase where applicable
+   * 
+   * inScope/preserveAspectRatio/viewBox/d/fill/stroke/strokeWidth/vectorEffect/bbox/must.bbox
+   *
+   * @see LiveTreeSvg
+   ***************************************/
 
   public get svg(): SvgApi<this> {
     if (!this.svgApi) {

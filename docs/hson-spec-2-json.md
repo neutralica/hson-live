@@ -133,6 +133,24 @@ No information is discarded or reinterpreted during nesting.
 
 ⸻
 
+### Object Items in Arrays
+
+Objects inside arrays must serialize with an anonymous object wrapper.
+
+Array items have no property name, so object boundaries cannot be inferred from
+their child properties alone. The wrapper groups all properties belonging to the
+same array item.
+
+```ts
+[
+  <
+    <name "jo">
+    <age 31>
+  >
+]
+```
+⸻
+
 ## Round-Trip Guarantees
 
 Given a valid JSON value J:
@@ -163,6 +181,7 @@ However, once parsed into the node graph:
 
 This canonical form is the basis for HTML mapping, runtime projection, and reactive systems described in later sections.
 
+⸻
 ⸻
 
 ## Non-Goals
