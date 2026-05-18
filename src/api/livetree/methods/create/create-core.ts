@@ -313,7 +313,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
   };
 }
 
-export function make_tree_create2(tree: LiveTree): HtmlCreateHelper {
+export function make_tree_create(tree: LiveTree): HtmlCreateHelper {
   return make_html_tree_create(tree);
 }
 

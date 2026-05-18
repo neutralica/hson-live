@@ -6,6 +6,7 @@ import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/tree-selector.js";
 import { HTML_TAGS, SVG_TAGS } from "../consts/html-tags.js";
 import { SvgBox, SvgLiveTree } from "./svg.types.js";
+import { CanvasLiveTree } from "./livetree-internals.types.js";
 
 
 /**************************************************************
@@ -46,8 +47,17 @@ export interface HsonQuery {
  * cleared. Callers must treat this as a soft reference.
  **************************************************************/
 export interface NodeRef {
+  /** 
+   * the QUID string identifier
+   */
   q: string;
+  /** 
+   * return the referenced node (or lookup by quid)
+   */
   resolveNode(): HsonNode | undefined;
+  /** 
+   * lookup the mounted DOM element via NODE_ELEMENT_MAP
+   */
   resolveElement(): Element | undefined;
 }
 
@@ -127,14 +137,15 @@ export type HtmlLiveTree = Omit<LiveTree, "create"> & {
   create: HtmlCreateHelper;
 };
 export type HtmlCreateHelper =
-  Record<HtmlTag, (source?: string) => LiveTree> & {
+  Record<Exclude<HtmlTag, "canvas">, (source?: string) => LiveTree> & {
     svg(source?: string): SvgLiveTree;
+    canvas(source?: string): CanvasLiveTree;
+
     tags(tags: TagName[]): TreeSelector;
     tag(tag: TagName, source?: string): LiveTree;
     prepend(): HtmlCreateHelper;
     at(index: number): HtmlCreateHelper;
   };
-
 export type SvgCreateHelper =
   Record<NonRootSvgTag, (source?: string) => SvgLiveTree> & {
     svg(source?: string): SvgLiveTree;
@@ -152,13 +163,13 @@ export type CreateHelper<Single, Many> =
     at(index: number): CreateHelper<Single, Many>;
   };
 
-  export type DetachedCreateHelper =
+export type DetachedCreateHelper =
   HtmlCreateHelper &
   SvgCreateHelper & {
     prepend(): DetachedCreateHelper;
     at(index: number): DetachedCreateHelper;
-    };
-  
+  };
+
 /**************************************************************
  * Creation helper exposed as `selector.create` on a
  * `TreeSelector`.

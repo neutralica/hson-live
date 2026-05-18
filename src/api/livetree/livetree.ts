@@ -15,7 +15,6 @@ import { StyleManager } from "./managers/style-manager.js";
 import { HtmlCreateHelper } from "../../types/livetree.types.js"; // CHANGED
 import { append_branch } from "./methods/appends.js";
 import { FindWithById, NodeRef } from "../../types/livetree.types.js";
-import { StyleSetter } from "./managers/style-setter.js";
 import { make_class_api, make_id_api } from "./managers/id-classlist.js";
 import { ClassApi, IdApi, LiveTreeDom } from "../../types/dom.types.js";
 import { make_dom_api } from "./managers/dom-api.js";
@@ -27,13 +26,12 @@ import { css_for_quids } from "./methods/css-for-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
-import { is_svg_context_tag, SVG_TAGS } from "../../consts/html-tags.js";
-import { make_tree_create2 } from "./methods/create/create-core.js";
 import { make_svg_tree_create } from "./methods/create/create-svg.js";
 import { make_html_tree_create } from "./methods/create/create-html.js";
-import { SvgBox } from "../../types/svg.types.js";
 import { make_svg_api, SvgApi } from "./managers/svg-builder.js";
 import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
+import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
+import { CanvasApi } from "./managers/canvas/canvas.types.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -119,7 +117,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private textApiInternal?: LiveTextApi<this>;
   /* form-specific API for inputs, form-value, etc */
   private formApiInternal?: LiveFormApi<this>;
-  
+  /* canvas-specific namespace */
+  private canvasApi?: CanvasApi<this>;
 
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
@@ -319,7 +318,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return this;
   }
 
-  /** Resolve and return the backing HSON node. */
+  /** Resolve and return the backing HSON node.   */
   public get node(): HsonNode {
     const n = this.nodeRef.resolveNode();
     if (!n) {
@@ -338,7 +337,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveTreeEvents
    ***************************************/
 
-  /** Inline style helper bound to this branch. */
+  /** Inline style helper bound to this branch.
+   * 
+   * @see StyleManager
+   * @see StyleSetter
+   * @see StyleHandle
+   */
   public get style(): StyleHandle<this> {
     if (!this.styleApiInternal) {
       const mgr = new StyleManager<this>(this);
@@ -349,8 +353,23 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     }
     return this.styleApiInternal;
   }
+  
+    /** QUID-scoped stylesheet helper for this branch. 
+     * 
+     * @see CssTreeHandle
+     */
+    public get css(): CssTreeHandle {
+      if (!this.cssApiInternal) {
+        this.cssApiInternal = css_for_quids(this, [this.quid]);
+      }
+      return this.cssApiInternal;
+    }
 
-  /** Tree-local event registry/helper surface. */
+  /** Tree-local event registry/helper surface.
+   * 
+   * @see make_tree_events
+   * @see TreeEvents
+   */
   public get events(): TreeEvents {
     if (!this.eventsInternal) {
       this.eventsInternal = make_tree_events();
@@ -358,23 +377,14 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return this.eventsInternal;
   }
 
-  /** Dataset helper for `data-*` attributes. */
-  public get data(): DataApi<this> {
-    return this.dataApiInternal ??= make_data_api(this);
-  }
-
-  /** QUID-scoped stylesheet helper for this branch. */
-  public get css(): CssTreeHandle {
-    if (!this.cssApiInternal) {
-      this.cssApiInternal = css_for_quids(this, [this.quid]);
-    }
-    return this.cssApiInternal;
-  }
-
-  /** Fluent event-listener builder bound to this branch. */
+  /** Fluent event-listener builder bound to this branch.
+   * 
+   * @see ListenerBuilder
+   */
   public get listen(): ListenerBuilder {
     return build_listener(this);
   }
+
 
   /***************************************
    * Attribute helpers
@@ -384,47 +394,129 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * all helpers are bound to the current LiveTree node
    *
    * @see LiveTreeAttrs
-   * @see LiveTreeText
-   * @see LiveTreeForm
    ***************************************/
 
-  /** Attributes - get/set/setMany/has/drop */
+  /** Attributes - get/set/setMany/has/drop
+   * 
+   * @see AttrHandle
+   */
   public get attr(): AttrHandle<this> {
     return (this._attr ??= attr_handle(this));
   }
 
-  /** "Flags" (HTML boolean attributes) - has/get/clear */
+  /** "Flags" (HTML boolean attributes) - has/get/clear 
+   * 
+   * @see FlagHandle
+  */
   public get flag(): FlagHandle<this> {
     return (this._flag ??= flag_handle(this));
   }
 
-  /** Text-content - set/get/add/overwrite/insert */
+
+  /***************************************
+   * Dataset, id, classlist
+   *
+   * Get/set wrappers for common attribute calls 
+   *
+   * @see LiveTreeAttrs
+   * @see LiveTreeData
+   ***************************************/
+
+  /** Dataset - (get/set/drop/setMany)
+   * 
+   * @see DataApi
+   */
+  public get data(): DataApi<this> {
+    return this.dataApiInternal ??= make_data_api(this);
+  }
+
+  /** ID - (get/set/clear)
+   * 
+   * @see IdApi
+   */
+  public get id(): IdApi<this> {
+    return this.idApi ??= make_id_api(this);
+  }
+
+  /** Classlist - (get/has/add/set/remove/toggle/clear)
+   * 
+   * @see ClassApi
+  */
+  public get classlist(): ClassApi<this> {
+    return this.classApi ??= make_class_api(this);
+  }
+
+
+
+  /***************************************
+   * Textcontent, Form, Value, Inputs
+   * 
+   * get/set and handles for text nodes and common input methods
+  *
+   * all helpers are bound to the current LiveTree node
+   *
+   * @see LiveTreeText
+   * @see LiveTreeForm
+   ***************************************/
+
+  /** 
+   * Text-content
+   * (set/get/add/overwrite/insert)
+   * 
+   * @see LiveTextApi
+   */
   public get text(): LiveTextApi<this> {
     return this.textApiInternal ??= make_text_api(this);
   }
 
 
-  /** Form - set/get for value, checked, selected */
+  /** 
+   * Form  
+   * (set/get for value, checked, selected)
+   * 
+   * @see LiveFormApi
+   */
   public get form(): LiveFormApi<this> {
     return this.formApiInternal ??= make_form_api(this);
   }
 
-  /** ID - convenience wrapper for 'id' attribute */
-  public get id(): IdApi<this> {
-  return this.idApi ??= make_id_api(this);
-}
-
-  /** Classlist - convenience wrapper for 'class' attribute */
-  public get classlist(): ClassApi<this> {
-  return this.classApi ??= make_class_api(this);
-}
 
   /***************************************
+   * SVG
+   * (inScope/preserveAspectRatio/viewBox/d/fill/stroke/strokeWidth/vectorEffect/bbox/must.bbox)
+   * 
+   * @see SvgApi
+   ***************************************/
+  public get svg(): SvgApi<this> {
+    if (!this.svgApi) {
+      this.svgApi = Object.freeze(
+        make_svg_api(this)
+      );
+    }
+    return this.svgApi;
+  }
+
+
+  /***************************************
+   * Canvas methods
+   * 
+   * get/set convenience methods for common canvas properties and attributes
+   * 
+   * all helpers are bound to the current LiveTree node
+   *
+   * @see make_canvas_api
+   * @see CanvasApi
+   ***************************************/
+  public get canvas(): CanvasApi<this> {
+    return this.canvasApi ??= Object.freeze(make_canvas_api(this));
+  }
+
+    /***************************************
    * Branch cloning
    *
    * Deep branch duplication with fresh identity.
    *
-   * @see LiveTreeContent
+   * @see clone_branch_method
    ***************************************/
 
   /** Clone this branch as a new unattached LiveTree branch. */
@@ -432,23 +524,5 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return clone_branch_method.call(this);
   }
 
-  /***************************************
-   * SVG namespace helper
-   *
-   * SVG-specific inspection and mounted geometry helpers. Exposes typed API surface wrapping common SVG-specific attribute calls, respecting camelCase where applicable
-   * 
-   * inScope/preserveAspectRatio/viewBox/d/fill/stroke/strokeWidth/vectorEffect/bbox/must.bbox
-   *
-   * @see LiveTreeSvg
-   ***************************************/
 
-  public get svg(): SvgApi<this> {
-    if (!this.svgApi) {
-      this.svgApi = Object.freeze(
-        make_svg_api(this)
-      );
-    }
-
-    return this.svgApi;
-  }
 }

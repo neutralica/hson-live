@@ -1,3 +1,5 @@
+import { LiveTree } from "../api/livetree/livetree.js";
+import { CanvasApi, LiveTreeCanvas } from "../api/livetree/managers/canvas/canvas.types.js";
 import { ContentManager } from "../api/livetree/managers/content-manager.js";
 import { DataApi } from "../api/livetree/managers/data-manager.js";
 import { SvgApi } from "../api/livetree/managers/svg-builder.js";
@@ -21,43 +23,43 @@ export interface AppendableLiveBranch<TSelf> extends LiveTreeNodeHost {
 }
 
 export interface LiveTreeNodeHost {
-    
-  /**
-   * Return this tree's QUID, a stable identity string associated with the
-   * underlying `HsonNode`.
-   *
-   * QUIDs are used to:
-   * - Track node identity across transforms.
-   * - Key CSS and other managers (`css`, `css_for_quids`, etc.).
-   *
-   * @returns The QUID string for this tree's node.
-   * @see makeRef
-   */
+
+    /**
+     * Return this tree's QUID, a stable identity string associated with the
+     * underlying `HsonNode`.
+     *
+     * QUIDs are used to:
+     * - Track node identity across transforms.
+     * - Key CSS and other managers (`css`, `css_for_quids`, etc.).
+     *
+     * @returns The QUID string for this tree's node.
+     * @see makeRef
+     */
     readonly quid: string;
 
 
-  /**
-   * Resolve and return the underlying `HsonNode` for this tree.
-   *
-   * Delegates to `nodeRef.resolveNode()` and throws if the reference
-   * fails to resolve, as this indicates a broken or stale link between
-   * the tree and its node.
-   *
-   * @returns The `HsonNode` currently referenced by this `LiveTree`.
-   * @throws If `resolveNode()` returns a falsy value.
-   * @see NodeRef.resolveNode
-   */
+    /**
+     * Resolve and return the underlying `HsonNode` for this tree.
+     *
+     * Delegates to `nodeRef.resolveNode()` and throws if the reference
+     * fails to resolve, as this indicates a broken or stale link between
+     * the tree and its node.
+     *
+     * @returns The `HsonNode` currently referenced by this `LiveTree`.
+     * @throws If `resolveNode()` returns a falsy value.
+     * @see NodeRef.resolveNode
+     */
     readonly node: HsonNode;
 
-    
-  /**
-   * Return the historic root node associated with this `LiveTree`.
-   *
-   * The host root represents the top-level HSON node for the tree this
-   * instance belongs to, even if the current node is a nested descendant.
-   *
-   * @returns The root `HsonNode` for this tree's context.
-   */
+
+    /**
+     * Return the historic root node associated with this `LiveTree`.
+     *
+     * The host root represents the top-level HSON node for the tree this
+     * instance belongs to, even if the current node is a nested descendant.
+     *
+     * @returns The root `HsonNode` for this tree's context.
+     */
     hostRootNode(): HsonNode;
 }
 
@@ -361,7 +363,8 @@ export interface LiveTreeApi<TSelf>
     LiveTreeText<TSelf>,
     LiveTreeData<TSelf>,
     LiveTreeForm<TSelf>,
-    LiveTreeSvg<TSelf> { };
+    LiveTreeSvg<TSelf>,
+    LiveTreeCanvas<TSelf> { };
 
 export interface HtmlLiveTreeApi<TSelf>
     extends
@@ -374,7 +377,8 @@ export interface HtmlLiveTreeApi<TSelf>
     LiveTreeEvents,
     LiveTreeText<TSelf>,
     LiveTreeData<TSelf>,
-    LiveTreeForm<TSelf> { };
+    LiveTreeForm<TSelf>,
+    LiveTreeCanvas<TSelf> { };
 
 export interface SvgLiveTreeApi<TSelf>
     extends
@@ -392,3 +396,16 @@ export interface LiveTreeSvgHost<TSelf>
     LiveTreeNodeHost,
     LiveTreeAttrAccess<TSelf>,
     LiveTreeStyleAccess<TSelf> { };
+
+export interface LiveTreeCanvasHost<TSelf>
+    extends
+    LiveTreeNodeHost,
+    LiveTreeAttrAccess<TSelf> { };
+
+export type CanvasCreateHelper = HtmlCreateHelper;
+
+
+export type CanvasLiveTree = LiveTree & {
+    readonly create: CanvasCreateHelper;
+    readonly canvas: CanvasApi<CanvasLiveTree>;
+};

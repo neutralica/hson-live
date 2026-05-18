@@ -1,4 +1,5 @@
 import { HTML_TAGS, SVG_TAGS } from "../../../../consts/html-tags.js";
+import { CanvasLiveTree } from "../../../../types/livetree-internals.types.js";
 import { HtmlCreateHelper, TagName, HtmlTag, SvgCreateHelper, SvgTag } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { LiveTree } from "../../livetree.js";
@@ -66,6 +67,16 @@ export function make_html_tree_create(tree: LiveTree): HtmlCreateHelper {
     }
 
     return core.createSingleTag("svg", ix) as unknown as SvgLiveTree;
+  };
+
+  (helper as any).canvas = (source?: string): CanvasLiveTree => {
+    const ix = core.consumeIndex();
+
+    if (typeof source === "string") {
+      return core.createHtmlTagFromString("canvas", source, ix) as unknown as CanvasLiveTree;
+    }
+
+    return core.createSingleTag("canvas", ix) as unknown as CanvasLiveTree;
   };
 
   return helper as HtmlCreateHelper;
