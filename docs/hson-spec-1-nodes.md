@@ -1,4 +1,4 @@
-#### hson-live / terminalgothic.com/hson
+#### hson-live / hson.terminalgothic.com
 
 # HSON Spec[1]
 ## Nodes, Structure, and Invariants

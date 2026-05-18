@@ -1,4 +1,4 @@
-#### hson-live / terminalgothic.com/hson
+#### hson-live / hson.terminalgothic.com
 
 # HSON Spec[3]
 ## HTML Representation in HSON

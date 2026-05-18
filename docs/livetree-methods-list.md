@@ -1,4 +1,4 @@
-#### hson-live / terminalgothic.com/hson
+#### hson-live / hson.terminalgothic.com
 
 # hson.livetree 
 # LiveTree & API
