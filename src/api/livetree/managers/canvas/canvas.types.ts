@@ -1,9 +1,5 @@
 
 export interface CanvasApi<TSelf> {
-  /**
-   * Returns true when this tree is a `<canvas>` element or belongs to a canvas-specific scope.
-   */
-  inScope(): boolean;
 
   /**
    * Return the mounted HTMLCanvasElement when available.
@@ -11,9 +7,26 @@ export interface CanvasApi<TSelf> {
   el(): HTMLCanvasElement | undefined;
 
   /**
+ * Returns true when this tree is a `<canvas>` element or belongs to a canvas-specific scope.
+ */
+  inScope(): boolean;
+
+  /**
    * Return this canvas element's 2D rendering context when available.
    */
   ctx2d(settings?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D | undefined;
+
+  /**
+   * Clear the canvas bitmap.
+   *
+   * With no arguments, clears the full backing bitmap.
+   * With x/y/w/h arguments, clears the provided rectangle.
+   *
+   * Returns this tree for chaining. If no mounted 2D context is available,
+   * this is a no-op.
+   */
+  clear(): TSelf;
+  clear(x: number, y: number, w: number, h: number): TSelf;
 
   /**
    * Canvas dimension attribute helpers.
@@ -37,7 +50,33 @@ export interface CanvasApi<TSelf> {
       settings?: CanvasRenderingContext2DSettings,
       label?: string
     ): CanvasRenderingContext2D;
+    plot(
+      fn: (ctx: CanvasRenderingContext2D, cvs: HTMLCanvasElement) => void,
+      settings?: CanvasRenderingContext2DSettings,
+      label?: string,
+    ): TSelf;
   };
+
+
+  /**
+   * Run native 2D canvas commands against this branch's mounted canvas.
+   *
+   * This is a guarded bridge into the browser's CanvasRenderingContext2D:
+   * if the branch is not mounted as a canvas or no 2D context is available,
+   * the callback is not called.
+   *
+   * Returns this tree for chaining.
+   */
+  plot(
+    fn: (
+      ctx: CanvasRenderingContext2D,
+      cvs: HTMLCanvasElement,
+    ) => void,
+    settings?: CanvasRenderingContext2DSettings,
+  ): TSelf;
+
+
+
 }
 
 export interface LiveTreeCanvas<TSelf> {

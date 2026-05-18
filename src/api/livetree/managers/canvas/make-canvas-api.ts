@@ -6,11 +6,9 @@ export function make_canvas_api<TTree extends LiveTree>(
 ): CanvasApi<TTree> {
   const el = (): HTMLCanvasElement | undefined => {
     const node = tree.dom.el();
-
     if (node instanceof HTMLCanvasElement) {
       return node;
     }
-
     return undefined;
   };
 
@@ -20,12 +18,10 @@ export function make_canvas_api<TTree extends LiveTree>(
     if (typeof value === "number") {
       return value;
     }
-
     if (typeof value === "string") {
       const n = Number(value);
       return Number.isFinite(n) ? n : undefined;
     }
-
     return undefined;
   };
 
@@ -117,18 +113,69 @@ export function make_canvas_api<TTree extends LiveTree>(
     return tree;
   };
 
+  const clear = (...args: [] | [number, number, number, number]): TTree => {
+    const canvas = el();
+    if (!canvas) {
+      return tree;
+    }
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      return tree;
+    }
+    if (args.length === 4) {
+      ctx.clearRect(args[0], args[1], args[2], args[3]);
+      return tree;
+    }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return tree;
+  };
+
+  const plot = (
+    fn: (
+      ctx: CanvasRenderingContext2D,
+      canvas: HTMLCanvasElement,
+    ) => void,
+    settings?: CanvasRenderingContext2DSettings,
+  ): TTree => {
+    const canvas = el();
+    if (!canvas) {
+      return tree;
+    }
+    const ctx = canvas.getContext("2d", settings);
+    if (!ctx) {
+      return tree;
+    }
+    fn(ctx, canvas);
+    return tree;
+  };
+
+  const mustPlot = (
+    fn: (ctx: CanvasRenderingContext2D, cvs: HTMLCanvasElement) => void,
+    settings?: CanvasRenderingContext2DSettings,
+    label?: string,
+  ): TTree => {
+    const cvs = el();
+    if (!cvs) {
+      throw new Error(label ?? "[LiveTree.canvas.must.plot] no canvas element available");
+    }
+    const ctx = cvs.getContext("2d", settings);
+    if (!ctx) {
+      throw new Error(label ?? "[LiveTree.canvas.must.plot] no 2D canvas context available");
+    }
+    fn(ctx, cvs);
+    return tree;
+  };
+
   return {
-    inScope: () => tree.node._tag === "canvas",
-
+    clear,
+    plot,
     el,
-
+    inScope: () => tree.node._tag === "canvas",
     ctx2d: (settings) => {
       const canvas = el();
-
       if (!canvas) {
         return undefined;
       }
-
       return canvas.getContext("2d", settings) ?? undefined;
     },
 
@@ -156,23 +203,20 @@ export function make_canvas_api<TTree extends LiveTree>(
     must: {
       el: (label) => {
         const canvas = el();
-
         if (!canvas) {
           throw new Error(label ?? "[LiveTree.canvas.must.el] no canvas element available");
         }
-
         return canvas;
       },
-
       ctx2d: (settings, label) => {
         const ctx = el()?.getContext("2d", settings);
-
         if (!ctx) {
           throw new Error(label ?? "[LiveTree.canvas.must.ctx2d] no 2D canvas context available");
         }
-
         return ctx;
       },
+      plot: mustPlot,
+
     },
   };
 }
