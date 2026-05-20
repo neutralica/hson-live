@@ -1,10 +1,52 @@
 // hson changelog.md
 
+## 2.3.0
+
+### Added
+- initial `LiveTree.canvas` namespace.
+- typed `create.canvas()` support.
+- canvas helpers for scope detection, mounted canvas access, 2D context access, width, and height.
+- `LiveTreeApi` capability interfaces for the public LiveTree surface.
+- generated JSON transform fuzz fixtures.
+
+### Changed
+- moved form helpers under `tree.form`.
+- refactored data helpers to use a lightweight data API factory.
+
+### Breaking
+- removed `tree.setFormValue()` and `tree.getFormValue()`.
+ --> use `tree.form.setValue()` and `tree.form.getValue()` instead.
+ 
+
+## 2.2.2
+
+### LiveTree maintenance
+
++ Slimmed and reorganized the main `LiveTree` class.
++ Moved repeated public API object literals into small factory helpers where appropriate.
++ Standardized lazy getter/cached namespace patterns across LiveTree APIs.
++ Reduced special-case typing in helper APIs.
++ Improved public interface documentation coverage.
++ Consolidated duplicated public API declarations across internal LiveTree type surfaces.
+
+### Data / attributes
+
++ Reworked data handling to behave as a thin `data-*` attribute helper.
++ Aligned data behavior with existing `id`, `classlist`, `attr`, and `flag` APIs.
++ Removed unnecessary data-specific tree abstraction.
++ Kept dataset keys normalized to `data-*` attributes.
+
+### Tests (LiveDemo)
+
++ Kept legacy and new LiveTree tests passing through the API cleanup.
++ Added/updated regression coverage for recently changed LiveTree helper surfaces.
+
+
 ## 2.2.1
 
 ### HSON syntax
 
-- HSON now supports backtick-quoted keys:
++ HSON now supports backtick-quoted keys:
 
 ```
   <`a b` "value">
@@ -12,40 +54,40 @@
   <`-hyphen-led` "d">
 ```
 
-- HTML wire now safely encodes object keys that would not survive XML/DOM parsing:
-  - spaces
-  - leading underscores
-  - camelCase / uppercase
-  - UTF and other non-wire-safe characters
-- encoded HTML keys now survive browser lowercasing and decode back to their original JSON keys
-- VSN tags (`_-obj`, `_-arr`, `_-elem`, etc.) are excluded from key encoding
-- underscored tagnames are not permitted in _-elem nodes; they are only possible when source is JSON and are only valid within _-obj nodes. 
--  backtick tags are permitted in _-elem nodes
-	• BUG - possible bug: leading underscores are still not permitted within backticks 
++ HTML wire now safely encodes object keys that would not survive XML/DOM parsing:
+ • spaces
+ • leading underscores
+ • camelCase / uppercase
+ • UTF and other non-wire-safe characters
++ encoded HTML keys now survive browser lowercasing and decode back to their original JSON keys
++ VSN tags (`_-obj`, `_-arr`, `_-elem`, etc.) are excluded from key encoding
++ underscored tagnames are not permitted in _-elem nodes; they are only possible when source is JSON and are only valid within _-obj nodes. 
++  backtick tags are permitted in _-elem nodes
+	• BUG• possible bug: leading underscores are still not permitted within backticks 
 
 
 ### parsing
-- tokenizer now rejects malformed empty quoted tags:
-  - `<>`
-  - `<`` ...>`
++ tokenizer now rejects malformed empty quoted tags:
+ • `<>`
+ • `<`` ...>`
 
-- stricter tag-name handling for invalid punctuation cases
++ stricter tag-name handling for invalid punctuation cases
 
 ### tests
-- added transform fixtures for:
-  - spaced keys
-  - underscored keys
-  - nested encoded keys
-  - array/object edge cases
-  - empty-string keys
++ added transform fixtures for:
+ • spaced keys
+ • underscored keys
+ • nested encoded keys
+ • array/object edge cases
+ • empty-string keys
 
 
 ## 2.2.0
 
-- Migrated internal VSN tags from `_name` to `_-name`
++ Migrated internal VSN tags from `_name` to `_-name`
   (`_-root`, `_-obj`, `_-arr`, `_-elem`, `_-str`, `_-val`, `_-ii`).
-- Tightened HSON parsing and fixture validation.
-- Updated tests and docs for the new VSN namespace.
++ Tightened HSON parsing and fixture validation.
++ Updated tests and docs for the new VSN namespace.
 
 Note: serialized data using legacy `_root`, `_obj`, `_elem`, etc. is no longer current.
 
@@ -54,15 +96,13 @@ LiveTree already offered namespace-aware SVG parsing. New updates incorporate ty
 
 ⸻
 
-Added: Native SVG support in LiveTree
++ Native SVG support in LiveTree
 	•	Introduced SVG-aware creation pipeline (create.svg, SVG tag helpers).
 	•	Ensures correct namespace propagation (http://www.w3.org/2000/svg) at creation time.
 	•	Eliminates need for temporary wrapper <svg> shells during construction.
 	•	Aligns SVG creation behavior with HTML creation semantics.
 
-⸻
-
-Fixed: SVG creation + insertion semantics
++ SVG creation + insertion semantics
 	•	Resolved mismatch between:
 	•	parsed root nodes
 	•	appended nodes
@@ -72,18 +112,14 @@ Fixed: SVG creation + insertion semantics
 	•	maintain correct parentage
 	•	preserve insertion index behavior (at(), prepend())
 
-⸻
-
-Fixed: appendNodes() structural correctness
++ appendNodes() structural correctness
 	•	Corrected insertion logic to operate on actual child nodes rather than wrapper artifacts.
 	•	Ensures:
 	•	correct _-elem container usage
 	•	stable ordering during indexed inserts
 	•	consistent DOM ↔ HSON synchronization
 
-⸻
-
-Added: SVG API on LiveTree (tree.svg)
++ SVG API on LiveTree (tree.svg)
 	•	Extended existing svg namespace (previously only inScope()).
 	•	Added:
 	•	svg.bbox()
@@ -91,9 +127,7 @@ Added: SVG API on LiveTree (tree.svg)
 	•	Provides safe access to getBBox() without exposing raw DOM.
 	•	Follows existing dom.must.* pattern for error-safe access.
 
-⸻
-
-Extended: DOM geometry API (tree.dom.rect)
++ extended DOM geometry API (tree.dom.rect)
 	•	Expanded DomRectApi to include:
 	•	clientRects()
 	•	scrollSize()
@@ -101,73 +135,55 @@ Extended: DOM geometry API (tree.dom.rect)
 	•	Consolidates layout/measurement access under a single API surface.
 	•	Reduces need for direct DOM access for common geometry queries.
 
-⸻
-
-Added: SVG <image> support in creation helpers
++ SVG <image> support in creation helpers
 	•	Ensured image is included in SVG tag helpers.
 	•	Enables internal SVG transformations that rely on image replacement workflows.
 
-⸻
-
-Clarified: DOM vs SVG responsibility boundaries
++  DOM vs SVG responsibility boundaries
 	•	Formalized separation:
 	•	tree.dom.* → layout, connectivity, HTML-like behavior
 	•	tree.svg.* → SVG-specific geometry and transforms
 	•	Avoids mixing coordinate systems and API semantics.
 
-⸻
-
-Internal: Reduced reliance on direct DOM operations
++  Reduced reliance on direct DOM operations
 	•	Replaced ad hoc DOM usage patterns with LiveTree-native equivalents where possible:
 	•	structured creation (create.*)
 	•	controlled geometry access (dom.rect, svg.bbox)
 	•	Leaves only unavoidable low-level calls (e.g., getBBox) at the boundary.
-
-⸻
-
-Result
+### SUMMARY 
 	•	LiveTree now supports SVG as a first-class citizen alongside HTML.
 	•	Geometry and layout access are exposed through consistent, typed APIs.
 	•	Node creation, insertion, and measurement behave uniformly across namespaces.
 	•	Reduced need for direct DOM interaction in higher-level code.
 
-22MAR2026
+## 22MAR2026
 
 Transformer Chain — Change Summary
-
-Fixed: Auto-detection misclassification of markup inputs
++ Auto-detection misclassification of markup inputs
 	•	Adjusted auto entry resolution to reduce false positives between HSON and HTML.
 	•	Added strong heuristic: presence of </ biases toward HTML for diagnostic/test inputs.
 	•	JSON detection remains highest priority when syntax-valid.
 	•	Prevents HTML fixtures from being incorrectly parsed as HSON and vice versa.
 
-⸻
-
-Fixed: Multiline quoted attribute parsing in HSON
++ Multiline quoted attribute parsing in HSON
 	•	Tokenizer now supports quoted attribute values spanning multiple lines.
 	•	Header parsing no longer assumes single-line attributes.
 	•	Preserves literal newlines and whitespace inside quoted values.
 	•	Restored support for inline tail constructs (<>) after regression.
 
-⸻
-
-Fixed: Tokenizer → parser contract for quoted values
++ Tokenizer → parser contract for quoted values
 	•	Standardized behavior: tokenizer emits inner text for quoted values.
 	•	Removed ambiguity between “full JSON literal” vs “inner string” handling.
 	•	Simplifies downstream parsing and prevents double-decoding inconsistencies.
 
-⸻
-
-Fixed: unescape_hson_string() decoding behavior
++ unescape_hson_string() decoding behavior
 	•	Removed destructive .trim() on quoted content.
 	•	Removed incorrect unconditional JSON.parse of inner text.
 	•	Implemented explicit escape decoding for:
 	•	\", \\, \n, \r, \t, etc.
 	•	Preserves literal formatting while correctly interpreting escape sequences.
 
-⸻
-
-Fixed: HSON attribute serialization escaping
++ HSON attribute serialization escaping
 	•	Replaced naive quote-only escaping with full JSON-style string escaping.
 	•	Ensures correct handling of:
 	•	backslashes (\\)
@@ -178,9 +194,7 @@ Fixed: HSON attribute serialization escaping
 	•	meta/system attributes
 	•	Prevents corruption of embedded JSON (e.g., data-json, data-cf-beacon).
 
-⸻
-
-Fixed: Attribute roundtrip stability for JSON-like payloads
++ Attribute roundtrip stability for JSON-like payloads
 	•	Added focused fixtures for:
 	•	JSON-in-attr values
 	•	escaped quote/backslash cases
@@ -188,41 +202,19 @@ Fixed: Attribute roundtrip stability for JSON-like payloads
 	•	Identified HSON serialization as the failing stage.
 	•	Verified stable roundtrip across HTML → HSON → JSON → HTML.
 
-⸻
-
-Clarified: Raw-text element handling (script, style)
++  Raw-text element handling (script, style) clarified
 	•	Failures traced primarily to incorrect source detection and test assumptions.
 	•	Not a tokenizer regression.
 	•	Highlighted inconsistency: HTML parser returns direct _str without _-elem wrapper (known but not blocking).
 
-⸻
 
-Fixed: LiveTree test assumptions (detached vs mounted)
-	•	Clarified that asBranch() produces a detached tree with no DOM.
-	•	Tests updated to mount branches into sandbox before DOM access.
-	•	Eliminated false failures caused by missing DOM handles.
-
-⸻
-
-Fixed: Invalid or misleading test fixtures
-	•	Removed or corrected:
-	•	metadata fields treated as payload (label, notes)
-	•	duplicated test cases
-	•	incorrect fixture wiring
-	•	mismatched expectations (e.g., QUID reminting)
-	•	improper multi-root hydration cases
-
-⸻
-
-Decision: Closing tag formatting remains newline-based
++ Closing tag formatting remains newline-based
 	•	Retained requirement that closing tags (/>) appear on their own line.
 	•	Did not implement same-line closer suffix parsing.
 	•	Keeps tokenizer simpler and avoids ambiguity in mixed-content lines.
 
-⸻
-
-Result
-	•	Stable roundtrip across HSON ⇄ HTML ⇄ JSON for complex payloads.
+### SUMMARY
+	•	Stable roundtrip across HSON ⇄ HTML ⇄ JSON confirmed for more complex payloads.
 	•	Correct handling of multiline attributes and embedded structured strings.
 	•	Clearer separation of responsibilities between tokenizer, parser, and serializer.
 	•	Remaining edge cases reduced to intentional design constraints rather than bugs.
@@ -232,4 +224,4 @@ Result
 
 ** first public 'live' release. for previous versions see `hson-unsafe` **
 
-- finished docs v.1
++ finished docs v.1
