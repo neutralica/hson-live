@@ -1,5 +1,5 @@
 import { LiveTree } from "../../livetree.js";
-import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasSize } from "./canvas.types.js";
+import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasPoint, CanvasSize } from "./canvas.types.js";
 
 export function make_canvas_api<TTree extends LiveTree>(
   tree: TTree,
@@ -130,6 +130,32 @@ export function make_canvas_api<TTree extends LiveTree>(
     return tree;
   };
 
+  const pointer = (ev: MouseEvent | PointerEvent): CanvasPoint | undefined => {
+    const cvs = el();
+    if (!cvs) return undefined;
+
+    const rect = cvs.getBoundingClientRect();
+
+    return {
+      x: ev.clientX - rect.left,
+      y: ev.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  };
+  const mustPointer = (
+    ev: MouseEvent | PointerEvent,
+    label?: string,
+  ): CanvasPoint => {
+    const pt = pointer(ev);
+
+    if (!pt) {
+      throw new Error(label ?? "[LiveTree.canvas.must.pointer] no canvas element available");
+    }
+
+    return pt;
+  };
+
   const plot = (
     fn: (
       ctx: CanvasRenderingContext2D,
@@ -170,6 +196,7 @@ export function make_canvas_api<TTree extends LiveTree>(
     clear,
     plot,
     el,
+    pointer,
     inScope: () => tree.node._tag === "canvas",
     ctx2d: (settings) => {
       const canvas = el();
@@ -195,7 +222,6 @@ export function make_canvas_api<TTree extends LiveTree>(
       set: setBackingSize,
       clear: clearBackingSize,
     },
-
     display: {
       size: getDisplaySize,
       match: matchDisplay,
@@ -216,6 +242,7 @@ export function make_canvas_api<TTree extends LiveTree>(
         return ctx;
       },
       plot: mustPlot,
+      pointer: mustPointer,
 
     },
   };

@@ -28,6 +28,8 @@ export interface CanvasApi<TSelf> {
   clear(): TSelf;
   clear(x: number, y: number, w: number, h: number): TSelf;
 
+  pointer: (ev: PointerEvent | MouseEvent) => CanvasPoint | undefined;
+
   /**
    * Canvas dimension attribute helpers.
    */
@@ -55,6 +57,7 @@ export interface CanvasApi<TSelf> {
       settings?: CanvasRenderingContext2DSettings,
       label?: string,
     ): TSelf;
+    pointer: (ev: PointerEvent | MouseEvent) => CanvasPoint;
   };
 
 
@@ -96,6 +99,13 @@ export interface CanvasSizeApi<TSelf> {
   set(width: number, height: number): TSelf;
   clear(): TSelf;
 }
+
+export type CanvasPoint = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
 
 export type CanvasDisplaySize = Readonly<{
   width: number;
