@@ -1,5 +1,5 @@
 import { LiveTree } from "../../livetree.js";
-import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasPoint, CanvasSize } from "./canvas.types.js";
+import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasMatchFn, CanvasPoint, CanvasSize, CanvasWatchHandle } from "./canvas.types.js";
 
 export function make_canvas_api<TTree extends LiveTree>(
   tree: TTree,
@@ -81,7 +81,7 @@ export function make_canvas_api<TTree extends LiveTree>(
     };
   };
 
-  const matchDisplay = (
+  const matchOnce = (
     opts?: CanvasDisplayMatchOptions,
   ): TTree => {
     const canvas = el();
@@ -112,7 +112,34 @@ export function make_canvas_api<TTree extends LiveTree>(
 
     return tree;
   };
+  const match = ((opts?: CanvasDisplayMatchOptions): TTree => {
+    return matchOnce(opts);
+  }) as CanvasMatchFn<TTree>;
 
+  match.watch = (opts?: CanvasDisplayMatchOptions): CanvasWatchHandle => {
+    const canvas = el();
+
+    if (!canvas || typeof ResizeObserver === "undefined") {
+      return {
+        off: () => undefined,
+      };
+    }
+
+    // CHANGED: run once immediately so watch mode starts in a correct state.
+    matchOnce(opts);
+
+    const observer = new ResizeObserver(() => {
+      matchOnce(opts);
+    });
+
+    observer.observe(canvas);
+
+    return {
+      off: () => {
+        observer.disconnect();
+      },
+    };
+  };
   const clear = (...args: [] | [number, number, number, number]): TTree => {
     const canvas = el();
     if (!canvas) {
@@ -193,18 +220,21 @@ export function make_canvas_api<TTree extends LiveTree>(
   };
 
   return {
-    clear,
-    plot,
-    el,
-    pointer,
     inScope: () => tree.node._tag === "canvas",
+
+    el,
+
     ctx2d: (settings) => {
       const canvas = el();
+
       if (!canvas) {
         return undefined;
       }
+
       return canvas.getContext("2d", settings) ?? undefined;
     },
+
+    pointer,
 
     width: {
       get: () => getNumberAttr("width"),
@@ -217,33 +247,59 @@ export function make_canvas_api<TTree extends LiveTree>(
       set: (value) => setNumberAttr("height", value),
       clear: () => clearAttr("height"),
     },
+
     size: {
-      get: getBackingSize,
-      set: setBackingSize,
-      clear: clearBackingSize,
+      get: () => {
+        return {
+          width: getNumberAttr("width"),
+          height: getNumberAttr("height"),
+        };
+      },
+
+      set: (width, height) => {
+        setNumberAttr("width", width);
+        setNumberAttr("height", height);
+        return tree;
+      },
+
+      clear: () => {
+        clearAttr("width");
+        clearAttr("height");
+        return tree;
+      },
     },
+
     display: {
       size: getDisplaySize,
-      match: matchDisplay,
+      match,
     },
+
+    clear,
+    plot,
+
     must: {
       el: (label) => {
         const canvas = el();
+
         if (!canvas) {
           throw new Error(label ?? "[LiveTree.canvas.must.el] no canvas element available");
         }
+
         return canvas;
       },
+
       ctx2d: (settings, label) => {
         const ctx = el()?.getContext("2d", settings);
+
         if (!ctx) {
           throw new Error(label ?? "[LiveTree.canvas.must.ctx2d] no 2D canvas context available");
         }
+
         return ctx;
       },
-      plot: mustPlot,
-      pointer: mustPointer,
 
+      pointer: mustPointer,
+      plot: mustPlot,
     },
   };
 }
