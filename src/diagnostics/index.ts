@@ -16,3 +16,4 @@ export { _listeners_off_for_target, _listeners_debug_hard_reset } from "../api/l
 export { parse_style_string as _parse_style_string } from "../utils/attrs-utils/parse-style.js";
 export { parse_selector as _parse_selector } from "../utils/livetree-utils/parse-selector.js";
 export { serialize_style as _serialize_style } from "../utils/attrs-utils/serialize-style.js";
+export { disposables_count_for_owner as _disposables_count_for_owner } from "../api/livetree/managers/lifecycle-registry.js";

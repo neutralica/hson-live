@@ -3,7 +3,7 @@
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
 
-type Q = { type: string; handler: EventListener };
+
 type QueuedListener = {
   id: number;
   sub: ListenerSub | null;
@@ -15,31 +15,31 @@ type QueuedListener = {
   offs: Array<() => void> | null; // filled after attach
 };
 
-const REG = new WeakMap<EventTarget, Set<() => void>>();
-const OWNER_REG = new Map<string, Set<() => void>>();
+const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
+const OWNER_LISTENER_REG = new Map<string, Set<() => void>>();
 
 function owner_reg_add(ownerQuid: string, off: () => void): void {
-  let set = OWNER_REG.get(ownerQuid);
+  let set = OWNER_LISTENER_REG.get(ownerQuid);
   if (!set) {
     set = new Set();
-    OWNER_REG.set(ownerQuid, set);
+    OWNER_LISTENER_REG.set(ownerQuid, set);
   }
   set.add(off);
 }
 
 function owner_reg_remove(ownerQuid: string, off: () => void): void {
-  const set = OWNER_REG.get(ownerQuid);
+  const set = OWNER_LISTENER_REG.get(ownerQuid);
   if (!set) return;
   set.delete(off);
-  if (set.size === 0) OWNER_REG.delete(ownerQuid);
+  if (set.size === 0) OWNER_LISTENER_REG.delete(ownerQuid);
 }
 
 export function listeners_off_for_owner_quid(ownerQuid: string): void {
-  const set = OWNER_REG.get(ownerQuid);
+  const set = OWNER_LISTENER_REG.get(ownerQuid);
   if (!set) return;
 
   for (const off of set) off();
-  OWNER_REG.delete(ownerQuid);
+  OWNER_LISTENER_REG.delete(ownerQuid);
 }
 
 /**
@@ -68,8 +68,8 @@ function addWithOff(
 ): () => void {
   target.addEventListener(type, handler, opts);
   const off = () => target.removeEventListener(type, handler, opts);
-  let set = REG.get(target);
-  if (!set) { set = new Set(); REG.set(target, set); }
+  let set = TARGET_LISTENER_REG.get(target);
+  if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
   set.add(off);
   return off;
 }
@@ -89,7 +89,7 @@ function addWithOff(
  * @param target - The EventTarget whose listeners should be removed.
  */
 export function _listeners_off_for_target(target: EventTarget): void {
-  const set = REG.get(target);
+  const set = TARGET_LISTENER_REG.get(target);
   if (!set) return;
 
   for (const off of [...set]) off();
@@ -105,7 +105,7 @@ export function _listeners_debug_hard_reset(): void {
     _listeners_off_for_target(window);
   }
 
-  OWNER_REG.clear();
+  OWNER_LISTENER_REG.clear();
 }
 
 /**

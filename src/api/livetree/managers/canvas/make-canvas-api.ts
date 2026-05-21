@@ -1,4 +1,5 @@
 import { LiveTree } from "../../livetree.js";
+import { disposable_add_for_owner, disposable_remove_for_owner } from "../lifecycle-registry.js";
 import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasMatchFn, CanvasPoint, CanvasSize, CanvasWatchHandle } from "./canvas.types.js";
 
 export function make_canvas_api<TTree extends LiveTree>(
@@ -125,7 +126,6 @@ export function make_canvas_api<TTree extends LiveTree>(
       };
     }
 
-    // CHANGED: run once immediately so watch mode starts in a correct state.
     matchOnce(opts);
 
     const observer = new ResizeObserver(() => {
@@ -134,12 +134,21 @@ export function make_canvas_api<TTree extends LiveTree>(
 
     observer.observe(canvas);
 
-    return {
-      off: () => {
-        observer.disconnect();
-      },
+    let active = true;
+
+    const off = (): void => {
+      if (!active) return;
+
+      active = false;
+      observer.disconnect();
+      disposable_remove_for_owner(tree.quid, off);
     };
+
+    disposable_add_for_owner(tree.quid, off);
+
+    return { off };
   };
+
   const clear = (...args: [] | [number, number, number, number]): TTree => {
     const canvas = el();
     if (!canvas) {

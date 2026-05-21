@@ -5,6 +5,7 @@ import { HsonNode } from "../../types/node.types.js";
 import { is_Node } from "../node-utils/node-guards.js";
 import { element_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../../api/livetree/managers/css-manager.js";
+import { disposables_off_for_owner } from "../../api/livetree/managers/lifecycle-registry.js";
 
 type NodeWithKids = { _content?: unknown[] };
 
@@ -55,7 +56,11 @@ type NodeWithKids = { _content?: unknown[] };
     CssManager.invoke().clearQuid(quid);
     listeners_off_for_owner_quid(quid); // NEW
   }
-
+  if (typeof quid === "string" && quid.length) {
+    CssManager.invoke().clearQuid(quid);
+    listeners_off_for_owner_quid(quid);
+    disposables_off_for_owner(quid); // NEW
+  }
   // 3) finally drop the map entry
   unlinkNode(node);
 }
