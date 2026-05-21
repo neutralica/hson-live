@@ -2,7 +2,7 @@ import { LiveTree } from "../api/livetree/livetree.js";
 import { CanvasApi, LiveTreeCanvas } from "../api/livetree/managers/canvas/canvas.types.js";
 import { ContentManager } from "../api/livetree/managers/content-manager.js";
 import { DataApi } from "../api/livetree/managers/data-manager.js";
-import { SvgApi } from "../api/livetree/managers/svg-builder.js";
+import { SvgApi } from "../api/livetree/managers/svg-api.js";
 import { LiveTextApi } from "../api/livetree/managers/text-form-values.js";
 import { FindMany } from "../api/livetree/methods/find.js";
 import { AttrHandle, FlagHandle } from "./attrs.types.js";

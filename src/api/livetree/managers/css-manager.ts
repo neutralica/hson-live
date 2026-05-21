@@ -5,7 +5,7 @@ import { _DATA_QUID } from "../../../consts/constants.js";
 import { CssValue, CssProp, CssPseudoKey } from "../../../types/css.types.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
 import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types.js";
-import { manage_property } from "./at-prop-builder.js";
+import { manage_property } from "./at-property-builder.js";
 import { manage_keyframes } from "./keyframes-manager.js";
 import { KeyframesManager } from "../../../types/keyframes.types.js";
 import { LiveTree } from "../livetree.js";
