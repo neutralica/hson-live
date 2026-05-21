@@ -7,45 +7,29 @@
 
 ## 11MAY2026
 #### LiveTree SVG ergonomics
-• SVG helpers wrap attrs.set calls (initially: viewBox, preserveAspectRatio, d, fill, stroke)
-```ts
-tree.create.svg()
-  .viewBox("0 0 100 100")
-  .preserveAspectRatio("none");
-svg.create.path()
-  .d.set("...");
-```
+~~• SVG helpers wrap attrs.set calls (initially: viewBox, preserveAspectRatio, d, fill, stroke)~~
 
-•optional path builder - accept chained args and convert to string for d attribute
-```ts
-svgPath()
-  .move(...)
-  .line(...)
-  .quad(...)
-  .close()
-  .toString();
-```
+~~•optional path builder - accept chained args and convert to string for d attribute~~ X NO
 
 ## 03MAY2026
-- 3-way test "auto" mode interprets malformed HSON as weird HTML
-- VSN prefix has been changed from `_VSN` to `_-VSN` to permit underscored JSON keys 
+~~- 3-way test "auto" mode interprets malformed HSON as weird HTML~~
+~~- change VSN prefix from `_VSN` to `_-VSN` to permit underscored JSON keys ~~
   • this should be done for _attrs, _tag, _content, and _meta as well
-- declutter CssManager, GlobalCss, LiveTree as much as possible. 
-  - create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface
+- declutter CssManager, GlobalCss,~~ LiveTree~~ as much as possible. 
+  ~~- create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface~~
   
 
 ## 21APR2026
-SVG — still missing:
-
-1. ViewBox / coordinate helpers
-• get/set viewBox
+~~SVG — still missing:~~
+~~1. ViewBox / coordinate helpers~~
+~~• get/set viewBox~~
 • pan/zoom helpers
 •  coordinate conversion helpers
 
-2. Path helpers
+~2. Path helpers~
 • append path segments
-• maybe a path-string utility layer
-• helpers for common commands
+~~• maybe a path-string utility layer~~ X NO
+• helpers for common commands // ??? what tho
 
 
 3. Transform helpers
@@ -54,18 +38,15 @@ SVG — still missing:
 • matrix parsing?
 
 
-4. Namespace / tag guarantees
-• SVG tag creation correctness
-• mixed HTML/SVG boundary correctness
-• serialization correctness
+~~4. Namespace / tag guarantees~~ // tested exhaustively
+~~• SVG tag creation correctness~~
+~~• mixed HTML/SVG boundary correctness~~
+~~• serialization correctness~~
 
 
-5. Geometry reads
-
-Possibly:
-
-• bbox
-• path length
+~5. Geometry reads~
+~~• bbox~~
+• path length //??
 • point-at-length
 • hit testing helpers
 
@@ -78,7 +59,7 @@ Possibly:
 • inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?
 
 ## 01APR2026
-• gcss.ALL.rule.set / gcss.rule.ALL.set
+~~• gcss.ALL.rule.set / gcss.rule.ALL.set~~ // (already implemented in gcss.rule.set)
 
 ## 19MAR2026
 ~~dom.el.must~~
@@ -87,7 +68,7 @@ Possibly:
 ## 18MAR2026
 • find/findall.byClass
 • find/findall.byData?
-• find/findall.byTag
+~~• find/findall.byTag~~
 ~~• scrollHeight/width~~
 ~~• scrollTop~~
 ~~• similar~~
@@ -105,9 +86,7 @@ Possibly:
 ~~•	getBoundingClientRect and friends, maybe under .dom~~
 • getAnimations
 ~~• elementFromPoint, etc~~
-
- Keyframes teardown + keyframe ownership maps
-
+• Keyframes teardown + keyframe ownership maps
  Multi-document / window switching bug
 	•	queryBody() locked to one document; needs a fix eventually.
 	•	Not coupled to attrs/flags.
