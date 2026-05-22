@@ -23,6 +23,7 @@ export interface LiveTreeDocument {
   treeAtPoint(x: number, y: number): LiveTree | undefined;
   treesFromPoint(x: number, y: number): TreeSelector;
 }
+
 /**
  * DOM adapter surface returned by `LiveTree.dom`.
  */
