@@ -91,7 +91,7 @@ export function make_set_surface<TReturn>(
         // changed: match css.get.var; accept "--x", "-x", or "x".
         return (name: string, v: CssValue) => {
           const canon = normalize_css_var_name(name);
-          if (!canon) return setProp("--", v);
+          if (!canon) return setProp("--invalid-css-var-name", v);
           return setProp(canon, v);
         };
       }

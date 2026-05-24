@@ -1,10 +1,11 @@
 // global_css.ts
 
 import { canon_to_css_prop, normalize_css_value } from "../../../_tests/test-exports.js";
-import { CssMapBase, CssPseudoKey } from "../../../types/css.types.js";
+import { CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
 import { make_style_setter, StyleSetter } from "./style-setter.js";
+import { normalize_css_var_name } from "./style-getter.js";
 
 /**
  * Stored model for one global CSS rule.
@@ -64,6 +65,39 @@ export type GlobalRuleHandle = Readonly<
     drop(): void;     // remove entire rule
   }
 >;
+
+/**
+ * Global CSS custom-property facade.
+ *
+ * These variables are written to `:root`, not to QUID-scoped or node-local
+ * styles. Use this for app/theme variables that should be consumed throughout
+ * the document.
+ */
+export type GlobalVarFacade = Readonly<{
+  /** Return a canonical CSS custom-property name, e.g. `"theme-ink"` -> `"--theme-ink"`. */
+  name(name: string): `--${string}` | undefined;
+
+  /** Return a CSS variable reference, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
+  ref(name: string): `var(--${string})`;
+
+  /** Set a global `:root` CSS custom property. */
+  set(name: string, value: CssValue): void;
+
+  /** Read a raw global `:root` CSS custom-property value. */
+  get(name: string): string | undefined;
+
+  /** Remove one global `:root` CSS custom property. */
+  remove(name: string): void;
+
+  /** Remove all global variables managed through this facade. */
+  clear(): void;
+
+  /** List canonical global variable names currently managed through this facade. */
+  list(): readonly `--${string}`[];
+}>;
+
+const GLOBAL_VARS_RULE_KEY = "global-vars::root";
+const GLOBAL_VARS_SELECTOR = ":root";
 
 /**
  * GlobalCss change subscribers.
@@ -297,6 +331,7 @@ export class GlobalCss {
 
     return {
       ...root,
+      var: g().varsFacade(),
       dispose: () => { _listeners.delete(onChange); },
       drop: (ruleKey: string) => g().remove(ruleKey),
       clearAll: () => g().clear(),
@@ -322,6 +357,8 @@ export class GlobalCss {
 
       sel: (selector: string) =>
         g().rule(GlobalCss.id_for_selector(selector), selector, scopes),
+
+      var: g().varsFacade(),
 
       scope: (scopeName: string, atRule: string) =>
         g().facade([...scopes, atRule.trim()]),
@@ -465,6 +502,109 @@ export class GlobalCss {
       drop: () => {
         const had = this.rules.delete(ruleKey) || this.rendered.delete(ruleKey);
         if (had) notifyChanged();
+      },
+    };
+  }
+
+  /**
+   * Return the global CSS custom-property facade.
+   *
+   * Values are stored in the shared `:root` rule, so this facade is suitable
+   * for theme tokens and app-wide variables. It intentionally does not depend
+   * on any LiveTree node or QUID selector.
+   */
+  private varsFacade(): GlobalVarFacade {
+    const canonical = (name: string): `--${string}` | undefined => {
+      return normalize_css_var_name(name);
+    };
+
+    const getRootRule = (): GlobalRule | undefined => {
+      const found = this.rules.get(GLOBAL_VARS_RULE_KEY);
+      if (!found || found.selector !== GLOBAL_VARS_SELECTOR) return undefined;
+      return found;
+    };
+
+    const getRootDecls = (): Record<string, string> => {
+      const prior = getRootRule();
+      return prior ? { ...prior.decls } : {};
+    };
+
+    const commitRootDecls = (decls: Record<string, string>): void => {
+      const keys = Object.keys(decls).filter(Boolean);
+
+      if (keys.length === 0) {
+        const had = this.rules.delete(GLOBAL_VARS_RULE_KEY) || this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+        if (had) notifyChanged();
+        return;
+      }
+
+      const cssText = render_rule(GLOBAL_VARS_SELECTOR, decls).trim();
+      const prev = this.rendered.get(GLOBAL_VARS_RULE_KEY);
+      if (prev === cssText) return;
+
+      this.rules.set(GLOBAL_VARS_RULE_KEY, {
+        selector: GLOBAL_VARS_SELECTOR,
+        decls: { ...decls },
+      });
+
+      this.rendered.set(GLOBAL_VARS_RULE_KEY, cssText);
+      notifyChanged();
+    };
+
+    return {
+      name: (name: string) => canonical(name),
+
+      ref: (name: string) => {
+        const canon = canonical(name);
+        if (!canon) throw new Error(`GlobalCss.var.ref: invalid CSS variable name: ${name}`);
+        return `var(${canon})` as `var(--${string})`;
+      },
+
+      set: (name: string, value: CssValue) => {
+        const canon = canonical(name);
+        if (!canon) return;
+
+        const rendered = render_css_value(value);
+        const decls = getRootDecls();
+
+        if (rendered == null || rendered.length === 0) {
+          delete decls[canon];
+          commitRootDecls(decls);
+          return;
+        }
+
+        if (decls[canon] === rendered) return;
+        decls[canon] = rendered;
+        commitRootDecls(decls);
+      },
+
+      get: (name: string) => {
+        const canon = canonical(name);
+        if (!canon) return undefined;
+        return getRootRule()?.decls[canon];
+      },
+
+      remove: (name: string) => {
+        const canon = canonical(name);
+        if (!canon) return;
+
+        const decls = getRootDecls();
+        if (!(canon in decls)) return;
+
+        delete decls[canon];
+        commitRootDecls(decls);
+      },
+
+      clear: () => {
+        const had = this.rules.delete(GLOBAL_VARS_RULE_KEY) || this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+        if (had) notifyChanged();
+      },
+
+      list: () => {
+        const decls = getRootRule()?.decls ?? {};
+        return Object.keys(decls)
+          .filter((k): k is `--${string}` => k.startsWith("--"))
+          .sort();
       },
     };
   }

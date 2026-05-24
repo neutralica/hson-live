@@ -93,7 +93,7 @@ function make_selector_style_setter<TReturn>(
   ids: readonly string[],
   patternRaw: string,
 ): StyleSetter<TReturn> {
-  const gcss = CssManager.globals.invoke();
+  const gcss = CssManager.api();
 
   const selector = resolve_selector_pattern(ids, patternRaw);
   const ruleKey = selector_rule_key(ids, patternRaw);

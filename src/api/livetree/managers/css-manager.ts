@@ -20,6 +20,14 @@ const CSS_STYLE_ID = "_hson";
 
 type GlobalCssApi = ReturnType<typeof GlobalCss.api>;
 
+export type CssManagerApi = GlobalCssApi & Readonly<{
+  /** Public access to the shared CSS `@property` registration manager. */
+  atProperty: PropertyManager;
+
+  /** Public access to the shared keyframes manager. */
+  keyframes: KeyframesManager;
+}>;
+
 /**
  * Convert a `CssPseudoKey` into its CSS selector suffix.
  *
@@ -877,17 +885,35 @@ export class CssManager {
   }
 
   /**
-   * Global CSS facade.
+   * Public CSS API facade.
    *
-   * Use `CssManager.globals.invoke()` to access the shared GlobalCss API
-   * (rule-based, not QUID-scoped).
+   * Use `CssManager.api()` for user-facing stylesheet operations:
+   * selector rules, media/supports/layer rules, global variables, `@property`
+   * registrations, keyframes, and related stylesheet helpers.
+   *
+   * `CssManager.invoke()` remains the lower-level engine entrypoint for QUID
+   * rules, DOM sync, snapshots, dev resets, and other internal plumbing.
    */
-  // public facade stays the same idea, but route through the instance:
-  public static readonly globals = {
-    invoke(): GlobalCssApi {
-      return CssManager.invoke().globals_invoke();
-    },
-  } as const;
+  public static api(): CssManagerApi {
+    const mgr = CssManager.invoke();
+    const globalApi = mgr.globals_invoke();
+
+    return {
+      ...globalApi,
+      atProperty: mgr.atProperty,
+      keyframes: mgr.keyframes,
+    } as const;
+  }
+
+  // /**
+  //  * DEPRECATED in favor of api
+  //  * Back-compat alias for the public CSS API facade.
+  //  *
+  //  * Prefer `CssManager.api()` in new code.
+  //  */
+  // public static globals(): GlobalCssApi {
+  //   return CssManager.api();
+  // }
 
 
 
