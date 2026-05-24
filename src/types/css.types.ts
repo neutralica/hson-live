@@ -367,6 +367,11 @@ export type AllowedStyleKey = Exclude<KeysWithStringValues<CSSStyleDeclaration>,
  */
 export type CssKey = string;
 /**
+ * CSS custom property name in canonical `--x` form.
+ */
+export type CssVarName = `--${string}`;
+
+/**
  * Proxy-call surface used by `StyleSetter.set`.
  *
  * This is a *type-level* convenience that provides ergonomic calls like:
@@ -374,23 +379,21 @@ export type CssKey = string;
  * while still permitting:
  *   `handle.set["background-color"]("aquamarine")`
  *   `handle.set.var("--k", 1)`
+ *   `handle.set.var("k", 1)`
  *
  * `Next` is typically the handle type itself (for chaining).
  */
-
 export type SetSurface<Next> =
   // enumerated known CSSStyleDeclaration keys → rich autocomplete
   {
     [K in AllowedStyleKey]: (v: CssValue) => Next;
   }
   // allow these via bracket access too
-  &
-
-  Record<`--${string}`, (v: CssValue) => Next> &
-  Record<`${string}-${string}`, (v: CssValue) => Next>
+  & Record<CssVarName, (v: CssValue) => Next>
+  & Record<`${string}-${string}`, (v: CssValue) => Next>
   // convenience
-  &
-
-  { var: (name: `--${string}`, v: CssValue) => Next; };
-
+  & {
+    /** Set a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
+    var: (name: string, v: CssValue) => Next;
+  };
   

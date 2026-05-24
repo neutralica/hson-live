@@ -106,20 +106,20 @@ export function manage_property(args: {
 
 
 
-/**
- * Render a single `@property` registration into canonical CSS text.
- *
- * Output is intentionally deterministic and diff-friendly:
- * - always emits `syntax` and `inherits`
- * - emits `initial-value` only when provided (optional only for `syn="*"`)
- * - uses stable indentation and newline joining
- *
- * @param r
- *   The normalized property registration to render.
- *
- * @returns
- *   A complete `@property … { … }` block as CSS text.
- */
+    /**
+     * Render a single `@property` registration into canonical CSS text.
+     *
+     * Output is intentionally deterministic and diff-friendly:
+     * - always emits `syntax` and `inherits`
+     * - emits `initial-value` only when provided (optional only for `syn="*"`)
+     * - uses stable indentation and newline joining
+     *
+     * @param r
+     *   The normalized property registration to render.
+     *
+     * @returns
+     *   A complete `@property … { … }` block as CSS text.
+     */
     function renderReg(r: PropertyRegistration): string {
         //  build lines explicitly; init is optional only for "*".
         const lines: string[] = [];
@@ -164,13 +164,26 @@ export function manage_property(args: {
             args.onChange();
         },
 
-        registerMany(inputs: readonly PropertyInput[]): void {
-            //  batch normalize + set.
+        registerMany(inputs): void {
+            let changed = false;
+
             for (const input of inputs) {
-                const reg: PropertyRegistration = coerce_atprop_input(input);
-                regByName.set(reg.name, reg);
+                const next = coerce_atprop_input(input);
+                const prev = regByName.get(next.name);
+
+                const isSame =
+                    prev !== undefined &&
+                    prev.syn === next.syn &&
+                    prev.inh === next.inh &&
+                    prev.init === next.init;
+
+                if (isSame) continue;
+
+                regByName.set(next.name, next);
+                changed = true;
             }
-            args.onChange();
+
+            if (changed) args.onChange();
         },
 
         unregister(name: CssCustomPropName): void {

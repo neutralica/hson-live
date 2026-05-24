@@ -165,7 +165,7 @@ Attributes appear inside the opening tag, before content. When attributes and co
 
 ### Attributes:
 *	are HTML-derived metadata, not content
-  *	are stored in the _attrs property, not in _content
+*	are stored in the _attrs property, not in _content
 *	are not ordered semantically
 *	are serialized in HSON tags as `foo="bar"`
 

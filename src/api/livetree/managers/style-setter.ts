@@ -5,6 +5,7 @@ import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { SetSurface } from "../../../types/css.types.js";
 import { CssKey } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { normalize_css_var_name } from "./style-getter.js";
 
 
 // type guard for structured CssValue object
@@ -87,14 +88,31 @@ export function make_set_surface<TReturn>(
   return new Proxy({} as SetSurface<TReturn>, {
     get(_t, rawKey: string | symbol) {
       if (rawKey === "var") {
-        return (name: `--${string}`, v: CssValue) => setProp(name, v);
+        // changed: match css.get.var; accept "--x", "-x", or "x".
+        return (name: string, v: CssValue) => {
+          const canon = normalize_css_var_name(name);
+          if (!canon) return setProp("--", v);
+          return setProp(canon, v);
+        };
       }
+
       if (typeof rawKey !== "string") return undefined;
+
+      // changed: bracket access to custom props uses the same var normalizer.
+      if (rawKey.startsWith("--")) {
+        return (v: CssValue) => {
+          const canon = normalize_css_var_name(rawKey);
+          if (!canon) return setProp("--", v);
+          return setProp(canon, v);
+        };
+      }
 
       return (v: CssValue) => setProp(rawKey, v);
     },
   });
 }
+
+const isInvalidCssVarName = (propCanon: string): boolean => propCanon === "--invalid-css-var-name";
 
 /**
  * Fluent write surface for styles.
@@ -226,6 +244,9 @@ export function make_style_setter<TReturn>(
     const canon = normalize_css_key(prop);
     const rendered = renderCssValue(v);
 
+    // changed: invalid custom-property convenience input becomes a no-op.
+    if (isInvalidCssVarName(canon)) return host;
+
     if (rendered == null) {
       adapters.remove(canon);
       return host;
@@ -253,8 +274,13 @@ export function make_style_setter<TReturn>(
         // narrow to CssValue before calling setProp
         if (!isCssValue(v)) continue;
 
-        // k from Object.entries is string; cast is fine because setProp normalizes anyway
-        if (v !== undefined && v !== null) setProp(k as CssKey, v);
+        if (v !== undefined && v !== null) {
+          const prop = k.startsWith("--")
+            ? normalize_css_var_name(k) ?? "--invalid-css-var-name"
+            : k;
+
+          setProp(prop as CssKey, v);
+        }
       }
       return host;
     },
@@ -318,4 +344,3 @@ function renderCssValue(v: CssValue): string | null {
   }
   return String(v);
 }
-

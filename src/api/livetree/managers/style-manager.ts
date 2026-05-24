@@ -68,6 +68,38 @@ export const parse_style_attr = (raw: string | undefined): Map<string, string> =
     return out;
 };
 
+
+function readStyleFromNode(node: HsonNode, propCanon: string): string | undefined {
+  const attrs = node._attrs as HsonAttrs | undefined;
+  const raw = attrs?.style;
+
+  const kebabKey = propCanon.startsWith("--")
+    ? propCanon
+    : camel_to_kebab(propCanon);
+
+  const internalKey = propCanon.startsWith("--")
+    ? propCanon
+    : kebab_to_camel(kebabKey);
+
+  if (raw && typeof raw === "object") {
+    const styleObj = raw as CssMap;
+
+    const direct = styleObj[internalKey as keyof CssMap];
+    if (typeof direct === "string") return direct;
+
+    // changed: tolerate legacy/object styles that still contain kebab keys.
+    const legacy = styleObj[kebabKey as keyof CssMap];
+    return typeof legacy === "string" ? legacy : undefined;
+  }
+
+  if (typeof raw === "string") {
+    const map = parse_style_attr(raw);
+    return map.get(kebabKey);
+  }
+
+  return undefined;
+}
+
 /**
  * Remove a single inline style declaration from a node and its DOM element.
  *
@@ -91,7 +123,7 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
     const internalKey =
         kebabName.startsWith("--")
             ? kebabName
-            : kebab_to_camel(kebabName); 
+            : kebab_to_camel(kebabName);
 
     // 2) Update node model (_attrs.style is CssObject now)
     const attrs = (node as any)._attrs as HsonAttrs | undefined;
@@ -280,7 +312,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * the `LiveTree` it was constructed with, not on selections.
  */
 export class StyleManager<TTree extends LiveTree> {
-  private readonly tree: TTree;
+    private readonly tree: TTree;
     private readonly runtimeKeys: ReadonlyArray<AllowedStyleKey>;
     public readonly setter: StyleSetter<TTree>;
 
@@ -323,19 +355,9 @@ export class StyleManager<TTree extends LiveTree> {
 
         // getter reads from the node’s style attr (internal truth)
         this.getter = make_style_getter({
-            read: (propCanon: string) => {
-                // StyleManager stores inline style in kebab form
-                const attr = this.tree.attr.get("style");
-                const raw = typeof attr === "string" ? attr : undefined;
 
-                const map = parse_style_attr(raw);
+            read: (propCanon: string) => readStyleFromNode(this.tree.node, propCanon),
 
-                const key = propCanon.startsWith("--")
-                    ? propCanon
-                    : camel_to_kebab(propCanon);
-
-                return map.get(key);
-            },
         });
     }
 
