@@ -5,14 +5,15 @@ import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseud
 import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../managers/css-manager.js";
-import { make_style_getter } from "../managers/style-getter.js";
+import { GetSurface, make_style_getter, StyleGetter } from "../managers/style-getter.js";
 import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
 // one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
 const mk_css_quids_adapters = (
+  hostOrVoid: LiveTree | void,
   mgr: CssManager,
-  ids: readonly string[],
+  ids: string[],
 ): StyleSetterAdapters & {
   applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => void;
 } => {
@@ -31,7 +32,13 @@ const mk_css_quids_adapters = (
         mgr.clearPseudoAllForQuid?.(quid);
       }
     },
+    applySelector: (pattern, decls) => {
+      const selector = resolve_selector_pattern(ids, pattern);
+      const ruleKey = selector_rule_key(hostOrVoid, ids, pattern);
+      const handle = CssManager.api().rule(ruleKey, selector);
 
+      handle.setMany(decls);
+    },
     // pseudo routing for quid-scoped rules
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
       for (const quid of ids) {
@@ -78,25 +85,102 @@ function resolve_selector_pattern(
     ))
     .join(", ");
 }
+function read_decl_from_rendered_rule(
+  rendered: string | undefined,
+  propCanon: string,
+): string | undefined {
+  if (!rendered) return undefined;
 
-function selector_rule_key(
-  ids: readonly string[],
-  patternRaw: string,
-): string {
-  const idsPart = ids.map((q) => q.trim()).filter(Boolean).join("|");
-  const patPart = patternRaw.trim();
-  return `quid-sel:${idsPart}::${patPart}`;
+  const open = rendered.indexOf("{");
+  const close = rendered.lastIndexOf("}");
+  if (open < 0 || close <= open) return undefined;
+
+  const body = rendered.slice(open + 1, close);
+  const parts = body.split(";");
+
+  for (const part of parts) {
+    const ix = part.indexOf(":");
+    if (ix < 0) continue;
+
+    const key = part.slice(0, ix).trim();
+    if (key !== propCanon) continue;
+
+    return part.slice(ix + 1).trim();
+  }
+
+  return undefined;
 }
 
-function make_selector_style_setter<TReturn>(
+function selector_rule_key(
+  host: LiveTree | void,
+  ids: string[],
+  pattern: string,
+): string {
+  if (host) {
+    return `${host.id} ${ids.join(" ")} ${pattern}`;
+  }
+  return `${ids.join(" ")} ${pattern}`;
+}
+
+export function make_selector_style_getter(
+  host: LiveTree | void,
+  ids: string[],
+  pattern: string,
+): StyleGetter {
+  const gcss = CssManager.api();
+  const ruleKey = selector_rule_key(host, ids, pattern);
+
+  return make_style_getter({
+    read: (propCanon: string) => {
+      // GlobalCss.api().get(ruleKey) returns rendered CSS text,
+      // not the internal rule object. Read fresh each time so selector.get
+      // sees values written after this getter surface was created.
+      return read_decl_from_rendered_rule(gcss.get(selector_rule_key(host, ids, pattern)), propCanon);
+    },
+  });
+}
+
+function make_selector_style_handle<TReturn extends LiveTree | void>(
   ret: TReturn,
-  ids: readonly string[],
+  ids: string[],
+  patternRaw: string,
+): StyleSetter<TReturn> & { get: GetSurface } {
+  const setter = make_selector_style_setter(ret, ids, patternRaw);
+  const getter = make_selector_style_getter(ret, ids, patternRaw);
+
+  return {
+    ...setter,
+    get: getter,
+  };
+}
+
+export function make_style_getter_for_ids(
+  host: LiveTree | undefined,
+  ids: string[],
+) {
+  if (isLiveTree(host)) {
+    return {
+      selector: (pattern: string) =>
+        make_selector_style_handle<LiveTree>(host, ids, pattern),
+    };
+  } else {
+    return {
+      selector: (pattern: string) =>
+        make_selector_style_handle<void>(undefined, ids, pattern),
+    };
+  }
+}
+
+
+function make_selector_style_setter<TReturn extends LiveTree | void>(
+  ret: TReturn,
+  ids: string[],
   patternRaw: string,
 ): StyleSetter<TReturn> {
   const gcss = CssManager.api();
 
   const selector = resolve_selector_pattern(ids, patternRaw);
-  const ruleKey = selector_rule_key(ids, patternRaw);
+  const ruleKey = selector_rule_key(ret, ids, patternRaw);
 
   const handle = gcss.rule(ruleKey, selector);
 
@@ -178,7 +262,7 @@ export function css_for_quids(
 
     const setter = make_style_setter<LiveTree>(
       host,
-      mk_css_quids_adapters(mgr, ids), // single source of truth
+      mk_css_quids_adapters(host, mgr, ids), // single source of truth
     );
 
     const getter = mk_getter_for_ids(ids);
@@ -190,8 +274,8 @@ export function css_for_quids(
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
       devSnapshot: () => mgr.snapshot(),
-      selector: (pattern: string) =>
-        make_selector_style_setter<LiveTree>(host, ids, pattern),
+      selector: (pattern: string) => make_selector_style_handle<LiveTree>(host, ids, pattern),
+
     };
   }
 
@@ -199,7 +283,8 @@ export function css_for_quids(
 
   const setter = make_style_setter<void>(
     undefined,
-    mk_css_quids_adapters(mgr, ids), // same helper here too
+    // this overload has no LiveTree host; selector rule keys are ids+pattern only.
+    mk_css_quids_adapters(undefined, mgr, ids),
   );
 
   const getter = mk_getter_for_ids(ids);
@@ -211,12 +296,11 @@ export function css_for_quids(
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
     anim: mgr.animForQuids(ids),
-      selector: (pattern: string) =>
-      make_selector_style_setter<void>(undefined, ids, pattern),
+    selector: (pattern: string) => make_selector_style_handle<void>(undefined, ids, pattern),
 
-    
-  };
-}
+  }
+};
+
 /**
  * Convenience wrapper for the single-QUID case.
  *

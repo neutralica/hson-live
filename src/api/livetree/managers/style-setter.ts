@@ -183,6 +183,8 @@ export type StyleSetterAdapters = Readonly<{
    */
   applyPseudo?: (pseudo: CssPseudoKey, decls: CssMapBase) => void;
 
+  applySelector?: (pattern: string, decls: CssMapBase) => void;
+  
 }>;
 
 /**
@@ -270,7 +272,14 @@ export function make_style_setter<TReturn>(
           if (adapters.applyPseudo) adapters.applyPseudo(pseudo, v);
           continue;
         }
-
+        const isNestedSelectorKey = (k: string): boolean => {
+          const s = k.trim();
+          return s.startsWith("&");
+        };
+        if (isNestedSelectorKey(k) && isPseudoDecls(v)) {
+          if (adapters.applySelector) adapters.applySelector(k, v);
+          continue;
+        }
         // narrow to CssValue before calling setProp
         if (!isCssValue(v)) continue;
 
