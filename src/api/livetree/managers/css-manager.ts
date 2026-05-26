@@ -7,7 +7,7 @@ import { apply_animation, bind_anim_api } from "../methods/anim.js";
 import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types.js";
 import { manage_property } from "./at-property-builder.js";
 import { manage_keyframes } from "./keyframes-manager.js";
-import { KeyframesManager } from "../../../types/keyframes.types.js";
+import { KeyframesInput, KeyframesManager } from "../../../types/keyframes.types.js";
 import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss, render_rule } from "./global-css.js";
@@ -594,6 +594,35 @@ export class CssManager {
   public get keyframes(): KeyframesManager {
     return this.keyframeManager;
 
+  }
+
+  /**
+   * Register keyframes owned by a QUID-scoped node/branch.
+   *
+   * The keyframes are emitted globally as CSS `@keyframes`, but their lifecycle
+   * is tied to the owner QUID. Use `CssManager.api().keyframes.set()` for
+   * durable/global keyframes that should not be auto-released.
+   */
+  public setOwnedKeyframesForQuid(quid: string, input: KeyframesInput): void {
+    const q = quid.trim();
+    if (!q) return;
+    this.keyframeManager.setOwned(q, input);
+  }
+
+  /**
+   * Release stylesheet artifacts owned by one QUID.
+   *
+   * This is intended for branch/node teardown paths. It clears QUID-scoped
+   * declarations, pseudo declarations, and generated keyframes owned by the
+   * QUID. Durable/global CSS created through `CssManager.api()` is unaffected.
+   */
+  public releaseOwnedCssForQuid(quid: string): void {
+    const q = quid.trim();
+    if (!q) return;
+
+    this.clearQuid(q);
+    this.clearPseudoAllForQuid(q);
+    this.keyframeManager.releaseOwner(q);
   }
 
   // --- WRITE API (QUID-based) -------------------------------------------

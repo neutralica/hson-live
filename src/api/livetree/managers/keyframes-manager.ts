@@ -1,7 +1,7 @@
 // keyframes.ts
 
 import { canon_to_css_prop } from "../../../utils/attrs-utils/normalize-css.js";
-import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager } from "../../../types/keyframes.types.js";
+import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager, KeyframesOwner } from "../../../types/keyframes.types.js";
 
 /**
  * Narrow a `KeyframesInput` union to the tuple-shaped variant.
@@ -222,7 +222,7 @@ function normalizeKeyframesInput(input: KeyframesInput): KeyframesDef {
   const sorted = sortSteps(Array.from(byAt.values()));
 
   // canonical form.
-  return { name, steps: sorted };
+  return { name, steps: sorted, source: input.source };
 }
 
 /**
@@ -329,6 +329,39 @@ export function manage_keyframes(args: {
   // storage by name.
   const byName: Map<KeyframesName, KeyframesDef> = new Map();
 
+  // changed: ownership index for generated/node-owned keyframes.
+  const namesByOwner: Map<KeyframesOwner, Set<KeyframesName>> = new Map();
+  const ownerByName: Map<KeyframesName, KeyframesOwner> = new Map();
+
+  const releaseNameOwnership = (name: KeyframesName): void => {
+    const priorOwner = ownerByName.get(name);
+    if (!priorOwner) return;
+
+    ownerByName.delete(name);
+
+    const owned = namesByOwner.get(priorOwner);
+    if (!owned) return;
+
+    owned.delete(name);
+    if (owned.size === 0) namesByOwner.delete(priorOwner);
+  };
+
+  const claimNameForOwner = (owner: KeyframesOwner, name: KeyframesName): void => {
+    const o = owner.trim();
+    if (!o) return;
+
+    releaseNameOwnership(name);
+
+    let owned = namesByOwner.get(o);
+    if (!owned) {
+      owned = new Set<KeyframesName>();
+      namesByOwner.set(o, owned);
+    }
+
+    owned.add(name);
+    ownerByName.set(name, o);
+  };
+
   return {
     set(input: KeyframesInput): void {
       // normalize at boundary.
@@ -339,8 +372,37 @@ export function manage_keyframes(args: {
       const isSame = prev !== undefined && JSON.stringify(prev) === JSON.stringify(next);
       if (isSame) return;
 
+      // changed: explicit set() means durable/global; clear generated ownership.
+      releaseNameOwnership(next.name);
+
       // store + dirty.
       byName.set(next.name, next);
+      args.onChange();
+    },
+
+    /**
+     * Register or replace a `@keyframes` block owned by a node/subtree.
+     *
+     * The keyframes are still rendered globally, but their lifecycle is tied to
+     * `owner`. Calling `releaseOwner(owner)` removes all keyframes registered
+     * through this path for that owner.
+     */
+    setOwned(owner: KeyframesOwner, input: KeyframesInput): void {
+      const o = owner.trim();
+      if (!o) return;
+
+      const next: KeyframesDef = {
+        ...normalizeKeyframesInput(input),
+        source: `quid:${o}`,
+      };
+
+      const prev = byName.get(next.name);
+      const priorOwner = ownerByName.get(next.name);
+      const isSame = prev !== undefined && JSON.stringify(prev) === JSON.stringify(next) && priorOwner === o;
+      if (isSame) return;
+
+      byName.set(next.name, next);
+      claimNameForOwner(o, next.name);
       args.onChange();
     },
 
@@ -348,6 +410,8 @@ export function manage_keyframes(args: {
       // batch normalize.
       for (const input of inputs) {
         const next = normalizeKeyframesInput(input);
+        // changed: explicit setMany() means durable/global; clear generated ownership.
+        releaseNameOwnership(next.name);
         byName.set(next.name, next);
       }
 
@@ -357,8 +421,36 @@ export function manage_keyframes(args: {
 
     delete(name: KeyframesName): void {
       // delete with trim consistency.
-      const did = byName.delete(name.trim());
-      if (did) args.onChange();
+      const key = name.trim();
+      const did = byName.delete(key);
+      if (!did) return;
+
+      releaseNameOwnership(key);
+      args.onChange();
+    },
+
+    releaseOwner(owner: KeyframesOwner): void {
+      const o = owner.trim();
+      if (!o) return;
+
+      const owned = namesByOwner.get(o);
+      if (!owned || owned.size === 0) return;
+
+      const names = Array.from(owned);
+      for (const name of names) {
+        byName.delete(name);
+        ownerByName.delete(name);
+      }
+
+      namesByOwner.delete(o);
+      args.onChange();
+    },
+
+    listOwned(owner: KeyframesOwner): readonly KeyframesName[] {
+      const o = owner.trim();
+      if (!o) return [];
+
+      return Array.from(namesByOwner.get(o) ?? []).sort();
     },
 
     has(name: KeyframesName): boolean {

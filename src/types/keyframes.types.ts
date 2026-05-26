@@ -3,6 +3,9 @@
 /** A `@keyframes` identifier (kept intentionally permissive). */
 
 export type KeyframesName = string;
+
+/** Owner id for generated/node-owned keyframes, usually a LiveTree node QUID. */
+export type KeyframesOwner = string;
 /**
  * A keyframe selector.
  *
@@ -35,13 +38,13 @@ export type KeyframeStep = Readonly<{
  * `steps` are expected to be in deterministic order after normalization.
  */
 
-export type KeyframesDef = Readonly<{
-  // The keyframes name.
-  name: KeyframesName;
 
-  // Steps, in a deterministic order (we'll normalize).
+export type KeyframesDef = Readonly<{
+  name: KeyframesName;
   steps: readonly KeyframeStep[];
+  source?: KeyframesSource;
 }>;
+
 /**
  * Object-shaped keyframes input.
  *
@@ -51,6 +54,7 @@ export type KeyframesDef = Readonly<{
 
 export type KeyframesInputObject = Readonly<{
   name: KeyframesName;
+  source?: KeyframesSource;
   // Partial so you can provide any subset ("0%", "50%", "to", etc.)
   steps: Readonly<Partial<Record<KeyframeSelector, CssDeclMap>>>;
 }>;
@@ -63,6 +67,7 @@ export type KeyframesInputObject = Readonly<{
 
 export type KeyframesInputTuple = Readonly<{
   name: KeyframesName;
+  source?: KeyframesSource;
   steps: readonly (readonly [KeyframeSelector, CssDeclMap])[];
 }>;
 /** Union of accepted keyframes input shapes. */
@@ -96,6 +101,15 @@ export interface KeyframesManager {
   set(input: KeyframesInput): void;
 
   /**
+   * Register or replace a `@keyframes` block owned by a node/subtree.
+   *
+   * The keyframes are still rendered globally, but their lifecycle is tied to
+   * `owner`. Calling `releaseOwner(owner)` removes all keyframes registered
+   * through this path for that owner.
+   */
+  setOwned(owner: KeyframesOwner, input: KeyframesInput): void;
+
+  /**
    * Register/replace multiple `@keyframes` blocks in one batch.
    *  Each input is normalized and stored using the same rules as `set()`.
    *  The owning system’s `onChange` callback is invoked once after the batch
@@ -117,6 +131,12 @@ export interface KeyframesManager {
    * @param name - The keyframes name to delete.
    */
   delete(name: KeyframesName): void;
+
+  /** Remove all keyframes associated with one owner. */
+  releaseOwner(owner: KeyframesOwner): void;
+
+  /** List keyframes names currently associated with one owner. */
+  listOwned(owner: KeyframesOwner): readonly KeyframesName[];
 
   /**
  * Check whether a `@keyframes` block is registered under the given name.
@@ -166,3 +186,8 @@ export interface KeyframesManager {
    */
   renderAll(): string;
 }
+
+// keyframes.types.ts
+export type KeyframesSource = "global" | `quid:${string}`;
+
+

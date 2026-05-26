@@ -78,13 +78,13 @@ export type GlobalVarFacade = Readonly<{
   name(name: string): `--${string}` | undefined;
 
   /** Return a CSS variable reference, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
-  ref(name: string): `var(--${string})`;
+  get(name: string): `var(--${string})`;
 
   /** Set a global `:root` CSS custom property. */
   set(name: string, value: CssValue): void;
 
   /** Read a raw global `:root` CSS custom-property value. */
-  get(name: string): string | undefined;
+  value(name: string): string | undefined;
 
   /** Remove one global `:root` CSS custom property. */
   remove(name: string): void;
@@ -554,9 +554,9 @@ export class GlobalCss {
     return {
       name: (name: string) => canonical(name),
 
-      ref: (name: string) => {
+      get: (name: string) => {
         const canon = canonical(name);
-        if (!canon) throw new Error(`GlobalCss.var.ref: invalid CSS variable name: ${name}`);
+        if (!canon) throw new Error(`GlobalCss.var.get: invalid CSS variable name: ${name}`);
         return `var(${canon})` as `var(--${string})`;
       },
 
@@ -578,7 +578,7 @@ export class GlobalCss {
         commitRootDecls(decls);
       },
 
-      get: (name: string) => {
+      value: (name: string) => {
         const canon = canonical(name);
         if (!canon) return undefined;
         return getRootRule()?.decls[canon];

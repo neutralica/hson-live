@@ -50,16 +50,12 @@ type NodeWithKids = { _content?: unknown[] };
     el.remove();
   }
 
-  // clear any QUID-scoped CSS for this node (if present)
+  // changed: clear all CSS/listener/lifecycle artifacts owned by this node QUID.
   const quid = (node as any)?._meta?.["data-_quid"];
   if (typeof quid === "string" && quid.length) {
-    CssManager.invoke().clearQuid(quid);
-    listeners_off_for_owner_quid(quid); // NEW
-  }
-  if (typeof quid === "string" && quid.length) {
-    CssManager.invoke().clearQuid(quid);
+    CssManager.invoke().releaseOwnedCssForQuid(quid);
     listeners_off_for_owner_quid(quid);
-    disposables_off_for_owner(quid); // NEW
+    disposables_off_for_owner(quid);
   }
   // 3) finally drop the map entry
   unlinkNode(node);

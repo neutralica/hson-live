@@ -149,9 +149,12 @@ export const HTML_TAGS = [
   "center",
   "font",
 ] as const;
+
 export const SVG_TAGS = [
   "svg",
   "g",
+
+  // shapes
   "circle",
   "rect",
   "path",
@@ -159,17 +162,74 @@ export const SVG_TAGS = [
   "polyline",
   "polygon",
   "ellipse",
+
+  // text
   "text",
+  "tspan",
+  "textPath",
+
+  // structure / reuse
   "defs",
   "use",
+  "symbol",
+  "marker",
+
+  // clipping / masking
   "clipPath",
   "mask",
+
+  // gradients / paint servers
   "linearGradient",
   "radialGradient",
   "stop",
-  "symbol",
   "pattern",
+
+  // animation-ish / declarative svg
+  "animate",
+  "animateTransform",
+  "animateMotion",
+  "mpath",
+
+  // filters
+  "filter",
+  "feBlend",
+  "feColorMatrix",
+  "feComponentTransfer",
+  "feComposite",
+  "feConvolveMatrix",
+  "feDiffuseLighting",
+  "feDisplacementMap",
+  "feDropShadow",
+  "feFlood",
+  "feFuncA",
+  "feFuncB",
+  "feFuncG",
+  "feFuncR",
+  "feGaussianBlur",
+  "feImage",
+  "feMerge",
+  "feMergeNode",
+  "feMorphology",
+  "feOffset",
+  "feSpecularLighting",
+  "feTile",
+  "feTurbulence",
+  "feDistantLight",
+  "fePointLight",
+  "feSpotLight",
+
+  // metadata / accessibility
+  "title",
+  "desc",
+  "metadata",
+
+  // embedded content
+  "foreignObject",
+  "image",
+  "view",
 ] as const;
+
+
 const SVG_TAG_SET = new Set<string>(SVG_TAGS as readonly string[]);
 
 export function is_svg_context_tag(tag: string): boolean {
