@@ -9,25 +9,6 @@ import { StyleGetter } from "../api/livetree/managers/style-getter.js";
 
 
 /**
- * Internal read helper shape used by style getter adapters.
- *
- * This is intentionally minimal: read a canonical property, read a CSS
- * variable, and expose a tiny convenience surface.
- *
- * @internal
- */
-type GetApi = {
-  // get a canonical property, e.g. "maskPosition", "opacity", "WebkitMaskPosition"
-  prop: (propCanon: string) => string | undefined;
-
-  // get a css variable, e.g. "--cloud-phase-px"
-  var: (name: string) => string | undefined;
-
-  // convenience (optional)
-  opacity: () => string | undefined;
-};
-
-/**
  * Normalized set of CSS units supported by the style utilities.
  *
  * Used to represent structured numeric values where the unit is explicit
@@ -252,7 +233,6 @@ export type CssGetter = Readonly<{
   opacity: () => string | undefined;
 }>;
 
-// css.types.ts (or wherever CssHandleBase lives)
 
 /**
  * Handle for a single global CSS rule returned by `CssGlobalsApi`.
@@ -319,6 +299,12 @@ export type CssGlobalsApi = Readonly<{
   renderAll: () => string;
 }>;
 
+export type StyleHandle<TOwner> = Readonly<
+  StyleSetter<TOwner> & {
+    get: StyleGetter;
+  }
+>;
+
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
     get: StyleGetter;
@@ -327,20 +313,16 @@ export type CssHandleBase<TReturn> = Readonly<
     anim: CssAnimHandle;
     devSnapshot: () => string;
 
-    selector: (pattern: string) => StyleSetter<TReturn>;
+    selector: (pattern: string) => StyleHandle<TReturn>;
   }
 >;
 
 export type CssTreeHandle<TOwner = LiveTree> = CssHandleBase<TOwner>;
 
-export type StyleHandle<TOwner> = Readonly<
-  StyleSetter<TOwner> & {
-    get: StyleGetter;
-  }
->;
-
 // hostless case for “before mount”
 export type CssHandleVoid = CssHandleBase<void>;
+
+
 
 /**
  * Union of style keys supported by the style system.
@@ -396,4 +378,3 @@ export type SetSurface<Next> =
     /** Set a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
     var: (name: string, v: CssValue) => Next;
   };
-  

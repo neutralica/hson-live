@@ -553,13 +553,25 @@ export class CssManager {
   public getForQuid(quid: string, propCanon: string): string | undefined {
     return this.rulesByQuid.get(quid)?.get(propCanon);
   }
+  
+    /**
+   * Read all last-written declarations for one QUID.
+   *
+   * This returns a defensive plain-object copy in canonical setMany-compatible
+   * key spelling. Mutating the returned object cannot mutate CssManager state.
+   *
+   * @param quid QUID whose scoped declaration map should be read.
+   * @returns A declaration object, or `undefined` when the QUID has no rule map.
+   */
   public getAllForQuid(quid: string): Record<string, string> | undefined {
-    const found = this.rulesByQuid.get(quid);
+    const q = quid.trim();
+    if (!q) return undefined;
+
+    const found = this.rulesByQuid.get(q);
     if (!found) return undefined;
 
     return Object.fromEntries(found);
   }
-
   /**
    * Check whether a QUID currently has any rule entries.
    */

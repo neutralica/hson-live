@@ -1,11 +1,11 @@
 // css_for_quids.ts
 
 
-import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase } from "../../../types/css.types.js";
+import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase, StyleHandle } from "../../../types/css.types.js";
 import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../managers/css-manager.js";
-import { GetSurface, make_style_getter, StyleGetter } from "../managers/style-getter.js";
+import { make_style_getter, StyleGetMany, StyleGetter } from "../managers/style-getter.js";
 import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
 // one canonical adapter builder for CssManager-backed setters.
@@ -33,6 +33,11 @@ const mk_css_quids_adapters = (
       }
     },
     applySelector: (pattern, decls) => {
+      // CHANGED: setMany selector blocks must opt in with `&`. The public
+      // css.selector(...) method remains more permissive, but object-shaped
+      // setMany keys should not be guessed into selectors.
+      if (!is_explicit_selector_pattern(pattern)) return;
+
       const selector = resolve_selector_pattern(ids, pattern);
       // CHANGED: selector rules are keyed by their resolved selector, not the raw
       // pattern. This keeps set/get addressing identical for selector CSS.
@@ -79,19 +84,20 @@ function resolve_selector_pattern(
   const pattern = patternRaw.trim();
   if (!pattern) throw new Error("css.selector: empty selector pattern");
 
-  // CHANGED: selector blocks in setMany must be explicitly marked with `&`.
-  // This prevents arbitrary unknown keys from being guessed as selectors.
-  if (!pattern.includes("&")) {
-    throw new Error(`css.selector: selector pattern must include "&": ${pattern}`);
-  }
-
   return ids
     .map((quid) => quid_selector(quid))
-    .map((selfSel) => pattern.replaceAll("&", selfSel))
+    // CHANGED: explicit `&` performs placeholder replacement. Without `&`,
+    // css.selector(pattern) preserves the older appended-pattern behavior.
+    .map((selfSel) => pattern.includes("&")
+      ? pattern.replaceAll("&", selfSel)
+      : `${selfSel}${pattern}`)
     .join(", ");
 }
 
-// Removed resolveNestedSelector function entirely
+function is_explicit_selector_pattern(patternRaw: string): boolean {
+  return patternRaw.trim().includes("&");
+}
+
 
 function read_decl_from_rendered_rule(
   rendered: string | undefined,
@@ -111,12 +117,83 @@ function read_decl_from_rendered_rule(
     if (ix < 0) continue;
 
     const key = part.slice(0, ix).trim();
-    if (key !== propCanon) continue;
+    // CHANGED: rendered CSS rules serialize declarations in CSS spelling
+    // (`border-radius`, `-webkit-appearance`), while the getter path receives
+    // canonical normalized keys (`borderRadius`, `WebkitAppearance`). Vendor
+    // properties may also pass through one layer with the leading dash removed,
+    // so compare a small normalized candidate set instead of one spelling.
+    if (!css_prop_names_match(key, propCanon)) continue;
 
     return part.slice(ix + 1).trim();
   }
 
   return undefined;
+}
+
+function read_many_from_rendered_rule(rendered: string | undefined): StyleGetMany {
+  if (!rendered) return {};
+
+  const open = rendered.indexOf("{");
+  const close = rendered.lastIndexOf("}");
+  if (open < 0 || close <= open) return {};
+
+  const body = rendered.slice(open + 1, close);
+  const out: Record<string, string> = {};
+
+  for (const part of body.split(";")) {
+    const ix = part.indexOf(":");
+    if (ix < 0) continue;
+
+    const rawKey = part.slice(0, ix).trim();
+    const value = part.slice(ix + 1).trim();
+    if (!rawKey || !value) continue;
+
+    // CHANGED: get.all() returns a setMany-compatible declaration map.
+    // Preserve custom properties exactly; normalize normal CSS keys to the
+    // same canonical spelling used by setter/getter internals.
+    const key = rawKey.startsWith("--")
+      ? rawKey
+      : normalize_css_key(rawKey as CssKey);
+
+    out[key] = value;
+  }
+
+  return out;
+}
+
+function css_prop_names_match(renderedKey: string, propCanon: string): boolean {
+  const key = renderedKey.trim();
+  const prop = propCanon.trim();
+  if (!key || !prop) return false;
+
+  const keyCandidates = new Set<string>([
+    key,
+    normalize_css_key(key as CssKey),
+  ]);
+
+  // CHANGED: tolerate vendor declarations that have lost exactly one leading
+  // dash somewhere in the write/render/read path, e.g. `webkit-appearance`
+  // versus `-webkit-appearance`.
+  if (!key.startsWith("-") && key.includes("-")) {
+    keyCandidates.add(`-${key}`);
+    keyCandidates.add(normalize_css_key(`-${key}` as CssKey));
+  }
+
+  const propCandidates = new Set<string>([
+    prop,
+    normalize_css_key(prop as CssKey),
+  ]);
+
+  if (!prop.startsWith("-") && prop.includes("-")) {
+    propCandidates.add(`-${prop}`);
+    propCandidates.add(normalize_css_key(`-${prop}` as CssKey));
+  }
+
+  for (const candidate of keyCandidates) {
+    if (propCandidates.has(candidate)) return true;
+  }
+
+  return false;
 }
 
 function selector_rule_key(
@@ -146,6 +223,12 @@ export function make_selector_style_getter(
       // CHANGED: read from the same resolved selector key used by writes.
       return read_decl_from_rendered_rule(gcss.get(ruleKey), propCanon);
     },
+
+    readMany: () => {
+      // CHANGED: selector-backed handles can enumerate their own rendered rule,
+      // making css.selector(...).get.all() useful for diagnostics and round trips.
+      return read_many_from_rendered_rule(gcss.get(ruleKey));
+    },
   });
 }
 
@@ -153,7 +236,7 @@ function make_selector_style_handle<TReturn extends LiveTree | void>(
   ret: TReturn,
   ids: string[],
   patternRaw: string,
-): StyleSetter<TReturn> & { get: GetSurface } {
+): StyleHandle<TReturn> {
   const setter = make_selector_style_setter(ret, ids, patternRaw);
   const getter = make_selector_style_getter(ret, ids, patternRaw);
 
@@ -264,6 +347,31 @@ export function css_for_quids(
 
     return make_style_getter({
       read: (propCanon) => readConsensus(propCanon),
+
+      readMany: () => {
+        // CHANGED: enumerate the QUID-backed declaration model directly so
+        // css.get.all() returns the same consensus view as point reads.
+        const out: Record<string, string> = {};
+        const allKeys = new Set<string>();
+
+        for (const quid of ids) {
+          const found = mgr.getAllForQuid(quid);
+          if (!found) return {};
+
+          for (const key of Object.keys(found)) {
+            allKeys.add(key);
+          }
+        }
+
+        for (const key of allKeys) {
+          const value = readConsensus(key);
+          if (value !== undefined) {
+            out[key] = value;
+          }
+        }
+
+        return out;
+      },
     });
   };
 
