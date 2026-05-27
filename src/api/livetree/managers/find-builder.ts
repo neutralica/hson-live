@@ -1,8 +1,8 @@
 import { LiveTree } from "../livetree.js";
 import { search_nodes } from "../methods/search.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
-import { TreeSelector } from "../tree-selector.js";
-import { wrap_in_tree } from "../create-livetree.js";
+import { TreeSelector } from "../creation/tree-selector.js";
+import { wrap_in_tree } from "../creation/create-livetree.js";
 import { HsonQuery } from "../../../types/livetree.types.js";
 
 

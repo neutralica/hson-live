@@ -5,7 +5,7 @@ import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js"
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
-import { create_livetree } from "../create-livetree.js";
+import { create_livetree } from "./create-livetree.js";
 
 /**
  * Normalize a parsed HSON root into a detached `LiveTree` branch.

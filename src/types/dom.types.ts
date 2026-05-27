@@ -1,6 +1,6 @@
 // dom.ts
 import { LiveTree } from "../api/livetree/livetree.js";
-import { TreeSelector } from "../api/livetree/tree-selector.js";
+import { TreeSelector } from "../api/livetree/creation/tree-selector.js";
 
 /**
  * Callable `closest` helper with a `.must` variant.

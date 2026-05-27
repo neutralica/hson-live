@@ -34,7 +34,9 @@ const mk_css_quids_adapters = (
     },
     applySelector: (pattern, decls) => {
       const selector = resolve_selector_pattern(ids, pattern);
-      const ruleKey = selector_rule_key(hostOrVoid, ids, pattern);
+      // CHANGED: selector rules are keyed by their resolved selector, not the raw
+      // pattern. This keeps set/get addressing identical for selector CSS.
+      const ruleKey = selector_rule_key(hostOrVoid, ids, selector);
       const handle = CssManager.api().rule(ruleKey, selector);
 
       handle.setMany(decls);
@@ -63,6 +65,7 @@ const mk_css_quids_adapters = (
     },
   };
 };
+
 function quid_selector(quid: string): string {
   const q = quid.trim();
   if (!q) throw new Error("quid_selector: empty quid");
@@ -76,15 +79,20 @@ function resolve_selector_pattern(
   const pattern = patternRaw.trim();
   if (!pattern) throw new Error("css.selector: empty selector pattern");
 
+  // CHANGED: selector blocks in setMany must be explicitly marked with `&`.
+  // This prevents arbitrary unknown keys from being guessed as selectors.
+  if (!pattern.includes("&")) {
+    throw new Error(`css.selector: selector pattern must include "&": ${pattern}`);
+  }
+
   return ids
     .map((quid) => quid_selector(quid))
-    .map((selfSel) => (
-      pattern.includes("&")
-        ? pattern.replaceAll("&", selfSel)
-        : `${selfSel}${pattern}`
-    ))
+    .map((selfSel) => pattern.replaceAll("&", selfSel))
     .join(", ");
 }
+
+// Removed resolveNestedSelector function entirely
+
 function read_decl_from_rendered_rule(
   rendered: string | undefined,
   propCanon: string,
@@ -113,13 +121,15 @@ function read_decl_from_rendered_rule(
 
 function selector_rule_key(
   host: LiveTree | void,
-  ids: string[],
-  pattern: string,
+  ids: readonly string[],
+  selector: string,
 ): string {
+  // CHANGED: selector keys use the resolved selector string. The raw pattern is
+  // only user input; the resolved selector is the actual CSS rule identity.
   if (host) {
-    return `${host.id} ${ids.join(" ")} ${pattern}`;
+    return `${host.id} ${ids.join(" ")} ${selector}`;
   }
-  return `${ids.join(" ")} ${pattern}`;
+  return `${ids.join(" ")} ${selector}`;
 }
 
 export function make_selector_style_getter(
@@ -128,14 +138,13 @@ export function make_selector_style_getter(
   pattern: string,
 ): StyleGetter {
   const gcss = CssManager.api();
-  const ruleKey = selector_rule_key(host, ids, pattern);
+  const selector = resolve_selector_pattern(ids, pattern);
+  const ruleKey = selector_rule_key(host, ids, selector);
 
   return make_style_getter({
     read: (propCanon: string) => {
-      // GlobalCss.api().get(ruleKey) returns rendered CSS text,
-      // not the internal rule object. Read fresh each time so selector.get
-      // sees values written after this getter surface was created.
-      return read_decl_from_rendered_rule(gcss.get(selector_rule_key(host, ids, pattern)), propCanon);
+      // CHANGED: read from the same resolved selector key used by writes.
+      return read_decl_from_rendered_rule(gcss.get(ruleKey), propCanon);
     },
   });
 }
@@ -180,7 +189,9 @@ function make_selector_style_setter<TReturn extends LiveTree | void>(
   const gcss = CssManager.api();
 
   const selector = resolve_selector_pattern(ids, patternRaw);
-  const ruleKey = selector_rule_key(ret, ids, patternRaw);
+  // CHANGED: setter and getter must address the selector rule by the same
+  // resolved selector key.
+  const ruleKey = selector_rule_key(ret, ids, selector);
 
   const handle = gcss.rule(ruleKey, selector);
 

@@ -8,7 +8,7 @@ import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers
 import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { normalize_ix } from "../../../utils/json-utils/normalize-ix.js";
-import { TreeSelector } from "../tree-selector.js";
+import { TreeSelector } from "../creation/tree-selector.js";
 import { SVG_TAGS } from "../../../consts/html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";

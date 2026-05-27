@@ -8,10 +8,10 @@ import { HsonNode } from "../../../../types/node.types.js";
 import { unwrap_root_elem } from "../../../../utils/html-utils/unwrap-root-elem.js";
 import { node_from_svg } from "../../../../utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../utils/node-utils/node-guards.js";
-import { create_livetree } from "../../create-livetree.js";
+import { create_livetree } from "../../creation/create-livetree.js";
 import { make_tree_selector } from "../../creation/make-tree-selector.js";
 import { LiveTree } from "../../livetree.js";
-import { TreeSelector } from "../../tree-selector.js";
+import { TreeSelector } from "../../creation/tree-selector.js";
 import { make_html_tree_create } from "./create-html.js";
 
 export type CreateNs = "html" | "svg";

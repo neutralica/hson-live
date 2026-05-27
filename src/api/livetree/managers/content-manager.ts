@@ -5,7 +5,7 @@ import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../consts/constants.js";
 import { Primitive } from "../../../types/core.types.js";
 import { HsonNode } from "../../../types/node.types.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { create_livetree } from "../create-livetree.js";
+import { create_livetree } from "../creation/create-livetree.js";
 import { LiveTree } from "../livetree.js";
 type ContentItem = HsonNode | Primitive;
 

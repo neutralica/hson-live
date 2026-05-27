@@ -3,7 +3,7 @@ import { CanvasLiveTree } from "../../../../types/livetree-internals.types.js";
 import { HtmlCreateHelper, TagName, HtmlTag, SvgCreateHelper, SvgTag } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { LiveTree } from "../../livetree.js";
-import { TreeSelector } from "../../tree-selector.js";
+import { TreeSelector } from "../../creation/tree-selector.js";
 import { make_create_core, assert_valid_tag_name } from "./create-core.js";
 
 

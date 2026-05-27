@@ -5,11 +5,11 @@ import { HsonNode } from "../../../types/node.types.js";
 import { parse_selector } from "../../../utils/livetree-utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
-import { TreeSelector } from "../tree-selector.js";
+import { TreeSelector } from "../creation/tree-selector.js";
 import { search_nodes } from "./search.js";
 import { FindWithById } from "../../../types/livetree.types.js";
 import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
-import { wrap_in_tree } from "../create-livetree.js";
+import { wrap_in_tree } from "../creation/create-livetree.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 
 // “batching” helpers + queryish types
