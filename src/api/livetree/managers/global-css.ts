@@ -410,8 +410,12 @@ export class GlobalCss {
       const cssText = render_rule(selector, decls).trim();
 
       if (!cssText) {
-        const had = this.rules.delete(ruleKey) || this.rendered.delete(ruleKey);
-        if (had) notifyChanged();
+        // CHANGED: delete both maps explicitly; do not short-circuit before
+        // removing stale rendered CSS.
+        const hadRule = this.rules.delete(ruleKey);
+        const hadRendered = this.rendered.delete(ruleKey);
+
+        if (hadRule || hadRendered) notifyChanged();
         return;
       }
 
@@ -500,8 +504,12 @@ export class GlobalCss {
       ruleKey,
       selector,
       drop: () => {
-        const had = this.rules.delete(ruleKey) || this.rendered.delete(ruleKey);
-        if (had) notifyChanged();
+        // CHANGED: delete both maps explicitly. Using `||` short-circuits after
+        // the first successful delete, which can leave stale rendered CSS behind.
+        const hadRule = this.rules.delete(ruleKey);
+        const hadRendered = this.rendered.delete(ruleKey);
+
+        if (hadRule || hadRendered) notifyChanged();
       },
     };
   }
@@ -533,8 +541,11 @@ export class GlobalCss {
       const keys = Object.keys(decls).filter(Boolean);
 
       if (keys.length === 0) {
-        const had = this.rules.delete(GLOBAL_VARS_RULE_KEY) || this.rendered.delete(GLOBAL_VARS_RULE_KEY);
-        if (had) notifyChanged();
+        // CHANGED: delete both maps explicitly; do not leave rendered CSS stale.
+        const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
+        const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+
+        if (hadRule || hadRendered) notifyChanged();
         return;
       }
 
@@ -596,8 +607,10 @@ export class GlobalCss {
       },
 
       clear: () => {
-        const had = this.rules.delete(GLOBAL_VARS_RULE_KEY) || this.rendered.delete(GLOBAL_VARS_RULE_KEY);
-        if (had) notifyChanged();
+        const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
+        const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
+
+        if (hadRule || hadRendered) notifyChanged();
       },
 
       list: () => {
@@ -641,8 +654,13 @@ export class GlobalCss {
   private remove(keyStr: string): void {
     const source = keyStr.trim();
     if (!source) return;
-    const had = this.rules.delete(source) || this.rendered.delete(source);
-    if (had) notifyChanged();
+
+    // CHANGED: delete both maps explicitly. This is the authoritative drop path
+    // used by selector-backed clear(), so stale rendered CSS must not survive.
+    const hadRule = this.rules.delete(source);
+    const hadRendered = this.rendered.delete(source);
+
+    if (hadRule || hadRendered) notifyChanged();
   }
 
   /**

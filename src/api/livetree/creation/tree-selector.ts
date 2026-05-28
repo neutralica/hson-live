@@ -8,9 +8,11 @@ type LiveTreeListen = LiveTree["listen"];
 
 
 export interface TreeSelectorType {
-  items(): LiveTree[];
-  count(): number;
+  array(): LiveTree[];
+  length: number;
   first(): LiveTree | undefined;
+  last(): LiveTree | undefined;
+  at(ix: number): LiveTree | undefined;
 
   each(fn: (tree: LiveTree, index: number) => void): void;
   map<T>(fn: (tree: LiveTree, index: number) => T): T[];
@@ -85,7 +87,6 @@ function makeBroadcastProxy<T extends object>(
 
 export class TreeSelector implements TreeSelectorType {
   private readonly contents: LiveTree[];
-
   public readonly listen: LiveTreeListen;
   public readonly style: LiveTreeStyle;
   public readonly css: LiveTreeCss;
@@ -103,14 +104,21 @@ export class TreeSelector implements TreeSelectorType {
 
     this.data = makeBroadcastProxy(this.contents, (t) => t.data);
   }
-
-  public items(): LiveTree[] {
-    return [...this.contents];
-  }
-
-  public count(): number {
+  public get length(): number {
     return this.contents.length;
   }
+
+  public array(): LiveTree[] {
+    return [...this.contents];
+  }
+  public at(ix: number): LiveTree | undefined {
+    return this.contents[ix];
+  }
+ 
+  public last(): LiveTree | undefined {
+  if (this.contents.length === 0) return undefined;
+  return this.contents[this.contents.length - 1];
+}
 
   public first(): LiveTree | undefined {
     return this.contents[0];

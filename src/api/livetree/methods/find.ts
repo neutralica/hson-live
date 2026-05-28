@@ -18,18 +18,29 @@ export type FindQuery = HsonQuery | string;
 export type FindQueryMany = FindQuery | readonly FindQuery[];
 
 type FindManyHelpers = {
+  /** Existing helper: accepts one id or many ids. */
   id: (ids: string | readonly string[]) => TreeSelector;
+
+  /** CHANGED: explicit collection aliases. */
+  byId: (id: string) => TreeSelector;
+  byIds: (...ids: string[]) => TreeSelector;
+
   byAttribute: (attr: string, value: string) => TreeSelector;
+  byAttr: (attr: string, value: string) => TreeSelector;
+  byAttrs: (attr: string, value: string) => TreeSelector;
+
   byFlag: (flag: string) => TreeSelector;
+  byFlags: (flag: string) => TreeSelector;
+
   byTag: (tag: string) => TreeSelector;
+  byClass: (className: string) => TreeSelector;
+  byData: (key: string, value: string) => TreeSelector;
 };
-
-export type FindManyMust = ((q: FindQueryMany, label?: string) => TreeSelector) & FindManyHelpers;
-
+export type FindManyMust = ((q: FindQueryMany, label?: string) => TreeSelector) &
+FindManyHelpers;
 export type FindMany = ((q: FindQueryMany) => TreeSelector) & FindManyHelpers & {
-  must: FindManyMust;
-};
-
+must: FindManyMust;
+} ;
 // array type-guard so TS narrows correctly.
 function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
   return Array.isArray(q);
@@ -46,6 +57,22 @@ function node_in_subtree(root: HsonNode, target: HsonNode): boolean {
 // no overloads; just accept the union and narrow.
 function asManyQuery(q: FindQueryMany): readonly FindQuery[] {
   return isManyQuery(q) ? q : [q];
+}
+
+function normalize_data_attr_name(key: string): string {
+  const k = key.trim();
+  if (!k) throw new Error("byData: empty data key");
+  return k.startsWith("data-") ? k : `data-${k}`;
+}
+
+function class_query(className: string): HsonQuery {
+  const cls = className.trim();
+  if (!cls) throw new Error("byClass: empty class name");
+
+  // CHANGED: first-pass class lookup is exact-match against the class attr.
+  // Token-aware matching for `class="a b"` should be handled later in search_nodes
+  // or by adding a predicate-like query shape.
+  return { attrs: { class: cls } };
 }
 
 /**
@@ -94,7 +121,7 @@ export function find_all_in_tree_many(tree: LiveTree, q: FindQueryMany): TreeSel
   const out: LiveTree[] = [];
   for (const one of qs) {
     const sel = find_all_in_tree(tree, one);  // returns TreeSelector
-    out.push(...sel.items());              // use TreeSelector primitive
+    out.push(...sel.array());              // use TreeSelector primitive
   }
 
   return make_tree_selector(out);
@@ -142,26 +169,42 @@ export function make_find_for(tree: LiveTree): FindWithById {
   base.byId = (id: string): LiveTree | undefined =>
     base({ attrs: { id } });
 
-  base.byAttrs = (attr: string, value: string): LiveTree | undefined =>
+  base.byAttribute = (attr: string, value: string): LiveTree | undefined =>
     base({ attrs: { [attr]: value } });
 
-  base.byFlags = (flag: string): LiveTree | undefined =>
+  base.byFlag = (flag: string): LiveTree | undefined =>
     base({ attrs: { [flag]: flag } });
 
   base.byTag = (tag: string): LiveTree | undefined =>
     base({ tag });
 
+  // CHANGED: more readable aliases for the existing singular find surface.
+
+  base.byClass = (className: string): LiveTree | undefined =>
+    base(class_query(className));
+
+  base.byData = (key: string, value: string): LiveTree | undefined =>
+    base({ attrs: { [normalize_data_attr_name(key)]: value } });
+
   mustBase.byId = (id: string): LiveTree =>
     mustBase({ attrs: { id } });
 
-  mustBase.byAttrs = (attr: string, value: string): LiveTree =>
+  mustBase.byAttribute = (attr: string, value: string): LiveTree =>
     mustBase({ attrs: { [attr]: value } });
 
-  mustBase.byFlags = (flag: string): LiveTree =>
+  mustBase.byFlag = (flag: string): LiveTree =>
     mustBase({ attrs: { [flag]: flag } });
 
   mustBase.byTag = (tag: string): LiveTree =>
     mustBase({ tag });
+
+  // CHANGED: must-surface aliases match the non-must finder surface.
+
+  mustBase.byClass = (className: string): LiveTree =>
+    mustBase(class_query(className));
+
+  mustBase.byData = (key: string, value: string): LiveTree =>
+    mustBase({ attrs: { [normalize_data_attr_name(key)]: value } });
 
   base.must = mustBase;
 
@@ -209,7 +252,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
 
   const mustBase = ((q: FindQueryMany, label?: string): TreeSelector => {
     const sel = base(q);
-    if (sel.count() === 0) {
+    if (sel.length === 0) {
       const desc = label ?? "query";
       throw new Error(`[LiveTree.findAll.must] expected >=1 match for ${desc}`);
     }
@@ -222,28 +265,58 @@ export function make_find_all_for(tree: LiveTree): FindMany {
     return base(list.map((id) => ({ attrs: { id } })));
   };
 
+  // CHANGED: explicit collection aliases. byId returns a TreeSelector of
+  // length 0 or 1 in normal HTML, while byIds is the variadic many-id form.
+  base.byId = (id: string): TreeSelector => base.id(id);
+  base.byIds = (...ids: string[]): TreeSelector => base.id(ids);
+
   base.byAttribute = (attr: string, value: string): TreeSelector =>
     base({ attrs: { [attr]: value } });
+
+  base.byAttr = base.byAttribute;
+  base.byAttrs = base.byAttribute;
 
   base.byFlag = (flag: string): TreeSelector =>
     base({ attrs: { [flag]: flag } });
 
+  base.byFlags = base.byFlag;
+
   base.byTag = (tag: string): TreeSelector =>
     base({ tag });
+
+  base.byClass = (className: string): TreeSelector =>
+    base(class_query(className));
+
+  base.byData = (key: string, value: string): TreeSelector =>
+    base({ attrs: { [normalize_data_attr_name(key)]: value } });
 
   mustBase.id = (ids: string | readonly string[]): TreeSelector => {
     const list: readonly string[] = Array.isArray(ids) ? ids : [ids];
     return mustBase(list.map((id) => ({ attrs: { id } })));
   };
 
+  mustBase.byId = (id: string): TreeSelector => mustBase.id(id);
+  mustBase.byIds = (...ids: string[]): TreeSelector => mustBase.id(ids);
+
   mustBase.byAttribute = (attr: string, value: string): TreeSelector =>
     mustBase({ attrs: { [attr]: value } });
+
+  mustBase.byAttr = mustBase.byAttribute;
+  mustBase.byAttrs = mustBase.byAttribute;
 
   mustBase.byFlag = (flag: string): TreeSelector =>
     mustBase({ attrs: { [flag]: flag } });
 
+  mustBase.byFlags = mustBase.byFlag;
+
   mustBase.byTag = (tag: string): TreeSelector =>
     mustBase({ tag });
+
+  mustBase.byClass = (className: string): TreeSelector =>
+    mustBase(class_query(className));
+
+  mustBase.byData = (key: string, value: string): TreeSelector =>
+    mustBase({ attrs: { [normalize_data_attr_name(key)]: value } });
 
   base.must = mustBase;
 

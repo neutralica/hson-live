@@ -91,8 +91,10 @@ export interface NodeRef {
 type FindOneHelpers<Return> = {
   byQuid: (quid: string) => Return;
   byId: (id: string) => Return;
-  byAttrs: (attr: string, value: string) => Return;
-  byFlags: (flag: string) => Return;
+  byAttribute: (attr: string, value: string) => Return;
+  byFlag: (flag: string) => Return;
+  byClass: (flag: string) => Return;
+  byData: (flag: string, value: string) => Return;
   byTag: (tag: string) => Return;
 };
 

@@ -288,7 +288,12 @@ function make_selector_style_setter<TReturn extends LiveTree | void>(
     },
 
     clear: () => {
+      // CHANGED: clear both the rule handle's local declaration closure and the
+      // manager-backed rendered rule. Dropping only the manager rule leaves this
+      // handle's local `decls` copy stale, so a later setMany(all) with the same
+      // values can be skipped as "unchanged" and fail to re-render the rule.
       handle.clear();
+      gcss.drop(ruleKey);
     },
 
     // keep pseudo support working on selector-scoped rules too
