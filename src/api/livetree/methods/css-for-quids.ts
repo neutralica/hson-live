@@ -145,7 +145,7 @@ function read_many_from_rendered_rule(rendered: string | undefined): StyleGetMan
     const value = part.slice(ix + 1).trim();
     if (!rawKey || !value) continue;
 
-    // CHANGED: get.all() returns a setMany-compatible declaration map.
+    // CHANGED: getMany() returns a setMany-compatible declaration map.
     // Preserve custom properties exactly; normalize normal CSS keys to the
     // same canonical spelling used by setter/getter internals.
     const key = rawKey.startsWith("--")
@@ -420,7 +420,7 @@ export function css_for_quids(
 
       readMany: () => {
         // CHANGED: enumerate the QUID-backed declaration model directly so
-        // css.get.all() returns the same consensus view as point reads.
+        // css.getMany() returns the same consensus view as point reads.
         const out: Record<string, string> = {};
         const allKeys = new Set<string>();
 

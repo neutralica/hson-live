@@ -15,14 +15,14 @@ export type StyleGetterAdapters = Readonly<{
   read: (propCanon: string) => string | undefined;
 
   /**
-   * CHANGED: optional bulk read hook for diagnostics and round-tripping into
+   * Optional bulk read hook for diagnostics and round-tripping into
    * setMany-compatible objects. Backends that cannot enumerate declarations may
-   * omit this and get an empty object from get.all().
+   * omit this and get an empty object from getMany().
    */
   readMany?: () => StyleGetMany;
 }>;
 
-type ReservedGetSurfaceKey = "property" | "var";
+type ReservedGetSurfaceKey = "property" | "var" | "vars";
 type DirectStyleGetKey = Exclude<AllowedStyleKey, ReservedGetSurfaceKey>;
 
 export type GetSurface = {
@@ -36,6 +36,14 @@ export type GetSurface = {
 
     /** Read a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
     var: (name: string) => string | undefined;
+
+    /**
+     * Read a selected list of CSS custom properties.
+     *
+     * Invalid names and missing declarations are omitted. Returned keys are
+     * canonical custom-property names in `--x` form.
+     */
+    vars: (names: readonly string[]) => Readonly<Partial<Record<CssVarName, string>>>;
   };
 
 export type StyleGetter = GetSurface;
@@ -95,9 +103,26 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
     return adapters.read(canon);
   };
 
+  const getVars = (names: readonly string[]): Readonly<Partial<Record<CssVarName, string>>> => {
+    const out: Partial<Record<CssVarName, string>> = {};
+
+    for (const name of names) {
+      const canon = normalize_css_var_name(name);
+      if (!canon) continue;
+
+      const value = adapters.read(canon);
+      if (value === undefined) continue;
+
+      out[canon] = value;
+    }
+
+    return out;
+  };
+
   const base = {
     property: getProp,
     var: getVar,
+    vars: getVars,
   };
 
   // changed: mirror StyleSetter's fluent key surface, e.g. css.get.width().
@@ -107,13 +132,9 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
         return Reflect.get(target, key, receiver);
       }
 
-      if (key === "property" || key === "var") {
+      if (key === "property" || key === "var" || key === "vars") {
         return Reflect.get(target, key, receiver);
       }
-
-      // CHANGED: `all` is a real CSS property, but this surface reserves
-      // get.all() for bulk reads. Use get.property("all") to read the CSS
-      // `all` property directly.
 
       // changed: bracket-access custom vars are read through var normalization.
       if (key.startsWith("--")) {
