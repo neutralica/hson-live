@@ -77,13 +77,13 @@ export type GlobalVarFacade = Readonly<{
   /** Return a canonical CSS custom-property name, e.g. `"theme-ink"` -> `"--theme-ink"`. */
   name(name: string): `--${string}` | undefined;
 
-  /** Return a CSS variable reference, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
-  get(name: string): `var(--${string})`;
+  /** Return a CSS variable reference for use in declarations, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
+  key(name: string): `var(--${string})`;
 
   /** Set a global `:root` CSS custom property. */
   set(name: string, value: CssValue): void;
 
-  /** Read a raw global `:root` CSS custom-property value. */
+  /** Read a raw global `:root` CSS custom-property declaration value. */
   value(name: string): string | undefined;
 
   /** Remove one global `:root` CSS custom property. */
@@ -565,9 +565,9 @@ export class GlobalCss {
     return {
       name: (name: string) => canonical(name),
 
-      get: (name: string) => {
+      key: (name: string) => {
         const canon = canonical(name);
-        if (!canon) throw new Error(`GlobalCss.var.get: invalid CSS variable name: ${name}`);
+        if (!canon) throw new Error(`GlobalCss.var.key: invalid CSS variable name: ${name}`);
         return `var(${canon})` as `var(--${string})`;
       },
 
@@ -633,18 +633,18 @@ export class GlobalCss {
   }
 
 
-  /**
-   * Return a selector-keyed rule handle.
-   *
-   * @param selStr CSS selector for the rule.
-   * @returns A global rule handle keyed by selector.
-   * @throws If the selector is empty.
-   */
-  private sel(selStr: string): GlobalRuleHandle {
-    const selector = selStr.trim();
-    if (!selector) throw new Error("GlobalCss.sel: empty selector");
-    return this.rule(GlobalCss.id_for_selector(selector), selector);
-  }
+  // /**
+  //  * Return a selector-keyed rule handle.
+  //  *
+  //  * @param selStr CSS selector for the rule.
+  //  * @returns A global rule handle keyed by selector.
+  //  * @throws If the selector is empty.
+  //  */
+  // private sel(selStr: string): GlobalRuleHandle {
+  //   const selector = selStr.trim();
+  //   if (!selector) throw new Error("GlobalCss.sel: empty selector");
+  //   return this.rule(GlobalCss.id_for_selector(selector), selector);
+  // }
 
   /**
    * Remove a global rule by key.

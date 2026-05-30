@@ -25,6 +25,7 @@ import { is_indexed } from "../../utils/node-utils/node-guards.js";
 import { Primitive } from "../../types/core.types.js";
 import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers.js";
 import { decode_html_key_tag } from "../../utils/html-utils/encode-html-tag.js";
+import { esc_attrs_quoted_angles } from "../../utils/html-preflights/preflight-attrs-escaping.js";
 
 
 
@@ -105,7 +106,10 @@ export function parse_html(input: string | Element): HsonNode {
         // If not strictly required, gate them later too.
         const svgSafe = namespace_svg(ents);
         const mangled = mangle_illegal_attrs(svgSafe);
-        let xmlSrc = mangled;
+        // CHANGED: make quoted attribute values XML-safe before the first parse.
+        // Firefox rejects bare `&` in quoted attrs such as url('a&b.png'), even
+        // when Chrome's XML parser appears to tolerate it.
+        let xmlSrc = esc_attrs_quoted_angles(mangled);
         const parser = new DOMParser();
         let parsed = parser.parseFromString(xmlSrc, "application/xml");
         let err = parsed.querySelector("parsererror");
@@ -313,16 +317,16 @@ export function parse_html(input: string | Element): HsonNode {
  * @see parse_html_attrs
  */
 function convert(el: Element, parentTag?: string): HsonNode {
-  const baseTag = el.tagName;
-  const tagLower = baseTag.toLowerCase();
-  const encoded = tagLower.startsWith(HTML_KEY_PREFIX);
-  const dec = decode_html_key_tag(tagLower);
-  if (encoded && parentTag !== OBJ_TAG) {
-    _throw_transform_err(
-      `encoded HTML tag prefix "${HTML_KEY_PREFIX}" is only allowed under ${OBJ_TAG}`,
-      "parse-html"
-    );
-  }
+    const baseTag = el.tagName;
+    const tagLower = baseTag.toLowerCase();
+    const encoded = tagLower.startsWith(HTML_KEY_PREFIX);
+    const dec = decode_html_key_tag(tagLower);
+    if (encoded && parentTag !== OBJ_TAG) {
+        _throw_transform_err(
+            `encoded HTML tag prefix "${HTML_KEY_PREFIX}" is only allowed under ${OBJ_TAG}`,
+            "parse-html"
+        );
+    }
     const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
     if (dec === STR_TAG) {
         _throw_transform_err('literal <_-str> is not allowed in input HTML', 'parse-html');

@@ -365,7 +365,7 @@ export class CssManager {
   }
 
 
-  private getPseudoBucket(quid: string, pseudo: CssPseudoKey): Map<string, string> {
+  private getPseudos(quid: string, pseudo: CssPseudoKey): Map<string, string> {
     let byPseudo = this.pseudoRulesByQuid.get(quid);
     if (!byPseudo) {
       byPseudo = new Map();
@@ -382,9 +382,9 @@ export class CssManager {
   }
 
 
-  private clearPseudoForQuid(quid: string): void {
-    if (this.pseudoRulesByQuid.delete(quid)) this.markChanged();
-  }
+  // private clearPseudoForQuid(quid: string): void {
+  //   if (this.pseudoRulesByQuid.delete(quid)) this.markChanged();
+  // }
 
   // --- INTERNAL: BUILD + SYNC -------------------------------------------
   /**
@@ -790,7 +790,7 @@ export class CssManager {
    * @param rendered - Rendered CSS value string.
    */
   public setPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string, rendered: string): void {
-    const b = this.getPseudoBucket(quid, pseudo);
+    const b = this.getPseudos(quid, pseudo);
     if (b.get(propCanon) === rendered) return;
     b.set(propCanon, rendered);
     this.markChanged();

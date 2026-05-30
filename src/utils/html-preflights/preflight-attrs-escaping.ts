@@ -1,5 +1,11 @@
 // preflight-attrs-escaping.ts
 
+
+function is_entity_start(src: string, ampIndex: number): boolean {
+  const rest = src.slice(ampIndex);
+  return /^&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]{1,31});/.test(rest);
+}
+
 /*********
  * Escape literal angle brackets inside quoted attribute values only.
  *
@@ -62,14 +68,28 @@ export function esc_attrs_quoted_angles(src: string): string {
 
       case S.QuotedD:
         if (c === '"') { s = S.Tag; out += c; break; }
+        // CHANGED: XML parsing rejects bare ampersands even when HTML accepts them.
+        // if (c === "<") { out += "&lt;"; break; }
+        // if (c === ">") { out += "&gt;"; break; }
+        // out += c; break;
+        
         if (c === "<") { out += "&lt;"; break; }
         if (c === ">") { out += "&gt;"; break; }
+        // Preserve existing named/numeric entities to avoid double-escaping.
+        if (c === "&" && !is_entity_start(src, i)) { out += "&amp;"; break; }
         out += c; break;
 
       case S.QuotedS:
         if (c === "'") { s = S.Tag; out += c; break; }
+        // CHANGED: XML parsing rejects bare ampersands even when HTML accepts them.
+        // if (c === "<") { out += "&lt;"; break; }
+        // if (c === ">") { out += "&gt;"; break; }
+        // out += c; break;
+        
         if (c === "<") { out += "&lt;"; break; }
         if (c === ">") { out += "&gt;"; break; }
+        // Preserve existing named/numeric entities to avoid double-escaping.
+        if (c === "&" && !is_entity_start(src, i)) { out += "&amp;"; break; }
         out += c; break;
     }
   }
