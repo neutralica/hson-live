@@ -1,10 +1,8 @@
 // style-setter.ts
 
-import { CssMap, CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types.js";
-import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
-import { SetSurface } from "../../../types/css.types.js";
-import { CssKey } from "../../../types/css.types.js";
+import { CssKey, CssMap, CssMapBase, CssPseudoKey, CssValue, CssVarFacade, CssVarName, SetSurface } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import { normalize_css_var_name } from "./style-getter.js";
 
 
@@ -110,6 +108,32 @@ export function make_set_surface<TReturn>(
       return (v: CssValue) => setProp(rawKey, v);
     },
   });
+}
+
+/**
+ * Create the canonical custom-property facade for a style-like handle.
+ *
+ * This helper is backend-neutral: inline style, QUID-scoped CSS, and global CSS
+ * can expose the same `.var.name/key/set/value` shape while wiring `set` and
+ * `value` to their own storage scopes.
+ */
+export function make_css_var_facade<TReturn>(
+  host: TReturn,
+  setVar: (name: string, value: CssValue) => TReturn,
+  readVar: (name: string) => string | undefined,
+): CssVarFacade<TReturn> {
+  const canonName = (name: string): CssVarName => {
+    const canon = normalize_css_var_name(name);
+    if (!canon) throw new Error(`invalid CSS custom property name: ${name}`);
+    return canon as CssVarName;
+  };
+
+  return {
+    name: (name: string): CssVarName => canonName(name),
+    key: (name: string): `var(${CssVarName})` => `var(${canonName(name)})`,
+    set: (name: string, value: CssValue): TReturn => setVar(canonName(name), value),
+    value: (name: string): string | undefined => readVar(canonName(name)),
+  };
 }
 
 const isInvalidCssVarName = (propCanon: string): boolean => propCanon === "--invalid-css-var-name";

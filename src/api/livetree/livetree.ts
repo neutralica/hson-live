@@ -349,21 +349,23 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
       this.styleApiInternal = {
         ...mgr.setter,
         get: mgr.getter,
+        getMany: mgr.getMany,
+        var: mgr.var,
       };
     }
     return this.styleApiInternal;
   }
-  
-    /** QUID-scoped stylesheet helper for this branch. 
-     * 
-     * @see CssTreeHandle
-     */
-    public get css(): CssTreeHandle {
-      if (!this.cssApiInternal) {
-        this.cssApiInternal = css_for_quids(this, [this.quid]);
-      }
-      return this.cssApiInternal;
+
+  /** QUID-scoped stylesheet helper for this branch. 
+   * 
+   * @see CssTreeHandle
+   */
+  public get css(): CssTreeHandle {
+    if (!this.cssApiInternal) {
+      this.cssApiInternal = css_for_quids(this, [this.quid]);
     }
+    return this.cssApiInternal;
+  }
 
   /** Tree-local event registry/helper surface.
    * 
@@ -511,13 +513,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     return this.canvasApi ??= Object.freeze(make_canvas_api(this));
   }
 
-    /***************************************
-   * Branch cloning
-   *
-   * Deep branch duplication with fresh identity.
-   *
-   * @see clone_branch_method
-   ***************************************/
+  /***************************************
+ * Branch cloning
+ *
+ * Deep branch duplication with fresh identity.
+ *
+ * @see clone_branch_method
+ ***************************************/
 
   /** Clone this branch as a new unattached LiveTree branch. */
   public cloneBranch(): LiveTree {

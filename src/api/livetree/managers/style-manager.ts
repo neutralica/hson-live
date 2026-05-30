@@ -1,14 +1,14 @@
 // style-manager.ts
 
 import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
-import { AllowedStyleKey, CssMap } from "../../../types/css.types.js";
+import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util.js";
 import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
-import { make_style_setter, StyleSetter } from "./style-setter.js";
-import { make_style_getter, StyleGetter } from "./style-getter.js";
+import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-setter.js";
+import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 
@@ -70,34 +70,62 @@ export const parse_style_attr = (raw: string | undefined): Map<string, string> =
 
 
 function readStyleFromNode(node: HsonNode, propCanon: string): string | undefined {
-  const attrs = node._attrs as HsonAttrs | undefined;
-  const raw = attrs?.style;
+    const attrs = node._attrs as HsonAttrs | undefined;
+    const raw = attrs?.style;
 
-  const kebabKey = propCanon.startsWith("--")
-    ? propCanon
-    : camel_to_kebab(propCanon);
+    const kebabKey = propCanon.startsWith("--")
+        ? propCanon
+        : camel_to_kebab(propCanon);
 
-  const internalKey = propCanon.startsWith("--")
-    ? propCanon
-    : kebab_to_camel(kebabKey);
+    const internalKey = propCanon.startsWith("--")
+        ? propCanon
+        : kebab_to_camel(kebabKey);
 
-  if (raw && typeof raw === "object") {
-    const styleObj = raw as CssMap;
+    if (raw && typeof raw === "object") {
+        const styleObj = raw as CssMap;
 
-    const direct = styleObj[internalKey as keyof CssMap];
-    if (typeof direct === "string") return direct;
+        const direct = styleObj[internalKey as keyof CssMap];
+        if (typeof direct === "string") return direct;
 
-    // changed: tolerate legacy/object styles that still contain kebab keys.
-    const legacy = styleObj[kebabKey as keyof CssMap];
-    return typeof legacy === "string" ? legacy : undefined;
-  }
+        // changed: tolerate legacy/object styles that still contain kebab keys.
+        const legacy = styleObj[kebabKey as keyof CssMap];
+        return typeof legacy === "string" ? legacy : undefined;
+    }
 
-  if (typeof raw === "string") {
-    const map = parse_style_attr(raw);
-    return map.get(kebabKey);
-  }
+    if (typeof raw === "string") {
+        const map = parse_style_attr(raw);
+        return map.get(kebabKey);
+    }
 
-  return undefined;
+    return undefined;
+}
+
+function readAllStyleFromNode(node: HsonNode): StyleGetMany {
+    const attrs = node._attrs as HsonAttrs | undefined;
+    const raw = attrs?.style;
+    const out: Record<string, string> = {};
+
+    if (raw && typeof raw === "object") {
+        const styleObj = raw as CssMap;
+
+        for (const [key, value] of Object.entries(styleObj)) {
+            if (typeof value !== "string") continue;
+            out[key] = value;
+        }
+
+        return out;
+    }
+
+    if (typeof raw === "string") {
+        const map = parse_style_attr(raw);
+
+        for (const [key, value] of map.entries()) {
+            const storeKey = key.startsWith("--") ? key : kebab_to_camel(key);
+            out[storeKey] = value;
+        }
+    }
+
+    return out;
 }
 
 /**
@@ -318,6 +346,11 @@ export class StyleManager<TTree extends LiveTree> {
 
     // read surface mirrors setter pattern
     public readonly getter: StyleGetter;
+    /** Bulk-read declarations from this inline style scope. */
+
+    public readonly getMany: () => StyleGetMany;
+    /** Unified custom-property helper for this inline style scope. */
+    public readonly var: CssVarFacade<TTree>;
 
     /**
      * Create a `StyleManager` for a given `LiveTree`.
@@ -352,13 +385,19 @@ export class StyleManager<TTree extends LiveTree> {
                 this.clearAll();
             },
         });
-
         // getter reads from the node’s style attr (internal truth)
-        this.getter = make_style_getter({
-
+        const getterAdapters = {
             read: (propCanon: string) => readStyleFromNode(this.tree.node, propCanon),
+            readMany: () => readAllStyleFromNode(this.tree.node),
+        };
 
-        });
+        this.getter = make_style_getter(getterAdapters);
+        this.getMany = make_style_get_many(getterAdapters);
+        this.var = make_css_var_facade<TTree>(
+            this.tree,
+            (name, value) => this.setter.set.var(name, value),
+            (name) => this.getter.var(name),
+        );
     }
 
 

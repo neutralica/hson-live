@@ -22,7 +22,7 @@ export type StyleGetterAdapters = Readonly<{
   readMany?: () => StyleGetMany;
 }>;
 
-type ReservedGetSurfaceKey = "all" | "stringAll" | "property" | "var";
+type ReservedGetSurfaceKey = "property" | "var";
 type DirectStyleGetKey = Exclude<AllowedStyleKey, ReservedGetSurfaceKey>;
 
 export type GetSurface = {
@@ -34,25 +34,11 @@ export type GetSurface = {
     /** Read a property by any supported CSS key spelling. */
     property: (prop: CssKey) => string | undefined;
 
-    /**
-     * Read every enumerable declaration available to this getter.
-     * The returned object should be suitable for passing back into setMany().
-     */
-    all: () => StyleGetMany;
-
-    /**
-     * Serialize all enumerable declarations as CSS declaration text.
-     * This is for diagnostics/display; prefer all() when round-tripping into setMany().
-     */
-    stringAll: () => string;
-
     /** Read a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
     var: (name: string) => string | undefined;
   };
 
 export type StyleGetter = GetSurface;
-
-
 /**
  * Normalize user-facing CSS custom property names.
  *
@@ -78,49 +64,14 @@ export function normalize_css_var_name(name: string): CssVarName | undefined {
   return `--${bare}` as CssVarName;
 }
 
-function style_get_many_key_to_css_prop(key: string): string {
-  const k = key.trim();
-  if (!k) return "";
-  if (k.startsWith("--")) return k;
-
-  const lower = k.toLowerCase();
-
-  // CHANGED: vendor-prefixed declaration keys may be stored without the
-  // leading dash, but serialized CSS should restore it.
-  if (
-    lower.startsWith("webkit-")
-    || lower.startsWith("moz-")
-    || lower.startsWith("ms-")
-    || lower.startsWith("o-")
-  ) {
-    return `-${lower}`;
-  }
-
-  const kebab = k.includes("-") ? lower : camel_to_kebab(k);
-
-  // CHANGED: camelCase vendor keys like `webkitAppearance` serialize as
-  // `-webkit-appearance`, not `webkit-appearance`.
-  if (
-    kebab.startsWith("webkit-")
-    || kebab.startsWith("moz-")
-    || kebab.startsWith("ms-")
-    || kebab.startsWith("o-")
-  ) {
-    return `-${kebab}`;
-  }
-
-  return kebab;
-}
-
-function stringify_style_get_many(map: StyleGetMany): string {
-  return Object.entries(map)
-    .map(([key, value]) => {
-      const prop = style_get_many_key_to_css_prop(key);
-      if (!prop) return "";
-      return `${prop}: ${value};`;
-    })
-    .filter((line) => line.length > 0)
-    .join(" ");
+/**
+ * Create the canonical bulk-read function for a style-like handle.
+ *
+ * This lives beside, not under, `get` so CSS property names such as `all` keep
+ * their normal meaning on the getter proxy.
+ */
+export function make_style_get_many(adapters: StyleGetterAdapters): () => StyleGetMany {
+  return (): StyleGetMany => adapters.readMany?.() ?? {};
 }
 
 /**
@@ -143,21 +94,9 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
     if (!canon) return undefined;
     return adapters.read(canon);
   };
-  const getAll = (): StyleGetMany => {
-    // CHANGED: not every backend can enumerate declarations. For those cases,
-    // expose a safe empty object rather than making get.all unavailable.
-    return adapters.readMany?.() ?? {};
-  };
-
-  const getStringAll = (): string => {
-    // CHANGED: keep structured round-tripping and string diagnostics separate.
-    return stringify_style_get_many(getAll());
-  };
 
   const base = {
     property: getProp,
-    all: getAll,
-    stringAll: getStringAll,
     var: getVar,
   };
 
@@ -168,7 +107,7 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
         return Reflect.get(target, key, receiver);
       }
 
-      if (key === "property" || key === "all" || key === "stringAll" || key === "var") {
+      if (key === "property" || key === "var") {
         return Reflect.get(target, key, receiver);
       }
 

@@ -5,7 +5,7 @@ import { CssAnimHandle } from "./animate.types.js";
 import { KeyframesManager } from "./keyframes.types.js";
 import { StyleSetter } from "../api/livetree/managers/style-setter.js";
 import { PropertyManager } from "./at-property.types.js";
-import { StyleGetter } from "../api/livetree/managers/style-getter.js";
+import { StyleGetMany, StyleGetter } from "../api/livetree/managers/style-getter.js";
 
 
 /**
@@ -302,12 +302,16 @@ export type CssGlobalsApi = Readonly<{
 export type StyleHandle<TOwner> = Readonly<
   StyleSetter<TOwner> & {
     get: StyleGetter;
+    getMany: () => StyleGetMany;
+    var: CssVarFacade<TOwner>;
   }
 >;
 
 export type CssHandleBase<TReturn> = Readonly<
   StyleSetter<TReturn> & {
     get: StyleGetter;
+    getMany: () => StyleGetMany;
+    var: CssVarFacade<TReturn>;
     atProperty: PropertyManager;
     keyframes: KeyframesManager;
     anim: CssAnimHandle;
@@ -353,6 +357,7 @@ export type CssKey = string;
  */
 export type CssVarName = `--${string}`;
 
+
 /**
  * Proxy-call surface used by `StyleSetter.set`.
  *
@@ -366,15 +371,30 @@ export type CssVarName = `--${string}`;
  * `Next` is typically the handle type itself (for chaining).
  */
 export type SetSurface<Next> =
-  // enumerated known CSSStyleDeclaration keys → rich autocomplete
   {
     [K in AllowedStyleKey]: (v: CssValue) => Next;
   }
-  // allow these via bracket access too
   & Record<CssVarName, (v: CssValue) => Next>
   & Record<`${string}-${string}`, (v: CssValue) => Next>
-  // convenience
   & {
     /** Set a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
     var: (name: string, v: CssValue) => Next;
   };
+  
+/**
+ * Unified CSS custom-property helper used by global CSS, QUID-scoped CSS,
+ * and inline style handles.
+ *
+ * Semantics:
+ * - `name("x")` returns the canonical declaration name: `--x`.
+ * - `key("x")` returns a usable CSS reference: `var(--x)`.
+ * - `set("x", value)` writes the custom property to this handle's own scope.
+ * - `value("x")` reads only this handle's own stored value; it does not read
+ *   inherited or computed browser values.
+ */
+export type CssVarFacade<TReturn> = Readonly<{
+  name: (name: string) => CssVarName;
+  key: (name: string) => `var(${CssVarName})`;
+  set: (name: string, value: CssValue) => TReturn;
+  value: (name: string) => string | undefined;
+}>;

@@ -5,8 +5,8 @@ import { normalize_css_key } from "../../../_tests/test-exports.js";
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
-import { make_style_getter, StyleGetMany, StyleGetter } from "../managers/style-getter.js";
-import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
+import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
+import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
 // one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
@@ -27,15 +27,15 @@ const mk_css_quids_adapters = (
     },
 
     clear: () => {
-  for (const quid of ids) {
-    mgr.clearQuid(quid);
-  }
+      for (const quid of ids) {
+        mgr.clearQuid(quid);
+      }
 
-  // CHANGED: pseudos and nested selector blocks are now selector-backed
-  // rules. Clearing a css handle should clear selector rules owned by this
-  // same handle, but not selector rules owned by child nodes.
-  CssManager.api().dropByPrefix(selector_rule_owner_key(hostOrVoid, ids));
-},
+      // CHANGED: pseudos and nested selector blocks are now selector-backed
+      // rules. Clearing a css handle should clear selector rules owned by this
+      // same handle, but not selector rules owned by child nodes.
+      CssManager.api().dropByPrefix(selector_rule_owner_key(hostOrVoid, ids));
+    },
     applySelector: (pattern, decls) => {
       // CHANGED: setMany selector blocks must opt in with `&`. The public
       // css.selector(...) method remains more permissive, but object-shaped
@@ -214,16 +214,16 @@ function selector_rule_key(
   return `${selector_rule_owner_key(host, ids)}${selector}`;
 }
 
-export function make_selector_style_getter(
+function make_selector_style_getter_adapters(
   host: LiveTree | void,
   ids: string[],
   pattern: string,
-): StyleGetter {
+): StyleGetterAdapters {
   const gcss = CssManager.api();
   const selector = resolve_selector_pattern(ids, pattern);
   const ruleKey = selector_rule_key(host, ids, selector);
 
-  return make_style_getter({
+  return {
     read: (propCanon: string) => {
       // CHANGED: read from the same resolved selector key used by writes.
       return read_decl_from_rendered_rule(gcss.get(ruleKey), propCanon);
@@ -231,10 +231,18 @@ export function make_selector_style_getter(
 
     readMany: () => {
       // CHANGED: selector-backed handles can enumerate their own rendered rule,
-      // making css.selector(...).get.all() useful for diagnostics and round trips.
+      // making css.selector(...).getMany() useful for diagnostics and round trips.
       return read_many_from_rendered_rule(gcss.get(ruleKey));
     },
-  });
+  };
+}
+
+export function make_selector_style_getter(
+  host: LiveTree | void,
+  ids: string[],
+  pattern: string,
+): StyleGetter {
+  return make_style_getter(make_selector_style_getter_adapters(host, ids, pattern));
 }
 
 function make_selector_style_handle<TReturn extends LiveTree | void>(
@@ -243,11 +251,20 @@ function make_selector_style_handle<TReturn extends LiveTree | void>(
   patternRaw: string,
 ): StyleHandle<TReturn> {
   const setter = make_selector_style_setter(ret, ids, patternRaw);
-  const getter = make_selector_style_getter(ret, ids, patternRaw);
+  const getterAdapters = make_selector_style_getter_adapters(ret, ids, patternRaw);
+  const getter = make_style_getter(getterAdapters);
+  const getMany = make_style_get_many(getterAdapters);
+  const vars = make_css_var_facade<TReturn>(
+    ret,
+    (name, value) => setter.set.var(name, value),
+    (name) => getter.var(name),
+  );
 
   return {
     ...setter,
     get: getter,
+    getMany,
+    var: vars,
   };
 }
 
@@ -342,6 +359,49 @@ export function css_for_quids(
 ): CssHandleBase<any> {
   const mgr = CssManager.invoke();
 
+  const make_get_many_for_ids = (ids: readonly string[]): (() => StyleGetMany) => {
+    return (): StyleGetMany => {
+      const out: Record<string, string> = {};
+      const allKeys = new Set<string>();
+
+      for (const quid of ids) {
+        const found = mgr.getAllForQuid(quid);
+        if (!found) return {};
+
+        for (const key of Object.keys(found)) {
+          allKeys.add(key);
+        }
+      }
+
+      for (const key of allKeys) {
+        let seen: string | undefined;
+        let agreed = true;
+
+        for (const quid of ids) {
+          const value = mgr.getForQuid(quid, key);
+          if (value === undefined) {
+            agreed = false;
+            break;
+          }
+          if (seen === undefined) {
+            seen = value;
+            continue;
+          }
+          if (seen !== value) {
+            agreed = false;
+            break;
+          }
+        }
+
+        if (agreed && seen !== undefined) {
+          out[key] = seen;
+        }
+      }
+
+      return out;
+    };
+  };
+
   const mk_getter_for_ids = (ids: readonly string[]) => {
     const readConsensus = (propCanon: string): string | undefined => {
       let seen: string | undefined;
@@ -395,10 +455,17 @@ export function css_for_quids(
     );
 
     const getter = mk_getter_for_ids(ids);
-
+    const getMany = make_get_many_for_ids(ids);
+    const vars = make_css_var_facade<LiveTree>(
+      host,
+      (name, value) => setter.set.var(name, value),
+      (name) => getter.var(name),
+    );
     return {
       ...setter,
       get: getter,
+      getMany,
+      var: vars,
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
       anim: mgr.animForQuids(ids),
@@ -417,10 +484,17 @@ export function css_for_quids(
   );
 
   const getter = mk_getter_for_ids(ids);
-
+  const getMany = make_get_many_for_ids(ids);
+  const vars = make_css_var_facade<void>(
+    undefined,
+    (name, value) => setter.set.var(name, value),
+    (name) => getter.var(name),
+  );
   return {
     ...setter,
     get: getter,
+    getMany,
+    var: vars,
     devSnapshot: () => mgr.snapshot(),
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
