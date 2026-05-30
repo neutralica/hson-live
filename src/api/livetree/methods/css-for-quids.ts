@@ -257,7 +257,9 @@ function make_selector_style_handle<TReturn extends LiveTree | void>(
   const vars = make_css_var_facade<TReturn>(
     ret,
     (name, value) => setter.set.var(name, value),
-    (name) => getter.var(name),
+    // CHANGED: `.var.value()` reads through the selector backend directly;
+    // it no longer depends on the removed public `get.var()` method.
+    (name) => getterAdapters.read(name),
   );
 
   return {
@@ -346,7 +348,9 @@ export function css_for_quids(host: LiveTree, quids: readonly string[]): CssTree
  * - For `__before` / `__after`, `content: ""` is auto-injected when omitted.
  *
  * Read surface:
- * - `get.prop` / `get.var` return a value only when all QUIDs agree.
+  * - `get.prop` returns a value only when all QUIDs agree.
+ * - `var.value(...)` reads a custom property only when all QUIDs agree.
+ * - `get.vars([...])` returns selected custom properties that agree.
  *
  * @param quids List of QUID strings to target. Empty/whitespace entries are ignored.
  * @returns A `CssHandle` that broadcasts style mutations to all provided QUIDs.
@@ -402,8 +406,50 @@ export function css_for_quids(
     };
   };
 
-  const mk_getter_for_ids = (ids: readonly string[]) => {
-    const readConsensus = (propCanon: string): string | undefined => {
+  // const mk_getter_for_ids = (ids: readonly string[]) => {
+  //   const readConsensus = (propCanon: string): string | undefined => {
+  //     let seen: string | undefined;
+
+  //     for (const quid of ids) {
+  //       const v = mgr.getForQuid(quid, propCanon);
+  //       if (v === undefined) return undefined;
+  //       if (seen === undefined) { seen = v; continue; }
+  //       if (v !== seen) return undefined;
+  //     }
+  //     return seen;
+  //   };
+
+  //   return make_style_getter({
+  //     read: (propCanon) => readConsensus(propCanon),
+
+  //     readMany: () => {
+  //       // CHANGED: enumerate the QUID-backed declaration model directly so
+  //       // css.getMany() returns the same consensus view as point reads.
+  //       const out: Record<string, string> = {};
+  //       const allKeys = new Set<string>();
+
+  //       for (const quid of ids) {
+  //         const found = mgr.getAllForQuid(quid);
+  //         if (!found) return {};
+
+  //         for (const key of Object.keys(found)) {
+  //           allKeys.add(key);
+  //         }
+  //       }
+
+  //       for (const key of allKeys) {
+  //         const value = readConsensus(key);
+  //         if (value !== undefined) {
+  //           out[key] = value;
+  //         }
+  //       }
+
+  //       return out;
+  //     },
+  //   });
+  // };
+  const make_read_consensus_for_ids = (ids: readonly string[]) => {
+    return (propCanon: string): string | undefined => {
       let seen: string | undefined;
 
       for (const quid of ids) {
@@ -412,8 +458,13 @@ export function css_for_quids(
         if (seen === undefined) { seen = v; continue; }
         if (v !== seen) return undefined;
       }
+
       return seen;
     };
+  };
+
+  const mk_getter_for_ids = (ids: readonly string[]) => {
+    const readConsensus = make_read_consensus_for_ids(ids);
 
     return make_style_getter({
       read: (propCanon) => readConsensus(propCanon),
@@ -456,10 +507,13 @@ export function css_for_quids(
 
     const getter = mk_getter_for_ids(ids);
     const getMany = make_get_many_for_ids(ids);
+    const readConsensus = make_read_consensus_for_ids(ids);
     const vars = make_css_var_facade<LiveTree>(
       host,
       (name, value) => setter.set.var(name, value),
-      (name) => getter.var(name),
+      // CHANGED: `.var.value()` reads through the QUID consensus backend
+      // directly; it no longer depends on the removed public `get.var()` method.
+      readConsensus,
     );
     return {
       ...setter,
@@ -485,10 +539,13 @@ export function css_for_quids(
 
   const getter = mk_getter_for_ids(ids);
   const getMany = make_get_many_for_ids(ids);
+  const readConsensus = make_read_consensus_for_ids(ids);
   const vars = make_css_var_facade<void>(
     undefined,
     (name, value) => setter.set.var(name, value),
-    (name) => getter.var(name),
+    // CHANGED: `.var.value()` reads through the QUID consensus backend
+    // directly; it no longer depends on the removed public `get.var()` method.
+    readConsensus,
   );
   return {
     ...setter,

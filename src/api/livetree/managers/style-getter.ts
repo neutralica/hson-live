@@ -34,8 +34,9 @@ export type GetSurface = {
     /** Read a property by any supported CSS key spelling. */
     property: (prop: CssKey) => string | undefined;
 
-    /** Read a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
-    var: (name: string) => string | undefined;
+    // deprecated
+    // /** Read a CSS custom property. Accepts `"--x"`, `"-x"`, or `"x"`. */
+    // var: (name: string) => string | undefined;
 
     /**
      * Read a selected list of CSS custom properties.
@@ -121,7 +122,7 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
 
   const base = {
     property: getProp,
-    var: getVar,
+    // var: getVar,
     vars: getVars,
   };
 
@@ -132,7 +133,7 @@ export function make_style_getter(adapters: StyleGetterAdapters): StyleGetter {
         return Reflect.get(target, key, receiver);
       }
 
-      if (key === "property" || key === "var" || key === "vars") {
+      if (key === "property" || key === "vars") {
         return Reflect.get(target, key, receiver);
       }
 

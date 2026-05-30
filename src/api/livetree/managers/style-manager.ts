@@ -396,7 +396,10 @@ export class StyleManager<TTree extends LiveTree> {
         this.var = make_css_var_facade<TTree>(
             this.tree,
             (name, value) => this.setter.set.var(name, value),
-            (name) => this.getter.var(name),
+            // CHANGED: `.var.value()` should not route through the public `get`
+            // surface. `get.var()` is being removed; this reads the inline-style
+            // backend directly.
+            (name) => readStyleFromNode(this.tree.node, name),
         );
     }
 
