@@ -177,7 +177,6 @@ export class CssManager {
   private changed: boolean = false;
   private readonly globalCss: Map<string, string> = new Map();
   private globalsApi: GlobalCssApi | undefined;
-  private readonly pseudoRulesByQuid: Map<string, Map<string, Map<string, string>>> = new Map();
   private notify_global_css_changed(): void {
     this.markChanged();      //  (batched)
     // this.syncToDom();           // immediate
@@ -365,21 +364,6 @@ export class CssManager {
   }
 
 
-  private getPseudos(quid: string, pseudo: CssPseudoKey): Map<string, string> {
-    let byPseudo = this.pseudoRulesByQuid.get(quid);
-    if (!byPseudo) {
-      byPseudo = new Map();
-      this.pseudoRulesByQuid.set(quid, byPseudo);
-    }
-
-    let decls = byPseudo.get(pseudo);
-    if (!decls) {
-      decls = new Map();
-      byPseudo.set(pseudo, decls);
-    }
-
-    return decls;
-  }
 
 
   // private clearPseudoForQuid(quid: string): void {
@@ -459,13 +443,6 @@ export class CssManager {
     if (atPropCss) parts.push(atPropCss);
     if (keyframesCss) parts.push(keyframesCss);
     if (quidCss) parts.push(quidCss);
-    for (const [quid, byPseudo] of this.pseudoRulesByQuid) {
-      for (const [pseudo, decls] of byPseudo) {
-        const selector = `${selector_for_quid(quid)}${pseudo_to_suffix(pseudo as CssPseudoKey)}`;
-        const cssText = this.renderRule(selector, Object.fromEntries(decls)).trim();
-        if (cssText) parts.push(cssText);
-      }
-    }
     return parts.join("\n\n");
   }
 
@@ -625,7 +602,7 @@ export class CssManager {
    * Release stylesheet artifacts owned by one QUID.
    *
    * This is intended for branch/node teardown paths. It clears QUID-scoped
-   * declarations, pseudo declarations, and generated keyframes owned by the
+   * declarations and generated keyframes owned by the
    * QUID. Durable/global CSS created through `CssManager.api()` is unaffected.
    */
   public releaseOwnedCssForQuid(quid: string): void {
@@ -633,7 +610,6 @@ export class CssManager {
     if (!q) return;
 
     this.clearQuid(q);
-    this.clearPseudoAllForQuid(q);
     this.keyframeManager.releaseOwner(q);
   }
 
@@ -781,55 +757,6 @@ export class CssManager {
     this.markChanged();
   }
 
-  /**
-   * Set a pseudo rule declaration for a specific QUID.
-   *
-   * @param quid - QUID whose selector will receive the pseudo rule.
-   * @param pseudo - Pseudo key (e.g. `_hover`, `__before`).
-   * @param propCanon - Canonical property key to set.
-   * @param rendered - Rendered CSS value string.
-   */
-  public setPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string, rendered: string): void {
-    const b = this.getPseudos(quid, pseudo);
-    if (b.get(propCanon) === rendered) return;
-    b.set(propCanon, rendered);
-    this.markChanged();
-  }
-
-  /**
-   * Remove a single pseudo declaration for a specific QUID.
-   */
-  public unsetPseudoForQuid(quid: string, pseudo: CssPseudoKey, propCanon: string): void {
-    const byPseudo = this.pseudoRulesByQuid.get(quid);
-    const b = byPseudo?.get(pseudo);
-    if (!b) return;
-
-    if (b.delete(propCanon)) this.markChanged();
-
-    // cleanup empties
-    if (b.size === 0) byPseudo!.delete(pseudo);
-    if (byPseudo!.size === 0) this.pseudoRulesByQuid.delete(quid);
-  }
-
-  /**
-   * Clear all declarations for a given QUID + pseudo pair.
-   */
-  public clearPseudoQuid(quid: string, pseudo: CssPseudoKey): void {
-    const byPseudo = this.pseudoRulesByQuid.get(quid);
-    if (!byPseudo) return;
-    if (byPseudo.delete(pseudo)) this.markChanged();
-    if (byPseudo.size === 0) this.pseudoRulesByQuid.delete(quid);
-  }
-
-  // CssManager.ts (or wherever the class lives)
-
-  /**
-   * Clear *all* pseudo buckets for a given QUID.
-   */
-  public clearPseudoAllForQuid(quid: string): void {
-    const had = this.pseudoRulesByQuid.delete(quid);
-    if (had) this.markChanged();
-  }
   /**
  * Debug-only nuclear reset.
  * Clears all CssManager-owned state:

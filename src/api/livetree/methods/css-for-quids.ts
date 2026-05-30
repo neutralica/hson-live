@@ -1,10 +1,10 @@
 // css_for_quids.ts
 
 
-import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssKey, CssValue, CssPseudoKey, CssMapBase, StyleHandle } from "../../../types/css.types.js";
-import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../../_tests/test-exports.js";
+import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
-import { CssManager, isLiveTree, pseudo_to_suffix, render_css_value } from "../managers/css-manager.js";
+import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
 import { make_style_getter, StyleGetMany, StyleGetter } from "../managers/style-getter.js";
 import { make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
@@ -27,11 +27,15 @@ const mk_css_quids_adapters = (
     },
 
     clear: () => {
-      for (const quid of ids) {
-        mgr.clearQuid(quid);
-        mgr.clearPseudoAllForQuid?.(quid);
-      }
-    },
+  for (const quid of ids) {
+    mgr.clearQuid(quid);
+  }
+
+  // CHANGED: pseudos and nested selector blocks are now selector-backed
+  // rules. Clearing a css handle should clear selector rules owned by this
+  // same handle, but not selector rules owned by child nodes.
+  CssManager.api().dropByPrefix(selector_rule_owner_key(hostOrVoid, ids));
+},
     applySelector: (pattern, decls) => {
       // CHANGED: setMany selector blocks must opt in with `&`. The public
       // css.selector(...) method remains more permissive, but object-shaped
@@ -48,24 +52,17 @@ const mk_css_quids_adapters = (
     },
     // pseudo routing for quid-scoped rules
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-      for (const quid of ids) {
-        for (const [k, v] of Object.entries(pseudoDecls)) {
-          if (v == null) continue;
+      // CHANGED: pseudo shorthand keys are now selector-rule sugar. This makes
+      // `__before` and `css.selector("&::before")` address the same rule store.
+      const selector = resolve_selector_pattern(ids, `&${pseudo_to_suffix(pseudo)}`);
+      const ruleKey = selector_rule_key(hostOrVoid, ids, selector);
+      const handle = CssManager.api().rule(ruleKey, selector);
 
-          const propCanon = normalize_css_key(k as CssKey);
-          const rendered = render_css_value(v as CssValue);
+      handle.setMany(pseudoDecls);
 
-          if (rendered == null) {
-            mgr.unsetPseudoForQuid(quid, pseudo, propCanon);
-          } else {
-            mgr.setPseudoForQuid(quid, pseudo, propCanon, rendered);
-          }
-        }
-
-        // auto-content for ::before/::after if omitted
-        if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
-          mgr.setPseudoForQuid(quid, pseudo, "content", `""`);
-        }
+      // auto-content for ::before/::after if omitted
+      if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
+        handle.setProp("content", `""`);
       }
     },
   };
@@ -153,7 +150,7 @@ function read_many_from_rendered_rule(rendered: string | undefined): StyleGetMan
     // same canonical spelling used by setter/getter internals.
     const key = rawKey.startsWith("--")
       ? rawKey
-      : normalize_css_key(rawKey as CssKey);
+      : normalize_css_key(rawKey);
 
     out[key] = value;
   }
@@ -168,7 +165,7 @@ function css_prop_names_match(renderedKey: string, propCanon: string): boolean {
 
   const keyCandidates = new Set<string>([
     key,
-    normalize_css_key(key as CssKey),
+    normalize_css_key(key),
   ]);
 
   // CHANGED: tolerate vendor declarations that have lost exactly one leading
@@ -176,7 +173,7 @@ function css_prop_names_match(renderedKey: string, propCanon: string): boolean {
   // versus `-webkit-appearance`.
   if (!key.startsWith("-") && key.includes("-")) {
     keyCandidates.add(`-${key}`);
-    keyCandidates.add(normalize_css_key(`-${key}` as CssKey));
+    keyCandidates.add(normalize_css_key(`-${key}`));
   }
 
   const propCandidates = new Set<string>([
@@ -186,7 +183,7 @@ function css_prop_names_match(renderedKey: string, propCanon: string): boolean {
 
   if (!prop.startsWith("-") && prop.includes("-")) {
     propCandidates.add(`-${prop}`);
-    propCandidates.add(normalize_css_key(`-${prop}` as CssKey));
+    propCandidates.add(normalize_css_key(`-${prop}`));
   }
 
   for (const candidate of keyCandidates) {
@@ -196,6 +193,17 @@ function css_prop_names_match(renderedKey: string, propCanon: string): boolean {
   return false;
 }
 
+function selector_rule_owner_key(
+  host: LiveTree | void,
+  ids: readonly string[],
+): string {
+  // CHANGED: selector rules created from one css handle share an owner prefix.
+  // css.clear() can then drop selector/pseudo rules owned by this handle without
+  // touching child-node selector rules, which use different QUID ids.
+  const hostKey = host ? host.id : "void";
+  return `${hostKey} ${ids.join(" ")} `;
+}
+
 function selector_rule_key(
   host: LiveTree | void,
   ids: readonly string[],
@@ -203,10 +211,7 @@ function selector_rule_key(
 ): string {
   // CHANGED: selector keys use the resolved selector string. The raw pattern is
   // only user input; the resolved selector is the actual CSS rule identity.
-  if (host) {
-    return `${host.id} ${ids.join(" ")} ${selector}`;
-  }
-  return `${ids.join(" ")} ${selector}`;
+  return `${selector_rule_owner_key(host, ids)}${selector}`;
 }
 
 export function make_selector_style_getter(
@@ -284,7 +289,7 @@ function make_selector_style_setter<TReturn extends LiveTree | void>(
     },
 
     remove: (propCanon) => {
-      handle.remove(propCanon as CssKey);
+      handle.remove(propCanon);
     },
 
     clear: () => {

@@ -334,6 +334,7 @@ export class GlobalCss {
       var: g().varsFacade(),
       dispose: () => { _listeners.delete(onChange); },
       drop: (ruleKey: string) => g().remove(ruleKey),
+      dropByPrefix: (prefix: string) => g().removeByPrefix(prefix),
       clearAll: () => g().clear(),
       has: (ruleKey: string) => g().has(ruleKey),
       list: () => g().list(),
@@ -662,7 +663,35 @@ export class GlobalCss {
 
     if (hadRule || hadRendered) notifyChanged();
   }
+/**
+ * Remove all global rules whose key begins with the supplied prefix.
+ *
+ * This is used by LiveTree CSS handles to clear selector rules owned by one
+ * handle without disturbing selector rules owned by child nodes or other
+ * handles.
+ *
+ * @param prefixRaw Rule-key prefix to remove.
+ */
+private removeByPrefix(prefixRaw: string): void {
+  const prefix = prefixRaw.trim();
+  if (!prefix) return;
 
+  let changed = false;
+
+  for (const key of Array.from(this.rules.keys())) {
+    if (!key.startsWith(prefix)) continue;
+    this.rules.delete(key);
+    changed = true;
+  }
+
+  for (const key of Array.from(this.rendered.keys())) {
+    if (!key.startsWith(prefix)) continue;
+    this.rendered.delete(key);
+    changed = true;
+  }
+
+  if (changed) notifyChanged();
+}
   /**
    * Remove all global rules.
    */
