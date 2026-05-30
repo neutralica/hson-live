@@ -2,8 +2,6 @@
 
 # 2DÜ
 
-## 18MAY2026
-
 
 ## 11MAY2026
 #### LiveTree SVG ergonomics
@@ -56,7 +54,7 @@
 ~~• hson.liveTree.from*("") returns a LiveTree directly. Is that good? Do we want 'asBranch()' to finalize call??~~
 
 ## 02APR2026
-• inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?
+~~• inheritance/nested element rule creation? to avoid dozens of small CSS objects and consolidate into a single nested one?~~
 
 ## 01APR2026
 ~~• gcss.ALL.rule.set / gcss.rule.ALL.set~~ // (already implemented in gcss.rule.set)
@@ -66,8 +64,8 @@
 ~~- (remove livetree.asDomElement() in favor of the above)~~
 
 ## 18MAR2026
-• find/findall.byClass
-• find/findall.byData?
+~~• find/findall.byClass~~
+~~• find/findall.byData?~~
 ~~• find/findall.byTag~~
 ~~• scrollHeight/width~~
 ~~• scrollTop~~
@@ -85,8 +83,9 @@
  ~~DOM geometry + animation affordances~~
 ~~•	getBoundingClientRect and friends, maybe under .dom~~
 • getAnimations
+• automatic animation removal
 ~~• elementFromPoint, etc~~
-• Keyframes teardown + keyframe ownership maps
+~~• Keyframes teardown + keyframe ownership maps~~
  Multi-document / window switching bug
 	•	queryBody() locked to one document; needs a fix eventually.
 	•	Not coupled to attrs/flags.
@@ -103,7 +102,7 @@
 • add 'role' special-casing?? 
 • livetree.aria?
 • liveTree.queryBody() currently is locked to a single window document; creating a new window and calling LiveTree does not switch from the old. fix.
-• automatic teardown of keyframes when possible
+~~• automatic teardown of keyframes~~
 
 ## 29JAN2026
 ~~• needed on LiveTree somewhere:~~
@@ -116,7 +115,7 @@
 • hson.keyframes/hson.anim currently coerce underscores to hyphens? fix 
 
 ## 24JAN2026
-• move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css (?)
+~~• move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css (?)~~ // possibly not actually
 • .anim.setMany({})
 √ ~~getAttrs/setAttrs => attrs.set/get~~
 
@@ -126,20 +125,20 @@ XXX  ~~• create.textnode~~
 ~~• pseudoelements ~~
 
 ## 17JAN
-• fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:
- ```
- textShadow: [
-    "0 1px 0 rgba(255,255,255,0.08)",
-    "0 -1px 0 rgba(0,0,0,0.35)",
-    "0 0 18px rgba(0,0,0,0.30)",
-  ].join(", "),
-```
+~~• fix multi-line CssMap calls: create a 'join' function within the set/setMany calls to accept a single string (w line breaks) and parse to style rather than necessitating this kind of thing:~~
+ ~~```~~
+ ~~textShadow: [~~
+    ~~"0 1px 0 rgba(255,255,255,0.08)",~~
+    ~~"0 -1px 0 rgba(0,0,0,0.35)",~~
+    ~~"0 0 18px rgba(0,0,0,0.30)",~~
+~~  ].join(", "),~~
+~~```~~ // solved with backticks duh
 • tree.css.keyframes.deleteMany()/deleteAll()
 
 ## 16JAN2026
 • handle append() better. Should you be able to append an attached node to something new? If so it should not copy but remove and transport probably. Even if it does copy, it should not copy the quid; it should .clone() the node at most, which leaves quids behind. 
 
-• Keyframes automatic teardown--node:keyframe map removes registered keyframes when node is removed
+~~• Keyframes automatic teardown--node:keyframe map removes registered keyframes when node is removed~~
 
 ## 14JAN2026
 ✅ ~~.css.apply() for RAF calls~~

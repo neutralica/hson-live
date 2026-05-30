@@ -12,6 +12,7 @@ import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { css_supports_decl } from "./style-setter.js";
+import { normalize_css_key } from "../../../_tests/test-exports.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
@@ -475,7 +476,12 @@ export class CssManager {
   private makeAnimAdapters(): AnimAdapters<CssAnimScope> {
     return {
       setStyleProp: (scope, prop, value) => {
-        for (const quid of scope.quids) this.setForQuid(quid, prop, value);
+        const propCanon = normalize_css_key(prop);
+
+        for (const quid of scope.quids) {
+          this.setForQuid(quid, propCanon, value);
+        }
+
         return scope;
       },
 
@@ -530,16 +536,16 @@ export class CssManager {
   public getForQuid(quid: string, propCanon: string): string | undefined {
     return this.rulesByQuid.get(quid)?.get(propCanon);
   }
-  
-    /**
-   * Read all last-written declarations for one QUID.
-   *
-   * This returns a defensive plain-object copy in canonical setMany-compatible
-   * key spelling. Mutating the returned object cannot mutate CssManager state.
-   *
-   * @param quid QUID whose scoped declaration map should be read.
-   * @returns A declaration object, or `undefined` when the QUID has no rule map.
-   */
+
+  /**
+ * Read all last-written declarations for one QUID.
+ *
+ * This returns a defensive plain-object copy in canonical setMany-compatible
+ * key spelling. Mutating the returned object cannot mutate CssManager state.
+ *
+ * @param quid QUID whose scoped declaration map should be read.
+ * @returns A declaration object, or `undefined` when the QUID has no rule map.
+ */
   public getAllForQuid(quid: string): Record<string, string> | undefined {
     const q = quid.trim();
     if (!q) return undefined;
