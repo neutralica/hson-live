@@ -59,7 +59,6 @@ const mk_css_quids_adapters = (
       const handle = CssManager.api().rule(ruleKey, selector);
 
       handle.setMany(pseudoDecls);
-
       // auto-content for ::before/::after if omitted
       if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
         handle.setProp("content", `""`);

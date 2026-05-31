@@ -101,7 +101,7 @@
 ## 07FEB2026
 • add 'role' special-casing?? 
 • livetree.aria?
-• liveTree.queryBody() currently is locked to a single window document; creating a new window and calling LiveTree does not switch from the old. fix.
+~~• liveTree.queryBody() currently is locked to a single window document; creating a new window and calling LiveTree does not switch from the old. fix.~~
 ~~• automatic teardown of keyframes~~
 
 ## 29JAN2026
@@ -112,7 +112,7 @@
 
 
 ## 25JAN2025
-• hson.keyframes/hson.anim currently coerce underscores to hyphens? fix 
+~~• hson.keyframes/hson.anim currently coerce underscores to hyphens? fix ~~
 
 ## 24JAN2026
 ~~• move .anim, .keyframes off of .css and onto tree.anim. atProperty stays on .css (?)~~ // possibly not actually
