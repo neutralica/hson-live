@@ -24,6 +24,17 @@ export interface LiveTreeDocument {
   treesFromPoint(x: number, y: number): TreeSelector;
 }
 
+export type DomContainsApi = ((other: LiveTree) => boolean) & Readonly<{
+  /** Does this tree's element contain this DOM node? */
+  node(node: Node): boolean;
+
+  /** Does this tree's element contain this event target, when the target is a Node? */
+  target(target: EventTarget | null): boolean;
+
+  /** Does this tree's element contain the other tree's element? */
+  tree(other: LiveTree): boolean;
+}>;
+
 /**
  * DOM adapter surface returned by `LiveTree.dom`.
  */
@@ -31,7 +42,7 @@ export interface LiveTreeDom {
   el(): Element | undefined;
   html(): HTMLElement | undefined;
   matches(sel: string): boolean;
-  contains(other: LiveTree): boolean;
+  contains: DomContainsApi;
   isConnected(): boolean;
 
   rect: DomRectApi;

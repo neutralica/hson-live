@@ -91,12 +91,33 @@ export function make_dom_api(
     return e.matches(sel);
   };
 
-  const contains = (other: LiveTree): boolean => {
+  const containsNode = (node: Node): boolean => {
     const a = el();
-    const b = other.dom?.el?.();
-    if (!a || !b) return false;
-    return a.contains(b);
+    if (!a) return false;
+    return a.contains(node);
   };
+
+  const containsTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Node)) return false;
+    return containsNode(target);
+  };
+
+  const containsTree = (other: LiveTree): boolean => {
+    const b = other.dom?.el?.();
+    if (!b) return false;
+    return containsNode(b);
+  };
+
+  const contains = Object.assign(
+    (other: LiveTree): boolean => containsTree(other),
+    {
+      // CHANGED: named DOM-boundary helpers for common listener/event seams.
+      // The callable form is preserved as the legacy tree-to-tree contains check.
+      node: containsNode,
+      target: containsTarget,
+      tree: containsTree,
+    },
+  );
 
   const isConnected = (): boolean => {
     const e = el();
