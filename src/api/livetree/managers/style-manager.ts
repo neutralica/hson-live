@@ -5,7 +5,7 @@ import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-setter.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";
@@ -174,7 +174,7 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
     }
 
     // 3) Update DOM
-    const el = element_for_node(node) as HTMLElement | undefined;
+    const el = get_el_for_node(node) as HTMLElement | undefined;
     if (!el) return;
 
     // Use DOM’s own removeProperty for the kebab name
@@ -298,7 +298,7 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
  * @see ensureStyleObject
  */
 function applyStyleToNode(node: HsonNode, kebabName: string, value: string): void {
-    const el = element_for_node(node);
+    const el = get_el_for_node(node);
 
     // allow SVGElement too (and any Element with a style decl)
     if (el instanceof Element) {
@@ -486,7 +486,7 @@ export class StyleManager<TTree extends LiveTree> {
         const attrs = node._attrs as HsonAttrs;
         delete (attrs as any).style;
 
-        const el = element_for_node(node) as HTMLElement | undefined;
+        const el = get_el_for_node(node) as HTMLElement | undefined;
         if (el) el.removeAttribute("style");
     }
 }

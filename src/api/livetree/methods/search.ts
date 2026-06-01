@@ -3,7 +3,7 @@
 import { HsonNode } from "../../../types/node.types.js";
 import { STR_TAG } from "../../../consts/constants.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { HsonQuery } from "../../../types/livetree.types.js";
 
 
@@ -37,7 +37,7 @@ const isRegExp = (v: unknown): v is RegExp =>
  * @returns A string representation of the node's text, possibly empty.
  */
 function nodeText(n: HsonNode): string {
-  const el = element_for_node(n);
+  const el = get_el_for_node(n);
   if (el) return el.textContent ?? "";
 
   const kids = (n._content ?? []).filter(is_Node);

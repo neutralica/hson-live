@@ -3,7 +3,7 @@
 import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid.js";
 import { HsonNode } from "../../types/node.types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
-import { element_for_node } from "../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../utils/livetree-utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
 import { remove_livetree } from "./methods/remove-self.js";
 import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content, make_text_api, make_form_api } from "./managers/text-form-values.js";
@@ -50,7 +50,7 @@ import { CanvasApi } from "./managers/canvas/canvas.types.js";
  * @param node - The HSON node to wrap in a reference.
  * @returns A `NodeRef` that exposes QUID, node, and DOM element lookup.
  * @see ensure_quid
- * @see element_for_node
+ * @see get_el_for_node
  */
 function makeRef(node: HsonNode): NodeRef {
   /*  Ensure the node has a stable QUID and keeps NODE_ELEMENT_MAP happy. */
@@ -65,7 +65,7 @@ function makeRef(node: HsonNode): NodeRef {
     },
 
     resolveElement(): Element | undefined { /* exposes the DOM Element . */
-      return element_for_node(node) ?? undefined;
+      return get_el_for_node(node) ?? undefined;
     },
   };
 

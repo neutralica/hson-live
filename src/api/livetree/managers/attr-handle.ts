@@ -7,7 +7,7 @@ import { AttrMap, AttrValue, HsonAttrs, HsonNode } from "../../../types/node.typ
 import { parse_style_string } from "../../../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
 import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../../utils/html-utils/parse_html_attrs.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
   const lower = name.toLowerCase();
@@ -78,7 +78,7 @@ export function applyAttrToNode(
   const attrs = node._attrs as HsonAttrs & { style?: CssMap };
 
   const key = svg_attr_key_from_node_tag(node, name);
-  const el = element_for_node(node) as Element | undefined;
+  const el = get_el_for_node(node) as Element | undefined;
 
   // normalize undefined -> null (removal)
   const v: Primitive = (value === undefined ? null : value);

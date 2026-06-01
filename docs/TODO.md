@@ -3,8 +3,49 @@
 # 2DÜ
 
 
+## 01JUN2026
+
+• fix/clarify snapshot() / renderCss() to include GlobalCss selector rules
+  - snapshot() is not the actual <style id="_hson"> output if it omits pseudo/global selector rules.
+
+### LiveTree Seams
+#### add/now
+• tree.dom.contains.node(node: Node): boolean
+  - local, semantically clean; “does this LiveTree’s DOM element contain this DOM node?”
+• tree.dom.contains.target(target: EventTarget | null): boolean
+  - practical event bridge: returns false unless target instanceof Node, then delegates to contains.node().
+• tree.dom.contains.tree(other: LiveTree): boolean
+  - useful and tree-local: “does this tree’s DOM element contain the other tree’s DOM element?”
+• tree.dom.contains.path(path: readonly EventTarget[]): boolean
+  - maybe? useful with ev.composedPath(), but keep it explicitly path-based so it does not pretend to “understand events.”
+• soft DOM-to-tree adapter: tree.dom.from.element(el: Element): LiveTree | undefined
+  - or must.treeFromEl, + soft version for real event targets where failure is normal
+
+#### maybe/doubtful
+• tree.dom.contains.event(ev: Event): boolean
+  - convenient, but event semantics inside .dom are slightly muddy. Could just be userland: tree.dom.contains.path(ev.composedPath()).
+• tree.listen second-argument diagnostics object
+  - useful if event-target/path/point conversions become common, but too much contract for one outside-click case.
+• tree.dom.from.target(target: EventTarget | null): LiveTree | undefined
+  - could be handy, but may belong in a future adapter namespace rather than core .dom.
+• tree.dom.from.path(ev.composedPath()) / path-to-trees helpers
+  - useful for richer event work, but likely premature until there is a concrete layered UI use case.
+• point/stack helpers for event coordinates
+  - you already have some pointer/rect/point machinery. Add only when a real feature needs visual-stack interpretation.
+
+#### no/never/?
+• augmented event types like HsonMouseEvent within .listen handler
+  - too much bloat with parallel event-model/DSL; livetree is a web--authoring interface, not an events engine
+• listener-scoped EventDiagnostics argument within .listen handler
+  - useful in theory - risks bloat and hides ordinary DOM event knowledge.
+• .listen callbacks return targets as LiveTree
+  - targets vary: target, currentTarget, composed path, visual stack, and owner tree are all different fact- .
+• putting every browser seam/misc "facts" into .dom
+  - .dom should answer stable DOM questions about the tree. Event-time interpretation should stay explicit unless repeated usage proves otherwise.
+
+
 ## 11MAY2026
-#### LiveTree SVG ergonomics
+### LiveTree SVG ergonomics
 ~~• SVG helpers wrap attrs.set calls (initially: viewBox, preserveAspectRatio, d, fill, stroke)~~
 
 ~~•optional path builder - accept chained args and convert to string for d attribute~~ X NO
@@ -12,8 +53,8 @@
 ## 03MAY2026
 ~~- 3-way test "auto" mode interprets malformed HSON as weird HTML~~
 ~~- change VSN prefix from `_VSN` to `_-VSN` to permit underscored JSON keys ~~
-  • this should be done for _attrs, _tag, _content, and _meta as well
-- declutter CssManager, GlobalCss,~~ LiveTree~~ as much as possible. 
+  - this should be done for _attrs, _tag, _content, and _meta as well
+• declutter CssManager, GlobalCss,~~ LiveTree~~ as much as possible. 
   ~~- create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface~~
   
 

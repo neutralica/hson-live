@@ -25,7 +25,7 @@ const ELEMENT_NODE_MAP = new WeakMap<Element, HsonNode>();
 /**
  * Link one node to one element, cleaning up any stale prior pairings on either side.
  */
-export function linkNodeToElement(node: HsonNode, el: Element): void {
+export function link_node_to_el(node: HsonNode, el: Element): void {
   // clear any previous element for this node
   const prevEl = NODE_ELEMENT_MAP.get(node);
   if (prevEl && prevEl !== el) {
@@ -102,11 +102,11 @@ export type ElementLookupPolicy = "throw" | "warn" | "silent";
  * @param node - HSON node to resolve.
  * @returns The mapped DOM element, or `undefined` if none exists.
  */
-export function element_for_node(node: HsonNode): Element | undefined {
+export function get_el_for_node(node: HsonNode): Element | undefined {
   return NODE_ELEMENT_MAP.get(node);
 }
 
-export function node_for_element(el: Element): HsonNode | undefined {
+export function get_node_for_el(el: Element): HsonNode | undefined {
   return ELEMENT_NODE_MAP.get(el);
 }
 
@@ -148,10 +148,10 @@ export function element_for_node_checked(
 }
 
 export function assert_node_element_link(node: HsonNode): void {
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (!el) return;
 
-  const roundTrip = node_for_element(el);
+  const roundTrip = get_node_for_el(el);
   if (roundTrip !== node) {
     throw new Error("node<->element map mismatch");
   }

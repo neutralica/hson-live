@@ -2,7 +2,7 @@
 
 import { HsonNode } from '../types/node.types.js';
 import { _DATA_QUID} from '../consts/constants.js';
-import { element_for_node } from '../utils/livetree-utils/node-map-helpers.js';
+import { get_el_for_node } from '../utils/livetree-utils/node-map-helpers.js';
 
 
 
@@ -148,7 +148,7 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
 
   // optional: strip DOM attribute if mounted
   if (opts?.stripDomAttr) {
-    const el = element_for_node(n as any); // avoid import loop by localizing this in one place if needed
+    const el = get_el_for_node(n as any); // avoid import loop by localizing this in one place if needed
     el?.removeAttribute(_DATA_QUID);
   }
 }

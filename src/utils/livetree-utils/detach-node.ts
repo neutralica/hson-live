@@ -3,7 +3,7 @@
 import { _listeners_off_for_target, listeners_off_for_owner_quid } from "../../api/livetree/managers/listener-builder.js";
 import { HsonNode } from "../../types/node.types.js";
 import { is_Node } from "../node-utils/node-guards.js";
-import { element_for_node, unlinkNode } from "./node-map-helpers.js";
+import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../../api/livetree/managers/css-manager.js";
 import { disposables_off_for_owner } from "../../api/livetree/managers/lifecycle-registry.js";
 
@@ -40,7 +40,7 @@ type NodeWithKids = { _content?: unknown[] };
   }
 
   // 2) drop listeners and element for this node
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (el) {
     _listeners_off_for_target(el);
     const iter = el.querySelectorAll("*");

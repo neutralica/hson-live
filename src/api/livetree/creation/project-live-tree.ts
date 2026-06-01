@@ -5,7 +5,7 @@ import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { HsonNode } from "../../../types/node.types.js";
 import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { linkNodeToElement } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { link_node_to_el } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { canon_to_css_prop, normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 import {
   _DATA_QUID,
@@ -130,7 +130,7 @@ export function project_livetree(
   }
 
   // single source of truth for mapping HsonNode -> Element
-  linkNodeToElement(n, el);
+  link_node_to_el(n, el);
   const quid = ensure_quid(n); // uses meta if present, mints if not
 
   // reflect QUID onto DOM

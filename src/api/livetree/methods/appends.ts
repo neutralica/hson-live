@@ -4,7 +4,7 @@ import { HsonNode } from "../../../types/node.types.js";
 import { ELEM_TAG } from "../../../consts/constants.js";
 import { CREATE_NODE } from "../../../consts/factories.js";
 import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { normalize_ix } from "../../../utils/json-utils/normalize-ix.js";
@@ -62,7 +62,7 @@ function appendNodes(
   }
 
   // --- DOM SYNC --------------------------------------------------------
-  const liveElement = element_for_node(targetNode);
+  const liveElement = get_el_for_node(targetNode);
   if (!liveElement) return;
 const parentNs: "html" | "svg" =
   liveElement.namespaceURI === SVG_NS ? "svg" : "html";

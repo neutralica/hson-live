@@ -5,7 +5,7 @@ import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../c
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils.js";
 import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { make_leaf } from "../../parsers/parse-tokens.js";
 import { Primitive } from "../../../types/core.types.js";
 import { CREATE_NODE } from "../../../consts/factories.js";
@@ -83,7 +83,7 @@ function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaEleme
 }
 
 function form_el_for_node(node: HsonNode): FormEl | null {
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (!el) return null;
 
   if (
@@ -167,7 +167,7 @@ export function set_form_value(node: HsonNode, value: string, opts?: SetNodeForm
  * @returns The current form value (empty string if missing).
  */
 export function get_form_value(node: HsonNode): string {
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (el) {
     const ctl = resolve_form_control(el as Element);
     if (ctl) return ctl.value ?? "";
@@ -389,7 +389,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   bucket._content.push(leaf);
 
   // --- DOM projection (CHANGED): Text nodes only ---
-  const host = element_for_node(node);
+  const host = get_el_for_node(node);
   if (!host) return;
 
   remove_dom_text_leaves(host);
@@ -408,7 +408,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const bucket = ensureVsn(node);
   bucket._content.push(leaf);
 
-  const host = element_for_node(node);
+  const host = get_el_for_node(node);
   if (!host) return;
 
   host.appendChild(make_dom_text(value));
@@ -431,7 +431,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
 
   bucket._content.splice(ix, 0, leaf);
 
-  const host = element_for_node(node);
+  const host = get_el_for_node(node);
   if (!host) return;
 
   const domText = make_dom_text(value);
@@ -449,7 +449,7 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
   const bucket = ensureVsn(node);
   bucket._content = [leaf];
 
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (!el) return;
 
   (el as HTMLElement).textContent = value === null ? "" : String(value);

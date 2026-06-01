@@ -4,7 +4,7 @@ import { drop_quid } from "../../../quid/data-quid.quid.js";
 import { HsonNode } from "../../../types/node.types.js";
 import { _DATA_QUID } from "../../../consts/constants.js";
 import { detach_node_deep } from "../../../utils/livetree-utils/detach-node.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager } from "../managers/css-manager.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
@@ -19,7 +19,7 @@ import { is_Node } from "../../../utils/node-utils/node-guards.js";
  * @returns A set of QUID strings found on the root element and descendants.
  */
 function collectQuidsForSubtree(rootNode: HsonNode): Set<string> {
-  const rootEl = element_for_node(rootNode) as HTMLElement | undefined;
+  const rootEl = get_el_for_node(rootNode) as HTMLElement | undefined;
   if (!rootEl) return new Set(); // not mounted → nothing to clear
 
   const elements: HTMLElement[] = [

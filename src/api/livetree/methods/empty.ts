@@ -2,7 +2,7 @@
 
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
 import { detach_node_deep } from "../../../utils/livetree-utils/detach-node.js";
-import { element_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 
 /**
@@ -46,7 +46,7 @@ export function empty_contents<TTree extends EmptyTreeLike>(this: TTree): TTree 
   node._content = [];
 
   // 3) ensure the element has no stray DOM children
-  const el = element_for_node(node);
+  const el = get_el_for_node(node);
   if (el) while (el.firstChild) el.removeChild(el.firstChild);
 
   return this;
