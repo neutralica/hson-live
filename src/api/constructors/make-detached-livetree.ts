@@ -1,11 +1,12 @@
 import { CREATE_NODE } from "../../consts/factories.js";
 import { SVG_TAGS, HTML_TAGS } from "../../consts/html-tags.js";
-import { HtmlCreateHelper, TagName, SvgTag, SvgCreateHelper, HtmlTag, DetachedCreateHelper } from "../../types/livetree.types.js";
+import { TagName, SvgTag, SvgCreateHelper, HtmlTag, DetachedCreateHelper } from "../../types/livetree.types.js";
 import { HsonNode } from "../../types/node.types.js";
 import { SvgLiveTree } from "../../types/svg.types.js";
 import { create_livetree } from "../livetree/creation/create-livetree.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { TreeSelector } from "../livetree/creation/tree-selector.js";
+
 
 export function make_detached_livetree_create(): DetachedCreateHelper {
   let nextIndex: number | undefined = undefined;

@@ -54,6 +54,7 @@
 ~~- 3-way test "auto" mode interprets malformed HSON as weird HTML~~
 ~~- change VSN prefix from `_VSN` to `_-VSN` to permit underscored JSON keys ~~
   - this should be done for _attrs, _tag, _content, and _meta as well
+  -> `$_attrs`, `$_tag`, `$_content`, `$_meta`
 • declutter CssManager, GlobalCss,~~ LiveTree~~ as much as possible. 
   ~~- create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface~~
   

@@ -9,7 +9,7 @@ function xHHHdisallowed(name: string): string {
   let ok = true;
   if (!XML_NAME.test(name)) ok = false;
   if (ok) return name;
-  let out = "_attr";
+  let out = "_attrs";
   for (let i = 0; i < name.length; i++) {
     const cp = name.codePointAt(i)!;
     const ch = name[i];
