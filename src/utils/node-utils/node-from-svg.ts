@@ -55,12 +55,12 @@ export function node_from_svg(el: Element): HsonNode {
   el.childNodes.forEach(n => {
     if (n.nodeType === Node.ELEMENT_NODE) kids.push(node_from_svg(n as Element));
     else if (n.nodeType === Node.TEXT_NODE && n.nodeValue) {
-      kids.push({ _tag: STR_TAG, _content: [n.nodeValue], _attrs: {}, _meta: {} } as HsonNode);
+      kids.push({ _tag: STR_TAG, _content: [n.nodeValue], $_attrs: {}, _meta: {} } as HsonNode);
     }
   });
   return {
     _tag: tag,              
-    _attrs: attrs,
+    $_attrs: attrs,
     _content: kids.length ? kids : [],
     _meta: { }       
   } as HsonNode;

@@ -352,7 +352,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
         if (text_content) {
             return CREATE_NODE({
                 _tag: dec,
-                _attrs: sortedAcc,
+                $_attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 // no inner _-elem — children go directly
                 _content: [
@@ -452,7 +452,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
         // Void element, stay in element mode with empty cluster
         return CREATE_NODE({
             _tag: dec,
-            _attrs: sortedAcc,
+            $_attrs: sortedAcc,
             _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
             _content: [
                 CREATE_NODE({ _tag: ELEM_TAG, _meta: {}, _content: [] })
@@ -467,7 +467,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
         if (only._tag === OBJ_TAG || only._tag === ARR_TAG || only._tag === ELEM_TAG) {
             return CREATE_NODE({
                 _tag: dec,
-                _attrs: sortedAcc,
+                $_attrs: sortedAcc,
                 _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 _content: [only]
             });
@@ -478,7 +478,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
     // wrap once in _-elem (pure element mode).
     return CREATE_NODE({
         _tag: dec,
-        _attrs: sortedAcc,
+        $_attrs: sortedAcc,
         _meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
         _content: [
             CREATE_NODE({

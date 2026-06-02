@@ -105,7 +105,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // VSNs never carry _attrs
-  if (isVSN(n._tag) && n._attrs && Object.keys(n._attrs as HsonAttrs).length) {
+  if (isVSN(n._tag) && n.$_attrs && Object.keys(n.$_attrs as HsonAttrs).length) {
     push(errs, cfg, `${here}: VSN "${n._tag}" must not have _attrs`); if (cfg.throwOnFirst) return;
   }
 
@@ -129,7 +129,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   // _-ii allowed only directly under _-arr; must have exactly one child node; meta only data-_index; no attrs
   if (n._tag === II_TAG) {
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _-ii must appear directly under _-arr`); if (cfg.throwOnFirst) return; }
-    if (n._attrs && Object.keys(n._attrs).length) { push(errs, cfg, `${here}: _-ii must not have _attrs`); if (cfg.throwOnFirst) return; }
+    if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _-ii must not have _attrs`); if (cfg.throwOnFirst) return; }
     const idx = n._meta?.[`${_META_DATA_PREFIX}index`] ?? n._meta?.[_DATA_INDEX];
     if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in _meta`); if (cfg.throwOnFirst) return; }
 
@@ -219,7 +219,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
 
       // OBJ002 — direct children of _-obj must not have _attrs
-      if (p._attrs && Object.keys(p._attrs).length) {
+      if (p.$_attrs && Object.keys(p.$_attrs).length) {
         push(errs, cfg, `${pHere}: [ERR: OBJ002] _-obj children must not have _attrs`);
         if (cfg.throwOnFirst) return;
       }

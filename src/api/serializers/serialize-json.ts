@@ -237,14 +237,14 @@ function jsonFromNode(node: HsonNode): JsonValue {
             }
 
             /* handle _meta */
-            const hasAttrs = node._attrs && Object.keys(node._attrs).length > 0;
+            const hasAttrs = node.$_attrs && Object.keys(node.$_attrs).length > 0;
             const hasMeta = node._meta && Object.keys(node._meta).length > 0;
             const finalJson: JsonObj = tempJson;
 
             if (hasAttrs) {
-                (finalJson as any)._attrs = {
-                    ...(finalJson as any)._attrs,
-                    ...(node._attrs as Record<string, unknown>)
+                (finalJson as any).$_attrs = {
+                    ...(finalJson as any).$_attrs,
+                    ...(node.$_attrs as Record<string, unknown>)
                 };
             }
 

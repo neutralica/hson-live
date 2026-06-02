@@ -206,7 +206,7 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
 function getSimpleNodeValue(node: HsonNode): Primitive | undefined {
 
     // must not carry attrs or meta
-    if (!isEmptyAttrs(node._attrs)) return undefined;
+    if (!isEmptyAttrs(node.$_attrs)) return undefined;
     if (node._meta && Object.keys(node._meta).length) return undefined;
 
     // must have exactly one child which is a node
@@ -459,7 +459,7 @@ function emitNode(
         /* 4) _-obj / _-elem clusters: melt; never emit their tags */
         if (node._tag === OBJ_TAG || node._tag === ELEM_TAG) {
             _log("cluster node detected: ", node._tag);
-            if (node._attrs && Object.keys(node._attrs).length) {
+            if (node.$_attrs && Object.keys(node.$_attrs).length) {
                 _throw_transform_err(`serialize-hson: ${node._tag} may not carry _attrs`, "serialize_hson.emitNode()");
             }
 
@@ -531,7 +531,7 @@ function emitNode(
             | undefined {
 
             // must have no attrs/meta payload (empty objects are OK)
-            if (hasOwnProps(n._attrs)) return undefined;
+            if (hasOwnProps(n.$_attrs)) return undefined;
             if (hasOwnProps(n._meta)) return undefined;
 
             const c = n._content ?? [];
@@ -568,7 +568,7 @@ function emitNode(
         }
 
         _log("building attrs string for standard tag");
-        const attrsStr = buildAttrString(node._attrs, node._meta);
+        const attrsStr = buildAttrString(node.$_attrs, node._meta);
         const tagWire = serialize_hson_tag_name(node._tag);
         const shape = inlineShape(node);
 

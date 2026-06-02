@@ -31,7 +31,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
   function makeSvgHost(): SvgLiveTree {
     const node = CREATE_NODE({
       _tag: "svg",
-      _attrs: {
+      $_attrs: {
         xmlns: "http://www.w3.org/2000/svg",
       },
       _content: [],

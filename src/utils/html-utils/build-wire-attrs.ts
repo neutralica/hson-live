@@ -36,7 +36,7 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
   const out: Record<string, string> = {};
 
   // 1) user attrs (primitives only; style handled elsewhere)
-  const a = n._attrs;
+  const a = n.$_attrs;
   if (a) {
     for (const [k, v] of Object.entries(a)) {
       //  handle style instead of skipping it

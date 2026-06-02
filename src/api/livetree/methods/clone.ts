@@ -20,7 +20,7 @@ function clone_branch_inner(
   const dst: HsonNode = { ...src };
 
   // deep clone containers 
-  if (src._attrs) dst._attrs = { ...src._attrs };
+  if (src.$_attrs) dst.$_attrs = { ...src.$_attrs };
   if (src._meta)  dst._meta  = { ...src._meta };
 
   // deep clone content

@@ -70,7 +70,7 @@ export const parse_style_attr = (raw: string | undefined): Map<string, string> =
 
 
 function readStyleFromNode(node: HsonNode, propCanon: string): string | undefined {
-    const attrs = node._attrs as HsonAttrs | undefined;
+    const attrs = node.$_attrs as HsonAttrs | undefined;
     const raw = attrs?.style;
 
     const kebabKey = propCanon.startsWith("--")
@@ -101,7 +101,7 @@ function readStyleFromNode(node: HsonNode, propCanon: string): string | undefine
 }
 
 function readAllStyleFromNode(node: HsonNode): StyleGetMany {
-    const attrs = node._attrs as HsonAttrs | undefined;
+    const attrs = node.$_attrs as HsonAttrs | undefined;
     const raw = attrs?.style;
     const out: Record<string, string> = {};
 
@@ -154,7 +154,7 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
             : kebab_to_camel(kebabName);
 
     // 2) Update node model (_attrs.style is CssObject now)
-    const attrs = (node as any)._attrs as HsonAttrs | undefined;
+    const attrs = (node as any).$_attrs as HsonAttrs | undefined;
     const styleObj = (attrs?.style as CssMap | undefined) ?? undefined;
 
     if (styleObj) {
@@ -310,7 +310,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
     }
 
     // 2) mirror into node._attrs.style (object form) … unchanged
-    const attrs = (node._attrs ??= {}) as Record<string, unknown>;
+    const attrs = (node.$_attrs ??= {}) as Record<string, unknown>;
     const styleObj = ensureStyleObject(attrs);
     const internalKey = kebabName.startsWith("--") ? kebabName : kebab_to_camel(kebabName);
 
@@ -481,9 +481,9 @@ export class StyleManager<TTree extends LiveTree> {
      */
     private clearAll(): void {
         const node = this.tree.node;
-        if (!node._attrs) return;
+        if (!node.$_attrs) return;
 
-        const attrs = node._attrs as HsonAttrs;
+        const attrs = node.$_attrs as HsonAttrs;
         delete (attrs as any).style;
 
         const el = get_el_for_node(node) as HTMLElement | undefined;

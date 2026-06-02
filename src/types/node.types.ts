@@ -19,7 +19,7 @@ import { _DATA_INDEX, _DATA_QUID } from "../consts/constants.js";
 export interface HsonNode {
     _tag: string;
     _meta: HsonMeta;
-    _attrs: HsonAttrs;
+    $_attrs: HsonAttrs;
     _content: NodeContent;
 }
 

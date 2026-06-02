@@ -141,7 +141,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             open.tag === II_TAG;
 
         if (!isVSN && Object.keys(attrs).length) {
-            node._attrs = attrs;
+            node.$_attrs = attrs;
         }
 
         let sawClose: TokenClose | null = null;

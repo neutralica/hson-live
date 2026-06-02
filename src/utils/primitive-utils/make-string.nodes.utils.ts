@@ -70,8 +70,8 @@ function orderNode(n: HsonNode, seen: WeakSet<object>) {
   out._tag = n._tag;
 
   // 2) _attrs (sorted keys; style object also sorted)
-  if (n._attrs && Object.keys(n._attrs).length) {
-    out._attrs = orderAttrs(n._attrs);
+  if (n.$_attrs && Object.keys(n.$_attrs).length) {
+    out._attrs = orderAttrs(n.$_attrs);
   }
 
   // 3) _meta (sorted keys)

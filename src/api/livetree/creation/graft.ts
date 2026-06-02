@@ -106,7 +106,7 @@ function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
   const quid = ensure_quid(node);
   set_attrs_safe(el, _DATA_QUID, quid);
 
-  const attrs = node._attrs ?? {};
+  const attrs = node.$_attrs ?? {};
 
   // clear stale attrs first
   for (const name of el.getAttributeNames()) {

@@ -51,7 +51,7 @@ function ensureVsn(node: HsonNode): HsonNode {
   // create bucket; prefer `_-elem` as the generic container
   const bucket = CREATE_NODE({
     _tag: ELEM_TAG,     
-    _attrs: {},         
+    $_attrs: {},         
     _meta: {},
     _content: node._content, // move existing content under the bucket
   });
@@ -65,8 +65,8 @@ function ensureVsn(node: HsonNode): HsonNode {
 // }
 
 function ensure_attrs(node: HsonNode): AttrDict {
-  if (!node._attrs) node._attrs = {} as HsonAttrs;
-  return node._attrs as unknown as AttrDict;
+  if (!node.$_attrs) node.$_attrs = {} as HsonAttrs;
+  return node.$_attrs as unknown as AttrDict;
 }
 function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
@@ -173,7 +173,7 @@ export function get_form_value(node: HsonNode): string {
     if (ctl) return ctl.value ?? "";
   }
 
-  const attrs = (node._attrs as unknown as AttrDict | undefined);
+  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
   const raw = attrs?.value;
   return raw == null ? "" : String(raw);
 }
@@ -212,7 +212,7 @@ export function get_input_checked(node: HsonNode): boolean {
   const el = form_el_for_node(node);
   if (el instanceof HTMLInputElement) return !!el.checked;
 
-  const attrs = (node._attrs as unknown as AttrDict | undefined);
+  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
   const raw = attrs?.checked;
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "string") return raw === "true";
@@ -290,7 +290,7 @@ export function get_input_selected(node: HsonNode): string | readonly string[] {
     return el.value ?? "";
   }
 
-  const attrs = (node._attrs as unknown as AttrDict | undefined);
+  const attrs = (node.$_attrs as unknown as AttrDict | undefined);
   const values = attrs?.values;
   if (Array.isArray(values)) {
     return values.map(v => String(v));

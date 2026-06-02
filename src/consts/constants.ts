@@ -80,7 +80,7 @@ export const ELEM_TAG = "_-elem" as const;
 export const HSON_SYS_PREFIX = "_-" as const;
 export const HTML_KEY_PREFIX = "_-_-" as const;
 
-export const ATTRS_KEY = "_attrs" as const;
+export const ATTRS_KEY = "$_attrs" as const;
 export const META_KEY = "_meta" as const;
 export const TAG_KEY = "_tag" as const;
 export const CONTENT_KEY = "_content" as const;

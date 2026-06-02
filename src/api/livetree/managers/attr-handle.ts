@@ -74,8 +74,8 @@ export function applyAttrToNode(
   name: string,
   value: AttrValue,
 ): void {
-  if (!node._attrs) node._attrs = {};
-  const attrs = node._attrs as HsonAttrs & { style?: CssMap };
+  if (!node.$_attrs) node.$_attrs = {};
+  const attrs = node.$_attrs as HsonAttrs & { style?: CssMap };
 
   const key = svg_attr_key_from_node_tag(node, name);
   const el = get_el_for_node(node) as Element | undefined;
@@ -138,7 +138,7 @@ export function readAttrFromNode(
   node: HsonNode,
   name: string,
 ): Primitive | undefined {
-  const attrs = node._attrs;
+  const attrs = node.$_attrs;
   if (!attrs) return undefined;
 
   const key = svg_attr_key_from_node_tag(node, name);
@@ -219,7 +219,7 @@ export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined
  */
 export function hasAttrImpl(tree: LiveTree, name: string): boolean {
   // key-exists check avoids edge cases where value could be ""
-  const attrs = tree.node._attrs;
+  const attrs = tree.node.$_attrs;
   if (!attrs) return false;
   const key = svg_attr_key_from_node_tag(tree.node, name);
   return (attrs as any)[key] != null;

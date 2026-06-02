@@ -140,7 +140,7 @@ export function project_livetree(
     set_attrs_safe(el as HTMLElement, _DATA_QUID, quid);
   }
   // reflect _attrs
-  const a = n._attrs;
+  const a = n.$_attrs;
   if (a) {
     for (const [key, raw] of Object.entries(a)) {
       if (raw == null) continue;

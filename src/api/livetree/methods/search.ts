@@ -112,7 +112,7 @@ export function matchText(node: HsonNode, query: HsonQuery): boolean {
  */
 export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
   if (!query.attrs) return true;
-  const na = node._attrs ?? {};
+  const na = node.$_attrs ?? {};
 
   for (const [k, qv] of Object.entries(query.attrs)) {
     const nv = (na as any)[k];

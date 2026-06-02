@@ -341,7 +341,7 @@ export function nodeFromJson(
                     }
 
                     const elemNode = CREATE_NODE({ _tag: tagName, _content: tagKids });
-                    if (hoistedAttrs && Object.keys(hoistedAttrs).length) elemNode._attrs = hoistedAttrs;  // ← preserve
+                    if (hoistedAttrs && Object.keys(hoistedAttrs).length) elemNode.$_attrs = hoistedAttrs;  // ← preserve
                     if (hoistedMeta && Object.keys(hoistedMeta).length) elemNode._meta = { ...elemNode._meta, ...hoistedMeta };
 
                     return elemNode;
