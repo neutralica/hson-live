@@ -1,6 +1,6 @@
 // README.md / 30MAY 2026
 
-#### hson-live v2.3 / hson.terminalgothic.com 
+#### hson-live v2.3.2 / hson.terminalgothic.com 
 
 # HSON: Hypertext Structured Object Notation
 ## a format that unifies HTML and JSON 
