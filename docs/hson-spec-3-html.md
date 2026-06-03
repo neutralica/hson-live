@@ -101,14 +101,15 @@ HSON text
 Example:
 ```html
 <main id="root"><div id="box">x</div></main>
-
+```
 serializes to:
-
+```html
 <main id="root"
   <div id="box"
     "x"
   />
 />
+```
 
 This is not a separate representation from the parsed graph. It is the HSON textual serialization of the same element tree.
 
@@ -119,13 +120,14 @@ Compact Text Serialization
 When an element contains a simple text leaf, the serializer may emit that text directly inside the opening HSON tag as a compact form.
 
 Example HTML:
-
+```html
 <h1>title</h1>
 <p>one</p>
 <p>two</p>
-
+```
 Expanded HSON serialization:
 
+```html
 <h1
   "title"
 />
@@ -135,12 +137,15 @@ Expanded HSON serialization:
 <p
   "two"
 />
+```
 
 Compact HSON serialization:
 
+```html
 <h1 "title"/>
 <p "one"/>
 <p "two"/>
+```
 
 Both forms represent the same node structure:
 
@@ -156,27 +161,31 @@ Attribute and Content Separation in Serialization
 Attributes and content remain separate during serialization.
 
 Example HTML:
-
+```html
 <button id="save" disabled>Save</button>
+```
 
 Node shape:
-
+```
 button
 ├─ _attrs
 │  ├─ id: "save"
 │  └─ disabled: true
 └─ _elem
    └─ _str("Save")
+```
 
 HSON serialization:
-
+```html
 <button id="save" disabled
   "Save"
 />
+```
 
 or, where compact text serialization is allowed:
-
+```html
 <button id="save" disabled "Save"/>
+```
 
 The attribute values belong to the element node. The text content belongs to the ordered element content.
 
@@ -187,11 +196,12 @@ Mixed Content Serialization
 Mixed content is serialized in the same order it appears in the node graph.
 
 Example HTML:
-
+```html
 <p>Hello <strong>world</strong>.</p>
+```
 
 Node shape:
-
+```
 p
 └─ _elem
    ├─ _str("Hello ")
@@ -199,14 +209,16 @@ p
    │  └─ _elem
    │     └─ _str("world")
    └─ _str(".")
+```
 
 HSON serialization:
-
+```html
 <p
   "Hello "
   <strong "world"/>
   "."
 />
+```
 
 
 ⸻
@@ -216,20 +228,23 @@ Void Element Serialization
 A void element has no child content. Void elements are serialized by their node structure and regardless of their exact original closing syntax.
 
 Example HTML:
-
+```html
 <img src="cat.png" alt="Cat">
+```
 
 Node shape:
-
+```
 img
 ├─ _attrs
 │  ├─ src: "cat.png"
 │  └─ alt: "Cat"
 └─ _elem
+```
 
 HSON serialization:
-
+```html
 <img src="cat.png" alt="Cat"/>
+```
 
 For void elements, HSON preserves the element structure and attributes, but may canonicalize the original HTML closing syntax on first parse.
 
@@ -242,18 +257,19 @@ For all formats, round-trip test targets are the HSON node graph, not the exact 
 
 Given:
 
-<section><h1>Title</h1><p>One</p><p>Two</p></section>
+`<section><h1>Title</h1><p>One</p><p>Two</p></section>`
 
 HSON may serialize the parsed graph as:
-
+```html
 <section
   <h1 "Title"/>
   <p "One"/>
   <p "Two"/>
 />
+```
 
 If this HSON is parsed again, it must produce the same element/content graph:
-
+```
 section
 └─ _elem
    ├─ h1
@@ -265,6 +281,7 @@ section
    └─ p
       └─ _elem
          └─ _str("Two")
+```
 
 
 ⸻
@@ -301,7 +318,7 @@ Attributes are represented as data, not syntax.
 *	Boolean attributes are preserved explicitly.
 
 Example:
-```
+```html
 <input disabled value="x">
 ```
 maps to:

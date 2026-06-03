@@ -2,6 +2,19 @@
 
 # 2DÜ
 
+## 03JUN2026
+• API changes to document:
+ - contains
+ - livetree.var/gcss.var, var.key/var.value, var.getMany, get.vars
+ - style.getMany/css.getMany 
+ - no get.all/get.allString (css.get.all -> now standard css 'all' property)
+ - base CSS clear behavior should mention whether owned pseudo/selector rules are also cleared: “base css clear should clear owned pseudo selector rules” 
+ - CssManager api: CssManager.globals.invoke -> CssManager.api() (CssManager.invoke still exists for internal plumbing)
+ - confirm css.remove("prop") vs css.clear() api is documented
+ - clarify inline style setting's recommended usage as a runtime style setter/override (.css for static styling)
+ - note HsonNode key migration 1/4: _attrs -> $_attrs
+ - confirm form API docs up to date
+
 
 ## 01JUN2026
 
@@ -10,12 +23,12 @@
 
 ### LiveTree Seams
 #### add/now
-• tree.dom.contains.node(node: Node): boolean
-  - local, semantically clean; “does this LiveTree’s DOM element contain this DOM node?”
-• tree.dom.contains.target(target: EventTarget | null): boolean
-  - practical event bridge: returns false unless target instanceof Node, then delegates to contains.node().
-• tree.dom.contains.tree(other: LiveTree): boolean
-  - useful and tree-local: “does this tree’s DOM element contain the other tree’s DOM element?”
+~~• tree.dom.contains.node(node: Node): boolean~~
+~~  - local, semantically clean; “does this LiveTree’s DOM element contain this DOM node?”~~
+~~• tree.dom.contains.target(target: EventTarget | null): boolean~~
+~~  - practical event bridge: returns false unless target instanceof Node, then delegates to contains.node()~~.
+~~• tree.dom.contains.tree(other: LiveTree): boolean~~
+~~  - useful and tree-local: “does this tree’s DOM element contain the other tree’s DOM element?”~~
 • tree.dom.contains.path(path: readonly EventTarget[]): boolean
   - maybe? useful with ev.composedPath(), but keep it explicitly path-based so it does not pretend to “understand events.”
 • soft DOM-to-tree adapter: tree.dom.from.element(el: Element): LiveTree | undefined
@@ -31,17 +44,7 @@
 • tree.dom.from.path(ev.composedPath()) / path-to-trees helpers
   - useful for richer event work, but likely premature until there is a concrete layered UI use case.
 • point/stack helpers for event coordinates
-  - you already have some pointer/rect/point machinery. Add only when a real feature needs visual-stack interpretation.
-
-#### no/never/?
-• augmented event types like HsonMouseEvent within .listen handler
-  - too much bloat with parallel event-model/DSL; livetree is a web--authoring interface, not an events engine
-• listener-scoped EventDiagnostics argument within .listen handler
-  - useful in theory - risks bloat and hides ordinary DOM event knowledge.
-• .listen callbacks return targets as LiveTree
-  - targets vary: target, currentTarget, composed path, visual stack, and owner tree are all different fact- .
-• putting every browser seam/misc "facts" into .dom
-  - .dom should answer stable DOM questions about the tree. Event-time interpretation should stay explicit unless repeated usage proves otherwise.
+  - already have some pointer/rect/point machinery. Add only when a real feature needs visual-stack interpretation.
 
 
 ## 11MAY2026
