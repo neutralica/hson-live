@@ -1,100 +1,11 @@
 // global_css.ts
 
 import { canon_to_css_prop, normalize_css_value } from "../../../_tests/test-exports.js";
-import { CssMapBase, CssPseudoKey, CssValue } from "../../../types/css.types.js";
+import { CssMapBase, CssPseudoKey, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
-import { make_style_setter, StyleSetter } from "./style-setter.js";
+import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";
-
-/**
- * Stored model for one global CSS rule.
- *
- * @property selector CSS selector for the rendered rule.
- * @property decls Canonical property map for the rule body.
- * @property scopes At-rule wrappers applied around the rule.
- */
-type GlobalRule = {
-  selector: string;
-  decls: Record<string, string>;
-  scopes?: string[]; // CHANGED
-};
-
-/**
- * Media query input accepted by `GlobalCss.media()`.
- *
- * String inputs may include or omit the `@media` prefix. Object inputs
- * are joined with `and`; numeric dimensions are rendered as pixel values.
- */
-type MediaQueryInput =
-  | string
-  | {
-    maxWidth?: string | number;
-    minWidth?: string | number;
-    maxHeight?: string | number;
-    minHeight?: string | number;
-    orientation?: "portrait" | "landscape";
-    hover?: "hover" | "none";
-    pointer?: "fine" | "coarse" | "none";
-  };
-
-/**
-* Supports query input accepted by `GlobalCss.supports()`.
-*
-* String inputs may include or omit the `@supports` prefix. Object inputs
-* are rendered as declaration tests joined with `and`.
-*/
-type SupportsQueryInput =
-  | string
-  | Record<string, string | number | boolean>;
-
-/**
- * Fluent handle for one global CSS rule.
- *
- * The handle is a `StyleSetter` bound to a fixed selector. Writes update the
- * stored global rule and notify subscribers when rendered CSS changes.
- *
- * @property ruleKey Stable key used to replace, read, or drop the rule.
- * @property selector CSS selector targeted by the rule.
- * @property drop Remove the entire rule.
- */
-export type GlobalRuleHandle = Readonly<
-  StyleSetter<void> & {
-    readonly ruleKey: string;
-    readonly selector: string;
-    drop(): void;     // remove entire rule
-  }
->;
-
-/**
- * Global CSS custom-property facade.
- *
- * These variables are written to `:root`, not to QUID-scoped or node-local
- * styles. Use this for app/theme variables that should be consumed throughout
- * the document.
- */
-export type GlobalVarFacade = Readonly<{
-  /** Return a canonical CSS custom-property name, e.g. `"theme-ink"` -> `"--theme-ink"`. */
-  name(name: string): `--${string}` | undefined;
-
-  /** Return a CSS variable reference for use in declarations, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
-  key(name: string): `var(--${string})`;
-
-  /** Set a global `:root` CSS custom property. */
-  set(name: string, value: CssValue): void;
-
-  /** Read a raw global `:root` CSS custom-property declaration value. */
-  value(name: string): string | undefined;
-
-  /** Remove one global `:root` CSS custom property. */
-  remove(name: string): void;
-
-  /** Remove all global variables managed through this facade. */
-  clear(): void;
-
-  /** List canonical global variable names currently managed through this facade. */
-  list(): readonly `--${string}`[];
-}>;
 
 const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
@@ -133,7 +44,7 @@ function notifyChanged(): void {
  * @param v Value supplied through the StyleSetter surface.
  * @returns A trimmed CSS value, or `null` when the value represents removal.
  */
-function render_css_value(v: unknown): string | null {
+function renderCssValue(v: unknown): string | null {
   if (v == null) return null;
 
   if (typeof v === "string") return v.trim();
@@ -201,7 +112,7 @@ export function render_rule(selector: string, decls: Record<string, string>): st
  * @param scopes At-rule wrappers, ordered outermost to innermost.
  * @returns Scoped CSS text, or `""` when the inner rule is empty.
  */
-function render_scoped_rule(
+function renderScopedRule(
   selector: string,
   decls: Record<string, string>,
   scopes: readonly string[],
@@ -213,7 +124,7 @@ function render_scoped_rule(
 
   for (let i = scopes.length - 1; i >= 0; i -= 1) {
     const scope = scopes[i] ?? "";
-    out = `${scope} {\n${indent_block(out)}\n}`;
+    out = `${scope} {\n${indentBlock(out)}\n}`;
   }
 
   return out;
@@ -225,7 +136,7 @@ function render_scoped_rule(
  * @param src CSS text to indent.
  * @returns The same text with two spaces added to each line.
  */
-function indent_block(src: string): string {
+function indentBlock(src: string): string {
   return src
     .split("\n")
     .map((line) => `  ${line}`)
@@ -239,7 +150,7 @@ function indent_block(src: string): string {
  * @returns A normalized `@media ...` string.
  * @throws If the query is empty.
  */
-function media_to_at_rule(input: MediaQueryInput): string {
+function mediaToAtRule(input: MediaQueryInput): string {
   if (typeof input === "string") {
     const q = input.trim();
     if (!q) throw new Error("GlobalCss.media: empty query");
@@ -274,7 +185,7 @@ function media_to_at_rule(input: MediaQueryInput): string {
  * @returns A normalized `@supports ...` string.
  * @throws If the condition is empty.
  */
-function supports_to_at_rule(input: SupportsQueryInput): string {
+function convertSupportsToAt(input: SupportsQueryInput): string {
   if (typeof input === "string") {
     const q = input.trim();
     if (!q) throw new Error("GlobalCss.supports: empty condition");
@@ -365,10 +276,10 @@ export class GlobalCss {
         g().facade([...scopes, atRule.trim()]),
 
       media: (query: MediaQueryInput) =>
-        g().facade([...scopes, media_to_at_rule(query)]),
+        g().facade([...scopes, mediaToAtRule(query)]),
 
       supports: (cond: SupportsQueryInput) =>
-        g().facade([...scopes, supports_to_at_rule(cond)]),
+        g().facade([...scopes, convertSupportsToAt(cond)]),
 
       layer: (layerName: string) =>
         g().facade([...scopes, `@layer ${layerName.trim()}`]),
@@ -437,7 +348,7 @@ export class GlobalCss {
        * @param value StyleSetter value to render.
        */
       apply: (propCanon, value) => {
-        const rendered = render_css_value(value);
+        const rendered = renderCssValue(value);
 
         if (rendered == null || rendered.length === 0) {
           if (propCanon in decls) {
@@ -576,7 +487,7 @@ export class GlobalCss {
         const canon = canonical(name);
         if (!canon) return;
 
-        const rendered = render_css_value(value);
+        const rendered = renderCssValue(value);
         const decls = getRootDecls();
 
         if (rendered == null || rendered.length === 0) {
@@ -744,7 +655,7 @@ private removeByPrefix(prefixRaw: string): void {
     return this.list()
       .map((k) => this.rules.get(k))
       .filter((r): r is GlobalRule => !!r)
-      .map((r) => render_scoped_rule(r.selector, r.decls, r.scopes ?? []))
+      .map((r) => renderScopedRule(r.selector, r.decls, r.scopes ?? []))
       .map((s) => s.trim())
       .filter(Boolean)
       .join("\n\n");

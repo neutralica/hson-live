@@ -6,6 +6,8 @@ import { KeyframesManager } from "./keyframes.types.js";
 import { StyleSetter } from "../api/livetree/managers/style-setter.js";
 import { PropertyManager } from "./at-property.types.js";
 import { StyleGetMany, StyleGetter } from "../api/livetree/managers/style-getter.js";
+import { CssManager } from "../api/livetree/managers/css-manager.js";
+
 
 
 /**
@@ -318,6 +320,13 @@ export type CssHandleBase<TReturn> = Readonly<
     devSnapshot: () => string;
 
     selector: (pattern: string) => StyleHandle<TReturn>;
+
+    // CHANGED: QUID-scoped CSS handles mirror the global at-rule facade.
+    // These still render through CssManager, but the generated selectors remain
+    // scoped to this handle's QUIDs.
+    media: (query: MediaQueryInput) => CssHandleBase<TReturn>;
+    supports: (cond: SupportsQueryInput) => CssHandleBase<TReturn>;
+    layer: (layerName: string) => CssHandleBase<TReturn>;
   }
 >;
 
@@ -398,3 +407,94 @@ export type CssVarFacade<TReturn> = Readonly<{
   set: (name: string, value: CssValue) => TReturn;
   value: (name: string) => string | undefined;
 }>;
+/**
+ * Stored model for one global CSS rule.
+ *
+ * @property selector CSS selector for the rendered rule.
+ * @property decls Canonical property map for the rule body.
+ * @property scopes At-rule wrappers applied around the rule.
+ */
+export type GlobalRule = {
+  selector: string;
+  decls: Record<string, string>;
+  scopes?: string[]; // CHANGED
+};
+/**
+ * Media query input accepted by `GlobalCss.media()`.
+ *
+ * String inputs may include or omit the `@media` prefix. Object inputs
+ * are joined with `and`; numeric dimensions are rendered as pixel values.
+ */
+export type MediaQueryInput = string |
+{
+  maxWidth?: string | number;
+  minWidth?: string | number;
+  maxHeight?: string | number;
+  minHeight?: string | number;
+  orientation?: "portrait" | "landscape";
+  hover?: "hover" | "none";
+  pointer?: "fine" | "coarse" | "none";
+};/**
+* Supports query input accepted by `GlobalCss.supports()`.
+*
+* String inputs may include or omit the `@supports` prefix. Object inputs
+* are rendered as declaration tests joined with `and`.
+*/
+export type SupportsQueryInput = string |
+  Record<string, string | number | boolean>;
+/**
+ * Fluent handle for one global CSS rule.
+ *
+ * The handle is a `StyleSetter` bound to a fixed selector. Writes update the
+ * stored global rule and notify subscribers when rendered CSS changes.
+ *
+ * @property ruleKey Stable key used to replace, read, or drop the rule.
+ * @property selector CSS selector targeted by the rule.
+ * @property drop Remove the entire rule.
+ */
+
+export type GlobalRuleHandle = Readonly<
+  StyleSetter<void> & {
+    readonly ruleKey: string;
+    readonly selector: string;
+    drop(): void; // remove entire rule
+  }
+>;
+/**
+ * Global CSS custom-property facade.
+ *
+ * These variables are written to `:root`, not to QUID-scoped or node-local
+ * styles. Use this for app/theme variables that should be consumed throughout
+ * the document.
+ */
+
+export type GlobalVarFacade = Readonly<{
+  /** Return a canonical CSS custom-property name, e.g. `"theme-ink"` -> `"--theme-ink"`. */
+  name(name: string): `--${string}` | undefined;
+
+  /** Return a CSS variable reference for use in declarations, e.g. `"theme-ink"` -> `"var(--theme-ink)"`. */
+  key(name: string): `var(--${string})`;
+
+  /** Set a global `:root` CSS custom property. */
+  set(name: string, value: CssValue): void;
+
+  /** Read a raw global `:root` CSS custom-property declaration value. */
+  value(name: string): string | undefined;
+
+  /** Remove one global `:root` CSS custom property. */
+  remove(name: string): void;
+
+  /** Remove all global variables managed through this facade. */
+  clear(): void;
+
+  /** List canonical global variable names currently managed through this facade. */
+  list(): readonly `--${string}`[];
+}>;
+
+export type CssRuleFacade = Readonly<{
+  rule: ReturnType<typeof CssManager.api>["rule"];
+  media: (query: MediaQueryInput) => CssRuleFacade;
+  supports: (cond: SupportsQueryInput) => CssRuleFacade;
+  layer: (layerName: string) => CssRuleFacade;
+}>;
+
