@@ -1,6 +1,6 @@
 {
   "name": "hson-live",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "HSON-live 2026",
   "files": [
     "dist",
