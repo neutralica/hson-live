@@ -110,11 +110,14 @@ export function get_node_text_content(node: HsonNode): string {
 
   const walk = (n: HsonNode): void => {
     for (const child of n._content ?? []) {
-      if (!is_Node(child)) continue;
+      if (!is_Node(child)) {
+        if (child !== null && child !== undefined) out += String(child);
+        continue;
+      }
 
       if (child._tag === STR_TAG || child._tag === VAL_TAG) {
         const first = child._content?.[0];
-        if (typeof first === "string") out += first;
+        if (first !== null && first !== undefined) out += String(first);
         continue;
       }
 
@@ -337,10 +340,14 @@ export function make_form_api<TTree extends LiveTree>(
 // //.. DOM helpers: project text leaves as *Text nodes*, never <_-str>/< _-val >
 // -----------------------------------------------------------------------------
 
+function primitive_to_text(value: Primitive): string {
+  return value === null ? "" : String(value);
+}
+
 // was creating document.createElement("_-str") which injects <_-str> into DOM.
 // Now: always create a Text node.
 function make_dom_text(value: Primitive): Text {
-  return document.createTextNode(value === null ? "" : String(value));
+  return document.createTextNode(primitive_to_text(value));
 }
 
 // remove direct child Text nodes (these represent projected text leaves).
@@ -353,6 +360,17 @@ function remove_dom_text_leaves(host: Element): void {
   }
 
   for (const n of toRemove) host.removeChild(n);
+}
+
+function replace_dom_text_leaves(host: Element, value: Primitive): void {
+  const nodes = Array.from(host.childNodes);
+  const firstTextIndex = nodes.findIndex((n) => n.nodeType === Node.TEXT_NODE);
+
+  remove_dom_text_leaves(host);
+
+  const refIndex = firstTextIndex >= 0 ? firstTextIndex : 0;
+  const ref = host.childNodes.item(refIndex) ?? null;
+  host.insertBefore(make_dom_text(value), ref);
 }
 
 
@@ -374,26 +392,35 @@ function isLeafTag(tag: unknown): boolean {
  * DOM: removes only direct Text children under the host element; keeps element children.
  */
 export function set_node_text_content(node: HsonNode, value: Primitive): void {
-  const leaf = make_leaf(value);
+  const text = primitive_to_text(value);
+  const leaf = make_leaf(text);
 
   // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
 
-  // remove only leaf nodes; keep everything else intact
-  bucket._content = bucket._content.filter((c) => {
-    if (!is_Node(c)) return true;              
-    return !isLeafTag(c._tag);                 
-  });
+  let replaced = false;
+  const next = [] as typeof bucket._content;
 
-  // append exactly one new leaf
-  bucket._content.push(leaf);
+  for (const child of bucket._content) {
+    if (is_Node(child) && isLeafTag(child._tag)) {
+      if (!replaced) {
+        next.push(leaf);
+        replaced = true;
+      }
+      continue;
+    }
+
+    next.push(child);
+  }
+
+  if (!replaced) next.unshift(leaf);
+  bucket._content = next;
 
   // --- DOM projection (CHANGED): Text nodes only ---
   const host = get_el_for_node(node);
   if (!host) return;
 
-  remove_dom_text_leaves(host);
-  host.appendChild(make_dom_text(value));
+  replace_dom_text_leaves(host, text);
 }
 
 /**
@@ -402,7 +429,8 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
  * DOM: appends a Text node to the host element.
  */
 export function add_node_text_content(node: HsonNode, value: Primitive): void {
-  const leaf = make_leaf(value);
+  const text = primitive_to_text(value);
+  const leaf = make_leaf(text);
 
   // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
@@ -411,7 +439,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const host = get_el_for_node(node);
   if (!host) return;
 
-  host.appendChild(make_dom_text(value));
+  host.appendChild(make_dom_text(text));
 }
 
 /**
@@ -419,7 +447,8 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
  * Index counts all items in the VSN bucket _content.
  */
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
-  const leaf = make_leaf(value);
+  const text = primitive_to_text(value);
+  const leaf = make_leaf(text);
 
   // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
@@ -434,7 +463,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
   const host = get_el_for_node(node);
   if (!host) return;
 
-  const domText = make_dom_text(value);
+  const domText = make_dom_text(text);
   const ref = host.childNodes.item(ix) ?? null;
   host.insertBefore(domText, ref);
 }
@@ -443,7 +472,8 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
  * Destructive overwrite: replace ALL content with one leaf; mirror to DOM using textContent.
  */
 export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
-  const leaf = make_leaf(value);
+  const text = primitive_to_text(value);
+  const leaf = make_leaf(text);
 
   // always overwrite the VSN bucket, not node._content
   const bucket = ensureVsn(node);
@@ -452,7 +482,7 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
   const el = get_el_for_node(node);
   if (!el) return;
 
-  (el as HTMLElement).textContent = value === null ? "" : String(value);
+  (el as HTMLElement).textContent = text;
 }
 
 export function make_text_api<TTree extends LiveTree>(

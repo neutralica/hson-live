@@ -75,6 +75,78 @@ function class_query(className: string): HsonQuery {
   return { attrs: { class: cls } };
 }
 
+type TextFindQuery = HsonQuery & Readonly<{
+  text?: unknown;
+}>;
+
+type SplitFindQuery = Readonly<{
+  searchQuery: HsonQuery;
+  text: string | RegExp | undefined;
+}>;
+
+function split_text_query(query: HsonQuery): SplitFindQuery {
+  const maybeText = (query as TextFindQuery).text;
+  if (maybeText === undefined) return { searchQuery: query, text: undefined };
+
+  if (typeof maybeText !== "string" && !(maybeText instanceof RegExp)) {
+    throw new Error("find query text must be a string or RegExp");
+  }
+
+  const { text: _text, ...rest } = query as TextFindQuery;
+  return { searchQuery: rest as HsonQuery, text: maybeText };
+}
+
+function node_text_content(node: HsonNode): string {
+  let out = "";
+
+  for (const child of node._content ?? []) {
+    if (typeof child === "string") {
+      out += child;
+      continue;
+    }
+
+    if (is_Node(child)) {
+      out += node_text_content(child);
+    }
+  }
+
+  return out;
+}
+
+function node_matches_text(node: HsonNode, text: string | RegExp): boolean {
+  const actual = node_text_content(node);
+
+  if (typeof text === "string") {
+    return actual.includes(text);
+  }
+
+  text.lastIndex = 0;
+  return text.test(actual);
+}
+
+function search_nodes_for_find(
+  roots: HsonNode[],
+  query: HsonQuery,
+  opts: { findFirst: boolean },
+): HsonNode[] {
+  const split = split_text_query(query);
+
+  // CHANGED: search_nodes does not own object-query text matching yet. Strip
+  // text before the structural search, then filter ordered candidates here.
+  // For findFirst+text we must search all structural candidates, because the
+  // first structural hit might fail the text constraint while a later one hits.
+  const candidates = search_nodes(
+    roots,
+    split.searchQuery,
+    { findFirst: split.text === undefined ? opts.findFirst : false },
+  );
+
+  if (split.text === undefined) return candidates;
+
+  const filtered = candidates.filter((node) => node_matches_text(node, split.text!));
+  return opts.findFirst ? filtered.slice(0, 1) : filtered;
+}
+
 /**
  * Find *all* matching nodes under a `LiveTree` and return them as a `TreeSelector`.
  *
@@ -101,7 +173,7 @@ function class_query(className: string): HsonQuery {
  */
 export function find_all_in_tree(tree: LiveTree, q: HsonQuery | string): TreeSelector {
   const query = typeof q === "string" ? parse_selector(q) : q;
-  const found: HsonNode[] = search_nodes([tree.node], query, { findFirst: false });
+  const found: HsonNode[] = search_nodes_for_find([tree.node], query, { findFirst: false });
 
   const trees = found.map(node => wrap_in_tree(tree, node)); // ← changed
   return make_tree_selector(trees);
@@ -151,7 +223,7 @@ function normalizeOne(q: FindQuery): HsonQuery {
 export function make_find_for(tree: LiveTree): FindWithById {
   const base = ((q: FindQuery): LiveTree | undefined => {
     const query = typeof q === "string" ? parse_selector(q) : q;
-    const found = search_nodes([tree.node], query, { findFirst: true });
+    const found = search_nodes_for_find([tree.node], query, { findFirst: true });
     if (!found.length) return undefined;
     return wrap_in_tree(tree, found[0]);
   }) as FindWithById;
@@ -243,7 +315,7 @@ export function make_find_all_for(tree: LiveTree): FindMany {
     const out: LiveTree[] = [];
     for (const one of qs) {
       const query = normalizeOne(one);
-      const found = search_nodes([tree.node], query, { findFirst: false });
+      const found = search_nodes_for_find([tree.node], query, { findFirst: false });
       for (const node of found) out.push(wrap_in_tree(tree, node));
     }
 
