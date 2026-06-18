@@ -1,0 +1,1 @@
+Patch release: fixes LiveTree object-query text matching for find/findAll, and corrects text API behavior so text.set() preserves element-child ordering while primitive values stringify consistently across HSON and DOM projections.
