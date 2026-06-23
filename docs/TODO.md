@@ -2,6 +2,9 @@
 
 # 2DÜ
 
+## 22JUN2026
+•  add: liveTree.dom.walkText/walkTree (document.treeWalker)
+
 ## 03JUN2026
 • API changes to document:
  - contains
