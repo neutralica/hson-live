@@ -10,7 +10,7 @@ HSON is a glue format: a structural representation capable of fully expressing b
 
 JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the correspondence between these two patterns, representing both within the same underlying node graph.
 
-By expressing either format through a common structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. This capability opens up interesting possibilities.
+By expressing either format through a commonview structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. This capability opens up interesting possibilities.
 
 ### JSON:
 ```ts
@@ -125,15 +125,16 @@ LiveTree exposes various DOM and CSS helpers including:
 ## LiveTree capabilities
 LiveTree supports:
 
-* creating, removing, and rearranging nodes and child nodes
+* rich creation and manipulation of complex graphs in a simple, intuitive API
 * reading and writing attributes, text content, and tag names
 * scoped CSS manipulation without Shadow DOM
 * declarative animation control via CSS keyframes
-* typed event listener management with automatic teardown
-* SVG creation and animation
+* typed event listener management with automatic teardown 
+* SVG creation, manipulation, and animation
+* <canvas> creation, manipulation, and animation
 * deterministic cleanup of removed nodes
 
-The API is intentionally conservative. It often mirrors established JavaScript document methods and avoids introducing abstractions that stray too far from familiar DOM APIs.
+The API is intentionally conservative. It often mirrors established JavaScript document methods and avoids introducing abstractions that stray too far from familiar DOM APIs. By gathering the awkward union of web technologies into a single ecosystem, LiveTree's API achieves network effects that remove friction for many common cross-domain operations.
 
 ## first-class CSS
 hson-live exposes CSS not as a string-based side channel, but as a typed surface that can be read, written, created, and reasoned about directly, all within JS/TS. Style rules, keyframes, custom properties, and scoped selectors are constructed and managed programmatically in LiveTree, without sacrificing any of the expressiveness of native CSS.
@@ -145,12 +146,8 @@ hson-live's CssManager, KeyframesManager, StyleManager, and (@)PropertyManager t
 Cleanup is built-in: rules are automatically deleted from the <hson-_style> stylesheet on node removal. CSS remains CSS, but its lifetime, scope, and validity can be governed programmatically by LiveTree.
 
 
-## significance
-Treating JSON and HTML as representations of the same underlying structure offers a novel solution to a long-standing challenge: how best to align UI and state data. Instead of 'UI as a function of state' hson-live suggests a new paradigm:
-
-### view ≡ state
-
-In LiveTree this means:
+### view === state
+## LiveTree wins
 
 * state and view cannot diverge; there is only one data node structure of which they are both projections
 * serialization is not an edge case operation but core functionality
@@ -191,9 +188,10 @@ The project repo can be found at
 See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full documentation is also made available at hson::LiveDemo. 
 
 ## LiveDemo
-LiveDemo is the first site made with hson.liveTree. It demonstrates the capabilities of LiveTree in a deliberately minimalist environment without frameworks or any other dependencies. Explore hson-live's functionality at:
-
 `https://terminalgothic.com/hson`
+
+LiveDemo is a test and development environment as well as the first website made with hson-live. LiveDemo is a proof-of-concept; its growing menu of interactive demos showcase hson-live's capabilities and demonstrate the claims made here. Visitors may run the 1000+ internal system tests to verify the results for themselves, or run any valid HTML or JSON string through the transformer circuit test.
+LiveDemo's styling is intentionally brutalist.
 
 
 
