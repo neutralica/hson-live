@@ -77,8 +77,6 @@ maps to:
 *	Nesting depth is preserved exactly.
 *	Element ordering is preserved and semantically significant.
 
-⸻
-I’d insert this after “Element Mapping” and before “Text Nodes”, because it bridges the parse model into visible HSON syntax.
 
 ⸻
 ## HSON Serialization of HTML Sources
