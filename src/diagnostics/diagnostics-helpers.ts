@@ -5,7 +5,7 @@ import { is_Node } from "../utils/node-utils/node-guards.js";
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 import { assert_invariants } from "./assert-invariants.test.js";
-import { SPIN } from "./test-3-loop.js";
+import { SPIN } from "./test-circuit.js";
 
 export function coerce_entry(
   atom: FixtureAtom,

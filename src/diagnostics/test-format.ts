@@ -1,3 +1,5 @@
+// test-format.ts
+
 import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
 import { compare_nodes } from "./compare-nodes.test.js";
 import { Artifact, CoreOpt, FixtureAtom, Fmt, LoopReport, Step } from "../types/diagnostics.types.js";
@@ -13,7 +15,7 @@ export type ProjectionOpts = {
   compare?: boolean; // default true: parse emitted text and diff against source node
 };
 
-export function _test_one_format(
+export function _format_test(
   atom: FixtureAtom,
   opts: ProjectionOpts
 ): LoopReport {

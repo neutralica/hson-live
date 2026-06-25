@@ -4,8 +4,8 @@
 export { assert_invariants as _assert_invariants } from "./assert-invariants.test.js";
 export { compare_nodes as _compare_nodes } from "./compare-nodes.test.js";
 export { is_Node as _is_Node } from "../utils/node-utils/node-guards.js"
-export { _test_full_loop } from "./test-3-loop.js";
-export { _test_one_format as _test_1_format } from "./test-1-way.js";
+export { _circuit_test  } from "./test-circuit.js";
+export { _format_test  } from "./test-format.js";
 export { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostics.types.js";
 
 

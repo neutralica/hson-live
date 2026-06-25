@@ -1,5 +1,5 @@
 /**
- * loop-3.test.ts
+ * test-circuit.ts
  *
  * A deterministic 3-way round-trip validation rig for HSON.
  *
@@ -145,7 +145,7 @@ function runRing(
  * When `paranoid=true`, parsed nodes are captured and compared across
  * directions at matching (lap, fmt, phase) checkpoints.
  */
-export function _test_full_loop(atom: FixtureAtom, opts: LoopOpts = {}): LoopReport {
+export function _circuit_test(atom: FixtureAtom, opts: LoopOpts = {}): LoopReport {
   const trace: Step[] = [];
   const failures: Step[] = [];
   const artifacts: Artifact[] = [];

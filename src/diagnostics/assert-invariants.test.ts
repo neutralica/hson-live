@@ -336,7 +336,7 @@ export function assertNewShapeQuick(n: any, where: string): void {
 
     const tag = node._tag as string | undefined;
     const meta = node._meta as HsonMeta | undefined;
-    const attrs = node._attrs as HsonAttrs | undefined;
+    const attrs = node.$_attrs as HsonAttrs | undefined;
 
     // 1) OLD giveaways in _meta
     if (meta && ("attrs" in meta || "flags" in meta)) {

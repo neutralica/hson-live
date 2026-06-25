@@ -6,7 +6,7 @@ import { HsonNode } from "./node.types.js";
 
 export type Fmt = "json" | "html" | "hson";
 /**
- * Entry format selector for `_test_full_loop`.
+ * Entry format selector for `_circuit_test`.
  *
  * `auto` attempts to infer the format from the input atom.
  */
@@ -16,7 +16,7 @@ export type SourceFormat = Fmt | "auto" | "node" | "dom";
  */
 export type LoopDir = "cw" | "ccw";
 /**
- * Options controlling `_test_full_loop`.
+ * Options controlling `_circuit_test`.
  */
 
 export type LoopOpts = {
@@ -58,7 +58,7 @@ export type NodeMark = {
   node: HsonNode;
 };
 /**
- * Summary report returned by `_test_full_loop`.
+ * Summary report returned by `_circuit_test`.
  */
 
 export type LoopReport = {
@@ -82,7 +82,7 @@ export type LoopReport = {
   };
 };
 /**
- * Input accepted by `_test_full_loop`.
+ * Input accepted by `_circuit_test`.
  */
 
 export type FixtureAtom = string |
