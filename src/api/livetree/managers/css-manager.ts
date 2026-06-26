@@ -879,18 +879,6 @@ export class CssManager {
     } as const;
   }
 
-  // /**
-  //  * DEPRECATED in favor of api
-  //  * Back-compat alias for the public CSS API facade.
-  //  *
-  //  * Prefer `CssManager.api()` in new code.
-  //  */
-  // public static globals(): GlobalCssApi {
-  //   return CssManager.api();
-  // }
-
-
-
   public snapshot(): string {
     return this.renderCss()
   }

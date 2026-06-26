@@ -544,20 +544,6 @@ export class GlobalCss {
     return `sel:${selStr.trim()}`;
   }
 
-
-  // /**
-  //  * Return a selector-keyed rule handle.
-  //  *
-  //  * @param selStr CSS selector for the rule.
-  //  * @returns A global rule handle keyed by selector.
-  //  * @throws If the selector is empty.
-  //  */
-  // private sel(selStr: string): GlobalRuleHandle {
-  //   const selector = selStr.trim();
-  //   if (!selector) throw new Error("GlobalCss.sel: empty selector");
-  //   return this.rule(GlobalCss.id_for_selector(selector), selector);
-  // }
-
   /**
    * Remove a global rule by key.
    *

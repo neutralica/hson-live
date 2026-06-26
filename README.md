@@ -8,9 +8,11 @@
 ### overview
 HSON is a glue format: a structural representation capable of fully expressing both JSON and HTML within a unified syntax resembling a pared-down form of HTML.
 
-JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the correspondence between these two patterns, representing both within the same underlying node graph.
+JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
 
-By expressing either format through a commonview structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. This capability opens up interesting possibilities.
+#### By expressing either format through a commonview structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. 
+
+The ability to parse JSON to HTML and vice versa is the operation that powers hson-live.
 
 ### JSON:
 ```ts
@@ -61,13 +63,11 @@ hson.transform is a set of core transformers responsible for:
 
 This includes cases that are often lossy or ambiguous in conventional tooling, such as embedded markup in JSON, boolean attributes, void elements, or SVG namespace handling.
 
-Using hson-live’s transformers, arbitrary HTML can be rendered as valid JSON, manipulated using standard JavaScript object operations, and then re-rendered to the DOM. The inverse — treating structured data as markup to be rendered — works equally well, without altering the underlying user data.
-
-Unifying two non-interchangeable notations in one representation suggests new ways to create interactive web content. hson-live's LiveTree extension explores these possibilities.
+Unifying these non-interchangeable notations in one representation suggests new ways to create interactive web content. HTML rendered to JSON can be manipulated using standard JavaScript object operations, then the updated HTML re-rendered back to the DOM. hson-live's LiveTree extension demonstrates this potential.
 
 
 ## hson.liveTree
-LiveTree is an interface that projects live DOM elements from HsonNodes, using the HsonNode graph as the source of truth and updating the DOM when changes are made.
+LiveTree is an interface that projects live DOM elements from HSON, using the node graph as the source of truth and updating the DOM when changes are made.
 
 Rather than maintaining separate virtual UI and state models that must be kept in sync, LiveTree works by:
 1.	ingesting document.body, or any HTMLElement within it, and parsing it — along with all nested content — into a HsonNode graph
@@ -75,9 +75,9 @@ Rather than maintaining separate virtual UI and state models that must be kept i
 3.	binding a fluent, typed API to the underlying node graph that synchronously reflects node graph mutations to the DOM
 
 
-HTML attributes, text content, child nodes, CSS rules and styles, animations and keyframes, and event listeners are all accessible and mutable through a unified JS/TS interface that minimizes null checks and type friction.
+HTML attributes, text content, child nodes, CSS rules and styles, animations and keyframes, and event listeners are all accessible and mutable through a unified TypeScript interface that minimizes null checks and type friction.
 
-Once grafted onto document.body, mutations to LiveTree’s node graph are immediately reflected in the DOM. Complex documents can be created, transformed, and animated without relying on intermediary abstractions such as:
+Once grafted onto document.body, mutations to LiveTree’s node graph are immediately updated in the DOM. Complex documents can be created, transformed, and animated without relying on intermediary abstractions such as:
 -! templates
 -! reconciliation layers
 -! shadow DOM
