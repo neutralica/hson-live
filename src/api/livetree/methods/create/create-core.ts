@@ -1,6 +1,6 @@
 import { ELEM_TAG, HSON_SYS_PREFIX, ROOT_TAG } from "../../../../consts/constants.js";
 import { CREATE_NODE } from "../../../../consts/factories.js";
-import { is_svg_context_tag } from "../../../../consts/html-tags.js";
+import { is_svg_context_tag } from "../../../../consts/all-html-tags.js";
 import { hson } from "../../../../hson.js";
 import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";

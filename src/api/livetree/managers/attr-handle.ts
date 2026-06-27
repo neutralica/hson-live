@@ -1,4 +1,4 @@
-import { SVG_TAGS } from "../../../consts/html-tags.js";
+import { SVG_TAGS } from "../../../consts/all-html-tags.js";
 import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
 import { Primitive } from "../../../types/core.types.js";
 import { CssMap } from "../../../types/css.types.js";

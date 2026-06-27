@@ -85,6 +85,17 @@ export function make_dom_api(
     return (e instanceof HTMLElement) ? e : undefined;
   }) as (() => HTMLElement | undefined);
 
+  const innerHtml = (() => {
+    const e = el();
+    return e ? e.innerHTML : undefined;
+  }) as (() => string | undefined);
+
+  const outerHtml = (() => {
+    const e = el();
+    if (!e) return undefined;
+    return new XMLSerializer().serializeToString(e);
+  }) as (() => string | undefined);
+
   const matches = (sel: string): boolean => {
     const e = el();
     if (!e) return false;
@@ -188,6 +199,7 @@ export function make_dom_api(
     if (!e?.parentElement) return undefined;
     return resolve_tree_from_el(tree, e.parentElement);
   }) as ParentFn;
+  
   function get_doc(): LiveTreeDocument | undefined {
     const e = el();
     if (!e?.ownerDocument) return undefined;
@@ -243,6 +255,22 @@ export function make_dom_api(
       const hit = el();
       if (!(hit instanceof HTMLElement)) {
         throw new Error(label ?? `[LiveTree.dom.must.html] element is not an HTMLElement`);
+      }
+      return hit;
+    },
+
+    innerHtml(label?: string): string {
+      const hit = innerHtml();
+      if (hit == null) {
+        throw new Error(label ?? `[LiveTree.dom.must.innerHtml] no DOM element available`);
+      }
+      return hit;
+    },
+
+    outerHtml(label?: string): string {
+      const hit = outerHtml();
+      if (hit == null) {
+        throw new Error(label ?? `[LiveTree.dom.must.outerHtml] no DOM element available`);
       }
       return hit;
     },
@@ -329,6 +357,8 @@ export function make_dom_api(
   return {
     el,
     html,
+    innerHtml,
+    outerHtml,
     matches,
     contains,
     isConnected,

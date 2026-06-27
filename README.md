@@ -108,6 +108,7 @@ tree.listen
             .css.set.backgroundColor("blue");
     }); 
 ```
+
 Detached branches can also be created directly:
 
 ```ts
