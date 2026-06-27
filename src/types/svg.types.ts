@@ -26,7 +26,18 @@ export type SvgBox = {
 };
 
 export type SvgLiveTree = Omit<
-  LiveTree, "create" | "id" | "classlist" | "style" | "css" | "attr" | "flag" | "data" | "text" | "empty"
+  LiveTree,
+  | "create"
+  | "id"
+  | "classlist"
+  | "style"
+  | "css"
+  | "attr"
+  | "flag"
+  | "data"
+  | "text"
+  | "empty"
+  | "cloneBranch"
 > & {
   create: SvgCreateHelper;
   id: IdApi<SvgLiveTree>;
@@ -38,4 +49,5 @@ export type SvgLiveTree = Omit<
   data: DataApi<SvgLiveTree>;
   text: LiveTextApi<SvgLiveTree>;
   empty: () => SvgLiveTree;
+  cloneBranch: () => SvgLiveTree;
 };

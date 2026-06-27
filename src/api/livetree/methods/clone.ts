@@ -65,10 +65,9 @@ function clone_branch_with_quids(
 // - copies per-QUID CSS rules internally via CssManager @internal hook
 // - animations, event listeners, and events are *not* copied: 
 //    this function returns flat HTML that looks the same but doesn't adopt any old behaviors
-export function clone_branch_method(this: LiveTree): LiveTree {
-  // ensure cloning an actual bound node
-  const srcNode: HsonNode = this.node; 
+export function clone_branch_method<TSelf extends LiveTree>(this: TSelf): TSelf {
+  const srcNode: HsonNode = this.node;
   const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode).root;
 
-  return hson.liveTree.fromNode(clonedRootNode);
+  return hson.liveTree.fromNode(clonedRootNode) as TSelf;
 }

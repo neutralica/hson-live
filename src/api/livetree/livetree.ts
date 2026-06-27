@@ -522,8 +522,9 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
  ***************************************/
 
   /** Clone this branch as a new unattached LiveTree branch. */
-  public cloneBranch(): LiveTree {
-    return clone_branch_method.call(this);
+  /** Clone this branch as a new unattached branch of the same LiveTree subtype. */
+  public cloneBranch(): this {
+    return clone_branch_method.call(this) as this;
   }
 
 
