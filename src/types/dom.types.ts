@@ -61,11 +61,11 @@ export interface LiveTreeDom {
   /** Return this tree's mapped DOM element, or `undefined` when unmounted. */
   el(): Element | undefined;
   /** Return this tree's mapped element only when it is an `HTMLElement`. */
-  html(): HTMLElement | undefined;
+  htmlEl(): HTMLElement | undefined;
   /** Return the innerHTML of this tree's mapped DOM element as a string, or undefined. */
-  innerHtml(): string | undefined;
+  innerHtml: string | undefined;
   /** Return the outerHTML of this tree's mapped DOM element as a string, or undefined. */
-  outerHtml(): string | undefined;
+  outerHtml: string | undefined;
   /** Return whether this tree's element matches `sel`; false when unmounted. */
   matches(sel: string): boolean;
   /** DOM containment helpers for nodes, event targets, and other trees. */
@@ -98,11 +98,11 @@ export interface LiveTreeDom {
     /** Return this tree's DOM element, or throw. */
     el: (label?: string) => Element;
     /** Return this tree's DOM element as an `HTMLElement`, or throw. */
-    html: (label?: string) => HTMLElement;
+    htmlEl: (label?: string) => HTMLElement;
     /** Return the innerHTML of this tree's DOM element as a string, or throw. */
-    innerHtml(label?: string): string;
+    innerHtml: string;
     /** Return the outerHTML of this tree's DOM element as a string, or throw. */
-    outerHtml(label?: string): string;
+    outerHtml: string;
     /** Return this tree's bounding client rect, or throw. */
     rect: (label?: string) => DOMRect;
     /** Strict `closest`; throws when no resolvable selector match is found. */

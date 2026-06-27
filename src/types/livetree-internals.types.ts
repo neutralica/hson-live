@@ -118,12 +118,13 @@ export interface LiveTreeContent<TSelf> {
        * @see remove_livetree
        */
     removeSelf(): number;
-    /**
+ /**
    * Content manager for structured child access and mutation.
    *
    * This is a lazy accessor; the manager is constructed on first use.
    */
     readonly content: ContentManager;
+    
     adoptRoots(root: HsonNode): TSelf;
     /**
      * Deep-clone this subtree into a detached `LiveTree`.

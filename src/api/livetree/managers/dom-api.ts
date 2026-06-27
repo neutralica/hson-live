@@ -80,21 +80,21 @@ export function make_dom_api(
 
   const el = () => resolveEl();
 
-  const html = (() => {
+  const htmlEl = (() => {
     const e = el();
     return (e instanceof HTMLElement) ? e : undefined;
   }) as (() => HTMLElement | undefined);
 
-  const innerHtml = (() => {
+  const get_innerHTML = (): string | undefined => {
     const e = el();
     return e ? e.innerHTML : undefined;
-  }) as (() => string | undefined);
+  };
 
-  const outerHtml = (() => {
+  const get_outerHTML = (): string | undefined => {
     const e = el();
     if (!e) return undefined;
     return new XMLSerializer().serializeToString(e);
-  }) as (() => string | undefined);
+  };
 
   const matches = (sel: string): boolean => {
     const e = el();
@@ -150,7 +150,7 @@ export function make_dom_api(
   }) as (() => DOMRectList | undefined);
 
   const scrollSize = (() => {
-    const e = html();
+    const e = htmlEl();
     if (!e) return undefined;
     return {
       width: e.scrollWidth,
@@ -164,7 +164,7 @@ export function make_dom_api(
   };
 
   const clientSize = (() => {
-    const e = html();
+    const e = htmlEl();
     if (!e) return undefined;
     return {
       width: e.clientWidth,
@@ -199,7 +199,7 @@ export function make_dom_api(
     if (!e?.parentElement) return undefined;
     return resolve_tree_from_el(tree, e.parentElement);
   }) as ParentFn;
-  
+
   function get_doc(): LiveTreeDocument | undefined {
     const e = el();
     if (!e?.ownerDocument) return undefined;
@@ -251,27 +251,22 @@ export function make_dom_api(
       return hit;
     },
 
-    html(label?: string): HTMLElement {
+    htmlEl(label?: string): HTMLElement {
       const hit = el();
       if (!(hit instanceof HTMLElement)) {
         throw new Error(label ?? `[LiveTree.dom.must.html] element is not an HTMLElement`);
       }
       return hit;
     },
-
-    innerHtml(label?: string): string {
-      const hit = innerHtml();
-      if (hit == null) {
-        throw new Error(label ?? `[LiveTree.dom.must.innerHtml] no DOM element available`);
-      }
+    get innerHtml(): string {
+      const hit = get_innerHTML();
+      if (hit == null) throw new Error(`[LiveTree.dom.must.innerHTML] no DOM element available`);
       return hit;
     },
 
-    outerHtml(label?: string): string {
-      const hit = outerHtml();
-      if (hit == null) {
-        throw new Error(label ?? `[LiveTree.dom.must.outerHtml] no DOM element available`);
-      }
+    get outerHtml(): string {
+      const hit = get_outerHTML();
+      if (hit == null) throw new Error(`[LiveTree.dom.must.outerHTML] no DOM element available`);
       return hit;
     },
 
@@ -356,9 +351,13 @@ export function make_dom_api(
   };
   return {
     el,
-    html,
-    innerHtml,
-    outerHtml,
+    htmlEl,
+    get innerHtml() {
+      return get_innerHTML();
+    },
+    get outerHtml() {
+      return get_outerHTML();
+    },
     matches,
     contains,
     isConnected,
