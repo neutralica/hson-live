@@ -8,6 +8,7 @@ import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../creation/tree-selector.js";
 import { search_nodes } from "./search.js";
 import { FindWithById } from "../../../types/livetree.types.js";
+import { SvgLiveTree } from "../../../types/svg.types.js";
 import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../../../quid/data-quid.quid.js";
 import { wrap_in_tree } from "../creation/create-livetree.js";
 import { is_Node } from "../../../utils/node-utils/node-guards.js";
@@ -36,15 +37,18 @@ type FindManyHelpers = {
   byClass: (className: string) => TreeSelector;
   byData: (key: string, value: string) => TreeSelector;
 };
+
 export type FindManyMust = ((q: FindQueryMany, label?: string) => TreeSelector) &
 FindManyHelpers;
 export type FindMany = ((q: FindQueryMany) => TreeSelector) & FindManyHelpers & {
 must: FindManyMust;
-} ;
+};
+
 // array type-guard so TS narrows correctly.
 function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
   return Array.isArray(q);
 }
+
 function node_in_subtree(root: HsonNode, target: HsonNode): boolean {
   if (root === target) return true;
   for (const child of root._content ?? []) {
@@ -73,6 +77,19 @@ function class_query(className: string): HsonQuery {
   // Token-aware matching for `class="a b"` should be handled later in search_nodes
   // or by adding a predicate-like query shape.
   return { attrs: { class: cls } };
+}
+
+function as_svg_tree(hit: LiveTree | undefined): SvgLiveTree | undefined {
+  if (!hit) return undefined;
+  return hit.svg.inScope() ? hit as unknown as SvgLiveTree : undefined;
+}
+
+function must_as_svg_tree(hit: LiveTree, label: string): SvgLiveTree {
+  const svg = as_svg_tree(hit);
+  if (!svg) {
+    throw new Error(`[LiveTree.find.must.asSvg] expected SVG-scoped match for ${label}`);
+  }
+  return svg;
 }
 
 type TextFindQuery = HsonQuery & Readonly<{
@@ -277,6 +294,61 @@ export function make_find_for(tree: LiveTree): FindWithById {
 
   mustBase.byData = (key: string, value: string): LiveTree =>
     mustBase({ attrs: { [normalize_data_attr_name(key)]: value } });
+
+  const asSvgBase = ((q: FindQuery): SvgLiveTree | undefined => {
+    return as_svg_tree(base(q));
+  }) as FindWithById["asSvg"];
+
+  asSvgBase.byId = (id: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byId(id));
+
+  asSvgBase.byAttribute = (attr: string, value: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byAttribute(attr, value));
+
+  asSvgBase.byFlag = (flag: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byFlag(flag));
+
+  asSvgBase.byTag = (tag: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byTag(tag));
+
+  asSvgBase.byClass = (className: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byClass(className));
+
+  asSvgBase.byData = (key: string, value: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byData(key, value));
+
+  asSvgBase.byQuid = (quid: string): SvgLiveTree | undefined =>
+    as_svg_tree(base.byQuid(quid));
+
+  const mustAsSvg = ((q: FindQuery, label?: string): SvgLiveTree => {
+    const hit = mustBase(q, label);
+    const desc = label ?? (typeof q === "string" ? q : JSON.stringify(q));
+    return must_as_svg_tree(hit, desc);
+  }) as FindWithById["must"]["asSvg"];
+
+  mustAsSvg.byId = (id: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byId(id), `id:${id}`);
+
+  mustAsSvg.byAttribute = (attr: string, value: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byAttribute(attr, value), `${attr}:${value}`);
+
+  mustAsSvg.byFlag = (flag: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byFlag(flag), `flag:${flag}`);
+
+  mustAsSvg.byTag = (tag: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byTag(tag), `tag:${tag}`);
+
+  mustAsSvg.byClass = (className: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byClass(className), `class:${className}`);
+
+  mustAsSvg.byData = (key: string, value: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byData(key, value), `data-${key}:${value}`);
+
+  mustAsSvg.byQuid = (quid: string): SvgLiveTree =>
+    must_as_svg_tree(mustBase.byQuid(quid), `quid:${quid}`);
+
+  base.asSvg = asSvgBase;
+  mustBase.asSvg = mustAsSvg;
 
   base.must = mustBase;
 

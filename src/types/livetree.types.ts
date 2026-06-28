@@ -98,10 +98,20 @@ type FindOneHelpers<Return> = {
   byTag: (tag: string) => Return;
 };
 
-export type FindWithByIdMust = ((q: FindQuery, label?: string) => LiveTree) & FindOneHelpers<LiveTree>;
+export type FindWithByIdAsSvg = ((q: FindQuery) => SvgLiveTree | undefined) &
+  FindOneHelpers<SvgLiveTree | undefined>;
+
+export type FindWithByIdMustAsSvg = ((q: FindQuery, label?: string) => SvgLiveTree) &
+  FindOneHelpers<SvgLiveTree>;
+
+export type FindWithByIdMust = ((q: FindQuery, label?: string) => LiveTree) &
+  FindOneHelpers<LiveTree> & {
+    asSvg: FindWithByIdMustAsSvg;
+  };
 
 export type FindWithById = ((q: FindQuery) => LiveTree | undefined) &
   FindOneHelpers<LiveTree | undefined> & {
+    asSvg: FindWithByIdAsSvg;
     must: FindWithByIdMust;
   };
 
