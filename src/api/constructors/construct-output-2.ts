@@ -2,7 +2,6 @@
 
 import { RenderFormats } from "../../types/constructor.types.js";
 import { OutputConstructor_2 } from "../../types/constructor.types.js";
-import { HsonNode } from "../../types/node.types.js";
 import { $RENDER } from "../../consts/constants.js";
 import { FrameConstructor } from "../../types/constructor.types.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
@@ -13,9 +12,6 @@ import { construct_options_3 } from "./construct-options-3.js";
 import { construct_render_4 } from "./construct-render-4.js";
 import { OptionsConstructor_3, RenderConstructor_4 } from "../../types/constructor.types.js";
 import { FrameRender } from "../../types/constructor.types.js";
-import { LiveTree } from "../livetree/livetree.js";
-import { LiveTreeConstructor_3 } from "../../types/constructor.types.js";
-import { make_branch_from_node } from "../livetree/creation/create-branch.js";
 
 /**
  * HSON pipeline, stage 2: choose an output representation.

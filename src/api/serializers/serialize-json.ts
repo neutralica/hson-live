@@ -1,7 +1,7 @@
 // serialize-json.new.render.ts
 
 import { JsonObj, Primitive } from "../../types/core.types.js";
-import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
 import { is_Node, is_indexed } from "../../utils/node-utils/node-guards.js";
 import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX } from "../../consts/constants.js";
 import {  HsonNode } from "../../types/node.types.js";

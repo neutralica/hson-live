@@ -6,7 +6,7 @@ import { CREATE_NODE } from "../../consts/factories.js";
 import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../types/node.types.js";
 import { JsonObj, JsonValue, Primitive } from "../../types/core.types.js";
-import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
 import { _snip } from "../../utils/sys-utils/snip.utils.js";
 import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils.js";
 import { parse_style_string } from "../../utils/attrs-utils/parse-style.js";

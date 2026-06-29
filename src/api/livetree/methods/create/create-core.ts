@@ -1,12 +1,12 @@
 import { ELEM_TAG, HSON_SYS_PREFIX, ROOT_TAG } from "../../../../consts/constants.js";
 import { CREATE_NODE } from "../../../../consts/factories.js";
 import { is_svg_context_tag } from "../../../../consts/all-html-tags.js";
-import { hson } from "../../../../hson.js";
+import { parse_html } from "../../../parsers/parse-html.js";
 import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { HsonNode } from "../../../../types/node.types.js";
 import { unwrap_root_elem } from "../../../../utils/html-utils/unwrap-root-elem.js";
-import { node_from_svg } from "../../../../utils/node-utils/node-from-svg.js";
+import { is_svg_markup, node_from_svg } from "../../../../utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../utils/node-utils/node-guards.js";
 import { create_livetree } from "../../creation/create-livetree.js";
 import { make_tree_selector } from "../../creation/make-tree-selector.js";
@@ -74,6 +74,20 @@ export function build_markup_stub(tag: string, ns: CreateNs): string {
   return `<${tag}></${tag}>`;
 }
 
+function parse_trusted_markup_to_hson(source: string): HsonNode {
+  const trimmed = source.trimStart();
+
+  if (is_svg_markup(trimmed)) {
+    const el = new DOMParser()
+      .parseFromString(source, "image/svg+xml")
+      .documentElement;
+
+    return node_from_svg(el);
+  }
+
+  return parse_html(source);
+}
+
 export function make_create_core(tree: LiveTree): CreateCore {
   let nextIndex: number | undefined = undefined;
 
@@ -130,8 +144,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
       const ns = inferCreateNs(tree, t);
       const markup = build_markup_stub(t, ns);
-      const parsed = hson.fromTrustedHtml(markup).toHson().parse();
-      const root0: HsonNode = Array.isArray(parsed) ? parsed[0] : parsed;
+      const root0 = parse_trusted_markup_to_hson(markup);
 
       const appended = unwrap_created_children_for_tag(root0, t, ns);
 
@@ -185,7 +198,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
     let parsed: HsonNode | HsonNode[];
     try {
-      parsed = hson.fromTrustedHtml(source).toHson().parse();
+      parsed = parse_trusted_markup_to_hson(source);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(

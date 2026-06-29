@@ -8,7 +8,7 @@ import { _snip } from "../../utils/sys-utils/snip.utils.js";
 import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
 import { parse_html_attrs } from "../../utils/html-utils/parse_html_attrs.js";
 import { coerce } from "../../utils/primitive-utils/coerce-string.utils.js";
-import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
 import { expand_entities } from "../../utils/html-preflights/expand-entities.js";
 import { expand_flags } from "../../utils/html-preflights/expand-flags.js";
 import { expand_void_tags } from "../../utils/html-preflights/expand-self-closing.js";

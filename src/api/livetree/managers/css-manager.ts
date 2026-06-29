@@ -12,7 +12,7 @@ import { LiveTree } from "../livetree.js";
 import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { css_supports_decl } from "./style-setter.js";
-import { normalize_css_key } from "../../../_tests/test-exports.js";
+import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";

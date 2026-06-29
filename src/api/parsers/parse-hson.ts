@@ -1,5 +1,5 @@
 
-import { assert_invariants } from "../../diagnostics/assert-invariants.test.js";
+import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
 import { HsonNode } from "../../types/node.types.js";
 import { parse_tokens } from "./parse-tokens.js";
 import { tokenize_hson } from "./tokenize-hson.js";

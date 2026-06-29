@@ -8,7 +8,7 @@ import { escape_html_text } from '../../utils/html-utils/escape-html.js';
 import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils.js';
 import { _snip } from '../../utils/sys-utils/snip.utils.js';
 import { is_Node } from '../../utils/node-utils/node-guards.js';
-import { assert_invariants } from '../../diagnostics/assert-invariants.test.js';
+import { assert_invariants } from '../../utils/node-utils/assert-invariants.js';
 import { clone_node } from '../../utils/node-utils/clone-node.js';
 import { HsonNode } from '../../types/node.types.js';
 import { _throw_transform_err } from '../../utils/sys-utils/throw-transform-err.utils.js';

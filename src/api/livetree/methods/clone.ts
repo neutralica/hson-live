@@ -1,7 +1,7 @@
 import { HsonNode } from "../../../types/node.types.js";
 import { _DATA_QUID, ensure_quid, get_quid } from "../../../quid/data-quid.quid.js";
 import { LiveTree } from "../livetree.js";
-import { hson } from "../../../hson.js";
+import { make_branch_from_node } from "../creation/create-branch.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -69,5 +69,5 @@ export function clone_branch_method<TSelf extends LiveTree>(this: TSelf): TSelf 
   const srcNode: HsonNode = this.node;
   const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode).root;
 
-  return hson.liveTree.fromNode(clonedRootNode) as TSelf;
+  return make_branch_from_node(clonedRootNode) as TSelf;
 }
