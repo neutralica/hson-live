@@ -22,7 +22,7 @@ type DevCfg = { throwOnFirst?: boolean };
  *   - Runs a fast structural sanity check (`assertNewShapeQuick`),
  *   - Walks the tree with `walk`, enforcing all VSN invariants:
  *       • meta keys are `data-_*` only,
- *       • VSNs (_-str/_-val/_-obj/_-arr/_-elem/_-root/_-ii) have no `_attrs`,
+ *       • VSNs (_-str/_-val/_-obj/_-arr/_-elem/_-root/_-ii) have no `$_attrs`,
  *       • `_-ii` shape and placement rules,
  *       • `_-arr` / `_-obj` / `_-elem` containment rules,
  *       • `_-root` cluster rules,
@@ -58,14 +58,14 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
  * Per-tag responsibilities:
  *   - All nodes:
  *       • meta keys must be `data-_*`.
- *       • VSNs may not carry `_attrs`.
+ *       • VSNs may not carry `$_attrs`.
  *   - _-str / _-val:
  *       • exactly one primitive child,
  *       • `_-str` payload is string,
  *       • `_-val` payload is non-string primitive.
  *   - _-ii:
  *       • must appear directly under `_-arr`,
- *       • no `_attrs`,
+ *       • no `$_attrs`,
  *       • carries `data-_index` (or `data-__index` alias) as string in `$_meta`,
  *       • exactly one child node.
  *   - _-arr:
@@ -78,7 +78,7 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
  *       • if present, child is `_-obj`, `_-elem`, or `_-arr`.
  *   - _-obj:
  *       • children are nodes only,
- *       • children have no `_attrs`,
+ *       • children have no `$_attrs`,
  *       • no `_-elem` directly under `_-obj`,
  *       • no duplicate non-VSN property tags.
  *   - default (normal tag):
@@ -104,9 +104,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     }
   }
 
-  // VSNs never carry _attrs
+  // VSNs never carry $_attrs
   if (isVSN(n.$_tag) && n.$_attrs && Object.keys(n.$_attrs as HsonAttrs).length) {
-    push(errs, cfg, `${here}: VSN "${n.$_tag}" must not have _attrs`); if (cfg.throwOnFirst) return;
+    push(errs, cfg, `${here}: VSN "${n.$_tag}" must not have $_attrs`); if (cfg.throwOnFirst) return;
   }
 
   // value wrappers
@@ -129,7 +129,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   // _-ii allowed only directly under _-arr; must have exactly one child node; meta only data-_index; no attrs
   if (n.$_tag === II_TAG) {
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _-ii must appear directly under _-arr`); if (cfg.throwOnFirst) return; }
-    if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _-ii must not have _attrs`); if (cfg.throwOnFirst) return; }
+    if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _-ii must not have $_attrs`); if (cfg.throwOnFirst) return; }
     const idx = n.$_meta?.[`${_META_DATA_PREFIX}index`] ?? n.$_meta?.[_DATA_INDEX];
     if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in $_meta`); if (cfg.throwOnFirst) return; }
 
@@ -218,9 +218,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         continue;
       }
 
-      // OBJ002 — direct children of _-obj must not have _attrs
+      // OBJ002 — direct children of _-obj must not have $_attrs
       if (p.$_attrs && Object.keys(p.$_attrs).length) {
-        push(errs, cfg, `${pHere}: [ERR: OBJ002] _-obj children must not have _attrs`);
+        push(errs, cfg, `${pHere}: [ERR: OBJ002] _-obj children must not have $_attrs`);
         if (cfg.throwOnFirst) return;
       }
 
@@ -271,7 +271,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
  *
  * Used by:
  *   - `walk` and `assertNewShapeQuick` to enforce:
- *       • VSNs never carry `_attrs`,
+ *       • VSNs never carry `$_attrs`,
  *       • certain placement rules (e.g., `_-ii` under `_-arr` only).
  **********************************************************/
 function isVSN(t: string) {
@@ -316,7 +316,7 @@ function push(errs: string[], cfg: DevCfg, s: string) { errs.push(s); }
  *        - All keys in `$_meta` must start with `data-_`.
  *   3) VSN + attrs:
  *        - Any VSN (_-str/_-val/_-arr/_-obj/_-elem/_-root/_-ii) that carries
- *          non-empty `_attrs` is rejected.
+ *          non-empty `$_attrs` is rejected.
  *   4) Traversal:
  *        - Uses an explicit stack to walk nodes (no recursion).
  *        - Only descends into `$_content` entries that are nodes;
@@ -353,9 +353,9 @@ export function assertNewShapeQuick(n: any, where: string): void {
       }
     }
 
-    // 3) VSNs must not carry _attrs
+    // 3) VSNs must not carry $_attrs
     if (tag && isVSN(tag) && attrs && Object.keys(attrs).length) {
-      _throw_transform_err(` VSN <${tag}> with _attrs :  ${where}`, "assertNewShapeQuick", n);
+      _throw_transform_err(` VSN <${tag}> with $_attrs :  ${where}`, "assertNewShapeQuick", n);
     }
 
     // 4) Recurse nodes-only

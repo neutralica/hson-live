@@ -137,8 +137,8 @@ function readAllStyleFromNode(node: HsonNode): StyleGetMany {
  *   - Normal properties are converted from kebab-case to camelCase to
  *     match the HSON style object shape.
  * - Updates the HSON model:
- *   - Deletes the property from `_attrs.style`.
- *   - Removes `_attrs.style` entirely if it becomes empty.
+ *   - Deletes the property from `$_attrs.style`.
+ *   - Removes `$_attrs.style` entirely if it becomes empty.
  * - Updates the DOM:
  *   - If an associated `HTMLElement` exists, calls
  *     `el.style.removeProperty(kebabName)`.
@@ -153,7 +153,7 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
             ? kebabName
             : kebab_to_camel(kebabName);
 
-    // 2) Update node model (_attrs.style is CssObject now)
+    // 2) Update node model ($_attrs.style is CssObject now)
     const attrs = (node as any).$_attrs as HsonAttrs | undefined;
     const styleObj = (attrs?.style as CssMap | undefined) ?? undefined;
 
@@ -213,7 +213,7 @@ function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
 /* --------------------------------- HELPERS ---------------------------------- */
 
 /**
- * Normalize `node._attrs.style` to an object map of kebab keys to values.
+ * Normalize `node.$_attrs.style` to an object map of kebab keys to values.
  *
  * Behavior:
  * - If `a.style` is a string:
@@ -226,9 +226,9 @@ function computeRuntimeKeys(): ReadonlyArray<AllowedStyleKey> {
  *   - Creates a fresh object, assigns it to `a.style`, and returns it.
  *
  * This function provides a single normalization point so that the rest
- * of the style system can assume `_attrs.style` is an object.
+ * of the style system can assume `$_attrs.style` is an object.
  *
- * @param a - Attribute bag (typically `node._attrs`) to normalize.
+ * @param a - Attribute bag (typically `node.$_attrs`) to normalize.
  * @returns A mutable style object with kebab property keys.
  */
 function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
@@ -282,7 +282,7 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
  *      - `value === ""` → `el.style.removeProperty(kebabName)`.
  *      - Otherwise → `el.style.setProperty(kebabName, value)`.
  * 2. HSON:
- *    - Ensures `_attrs` exists and normalizes `_attrs.style` to an object
+ *    - Ensures `$_attrs` exists and normalizes `$_attrs.style` to an object
  *      via `ensureStyleObject`.
  *    - `value === ""`:
  *        - Deletes the key from the style object if present.
@@ -309,7 +309,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
         }
     }
 
-    // 2) mirror into node._attrs.style (object form) … unchanged
+    // 2) mirror into node.$_attrs.style (object form) … unchanged
     const attrs = (node.$_attrs ??= {}) as Record<string, unknown>;
     const styleObj = ensureStyleObject(attrs);
     const internalKey = kebabName.startsWith("--") ? kebabName : kebab_to_camel(kebabName);
@@ -330,7 +330,7 @@ function applyStyleToNode(node: HsonNode, kebabName: string, value: string): voi
  * Responsibilities:
  * - Provides a typed, DX-friendly facade over inline styles via `set`
  *   and `setProperty`.
- * - Keeps HSON `_attrs.style` and the DOM element's `style` attribute
+ * - Keeps HSON `$_attrs.style` and the DOM element's `style` attribute
  *   in sync through helpers such as `applyStyleToNode` and
  *   `removeStyleFromNode`.
  * - Exposes runtime-derived style keys (via `keys()`) that represent
@@ -465,7 +465,7 @@ export class StyleManager<TTree extends LiveTree> {
      * Remove all inline style state from the current tree node.
      *
      * This clears style at both layers:
-     * - the internal HSON representation (`node._attrs.style`), and
+     * - the internal HSON representation (`node.$_attrs.style`), and
      * - the live DOM element’s inline `style` attribute, if present.
      *
      * This method is intentionally **destructive and local**:

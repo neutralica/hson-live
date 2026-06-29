@@ -128,15 +128,15 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
  *
  * - Default branch (standard or user-defined tag, e.g. `"div"`, `"recipe"`):
  *   - Build a property object of the shape:
- *       `{ [tag]: <payload>, _attrs?, $_meta? }`
+ *       `{ [tag]: <payload>, $_attrs?, $_meta? }`
  *   - Content:
  *       - No children  → `{ [tag]: "" }` (empty string payload)
  *       - One child    → `{ [tag]: jsonFromNode(child) }`
  *       - Multiple children → error (a standard tag is not allowed to have
  *         multiple content clusters at this stage).
  *   - Attributes:
- *       - If `_attrs` is present and non-empty, it is attached as `_attrs`
- *         on the same object, merged with any existing `_attrs`.
+ *       - If `$_attrs` is present and non-empty, it is attached as `$_attrs`
+ *         on the same object, merged with any existing `$_attrs`.
  *   - Meta:
  *       - If `$_meta` is present and non-empty, it is attached as `$_meta`
  *         without further filtering; meta is preserved as-is in JSON mode.

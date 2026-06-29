@@ -1,286 +1,550 @@
 #### hson-live / hson.terminalgothic.com
 
 # LiveTree CSS APIs
+Updated: 2026-06-29
 
-This document covers the CssManager API (both QUID-scoped and global), differences between stylesheet-based CssManager vs the inline StyleManager, the shared StyleSetter surface, and KeyframesManager, AnimationManager, and (@)PropertyManager.
+This document covers the current style and stylesheet APIs:
+
+- `LiveTree.style` - inline style stored on the HSON node.
+- `LiveTree.css` - QUID-scoped stylesheet rules.
+- `TreeSelector.style` and `TreeSelector.css` - broadcast proxies.
+- `CssManager.api()` - global stylesheet facade.
+- Shared `StyleSetter`, style getters, CSS variables, selector blocks,
+  at-rule facades, `@property`, keyframes, and animations.
 
 ---
 
 ## StyleSetter
 
-StyleSetter is the shared fluent write surface used by `LiveTree.style` (StyleManager), `LiveTree.css` (CssManager), and `GlobalCss` rule handles. It is stateless: it normalizes keys and values, then delegates writes to a backend adapter.
-
-### Surface
-
-* `set` Proxy surface that returns all valid CSS properties (`tree.style.set.backgroundColor("red")`).
-* `set.var("--x", 10)` convenience setter for CSS variables.
-* `setProp(prop: string, value: CssValue)` write one property.
-* `setMany(map)` write many properties in one call.
-* `remove(prop: string)` remove one property.
-* `clear()` clear all properties for the handle.
-
-Methods usually return `this`, enabling chaining with other LiveTree methods.
-
-### Key normalization
-
-* Keys may be camelCase, kebab-case, vendor-prefixed kebab-case, or CSS custom properties.
-* `float` and `css-float` normalize to `cssFloat`.
-* Keys are normalized to canonical CSSOM form before being applied to the backend, which varies per caller.
-
-### Value normalization
-`CssValue` is `string | number | boolean | null | undefined | { value, unit? }`.
-
-* `null` or `undefined` means remove when used with `setProp`.
-* Strings are trimmed; numbers and booleans are stringified.
-* `{ value, unit }` renders as `${value}: ${unit}`.
-* `setMany` skips `null` and `undefined`
-
-
-### Pseudo blocks in `setMany()`
-
-`setMany` can route pseudo-class and pseudo-element declaration blocks. As pseudo-elements are not accepted in inline style attributes, only managers using the stylesheet-backed path (`CssManager` and `GlobalCss`) can manipulate them.
-
-Supported keys are:
-`_hover`, `_active`, `_focus`, `_focusWithin`, `_focusVisible`, `_visited`, `_checked`, `_disabled`, `__before`, `__after`.
-
-A pseudo block must be a plain object map of declarations, not a `{ value, unit }` object. This appears in the managed stylesheet as:
+`StyleSetter` is the shared write surface used by inline style handles,
+QUID-scoped CSS handles, selector handles, and global rule handles.
 
 ```ts
-[data-_quid="dbb9b6ce017707c9"]:hover{background:orange;opacity:1;}
+handle.set.backgroundColor("red");
+handle.set["background-color"]("red");
+handle.set.var("accent", "hotpink");
+handle.setProp("background-color", "red");
+handle.setMany({ opacity: 0.5, "--phase": 1 });
+handle.remove("opacity");
+handle.clear();
 ```
 
+The setter normalizes property keys, renders values, and delegates the actual
+write to the backend.
 
-#### Example:
+### Accepted Values
+
+`CssValue` is:
+
+```ts
+string | number | boolean | null | undefined | { value: string | number; unit?: string }
+```
+
+Rules:
+
+- `null` and `undefined` mean remove.
+- Strings are trimmed.
+- Numbers and booleans are stringified.
+- `{ value, unit }` renders as `${value}${unit ?? ""}`.
+- Empty strings remove properties in `CssManager` QUID rules and global rules.
+
+### Key Normalization
+
+Accepted keys include:
+
+- camelCase: `backgroundColor`
+- kebab-case: `background-color`
+- custom properties: `--accent`
+- `set.var("accent", value)`, `set.var("-accent", value)`, or
+  `set.var("--accent", value)`
+
+Normal properties are emitted as CSS property names. Custom properties preserve
+their `--name` spelling.
+
+---
+
+## Style Getters
+
+Style-like handles also expose a getter surface and a bulk read:
+
+```ts
+handle.get.property("background-color");
+handle.get.backgroundColor();
+handle.get["background-color"]();
+handle.get["--accent"]();
+handle.get.vars(["accent", "--phase"]);
+handle.getMany();
+```
+
+Reads return the handle's stored/internal value, not browser-computed style.
+Use `tree.dom.computed()` or `tree.dom.computedProp(name)` for computed browser
+style.
+
+CSS variable helpers are exposed separately:
+
+```ts
+handle.var.name("accent");      // "--accent"
+handle.var.key("accent");       // "var(--accent)"
+handle.var.set("accent", "red");
+handle.var.value("accent");
+```
+
+---
+
+## Inline Style: `tree.style`
+
+`LiveTree.style` writes to inline style state on the node, currently through
+`node.$_attrs.style`, and mirrors to the mounted DOM element when one exists.
+
+```ts
+tree.style.set.display("grid");
+tree.style.setMany({
+  gap: "1rem",
+  "--accent": "hotpink",
+});
+tree.style.remove("gap");
+tree.style.clear();
+```
+
+Inline style differences:
+
+- No stylesheet rule is created.
+- Pseudo blocks such as `_hover` and `__before` are ignored because inline
+  styles cannot represent pseudo selectors.
+- `style.get.*` reads inline style state, not QUID CSS, global CSS, or computed
+  browser style.
+- In browser runtimes, proxy typing/key lists are based on
+  `document.documentElement.style`; in non-DOM runtimes a small fallback list is
+  used.
+
+---
+
+## QUID-Scoped CSS: `tree.css`
+
+`LiveTree.css` writes stylesheet rules scoped to the tree's QUID:
+
+```css
+[data-_quid="..."] { opacity: 0.5; }
+```
+
+Usage:
+
+```ts
+tree.css.set.opacity(0.5);
+tree.css.setMany({
+  transform: "translateX(10px)",
+  "--phase": 1,
+});
+tree.css.remove("opacity");
+tree.css.clear();
+```
+
+`tree.css` exposes:
+
+```ts
+tree.css.set
+tree.css.setProp(prop, value)
+tree.css.setMany(map)
+tree.css.remove(prop)
+tree.css.clear()
+tree.css.get
+tree.css.getMany()
+tree.css.var
+tree.css.selector(pattern)
+tree.css.media(query)
+tree.css.supports(cond)
+tree.css.layer(layerName)
+tree.css.atProperty
+tree.css.keyframes
+tree.css.anim
+tree.css.devSnapshot()
+```
+
+For multi-QUID handles, reads are consensus reads. If any selected QUID is
+missing the property, or selected QUIDs disagree, the read returns `undefined`.
+`getMany()` returns only properties that exist and agree across all selected
+QUIDs.
+
+---
+
+## Pseudo Blocks
+
+Stylesheet-backed handles support pseudo blocks in `setMany()`:
+
 ```ts
 tree.css.setMany({
+  color: "black",
   _hover: {
-    opacity: 1,
-    background: "orange",
+    color: "red",
+  },
+  __before: {
+    display: "block",
   },
 });
 ```
 
-#### Example:
+Supported pseudo keys:
+
 ```ts
-// applies CSS rules scoped to tree's QUID via CssManager
-tree.css.setMany({
-  _hover: { 
-    opacity: 1,
-    background: "orange" },
+_hover
+_active
+_focus
+_focusWithin
+_focusVisible
+_visited
+_checked
+_disabled
+__before
+__after
+```
+
+They render as selector siblings such as `:hover`, `:focus-visible`,
+`::before`, and `::after`. For `__before` and `__after`, stylesheet-backed
+global/selector paths add `content: ""` when omitted.
+
+Pseudo blocks are not applied by `tree.style`.
+
+---
+
+## Selector Blocks
+
+`tree.css.selector(pattern)` returns a stylesheet-backed `StyleHandle` scoped
+relative to the QUID selector.
+
+```ts
+tree.css.selector(":hover").set.opacity(1);
+tree.css.selector("& > .label").set.color("red");
+tree.css.selector("& .icon").setMany({
+  transform: "scale(1.1)",
 });
 ```
 
-this appears in the style element as
+Patterns are resolved against the bound QUID selector. `&` represents the
+current QUID selector. Selector handles support the normal setter/getter/var
+surface and pseudo blocks.
+
+`setMany()` on QUID-scoped CSS also accepts nested selector keys that start with
+`&`:
+
 ```ts
-[data-_quid="dbb9b6ce017707c9"]:hover{background:orange;opacity:1;}
+tree.css.setMany({
+  "& > .label": {
+    color: "red",
+  },
+});
+```
+
+---
+
+## At-Rule Facades
+
+QUID-scoped CSS handles support scoped facades:
+
+```ts
+tree.css.media({ maxWidth: 700 }).set.display("none");
+tree.css.supports({ "backdrop-filter": "blur(4px)" }).set.backdropFilter("blur(4px)");
+tree.css.layer("components").set.zIndex(1);
+```
+
+These return CSS handles with the same surface as `tree.css`, but generated
+rules render inside the corresponding at-rule. Facades can be chained:
+
+```ts
+tree.css
+  .media("(max-width: 700px)")
+  .supports("(display: grid)")
+  .selector("& > .label")
+  .set.display("grid");
+```
+
+Media input may be a string or an object:
+
+```ts
+tree.css.media("(max-width: 700px)");
+tree.css.media({ maxWidth: 700, orientation: "portrait" });
+```
+
+Supports input may be a string or a declaration-test object:
+
+```ts
+tree.css.supports("(display: grid)");
+tree.css.supports({ display: "grid" });
 ```
 
 ---
 
 ## CssManager
 
-`CssManager` owns QUID-scoped stylesheet rules. It stores rule maps in memory and renders a single `<style>` element in the current document:
+`CssManager` is the singleton stylesheet engine behind QUID CSS, global rules,
+`@property`, and keyframes.
 
-`<hson-_style id="css-manager"><style id="_hson">...</style></hson-_style>`
-
-Each QUID maps to a selector `[data-_quid="..."]`.
-
-Using liveTree.css.setMany, CSS can be set locally, per-node.
-
-### Primary entry points
-
-* `LiveTree.css` returns a `CssHandle` bound to the node's QUID.
-* `CssManager.invoke()` returns the singleton manager.
-
-A `CssHandle` is `StyleSetter + get + atProperty + keyframes + anim + devSnapshot + selector`.
-
-### Setting CSS rules
-
-Handle surface:
+Preferred public global entry:
 
 ```ts
-// Single-QUID handle
-tree.css.set.backgroundColor("black");
-tree.css.setMany({ opacity: 0.5, "--phase": 1 });
-tree.css.remove("opacity");
-tree.css.clear();
+const css = CssManager.api();
 ```
 
-#### Manager methods (typically internal):
-
-* `setForQuid(quid, propCanon, value)`
-* `setManyForQuid(quid, decls)`
-* `unsetForQuid(quid, propCanon)`
-* `clearQuid(quid)`
-* `clearAll()`
-* `getForQuid(quid, propCanon)` returns the last written value
-* `hasAnyRules(quid)` returns whether any rules exist
-
-### Read semantics
-
-`CssHandle.get.property(...)` reads the stored value, not computed style.
-
-For multi-QUID handles, `get.property(...)` returns a consensus value:
-
-* If any QUID is missing the property, the result is `undefined`.
-* If values differ between QUIDs, the result is `undefined`.
-
-### Value and key behavior
-
-* Property keys are normalized to canonical CSSOM form when written.
-* At render time, canonical keys are emitted as CSS property names
-  (custom properties preserved, camelCase converted to kebab-case).
-* `setForQuid` treats empty strings as delete and `null` or `undefined` as delete.
-
-### Scheduling and rendering
-
-* Mutations mark the manager as changed.
-* In browsers, a single `requestAnimationFrame` flush batches updates.
-* In environments with a DOM render loop (requestAnimationFrame), writes are batched.
-* Otherwise, writes flush immediately for deterministic behavior.
-
- 
-* `syncNow()` forces an immediate flush if anything changed.
-* `renderCss()` returns the combined CSS text for inspection.
-* `debug_hardReset()` clears all CSS state and the managed style element.
-
-### Selector-scoped rules
-
-`CssHandle.selector(pattern)` creates a stylesheet-backed `StyleSetter` scoped relative to the handle's current QUID selector(s).
-
-Examples:
+Lower-level engine entry:
 
 ```ts
-tree.css.selector(":hover").set.opacity(1);
-tree.css.selector("& > .label").set.color("red");
+const manager = CssManager.invoke();
 ```
 
-## Sub-managers
+`invoke()` is mainly for internal plumbing, diagnostics, direct QUID methods,
+and tests.
 
-* `atProperty` exposes the `@property` registration manager.
-* `keyframes` exposes the keyframes manager.
-* `animForQuids(...)` returns a `CssAnimHandle` wired to QUID scopes.
-* `CssHandle.anim` is a pre-wired animation handle for the bound QUIDs.
+The manager renders into one managed style host when a DOM is available:
 
-At some point in the future, animation and keyframes may both be relocated under the `liveTree.anim` namespace
+```html
+<hson-_style id="css-manager">
+  <style id="_hson"></style>
+</hson-_style>
+```
+
+Scheduling:
+
+- In browser-like runtimes with `requestAnimationFrame`, writes are batched.
+- Without a DOM render loop, writes flush immediately for deterministic tests.
+- `syncNow()` forces an immediate flush if state is dirty.
+- `snapshot()` / `renderCss()` provide rendered CSS text for inspection.
+- `debug_hardReset()` clears manager state and the managed style element.
+
+Lower-level QUID methods include:
+
+```ts
+manager.setForQuid(quid, propCanon, value)
+manager.setManyForQuid(quid, decls)
+manager.unsetForQuid(quid, propCanon)
+manager.clearQuid(quid)
+manager.clearAll()
+manager.getForQuid(quid, propCanon)
+manager.getAllForQuid(quid)
+manager.hasAnyRules(quid)
+manager.animForQuids(quids)
+manager.releaseOwnedCssForQuid(quid)
+manager.setOwnedKeyframesForQuid(quid, input)
+```
 
 ---
 
-### PropertyManager
+## Global CSS
 
-The `atProperty` manager owns `@property` registrations. It is intended for declaring custom properties with type, syntax, and inheritance metadata so animations and transitions can interpolate correctly.
+`CssManager.api()` returns the global CSS facade plus shared `atProperty` and
+`keyframes` managers.
 
-#### Usage pattern:
 ```ts
-const css = tree.css;
-css.atProperty
-  .set("--phase", { syntax: "<number>", inherits: false, initial: 0 })
-  .set("--speed", { syntax: "<number>", inherits: true, initial: 1 });
+const css = CssManager.api();
+
+css.sel("body").set.margin("0");
+css.rule("app-shell", ".app").set.display("grid");
+css.media({ maxWidth: 700 }).sel(".app").set.display("block");
+css.supports({ display: "grid" }).sel(".grid").set.display("grid");
+css.layer("base").sel(":root").set.colorScheme("dark");
 ```
 
-#### Behavior notes:
-* Writes are centralized in `CssManager`, not per-node.
-* Changes are rendered into the same managed `<style>` element.
-* You can treat registrations as global for the current document.
+Global facade surface:
+
+```ts
+css.rule(ruleKey, selector)
+css.sel(selector)
+css.drop(ruleKey)
+css.dropByPrefix(prefix)
+css.clearAll()
+css.scope(scopeName, atRule)
+css.media(query)
+css.supports(cond)
+css.layer(layerName)
+css.var
+css.has(ruleKey)
+css.list()
+css.get(ruleKey)
+css.renderAll()
+css.dispose()
+```
+
+Rule handles are `StyleSetter<void>` plus:
+
+```ts
+handle.ruleKey
+handle.selector
+handle.drop()
+```
+
+Rules render with deterministic property ordering. Empty rules are dropped.
+
+### Global Variables
+
+The global variable facade writes to `:root`.
+
+```ts
+css.var.name("accent");       // "--accent"
+css.var.key("accent");        // "var(--accent)"
+css.var.set("accent", "red");
+css.var.value("accent");
+css.var.remove("accent");
+css.var.list();
+css.var.clear();
+```
 
 ---
 
-### KeyframesManager
+## `@property`
 
-The `.keyframes` manager owns named keyframe definitions.
-
-#### Usage pattern:
+`tree.css.atProperty` and `CssManager.api().atProperty` expose the same shared
+registration manager.
 
 ```ts
-const css = tree.css;
-css.keyframes.set({
+tree.css.atProperty.register({
+  name: "--phase",
+  syn: "<number>",
+  inh: false,
+  init: "0",
+});
+
+tree.css.atProperty.register(["--angle", "<angle>", "0deg"]);
+tree.css.atProperty.registerMany([
+  ["--x", "<length>", "0px"],
+  { name: "--color", syn: "<color>", inh: true, init: "red" },
+]);
+```
+
+Surface:
+
+```ts
+register(input)
+registerMany(inputs)
+unregister(name)
+has(name)
+get(name)
+renderOne(name)
+renderAll()
+```
+
+Input fields use the compact current names:
+
+- `name` - custom property name, e.g. `--phase`
+- `syn` - syntax, e.g. `<number>`
+- `inh` - whether the property inherits
+- `init` - initial value
+
+---
+
+## Keyframes
+
+`tree.css.keyframes` and `CssManager.api().keyframes` expose the shared
+keyframes manager.
+
+Object input:
+
+```ts
+tree.css.keyframes.set({
   name: "fade",
   steps: {
-    "0%": { opacity: 0 },
-    "100%": { opacity: 1 },
+    from: { opacity: "0" },
+    to: { opacity: "1" },
   },
 });
 ```
 
-#### Behavior notes:
-
-* Definitions are stored in memory and rendered into the managed stylesheet.
-* Updating a keyframe name replaces the prior definition.
-* The manager only writes the keyframe blocks; it does not start animations.
-
-Automated teardown and cleanup of keyframes is planned but not begun.
-
-
-### AnimationManager
-
-`CssHandle.anim` and `CssManager.animForQuids(...)` return a `CssAnimHandle` bound to one or more QUIDs. It is a small control surface for applying, starting, or clearing animationsagainst those targets.
-
-#### Typical usage:
+Tuple input:
 
 ```ts
-const anim = tree.css.anim;
-anim.begin({ name: "fade", duration: "300ms", easing: "ease-out" });
+tree.css.keyframes.set({
+  name: "spin",
+  steps: [
+    ["0%", { transform: "rotate(0deg)" }],
+    ["100%", { transform: "rotate(360deg)" }],
+  ],
+});
 ```
 
-#### Behavior notes:
-
-* Animation writes flow through `CssManager` and are scoped to the QUID selector(s).
-* DOM element discovery for animation side effects uses the current document.
-
----
-
-## Globals
-
-Global rules are selector-based (not QUID-scoped) and can be rendered into the same stylesheet when used through `CssManager.globals`.
-
-Recommended entry:
+Surface:
 
 ```ts
-const globals = CssManager.globals.invoke();
+set(input)
+setOwned(owner, input)
+setMany(inputs)
+delete(name)
+releaseOwner(owner)
+listOwned(owner)
+has(name)
+get(name)
+renderOne(name)
+renderAll()
 ```
 
-This returns the `GlobalCss.api(...)` surface wired to notify `CssManager` on change.
-
-### GlobalCss API
-
-`globals` (or `GlobalCss.api(...)`) exposes:
-
-* `rule(ruleKey, selector)` returns a `GlobalRuleHandle`.
-* `sel(selector)` returns a rule handle with a stable key `sel:<selector>`.
-* `drop(ruleKey)` removes an entire rule.
-* `clearAll()`, `has(ruleKey)`, `list()`, `get(ruleKey)`, `renderAll()`.
-* `dispose()` unregisters the change listener (useful for tests).
-
-`GlobalRuleHandle` is a `StyleSetter` plus:
-
-* `ruleKey` and `selector`
-* `drop()` to remove the rule
-
-Rules are rendered with deterministic property ordering. Empty rules are dropped.
-
-Automated rule teardown & cleanup is on the roadmap but not begun. 
-
+Keyframes render globally as `@keyframes`. Owned keyframes are associated with
+an owner id, usually a QUID, so teardown can release generated CSS for a node or
+subtree.
 
 ---
 
+## Animations
 
-## Pseudos in globals
+`tree.css.anim` returns a `CssAnimHandle` bound to the tree's QUID. It applies
+animation-related CSS declarations through the QUID-scoped CSS manager.
 
-`setMany` supports the same pseudo block keys as `StyleSetter` and will create sibling rules like `selector:hover` or `selector::before`.
+```ts
+tree.css.anim.begin({
+  name: "fade",
+  duration: "300ms",
+  timingFunction: "ease-out",
+});
 
-For `::before` and `::after`, `GlobalCss` will default to `content: ""` if it is not provided.
+tree.css.anim.restartName("fade");
+tree.css.anim.pause();
+tree.css.anim.resume();
+tree.css.anim.end();
+```
+
+Surface:
+
+```ts
+begin(spec)
+restart(spec)
+beginName(name)
+restartName(name)
+end(mode?)
+setPlayState("running" | "paused")
+pause()
+resume()
+```
+
+`end(mode)` accepts:
+
+```ts
+"name-only" | "clear-all"
+```
 
 ---
 
-### StyleManager Differences
+## TreeSelector Broadcasts
 
-`LiveTree.style` uses the same `StyleSetter` surface but targets inline `style=""` on the element, i.e. `_attrs.style` on the HSON node.
+Selections expose broadcast proxies:
 
-Key differences from `LiveTree.css`:
+```ts
+selector.style.setMany({ opacity: 0.5 });
+selector.css.setMany({ pointerEvents: "none" });
+selector.data.set("state", "disabled");
+selector.listen.onClick(handler);
+```
 
-* Inline only. Does not touch QUID-scoped rules or global rules.
-* No pseudo blocks. `_hover` or `__before` maps in `style.setMany` are ignored.
-* The `set` proxy is constrained by runtime keys. In browser runtimes it uses `document.documentElement.style` for the key list; in Node/tests it falls back to a small, fixed list.
-* `style.get.*` reads from the serialized inline style attribute, not computed style. It will not reflect rules set through `CssManager` or `GlobalCss`.
+The proxy forwards method calls to each selected tree. Empty selections return
+no-op proxies.
+
+---
+
+## Inline vs QUID CSS
+
+| Surface | Storage | Supports pseudos/selectors | Read source |
+| --- | --- | --- | --- |
+| `tree.style` | `node.$_attrs.style` and DOM inline style | no | inline style state |
+| `tree.css` | managed stylesheet, QUID selector | yes | CssManager rule state |
+| `tree.css.selector(...)` | managed global rule keyed by resolved selector | yes | rendered rule state |
+| `CssManager.api().sel(...)` | managed global rule | yes | rendered rule state |
+
+Use `tree.style` for inline attributes that should serialize with the node. Use
+`tree.css` for stylesheet rules, pseudo states, selectors, media/supports/layer
+rules, keyframes, and animations.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

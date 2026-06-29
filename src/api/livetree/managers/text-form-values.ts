@@ -31,7 +31,7 @@ export type LiveTextApi<TOwner> = Readonly<{
   get: () => string;
 }>;
 
-// treat _attrs as a simple dictionary
+// treat $_attrs as a simple dictionary
 type AttrDict = Record<string, unknown>;
 // central DOM form-control narrowing
 type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;

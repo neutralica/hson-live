@@ -93,7 +93,7 @@ export function matchText(node: HsonNode, query: HsonQuery): boolean {
  * Behavior:
  * - If `query.attrs` is absent or falsy, returns `true` (no constraint).
  * - Otherwise, for each `[key, qv]` in `query.attrs`:
- *   - Let `nv = node._attrs[key]`.
+ *   - Let `nv = node.$_attrs[key]`.
  *   - If `qv` is a `RegExp`:
  *       - Requires `nv` to be a string that passes `qv.test(nv)`.
  *   - If `qv` is a non-null object:
@@ -101,7 +101,7 @@ export function matchText(node: HsonNode, query: HsonQuery): boolean {
  *         sub-keys `sk` with strictly equal values `sv`.
  *   - If `qv === true`:
  *       - Interpreted as a flag-style attribute; requires that `key`
- *         exists in `node._attrs`.
+ *         exists in `node.$_attrs`.
  *   - Otherwise:
  *       - Requires strict equality `nv === qv`.
  * - Returns `false` on the first mismatch; `true` if all attributes match.

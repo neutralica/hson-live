@@ -12,11 +12,11 @@ HSON is an HTML-like notation designed to serialize either JSON-derived or HTML-
 
 HSON is a tree of nodes. Each node has:
 
-- a tag name  
-- optional attributes  
-- optional child content  
+- a tag name
+- optional attributes
+- optional child content
 
-Every serialized HSON document corresponds 1:1 to a node graph. A HsonNode’s _tag and _content properties directly represent the serialized structure. 
+Every serialized HSON document corresponds 1:1 to a node graph. A HsonNode’s `$_tag` and `$_content` properties directly represent the serialized structure.
 
 ### Canonical Form
 ```ts
@@ -36,10 +36,10 @@ HSON's two closure symbols are structural markers that carry strict meaning.
 
 `_-elem` nodes ("/>")
 
-Nodes sourced from html elements terminate with `/>`. 
+Nodes sourced from html elements terminate with `/>`.
 
 `_-obj` nodes (">")
-Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON. 
+Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON.
 
 A single serialized HSON string must use one model consistently. Mixing `/>` and `>` within the same document is invalid and will throw.
 
@@ -137,7 +137,7 @@ Within the serialized HSON:
 
 ## Children
 
-A node’s `_content` property consists of ordered child nodes, which may be:
+A node’s `$_content` property consists of ordered child nodes, which may be:
 
 - standard container nodes, or
 - primitive leaf nodes (`<_-str>` / `<_-val>`)
@@ -165,7 +165,7 @@ Attributes appear inside the opening tag, before content. When attributes and co
 
 ### Attributes:
 *	are HTML-derived metadata, not content
-*	are stored in the _attrs property, not in _content
+*	are stored in the `$_attrs` property, not in `$_content`
 *	are not ordered semantically
 *	are serialized in HSON tags as `foo="bar"`
 
@@ -193,13 +193,13 @@ Flags are boolean attributes whose presence implies "true".
 Internally, flags are stored in XML form, `key="key"`:
 ```ts
 {
-  _attrs: {
+  $_attrs: {
     disabled: disabled
   }
 }
 ```
 
-Like attributes--which they are--flags are not child nodes and never appear in _content.
+Like attributes--which they are--flags are not child nodes and never appear in `$_content`.
 
 ⸻
 
@@ -218,7 +218,7 @@ HSON provides a compact array literal syntax.
 ```
 
 This is equivalent to an internal _-arr node with _-iindexed children.
-HSON parsers accept brackets as array delimiters provided the closer is consistent. If reserialized, all arrays use guillemet delimiters regardless of input symbol. 
+HSON parsers accept brackets as array delimiters provided the closer is consistent. If reserialized, all arrays use guillemet delimiters regardless of input symbol.
 
 ### Notes:
 *	« » is purely a serialization convenience and minor visual flourish
@@ -283,7 +283,7 @@ Some nodes exist solely to preserve structure across formats. These are Virtual 
 *	are required when serializing HTML or JSON into the other format
 *	are unnecessary in HSON serialization: syntax expresses structure
 
-VSNs, and nodes' _meta property, are necessary to preserve the structural differences between HTML and JSON (such as the presence of attributes in one, the presence of arrays in another). VSNs are visible in user data during conversion, and are fully removed when the data is returned to its source format. 
+VSNs, and nodes' `$_meta` property, are necessary to preserve the structural differences between HTML and JSON (such as the presence of attributes in one, the presence of arrays in another). VSNs are visible in user data during conversion, and are fully removed when the data is returned to its source format.
 
 The HSON syntax is designed to express either format cleanly without the need for VSN clutter.
 
@@ -298,9 +298,9 @@ Nodes may carry a stable identity token called a `quantum unique ID` (quid):
 >
 ```
 
-quids are an internal identity marker. They function as a query term to locate a node that has been moved or mutated and enable reliable referencing of nodes and their assignment to JS variables. 
+quids are an internal identity marker. They function as a query term to locate a node that has been moved or mutated and enable reliable referencing of nodes and their assignment to JS variables.
 
-quids are stored in a node's _meta property and may or may not be serialized depending on context or options. quids are serialized as a data-attribute, `data-_quid="..."`.	they are not part of the semantic data model and	users rarely need to know about them or interact with them directly.
+quids are stored in a node's `$_meta` property and may or may not be serialized depending on context or options. quids are serialized as a data-attribute, `data-_quid="..."`.	they are not part of the semantic data model and	users rarely need to know about them or interact with them directly.
 
 ⸻
 

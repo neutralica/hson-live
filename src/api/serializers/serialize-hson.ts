@@ -56,7 +56,7 @@ function cycleGuard() {
 }
 
 /**
- * Determine whether an `_attrs` object should be treated as “empty” for
+ * Determine whether a `$_attrs` object should be treated as “empty” for
  * serialization purposes.
  *
  * Rules:
@@ -68,7 +68,7 @@ function cycleGuard() {
  * This predicate is used to decide when attribute clusters can be elided
  * or when certain shorthand forms (e.g. self-close value) are allowed.
  *
- * @param attrs - The HSON `_attrs` object to inspect.
+ * @param attrs - The HSON `$_attrs` object to inspect.
  * @returns `true` if there are no own keys, `false` otherwise.
  */
 function isEmptyAttrs(attrs?: HsonAttrs): boolean {
@@ -127,7 +127,7 @@ function formatAttrsNEW(attrs: HsonAttrs | undefined): string {
     if (!attrs) return "";
     const entries = Object.entries(attrs);
     if (!entries.length) return "";
-    _log("formatting _attrs");
+    _log("formatting $_attrs");
 
     // partition without sorting: non-flags first, then flags (value === key)
     const nonFlags = entries.filter(([k, v]) => v !== k);
@@ -182,7 +182,7 @@ function buildAttrString(attrs: HsonAttrs | undefined, meta: HsonMeta | undefine
  * HSON form, and return that primitive value if so.
  *
  * Conditions for success:
- * - Node has *no* `_attrs` (or only an empty `_attrs`) and *no* `$_meta`.
+ * - Node has *no* `$_attrs` (or only an empty `$_attrs`) and *no* `$_meta`.
  * - `$_content` exists and contains exactly one child, which is a node.
  * - That child is either:
  *   - a leaf `_-str` or `_-val`, or
@@ -460,7 +460,7 @@ function emitNode(
         if (node.$_tag === OBJ_TAG || node.$_tag === ELEM_TAG) {
             _log("cluster node detected: ", node.$_tag);
             if (node.$_attrs && Object.keys(node.$_attrs).length) {
-                _throw_transform_err(`serialize-hson: ${node.$_tag} may not carry _attrs`, "serialize_hson.emitNode()");
+                _throw_transform_err(`serialize-hson: ${node.$_tag} may not carry $_attrs`, "serialize_hson.emitNode()");
             }
 
             const kids = (node.$_content ?? []) as HsonNode[];

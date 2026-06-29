@@ -14,7 +14,7 @@ import { _DATA_INDEX, _DATA_QUID } from "../../consts/constants.js";
  * - Stable key ordering for plain objects (sorted keys).
  * - HSON-aware ordering for nodes:
  *   - `$_tag` first
- *   - `_attrs` next (sorted; `style` objects sorted too)
+ *   - `$_attrs` next (sorted; `style` objects sorted too)
  *   - `$_meta` next (prioritizes `data-_quid` and `data-_index`)
  *   - `$_content` last (recursively canonicalized)
  * - Handles arrays recursively.
@@ -69,7 +69,7 @@ function orderNode(n: HsonNode, seen: WeakSet<object>) {
   // 1) canonical node-key order
   out.$_tag = n.$_tag;
 
-  // 2) _attrs (sorted keys; style object also sorted)
+  // 2) $_attrs (sorted keys; style object also sorted)
   if (n.$_attrs && Object.keys(n.$_attrs).length) {
     out.$_attrs = orderAttrs(n.$_attrs);
   }

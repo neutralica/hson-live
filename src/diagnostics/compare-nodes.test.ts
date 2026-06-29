@@ -159,7 +159,7 @@ function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareN
     const collapseB = collapseTrivial(nodeB);
 
     // BUGFIX: compare A vs B (was A vs A)
-    diffs.push(...compareAttrs(collapseA.$_attrs, collapseB.$_attrs, `${path}._attrs`));
+    diffs.push(...compareAttrs(collapseA.$_attrs, collapseB.$_attrs, `${path}.$_attrs`));
 
     // compareLeaf now gets opts
     if (compareLeaf(collapseA, collapseB, path, diffs, opts)) return diffs;
@@ -236,7 +236,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • `semanticChildren` treats a single `_-elem` child as
  *         transparent, comparing its content instead.
  *
- *   - Attributes (`_attrs`):
+ *   - Attributes (`$_attrs`):
  *       • Keys must match on both sides; missing keys produce:
  *           `Missing attr in A/B @ path["key"]`.
  *       • For `style` when both values are plain objects, keys

@@ -1,272 +1,650 @@
 #### hson-live / hson.terminalgothic.com
 
-# hson.livetree 
-# LiveTree & API
-[ last updated:  2026-03-07 ] 
+# LiveTree Method and Helper List
+Updated: 2026-06-29
 
-## Overview
-
-LiveTree is a mutable handle to a HsonNode and its surrounding graph. LiveTree provides type-safe traversal, DOM synchronization, styling, data, events, and node creation/mutation both on-and-off DOM (Node/test/runtime-agnostic). A LiveTree always represents one node and operates relative to a host root.
+This is a quick inventory of the current public LiveTree-facing surface. For
+behavior notes, see `hson-livetree-api.md` and `css-manager-api.md`.
 
 ---
 
-## Construction
+## Public Constructors
 
-Primary public construction happens through `hson.liveTree`:
+### Transform Pipeline
 
-- `hson.liveTree.fromTrustedHtml(input)`
-- `hson.liveTree.fromUntrustedHtml(input)`
-- `hson.liveTree.fromJson(input)`
-- `hson.liveTree.fromHson(input)`
-- `hson.liveTree.fromNode(node)`
-- `hson.liveTree.queryDom(selector).graft()`
-- `hson.liveTree.queryBody().graft()`
-- `hson.liveTree.create.<tag>()`
-- `hson.liveTree.create.tag("...")`
-- `hson.liveTree.create.tags(["...","..."])`
+```ts
+hson.fromUntrustedHtml(input)
+hson.fromTrustedHtml(input)
+hson.fromJson(input)
+hson.fromHson(input)
+hson.fromNode(node)
+```
 
-`new LiveTree(...)` is the class constructor, but it is not the main user-facing entrypoint.
+These return the transform output builder:
 
----
+```ts
+.sanitizeBEWARE()
+.toHtml()
+.toJson()
+.toHson()
+```
 
-## Identity and Core Accessors
+After `toHtml()`, `toJson()`, or `toHson()`:
 
-- `node: HsonNode`
-Returns the resolved node. Throws if the reference cannot be resolved.
-- `quid: string`
-Stable identity token for the node.
-- `hostRootNode(): HsonNode`
-Returns the current host root.
-- `adoptRoots(root: HsonNode): this`
-Rebinds host root (advanced/internal usage).
+```ts
+.spaced()
+.noBreak()
+.withOptions(options)
+.serialize()
+.parse()
+```
 
----
-## DOM Access
+Current limitation: formatting options are exposed but not consistently honored
+by all serializers.
 
-- `dom: LiveTreeDom`
-Lazily created DOM helper API for this node.
+### LiveTree Facade
 
-### Methods:
-- `el(): Element | undefined`
-- `html(): HTMLElement | undefined` (runtime also provides `html.must(): HTMLElement`)
-- `isConnected(): boolean`
-- `rect(): DOMRect | undefined` with `rect.must(label?)`
-- `matches(sel: string): boolean`
-- `contains(other: LiveTree): boolean`
-- `closest(sel: string): LiveTree | undefined` with `closest.must(sel, label?)`
-- `parent(): LiveTree | undefined` with `parent.must(label?)`
-- `computed(): CSSStyleDeclaration | undefined`
-- `computedProp(name: string): string | undefined`
-- `clientRects(): DOMRectList | undefined`
-- `scrollSize(): { width: number, height: number } | undefined`
-- `clientSize(): { width: number, height: number } | undefined`
-- `treeFromEl(domEl: Element): LiveTree | undefined`
-- `doc?.elementAtPoint(x, y): Element | undefined`
-- `doc?.elementsFromPoint(x, y): Element[]`
-- `doc?.treeAtPoint(x, y): LiveTree | undefined`
-- `doc?.treesFromPoint(x, y): TreeSelector`
-- `asDomElement(): Element | undefined` Returns the underlying DOM element if it exists (undefined when not mounted).
+```ts
+hson.liveTree.fromUntrustedHtml(input)
+hson.liveTree.fromTrustedHtml(input)
+hson.liveTree.fromJson(input)
+hson.liveTree.fromHson(input)
+hson.liveTree.fromNode(node)
+hson.liveTree.queryDom(selector).graft()
+hson.liveTree.queryBody().graft()
+hson.liveTree.create
+```
+
+Use `queryDom`, not `queryDOM`.
 
 ---
 
-## Tree Mutation
+## Core LiveTree
 
-- `append(branch: LiveTree, index?: number): LiveTree`
-Appends children from another branch under this node. Mirrors to DOM when present.
-- `empty(): LiveTree`
-Removes all content from this node.
-- `removeChildren(): number`
-Removes direct node children (ignores primitives). Returns count removed.
-- `removeSelf(): number`
-Removes this node from its parent (HSON + DOM). Returns `1` or `0`.
-- `cloneBranch(): LiveTree`
-Deep-clones subtree with new QUIDs; returns a detached branch.
+```ts
+tree.node
+tree.quid
+tree.hostRootNode()
+tree.adoptRoots(root)
+tree.append(branch, index?)
+tree.empty()
+tree.removeChildren()
+tree.removeSelf()
+tree.cloneBranch()
+```
 
 ---
+
+## DOM Helper
+
+```ts
+tree.dom.el()
+tree.dom.htmlEl()
+tree.dom.innerHtml
+tree.dom.outerHtml
+tree.dom.isConnected()
+tree.dom.matches(sel)
+tree.dom.contains(other)
+tree.dom.contains.node(node)
+tree.dom.contains.target(target)
+tree.dom.contains.tree(other)
+tree.dom.rect()
+tree.dom.closest(sel)
+tree.dom.parent()
+tree.dom.computed()
+tree.dom.computedProp(name)
+tree.dom.clientRects()
+tree.dom.scrollSize()
+tree.dom.clientSize()
+tree.dom.treeFromEl(el, label?)
+tree.dom.doc
+```
+
+Document helper:
+
+```ts
+tree.dom.doc?.elementAtPoint(x, y)
+tree.dom.doc?.elementsFromPoint(x, y)
+tree.dom.doc?.treeAtPoint(x, y)
+tree.dom.doc?.treesFromPoint(x, y)
+```
+
+Strict DOM helper:
+
+```ts
+tree.dom.must.el(label?)
+tree.dom.must.htmlEl(label?)
+tree.dom.must.innerHtml
+tree.dom.must.outerHtml
+tree.dom.must.rect(label?)
+tree.dom.must.closest(sel, label?)
+tree.dom.must.parent(label?)
+tree.dom.must.treeFromEl(el, label?)
+tree.dom.must.computed(label?)
+tree.dom.must.computedProp(name, label?)
+tree.dom.must.clientRects(label?)
+tree.dom.must.scrollSize(label?)
+tree.dom.must.clientSize(label?)
+tree.dom.must.doc
+```
+
+---
+
 ## Querying
 
-- `find(q: string | HsonQuery): LiveTree | undefined`
-- `find.byId(id: string): LiveTree | undefined`
-- `find.byQuid(quid: string): LiveTree | undefined`
-- `find.byAttrs(attr: string, value: string): LiveTree | undefined`
-- `find.byFlags(flag: string): LiveTree | undefined`
-- `find.byTag(tag: string): LiveTree | undefined`
-- `find.must(...)` and `.must.*` variants
-- `findAll(q: FindQueryMany): TreeSelector`
-- `findAll.id(...) / byAttribute(...) / byFlag(...) / byTag(...)`
-- `findAll.must(...)` and `.must.*` variants
+### `find`
 
-`TreeSelector` supports iteration and broadcast APIs (see below).
+```ts
+tree.find(query)
+tree.find.byId(id)
+tree.find.byQuid(quid)
+tree.find.byAttribute(attr, value)
+tree.find.byFlag(flag)
+tree.find.byClass(className)
+tree.find.byData(key, value)
+tree.find.byTag(tag)
+```
 
----
-## Node Creation
+Strict variants:
 
-- `create: LiveTreeCreateHelper`
-Bound creation helper for appending new nodes under this tree.
+```ts
+tree.find.must(query, label?)
+tree.find.must.byId(id)
+tree.find.must.byQuid(quid)
+tree.find.must.byAttribute(attr, value)
+tree.find.must.byFlag(flag)
+tree.find.must.byClass(className)
+tree.find.must.byData(key, value)
+tree.find.must.byTag(tag)
+```
 
-#### Examples:
-- `create.prepend()`
-- `create.at(index)`
-- `create.tags(tags: string[])`
-- `create.tag(tag: string, source?: string)`
-- `create.<tag>(source?: string)`
-- `create.svg(source?: string)`
+SVG-narrowing variants:
 
-Supported tags are defined by the LiveTree create helper.
+```ts
+tree.find.asSvg(query)
+tree.find.asSvg.byId(id)
+tree.find.asSvg.byQuid(quid)
+tree.find.asSvg.byAttribute(attr, value)
+tree.find.asSvg.byFlag(flag)
+tree.find.asSvg.byClass(className)
+tree.find.asSvg.byData(key, value)
+tree.find.asSvg.byTag(tag)
 
----
+tree.find.must.asSvg(query, label?)
+tree.find.must.asSvg.byId(id)
+tree.find.must.asSvg.byQuid(quid)
+tree.find.must.asSvg.byAttribute(attr, value)
+tree.find.must.asSvg.byFlag(flag)
+tree.find.must.asSvg.byClass(className)
+tree.find.must.asSvg.byData(key, value)
+tree.find.must.asSvg.byTag(tag)
+```
 
-## Content and Text
+### `findAll`
 
-### ContentManager
+```ts
+tree.findAll(query)
+tree.findAll([queryA, queryB])
+tree.findAll.id(idOrIds)
+tree.findAll.byId(id)
+tree.findAll.byIds(...ids)
+tree.findAll.byAttribute(attr, value)
+tree.findAll.byAttr(attr, value)
+tree.findAll.byAttrs(attr, value)
+tree.findAll.byFlag(flag)
+tree.findAll.byFlags(flag)
+tree.findAll.byClass(className)
+tree.findAll.byData(key, value)
+tree.findAll.byTag(tag)
+```
 
-- `content.count(): number`
-- `content.at(ix: number): LiveTree | undefined`
-- `content.first(): LiveTree | undefined`
-- `content.all(): readonly LiveTree[]`
-- `content.mustOnly(opts?: { warn?: boolean }): LiveTree`
+Strict variants:
 
-Content operations only consider node children (primitives are skipped). `_-elem` wrappers are unwrapped.
+```ts
+tree.findAll.must(query, label?)
+tree.findAll.must.id(idOrIds)
+tree.findAll.must.byId(id)
+tree.findAll.must.byIds(...ids)
+tree.findAll.must.byAttribute(attr, value)
+tree.findAll.must.byAttr(attr, value)
+tree.findAll.must.byAttrs(attr, value)
+tree.findAll.must.byFlag(flag)
+tree.findAll.must.byFlags(flag)
+tree.findAll.must.byClass(className)
+tree.findAll.must.byData(key, value)
+tree.findAll.must.byTag(tag)
+```
 
-### Text API
+Structural query shape:
 
-- `text.set(value: Primitive): LiveTree`
-Replaces only `_-str/_-val` leaves (keeps element children).
-- `text.add(value: Primitive): LiveTree`
-Appends a new text leaf.
-- `text.insert(index: number, value: Primitive): LiveTree`
-Inserts a text leaf at VSN bucket index.
-- `text.overwrite(value: Primitive): LiveTree`
-Replaces all content with one text leaf (DOM `textContent`).
-- `text.get(): string`
-Concatenated text of `_-str/_-val` leaves.
-
-### Form Helpers
-
-- `setFormValue(value: string, opts?: { silent?: boolean; strict?: boolean }): LiveTree`
-- `getFormValue(): string`
-
----
-
-## Attributes and Flags (Updated)
-
-LiveTree no longer exposes `getAttr` / `setAttrs` directly. Use `attr` and `flag` handles.
-
-### `attr: AttrHandle`
-
-- `attr.get(name: string): Primitive | undefined`
-- `attr.has(name: string): boolean`
-Present semantics based on stored value; not a strict key-exists check.
-- `attr.set(name: string, value: Primitive | null | false): LiveTree` `null`, `undefined`, or `false` remove the attribute. `true` sets a boolean-present attribute (`key="key"`). Numbers are stringified. For `style`, string values are parsed into a structured map and mirrored to DOM.
-- `attr.setMany(map: Record<string, Primitive | null | false>): LiveTree`
-Applies each entry with the same semantics as `attr.set`.
-- `attr.drop(name: string): LiveTree`
-Removes an attribute.
-
-### `flag: FlagHandle`
-
-- `flag.has(name: string): boolean`
-- `flag.set(...names: string[]): LiveTree`
-Sets boolean-present attributes (same semantics as `attr.set(name, true)`).
-- `flag.clear(...names: string[]): LiveTree`
-Clears boolean-present attributes (same semantics as remove).
-
----
-## DataManager (dataset)
-
-`data: DataManager` manages `data-*` attributes.
-
-- `data.set(key: string, value: Primitive | undefined): LiveTree`
-`key` is normalized with camel-to-kebab and prefixed with `data-`.
-`null` or `undefined` removes the attribute.
-- `data.setMany(map: Record<string, Primitive | undefined>): LiveTree`
-Batch set/remove using the same rules as `data.set`.
-- `data.get(key: string): Primitive | undefined`
-Reads the normalized `data-*` attribute for the provided key.
-
-Notes:
-- Values are stored as strings, matching HTML attribute behavior.
+```ts
+type HsonQuery = {
+  tag?: string;
+  attrs?: Partial<HsonAttrs>;
+  meta?: Partial<HsonMeta>;
+  text?: string | RegExp;
+};
+```
 
 ---
 
-## ID and Class APIs (Updated)
+## TreeSelector
 
-### `id: IdApi`
+```ts
+selector.array()
+selector.length
+selector.first()
+selector.last()
+selector.at(ix)
+selector.each(fn)
+selector.map(fn)
+selector.filter(fn)
+selector.removeAt(ix)
+selector.removeAll()
+```
 
-- `id.get(): string | undefined`
-- `id.set(id: string): LiveTree`
-- `id.clear(): LiveTree`
+Broadcast manager proxies:
 
-### `classlist: ClassApi`
-
-- `classlist.get(): string | undefined`
-Raw `class` attribute (undefined if empty).
-- `classlist.has(name: string): boolean`
-- `classlist.set(cls: string | string[]): LiveTree`
-- `classlist.add(...names: string[]): LiveTree`
-- `classlist.remove(...names: string[]): LiveTree`
-- `classlist.toggle(name: string, force?: boolean): LiveTree`
-- `classlist.clear(): LiveTree`
+```ts
+selector.listen
+selector.style
+selector.css
+selector.data
+```
 
 ---
 
-## Styling (Abridged)
+## Creation
 
-### Inline Style
+Detached:
 
-- `style: StyleHandle`
-Implements `StyleSetter` API for inline styles.
-Common methods: `setProp`, `setMany`, `remove`, `clear`, and proxy `set.*`.
-Also exposes `style.get.property(prop)` and `style.get.var(name)`.
+```ts
+hson.liveTree.create.tag(tag, source?)
+hson.liveTree.create.tags(tags)
+hson.liveTree.create.prepend()
+hson.liveTree.create.at(index)
+hson.liveTree.create.div(source?)
+hson.liveTree.create.svg(source?)
+hson.liveTree.create.canvas(source?)
+```
 
-### QUID-Scoped CSS
+Bound to a tree:
 
-- `css: CssHandle`
-Implements the same `StyleSetter` API for QUID-scoped stylesheet rules.
-Supports keyframes, animations, and `@property` registration.
+```ts
+tree.create.tag(tag, source?)
+tree.create.tags(tags)
+tree.create.prepend()
+tree.create.at(index)
+tree.create.div(source?)
+tree.create.svg(source?)
+tree.create.canvas(source?)
+```
 
-See `css-manager-api.md` for full details.
+The helper also exposes direct HTML tag helpers and direct SVG tag helpers.
+In SVG scope, child creation uses SVG namespace semantics.
+
+---
+
+## Content
+
+```ts
+tree.content.count()
+tree.content.at(ix)
+tree.content.first()
+tree.content.all()
+tree.content.deep()
+tree.content.mustOnly(opts?)
+tree.content.markup.innerHTML
+tree.content.markup.outerHTML
+```
+
+Content helpers operate on effective element children. They skip primitive
+leaves, skip VSN leaves, and unwrap structural VSN containers.
+
+---
+
+## Text and Form
+
+Text:
+
+```ts
+tree.text.set(value)
+tree.text.add(value)
+tree.text.insert(ix, value)
+tree.text.overwrite(value)
+tree.text.get()
+```
+
+Form:
+
+```ts
+tree.form.setValue(value, opts?)
+tree.form.getValue()
+tree.form.setChecked(value, opts?)
+tree.form.getChecked()
+tree.form.setSelected(value, opts?)
+tree.form.getSelected()
+```
+
+Form options:
+
+```ts
+type SetNodeFormOpts = {
+  silent?: boolean;
+  strict?: boolean;
+};
+```
+
+---
+
+## Attributes
+
+```ts
+tree.attr.get(name)
+tree.attr.has(name)
+tree.attr.set(name, value)
+tree.attr.setMany(map)
+tree.attr.drop(name)
+```
+
+Flags:
+
+```ts
+tree.flag.has(name)
+tree.flag.set(...names)
+tree.flag.clear(...names)
+```
+
+Dataset:
+
+```ts
+tree.data.set(key, value)
+tree.data.setMany(map)
+tree.data.get(key)
+tree.data.drop(key)
+```
+
+ID:
+
+```ts
+tree.id.get()
+tree.id.set(id)
+tree.id.clear()
+```
+
+Class:
+
+```ts
+tree.classlist.get()
+tree.classlist.has(name)
+tree.classlist.set(cls)
+tree.classlist.add(...names)
+tree.classlist.remove(...names)
+tree.classlist.toggle(name, force?)
+tree.classlist.clear()
+```
+
+---
+
+## Inline Style
+
+```ts
+tree.style.set.backgroundColor(value)
+tree.style.set["background-color"](value)
+tree.style.set.var(name, value)
+tree.style.setProp(prop, value)
+tree.style.setMany(map)
+tree.style.remove(prop)
+tree.style.clear()
+tree.style.get.property(prop)
+tree.style.get.backgroundColor()
+tree.style.get["background-color"]()
+tree.style.get["--var-name"]()
+tree.style.get.vars(names)
+tree.style.getMany()
+tree.style.var.name(name)
+tree.style.var.key(name)
+tree.style.var.set(name, value)
+tree.style.var.value(name)
+```
+
+---
+
+## QUID-Scoped CSS
+
+```ts
+tree.css.set.backgroundColor(value)
+tree.css.set["background-color"](value)
+tree.css.set.var(name, value)
+tree.css.setProp(prop, value)
+tree.css.setMany(map)
+tree.css.remove(prop)
+tree.css.clear()
+tree.css.get.property(prop)
+tree.css.getMany()
+tree.css.var.name(name)
+tree.css.var.key(name)
+tree.css.var.set(name, value)
+tree.css.var.value(name)
+tree.css.selector(pattern)
+tree.css.media(query)
+tree.css.supports(cond)
+tree.css.layer(layerName)
+tree.css.devSnapshot()
+```
+
+CSS sub-managers:
+
+```ts
+tree.css.atProperty.register(input)
+tree.css.atProperty.registerMany(inputs)
+tree.css.atProperty.unregister(name)
+tree.css.atProperty.has(name)
+tree.css.atProperty.get(name)
+tree.css.atProperty.renderOne(name)
+tree.css.atProperty.renderAll()
+
+tree.css.keyframes.set(input)
+tree.css.keyframes.setOwned(owner, input)
+tree.css.keyframes.setMany(inputs)
+tree.css.keyframes.delete(name)
+tree.css.keyframes.releaseOwner(owner)
+tree.css.keyframes.listOwned(owner)
+tree.css.keyframes.has(name)
+tree.css.keyframes.get(name)
+tree.css.keyframes.renderOne(name)
+tree.css.keyframes.renderAll()
+
+tree.css.anim.begin(spec)
+tree.css.anim.restart(spec)
+tree.css.anim.beginName(name)
+tree.css.anim.restartName(name)
+tree.css.anim.end(mode?)
+tree.css.anim.setPlayState(state)
+tree.css.anim.pause()
+tree.css.anim.resume()
+```
 
 ---
 
 ## Events
 
-- `listen: ListenerBuilder`
-Fluent, typed DOM event registration (mouse, pointer, keyboard, focus, animation, transition, clipboard, custom, etc.).
-Supports `listen.element`, `listen.document`, and `listen.window`.
-Supports options (`once`, `passive`, `capture`) and modifiers (`preventDefault`, `stopProp`, etc.).
-Supports `onCustom(...)` and `onCustomDetail(...)`.
+Base listener calls:
 
-- `events: TreeEvents`
-Internal, non-DOM event bus:
-- `events.on(type, handler): () => void`
-- `events.once(type, handler): () => void`
-- `events.emit(type, payload?): void`
+```ts
+tree.listen.on(type, handler)
+tree.listen.onCustom(type, handler)
+tree.listen.onCustomDetail(type, handler)
+```
+
+Targets:
+
+```ts
+tree.listen.element
+tree.listen.document
+tree.listen.window
+tree.listen.toDocument()
+tree.listen.toWindow()
+```
+
+Options and modifiers:
+
+```ts
+tree.listen.once()
+tree.listen.passive()
+tree.listen.capture()
+tree.listen.strict(policy?)
+tree.listen.preventDefault()
+tree.listen.stopProp()
+tree.listen.stopImmediateProp()
+tree.listen.stopAll()
+tree.listen.clearStops()
+```
+
+Convenience event methods:
+
+```ts
+tree.listen.onInput(fn)
+tree.listen.onChange(fn)
+tree.listen.onSubmit(fn)
+tree.listen.onClick(fn)
+tree.listen.onDblClick(fn)
+tree.listen.onContextMenu(fn)
+tree.listen.onMouseMove(fn)
+tree.listen.onMouseDown(fn)
+tree.listen.onMouseUp(fn)
+tree.listen.onMouseEnter(fn)
+tree.listen.onMouseLeave(fn)
+tree.listen.onPointerDown(fn)
+tree.listen.onPointerMove(fn)
+tree.listen.onPointerUp(fn)
+tree.listen.onPointerEnter(fn)
+tree.listen.onPointerLeave(fn)
+tree.listen.onPointerCancel(fn)
+tree.listen.onTouchStart(fn)
+tree.listen.onTouchMove(fn)
+tree.listen.onTouchEnd(fn)
+tree.listen.onTouchCancel(fn)
+tree.listen.onWheel(fn)
+tree.listen.onScroll(fn)
+tree.listen.onKeyDown(fn)
+tree.listen.onKeyUp(fn)
+tree.listen.onFocus(fn)
+tree.listen.onBlur(fn)
+tree.listen.onFocusIn(fn)
+tree.listen.onFocusOut(fn)
+tree.listen.onDragStart(fn)
+tree.listen.onDragOver(fn)
+tree.listen.onDrop(fn)
+tree.listen.onDragEnd(fn)
+tree.listen.onAnimationStart(fn)
+tree.listen.onAnimationIteration(fn)
+tree.listen.onAnimationEnd(fn)
+tree.listen.onAnimationCancel(fn)
+tree.listen.onTransitionStart(fn)
+tree.listen.onTransitionEnd(fn)
+tree.listen.onTransitionCancel(fn)
+tree.listen.onTransitionRun(fn)
+tree.listen.onCopy(fn)
+tree.listen.onCut(fn)
+tree.listen.onPaste(fn)
+```
+
+Listener return value:
+
+```ts
+sub.off()
+sub.count
+sub.ok
+```
+
+Tree-local event bus:
+
+```ts
+tree.events.on(type, handler)
+tree.events.once(type, handler)
+tree.events.emit(type, payload?)
+```
 
 ---
-## TreeSelector (from `findAll`)
 
-Returned by `findAll(...)`.
+## SVG
 
-- `items(): LiveTree[]`
-- `count(): number`
-- `first(): LiveTree | undefined`
-- `each(fn)`
-- `map(fn)`
-- `filter(fn): TreeSelector`
-- `removeAt(ix): boolean`
-- `removeAll(): number`
-
-Broadcast proxies (apply to all selected nodes):
-
-- `listen`, `style`, `css`, `data`
+```ts
+tree.svg.inScope()
+tree.svg.viewBox.get()
+tree.svg.viewBox.set(value)
+tree.svg.viewBox.set(x, y, w, h)
+tree.svg.viewBox.clear()
+tree.svg.preserveAspectRatio.get()
+tree.svg.preserveAspectRatio.set(value)
+tree.svg.preserveAspectRatio.none()
+tree.svg.preserveAspectRatio.clear()
+tree.svg.d.get()
+tree.svg.d.set(value)
+tree.svg.d.clear()
+tree.svg.fill.get()
+tree.svg.fill.set(value)
+tree.svg.fill.none()
+tree.svg.fill.clear()
+tree.svg.stroke.get()
+tree.svg.stroke.set(value)
+tree.svg.stroke.clear()
+tree.svg.strokeWidth.get()
+tree.svg.strokeWidth.set(value)
+tree.svg.strokeWidth.clear()
+tree.svg.vectorEffect.get()
+tree.svg.vectorEffect.set(value)
+tree.svg.vectorEffect.nonScalingStroke()
+tree.svg.vectorEffect.clear()
+tree.svg.bbox()
+tree.svg.must.bbox(label?)
+```
 
 ---
 
-## Notes
+## Canvas
 
-- LiveTree is DOM-optional. All DOM-facing APIs no-op safely when not mounted.
-- Attributes are normalized to lowercase internally.
-- For precise tag creation and full CSS/animation APIs, consult `livetree-methods-list.md` and `css-manager-api.md`.
+```ts
+tree.canvas.inScope()
+tree.canvas.el()
+tree.canvas.ctx2d(settings?)
+tree.canvas.pointer(ev)
+tree.canvas.width.get()
+tree.canvas.width.set(value)
+tree.canvas.width.clear()
+tree.canvas.height.get()
+tree.canvas.height.set(value)
+tree.canvas.height.clear()
+tree.canvas.size.get()
+tree.canvas.size.set(width, height)
+tree.canvas.size.clear()
+tree.canvas.display.size(opts?)
+tree.canvas.display.match(opts?)
+tree.canvas.display.match.watch(opts?)
+tree.canvas.clear()
+tree.canvas.clear(x, y, w, h)
+tree.canvas.plot(fn, settings?)
+tree.canvas.must.el(label?)
+tree.canvas.must.ctx2d(settings?, label?)
+tree.canvas.must.pointer(ev, label?)
+tree.canvas.must.plot(fn, settings?, label?)
+```
+
+---
+
+## Current Internal Node Shape
+
+```ts
+type HsonNode = {
+  $_tag: string;
+  $_content: (HsonNode | Primitive)[];
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
+};
+```
+
+VSN tag values remain strings such as `_-root`, `_-elem`, `_-obj`, `_-arr`,
+`_-ii`, `_-str`, and `_-val`.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

@@ -1,251 +1,260 @@
 #### hson-live / hson.terminalgothic.com
 
-# hson-live 
-## Transformer API
+# hson-live
+## Transform API
 
-The `hson.transform` namespace extends the public API for hson-live's parsers and serializers through data.
+The transform API is exposed directly on `hson` through the public source
+constructors:
 
-It provides a fluent, deterministic pipeline for converting between:
-*	HTML
-*	JSON
-*	HSON
-*	Live DOM projection (LiveTree)
-
-The API is deliberately linear and explicit. Every transformation follows the same four conceptual stages:
-1. Select source format
-2. Select output format
-3. (Optionally: configure formatting or safety)
-4. Select render method & render
-
-This design avoids implicit behavior, hidden sanitization, and format-specific shortcuts.
-
-⸻
-
-## Conceptual Model
-
-At the center of all transformations is a stable intermediate representation type: HsonNode.
-
-All supported formats—HTML, JSON, SVG, XML-like markup, and HSON itself—are parsed into this shared node structure. All outputs are derived from that graph. No format is treated as canonical and no transformation path is privileged.
-
-⸻
-
-##  1. Choosing a Source
-
-Declare the format of provided input; establish both parsing semantics and the security model.
-
-### HTML Sources
-
-`hson.fromUntrustedHtml(html: string)`
-
-Use this for external, user-supplied, or otherwise untrusted HTML.
-*	HTML is sanitized via DOMPurify
-*	Unsafe elements and attributes are removed
-*	The resulting node graph reflects the sanitized markup only
-
-This is the default choice for:
-*	CMS input
-*	user content
-*	third-party embeds
-*	stored HTML of unknown provenance
-
-⸻
-
-`hson.fromTrustedHtml(html: string)`
-Use this only for developer-authored or fully trusted HTML.
-*	No sanitization is performed
-*	SVG, scripts, and advanced markup are preserved
-*	The resulting nodes faithfully represent the input
-
-This path exists to avoid silently degrading internal documents.
-
-⸻
-
-### JSON Sources
-
-`hson.fromJson(value: JSONValue)`
-
-Treats the input strictly as data.
-*	No HTML semantics are assumed
-*	No sanitization is applied
-*	Object structure, arrays, primitives, and ordering are preserved
-
-Optional (destructive) sanitation can be applied via the .sanitizeBEWARE() option. 
-
-⸻
-
-`hson.fromHson(hsonText: string)`
-Parses HSON syntax strings into nodes.
-
-⸻
-
-`hson.fromNode(node: HsonNode)`
-Accepts and validates an existing HsonNode graph.
-
-Useful for:
-*	programmatic node construction
-*	intermediate transforms
-*	advanced pipelines
-
-⸻
-
-### DOM Query Sources
-
-To create LiveTree, hson-live queries the DOM and uses the selected node and all descendants as its target. The target and all elements it contains are parsed into a faithful representation of the existing DOM which is then projected to replace the original. 
-
-`hson.liveTree.queryDOM(selector: string)`
-Selects an existing DOM subtree and parses it into nodes.
-
-⸻
-
-`hson.liveTree.queryBody()`
-A convenience wrapper for document.body.
-
-These sources are used as entry points for LiveTree workflows and only return LiveTree creation methods.
-
-⸻
-
-## 2. Choosing an Output Representation
-
-Every source method returns an output builder.
-
-### HTML Output
-
-`.toHtml()`
-
-Prepares an HTML output pipeline.
-*	Produces serialized HTML or parsed DOM
-*	Honors formatting and sanitization options
-
-⸻
-
-### JSON Output
-
-`.toJson()`
-
-Produces structured JSON values derived from the node graph.
-*	Ordering is preserved
-*	Mixed content is represented explicitly
-*	No implicit coercion or template flattening occurs
-
-⸻
-
-### HSON Output
-
-`.toHson()`
-
-Returns HSON’s pared syntax or underlying nodes, depending on finalization.
-
-⸻
-
-### 3. Optional Configuration
-
-After selecting an output, you may apply optional modifiers.
-
-These affect serialization only, not the underlying node graph.
-
-#### Formatting Controls
-
-* .spaced()
-
-Pretty-prints output for human readability.
-
-
-* .noBreak()
-
-Forces single-line output.
-
-
-* .withOptions(options)
-
-Applies fine-grained control over serialization behavior.
-
-⸻
-
-(The specific options depend on the output format and is minimally furnished for now.)
-
-⸻
-
-### Explicit Sanitization Escape Hatch
 ```ts
+hson.fromUntrustedHtml(input)
+hson.fromTrustedHtml(input)
+hson.fromJson(input)
+hson.fromHson(input)
+hson.fromNode(node)
+```
+
+There is no public `hson.transform` namespace in the current library.
+
+These constructors build a deterministic conversion pipeline:
+
+1. Choose a source format.
+2. Choose an output format.
+3. Optionally attach formatting flags.
+4. Finalize with `serialize()` or `parse()`.
+
+Use this API when the goal is serialized HTML, JSON, HSON, or a structured JSON
+or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
+
+---
+
+## Intermediate Model
+
+All supported sources normalize to the same internal graph type:
+`HsonNode`.
+
+The current internal node fields are:
+
+```ts
+type HsonNode = {
+  $_tag: string;
+  $_content: (HsonNode | Primitive)[];
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
+};
+```
+
+Do not confuse these field names with VSN tag string values. Tags such as
+`_-root`, `_-elem`, `_-obj`, `_-arr`, `_-ii`, `_-str`, and `_-val` remain tag
+values stored in `node.$_tag`.
+
+---
+
+## Source Constructors
+
+### `hson.fromUntrustedHtml(input: string | Element)`
+
+Parses external HTML through the safe HTML path.
+
+- Sanitizes with DOMPurify before node conversion.
+- Accepts a string or an existing `Element`.
+- If an `Element` is supplied, the current implementation snapshots its
+  `innerHTML`.
+- External SVG markup is rejected on this safe path.
+
+This is the default choice for user-authored or third-party HTML.
+
+### `hson.fromTrustedHtml(input: string | Element)`
+
+Parses trusted HTML through the unsafe/raw HTML path.
+
+- No sanitization is applied.
+- Accepts a string or an existing `Element`.
+- SVG markup is allowed on this path.
+
+Use only for developer-authored or otherwise trusted markup.
+
+### `hson.fromJson(input: string | JsonValue)`
+
+Parses JSON data into HSON nodes.
+
+- Accepts a JSON string or an already parsed JSON value.
+- Does not sanitize.
+- Preserves JSON object, array, primitive, and ordering semantics.
+
+### `hson.fromHson(input: string)`
+
+Parses HSON text into HSON nodes.
+
+- Does not sanitize.
+- Returns the same output-selection builder as the other transform sources.
+
+### `hson.fromNode(node: HsonNode)`
+
+Starts the transform pipeline from an existing HSON node graph.
+
+- Does not sanitize.
+- Does not clone the node.
+- Assumes the caller is providing a valid current-shape `HsonNode`.
+
+---
+
+## Output Selection
+
+Every transform source returns an output builder with:
+
+```ts
+.toHtml()
+.toJson()
+.toHson()
 .sanitizeBEWARE()
 ```
-Forces sanitization: this method exists for edge cases only.
 
-Use cases:
-*	JSON or HSON that may conceal HTML payloads
-*	Legacy datasets of unknown provenance
-*	Defensive re-sanitization before DOM emission
+### `.toHtml()`
 
-Important notes:
-*	This may destroy non-HTML content
-*	Applying it to JSON or HSON is allowed but lossy
-*	It is intentionally named to discourage casual use
+Chooses HTML output.
 
-⸻
+- `serialize()` returns an HTML string.
+- `parse()` is intentionally unavailable and throws.
 
-### 4. Finalizing the Transformation
+### `.toJson()`
 
-The final step of the transformation outputs the result, either as a string or as structured data.
+Chooses JSON output.
 
-### String Serialization
-```ts
-.serialize()
-```
-Returns a string:
-*	HTML text
-*	JSON text
-*	HSON text
+- `serialize()` returns a JSON string.
+- `parse()` returns a structured `JsonValue`.
 
-⸻
+JSON roundtrips serialize as plain JSON values, not raw internal HSON node
+shapes, except where a node shape is intentionally represented by the format.
 
-### Structured Output
-```ts
-.parse()
-```
-Returns structured data:
-*	JsonValue (if `toJson ()`) - a typed JSON object
-*	HsonNode (if `toHson()`) - the HsonNode graph (as JS object)
+### `.toHson()`
 
-No stringification occurs. 
+Chooses HSON output.
 
-To reduce XSS and UI-injection risk, this API surface does not expose HTML as a direct output format, nor does it provide a direct “mount to DOM” shortcut.
+- `serialize()` returns HSON text.
+- `parse()` returns the current `HsonNode` graph.
 
-If HTML output is required, it should be explicitly serialized and parsed by the caller using their own chosen tooling, at a deliberate integration boundary.
-⸻
+### `.sanitizeBEWARE()`
 
-### LiveTree - Finalization
-
+Applies HTML-style sanitization after source selection and before output
+selection:
 
 ```ts
-.graft()
+const safeHtml = hson
+  .fromNode(node)
+  .sanitizeBEWARE()
+  .toHtml()
+  .serialize();
 ```
-Replaces the original DOM subtree with LiveTree’s rendered clone.
 
-This is a destructive operation by design and marks the transition to a managed LiveTree lifecycle.
+The current implementation serializes the current node graph to HTML, runs that
+HTML through the untrusted HTML parser/sanitizer, then continues from the
+sanitized node graph.
 
-⸻
+This should only be used for HSON nodes that semantically encode HTML. It is
+lossy for generic JSON/HSON data because DOMPurify will strip markup it does
+not recognize.
 
-### Security Model Summary
+---
 
-HTML sources are not interchangeable.
+## Optional Formatting Surface
 
-#### Method, Sanitized?, Intended Use
-* fromUntrustedHtml, Yes, External / user content
-* fromTrustedHtml, No, Developer-authored HTML
-* fromJson, No, Data
-* fromHson, No, Data
-* fromNode, No, Internal graph
-* queryDOM, No, Existing DOM
+After `toHtml()`, `toJson()`, or `toHson()`, the API exposes:
 
-Sanitization is explicit, predictable, and opt-in outside HTML parsing.
+```ts
+.spaced()
+.noBreak()
+.withOptions(options)
+```
 
-⸻
+These methods attach `FrameOptions`:
 
-### Design Notes
-*	Transformations are deterministic
-*	Round-trip conversions do not drift
-*	No format is treated as canonical or 'true'
-*	Serialization is not a special case—it is a first-class operation
-*	The API favors explicit intent over convenience
+```ts
+type FrameOptions = {
+  spaced?: boolean;
+  lineLength?: number;
+  linted?: boolean;
+  noBreak?: boolean;
+};
+```
+
+Current limitation: these methods are part of the public chain, but current
+serializers do not consistently re-materialize output from those flags. Treat
+them as reserved/partial formatting controls unless a serializer explicitly
+documents support for a specific option.
+
+---
+
+## Finalizers
+
+### `.serialize()`
+
+Returns a string for the chosen output:
+
+- after `.toHtml()` - HTML string
+- after `.toJson()` - JSON string
+- after `.toHson()` - HSON string
+
+### `.parse()`
+
+Returns a structured value for data formats:
+
+- after `.toJson()` - `JsonValue`
+- after `.toHson()` - `HsonNode`
+- after `.toHtml()` - throws
+
+HTML parse output is intentionally not exposed from this surface. Use
+`serialize()` and hand the resulting string to your chosen integration point.
+
+---
+
+## LiveTree Construction
+
+LiveTree construction is a separate public facade:
+
+```ts
+hson.liveTree.fromUntrustedHtml(input)
+hson.liveTree.fromTrustedHtml(input)
+hson.liveTree.fromJson(input)
+hson.liveTree.fromHson(input)
+hson.liveTree.fromNode(node)
+hson.liveTree.queryDom(selector).graft()
+hson.liveTree.queryBody().graft()
+hson.liveTree.create.div()
+```
+
+The `from*` LiveTree methods return detached branches. The DOM query methods
+return a graft handle; calling `.graft()` parses the selected live DOM subtree,
+re-projects it as managed LiveTree DOM, and returns the controlling `LiveTree`.
+
+Use `queryDom`, not `queryDOM`, on the public `hson.liveTree` facade.
+
+---
+
+## Security Summary
+
+| Source | Sanitized by default | Intended use |
+| --- | --- | --- |
+| `fromUntrustedHtml` | yes | external or user-authored HTML |
+| `fromTrustedHtml` | no | trusted developer-authored HTML |
+| `fromJson` | no | structured data |
+| `fromHson` | no | HSON text |
+| `fromNode` | no | existing internal graph |
+| `sanitizeBEWARE` | yes, after source selection | explicit lossy HTML sanitation |
+
+Sanitization is automatic only for `fromUntrustedHtml`. Other formats are
+treated as data unless the caller explicitly opts into the HTML sanitation
+escape hatch.
+
+---
+
+## Design Notes
+
+- Transformations normalize through `HsonNode`.
+- Transform sources do not mutate the DOM.
+- LiveTree construction is explicit and separate.
+- HTML `.parse()` is intentionally not available.
+- VSN tag values remain in the `_-` namespace; internal node fields use the
+  `$_` names.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

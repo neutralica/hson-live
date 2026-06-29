@@ -17,7 +17,7 @@ import { HsonNode } from "../../types/node.types.js";
  *   This avoids silently accepting old shapes during the migration.
  *
  * What it intentionally does *not* check:
- * - Does not validate `$_content` or `_attrs` shape, since many callers use this as a lightweight
+ * - Does not validate `$_content` or `$_attrs` shape, since many callers use this as a lightweight
  *   narrowing guard before doing deeper checks.
  *
  * @param bit - Unknown value to test.

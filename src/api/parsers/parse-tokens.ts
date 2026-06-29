@@ -133,7 +133,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
 
-        // VSNs carry no _attrs
+        // VSNs carry no $_attrs
         const isVSN =
             open.tag === STR_TAG || open.tag === VAL_TAG ||
             open.tag === ARR_TAG || open.tag === OBJ_TAG ||

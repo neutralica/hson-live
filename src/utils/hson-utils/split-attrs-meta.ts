@@ -20,7 +20,7 @@ import { Primitive } from "../../types/core.types.js";
  *
  * @param text - Raw value text from the tokenizer (without surrounding quotes).
  * @param quoted - True iff the tokenizer recognized this value as quoted.
- * @returns The decoded string value suitable for storing in `_attrs` or `$_meta`.
+ * @returns The decoded string value suitable for storing in `$_attrs` or `$_meta`.
  *******/
 function decode_hson_value(text: string, quoted: boolean | undefined): string {
   // single, explicit decision point
@@ -28,7 +28,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
 }
 
 /*******
- * Split raw parsed attributes into `_attrs` vs `$_meta`, applying HSON-edge decoding.
+ * Split raw parsed attributes into `$_attrs` vs `$_meta`, applying HSON-edge decoding.
  *
  * Input:
  * - `RawAttr[]` emitted by the tokenizer for a single open tag.
@@ -41,7 +41,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  *   - Only keys starting with `data-_` (via `_META_DATA_PREFIX`) are stored in `$_meta`.
  *   - Meta values are decoded using HSON quoting rules (no HTML entity decoding).
  * - Attribute keys:
- *   - Everything else is stored in `_attrs`.
+ *   - Everything else is stored in `$_attrs`.
  *
  * Value semantics (HSON edge, not HTML):
  * - Quoted values are HSON string literals and are decoded via `decode_hson_value`.

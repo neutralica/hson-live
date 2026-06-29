@@ -54,7 +54,7 @@ const JSON_ELEMENT_META_KEYS = new Set<string>([
 
 const FORBIDDEN_JSON_VSN = new Set([
     OBJ_TAG, ARR_TAG, II_TAG, STR_TAG, VAL_TAG,
-] as string[]); // _attrs is HTML-source only
+] as string[]); // $_attrs is HTML-source only
 
 /**
  * Return the keys of an object that do not start with `"_-"`.
@@ -145,12 +145,12 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *         - `string` → `<_-str>` child,
  *         - `number | boolean | null` → `<_-val>` child,
  *         - element-object:
- *           `{ tagName: payload, _attrs?, $_meta? }`
+ *           `{ tagName: payload, $_attrs?, $_meta? }`
  *           - Rejects reserved VSN keys via
  *             `assertNoForbiddenVSNKeysInJSON`.
  *           - Requires exactly one non-underscore tag key.
- *           - Hoists `_attrs` and `$_meta` onto the created element node.
- *           - Normalizes `_attrs.style`, accepting:
+ *           - Hoists `$_attrs` and `$_meta` onto the created element node.
+ *           - Normalizes `$_attrs.style`, accepting:
  *             - style object → `serialize_style` → `parse_style_string`,
  *             - style string → `parse_style_string`,
  *             - null/undefined → dropped.
@@ -290,7 +290,7 @@ export function nodeFromJson(
                     return CREATE_NODE({ $_tag: VAL_TAG, $_meta: {}, $_content: [val as Primitive] });
                 }
 
-                // object → element-object (allow _attrs/$_meta; preserve them)
+                // object → element-object (allow $_attrs/$_meta; preserve them)
                 if (val && typeof val === "object" && !Array.isArray(val)) {
                     const elObj = val as Record<string, unknown>;
 

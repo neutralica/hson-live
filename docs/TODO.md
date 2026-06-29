@@ -19,7 +19,7 @@
  - CssManager api: CssManager.globals.invoke -> CssManager.api() (CssManager.invoke still exists for internal plumbing)
  - confirm css.remove("prop") vs css.clear() api is documented
  - clarify inline style setting's recommended usage as a runtime style setter/override (.css for static styling)
- - note HsonNode key migration 1/4: _attrs -> $_attrs
+ - note HsonNode key migration complete: `$_tag`, `$_content`, `$_attrs`, `$_meta`
  - confirm form API docs up to date
 
 
@@ -63,7 +63,7 @@
 ## 03MAY2026
 ~~- 3-way test "auto" mode interprets malformed HSON as weird HTML~~
 ~~- change VSN prefix from `_VSN` to `_-VSN` to permit underscored JSON keys ~~
-  - this should be done for _attrs, _tag, _content, and _meta as well
+  - this has been done for `$_attrs`, `$_tag`, `$_content`, and `$_meta`
   -> `$_attrs`, `$_tag`, `$_content`, `$_meta`
 • declutter CssManager, GlobalCss,~~ LiveTree~~ as much as possible. 
   ~~- create e.g. ~`LiveTreeInter` interface that LiveTree implements; move all docs to interface~~

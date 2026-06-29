@@ -32,10 +32,10 @@ This section does not describe runtime projection, sanitization policy, or DOM A
 All HTML content in HSON is represented within `_-elem` VSN wrappers within the node graph, and when serialized to JSON. HsonNodes will never serialize to HTML in _-elem tags.
 
 #### Rule
-*	Except for primitive nodes, any node with content must contain exactly one `_-elem` VSN as its structural 'cluster' wrapper. 
-*  `_-elem`, like other 'cluster' nodes `<_-obj>` and `<_-arr>` nodes, may contain any number of children. 
-* 
-* No HTML element, text node, or attribute may exist outside an `_-elem` context. 
+*	Except for primitive nodes, any node with content must contain exactly one `_-elem` VSN as its structural 'cluster' wrapper.
+*  `_-elem`, like other 'cluster' nodes `<_-obj>` and `<_-arr>` nodes, may contain any number of children.
+*
+* No HTML element, text node, or attribute may exist outside an `_-elem` context.
 * `<_-obj>` and `_-elem` node graphs may not be blended
 
 `_-elem` establishes HTML context and handling:
@@ -44,16 +44,16 @@ All HTML content in HSON is represented within `_-elem` VSN wrappers within the 
 *	element nesting,
 *	the distinction between data and markup semantics.
 
-_-elem and <_-obj> tags keep their content types separate from each other. Mismatches between the two dataa types (such as prohibition of duplicate keys/_tags in JSON; the lack of types in HTML) would cause fatal runtime errors unless their handling was clearly telegraphed. `_-elem`, `<_-obj>`, and `<_-arr>` exist to remove any ambiguity during transformation.
+_-elem and <_-obj> tags keep their content types separate from each other. Mismatches between the two dataa types (such as prohibition of duplicate keys/`$_tag` values in JSON; the lack of types in HTML) would cause fatal runtime errors unless their handling was clearly telegraphed. `_-elem`, `<_-obj>`, and `<_-arr>` exist to remove any ambiguity during transformation.
 
 ⸻
 
 ## Element Mapping
 
 Each HTML element maps to a node:
-* node._tag - the element name 
-* node._content - any child nodes, wrapped in _-elem structural layers
-* node._attrs - (see: ## Attributes, below)
+* node.$_tag - the element name
+* node.$_content - any child nodes, wrapped in _-elem structural layers
+* node.$_attrs - (see: ## Attributes, below)
 
 Example:
 
@@ -166,7 +166,7 @@ Example HTML:
 Node shape:
 ```
 button
-├─ _attrs
+├─ $_attrs
 │  ├─ id: "save"
 │  └─ disabled: true
 └─ _elem
@@ -233,7 +233,7 @@ Example HTML:
 Node shape:
 ```
 img
-├─ _attrs
+├─ $_attrs
 │  ├─ src: "cat.png"
 │  └─ alt: "Cat"
 └─ _elem
@@ -322,7 +322,7 @@ Example:
 maps to:
 ```
 input
- ├─ _attrs:
+ ├─ $_attrs:
  │   ├─ disabled: true
  │   └─ value: "x"
  └─ _-elem
@@ -407,7 +407,7 @@ A node representing object or array structure uses `_-obj` / `_-arr`.
 
 These VSNs describe different structural roles and may not be blended.
 
-####  Node graphs that mix `_-elem` and `_-obj` types are invalid and may cause parser errors. 
+####  Node graphs that mix `_-elem` and `_-obj` types are invalid and may cause parser errors.
 
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
