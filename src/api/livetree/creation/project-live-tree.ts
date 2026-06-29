@@ -69,7 +69,7 @@ export function project_livetree(
 
   // Primitive wrappers → text
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
-    const v = n._content?.[0];
+    const v = n.$_content?.[0];
     return document.createTextNode(String(v ?? ""));
   }
 
@@ -84,9 +84,9 @@ export function project_livetree(
 
     if (n.$_tag === ARR_TAG) {
       // _-arr contains <_-ii> items; unwrap each item’s single child
-      for (const ii of n._content ?? []) {
+      for (const ii of n.$_content ?? []) {
         const payload =
-          is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
+          is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
           frag.appendChild(project_livetree(payload as HsonNode | Primitive, parentNs));
         }
@@ -95,7 +95,7 @@ export function project_livetree(
     }
 
     // _root/_-obj/_-elem → render their children directly
-    for (const child of n._content ?? []) {
+    for (const child of n.$_content ?? []) {
       frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
     }
     return frag;
@@ -188,7 +188,7 @@ export function project_livetree(
   }
 
   // children — either a single VSN wrapper or direct content
-  const kids = n._content ?? [];
+  const kids = n.$_content ?? [];
   if (
     kids.length === 1 &&
     is_Node(kids[0]) &&
@@ -199,15 +199,15 @@ export function project_livetree(
     const container = kids[0];
 
     if (container.$_tag === ARR_TAG) {
-      for (const ii of container._content ?? []) {
+      for (const ii of container.$_content ?? []) {
         const payload =
-          is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;
+          is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
           el.appendChild(project_livetree(payload as HsonNode | Primitive, ns));
         }
       }
     } else {
-      for (const c of container._content ?? []) {
+      for (const c of container.$_content ?? []) {
         el.appendChild(project_livetree(c as HsonNode | Primitive, ns));
       }
     }

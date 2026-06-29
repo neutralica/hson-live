@@ -83,7 +83,7 @@ export const HTML_KEY_PREFIX = "_-_-" as const;
 export const ATTRS_KEY = "$_attrs" as const;
 export const META_KEY = "$_meta" as const;
 export const TAG_KEY = "$_tag" as const;
-export const CONTENT_KEY = "_content" as const;
+export const CONTENT_KEY = "$_content" as const;
 
 /***************************************************************
  * VSN_TAGS
@@ -127,7 +127,7 @@ export type VSNTag = typeof VSN_TAGS[number];
  *   - `_-str`
  *   - `_-val`
  *
- * These nodes always contain exactly one primitive in `_content`.
+ * These nodes always contain exactly one primitive in `$_content`.
  ***************************************************************/
 export const LEAF_NODES = [STR_TAG, VAL_TAG] as string[];
 

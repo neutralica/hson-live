@@ -89,14 +89,14 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
   // unwrap element payload and keep only real element tags
   function extract_real_element_children(node: HsonNode): HsonNode[] {
-    const kids = Array.isArray(node._content) ? node._content : [];
+    const kids = Array.isArray(node.$_content) ? node.$_content : [];
 
     const payload =
       kids.length === 1 &&
         is_Node(kids[0]) &&
         kids[0].$_tag === ELEM_TAG &&
-        Array.isArray(kids[0]._content)
-        ? kids[0]._content
+        Array.isArray(kids[0].$_content)
+        ? kids[0].$_content
         : kids;
 
     return payload.filter(
@@ -138,10 +138,10 @@ export function make_create_core(tree: LiveTree): CreateCore {
       // append the intended children, not the temporary wrapper root
       const tempRoot = CREATE_NODE({
         $_tag: ROOT_TAG,
-        _content: [
+        $_content: [
           CREATE_NODE({
             $_tag: ELEM_TAG,
-            _content: appended,
+            $_content: appended,
           }),
         ],
       });
@@ -221,7 +221,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
   function hasParserError(node: HsonNode): boolean {
     if (node.$_tag === "parsererror") return true;
 
-    const kids = Array.isArray(node._content) ? node._content : [];
+    const kids = Array.isArray(node.$_content) ? node.$_content : [];
     for (const child of kids) {
       if (child && typeof child === "object" && "$_tag" in child) {
         if (hasParserError(child as HsonNode)) return true;

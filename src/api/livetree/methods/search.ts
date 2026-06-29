@@ -26,7 +26,7 @@ const isRegExp = (v: unknown): v is RegExp =>
  * - If a DOM element is mapped for the node, returns its
  *   `textContent` (or `""` if null).
  * - Otherwise:
- *   - Scans `_content` for the first `_-str` child whose first content
+ *   - Scans `$_content` for the first `_-str` child whose first content
  *     entry is a string and returns that.
  *   - If no such child exists, returns `""`.
  *
@@ -40,10 +40,10 @@ function nodeText(n: HsonNode): string {
   const el = get_el_for_node(n);
   if (el) return el.textContent ?? "";
 
-  const kids = (n._content ?? []).filter(is_Node);
+  const kids = (n.$_content ?? []).filter(is_Node);
   for (const k of kids) {
-    if (k.$_tag === STR_TAG && typeof k._content?.[0] === "string") {
-      return k._content[0] as string;
+    if (k.$_tag === STR_TAG && typeof k.$_content?.[0] === "string") {
+      return k.$_content[0] as string;
     }
   }
   return "";
@@ -179,7 +179,7 @@ export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
  *
  * Traversal:
  * - Walks the tree in depth-first order starting from the `nodes` array,
- *   descending via `_content` and filtering children with `is_Node`.
+ *   descending via `$_content` and filtering children with `is_Node`.
  * - If `options.findFirst` is `true`, traversal stops as soon as a
  *   match is found and only the first matching node is returned
  *   (wrapped in a single-element array).
@@ -226,7 +226,7 @@ export function search_nodes(
         if (options.findFirst) return;
       }
 
-      const kids = (node._content ?? []).filter(is_Node);
+      const kids = (node.$_content ?? []).filter(is_Node);
       if (kids.length) traverse(kids);
     }
   };

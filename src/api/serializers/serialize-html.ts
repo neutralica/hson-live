@@ -22,10 +22,10 @@ const RAWTEXT = new Set(["style", "script"]);
  * Behavior:
  * - Walks a mixed list of `HsonNode | Primitive`.
  * - For `_-str` nodes:
- *   - Takes the first `_content` entry (if any),
+ *   - Takes the first `$_content` entry (if any),
  *   - Uses it as a string if already a string, otherwise stringifies it.
  * - For other node types:
- *   - Recursively descends into their `_content`.
+ *   - Recursively descends into their `$_content`.
  * - For primitive leaves:
  *   - Appends `String(primitive)` directly.
  *
@@ -46,11 +46,11 @@ function collect_raw_text(nodes: (HsonNode | Primitive)[] | undefined): string {
   for (const ch of nodes) {
     if (is_Node(ch)) {
       if (ch.$_tag === STR_TAG) {
-        const seg = (ch._content?.[0] ?? "") as unknown;
+        const seg = (ch.$_content?.[0] ?? "") as unknown;
         out += typeof seg === "string" ? seg : String(seg);
       } else {
         // descend, in case someone wrapped _-str in an extra node
-        out += collect_raw_text(ch._content as any);
+        out += collect_raw_text(ch.$_content as any);
       }
     } else {
       // primitive leaf: take as-is (no entity escaping)
@@ -122,18 +122,18 @@ function primitive_to_xml(p: Primitive): string {
  *   - Delegated to `primitive_to_xml(p)`.
  *
  * - `_-str`:
- *   - Must have exactly one string in `_content`.
+ *   - Must have exactly one string in `$_content`.
  *   - Empty string is rendered as `""` (two quotes) so that the parser
  *     can distinguish “empty” from “missing”.
  *   - Non-empty strings are rendered as bare escaped text.
  *
  * - `_-val`:
- *   - Must have exactly one primitive in `_content`.
+ *   - Must have exactly one primitive in `$_content`.
  *   - Rendered as `<_-val>…</_-val>` with escaped contents to preserve
  *     type boundaries on round trip.
  *
  * - `_-elem`:
- *   - Flattened away; serializes each child in `_content` and joins with
+ *   - Flattened away; serializes each child in `$_content` and joins with
  *     newlines. No explicit `<_-elem>` tag appears in the XML.
  *
  * - `_-root`:
@@ -174,7 +174,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
 
   const {
     $_tag: rawTag,
-    _content: content = [],
+    $_content: content = [],
   } = node;
 
   // NEW: wire-format tag for XML output

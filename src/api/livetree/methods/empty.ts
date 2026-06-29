@@ -10,13 +10,13 @@ import { LiveTree } from "../livetree.js";
  * and in the mounted DOM.
  *
  * Behavior:
- * - Iterates the current node’s `_content` list.
+ * - Iterates the current node’s `$_content` list.
  * - For each child `HsonNode`, performs a full deep detach:
  *     - removes DOM elements,
  *     - unregisters listeners,
  *     - clears NODE_ELEMENT_MAP entries,
  *     - cleans up QUID scopes.
- * - After detaching, resets `_content` to an empty array.
+ * - After detaching, resets `$_content` to an empty array.
  *
  * DOM handling:
  * - If the node is mounted, any stray DOM children are removed
@@ -35,7 +35,7 @@ type EmptyTreeLike = Pick<LiveTree, "node">;
 
 export function empty_contents<TTree extends EmptyTreeLike>(this: TTree): TTree {
   const node = this.node;
-  const kids = node._content;
+  const kids = node.$_content;
 
   // 1) deep detach every child (listeners + DOM + map)
   for (const child of kids) {
@@ -43,7 +43,7 @@ export function empty_contents<TTree extends EmptyTreeLike>(this: TTree): TTree 
   }
 
   // 2) set model content to empty
-  node._content = [];
+  node.$_content = [];
 
   // 3) ensure the element has no stray DOM children
   const el = get_el_for_node(node);

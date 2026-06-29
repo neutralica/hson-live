@@ -45,7 +45,7 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
 function ensureVsn(node: HsonNode): HsonNode {
   // find first VSN child
-  const found = node._content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c.$_tag));
+  const found = node.$_content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c.$_tag));
   if (found) return found;
 
   // create bucket; prefer `_-elem` as the generic container
@@ -53,10 +53,10 @@ function ensureVsn(node: HsonNode): HsonNode {
     $_tag: ELEM_TAG,
     $_attrs: {},         
     $_meta: {},
-    _content: node._content, // move existing content under the bucket
+    $_content: node.$_content, // move existing content under the bucket
   });
 
-  node._content = [bucket];
+  node.$_content = [bucket];
   return bucket;
 }
 
@@ -109,14 +109,14 @@ export function get_node_text_content(node: HsonNode): string {
   let out = "";
 
   const walk = (n: HsonNode): void => {
-    for (const child of n._content ?? []) {
+    for (const child of n.$_content ?? []) {
       if (!is_Node(child)) {
         if (child !== null && child !== undefined) out += String(child);
         continue;
       }
 
       if (child.$_tag === STR_TAG || child.$_tag === VAL_TAG) {
-        const first = child._content?.[0];
+        const first = child.$_content?.[0];
         if (first !== null && first !== undefined) out += String(first);
         continue;
       }
@@ -399,9 +399,9 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const bucket = ensureVsn(node);
 
   let replaced = false;
-  const next = [] as typeof bucket._content;
+  const next = [] as typeof bucket.$_content;
 
-  for (const child of bucket._content) {
+  for (const child of bucket.$_content) {
     if (is_Node(child) && isLeafTag(child.$_tag)) {
       if (!replaced) {
         next.push(leaf);
@@ -414,7 +414,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   }
 
   if (!replaced) next.unshift(leaf);
-  bucket._content = next;
+  bucket.$_content = next;
 
   // --- DOM projection (CHANGED): Text nodes only ---
   const host = get_el_for_node(node);
@@ -424,7 +424,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
 }
 
 /**
- * Append another text leaf to _content (non-destructive).
+ * Append another text leaf to $_content (non-destructive).
  *
  * DOM: appends a Text node to the host element.
  */
@@ -434,7 +434,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
 
   // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
-  bucket._content.push(leaf);
+  bucket.$_content.push(leaf);
 
   const host = get_el_for_node(node);
   if (!host) return;
@@ -443,8 +443,8 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
 }
 
 /**
- * Insert a text leaf at a specific _content index.
- * Index counts all items in the VSN bucket _content.
+ * Insert a text leaf at a specific $_content index.
+ * Index counts all items in the VSN bucket $_content.
  */
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
   const text = primitive_to_text(value);
@@ -453,12 +453,12 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
   // always edit inside the VSN bucket
   const bucket = ensureVsn(node);
 
-  const len = bucket._content.length;
+  const len = bucket.$_content.length;
   const ix = Number.isFinite(index)
     ? Math.max(0, Math.min(len, Math.floor(index)))
     : len;
 
-  bucket._content.splice(ix, 0, leaf);
+  bucket.$_content.splice(ix, 0, leaf);
 
   const host = get_el_for_node(node);
   if (!host) return;
@@ -475,9 +475,9 @@ export function overwrite_node_text_content(node: HsonNode, value: Primitive): v
   const text = primitive_to_text(value);
   const leaf = make_leaf(text);
 
-  // always overwrite the VSN bucket, not node._content
+  // always overwrite the VSN bucket, not node.$_content
   const bucket = ensureVsn(node);
-  bucket._content = [leaf];
+  bucket.$_content = [leaf];
 
   const el = get_el_for_node(node);
   if (!el) return;

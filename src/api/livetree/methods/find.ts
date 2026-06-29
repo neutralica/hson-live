@@ -51,7 +51,7 @@ function isManyQuery(q: FindQueryMany): q is readonly FindQuery[] {
 
 function node_in_subtree(root: HsonNode, target: HsonNode): boolean {
   if (root === target) return true;
-  for (const child of root._content ?? []) {
+  for (const child of root.$_content ?? []) {
     if (typeof child === "string") continue;
     if (is_Node(child) && node_in_subtree(child, target)) return true;
   }
@@ -116,7 +116,7 @@ function split_text_query(query: HsonQuery): SplitFindQuery {
 function node_text_content(node: HsonNode): string {
   let out = "";
 
-  for (const child of node._content ?? []) {
+  for (const child of node.$_content ?? []) {
     if (typeof child === "string") {
       out += child;
       continue;

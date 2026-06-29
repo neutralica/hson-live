@@ -1,7 +1,7 @@
 // expand-self-closing.ts
 
 // TODO -- I do not want to be using a list of void tags for this if possible
-// check _content.length e.g.
+// check $_content.length e.g.
 
 const voidTags = [
     'area','base','br','col','embed','hr',

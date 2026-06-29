@@ -21,7 +21,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
   function makeHtmlHost(): LiveTree {
     const node = CREATE_NODE({
       $_tag: "div",
-      _content: [],
+      $_content: [],
     }) as HsonNode;
 
     return create_livetree(node);
@@ -34,7 +34,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
       $_attrs: {
         xmlns: "http://www.w3.org/2000/svg",
       },
-      _content: [],
+      $_content: [],
     }) as HsonNode;
 
     return create_livetree(node) as unknown as SvgLiveTree;

@@ -25,10 +25,10 @@ export function unwrap_root_elem(content: HsonNode | HsonNode[]): HsonNode[] {
     /* use flatMap to handle nodes that might expand into multiple children */
     return nodes.flatMap(node => {
         if (node.$_tag === ROOT_TAG) {
-            const childNode = node._content?.[0];
+            const childNode = node.$_content?.[0];
             /* if it's a valid container, return its children */
             if (is_Node(childNode) && childNode.$_tag === ELEM_TAG) {
-                return childNode._content?.filter(is_Node) || [];
+                return childNode.$_content?.filter(is_Node) || [];
             } 
         }
         /* if it's not a container, just return the node itself */

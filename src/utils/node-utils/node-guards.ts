@@ -17,7 +17,7 @@ import { HsonNode } from "../../types/node.types.js";
  *   This avoids silently accepting old shapes during the migration.
  *
  * What it intentionally does *not* check:
- * - Does not validate `_content` or `_attrs` shape, since many callers use this as a lightweight
+ * - Does not validate `$_content` or `_attrs` shape, since many callers use this as a lightweight
  *   narrowing guard before doing deeper checks.
  *
  * @param bit - Unknown value to test.
@@ -46,7 +46,7 @@ export function is_Node(bit: unknown): bit is HsonNode {
  * Check whether a node is a scalar “primitive leaf” node.
  *
  * A primitive node is defined here as:
- * - `_content` contains exactly one item,
+ * - `$_content` contains exactly one item,
  * - that item is a `Primitive`,
  * - and the node’s tag is either `_-str` or `_-val`.
  *
@@ -58,8 +58,8 @@ export function is_Node(bit: unknown): bit is HsonNode {
  */
 export function is_Primitive_node(node: HsonNode): boolean {
   return (
-    node._content.length === 1 &&
-    is_Primitive(node._content[0]) &&
+    node.$_content.length === 1 &&
+    is_Primitive(node.$_content[0]) &&
     (node.$_tag === STR_TAG ||
       node.$_tag === VAL_TAG)
   )
@@ -70,7 +70,7 @@ export function is_Primitive_node(node: HsonNode): boolean {
  *
  * An indexed item is defined as:
  * - tag is `_-ii`,
- * - `_content` is an array with exactly one entry (the wrapped item),
+ * - `$_content` is an array with exactly one entry (the wrapped item),
  * - and `$_meta[data-_index]` is present as a string.
  *
  * This supports array representations where items may carry explicit stable indices
@@ -82,8 +82,8 @@ export function is_Primitive_node(node: HsonNode): boolean {
 export function is_indexed(node: HsonNode): boolean {
   return (
     node.$_tag === II_TAG &&
-    Array.isArray(node._content) &&
-    node._content.length === 1 &&
+    Array.isArray(node.$_content) &&
+    node.$_content.length === 1 &&
     typeof node.$_meta?.[_DATA_INDEX] === "string"
   );
 }

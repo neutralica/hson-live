@@ -34,7 +34,7 @@ const serialize_content_item = (item: ContentItem): string => {
 
 /** Serialize only a node's child content, excluding the node wrapper itself. */
 const serialize_node_inner_markup = (node: HsonNode): string => {
-  return ((node._content ?? []) as readonly ContentItem[])
+  return ((node.$_content ?? []) as readonly ContentItem[])
     .map(serialize_content_item)
     .join("");
 };
@@ -54,10 +54,10 @@ export class ContentManager {
     this.owner = owner;
   }
 
-  /** Return the raw `_content` array with no VSN unwrapping or filtering. */
+  /** Return the raw `$_content` array with no VSN unwrapping or filtering. */
   private pure_nodes(): readonly ContentItem[] {
     const n = this.owner.node as HsonNode;
-    return (n._content ?? []) as readonly ContentItem[];
+    return (n.$_content ?? []) as readonly ContentItem[];
   }
 
   /**
@@ -85,7 +85,7 @@ export class ContentManager {
 
         // container wrappers are invisible; descend into their content
         if (is_vsn_tag(tag)) {
-          const kids = (it._content ?? []) as readonly ContentItem[];
+          const kids = (it.$_content ?? []) as readonly ContentItem[];
           walk_items(kids);
           continue;
         }
@@ -114,7 +114,7 @@ export class ContentManager {
           continue;
         }
 
-        const kids = (it._content ?? []) as readonly ContentItem[];
+        const kids = (it.$_content ?? []) as readonly ContentItem[];
 
         // container wrappers are invisible; descend into their content
         if (is_vsn_tag(tag)) {

@@ -83,7 +83,7 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
  *       • no duplicate non-VSN property tags.
  *   - default (normal tag):
  *       • recursively validates children,
- *       • primitives directly in `_content` are illegal.
+ *       • primitives directly in `$_content` are illegal.
  *
  * Path tracking:
  *   - Builds a human-readable `path` (e.g. "/_-obj/[0]/tag:div") to
@@ -111,9 +111,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   // value wrappers
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
-    const c = n._content ?? [];
+    const c = n.$_content ?? [];
     if (c.length !== 1) {
-      push(errs, cfg, `${here}: ${n.$_tag} must have exactly one item in _content`); if (cfg.throwOnFirst) return;
+      push(errs, cfg, `${here}: ${n.$_tag} must have exactly one item in $_content`); if (cfg.throwOnFirst) return;
     } else {
       const v = c[0] as Primitive;
       if (n.$_tag === STR_TAG && typeof v !== "string") {
@@ -133,7 +133,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     const idx = n.$_meta?.[`${_META_DATA_PREFIX}index`] ?? n.$_meta?.[_DATA_INDEX];
     if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in $_meta`); if (cfg.throwOnFirst) return; }
 
-    const cc = n._content;
+    const cc = n.$_content;
     if (cc.length !== 1) { push(errs, cfg, `${here}: _-ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
     const only = cc[0];
     if (!is_Node(only)) { push(errs, cfg, `${here}: _-ii child must be a node (found primitive/null)`); if (cfg.throwOnFirst) return; }
@@ -141,7 +141,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   // _-arr: only _-ii children; no bare primitives
   if (n.$_tag === ARR_TAG) {
-    const kids = n._content;
+    const kids = n.$_content;
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];
       const childPath = `${path}/_-arr/[${i}]`;
@@ -157,7 +157,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   // _-elem validation — only normal element nodes or _-str are allowed.
   // _-val belongs to data-space (_-obj/_-arr), not renderable element content.
   if (n.$_tag === ELEM_TAG) {
-    const kids = n._content;
+    const kids = n.$_content;
 
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];
@@ -190,7 +190,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   // _-root: 0 or 1 child; if present it must be cluster
   if (n.$_tag === ROOT_TAG) {
-    const kids = n._content;
+    const kids = n.$_content;
     if (kids.length > 1) { push(errs, cfg, `${here}: _-root must contain at most one child`); if (cfg.throwOnFirst) return; }
     if (kids.length === 1) {
       const only = kids[0] as HsonNode | Primitive;
@@ -204,7 +204,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   // _-obj: shallow checks only; then recurse into each child
   if (n.$_tag === OBJ_TAG) {
-    const kids = n._content;
+    const kids = n.$_content;
     const seen = new Set<string>();
 
     for (let i = 0; i < kids.length; i++) {
@@ -248,7 +248,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // recurse (nodes only); primitives are illegal outside _-str/_-val
-  const kids = n._content ?? [];
+  const kids = n.$_content ?? [];
   for (let i = 0; i < kids.length; i++) {
     const k = kids[i];
     if (is_Node(k)) {
@@ -319,7 +319,7 @@ function push(errs: string[], cfg: DevCfg, s: string) { errs.push(s); }
  *          non-empty `_attrs` is rejected.
  *   4) Traversal:
  *        - Uses an explicit stack to walk nodes (no recursion).
- *        - Only descends into `_content` entries that are nodes;
+ *        - Only descends into `$_content` entries that are nodes;
  *          primitives are left for `walk` to validate (e.g. “primitive
  *          outside _-str/_-val”).
  *
@@ -359,7 +359,7 @@ export function assertNewShapeQuick(n: any, where: string): void {
     }
 
     // 4) Recurse nodes-only
-    const content = node._content as unknown[] | undefined;
+    const content = node.$_content as unknown[] | undefined;
     if (Array.isArray(content)) {
       // Don’t descend into leaves; main walk already validates payload shape/arity
       if (tag === STR_TAG || tag === VAL_TAG) {

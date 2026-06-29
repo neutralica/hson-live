@@ -23,16 +23,16 @@ function normalize_newlines_lf(s: string): string {
 
 
 function semanticChildren(n: HsonNode): HsonNode[] {
-    const kids = (n._content ?? []).filter(is_Node);
+    const kids = (n.$_content ?? []).filter(is_Node);
     if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
-        return (kids[0]._content ?? []).filter(is_Node);
+        return (kids[0].$_content ?? []).filter(is_Node);
     }
     return kids;
 }
 
 function collapseTrivial(n: HsonNode): HsonNode {
     if (n.$_tag === ELEM_TAG) {
-        const c = (n._content ?? []).filter(is_Node);
+        const c = (n.$_content ?? []).filter(is_Node);
         if (c.length === 1 && LEAF.has(c[0].$_tag)) return c[0];
     }
     return n;
@@ -41,8 +41,8 @@ function collapseTrivial(n: HsonNode): HsonNode {
 function compareLeaf(a: HsonNode, b: HsonNode, path: string, diffs: string[], opts?: CompareNodesOpts): boolean {
     if (!(LEAF.has(a.$_tag) && LEAF.has(b.$_tag))) return false;
 
-    const va = a._content?.[0];
-    const vb = b._content?.[0];
+    const va = a.$_content?.[0];
+    const vb = b.$_content?.[0];
 
     if (va === vb) return true;
 
@@ -80,7 +80,7 @@ function compareChildrenByIndex(
         diffs.push(`Child count mismatch @ ${path}: ${aKids.length} vs ${bKids.length}`);
     }
     const len = Math.min(aKids.length, bKids.length);
-    for (let i = 0; i < len; i++) compareFn(aKids[i], bKids[i], `${path}._content[${i}]`);
+    for (let i = 0; i < len; i++) compareFn(aKids[i], bKids[i], `${path}.$_content[${i}]`);
 }
 
 function compareChildrenByKeyForObj(
@@ -143,7 +143,7 @@ function compareContent(aC?: any[], bC?: any[], path = ""): string[] {
     const A = aC ?? [];
     const B = bC ?? [];
     const diffs: string[] = [];
-    if (A.length !== B.length) diffs.push(`_content length mismatch @ ${path}: ${A.length} vs ${B.length}`);
+    if (A.length !== B.length) diffs.push(`$_content length mismatch @ ${path}: ${A.length} vs ${B.length}`);
     const len = Math.min(A.length, B.length);
     for (let i = 0; i < len; i++) {
         diffs.push(...compareAny(A[i], B[i], `${path}[${i}]`));
@@ -247,9 +247,9 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • Primitive attrs use strict equality:
  *           `Attr value mismatch @ path["key"]: va vs vb`.
  *
- *   - Content (`_content`):
+ *   - Content (`$_content`):
  *       • Length mismatches produce:
- *           `_content length mismatch @ path: lenA vs lenB`.
+ *           `$_content length mismatch @ path: lenA vs lenB`.
  *       • Elements compared pairwise with recursive `compareAny`.
  *
  *   - `_-obj` nodes:
@@ -261,7 +261,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  *   - `_-arr` nodes:
  *       • Children are compared by index:
  *           `Child count mismatch @ path: lenA vs lenB`.
- *       • Matching indices recurse at `path._content[i]`.
+ *       • Matching indices recurse at `path.$_content[i]`.
  *
  *   - Plain JS objects (non-node):
  *       • Keys merged and compared recursively via `compareAny`,

@@ -16,7 +16,7 @@ import { _DATA_INDEX, _DATA_QUID } from "../../consts/constants.js";
  *   - `$_tag` first
  *   - `_attrs` next (sorted; `style` objects sorted too)
  *   - `$_meta` next (prioritizes `data-_quid` and `data-_index`)
- *   - `_content` last (recursively canonicalized)
+ *   - `$_content` last (recursively canonicalized)
  * - Handles arrays recursively.
  * - Detects circular references and replaces repeats with the string `"[[Circular]]"`.
  *
@@ -79,9 +79,9 @@ function orderNode(n: HsonNode, seen: WeakSet<object>) {
     out.$_meta = orderMeta(n.$_meta);
   }
 
-  // 4) _content (recursively canonicalized)
-  if (Array.isArray(n._content) && n._content.length) {
-    out._content = n._content.map(c => canon(c, seen));
+  // 4) $_content (recursively canonicalized)
+  if (Array.isArray(n.$_content) && n.$_content.length) {
+    out.$_content = n.$_content.map(c => canon(c, seen));
   }
 
   return out;

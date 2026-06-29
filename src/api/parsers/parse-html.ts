@@ -355,11 +355,11 @@ function convert(el: Element, parentTag?: string): HsonNode {
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 // no inner _-elem — children go directly
-                _content: [
+                $_content: [
                     CREATE_NODE({
                         $_tag: ELEM_TAG,
-                        _content: [
-                            CREATE_NODE({ $_tag: STR_TAG, _content: [text_content] })
+                        $_content: [
+                            CREATE_NODE({ $_tag: STR_TAG, $_content: [text_content] })
                         ]
                     })
                 ]
@@ -374,7 +374,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
     for (const child of children) {
         if (is_Primitive(child)) {
             const tag = is_string(child) ? STR_TAG : VAL_TAG;
-            childNodes.push(CREATE_NODE({ $_tag: tag, _content: [child] }));
+            childNodes.push(CREATE_NODE({ $_tag: tag, $_content: [child] }));
         } else {
             childNodes.push(child as HsonNode);
         }
@@ -405,7 +405,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
             if (n.$_tag !== VAL_TAG && n.$_tag !== STR_TAG) {
                 _throw_transform_err('<_-val> must contain a primitive or _-str/_-val', 'parse-html');
             }
-            const c = n._content?.[0];
+            const c = n.$_content?.[0];
             if (c === undefined) _throw_transform_err('<_-val> payload is empty', 'parse-html');
             prim = (typeof c === 'string') ? coerceNonString(c) : (c as Primitive);
         } else {
@@ -416,19 +416,19 @@ function convert(el: Element, parentTag?: string): HsonNode {
             _throw_transform_err('<_-val> cannot contain a string after coercion', 'parse-html', prim);
         }
 
-        return CREATE_NODE({ $_tag: VAL_TAG, _content: [prim as Primitive] });
+        return CREATE_NODE({ $_tag: VAL_TAG, $_content: [prim as Primitive] });
     }
 
     if (dec === OBJ_TAG) {
         // Children are property nodes (already produced under this element)
-        return CREATE_NODE({ $_tag: OBJ_TAG, _content: childNodes });
+        return CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes });
     }
 
     if (dec === ARR_TAG) {
         if (!childNodes.every(node => is_indexed(node))) {
             _throw_transform_err('_-array children are not valid index tags', 'parse-html');
         }
-        return CREATE_NODE({ $_tag: ARR_TAG, _content: childNodes });
+        return CREATE_NODE({ $_tag: ARR_TAG, $_content: childNodes });
     }
 
     if (dec === II_TAG) {
@@ -437,7 +437,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
         }
         return CREATE_NODE({
             $_tag: II_TAG,
-            _content: [childNodes[0]],
+            $_content: [childNodes[0]],
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
         });
     }
@@ -454,8 +454,8 @@ function convert(el: Element, parentTag?: string): HsonNode {
             $_tag: dec,
             $_attrs: sortedAcc,
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-            _content: [
-                CREATE_NODE({ $_tag: ELEM_TAG, $_meta: {}, _content: [] })
+            $_content: [
+                CREATE_NODE({ $_tag: ELEM_TAG, $_meta: {}, $_content: [] })
             ]
         });
     }
@@ -469,7 +469,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
                 $_tag: dec,
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-                _content: [only]
+                $_content: [only]
             });
         }
     }
@@ -480,11 +480,11 @@ function convert(el: Element, parentTag?: string): HsonNode {
         $_tag: dec,
         $_attrs: sortedAcc,
         $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-        _content: [
+        $_content: [
             CREATE_NODE({
                 $_tag: ELEM_TAG,
                 $_meta: {},
-                _content: childNodes
+                $_content: childNodes
             })
         ]
     });
@@ -498,10 +498,10 @@ function convert(el: Element, parentTag?: string): HsonNode {
  *     - Return the node as-is (already rooted).
  * - If `node` is a cluster node (`_-obj`, `_-arr`, `_-elem`):
  *     - Wrap directly under a new `_-root`:
- *       `{ $_tag: _-root, _content: [node] }`.
+ *       `{ $_tag: _-root, $_content: [node] }`.
  * - Otherwise (normal HTML-ish element/leaf):
  *     - Wrap in an `_-elem` cluster, then under `_-root`:
- *       `{ $_tag: _-root, _content: [ { $_tag: _-elem, _content: [node] } ] }`.
+ *       `{ $_tag: _-root, $_content: [ { $_tag: _-elem, $_content: [node] } ] }`.
  *
  * This keeps `_-root` as a pure structural top-level wrapper while
  * preserving the intended element vs. cluster semantics.
@@ -512,11 +512,11 @@ function convert(el: Element, parentTag?: string): HsonNode {
 function wrap_as_root(node: HsonNode): HsonNode {
     if (node.$_tag === ROOT_TAG) return node; // already rooted
     if (node.$_tag === OBJ_TAG || node.$_tag === ARR_TAG || node.$_tag === ELEM_TAG) {
-        return CREATE_NODE({ $_tag: ROOT_TAG, _content: [node] });
+        return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [node] });
     }
     return CREATE_NODE({
         $_tag: ROOT_TAG,
-        _content: [CREATE_NODE({ $_tag: ELEM_TAG, _content: [node] })],
+        $_content: [CREATE_NODE({ $_tag: ELEM_TAG, $_content: [node] })],
     });
 }
 
@@ -565,7 +565,7 @@ function elementToNode(
                 contents.push(CREATE_NODE({
                     $_tag: STR_TAG,
                     $_meta: {},
-                    _content: [""],
+                    $_content: [""],
                 }));
                 continue;
             }

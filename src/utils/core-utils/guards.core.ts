@@ -74,7 +74,7 @@ export function is_string(txt: JsonValue): txt is string {
 /**
  * Determine whether a content array represents an empty node.
  *
- * A “void” node in HSON terms is simply one whose `_content` array is
+ * A “void” node in HSON terms is simply one whose `$_content` array is
  * present but contains no items. This check does not consider tag type,
  * only the structural emptiness.
  *

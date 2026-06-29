@@ -25,7 +25,7 @@ import { is_Node } from "./node-guards.js";
 export function unwrap_returned_root(root: HsonNode): ReadonlyArray<HsonNode> {
   //  if caller gives us <_-root>, return its *element* children; else treat the node itself as a 1-item fragment
   if (root.$_tag === ROOT_TAG) {
-    const kids = root._content ?? [];
+    const kids = root.$_content ?? [];
     // Only real nodes (skip strings, etc.), stable order
     const out: HsonNode[] = [];
     for (let i = 0; i < kids.length; i++) {

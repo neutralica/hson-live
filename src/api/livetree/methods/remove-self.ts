@@ -86,7 +86,7 @@ export function remove_livetree(this: LiveTree): number {
  * Recursively remove a specific HSON node from a root subtree.
  *
  * Algorithm:
- * - Walks the `_content` array of `root` depth-first.
+ * - Walks the `$_content` array of `root` depth-first.
  * - For each child:
  *   - Skips non-node entries.
  *   - If the child is the `target`, removes it in-place via `splice` and
@@ -95,7 +95,7 @@ export function remove_livetree(this: LiveTree): number {
  *     `true`, bubbles that `true` up and stops further traversal.
  *
  * Characteristics:
- * - Purely structural: operates only on the `_content` arrays; does not
+ * - Purely structural: operates only on the `$_content` arrays; does not
  *   touch DOM, QUIDs, or maps.
  * - Returns a boolean to indicate whether the target was found and removed.
  *
@@ -110,7 +110,7 @@ export function remove_livetree(this: LiveTree): number {
  *   `root`; `false` if the target does not occur in this subtree.
  */
 function pruneNodeFromRoot(root: HsonNode, target: HsonNode): boolean {
-  const content = root._content;
+  const content = root.$_content;
   if (!Array.isArray(content)) return false;
 
   for (let i = 0; i < content.length; i += 1) {

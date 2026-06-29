@@ -11,8 +11,8 @@ import { _DATA_INDEX, _DATA_QUID } from "../consts/constants.js";
  * Each node models a single unit in the IR:
  * - `$_tag` identifies the node kind (HTML tag or VSN like "_-obj", "_-arr").
  * - `$_meta` holds only *data-* metadata (e.g. QUID, array index).
- * - `_attrs` contains HTML-style attributes for element nodes.
- * - `_content` contains either child nodes or primitive leaf values.
+ * - `$_attrs` contains HTML-style attributes for element nodes.
+ * - `$_content` contains either child nodes or primitive leaf values.
  *
  * All transformation, LiveTree, and serialization layers operate on this shape.
  *******/
@@ -20,13 +20,13 @@ export interface HsonNode {
     $_tag: string;
     $_meta: HsonMeta;
     $_attrs: HsonAttrs;
-    _content: NodeContent;
+    $_content: NodeContent;
 }
 
 /*******
  * Valid contents for an HSON node.
  *
- * A node’s `_content` array may contain:
+ * A node’s `$_content` array may contain:
  * - other `HsonNode` children, or
  * - primitive leaf values (`string | number | boolean | null`)
  *
@@ -44,7 +44,7 @@ export type NodeContent = (HsonNode | Primitive)[];
  * - Boolean-present flags (attributes without values) are represented
  *   as `key: key` at parse time.
  *
- * The transform pipeline normalizes attributes; LiveTree keeps `_attrs`
+ * The transform pipeline normalizes attributes; LiveTree keeps `$_attrs`
  * in lockstep with the DOM.
  *******/
 export type HsonAttrs = {'style'?: CssMap } & Record<string, Primitive>;

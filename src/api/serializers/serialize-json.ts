@@ -66,7 +66,7 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
         current.$_tag === ROOT_TAG &&
         (!current.$_meta || Object.keys(current.$_meta).length === 0)
     ) {
-        const kids = current._content ?? [];
+        const kids = current.$_content ?? [];
         if (kids.length !== 1) return current;
 
         const only = kids[0];
@@ -93,12 +93,12 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
  *     reflected in the JSON surface.
  *
  * - `_-arr`:
- *   - Expects `_content` to be a list of `_-ii` index nodes.
+ *   - Expects `$_content` to be a list of `_-ii` index nodes.
  *   - Each `_-ii` is unwrapped and converted; the resulting array preserves
  *     element order and ignores the index metadata.
  *
  * - `_-obj`:
- *   - If `_content` has a single child that is one of:
+ *   - If `$_content` has a single child that is one of:
  *       `_-str`, `_-val`, `_-arr`, `_-obj`, `_-elem`
  *     then this wrapper is treated as transparent and the child’s JSON
  *     representation is returned directly. This mirrors the “cluster”
@@ -117,7 +117,7 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
  *
  * - `_-elem`:
  *   - Represents “element cluster” semantics in JSON form.
- *   - Each child in `_content` is converted recursively.
+ *   - Each child in `$_content` is converted recursively.
  *   - The result is wrapped as `{ "_-elem": [ ...items ] }`, so that element
  *     mode remains distinguishable at the JSON layer.
  *
@@ -169,21 +169,21 @@ function jsonFromNode(node: HsonNode): JsonValue {
 
     switch (node.$_tag) {
         case ROOT_TAG: {
-            if (!node._content || node._content.length !== 1) {
+            if (!node.$_content || node.$_content.length !== 1) {
                console.error(make_string(node))
                 _throw_transform_err('malformed _-root node -  must have exactly one child', 'serialize_json');
             }
             // The recursive call now expects the child to be in the NEW format.
-            return jsonFromNode(node._content[0] as HsonNode);
+            return jsonFromNode(node.$_content[0] as HsonNode);
         }
 
         case ARR_TAG: {
             let array: JsonValue[] = [];
-            if (node._content) {
+            if (node.$_content) {
                 /*  content of _-arr node must be _-ii nodes */
-                for (const iiNode of node._content as HsonNode[]) {
+                for (const iiNode of node.$_content as HsonNode[]) {
                     if (is_indexed(iiNode)) {
-                        array.push(jsonFromNode(iiNode._content[0] as HsonNode));
+                        array.push(jsonFromNode(iiNode.$_content[0] as HsonNode));
                     } else {
                         _throw_transform_err(`malformed _-ii node in _-arr`, 'serialize-json');
                     }
@@ -194,19 +194,19 @@ function jsonFromNode(node: HsonNode): JsonValue {
 
         case OBJ_TAG: {
             const jsonObj: JsonObj = {};
-            if (node._content && node._content.length === 1) {
-                const only = node._content[0] as HsonNode;
+            if (node.$_content && node.$_content.length === 1) {
+                const only = node.$_content[0] as HsonNode;
                 // unwrap primitive/array/object/elem wrappers produced by the parser
                 if (only.$_tag === STR_TAG || only.$_tag === VAL_TAG || only.$_tag === ARR_TAG || only.$_tag === OBJ_TAG || only.$_tag === ELEM_TAG) {
                     return jsonFromNode(only); // <- avoids calling with a primitive later
                 }
             }
-            if (node._content) {
-                for (const propNode of node._content as HsonNode[]) {
+            if (node.$_content) {
+                for (const propNode of node.$_content as HsonNode[]) {
                     const key = propNode.$_tag;
                     let value: JsonValue = {};
-                    if (propNode._content && propNode._content.length > 0) {
-                        const child = propNode._content[0];
+                    if (propNode.$_content && propNode.$_content.length > 0) {
+                        const child = propNode.$_content[0];
                         // assign directly; do NOT Object.assign into {}
                         value = jsonFromNode(child as HsonNode);
                     }
@@ -220,14 +220,14 @@ function jsonFromNode(node: HsonNode): JsonValue {
         case STR_TAG:
         case VAL_TAG: {
             /* return Primitive content directly */
-            return node._content[0] as Primitive;
+            return node.$_content[0] as Primitive;
         }
 
         case ELEM_TAG: {
             /* _-elem tags are native to HTML and will be carried through the JSON as-is; the only 
                 exceptional handling is the contents of _-elem tags are not rewrapped in an _-obj */
             const elemItems: JsonValue = [];
-            for (const itemNode of (node._content)) {
+            for (const itemNode of (node.$_content)) {
                 /* recursively convert each item node in the _-elem to its JSON equivalent */
                 const jsonItem = jsonFromNode(itemNode as HsonNode);
                 elemItems.push(jsonItem);
@@ -235,21 +235,21 @@ function jsonFromNode(node: HsonNode): JsonValue {
             return { [ELEM_TAG]: elemItems };
         }
         case II_TAG: {
-            if (!node._content || node._content.length !== 1) {
+            if (!node.$_content || node.$_content.length !== 1) {
                 _throw_transform_err('misconfigured _-ii node', 'serialize_json');
             }
-            return jsonFromNode(node._content[0] as HsonNode);
+            return jsonFromNode(node.$_content[0] as HsonNode);
         }
 
         default: { /* "standard" tag (e.g. "foo", "kingdom", "html", "p", "span") */
 
             let tempJson: JsonObj = {};
-            if (node._content && node._content.length === 0) {
+            if (node.$_content && node.$_content.length === 0) {
                 tempJson = { [node.$_tag]: '' };
-            } else if (node._content && node._content.length === 1) {
-                const recursed = jsonFromNode(node._content[0] as HsonNode);
+            } else if (node.$_content && node.$_content.length === 1) {
+                const recursed = jsonFromNode(node.$_content[0] as HsonNode);
                 tempJson = { [node.$_tag]: recursed };
-            } else if (node._content && node._content.length > 1) {
+            } else if (node.$_content && node.$_content.length > 1) {
                 /*  This implies a cluster of values if a standard tag has multiple content VSNs
                     (should be rare or never) */
                 _throw_transform_err(`<${node.$_tag}> has multiple content VSN children`, 'serialize_json');

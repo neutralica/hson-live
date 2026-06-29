@@ -19,7 +19,7 @@ const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 
 // semantic container = unwrap single _-elem
 function unwrap_single_elem(node: HsonNode): HsonNode {
-  const kids = node._content;
+  const kids = node.$_content;
   if (!Array.isArray(kids)) return node;
 
   let only: HsonNode | undefined;
@@ -44,7 +44,7 @@ function unwrap_single_elem(node: HsonNode): HsonNode {
 export function remove_node_children(parent: HsonNode): number {
   const container = unwrap_single_elem(parent);
 
-  const kids = container._content;
+  const kids = container.$_content;
   if (!Array.isArray(kids) || kids.length === 0) return 0;
 
   // collect direct element children only
@@ -58,7 +58,7 @@ export function remove_node_children(parent: HsonNode): number {
 
   // unlink first (graph correctness)
   const removeSet = new Set(toRemove);
-  container._content = (kids as ContentItem[]).filter(
+  container.$_content = (kids as ContentItem[]).filter(
     (v) => !(is_Node(v) && removeSet.has(v)),
   );
 
@@ -72,7 +72,7 @@ export function remove_node_children(parent: HsonNode): number {
 
 export function empty_contents(this: LiveTree): LiveTree {
   const parent = this.node;
-  const kids = parent._content;
+  const kids = parent.$_content;
 
   if (!Array.isArray(kids) || kids.length === 0) return this;
 
@@ -82,7 +82,7 @@ export function empty_contents(this: LiveTree): LiveTree {
   }
 
   // drop everything, including primitives
-  parent._content = [];
+  parent.$_content = [];
 
   for (const n of toDetach) detach_node_deep(n);
 
@@ -94,4 +94,3 @@ function matches_query(node: HsonNode, query: HsonQuery): boolean {
   const tagOK = !query.tag || node.$_tag.toLowerCase() === query.tag.toLowerCase();
   return tagOK && matchAttrs(node, query) && matchMeta(node, query) && matchText(node, query);
 }
-

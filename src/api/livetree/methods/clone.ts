@@ -24,8 +24,8 @@ function clone_branch_inner(
   if (src.$_meta)  dst.$_meta  = { ...src.$_meta };
 
   // deep clone content
-  if (src._content) {
-    dst._content = src._content.map((c) => {
+  if (src.$_content) {
+    dst.$_content = src.$_content.map((c) => {
       if (typeof c === "object" && c !== null) {
         return clone_branch_inner(c as HsonNode, quidMap, opts);
       }

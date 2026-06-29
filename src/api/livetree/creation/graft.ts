@@ -34,7 +34,7 @@ function graft_node_into_element(
   sync_root_attrs_to_element(nodeToRender, element);
 
   const frag = document.createDocumentFragment();
-  for (const child of nodeToRender._content ?? []) {
+  for (const child of nodeToRender.$_content ?? []) {
     frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
   }
 

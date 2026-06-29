@@ -17,7 +17,7 @@ import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
  * Append one or more HSON nodes into a target node's `_-elem` container
  * and mirror the change into the corresponding live DOM subtree.
  *
- * If the first child of `targetNode._content` is not an `_-elem` container,
+ * If the first child of `targetNode.$_content` is not an `_-elem` container,
  * this function will create one and insert it as the first child. All
  * appended nodes are then placed inside that container.
  *
@@ -37,21 +37,21 @@ function appendNodes(
   nodesToAppend: HsonNode[],
   index?: number,
 ): void {
-  if (!targetNode._content) targetNode._content = [];
+  if (!targetNode.$_content) targetNode.$_content = [];
 
   // find or create the `_-elem` container
   let containerNode: HsonNode;
-  const firstChild = targetNode._content[0];
+  const firstChild = targetNode.$_content[0];
 
   if (firstChild && typeof firstChild === "object" && firstChild.$_tag === ELEM_TAG) {
     containerNode = firstChild;
   } else {
-    containerNode = CREATE_NODE({ $_tag: ELEM_TAG, _content: [] });
-    targetNode._content = [containerNode, ...targetNode._content];
+    containerNode = CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
+    targetNode.$_content = [containerNode, ...targetNode.$_content];
   }
 
-  if (!containerNode._content) containerNode._content = [];
-  const childContent = containerNode._content;
+  if (!containerNode.$_content) containerNode.$_content = [];
+  const childContent = containerNode.$_content;
 
   // --- HSON INSERTION --------------------------------------------------
   if (typeof index === "number") {

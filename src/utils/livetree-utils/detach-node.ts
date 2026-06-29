@@ -7,13 +7,13 @@ import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../../api/livetree/managers/css-manager.js";
 import { disposables_off_for_owner } from "../../api/livetree/managers/lifecycle-registry.js";
 
-type NodeWithKids = { _content?: unknown[] };
+type NodeWithKids = { $_content?: unknown[] };
 
 /**
  * Recursively detach an HSON node and its descendants from the live DOM.
  *
  * Walk order:
- * 1) Recurses through `_content` first, detaching child nodes before the parent.
+ * 1) Recurses through `$_content` first, detaching child nodes before the parent.
  * 2) For each node, resolves its bound DOM element (if any) and:
  *    - removes all listeners registered via the listener system for that element,
  *    - removes all listeners for every DOM descendant of that element (defensive cleanup),
@@ -32,7 +32,7 @@ type NodeWithKids = { _content?: unknown[] };
  * @returns void.
  */export function detach_node_deep(node: HsonNode): void {
   // 1) recurse first so children go away before parent
-  const kids = (node as NodeWithKids)._content;
+  const kids = (node as NodeWithKids).$_content;
   if (Array.isArray(kids) && kids.length) {
     for (const child of kids) {
       if (is_Node(child)) detach_node_deep(child);
