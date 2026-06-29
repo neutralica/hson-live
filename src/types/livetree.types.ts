@@ -14,11 +14,11 @@ import { CanvasLiveTree } from "./livetree-internals.types.js";
  *
  * Each field is optional; all specified predicates must match:
  *
- *   - `tag`   → exact tag name match (`_-obj`, `div`, etc.).
+ *   - `tag`   → exact tag name match (`_hson_obj`, `div`, etc.).
  *   - `attrs` → shallow partial match on `$_attrs`, using plain
  *               `===` equality for values.
  *   - `meta`  → shallow partial match on `$_meta` keys/values.
- *   - `text`  → matches string payload under `_-str`/`_-val` or
+ *   - `text`  → matches string payload under `_hson_str`/`_hson_val` or
  *               element text:
  *                 • string → substring match,
  *                 • RegExp → `regex.test(...)`.

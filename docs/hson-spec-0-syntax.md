@@ -34,11 +34,11 @@ Nodes are terminated by one of two explicit closers. The chosen closer encodes t
 
 HSON's two closure symbols are structural markers that carry strict meaning.
 
-`_-elem` nodes ("/>")
+`_hson_elem` nodes ("/>")
 
 Nodes sourced from html elements terminate with `/>`.
 
-`_-obj` nodes (">")
+`_hson_obj` nodes (">")
 Nodes sourced from JSON terminate with `>`. This includes arrays (see below). The use of angle brackets in HSON closely tracks the use of curly braces in JSON.
 
 A single serialized HSON string must use one model consistently. Mixing `/>` and `>` within the same document is invalid and will throw.
@@ -110,15 +110,15 @@ then its content must be serialized on subsequent lines and the closer must appe
 ## HsonNode IR Representation
 
 Internally, in the HsonNode graph:
-- Primitive values are always wrapped in `_-str` or `_-val` leaf nodes.
+- Primitive values are always wrapped in `_hson_str` or `_hson_val` leaf nodes.
 - Other nodes never store raw primitives directly.
-- HTML has no native type information. When serializing JSON values to HTML, numbers, booleans, or null are wrapped in `<_-val>` tags to maintain their types.
-- A `_-val` node explicitly signals that its content should be parsed. If a number, boolean, or `null` is not wrapped in `<_-val>` in HTML it will reenter the node graph as a string .
+- HTML has no native type information. When serializing JSON values to HTML, numbers, booleans, or null are wrapped in `<_hson_val>` tags to maintain their types.
+- A `_hson_val` node explicitly signals that its content should be parsed. If a number, boolean, or `null` is not wrapped in `<_hson_val>` in HTML it will reenter the node graph as a string .
 
 
 ## HSON Serialization Rules
 
-HSON's syntax is designed to express both HTML and JSON without requiring structural hints like leaf nodes. _-str or _-val nodes (or any other underscored structural node like _-elem, _-obj, _-arr) will never appear in serialized HSON.
+HSON's syntax is designed to express both HTML and JSON without requiring structural hints like leaf nodes. _hson_str or _hson_val nodes (or any other underscored structural node like _hson_elem, _hson_obj, _hson_arr) will never appear in serialized HSON.
 
 Within the serialized HSON:
 - String content must always be quoted.
@@ -140,7 +140,7 @@ Within the serialized HSON:
 A node’s `$_content` property consists of ordered child nodes, which may be:
 
 - standard container nodes, or
-- primitive leaf nodes (`<_-str>` / `<_-val>`)
+- primitive leaf nodes (`<_hson_str>` / `<_hson_val>`)
 
 ```ts
 <p
@@ -217,17 +217,17 @@ HSON provides a compact array literal syntax.
 >
 ```
 
-This is equivalent to an internal _-arr node with _-iindexed children.
+This is equivalent to an internal _hson_arr node with _hson_iindexed children.
 HSON parsers accept brackets as array delimiters provided the closer is consistent. If reserialized, all arrays use guillemet delimiters regardless of input symbol.
 
 ### Notes:
 *	« » is purely a serialization convenience and minor visual flourish
 *	internally, arrays are still represented structurally via VSNs
-*	array order is preserved through the use of internal _-ii nodes
+*	array order is preserved through the use of internal _hson_ii nodes
 *	array items may be primitives or full nodes, and may be mixed
 *	newline separation of array items is not required
 
-Nested arrays and objects within arrays are permitted exactly as with JSON. Arrays are represented in HSON's node graph as `_-arr` tags.
+Nested arrays and objects within arrays are permitted exactly as with JSON. Arrays are represented in HSON's node graph as `_hson_arr` tags.
 
 ⸻
 
@@ -271,11 +271,11 @@ hson-lives's HSON parser accepts arrays with or without newline separators; arra
 Some nodes exist solely to preserve structure across formats. These are Virtual Structural Nodes (VSNs).
 
 ### Common examples:
-*	_-obj — object container
-*	_-arr — array container
-*	_-ii  — array item
-*	_-str — string primitive
-*	_-val — non-string primitive
+*	_hson_obj — object container
+*	_hson_arr — array container
+*	_hson_ii  — array item
+*	_hson_str — string primitive
+*	_hson_val — non-string primitive
 
 ### VSNs:
 *	are always structural

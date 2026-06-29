@@ -7,23 +7,23 @@ import { is_Node } from "../node-utils/node-guards.js";
 
 
 /**
- * Normalize an input node by removing an outer `<_-root>` wrapper and ensuring
- * the result is always a structural “cluster” node (`_-obj`, `_-arr`, or `_-elem`).
+ * Normalize an input node by removing an outer `<_hson_root>` wrapper and ensuring
+ * the result is always a structural “cluster” node (`_hson_obj`, `_hson_arr`, or `_hson_elem`).
  *
  * Rules:
- * - If `node` is not `<_-root>`, it is returned unchanged.
- * - If `<_-root>` has no child nodes, returns an empty `_-obj` cluster.
- * - If `<_-root>` has exactly one child:
- *   - If that child is already `_-obj`, `_-arr`, or `_-elem`, return it.
- *   - Otherwise, box the single child inside a new `_-obj` cluster to keep a
+ * - If `node` is not `<_hson_root>`, it is returned unchanged.
+ * - If `<_hson_root>` has no child nodes, returns an empty `_hson_obj` cluster.
+ * - If `<_hson_root>` has exactly one child:
+ *   - If that child is already `_hson_obj`, `_hson_arr`, or `_hson_elem`, return it.
+ *   - Otherwise, box the single child inside a new `_hson_obj` cluster to keep a
  *     structural container as the canonical result.
- * - If `<_-root>` has multiple child nodes, wrap them in a new `_-obj` cluster.
+ * - If `<_hson_root>` has multiple child nodes, wrap them in a new `_hson_obj` cluster.
  *
  * This is mainly used to enforce “structural-at-the-top” invariants so callers
  * can treat the returned value as a cluster node without special-casing.
  *
- * @param node - Input node that may be a `<_-root>` wrapper.
- * @returns A cluster node (`_-obj`, `_-arr`, or `_-elem`) suitable for downstream processing.
+ * @param node - Input node that may be a `<_hson_root>` wrapper.
+ * @returns A cluster node (`_hson_obj`, `_hson_arr`, or `_hson_elem`) suitable for downstream processing.
  */
 export function unwrap_root_obj(node: HsonNode): HsonNode {
   if (node.$_tag !== ROOT_TAG) return node;

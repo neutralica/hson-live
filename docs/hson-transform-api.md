@@ -45,7 +45,7 @@ type HsonNode = {
 ```
 
 Do not confuse these field names with VSN tag string values. Tags such as
-`_-root`, `_-elem`, `_-obj`, `_-arr`, `_-ii`, `_-str`, and `_-val` remain tag
+`_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` remain tag
 values stored in `node.$_tag`.
 
 ---

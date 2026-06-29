@@ -11,7 +11,7 @@ no-op safely when there is no mounted element, except for explicit `must`
 helpers.
 
 Current internal node fields are `$_tag`, `$_content`, `$_attrs`, and
-`$_meta`. VSN tag values such as `_-elem`, `_-arr`, and `_-str` remain tag
+`$_meta`. VSN tag values such as `_hson_elem`, `_hson_arr`, and `_hson_str` remain tag
 strings in `node.$_tag`.
 
 ---
@@ -31,7 +31,7 @@ const fromNode = hson.liveTree.fromNode(node);
 ```
 
 The `from*` methods return detached `LiveTree` branches. They do not graft or
-mutate the live DOM. Wrapper nodes such as `_-root` and `_-elem` are unwrapped
+mutate the live DOM. Wrapper nodes such as `_hson_root` and `_hson_elem` are unwrapped
 so the returned branch points at one concrete root node.
 
 ### Grafting Existing DOM
@@ -229,8 +229,8 @@ namespace. Source strings are trusted markup.
 ### `content: ContentManager`
 
 The content manager exposes an effective element-child view. It skips primitive
-leaves, hides VSN leaves such as `_-str` and `_-val`, and unwraps structural VSN
-containers such as `_-root`, `_-elem`, `_-obj`, `_-arr`, and `_-ii`.
+leaves, hides VSN leaves such as `_hson_str` and `_hson_val`, and unwraps structural VSN
+containers such as `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, and `_hson_ii`.
 
 - `content.count(): number`
 - `content.at(ix): LiveTree | undefined`

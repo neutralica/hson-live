@@ -644,7 +644,7 @@ type HsonNode = {
 };
 ```
 
-VSN tag values remain strings such as `_-root`, `_-elem`, `_-obj`, `_-arr`,
-`_-ii`, `_-str`, and `_-val`.
+VSN tag values remain strings such as `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`,
+`_hson_ii`, `_hson_str`, and `_hson_val`.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

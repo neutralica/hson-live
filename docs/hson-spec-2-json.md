@@ -43,14 +43,14 @@ They are always wrapped in explicit primitive VSNs.
 
 ## JSON Object Mapping
 
-A JSON object is represented as a node containing an <_-obj> VSN. The position of the <_-obj> tag roughly mirrors the position of the curly braces that would delimit the object in JSON, and are serialized to JSON as such.
-Nodes other than 'cluster' VSNs - <_-obj>, <_-elem>, <_-arr> -  may not contain multiple child nodes in their `$_content` properties. Other than primitive-containing <_-str> and <_-val> tags, **every node's `$_content` property is wrapped in its native cluster VSN**, even if the propery contains a single child node.
+A JSON object is represented as a node containing an <_hson_obj> VSN. The position of the <_hson_obj> tag roughly mirrors the position of the curly braces that would delimit the object in JSON, and are serialized to JSON as such.
+Nodes other than 'cluster' VSNs - <_hson_obj>, <_hson_elem>, <_hson_arr> -  may not contain multiple child nodes in their `$_content` properties. Other than primitive-containing <_hson_str> and <_hson_val> tags, **every node's `$_content` property is wrapped in its native cluster VSN**, even if the propery contains a single child node.
 
-Accurate preservation of cluster structure using these VSNs is a core requirement for HSON, as <_-obj> and <_-elem> shapes look similar but are fundamentally incompatible.
+Accurate preservation of cluster structure using these VSNs is a core requirement for HSON, as <_hson_obj> and <_hson_elem> shapes look similar but are fundamentally incompatible.
 
 #### Mapping rules
-*	Each JSON object maps to exactly one <_-obj> node.
-*	Each property of the object is represented as a child node of <_-obj>.
+*	Each JSON object maps to exactly one <_hson_obj> node.
+*	Each property of the object is represented as a child node of <_hson_obj>.
 *	Property names are represented as node `$_tag` values.
 *	Property values are represented as `$_content` under their corresponding 'key' property node.
 
@@ -63,11 +63,11 @@ Accurate preservation of cluster structure using these VSNs is a core requiremen
 ```
 maps to:
 ```
-<_-obj>
+<_hson_obj>
  ├─ a
- │   └─ <_-val>(1)
+ │   └─ <_hson_val>(1)
  └─ b
-     └─<_-str>("x")
+     └─<_hson_str>("x")
 ```
 #### Notes
 *	JSON object ordering is not semantically significant and is not interpreted as meaningful.
@@ -77,13 +77,13 @@ maps to:
 
 ## JSON Array Mapping
 
-A JSON array is represented as a node containing an <_-arr> VSN.
+A JSON array is represented as a node containing an <_hson_arr> VSN.
 
 #### Mapping rules
-*	Each array maps to exactly one <_-arr> node.
-*	Each element of the array is wrapped in an <_-ii> (index item) node.
-*	<_-ii> nodes preserve array ordering by carrying the index number in `$_meta.data-_index`.
-*	Each <_-ii> contains exactly one child representing the element value. <_-ii> nodes may also contain <_-arr> or <_-obj> nodes
+*	Each array maps to exactly one <_hson_arr> node.
+*	Each element of the array is wrapped in an <_hson_ii> (index item) node.
+*	<_hson_ii> nodes preserve array ordering by carrying the index number in `$_meta.data-_index`.
+*	Each <_hson_ii> contains exactly one child representing the element value. <_hson_ii> nodes may also contain <_hson_arr> or <_hson_obj> nodes
 
 #### Example:
 ```
@@ -91,10 +91,10 @@ A JSON array is represented as a node containing an <_-arr> VSN.
 ```
 maps to:
 ```
-<_-arr>
- ├─ <_-ii> → <_-val>(1)
- ├─ <_-ii> →<_-str>("x")
- └─ <_-ii> → <_-val>(true)
+<_hson_arr>
+ ├─ <_hson_ii> → <_hson_val>(1)
+ ├─ <_hson_ii> →<_hson_str>("x")
+ └─ <_hson_ii> → <_hson_val>(true)
 ```
 
 ⸻
@@ -107,16 +107,16 @@ Primitive values are represented using dedicated primitive VSNs.
 Primitive VSNs are the 'endpoint' for HsonNode graphs, containing the 'value' of the ordered pair. To preserve JSON's typed primitives when converted to untyped HTML, typed VSNs act as parser hints to dictate how to handle a given value.
 
 * type -> VSN `$_tag`
-* string ->	<_-str>
-* number ->	<_-val>
-* boolean ->	<_-val>
-* null ->	<_-val>
+* string ->	<_hson_str>
+* number ->	<_hson_val>
+* boolean ->	<_hson_val>
+* null ->	<_hson_val>
 
 Rules
-*	Primitive values must appear only within primitive nodes: <_-str> or <_-val>.
+*	Primitive values must appear only within primitive nodes: <_hson_str> or <_hson_val>.
 *	Primitive values may not appear directly as children of non-primitive nodes.
-*	<_-str> preserves string content verbatim.
-*	<_-val> preserves numeric, boolean, and null. It is a parser hint to coerce the node's string value to a typed primitive on reentry into JSON.
+*	<_hson_str> preserves string content verbatim.
+*	<_hson_val> preserves numeric, boolean, and null. It is a parser hint to coerce the node's string value to a typed primitive on reentry into JSON.
 
 ⸻
 

@@ -17,7 +17,7 @@ type ContentItem = HsonNode | Primitive;
 const VSN_SET: ReadonlySet<string> = new Set(EVERY_VSN);
 const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 
-// semantic container = unwrap single _-elem
+// semantic container = unwrap single _hson_elem
 function unwrap_single_elem(node: HsonNode): HsonNode {
   const kids = node.$_content;
   if (!Array.isArray(kids)) return node;
@@ -37,7 +37,7 @@ function unwrap_single_elem(node: HsonNode): HsonNode {
 
 /**
  * CHANGED: Remove *direct element-children* from the semantic container.
- * - semantic container = single `_-elem` child if present, else the node itself
+ * - semantic container = single `_hson_elem` child if present, else the node itself
  * - direct “element children” = node children whose tag is NOT a VSN tag
  * - returns number removed (semantic count)
  */
@@ -51,7 +51,7 @@ export function remove_node_children(parent: HsonNode): number {
   const toRemove: HsonNode[] = [];
   for (const v of kids as ContentItem[]) {
     if (!is_Node(v)) continue;
-    if (is_vsn_tag(v.$_tag)) continue; // skip _-str/_-val/_-elem/_-obj/_-arr/_-ii/_-root
+    if (is_vsn_tag(v.$_tag)) continue; // skip _hson_str/_hson_val/_hson_elem/_hson_obj/_hson_arr/_hson_ii/_hson_root
     toRemove.push(v);
   }
   if (toRemove.length === 0) return 0;

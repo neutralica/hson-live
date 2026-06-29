@@ -12,7 +12,7 @@ Unlike JSON, HTML does not purely describe key-value pairs. It includes:
 *	namespaces such as SVG,
 *	ordering that is semantically meaningful.
 
-The `_-elem` VSN exists to preserve these properties when parsing HTML to JSON and back.
+The `_hson_elem` VSN exists to preserve these properties when parsing HTML to JSON and back.
 
 ⸻
 
@@ -27,24 +27,24 @@ This section does not describe runtime projection, sanitization policy, or DOM A
 
 ⸻
 
-## `_-elem` as the Structural Boundary
+## `_hson_elem` as the Structural Boundary
 
-All HTML content in HSON is represented within `_-elem` VSN wrappers within the node graph, and when serialized to JSON. HsonNodes will never serialize to HTML in _-elem tags.
+All HTML content in HSON is represented within `_hson_elem` VSN wrappers within the node graph, and when serialized to JSON. HsonNodes will never serialize to HTML in _hson_elem tags.
 
 #### Rule
-*	Except for primitive nodes, any node with content must contain exactly one `_-elem` VSN as its structural 'cluster' wrapper.
-*  `_-elem`, like other 'cluster' nodes `<_-obj>` and `<_-arr>` nodes, may contain any number of children.
+*	Except for primitive nodes, any node with content must contain exactly one `_hson_elem` VSN as its structural 'cluster' wrapper.
+*  `_hson_elem`, like other 'cluster' nodes `<_hson_obj>` and `<_hson_arr>` nodes, may contain any number of children.
 *
-* No HTML element, text node, or attribute may exist outside an `_-elem` context.
-* `<_-obj>` and `_-elem` node graphs may not be blended
+* No HTML element, text node, or attribute may exist outside an `_hson_elem` context.
+* `<_hson_obj>` and `_hson_elem` node graphs may not be blended
 
-`_-elem` establishes HTML context and handling:
+`_hson_elem` establishes HTML context and handling:
 *	ordered child nodes,
 *	mixed content boundaries,
 *	element nesting,
 *	the distinction between data and markup semantics.
 
-_-elem and <_-obj> tags keep their content types separate from each other. Mismatches between the two dataa types (such as prohibition of duplicate keys/`$_tag` values in JSON; the lack of types in HTML) would cause fatal runtime errors unless their handling was clearly telegraphed. `_-elem`, `<_-obj>`, and `<_-arr>` exist to remove any ambiguity during transformation.
+_hson_elem and <_hson_obj> tags keep their content types separate from each other. Mismatches between the two dataa types (such as prohibition of duplicate keys/`$_tag` values in JSON; the lack of types in HTML) would cause fatal runtime errors unless their handling was clearly telegraphed. `_hson_elem`, `<_hson_obj>`, and `<_hson_arr>` exist to remove any ambiguity during transformation.
 
 ⸻
 
@@ -52,7 +52,7 @@ _-elem and <_-obj> tags keep their content types separate from each other. Misma
 
 Each HTML element maps to a node:
 * node.$_tag - the element name
-* node.$_content - any child nodes, wrapped in _-elem structural layers
+* node.$_content - any child nodes, wrapped in _hson_elem structural layers
 * node.$_attrs - (see: ## Attributes, below)
 
 Example:
@@ -65,11 +65,11 @@ maps to:
 
 ```
 <p>
- └─ _-elem
-     ├─<_-str>("Hello ")
+ └─ _hson_elem
+     ├─<_hson_str>("Hello ")
      ├─ em
-     │   └─ _-elem
-     │       └─<_-str>("world")
+     │   └─ _hson_elem
+     │       └─<_hson_str>("world")
 ```
 
 #### Rules
@@ -284,9 +284,9 @@ section
 
 ⸻
 
-A node representing markup content uses `_-elem` for ordered element content.
+A node representing markup content uses `_hson_elem` for ordered element content.
 
-A node representing object or array structure uses `_-obj` / `_-arr`.
+A node representing object or array structure uses `_hson_obj` / `_hson_arr`.
 
 These VSNs describe different structural roles and may not be blended.
 
@@ -294,12 +294,12 @@ These VSNs describe different structural roles and may not be blended.
 
 ## Text Nodes
 
-Text nodes are represented using either `<_-str>` or `<_-val>` VSNs. Lacking types, HTML-native content is always parsed into `<_-str>` tags. For JSON-native data, `<_-val>` nodes exist as a parser hint to preserve types across transformations.
+Text nodes are represented using either `<_hson_str>` or `<_hson_val>` VSNs. Lacking types, HTML-native content is always parsed into `<_hson_str>` tags. For JSON-native data, `<_hson_val>` nodes exist as a parser hint to preserve types across transformations.
 
 #### Rules
-*	String text content must be wrapped in <_-str>.
-*	When parsing typed data from JSON, such as numbers, `<_-val>` tags keep it separate and safe from stringification.
-*	Text nodes may appear anywhere within `_-elem` VSNs.
+*	String text content must be wrapped in <_hson_str>.
+*	When parsing typed data from JSON, such as numbers, `<_hson_val>` tags keep it separate and safe from stringification.
+*	Text nodes may appear anywhere within `_hson_elem` VSNs.
 *	Whitespace is preserved as encountered by the parser.
 
 Text is not normalized, merged, or reordered.
@@ -325,7 +325,7 @@ input
  ├─ $_attrs:
  │   ├─ disabled: true
  │   └─ value: "x"
- └─ _-elem
+ └─ _hson_elem
 ```
 Notes
 *	Attribute presence vs value is preserved.
@@ -335,11 +335,11 @@ Notes
 
 ## Void Elements
 
-Void elements (e.g. img, br, input) are represented as nodes with an empty _-elem.
+Void elements (e.g. img, br, input) are represented as nodes with an empty _hson_elem.
 
 #### Rules
-*	Void elements still contain an _-elem node.
-*	_-elem is empty and must not contain children.
+*	Void elements still contain an _hson_elem node.
+*	_hson_elem is empty and must not contain children.
 *	The voidness is inferred from tag semantics, not from structure.
 
 This ensures uniform handling of all elements.
@@ -351,9 +351,9 @@ This ensures uniform handling of all elements.
 HTML allows arbitrary interleaving of text and elements.
 
 HSON preserves this exactly by:
-*	using `_-elem` as an ordered container,
-*	representing text (and all HTML-native textcontent) as <_-str>,
-*	representing typed primitives as <_-val>,
+*	using `_hson_elem` as an ordered container,
+*	representing text (and all HTML-native textcontent) as <_hson_str>,
+*	representing typed primitives as <_hson_val>,
 *	representing elements as child nodes.
 
 No flattening or normalization occurs.
@@ -397,17 +397,17 @@ HTML and JSON differ structurally:
 *	HTML is content-oriented and ordered
 
 HSON reconciles this by:
-*	using `<_-obj>` / `<_-arr>` for JSON semantics
-*	using `_-elem` for markup semantics
+*	using `<_hson_obj>` / `<_hson_arr>` for JSON semantics
+*	using `_hson_elem` for markup semantics
 
 These VSNs never overlap in responsibility.
 
-A node representing markup content uses `_-elem` for ordered element content.
-A node representing object or array structure uses `_-obj` / `_-arr`.
+A node representing markup content uses `_hson_elem` for ordered element content.
+A node representing object or array structure uses `_hson_obj` / `_hson_arr`.
 
 These VSNs describe different structural roles and may not be blended.
 
-####  Node graphs that mix `_-elem` and `_-obj` types are invalid and may cause parser errors.
+####  Node graphs that mix `_hson_elem` and `_hson_obj` types are invalid and may cause parser errors.
 
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

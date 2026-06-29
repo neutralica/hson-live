@@ -26,7 +26,7 @@ const isRegExp = (v: unknown): v is RegExp =>
  * - If a DOM element is mapped for the node, returns its
  *   `textContent` (or `""` if null).
  * - Otherwise:
- *   - Scans `$_content` for the first `_-str` child whose first content
+ *   - Scans `$_content` for the first `_hson_str` child whose first content
  *     entry is a string and returns that.
  *   - If no such child exists, returns `""`.
  *

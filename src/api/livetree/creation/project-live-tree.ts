@@ -27,8 +27,8 @@ import {
  * - When `node` is a primitive (not an `HsonNode`), returns a
  *   `Text` node whose content is `String(node ?? "")`.
  * - When `node` is an `HsonNode`:
- *   - Interprets virtual structural nodes (VSNs) such as `_-root`,
- *     `_-obj`, `_-arr`, `_-elem` as *non-rendered* containers:
+ *   - Interprets virtual structural nodes (VSNs) such as `_hson_root`,
+ *     `_hson_obj`, `_hson_arr`, `_hson_elem` as *non-rendered* containers:
  *     they never become real DOM elements, but their children are
  *     recursively rendered.
  *   - Creates real DOM `Element` nodes for concrete HSON element tags,
@@ -83,7 +83,7 @@ export function project_livetree(
     const frag = document.createDocumentFragment();
 
     if (n.$_tag === ARR_TAG) {
-      // _-arr contains <_-ii> items; unwrap each item’s single child
+      // _hson_arr contains <_hson_ii> items; unwrap each item’s single child
       for (const ii of n.$_content ?? []) {
         const payload =
           is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
@@ -94,7 +94,7 @@ export function project_livetree(
       return frag;
     }
 
-    // _root/_-obj/_-elem → render their children directly
+    // _hson_root/_hson_obj/_hson_elem -> render their children directly
     for (const child of n.$_content ?? []) {
       frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
     }
@@ -109,7 +109,7 @@ export function project_livetree(
       `[create_live_tree2] illegal DOM tag "${badTag}" (node.$_tag=${n.$_tag})`
     );
 
-  // "_-" prefixes are reserved for HSON virtual/internal nodes (and (soon) meta like `$_tag`).
+  // "_hson_" prefixes are reserved for HSON virtual/internal nodes.
   // They must never be materialized as real DOM elements.
   if (tag.startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(tag);
@@ -124,8 +124,8 @@ export function project_livetree(
       ? document.createElementNS(SVG_NS, tag)
       : document.createElement(tag);
 
-  // Belt-and-suspenders: guard against any factory emitting "_-" DOM tags.
-  if (el.tagName.startsWith(HSON_SYS_PREFIX)) {
+  // Belt-and-suspenders: guard against any factory emitting HSON DOM tags.
+  if (el.tagName.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(el.tagName);
   }
 

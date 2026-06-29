@@ -64,8 +64,8 @@ export class ContentManager {
    * Return effective element children with structural VSN wrappers hidden.
    *
    * Rules:
-   * - flatten VSN containers: _-root, _-elem, _-obj, _-arr, _-ii
-   * - skip VSN leaves: _-str, _-val
+   * - flatten VSN containers: _hson_root, _hson_elem, _hson_obj, _hson_arr, _hson_ii
+   * - skip VSN leaves: _hson_str, _hson_val
    * - include non-VSN nodes
    * - ignore primitives
    */

@@ -18,10 +18,10 @@ import { assert_user_key_allowed } from "../../utils/json-utils/key-prefix-guard
  * Infer the appropriate HSON VSN tag for a JSON value.
  *
  * Mapping rules:
- * - Arrays → `_-arr`
- * - Plain objects → `_-obj`
- * - Strings → `_-str`
- * - `null`, numbers, booleans → `_-val`
+ * - Arrays → `_hson_arr`
+ * - Plain objects → `_hson_obj`
+ * - Strings → `_hson_str`
+ * - `null`, numbers, booleans → `_hson_val`
  *
  * Anything that does not fit these categories triggers a transform error.
  *
@@ -34,13 +34,13 @@ import { assert_user_key_allowed } from "../../utils/json-utils/key-prefix-guard
  */
 function getTag(value: JsonValue): string {
     // 1) Collections first (so they aren't misclassified as "not string")
-    if (Array.isArray(value)) return ARR_TAG;            // _-arr
-    if (is_Object(value)) return OBJ_TAG;              // _-obj
+    if (Array.isArray(value)) return ARR_TAG;            // _hson_arr
+    if (is_Object(value)) return OBJ_TAG;              // _hson_obj
 
     // 2) Scalars
-    if (typeof value === "string") return STR_TAG;       // _-str
+    if (typeof value === "string") return STR_TAG;       // _hson_str
     if (value === null || typeof value === "number" || typeof value === "boolean") {
-        return VAL_TAG;                                   // _-val (num|bool|null)
+        return VAL_TAG;                                   // _hson_val (num|bool|null)
     }
 
     _throw_transform_err("invalid value provided", "getTag", "???");
@@ -77,7 +77,7 @@ function jsonElementTagKey(obj: Record<string, unknown>): string[] {
  * Assert that a JSON object does not use reserved HSON/VSN keys.
  *
  * Reserved keys:
- * - `_-obj`, `_-arr`, `_-ii`, `_-str`, `_-val`
+ * - `_hson_obj`, `_hson_arr`, `_hson_ii`, `_hson_str`, `_hson_val`
  *
  * These are reserved for HSON/HTML internal structures and must not
  * appear directly in user-provided JSON. If any such key is found,
@@ -105,45 +105,45 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
 
 /**
  * Convert a JSON value into an `HsonNode` subtree, using a parent tag
- * to decide which HSON shape to build (`_-str`, `_-val`, `_-arr`, `_-obj`,
- * `_-elem`, `_-root`).
+ * to decide which HSON shape to build (`_hson_str`, `_hson_val`, `_hson_arr`, `_hson_obj`,
+ * `_hson_elem`, `_hson_root`).
  *
  * Dispatch rules (by `$parentTag`):
  *
  * 1. Primitive branch (`STR_TAG` / `VAL_TAG`)
  *    - `STR_TAG`:
  *      - Requires `srcJson` to be a string, including `""`.
- *      - Returns `<_-str>` with `$_content: [string]`.
+ *      - Returns `<_hson_str>` with `$_content: [string]`.
  *    - `VAL_TAG`:
  *      - Requires `srcJson` to be a non-string primitive
  *        (`number | boolean | null`).
- *      - Returns `<_-val>` with `$_content: [primitive]`.
+ *      - Returns `<_hson_val>` with `$_content: [primitive]`.
  *
  * 2. Array branch (`ARR_TAG`)
  *    - Requires `srcJson` to be an array.
  *    - For each item:
  *      - Computes the child tag with `getTag(val)`.
  *      - Recursively calls `nodeFromJson(val, childTag)` to get a child node.
- *      - Wraps the child in an `<_-ii>` node with `$_meta.data-_index` equal
+ *      - Wraps the child in an `<_hson_ii>` node with `$_meta.data-_index` equal
  *        to the array index.
- *    - Returns `<_-arr>` containing the `_-ii` children.
+ *    - Returns `<_hson_arr>` containing the `_hson_ii` children.
  *
  * 3. Object branch (`OBJ_TAG`)
  *    - Requires `srcJson` to be a non-array object.
  *    - Applies one of three mutually exclusive paths:
  *
- *    A) Root form: `{ _-root: <payload>, ... }`
- *       - Forbids siblings alongside `_-root`.
+ *    A) Root form: `{ _hson_root: <payload>, ... }`
+ *       - Forbids siblings alongside `_hson_root`.
  *       - Recursively parses `<payload>` via `nodeFromJson`.
- *       - Ensures the `_-root` child is a cluster:
- *         - Scalar children (`_-str` / `_-val`) are wrapped in `<_-elem>`.
- *       - Returns `<_-root>` containing a single cluster child.
+ *       - Ensures the `_hson_root` child is a cluster:
+ *         - Scalar children (`_hson_str` / `_hson_val`) are wrapped in `<_hson_elem>`.
+ *       - Returns `<_hson_root>` containing a single cluster child.
  *
- *    B) Element form: `{ "_-elem": [ ... ] }`
- *       - Requires `_-elem` value to be an array.
+ *    B) Element form: `{ "_hson_elem": [ ... ] }`
+ *       - Requires `_hson_elem` value to be an array.
  *       - Each item must be one of:
- *         - `string` → `<_-str>` child,
- *         - `number | boolean | null` → `<_-val>` child,
+ *         - `string` → `<_hson_str>` child,
+ *         - `number | boolean | null` → `<_hson_val>` child,
  *         - element-object:
  *           `{ tagName: payload, $_attrs?, $_meta? }`
  *           - Rejects reserved VSN keys via
@@ -156,28 +156,28 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *             - null/undefined → dropped.
  *           - Recursively builds the child subtree from `payload` using
  *             `nodeFromJson(...)`.
- *       - Returns a single `<_-elem>` node with these children.
+ *       - Returns a single `<_hson_elem>` node with these children.
  *
  *    C) Generic object form (plain JSON object)
  *       - Forbids reserved VSN keys via
  *         `assertNoForbiddenVSNKeysInJSON`.
  *       - For each own key:
  *         - Builds a value node:
- *           - `string` → `<_-str>`,
- *           - `number | boolean | null` → `<_-val>`,
- *           - array → recurse with parent `_-arr`,
- *           - object → recurse with parent `_-obj`.
- *         - Wraps non-cluster children in an `<_-obj>` to enforce JSON-mode
+ *           - `string` → `<_hson_str>`,
+ *           - `number | boolean | null` → `<_hson_val>`,
+ *           - array → recurse with parent `_hson_arr`,
+ *           - object → recurse with parent `_hson_obj`.
+ *         - Wraps non-cluster children in an `<_hson_obj>` to enforce JSON-mode
  *           “object cluster” semantics.
  *         - Wraps that in a property node `<key>` whose `$_content` is the
  *           cluster payload.
- *       - Returns a single `<_-obj>` node containing all property nodes.
+ *       - Returns a single `<_hson_obj>` node containing all property nodes.
  *
  * Errors:
  * - Throws via `_throw_transform_err` when:
  *   - `srcJson` type does not match the expected parent tag.
- *   - `_-root` objects have illegal siblings.
- *   - `_-elem` is not an array or has invalid items.
+ *   - `_hson_root` objects have illegal siblings.
+ *   - `_hson_elem` is not an array or has invalid items.
  *   - A generic object contains reserved VSN keys.
  *   - A value is not representable as a supported HSON shape.
  *
@@ -194,9 +194,9 @@ export function nodeFromJson(
     parentTag: string
 ): { node: HsonNode } {
 
-    // ---- 0) Primitive branch (strings → _-str, others → _-val) ----
+    // ---- 0) Primitive branch (strings → _hson_str, others → _hson_val) ----
     if (parentTag === STR_TAG || parentTag === VAL_TAG) {
-        // preserve empty-string as a real scalar (_-str([""]))
+        // preserve empty-string as a real scalar (_hson_str([""]))
         if (parentTag === STR_TAG) {
             if (!is_string(srcJson)) {
                 _throw_transform_err(`expected string for ${STR_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
@@ -222,7 +222,7 @@ export function nodeFromJson(
         }
     }
 
-    // ---- 1) Array branch (_-arr → _-ii[data-_index]) ----
+    // ---- 1) Array branch (_hson_arr → _hson_ii[data-_index]) ----
     if (parentTag === ARR_TAG) {
         if (!Array.isArray(srcJson)) {
             _throw_transform_err("array expected for ARR_TAG parent", "parse_json", make_string(srcJson));
@@ -245,13 +245,13 @@ export function nodeFromJson(
             _throw_transform_err("object expected for OBJ_TAG parent", "parse_json", make_string(srcJson));
         }
         const obj = srcJson as Record<string, unknown>;
-        // A) HARD-CODED ROOT: { _-root: <cluster-or-primitive> } (exclusive)
+        // A) HARD-CODED ROOT: { _hson_root: <cluster-or-primitive> } (exclusive)
 
         if (Object.prototype.hasOwnProperty.call(obj, ROOT_TAG)) {
             const siblings = Object.keys(obj).filter((key) => key !== ROOT_TAG);
             if (siblings.length > 0) {
                 _throw_transform_err(
-                    "'_-root' object must not have siblings",
+                    "'_hson_root' object must not have siblings",
                     "parse_json",
                     make_string(obj)
                 );
@@ -259,13 +259,13 @@ export function nodeFromJson(
             // Parse the root payload
             const rootPayload = obj[ROOT_TAG] as JsonValue;
             if (rootPayload === undefined) {
-                // Empty _-root (allowed) → no children
+                // Empty _hson_root (allowed) → no children
                 return { node: CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] }) };
             }
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
 
-            // Enforce: _-root child must be a cluster (_-obj|_-arr|_-elem). If scalar, coerce to _-elem wrapper.
+            // Enforce: _hson_root child must be a cluster (_hson_obj|_hson_arr|_hson_elem). If scalar, coerce to _hson_elem wrapper.
             const isScalar = (child.$_tag === STR_TAG || child.$_tag === VAL_TAG);
             const clusterChild = isScalar
                 ? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [child] })
@@ -274,15 +274,15 @@ export function nodeFromJson(
             return { node: CREATE_NODE({ $_tag: ROOT_TAG, $_content: [clusterChild] }) };
         }
 
-        // B) ELEMENT HANDLING { _-elem: [...] } 
+        // B) ELEMENT HANDLING { _hson_elem: [...] } 
         if (Object.prototype.hasOwnProperty.call(obj, ELEM_TAG)) {
             const list = obj[ELEM_TAG];
             if (!Array.isArray(list)) {
-                _throw_transform_err("'_-elem' must contain an array", "parse_json", make_string(list));
+                _throw_transform_err("'_hson_elem' must contain an array", "parse_json", make_string(list));
             }
 
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
-                // string → _-str, number|boolean|null → _-val
+                // string → _hson_str, number|boolean|null → _hson_val
                 if (is_string(val)) {
                     return CREATE_NODE({ $_tag: STR_TAG, $_meta: {}, $_content: [val] });
                 }
@@ -295,7 +295,7 @@ export function nodeFromJson(
                     const elObj = val as Record<string, unknown>;
 
                     // guard against raw VSN misuse
-                    assertNoForbiddenVSNKeysInJSON(elObj, `"_-elem"[${ix}]`);
+                    assertNoForbiddenVSNKeysInJSON(elObj, `"_hson_elem"[${ix}]`);
 
                     // Exactly one non-underscore tag key required
                     const tagKeys = jsonElementTagKey(elObj);
@@ -348,7 +348,7 @@ export function nodeFromJson(
                 }
 
                 _throw_transform_err(
-                    `invalid item in "_-elem"[${ix}] (must be string|number|boolean/null or element-object)`,
+                    `invalid item in "_hson_elem"[${ix}] (must be string|number|boolean/null or element-object)`,
                     "parse_json",
                     make_string(val)
                 );
@@ -358,7 +358,7 @@ export function nodeFromJson(
 
         }
 
-        // C) GENERIC OBJECT HANDLING → _-obj
+        // C) GENERIC OBJECT HANDLING → _hson_obj
         assertNoForbiddenVSNKeysInJSON(obj, "[generic object check, parseJSON]");
         const propKeys = Object.keys(obj);
 
@@ -370,7 +370,7 @@ export function nodeFromJson(
             let child: HsonNode;
 
             if (typeof raw === "string") {
-                // strings (including "") → _-str(["..."])
+                // strings (including "") → _hson_str(["..."])
                 child = CREATE_NODE({
                     $_tag: STR_TAG,
                     $_meta: {},
@@ -381,27 +381,27 @@ export function nodeFromJson(
                 typeof raw === "boolean" ||
                 raw === null
             ) {
-                // numbers/booleans/null → _-val([...])
+                // numbers/booleans/null → _hson_val([...])
                 child = CREATE_NODE({
                     $_tag: VAL_TAG,
                     $_meta: {},
                     $_content: [raw]
                 });
             } else if (Array.isArray(raw)) {
-                // arrays recurse under _-arr
+                // arrays recurse under _hson_arr
                 child = nodeFromJson(raw, ARR_TAG).node;
             } else if (raw && typeof raw === "object") {
-                // objects recurse under _-obj
+                // objects recurse under _hson_obj
                 child = nodeFromJson(raw, OBJ_TAG).node;
             } else {
                 _throw_transform_err(`unsupported JSON value for key "${key}"`, "nodeFromJson.object.value");
             }
 
-            // JSON-mode property ⇒ inner _-obj wrapper unless the child is already a cluster
+            // JSON-mode property ⇒ inner _hson_obj wrapper unless the child is already a cluster
             const payload =
                 (child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG)
                     ? [child]                                    // passthrough single cluster
-                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, $_content: [child] })]; // wrap leaf in _-obj
+                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, $_content: [child] })]; // wrap leaf in _hson_obj
 
             return CREATE_NODE({
                 $_tag: key,
@@ -431,21 +431,21 @@ export function nodeFromJson(
  *   error is wrapped and rethrown via `_throw_transform_err`.
  * - If `input` is already a `JsonValue`, it is used as-is.
  *
- * Legacy `_-root` unwrapping:
+ * Legacy `_hson_root` unwrapping:
  * - If the top-level value is an object of the form:
- *     `{ "_-root: <payload>, "$_meta"?: { ... } }`
+ *     `{ "_hson_root: <payload>, "$_meta"?: { ... } }`
  *   then:
  *   - `jsonToProcess` is set to `<payload>`.
  *   - Any `$_meta` entries whose keys begin with the data-meta prefix
  *     (`data-_*`) are copied into `rootMeta` and attached to the final
- *     `_-root` node.
+ *     `_hson_root` node.
  * - All other keys (including non-`data-_*` meta) are ignored for the
  *   purposes of root metadata.
  *
  * Conversion:
  * - Delegates to `nodeFromJson(jsonToProcess, getTag(jsonToProcess))`
  *   to build the main HSON subtree.
- * - Wraps the resulting node in a `_-root` wrapper:
+ * - Wraps the resulting node in a `_hson_root` wrapper:
  *   - `$_tag: ROOT_TAG`
  *   - `$_meta: rootMeta` (if any data-meta was preserved)
  *   - `$_content: [node]`
@@ -453,7 +453,7 @@ export function nodeFromJson(
  *   correctness.
  *
  * @param input - JSON string or already-parsed `JsonValue`.
- * @returns A `_-root`-wrapped `HsonNode` representing the JSON payload.
+ * @returns A `_hson_root`-wrapped `HsonNode` representing the JSON payload.
  * @throws If JSON parsing fails or invariants are violated.
  * @see nodeFromJson
  * @see getTag
@@ -467,7 +467,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
         _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
     }
 
-    // unwrap legacy {_-root: ...} but keep data-* meta (unchanged)
+    // unwrap legacy {_hson_root: ...} but keep data-* meta (unchanged)
     let jsonToProcess: JsonValue = parsed;
     let rootMeta: HsonMeta | undefined;
     if (is_Object(parsed)) {

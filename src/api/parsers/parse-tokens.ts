@@ -20,8 +20,8 @@ import { Primitive } from "../../types/core.types.js";
  * Create a canonical HSON leaf node from a primitive value.
  *
  * Rules:
- * - `string`  → `<_-str>` node with `$_content: [value]`.
- * - non-string primitive (`number | boolean | null`) → `<_-val>` node with `$_content: [value]`.
+ * - `string`  → `<_hson_str>` node with `$_content: [value]`.
+ * - non-string primitive (`number | boolean | null`) → `<_hson_val>` node with `$_content: [value]`.
  *
  * Notes:
  * - `$_meta` is always initialized to an empty object for leaf nodes created here.
@@ -29,7 +29,7 @@ import { Primitive } from "../../types/core.types.js";
  *   semantics explicit in the IR.
  *
  * @param v - Primitive value to wrap as a leaf node.
- * @returns A new `HsonNode` using `_-str` or `_-val` depending on the runtime type of `v`.
+ * @returns A new `HsonNode` using `_hson_str` or `_hson_val` depending on the runtime type of `v`.
  */
 export const make_leaf = (v: Primitive): HsonNode =>
 (is_string(v)
@@ -47,10 +47,10 @@ export const make_leaf = (v: Primitive): HsonNode =>
  * High-level behavior:
  * - Walks the token array once, maintaining an index (`ix`) into `$tokens`.
  * - Uses `readTag` to parse element/VSN tags (`OPEN`…`CLOSE`) into nodes,
- *   shaping content into `_-elem` or `_-obj` clusters based on the tag’s
+ *   shaping content into `_hson_elem` or `_hson_obj` clusters based on the tag’s
  *   close kind (`CLOSE_KIND.elem` vs `CLOSE_KIND.obj`).
  * - Uses `readArray` to parse `ARR_OPEN`…`ARR_CLOSE` sequences into
- *   `_-arr` nodes full of `_-ii` children, each tagged with `data-_index`.
+ *   `_hson_arr` nodes full of `_hson_ii` children, each tagged with `data-_index`.
  * - Handles shorthand empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
  *   top-level and inside arrays.
  * - Converts `TEXT` tokens into primitive leaves:
@@ -61,23 +61,23 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *   so that implicit roots can be shaped correctly later.
  *
  * Root synthesis:
- * - If the sole top-level node is already `<_-root>`, return it directly.
- * - Otherwise, synthesize a `_-root` node according to the top-level shape:
- *   - A single cluster node (`_-obj`, `_-arr`, `_-elem`) is wrapped as-is.
- *   - A single standard tag is wrapped in `_-obj` or `_-elem` depending on
+ * - If the sole top-level node is already `<_hson_root>`, return it directly.
+ * - Otherwise, synthesize a `_hson_root` node according to the top-level shape:
+ *   - A single cluster node (`_hson_obj`, `_hson_arr`, `_hson_elem`) is wrapped as-is.
+ *   - A single standard tag is wrapped in `_hson_obj` or `_hson_elem` depending on
  *     its recorded close kind.
- *   - No nodes at all produce a `_-root` with an empty `_-obj` cluster.
- *   - Multiple top-level nodes are wrapped in `_-obj` or `_-elem` if the
- *     close kinds are unanimous; mixed modes default to `_-elem`.
+ *   - No nodes at all produce a `_hson_root` with an empty `_hson_obj` cluster.
+ *   - Multiple top-level nodes are wrapped in `_hson_obj` or `_hson_elem` if the
+ *     close kinds are unanimous; mixed modes default to `_hson_elem`.
  *
  * Error handling:
  * - Any unexpected token kind in a given context (inside tags, arrays,
  *   or at the top level) results in a transform error.
- * - Missing closing tokens, malformed `_-root` / VSN shapes, or invalid
- *   payloads for special tags (e.g. `<_-val>`) also throw.
+ * - Missing closing tokens, malformed `_hson_root` / VSN shapes, or invalid
+ *   payloads for special tags (e.g. `<_hson_val>`) also throw.
  *
  * @param tokens - Token array produced by `tokenize_hson`.
- * @returns A `_-root`-wrapped `HsonNode` representing the parsed HSON tree.
+ * @returns A `_hson_root`-wrapped `HsonNode` representing the parsed HSON tree.
  * @see tokenize_hson
  * @see make_leaf
  * @see unwrap_root_obj
@@ -194,9 +194,9 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
         const closeKind: CloseKind = sawClose.close;
 
-        // ---------- <_-root>: choose cluster by its own closer; never mix modes ----------
+        // ---------- <_hson_root>: choose cluster by its own closer; never mix modes ----------
         if (open.tag === ROOT_TAG) {
-            //  explicit "<>" under root => single empty _-obj cluster
+            //  explicit "<>" under root => single empty _hson_obj cluster
             if (sawEmptyObjShorthand) {
                 node.$_content = [CREATE_NODE({ $_tag: OBJ_TAG })];
                 if (isTopLevel) topCloseKinds.push(closeKind);
@@ -228,9 +228,9 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             return { node, closeKind };
         }
 
-        // ---------- Normal tag: SINGLE-MODE shaping (no _-elem/_-obj mixing) ----------
+        // ---------- Normal tag: SINGLE-MODE shaping (no _hson_elem/_hson_obj mixing) ----------
         if (closeKind === CLOSE_KIND.obj) {
-            // OBJECT semantics: ensure exactly one inner _-obj OR pass through a single _-arr/_-obj
+            // OBJECT semantics: ensure exactly one inner _hson_obj OR pass through a single _hson_arr/_hson_obj
             if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG)) {
                 node.$_content = [kids[0]]; // passthrough a single cluster
             } else {
@@ -240,13 +240,13 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 })];
             }
 
-            // Guardrail: object mode must yield a single _-obj/_-arr
+            // Guardrail: object mode must yield a single _hson_obj/_hson_arr
             const c = node.$_content as HsonNode[];
             if (!(c.length === 1 && (c[0].$_tag === OBJ_TAG || c[0].$_tag === ARR_TAG))) {
-                _throw_transform_err("object semantics must yield a single _-obj/_-arr child", "parse_tokens.object");
+                _throw_transform_err("object semantics must yield a single _hson_obj/_hson_arr child", "parse_tokens.object");
             }
         } else {
-            // ELEMENT semantics: ensure exactly one inner _-elem (idempotent)
+            // ELEMENT semantics: ensure exactly one inner _hson_elem (idempotent)
             if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
                 node.$_content = kids as NodeContent; // already clustered
             } else {
@@ -256,10 +256,10 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 })];
             }
 
-            // Guardrail: element mode must yield a single _-elem
+            // Guardrail: element mode must yield a single _hson_elem
             const c = node.$_content as HsonNode[];
             if (!(c.length === 1 && c[0].$_tag === ELEM_TAG)) {
-                _throw_transform_err("element semantics must yield a single _-elem child", "parse_tokens.element");
+                _throw_transform_err("element semantics must yield a single _hson_elem child", "parse_tokens.element");
             }
         }
 
@@ -307,7 +307,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
 
             const passThruVSNs = new Set<string>([OBJ_TAG, ARR_TAG, ELEM_TAG, STR_TAG, VAL_TAG]);
             if (!passThruVSNs.has(childNode.$_tag)) {
-                // standard tag → wrap in _-obj to honor always-wrap in JSON-mode
+                // standard tag → wrap in _hson_obj to honor always-wrap in JSON-mode
                 childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, $_content: [childNode] });
             }
             childNode = unwrap_root_obj(childNode);
@@ -359,11 +359,11 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         return nodes[0];
     }
 
-    /* implicit-root fallback (no explicit <_-root>) ----------------------------*/
+    /* implicit-root fallback (no explicit <_hson_root>) ----------------------------*/
     {
         const kids = nodes;
 
-        // 0) single <_-root> already (kept earlier) — nothing to do
+        // 0) single <_hson_root> already (kept earlier) — nothing to do
 
         // 1) already a single cluster → keep as-is
         if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG || kids[0].$_tag === ELEM_TAG)) {
@@ -391,7 +391,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         // 4) multiple top-level nodes → choose by unanimous closer; mixed ⇒ element
         const allObj = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.obj);
         const allElem = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.elem);
-        const clusterTag = allObj ? OBJ_TAG : (allElem ? ELEM_TAG : ELEM_TAG); // mixed → _-elem
+        const clusterTag = allObj ? OBJ_TAG : (allElem ? ELEM_TAG : ELEM_TAG); // mixed → _hson_elem
 
         return CREATE_NODE({
             $_tag: ROOT_TAG, $_meta: {},

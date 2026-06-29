@@ -216,7 +216,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  * Purpose:
  *   - Compare two HsonNode graphs (A vs B) and produce a list
  *     of human-readable difference strings.
- *   - Treats certain shapes (like trivial `_-elem` wrappers) as
+ *   - Treats certain shapes (like trivial `_hson_elem` wrappers) as
  *     equivalent to keep comparisons aligned with NEW semantics.
  *
  * Comparison rules:
@@ -224,16 +224,16 @@ function compareAny(a: any, b: any, path: string): string[] {
  *       • `$_tag` must match (`$_tag mismatch @ path: "A" vs "B"`).
  *
  *   - Leaf nodes:
- *       • `_-str` and `_-val` are treated as leaf VSNs.
+ *       • `_hson_str` and `_hson_val` are treated as leaf VSNs.
  *       • If both sides are leaves, compare their single payload;
  *         mismatch → `Leaf mismatch @ path: "va" vs "vb"`.
  *
- *   - `_-elem` semantics:
- *       • `collapseTrivial` unwraps `_-elem` if it contains exactly
- *         one `_-str` or `_-val`, so:
- *             <_-elem>[_-str("x")] ≡ _-str("x")
+ *   - `_hson_elem` semantics:
+ *       • `collapseTrivial` unwraps `_hson_elem` if it contains exactly
+ *         one `_hson_str` or `_hson_val`, so:
+ *             <_hson_elem>[_hson_str("x")] ≡ _hson_str("x")
  *         for the purposes of comparison.
- *       • `semanticChildren` treats a single `_-elem` child as
+ *       • `semanticChildren` treats a single `_hson_elem` child as
  *         transparent, comparing its content instead.
  *
  *   - Attributes (`$_attrs`):
@@ -252,13 +252,13 @@ function compareAny(a: any, b: any, path: string): string[] {
  *           `$_content length mismatch @ path: lenA vs lenB`.
  *       • Elements compared pairwise with recursive `compareAny`.
  *
- *   - `_-obj` nodes:
+ *   - `_hson_obj` nodes:
  *       • Children are grouped by tag (property name).
  *       • Keys missing on either side produce:
  *           `Key missing in A/B @ path.key`.
  *       • Matching keys recurse via `compare(...)` at `path.key`.
  *
- *   - `_-arr` nodes:
+ *   - `_hson_arr` nodes:
  *       • Children are compared by index:
  *           `Child count mismatch @ path: lenA vs lenB`.
  *       • Matching indices recurse at `path.$_content[i]`.

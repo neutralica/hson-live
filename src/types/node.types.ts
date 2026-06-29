@@ -9,7 +9,7 @@ import { _DATA_INDEX, _DATA_QUID } from "../consts/constants.js";
  * Core HSON structural node.
  *
  * Each node models a single unit in the IR:
- * - `$_tag` identifies the node kind (HTML tag or VSN like "_-obj", "_-arr").
+ * - `$_tag` identifies the node kind (HTML tag or VSN like "_hson_obj", "_hson_arr").
  * - `$_meta` holds only *data-* metadata (e.g. QUID, array index).
  * - `$_attrs` contains HTML-style attributes for element nodes.
  * - `$_content` contains either child nodes or primitive leaf values.
@@ -30,13 +30,13 @@ export interface HsonNode {
  * - other `HsonNode` children, or
  * - primitive leaf values (`string | number | boolean | null`)
  *
- * Primitives must appear only inside `_-str` or `_-val` VSN wrappers;
+ * Primitives must appear only inside `_hson_str` or `_hson_val` VSN wrappers;
  * validators enforce this rule for all non-leaf tags.
  *******/
 export type NodeContent = (HsonNode | Primitive)[];
 
 /*******
- * HTML-style attribute bag for `_-elem` nodes.
+ * HTML-style attribute bag for `_hson_elem` nodes.
  *
  * Keys are attribute names; values are primitive scalars.
  * Special cases:
@@ -57,7 +57,7 @@ export type AttrMap = Readonly<Record<string, AttrValue>>;
  * All keys must begin with `"data-_"` and encode information not meant
  * to appear as user-visible attributes:
  *
- * - `data-_index` — canonical string index for `_-ii` children inside `_-arr`.
+ * - `data-_index` — canonical string index for `_hson_ii` children inside `_hson_arr`.
  * - `data-_quid`  — stable identifier assigned by the QUID system.
  *
  * Additional `data-_…` keys may be used internally, but non-prefixed

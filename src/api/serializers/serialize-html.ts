@@ -21,7 +21,7 @@ const RAWTEXT = new Set(["style", "script"]);
  *
  * Behavior:
  * - Walks a mixed list of `HsonNode | Primitive`.
- * - For `_-str` nodes:
+ * - For `_hson_str` nodes:
  *   - Takes the first `$_content` entry (if any),
  *   - Uses it as a string if already a string, otherwise stringifies it.
  * - For other node types:
@@ -49,7 +49,7 @@ function collect_raw_text(nodes: (HsonNode | Primitive)[] | undefined): string {
         const seg = (ch.$_content?.[0] ?? "") as unknown;
         out += typeof seg === "string" ? seg : String(seg);
       } else {
-        // descend, in case someone wrapped _-str in an extra node
+        // descend, in case someone wrapped _hson_str in an extra node
         out += collect_raw_text(ch.$_content as any);
       }
     } else {
@@ -121,32 +121,32 @@ function primitive_to_xml(p: Primitive): string {
  * - Primitive input:
  *   - Delegated to `primitive_to_xml(p)`.
  *
- * - `_-str`:
+ * - `_hson_str`:
  *   - Must have exactly one string in `$_content`.
  *   - Empty string is rendered as `""` (two quotes) so that the parser
  *     can distinguish “empty” from “missing”.
  *   - Non-empty strings are rendered as bare escaped text.
  *
- * - `_-val`:
+ * - `_hson_val`:
  *   - Must have exactly one primitive in `$_content`.
- *   - Rendered as `<_-val>…</_-val>` with escaped contents to preserve
+ *   - Rendered as `<_hson_val>…</_hson_val>` with escaped contents to preserve
  *     type boundaries on round trip.
  *
- * - `_-elem`:
+ * - `_hson_elem`:
  *   - Flattened away; serializes each child in `$_content` and joins with
- *     newlines. No explicit `<_-elem>` tag appears in the XML.
+ *     newlines. No explicit `<_hson_elem>` tag appears in the XML.
  *
- * - `_-root`:
+ * - `_hson_root`:
  *   - Must contain exactly one child.
- *   - That child is serialized directly; `<_-root>` is melted and does not
+ *   - That child is serialized directly; `<_hson_root>` is melted and does not
  *     appear in the XML surface.
  *
- * - `_-obj`:
- *   - Serialized as a literal `<_-obj>…</_-obj>` wrapper, where each
+ * - `_hson_obj`:
+ *   - Serialized as a literal `<_hson_obj>…</_hson_obj>` wrapper, where each
  *     property child is serialized recursively. This preserves object
  *     structure in the XML form.
  *
- * Default path (all other tags, including `_-arr`, `_-ii`, and normal HTML):
+ * Default path (all other tags, including `_hson_arr`, `_hson_ii`, and normal HTML):
  * - Builds an opening tag `<tag ...>`:
  *   - Attributes come from `build_wire_attrs(node)`; for `<svg>`,
  *     ensures `xmlns` is set if missing.
@@ -161,7 +161,7 @@ function primitive_to_xml(p: Primitive): string {
  *
  * Invariants:
  * - Throws on unknown VSN-like tags (`_<something>` not in `EVERY_VSN`).
- * - Throws when `_-str` / `_-val` shape is invalid.
+ * - Throws when `_hson_str` / `_hson_val` shape is invalid.
  *
  * @param node - Node or primitive to serialize.
  * @returns XML string representation of the node.
@@ -190,26 +190,26 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
   }
 
   switch (tag) {
-    // _-str always melts to bare text
+    // _hson_str always melts to bare text
     case STR_TAG: {
       if (!content || content.length !== 1 || typeof content[0] !== 'string') {
-        _throw_transform_err('<_-str> must contain exactly one string', 'serialize_html');
+        _throw_transform_err('<_hson_str> must contain exactly one string', 'serialize_html');
       }
       const s = content[0] as string;
 
       // Special case: empty string must be visible in HTML
       if (s === '') {
-        return '""'; // two quotes; will be decoded by HTML parser back to _-str([""])
+        return '""'; // two quotes; will be decoded by HTML parser back to _hson_str([""])
       }
 
       // Non-empty strings remain melted as plain text
       return escape_html_text(s);
     }
 
-    // keep <_-val> literal for round-trip typing
+    // keep <_hson_val> literal for round-trip typing
     case VAL_TAG: {
       if (!content || content.length !== 1) {
-        _throw_transform_err('<_-val> must contain exactly one value', 'serialize_html');
+        _throw_transform_err('<_hson_val> must contain exactly one value', 'serialize_html');
       }
       const v = content[0] as Primitive;
       return `<${VAL_TAG}>${escape_html_text(String(v))}</${VAL_TAG}>`;
@@ -220,11 +220,11 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
       return (content as (HsonNode | Primitive)[]).map(ch => serialize_xml(ch as any)).join('\n');
     }
 
-    // melt _-root (must have exactly one cluster child)
+    // melt _hson_root (must have exactly one cluster child)
     case ROOT_TAG: {
       const kids = content as HsonNode[];
       if (kids.length !== 1) {
-        _throw_transform_err('_-root must have exactly one child', 'serialize_html');
+        _throw_transform_err('_hson_root must have exactly one child', 'serialize_html');
       }
       return serialize_xml(kids[0]);
     }
@@ -237,7 +237,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
     }
 
   }
-  // --------------- default path: literal tags (incl. _-arr/_-ii and normal HTML) ---------------
+  // --------------- default path: literal tags (incl. _hson_arr/_hson_ii and normal HTML) ---------------
 
   let openAttrs = `<${tag}`;
   const attrs = build_wire_attrs(node);
@@ -280,31 +280,31 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  *
  * 3. XML stage:
  *    - Delegates to `serialize_xml(clone)` to produce an XML-like string
- *      that faithfully represents HSON semantics (including `_-val`, `_-obj`,
- *      `_-arr`, `_-ii`, etc.).
+ *      that faithfully represents HSON semantics (including `_hson_val`, `_hson_obj`,
+ *      `_hson_arr`, `_hson_ii`, etc.).
  *
  * 4. HTML normalization:
  *    - Converts boolean attributes from `key="key"` to `key` using a regex
  *      replacement; this matches standard HTML boolean attribute semantics.
  *
  * 5. Safety guard:
- *    - Asserts that no literal `<_-str>` tag leaks into the final HTML.
- *      If such a tag is present, throws a transform error; `_-str` must
+ *    - Asserts that no literal `<_hson_str>` tag leaks into the final HTML.
+ *      If such a tag is present, throws a transform error; `_hson_str` must
  *      always be melted into text at the serialization boundary.
  *
  * 6. Finalization:
  *    - Returns `htmlString.trim()` to remove leading/trailing whitespace.
  *
  * Characteristics:
- * - `_-str` appears only as escaped text in the output.
- * - `_-val` uses a `<_-val>…</_-val>` literal representation.
- * - `_-elem` and `_-root` are structure-only and never appear as tags.
- * - `_-obj` and other clusters remain visible where necessary to preserve
+ * - `_hson_str` appears only as escaped text in the output.
+ * - `_hson_val` uses a `<_hson_val>…</_hson_val>` literal representation.
+ * - `_hson_elem` and `_hson_root` are structure-only and never appear as tags.
+ * - `_hson_obj` and other clusters remain visible where necessary to preserve
  *   HSON’s JSON-mode structure.
  *
  * @param node - Root HSON node or primitive to serialize as HTML.
  * @returns A trimmed HTML string ready for DOM insertion or inspection.
- * @throws If invariants fail, if `_-str` leaks as a literal tag, or if the
+ * @throws If invariants fail, if `_hson_str` leaks as a literal tag, or if the
  *   input is not a valid HsonNode.
  */
 export function serialize_html(node: HsonNode | Primitive): string {
@@ -322,9 +322,9 @@ export function serialize_html(node: HsonNode | Primitive): string {
   // HTML boolean attrs: key="key" → key
   const htmlString = xmlString.replace(/\b([^\s=]+)="\1"/g, '$1');
 
-  // guard: never let literal <_-str> leak into output
-  if (/<\s*_-str\b/.test(htmlString)) {
-    _throw_transform_err('literal <_-str> leaked into HTML output', 'serialize_html', htmlString.slice(0, 400));
+  // guard: never let literal <_hson_str> leak into output
+  if (/<\s*_hson_str\b/.test(htmlString)) {
+    _throw_transform_err('literal <_hson_str> leaked into HTML output', 'serialize_html', htmlString.slice(0, 400));
   }
   return htmlString.trim();
 

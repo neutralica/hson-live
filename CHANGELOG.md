@@ -89,9 +89,9 @@
  • camelCase / uppercase
  • UTF and other non-wire-safe characters
 • encoded HTML keys now survive browser lowercasing and decode back to their original JSON keys
-• VSN tags (`_-obj`, `_-arr`, `_-elem`, etc.) are excluded from key encoding
-• underscored tagnames are not permitted in _-elem nodes; they are only possible when source is JSON and are only valid within _-obj nodes. 
-•  backtick tags are permitted in _-elem nodes
+• VSN tags (`_hson_obj`, `_hson_arr`, `_hson_elem`, etc.) are excluded from key encoding
+• underscored tagnames are not permitted in _hson_elem nodes; they are only possible when source is JSON and are only valid within _hson_obj nodes. 
+•  backtick tags are permitted in _hson_elem nodes
 	• BUG• possible bug: leading underscores are still not permitted within backticks 
 
 
@@ -114,7 +114,7 @@
 ## 2.2.0
 
 • Migrated internal VSN tags from `_name` to `_-name`
-  (`_-root`, `_-obj`, `_-arr`, `_-elem`, `_-str`, `_-val`, `_-ii`).
+  (`_hson_root`, `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_str`, `_hson_val`, `_hson_ii`).
 • Tightened HSON parsing and fixture validation.
 • Updated tests and docs for the new VSN namespace.
 
@@ -144,7 +144,7 @@ LiveTree already offered namespace-aware SVG parsing. New updates incorporate ty
 • appendNodes() structural correctness
 	•	Corrected insertion logic to operate on actual child nodes rather than wrapper artifacts.
 	•	Ensures:
-	•	correct _-elem container usage
+	•	correct _hson_elem container usage
 	•	stable ordering during indexed inserts
 	•	consistent DOM ↔ HSON synchronization
 
@@ -234,7 +234,7 @@ Transformer Chain — Change Summary
 •  Raw-text element handling (script, style) clarified
 	•	Failures traced primarily to incorrect source detection and test assumptions.
 	•	Not a tokenizer regression.
-	•	Highlighted inconsistency: HTML parser returns direct _str without _-elem wrapper (known but not blocking).
+	•	Highlighted inconsistency: HTML parser returns direct _str without _hson_elem wrapper (known but not blocking).
 
 
 • Closing tag formatting remains newline-based

@@ -48,7 +48,7 @@ function graft_node_into_element(
  *
  * Semantics:
  * - parses the element itself (not its innerHTML string)
- * - unwraps parser-only structural wrappers (_-root / _-elem)
+ * - unwraps parser-only structural wrappers (_hson_root / _hson_elem)
  * - requires exactly one real root node
  * - re-projects that node into the same DOM element
  * - returns a LiveTree handle for that element-node

@@ -24,9 +24,9 @@ This allows HSON to preserve JSON object keys containing:
 
 Quoted tags are decoded during parsing and preserved as raw keys in the node graph. 
 
-Within HSON, backtick-quoted keys are only permitted in _-obj nodes; JSON keys may contain spaces or quoted characters that are invalid HTML tag names and must be encoded. 
+Within HSON, backtick-quoted keys are only permitted in _hson_obj nodes; JSON keys may contain spaces or quoted characters that are invalid HTML tag names and must be encoded. 
 
-For _-elem nodes, tag names must be fully XML-compliant. Nonstandard characters within an _-elem context are not accepted or encoded and backticks may not be used in tags ending with `/>`.
+For _hson_elem nodes, tag names must be fully XML-compliant. Nonstandard characters within an _hson_elem context are not accepted or encoded and backticks may not be used in tags ending with `/>`.
 
 ⸻
 
@@ -43,7 +43,7 @@ These are stored as they appear in the HSON node graph without requiring special
 
 ### HTML: object-key encoding in tag name
 
-+ Added HTML-safe key encoding for _-obj property keys (=== tags) that cannot survive XML/DOM parsing unchanged, such as the above string tags with spaces.
++ Added HTML-safe key encoding for _hson_obj property keys (=== tags) that cannot survive XML/DOM parsing unchanged, such as the above string tags with spaces.
 
 Keys are now encoded automatically during HTML serialization, including:
 - spaced keys
@@ -111,13 +111,13 @@ Examples now rejected:
 
 Completed migration of all internal VSN tags from legacy `_` prefixes to canonical `_-` prefixes:
 
-_root  → _-root
-_obj   → _-obj
-_arr   → _-arr
-_elem  → _-elem
-_str   → _-str
-_val   → _-val
-_ii    → _-ii
+_root  → _hson_root
+_obj   → _hson_obj
+_arr   → _hson_arr
+_elem  → _hson_elem
+_str   → _hson_str
+_val   → _hson_val
+_ii    → _hson_ii
 
 
 This applies consistently across:

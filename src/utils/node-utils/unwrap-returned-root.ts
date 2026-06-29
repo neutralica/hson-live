@@ -7,23 +7,23 @@ import { is_Node } from "./node-guards.js";
  * Normalize a returned parse root into a stable node fragment.
  *
  * Semantics:
- * - If the caller provides a `<_-root>` node, this unwraps it and returns only its
+ * - If the caller provides a `<_hson_root>` node, this unwraps it and returns only its
  *   *direct child nodes*, discarding any non-node content (e.g. primitives).
  * - If the caller provides a non-root node, it is treated as a single-item fragment
  *   and returned as a one-element array.
  *
  * This function is intentionally shallow:
- * - It does **not** unwrap `_-elem`, `_-obj`, or other structural containers.
+ * - It does **not** unwrap `_hson_elem`, `_hson_obj`, or other structural containers.
  * - It preserves original child order exactly.
  *
  * The return type is `ReadonlyArray` to signal that the fragment is a view over
  * parse results, not a mutable construction buffer.
  *
- * @param root - A parsed `HsonNode`, possibly a `<_-root>` wrapper.
+ * @param root - A parsed `HsonNode`, possibly a `<_hson_root>` wrapper.
  * @returns A read-only array of top-level `HsonNode` items.
  */
 export function unwrap_returned_root(root: HsonNode): ReadonlyArray<HsonNode> {
-  //  if caller gives us <_-root>, return its *element* children; else treat the node itself as a 1-item fragment
+  //  if caller gives us <_hson_root>, return its *element* children; else treat the node itself as a 1-item fragment
   if (root.$_tag === ROOT_TAG) {
     const kids = root.$_content ?? [];
     // Only real nodes (skip strings, etc.), stable order

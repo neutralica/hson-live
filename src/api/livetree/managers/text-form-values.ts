@@ -48,7 +48,7 @@ function ensureVsn(node: HsonNode): HsonNode {
   const found = node.$_content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c.$_tag));
   if (found) return found;
 
-  // create bucket; prefer `_-elem` as the generic container
+  // create bucket; prefer `_hson_elem` as the generic container
   const bucket = CREATE_NODE({
     $_tag: ELEM_TAG,
     $_attrs: {},         
@@ -337,14 +337,14 @@ export function make_form_api<TTree extends LiveTree>(
 }
 
 // -----------------------------------------------------------------------------
-// //.. DOM helpers: project text leaves as *Text nodes*, never <_-str>/< _-val >
+// //.. DOM helpers: project text leaves as *Text nodes*, never <_hson_str>/< _hson_val >
 // -----------------------------------------------------------------------------
 
 function primitive_to_text(value: Primitive): string {
   return value === null ? "" : String(value);
 }
 
-// was creating document.createElement("_-str") which injects <_-str> into DOM.
+// was creating document.createElement("_hson_str") which injects <_hson_str> into DOM.
 // Now: always create a Text node.
 function make_dom_text(value: Primitive): Text {
   return document.createTextNode(primitive_to_text(value));
@@ -386,7 +386,7 @@ function isLeafTag(tag: unknown): boolean {
 // -----------------------------------------------------------------------------
 
 /**
- * Replace ONLY the text leaves (_-str/_-val) under this node.
+ * Replace ONLY the text leaves (_hson_str/_hson_val) under this node.
  * Keeps non-leaf content untouched.
  *
  * DOM: removes only direct Text children under the host element; keeps element children.

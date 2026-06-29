@@ -126,12 +126,11 @@ export function element_for_node_checked(
   const el = NODE_ELEMENT_MAP.get(node);
   if (!el) return undefined;
 
-  // DOM tagName comes back uppercase in HTML.
-  // `_-TAG` showing up means something created `<_-tag>` / `<_-TAG>` in the DOM.
+  // DOM tagName can come back uppercase in HTML.
   const tag = el.tagName;
 
   // Invariant: no HSON virtual/internal tags should ever exist as DOM elements.
-  if (tag.startsWith(HSON_SYS_PREFIX)) {
+  if (tag.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
     const quid = node.$_meta?._quid ?? "<no-quid>";
     const msg = `[element_for_node_checked] unexpected DOM element tag "${tag}" for purpose="${purpose}" (node.$_tag=${node.$_tag}, quid=${quid})`;
 
