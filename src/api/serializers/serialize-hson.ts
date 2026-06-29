@@ -1,16 +1,16 @@
 // serialize-hson.new.render.ts
 
-import { Primitive } from "../../types/core.types.js";
-import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../consts/constants.js";
-import { _snip } from "../../utils/sys-utils/snip.utils.js";
-import { serialize_style } from "../../utils/attrs-utils/serialize-style.js";
-import { serialize_primitive_hson } from "../../utils/primitive-utils/serialize-primitive.utils.js";
-import { is_Node } from "../../utils/node-utils/node-guards.js";
-import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
-import { _META_DATA_PREFIX } from "../../consts/constants.js";
-import { HsonAttrs, HsonMeta, HsonNode } from "../../types/node.types.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
-import { is_bare_hson_key, serialize_hson_tag_name } from "../../utils/hson-utils/hson-tag-helpers.js";
+import { Primitive } from "../../core/types.js";
+import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
+import { _snip } from "../transform/utils/sys-utils/snip.utils.js";
+import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.js";
+import { serialize_primitive_hson } from "../transform/utils/primitive-utils/serialize-primitive.utils.js";
+import { is_Node } from "../../core/node-guards.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { _META_DATA_PREFIX } from "../../core/constants.js";
+import { HsonAttrs, HsonMeta, HsonNode } from "../../core/types.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
+import { is_bare_hson_key, serialize_hson_tag_name } from "../transform/utils/hson-utils/hson-tag-helpers.js";
 
 
 /* debug log */

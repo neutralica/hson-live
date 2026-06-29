@@ -1,11 +1,11 @@
 // style-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
+import { HsonAttrs, HsonNode } from "../../../core/types.js";
 import { AllowedStyleKey, CssMap, CssVarFacade } from "../../../types/css.types.js";
-import { serialize_style } from "../../../utils/attrs-utils/serialize-style.js";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
-import { kebab_to_camel } from "../../../utils/primitive-utils/kebab-to-camel.util.js";
-import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
+import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
+import { kebab_to_camel } from "../../transform/utils/primitive-utils/kebab-to-camel.util.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-setter.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";

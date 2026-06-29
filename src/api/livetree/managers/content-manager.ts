@@ -1,7 +1,7 @@
-import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../consts/constants.js";
-import { Primitive } from "../../../types/core.types.js";
-import { HsonNode } from "../../../types/node.types.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../core/constants.js";
+import { Primitive } from "../../../core/types.js";
+import { HsonNode } from "../../../core/types.js";
+import { is_Node } from "../../../core/node-guards.js";
 import { serialize_xml } from "../../serializers/serialize-html.js";
 import { create_livetree } from "../creation/create-livetree.js";
 import { LiveTree } from "../livetree.js";

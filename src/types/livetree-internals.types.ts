@@ -11,7 +11,7 @@ import { LiveTreeDom, IdApi, ClassApi } from "./dom.types.js";
 import { TreeEvents } from "./events.types.js";
 import { ListenerBuilder } from "./listen.types.js";
 import { FindWithById, HtmlCreateHelper } from "./livetree.types.js";
-import { HsonNode } from "./node.types.js";
+import { HsonNode } from "../core/types.js";
 
 export interface LiveTreeIdentity extends LiveTreeNodeHost { }
 

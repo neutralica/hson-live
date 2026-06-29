@@ -1,6 +1,6 @@
 // test-format.ts
 
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
+import { make_string } from "../core/stringify.js";
 import { compare_nodes } from "./compare-nodes.test.js";
 import { Artifact, CoreOpt, FixtureAtom, Fmt, LoopReport, Step } from "../types/diagnostics.types.js";
 import { step_ok, safe_parse, safe_emit, step_fail } from "./diagnostics-helpers.js";

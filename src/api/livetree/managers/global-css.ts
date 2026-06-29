@@ -1,8 +1,8 @@
 // global_css.ts
 
-import { canon_to_css_prop, normalize_css_value } from "../../../utils/attrs-utils/normalize-css.js";
+import { canon_to_css_prop, normalize_css_value } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssMapBase, CssPseudoKey, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { pseudo_to_suffix } from "./css-manager.js";
 import { make_style_setter } from "./style-setter.js";
 import { normalize_css_var_name } from "./style-getter.js";

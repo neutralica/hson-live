@@ -1,8 +1,8 @@
 // parse-external-html.utils.ts
 
 import { sanitize_external } from "../../safety/sanitize-html.utils.js";
-import { HsonNode } from "../../types/node.types.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { HsonNode } from "../../core/types.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { parse_html } from "./parse-html.js";
 
 /**

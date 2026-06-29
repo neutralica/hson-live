@@ -1,18 +1,18 @@
 // parse-json.transform.hson.ts
 
-import { is_Primitive, is_Object, is_string } from "../../utils/core-utils/guards.core.js";
-import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../consts/constants.js";
-import { CREATE_NODE } from "../../consts/factories.js";
-import { _DATA_INDEX, _META_DATA_PREFIX } from "../../consts/constants.js";
-import { HsonMeta, HsonAttrs, HsonNode } from "../../types/node.types.js";
-import { JsonObj, JsonValue, Primitive } from "../../types/core.types.js";
-import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
-import { _snip } from "../../utils/sys-utils/snip.utils.js";
-import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils.js";
-import { parse_style_string } from "../../utils/attrs-utils/parse-style.js";
-import { serialize_style } from "../../utils/attrs-utils/serialize-style.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
-import { assert_user_key_allowed } from "../../utils/json-utils/key-prefix-guard.js";
+import { is_Primitive, is_Object, is_string } from "../../core/value-guards.js";
+import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../core/constants.js";
+import { CREATE_NODE } from "../../core/factories.js";
+import { _DATA_INDEX, _META_DATA_PREFIX } from "../../core/constants.js";
+import { HsonMeta, HsonAttrs, HsonNode } from "../../core/types.js";
+import { JsonObj, JsonValue, Primitive } from "../../core/types.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { _snip } from "../transform/utils/sys-utils/snip.utils.js";
+import { make_string } from "../../core/stringify.js";
+import { parse_style_string } from "../transform/utils/attrs-utils/parse-style.js";
+import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
+import { assert_user_key_allowed } from "../transform/utils/json-utils/key-prefix-guard.js";
 
 /**
  * Infer the appropriate HSON VSN tag for a JSON value.

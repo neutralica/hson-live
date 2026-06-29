@@ -1,6 +1,6 @@
 import { LiveTree } from "../api/livetree/livetree.js";
-import { Primitive } from "./core.types.js";
-import { AttrMap, AttrValue } from "./node.types.js";
+import { Primitive } from "../core/types.js";
+import { AttrMap, AttrValue } from "../core/types.js";
 
 export type AttrHandle<TOwner> = Readonly<{
   get: (name: string) => Primitive | undefined;

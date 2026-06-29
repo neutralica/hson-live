@@ -1,31 +1,31 @@
 // parse-html.new.transform.hson.ts (new)
 
-import { HsonNode } from "../../types/node.types.js";
-import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_SYS_PREFIX, HTML_KEY_PREFIX } from "../../consts/constants.js";
-import { CREATE_NODE } from "../../consts/factories.js";
-import { is_Primitive, is_string } from "../../utils/core-utils/guards.core.js";
-import { _snip } from "../../utils/sys-utils/snip.utils.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
-import { parse_html_attrs } from "../../utils/html-utils/parse_html_attrs.js";
-import { coerce } from "../../utils/primitive-utils/coerce-string.utils.js";
-import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
-import { expand_entities } from "../../utils/html-preflights/expand-entities.js";
-import { expand_flags } from "../../utils/html-preflights/expand-flags.js";
-import { expand_void_tags } from "../../utils/html-preflights/expand-self-closing.js";
-import { escape_text } from "../../utils/html-preflights/escape-text.js";
-import { strip_html_comments } from "../../utils/html-preflights/strip-html-comments.js";
+import { HsonNode } from "../../core/types.js";
+import { ROOT_TAG, ELEM_TAG, STR_TAG, EVERY_VSN, VAL_TAG, OBJ_TAG, ARR_TAG, II_TAG, HSON_SYS_PREFIX, HTML_KEY_PREFIX } from "../../core/constants.js";
+import { CREATE_NODE } from "../../core/factories.js";
+import { is_Primitive, is_string } from "../../core/value-guards.js";
+import { _snip } from "../transform/utils/sys-utils/snip.utils.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
+import { parse_html_attrs } from "../transform/utils/html-utils/parse_html_attrs.js";
+import { coerce } from "../transform/utils/primitive-utils/coerce-string.utils.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { expand_entities } from "../transform/utils/html-preflights/expand-entities.js";
+import { expand_flags } from "../transform/utils/html-preflights/expand-flags.js";
+import { expand_void_tags } from "../transform/utils/html-preflights/expand-self-closing.js";
+import { escape_text } from "../transform/utils/html-preflights/escape-text.js";
+import { strip_html_comments } from "../transform/utils/html-preflights/strip-html-comments.js";
 import { wrap_cdata } from "../../safety/wrap-cdata.js";
-import { optional_endtag_preflight } from "../../utils/html-preflights/optional-endtag.js";
+import { optional_endtag_preflight } from "../transform/utils/html-preflights/optional-endtag.js";
 import { escape_attr_angles } from "../../safety/escape_angles.js";
 import { dedupe_attrs_html } from "../../safety/dedupe-attrs.js";
-import { quote_unquoted_attrs } from "../../utils/html-preflights/quoted-unquoted.js";
-import { mangle_illegal_attrs } from "../../utils/html-preflights/mangle-illegal-attrs.js";
-import { namespace_svg } from "../../utils/html-preflights/namespace-svg.js";
-import { is_indexed } from "../../utils/node-utils/node-guards.js";
-import { Primitive } from "../../types/core.types.js";
-import { should_try_optional_endtags, should_try_void_expand } from "../../utils/html-preflights/preflight-helpers.js";
-import { decode_html_key_tag } from "../../utils/html-utils/encode-html-tag.js";
-import { esc_attrs_quoted_angles } from "../../utils/html-preflights/preflight-attrs-escaping.js";
+import { quote_unquoted_attrs } from "../transform/utils/html-preflights/quoted-unquoted.js";
+import { mangle_illegal_attrs } from "../transform/utils/html-preflights/mangle-illegal-attrs.js";
+import { namespace_svg } from "../transform/utils/html-preflights/namespace-svg.js";
+import { is_indexed } from "../../core/node-guards.js";
+import { Primitive } from "../../core/types.js";
+import { should_try_optional_endtags, should_try_void_expand } from "../transform/utils/html-preflights/preflight-helpers.js";
+import { decode_html_key_tag } from "../transform/utils/html-utils/encode-html-tag.js";
+import { esc_attrs_quoted_angles } from "../transform/utils/html-preflights/preflight-attrs-escaping.js";
 
 
 

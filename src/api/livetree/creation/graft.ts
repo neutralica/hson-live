@@ -1,18 +1,18 @@
 // graft.tree.hson.ts
 
-import { HsonNode } from "../../../types/node.types.js";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
-import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
+import { HsonNode } from "../../../core/types.js";
+import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";
+import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { parse_html } from "../../parsers/parse-html.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "./create-livetree.js";
-import { link_node_to_el, get_node_for_el } from "../../../utils/livetree-utils/node-map-helpers.js";
-import { _DATA_QUID, ensure_quid } from "../../../quid/data-quid.quid.js";
+import { link_node_to_el, get_node_for_el } from "../utils/node-map-helpers.js";
+import { _DATA_QUID, ensure_quid } from "../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
-import { Primitive } from "../../../types/core.types.js";
-import { canon_to_css_prop, normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
-import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
+import { Primitive } from "../../../core/types.js";
+import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
+import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 
 
 

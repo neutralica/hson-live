@@ -1,18 +1,18 @@
 // serialize-html.new.render.ts
 
-import { Primitive } from '../../types/core.types.js'
-import { is_Primitive } from '../../utils/core-utils/guards.core.js';
-import { ELEM_TAG, EVERY_VSN, HSON_SYS_PREFIX, HTML_KEY_PREFIX, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../consts/constants.js';
-import { build_wire_attrs } from '../../utils/html-utils/build-wire-attrs.js';
-import { escape_html_text } from '../../utils/html-utils/escape-html.js';
-import { make_string } from '../../utils/primitive-utils/make-string.nodes.utils.js';
-import { _snip } from '../../utils/sys-utils/snip.utils.js';
-import { is_Node } from '../../utils/node-utils/node-guards.js';
-import { assert_invariants } from '../../utils/node-utils/assert-invariants.js';
-import { clone_node } from '../../utils/node-utils/clone-node.js';
-import { HsonNode } from '../../types/node.types.js';
-import { _throw_transform_err } from '../../utils/sys-utils/throw-transform-err.utils.js';
-import { encode_html_key_tag } from '../../utils/html-utils/encode-html-tag.js';
+import { Primitive } from '../../core/types.js'
+import { is_Primitive } from '../../core/value-guards.js';
+import { ELEM_TAG, EVERY_VSN, HSON_SYS_PREFIX, HTML_KEY_PREFIX, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from '../../core/constants.js';
+import { build_wire_attrs } from '../transform/utils/html-utils/build-wire-attrs.js';
+import { escape_html_text } from '../transform/utils/html-utils/escape-html.js';
+import { make_string } from '../../core/stringify.js';
+import { _snip } from '../transform/utils/sys-utils/snip.utils.js';
+import { is_Node } from '../../core/node-guards.js';
+import { assert_invariants } from '../../core/assert-invariants.js';
+import { clone_node } from '../../core/clone-node.js';
+import { HsonNode } from '../../core/types.js';
+import { _throw_transform_err } from '../transform/utils/sys-utils/throw-transform-err.utils.js';
+import { encode_html_key_tag } from '../transform/utils/html-utils/encode-html-tag.js';
 
 const RAWTEXT = new Set(["style", "script"]);
 

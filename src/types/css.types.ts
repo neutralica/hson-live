@@ -7,194 +7,31 @@ import { StyleSetter } from "../api/livetree/managers/style-setter.js";
 import { PropertyManager } from "./at-property.types.js";
 import { StyleGetMany, StyleGetter } from "../api/livetree/managers/style-getter.js";
 import { CssManager } from "../api/livetree/managers/css-manager.js";
+import type {
+  AllowedStyleKey,
+  CssKey,
+  CssMapBase,
+  CssPseudoKey,
+  CssValue,
+  CssVarName,
+} from "../core/style.types.js";
+export type {
+  AllowedStyleKey,
+  CssKey,
+  CssMap,
+  CssMapBase,
+  CssProp,
+  CssPseudoKey,
+  CssRule,
+  CssRuleBlock,
+  CssRuleBuilder,
+  CssText,
+  CssUnit,
+  CssValue,
+  CssVarName,
+} from "../core/style.types.js";
 
 
-
-/**
- * Normalized set of CSS units supported by the style utilities.
- *
- * Used to represent structured numeric values where the unit is explicit
- * and machine-readable, enabling later math or transformation.
- *
- * - `"_"` is reserved for unitless values (e.g. `line-height: 1.2`).
- */
-export type CssUnit =
-  | "px"
-  | "em"
-  | "rem"
-  | "%"
-  | "vh"
-  | "vw"
-  | "s"
-  | "ms"
-  | "deg"
-  | "_"; // unitless
-
-/** Values accepted by style setters and CSS manager helpers. */
-export type CssValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | Readonly<{ value: string | number; unit?: string }>;
-
-/**
- * Canonical stored representation of a single CSS rule as text.
- *
- * Fields:
- * - `id`:
- *     - Stable identifier used by `CssManager` to track and update this
- *       rule over time.
- * - `css`:
- *     - Fully rendered CSS text for the rule, e.g.
- *       `"* { background-color: red; }"`.
- *
- * This format is optimized for injection into `<style>` elements and
- * diffing at the rule level.
- */
-export interface CssText {
-  // stable identifier for this rule within CssManager
-  id: string;
-  // fully rendered CSS text, e.g. `* { background-color: red; }`
-  css: string;
-}
-
-/**
- * Structured input shape for text-based CSS rules.
- *
- * Fields:
- * - `id`:
- *     - Stable identifier for the rule within `CssManager`.
- * - `selector`:
- *     - Raw selector string, e.g. `"*"`, `"body"`, `"[data-quid]"`.
- * - `body`:
- *     - Style declaration block as text, e.g. `"background-color: red;"`.
- *
- * This is a higher-level, pre-render form that can be converted into a
- * `CssText` for actual stylesheet injection.
- */
-export interface CssRule {
-  id: string;
-  selector: string; // e.g. "*", "body", "[_hson-flag]"
-  body: string;     // e.g. "background-color: red;"
-}
-
-/**
- * Map from CSS property names to structured values.
- *
- * Keys:
- * - Raw CSS property names, typically in kebab-case or camelCase.
- *
- * Values:
- * - Either raw strings (e.g. `"240px"`) or structured `{ value, unit }`
- *   pairs that can later be rendered into text.
- *
- * Used for building rule bodies and bulk style updates.
- */
-export type CssProp = Record<string, CssValue>;
-
-/**
- * Structured representation of a CSS rule prior to text rendering.
- *
- * Fields:
- * - `selector`:
- *     - The CSS selector this block applies to.
- * - `declarations`:
- *     - A `CssProp` map of property names to `CssValue`s.
- *
- * This form is convenient for programmatically constructing and
- * transforming rules before they are serialized to CSS text.
- */
-export type CssRuleBlock = {
-  selector: string;
-  declarations: CssProp;
-};
-
-/**
- * Fluent builder interface for constructing or updating a single CSS rule.
- *
- * Fields:
- * - `id`:
- *     - Stable identifier for the rule within `CssManager`.
- * - `selector`:
- *     - The selector string this builder is targeting.
- *
- * Methods:
- * - `set(property, value)`:
- *     - Set or overwrite a single declaration on the rule.
- * - `setMany(decls)`:
- *     - Apply multiple property/value pairs in one call.
- * - `commit()`:
- *     - Render and push the current declarations into `CssManager`,
- *       creating or updating the backing rule.
- * - `remove()`:
- *     - Remove the rule associated with this builder from `CssManager`.
- *
- * Implementations are expected to be stateful, reflecting the current
- * declaration set until `commit()` or `remove()` is called.
- */
-export interface CssRuleBuilder {
-  readonly id: string;
-  readonly selector: string;
-
-  set(property: string, value: CssValue): CssRuleBuilder;
-  setMany(decls: Record<string, CssValue>): CssRuleBuilder;
-
-  // remove rule from CssManager
-  remove(): void;
-}
-/**
- * Keys used to express pseudo-classes and pseudo-elements in `CssMap`.
- *
- * These keys are *not* emitted as CSS properties. Instead, they represent
- * nested declaration maps that should be applied to selector variants:
- * - `_hover` → `:hover`
- * - `_focusVisible` → `:focus-visible`
- * - `__before` → `::before`
- * - `__after` → `::after`
- */
-export type CssPseudoKey =
-  | "_hover"
-  | "_active"
-  | "_focus"
-  | "_focusWithin"
-  | "_focusVisible"
-  | "_visited"
-  | "_checked"
-  | "_disabled"
-  | "__before"
-  | "__after";
-
-// base map cannot contain pseudos (so pseudo blocks don’t recurse)
-//  nested maps through the string index signature ok too
-
-
-interface CssMapBase_ extends Partial<Record<AllowedStyleKey | "float", CssValue>> {
-  // allow nested maps (for pseudos) *and* regular css values
-  // NOTE: include undefined so `Partial<>` behaves sanely with the index signature.
-  [k: string]: CssValue | CssMapBase_ | undefined;
-}
-
-/**
- * Base declaration map used by style setters.
- *
- * Notes:
- * - Values are `CssValue` or nested maps for grouping.
- * - Pseudo keys should be placed only at the top level (see `CssMap`).
- */
-export type CssMapBase = Readonly<CssMapBase_>;
-
-/**
- * Full declaration map accepted by `StyleSetter.setMany`.
- *
- * In addition to normal declarations, it may include pseudo blocks keyed
- * by `CssPseudoKey`, each of which is itself a `CssMapBase` of declarations.
- */
-export type CssMap = Readonly<
-  CssMapBase_ &
-  Partial<Record<CssPseudoKey, CssMapBase_>>
->;
 
 /**
  * Public-facing handle for working with QUID-scoped stylesheet rules.
@@ -338,36 +175,6 @@ export type CssHandleVoid = CssHandleBase<void>;
 
 
 /**
- * Union of style keys supported by the style system.
- *
- * We keep these **strongly typed** so `style.setMany({ ... })` gets
- * autocomplete for common keys like `zIndex`, while still allowing:
- * - CSS custom properties (`--foo`)
- * - kebab-case keys (`background-color`, `pointer-events`, etc.)
- * - `"float"` as a convenience alias (normalized to `cssFloat`)
- */
-
-type StringKeys<T> = Extract<keyof T, string>;
-type KeysWithStringValues<T> = {
-  [K in StringKeys<T>]: T[K] extends string ? K : never
-}[StringKeys<T>];
-
-export type AllowedStyleKey = Exclude<KeysWithStringValues<CSSStyleDeclaration>, "cssText">;
-
-/**
- * Property-name type for stringly-typed APIs like `setProp("...", ...)`.
- *
- * Keep this broad so callers can pass dynamic strings without fighting the type
- * system. For autocomplete, see `CssMap` (used by `setMany({ ... })`).
- */
-export type CssKey = string;
-/**
- * CSS custom property name in canonical `--x` form.
- */
-export type CssVarName = `--${string}`;
-
-
-/**
  * Proxy-call surface used by `StyleSetter.set`.
  *
  * This is a *type-level* convenience that provides ergonomic calls like:
@@ -497,4 +304,3 @@ export type CssRuleFacade = Readonly<{
   supports: (cond: SupportsQueryInput) => CssRuleFacade;
   layer: (layerName: string) => CssRuleFacade;
 }>;
-

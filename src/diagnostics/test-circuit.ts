@@ -13,9 +13,9 @@
  */
 
 import { hson } from "../hson.js";
-import { HsonNode } from "../types/node.types.js"
-import { is_Node } from "../utils/node-utils/node-guards.js";
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
+import { HsonNode } from "../core/types.js"
+import { is_Node } from "../core/node-guards.js";
+import { make_string } from "../core/stringify.js";
 import { assert_invariants } from "./assert-invariants.test.js";
 import { compare_nodes } from "./compare-nodes.test.js";
 import { Fmt, LoopDir, CoreOpt, RunResult, FixtureAtom, LoopOpts, LoopReport, Step, Artifact, NodeMark, SourceFormat } from "../types/diagnostics.types.js";

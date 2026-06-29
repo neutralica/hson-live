@@ -1,17 +1,17 @@
 // append-other.ts
 
-import { HsonNode } from "../../../types/node.types.js";
-import { ELEM_TAG } from "../../../consts/constants.js";
-import { CREATE_NODE } from "../../../consts/factories.js";
-import { unwrap_root_elem } from "../../../utils/html-utils/unwrap-root-elem.js";
-import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { HsonNode } from "../../../core/types.js";
+import { ELEM_TAG } from "../../../core/constants.js";
+import { CREATE_NODE } from "../../../core/factories.js";
+import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
-import { normalize_ix } from "../../../utils/json-utils/normalize-ix.js";
+import { normalize_ix } from "../../transform/utils/json-utils/normalize-ix.js";
 import { TreeSelector } from "../creation/tree-selector.js";
 import { SVG_TAGS } from "../../../consts/all-html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
-import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
+import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_hson_elem` container

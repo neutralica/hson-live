@@ -1,13 +1,13 @@
 // remove2.ts
 
-import { drop_quid } from "../../../quid/data-quid.quid.js";
-import { HsonNode } from "../../../types/node.types.js";
-import { _DATA_QUID } from "../../../consts/constants.js";
-import { detach_node_deep } from "../../../utils/livetree-utils/detach-node.js";
-import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { drop_quid } from "../quid/data-quid.quid.js";
+import { HsonNode } from "../../../core/types.js";
+import { _DATA_QUID } from "../../../core/constants.js";
+import { detach_node_deep } from "../utils/detach-node.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager } from "../managers/css-manager.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
+import { is_Node } from "../../../core/node-guards.js";
 
 /**
  * Collect QUID identifiers for the DOM subtree of a given HSON node.

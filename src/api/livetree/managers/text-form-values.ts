@@ -1,14 +1,14 @@
 // text-manager.ts
 
-import { HsonAttrs, HsonNode } from "../../../types/node.types.js";
-import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../consts/constants.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { make_string } from "../../../utils/primitive-utils/make-string.nodes.utils.js";
-import { _throw_transform_err } from "../../../utils/sys-utils/throw-transform-err.utils.js";
-import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { HsonAttrs, HsonNode } from "../../../core/types.js";
+import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../core/constants.js";
+import { is_Node } from "../../../core/node-guards.js";
+import { make_string } from "../../../core/stringify.js";
+import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { make_leaf } from "../../parsers/parse-tokens.js";
-import { Primitive } from "../../../types/core.types.js";
-import { CREATE_NODE } from "../../../consts/factories.js";
+import { Primitive } from "../../../core/types.js";
+import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";
 import { LiveFormApi } from "../../../types/livetree-internals.types.js";
 

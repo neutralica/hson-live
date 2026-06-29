@@ -1,5 +1,5 @@
-import { HsonNode } from "../../../types/node.types.js";
-import { _DATA_QUID, ensure_quid, get_quid } from "../../../quid/data-quid.quid.js";
+import { HsonNode } from "../../../core/types.js";
+import { _DATA_QUID, ensure_quid, get_quid } from "../quid/data-quid.quid.js";
 import { LiveTree } from "../livetree.js";
 import { make_branch_from_node } from "../creation/create-branch.js";
 

@@ -1,9 +1,9 @@
 // livetree2.ts
 
-import { ensure_quid, get_node_by_quid } from "../../quid/data-quid.quid.js";
-import { HsonNode } from "../../types/node.types.js";
+import { ensure_quid, get_node_by_quid } from "./quid/data-quid.quid.js";
+import { HsonNode } from "../../core/types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
-import { get_el_for_node } from "../../utils/livetree-utils/node-map-helpers.js";
+import { get_el_for_node } from "./utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
 import { remove_livetree } from "./methods/remove-self.js";
 import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content, make_text_api, make_form_api } from "./managers/text-form-values.js";

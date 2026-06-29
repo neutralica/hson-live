@@ -1,7 +1,7 @@
-import { CREATE_NODE } from "../../consts/factories.js";
+import { CREATE_NODE } from "../../core/factories.js";
 import { SVG_TAGS, HTML_TAGS } from "../../consts/all-html-tags.js";
 import { TagName, SvgTag, SvgCreateHelper, HtmlTag, DetachedCreateHelper } from "../../types/livetree.types.js";
-import { HsonNode } from "../../types/node.types.js";
+import { HsonNode } from "../../core/types.js";
 import { SvgLiveTree } from "../../types/svg.types.js";
 import { create_livetree } from "../livetree/creation/create-livetree.js";
 import { LiveTree } from "../livetree/livetree.js";

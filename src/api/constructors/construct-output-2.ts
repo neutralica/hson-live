@@ -2,7 +2,7 @@
 
 import { RenderFormats } from "../../types/constructor.types.js";
 import { OutputConstructor_2 } from "../../types/constructor.types.js";
-import { $RENDER } from "../../consts/constants.js";
+import { $RENDER } from "../../core/constants.js";
 import { FrameConstructor } from "../../types/constructor.types.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
 import { serialize_hson } from "../serializers/serialize-hson.js";

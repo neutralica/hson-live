@@ -1,8 +1,8 @@
 // construct-render-4.ts
 
 import { RenderFormats } from "../../types/constructor.types.js";
-import { $RENDER } from "../../consts/constants.js";
-import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils.js";
+import { $RENDER } from "../../core/constants.js";
+import { make_string } from "../../core/stringify.js";
 import { ParsedResult, RenderConstructor_4 } from "../../types/constructor.types.js";
 import { FrameRender } from "../../types/constructor.types.js";
 

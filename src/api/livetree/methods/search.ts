@@ -1,9 +1,9 @@
 // node-search.ts
 
-import { HsonNode } from "../../../types/node.types.js";
-import { STR_TAG } from "../../../consts/constants.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { get_el_for_node } from "../../../utils/livetree-utils/node-map-helpers.js";
+import { HsonNode } from "../../../core/types.js";
+import { STR_TAG } from "../../../core/constants.js";
+import { is_Node } from "../../../core/node-guards.js";
+import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { HsonQuery } from "../../../types/livetree.types.js";
 
 

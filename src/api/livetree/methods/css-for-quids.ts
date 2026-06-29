@@ -1,7 +1,7 @@
 // css_for_quids.ts
 
 
-import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssHandleVoid, CssTreeHandle, CssHandleBase, CssPseudoKey, CssMapBase, StyleHandle, CssKey, MediaQueryInput, SupportsQueryInput, CssRuleFacade } from "../../../types/css.types.js";
 import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";

@@ -1,10 +1,10 @@
 // construct-tree.ts
 
-import { JsonValue } from "../../types/core.types.js";
-import { HsonNode } from "../../types/node.types.js";
-import { $_ERROR } from "../../consts/constants.js";
-import { is_svg_markup, node_from_svg } from "../../utils/node-utils/node-from-svg.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { JsonValue } from "../../core/types.js";
+import { HsonNode } from "../../core/types.js";
+import { $_ERROR } from "../../core/constants.js";
+import { is_svg_markup, node_from_svg } from "../transform/utils/node-utils/node-from-svg.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
 import { parse_hson } from "../parsers/parse-hson.js";
 import { parse_html } from "../parsers/parse-html.js";

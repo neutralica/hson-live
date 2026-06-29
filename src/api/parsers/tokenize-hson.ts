@@ -1,14 +1,14 @@
 // tokenize-hson.old.hson.ts
 
-import { OBJ_TAG } from "../../consts/constants.js";
-import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../../consts/factories.js";
-import { CLOSE_KIND, ARR_SYMBOL, TOKEN_KIND } from "../../types/token.types.js";
-import { Position, CloseKind, Tokens, RawAttr } from "../../types/token.types.js";
-import { lex_text_piece } from "../../utils/hson-utils/lex-text-piece.js";
-import { slice_balanced_arr } from "../../utils/hson-utils/slice-balance.js";
-import { split_array_string } from "../../utils/hson-utils/split-array-string.js";
-import { is_quote, scan_quoted_block, scan_tag_header_block } from "../../utils/hson-utils/scan-quoted-block.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { OBJ_TAG } from "../../core/constants.js";
+import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../transform/token-factories.js";
+import { CLOSE_KIND, ARR_SYMBOL, TOKEN_KIND } from "../transform/token.types.js";
+import { Position, CloseKind, Tokens, RawAttr } from "../transform/token.types.js";
+import { lex_text_piece } from "../transform/utils/hson-utils/lex-text-piece.js";
+import { slice_balanced_arr } from "../transform/utils/hson-utils/slice-balance.js";
+import { split_array_string } from "../transform/utils/hson-utils/split-array-string.js";
+import { is_quote, scan_quoted_block, scan_tag_header_block } from "../transform/utils/hson-utils/scan-quoted-block.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
 
 /* debug log */
 const _VERBOSE = false;

@@ -1,9 +1,9 @@
 import { hson } from "../hson.js";
 import { FixtureAtom, SourceFormat, CoreOpt, Fmt, LoopDir, Step, Artifact, NodeMark, LoopReport } from "../types/diagnostics.types.js";
-import { HsonNode } from "../types/node.types.js";
-import { is_Node } from "../utils/node-utils/node-guards.js";
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
-import { _snip } from "../utils/sys-utils/snip.utils.js";
+import { HsonNode } from "../core/types.js";
+import { is_Node } from "../core/node-guards.js";
+import { make_string } from "../core/stringify.js";
+import { _snip } from "../api/transform/utils/sys-utils/snip.utils.js";
 import { assert_invariants } from "./assert-invariants.test.js";
 import { SPIN } from "./test-circuit.js";
 

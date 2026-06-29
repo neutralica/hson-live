@@ -1,12 +1,12 @@
 // create-live-tree.new.ts
-import { Primitive } from "../../../types/core.types.js";
-import { ensure_quid } from "../../../quid/data-quid.quid.js";
+import { Primitive } from "../../../core/types.js";
+import { ensure_quid } from "../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
-import { HsonNode } from "../../../types/node.types.js";
-import { SVG_NS } from "../../../utils/node-utils/node-from-svg.js";
-import { is_Node } from "../../../utils/node-utils/node-guards.js";
-import { link_node_to_el } from "../../../utils/livetree-utils/node-map-helpers.js";
-import { canon_to_css_prop, normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { HsonNode } from "../../../core/types.js";
+import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
+import { is_Node } from "../../../core/node-guards.js";
+import { link_node_to_el } from "../utils/node-map-helpers.js";
+import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import {
   _DATA_QUID,
   ARR_TAG,
@@ -16,7 +16,7 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-} from "../../../consts/constants.js";
+} from "../../../core/constants.js";
 
 
 

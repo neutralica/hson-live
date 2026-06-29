@@ -1,4 +1,4 @@
-import { HsonNode } from "./node.types.js";
+import { HsonNode } from "../core/types.js";
 
 /**
  * Canonical wire formats exercised by the round-trip loop.

@@ -1,7 +1,7 @@
 
-import { $HSON_FRAME, $RENDER, } from "../consts/constants.js";
-import { HsonNode } from "./node.types.js";
-import { JsonValue } from "./core.types.js";
+import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
+import { HsonNode } from "../core/types.js";
+import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
 import { HtmlCreateHelper } from "./livetree.types.js";
 

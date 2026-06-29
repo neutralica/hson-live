@@ -1,8 +1,8 @@
 // style-setter.ts
 
 import { CssKey, CssMap, CssMapBase, CssPseudoKey, CssValue, CssVarFacade, CssVarName, SetSurface } from "../../../types/css.types.js";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
-import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
+import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { normalize_css_var_name } from "./style-getter.js";
 
 

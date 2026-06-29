@@ -1,14 +1,14 @@
 // serialize-json.new.render.ts
 
-import { JsonObj, Primitive } from "../../types/core.types.js";
-import { assert_invariants } from "../../utils/node-utils/assert-invariants.js";
-import { is_Node, is_indexed } from "../../utils/node-utils/node-guards.js";
-import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX } from "../../consts/constants.js";
-import {  HsonNode } from "../../types/node.types.js";
-import { JsonValue } from "../../types/core.types.js";
-import { clone_node } from "../../utils/node-utils/clone-node.js";
-import { make_string } from "../../utils/primitive-utils/make-string.nodes.utils.js";
-import { _throw_transform_err } from "../../utils/sys-utils/throw-transform-err.utils.js";
+import { JsonObj, Primitive } from "../../core/types.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { is_Node, is_indexed } from "../../core/node-guards.js";
+import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX } from "../../core/constants.js";
+import {  HsonNode } from "../../core/types.js";
+import { JsonValue } from "../../core/types.js";
+import { clone_node } from "../../core/clone-node.js";
+import { make_string } from "../../core/stringify.js";
+import { _throw_transform_err } from "../transform/utils/sys-utils/throw-transform-err.utils.js";
 
 /**
  * Serialize a well-formed HSON tree to JSON text.

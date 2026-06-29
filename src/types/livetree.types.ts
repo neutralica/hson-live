@@ -1,7 +1,7 @@
 // livetree2.types.ts
 
 import { LiveTree } from "../api/livetree/livetree.js";
-import { HsonAttrs, HsonMeta, HsonNode } from "./node.types.js";
+import { HsonAttrs, HsonMeta, HsonNode } from "../core/types.js";
 import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/creation/tree-selector.js";
 import { HTML_TAGS, SVG_TAGS } from "../consts/all-html-tags.js";

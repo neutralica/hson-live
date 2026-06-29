@@ -1,10 +1,10 @@
 // compare-nodes.ts
 
-import { ARR_TAG, ELEM_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../consts/constants.js";
-import type { HsonNode } from "../types/node.types.js";
-import { is_Node } from "../utils/node-utils/node-guards.js";
-import { make_string } from "../utils/primitive-utils/make-string.nodes.utils.js";
-import { _snip } from "../utils/sys-utils/snip.utils.js";
+import { ARR_TAG, ELEM_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../core/constants.js";
+import type { HsonNode } from "../core/types.js";
+import { is_Node } from "../core/node-guards.js";
+import { make_string } from "../core/stringify.js";
+import { _snip } from "../api/transform/utils/sys-utils/snip.utils.js";
 
 const LEAF = new Set([STR_TAG, VAL_TAG] as string[]);
 const MAX_SNIP = 500;

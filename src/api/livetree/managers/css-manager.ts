@@ -1,7 +1,7 @@
 // css-manager.ts
 
 import { PropertyManager } from "../../../types/at-property.types.js";
-import { _DATA_QUID } from "../../../consts/constants.js";
+import { _DATA_QUID } from "../../../core/constants.js";
 import { CssValue, CssProp, CssPseudoKey } from "../../../types/css.types.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
 import { AnimAdapters, CssAnimHandle, CssAnimScope } from "../../../types/animate.types.js";
@@ -9,10 +9,10 @@ import { manage_property } from "./at-property-builder.js";
 import { manage_keyframes } from "./keyframes-manager.js";
 import { KeyframesInput, KeyframesManager } from "../../../types/keyframes.types.js";
 import { LiveTree } from "../livetree.js";
-import { camel_to_kebab } from "../../../utils/attrs-utils/camel_to_kebab.js";
+import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { css_supports_decl } from "./style-setter.js";
-import { normalize_css_key } from "../../../utils/attrs-utils/normalize-css.js";
+import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 
 const CSS_HOST_TAG = "hson-_style";
 const CSS_HOST_ID = "css-manager";
