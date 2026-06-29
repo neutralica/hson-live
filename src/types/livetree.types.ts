@@ -17,7 +17,7 @@ import { CanvasLiveTree } from "./livetree-internals.types.js";
  *   - `tag`   → exact tag name match (`_-obj`, `div`, etc.).
  *   - `attrs` → shallow partial match on `_attrs`, using plain
  *               `===` equality for values.
- *   - `meta`  → shallow partial match on `_meta` keys/values.
+ *   - `meta`  → shallow partial match on `$_meta` keys/values.
  *   - `text`  → matches string payload under `_-str`/`_-val` or
  *               element text:
  *                 • string → substring match,

@@ -10,7 +10,7 @@ import {  ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, Toke
  * The tokenizer and parser never assemble node shapes inline;
  * all node creation routes through this factory so that:
  *
- *   • every node begins with `{_tag, _content, _attrs, _meta}`
+ *   • every node begins with `{$_tag, _content, _attrs, $_meta}`
  *   • missing fields default to stable empty values
  *   • structural expectations remain uniform across the pipeline
  *
@@ -19,10 +19,10 @@ import {  ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, Toke
  * should wrap this factory rather than re-implementing shape logic.
  */
 export const CREATE_NODE = (partial: Partial<HsonNode> = {}): HsonNode => ({
-  _tag: partial._tag ?? '', 
+  $_tag: partial.$_tag ?? '',
   _content: partial._content ?? [],
   $_attrs: partial.$_attrs ?? {},
-  _meta:  partial._meta ?? {},
+  $_meta:  partial.$_meta ?? {},
 });
 
 /**
@@ -96,5 +96,4 @@ export const CREATE_TEXT_TOKEN = (raw: string, quoted: boolean | undefined, pos:
  */
 export const CREATE_EMPTY_OBJ_TOKEN = (raw: string, quoted: boolean | undefined, pos: Position): TokenEmptyObj =>
   (quoted ? { kind: TOKEN_KIND.EMPTY_OBJ, raw, quoted: true, pos } : { kind: TOKEN_KIND.EMPTY_OBJ, raw, pos });
-
 

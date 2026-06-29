@@ -20,7 +20,7 @@ function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): 
 function svg_attr_key_from_node_tag(node: HsonNode, name: string): string {
   const lower = name.toLowerCase();
 
-  return SVG_TAGS.includes(node._tag as SvgTag)
+  return SVG_TAGS.includes(node.$_tag as SvgTag)
     ? canonical_svg_attr_name(name)
     : lower;
 }

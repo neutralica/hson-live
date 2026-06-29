@@ -57,7 +57,7 @@ export function assert_valid_tag_name(name: unknown, ctx?: string): asserts name
 export function inferCreateNs(tree: LiveTree, tag: string): CreateNs {
   if (is_svg_context_tag(tag)) return "svg";
 
-  const ownTag = tree.node._tag; // or however you access canonical tag
+  const ownTag = tree.node.$_tag; // or however you access canonical tag
   if (typeof ownTag === "string" && is_svg_context_tag(ownTag)) return "svg";
 
   return "html";
@@ -94,14 +94,14 @@ export function make_create_core(tree: LiveTree): CreateCore {
     const payload =
       kids.length === 1 &&
         is_Node(kids[0]) &&
-        kids[0]._tag === ELEM_TAG &&
+        kids[0].$_tag === ELEM_TAG &&
         Array.isArray(kids[0]._content)
         ? kids[0]._content
         : kids;
 
     return payload.filter(
       (child): child is HsonNode =>
-        is_Node(child) && !child._tag.startsWith(HSON_SYS_PREFIX)
+        is_Node(child) && !child.$_tag.startsWith(HSON_SYS_PREFIX)
     );
   }
 
@@ -117,7 +117,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       // for svg child-tag bootstrap wrappers like
       // <svg xmlns="..."><g/></svg>, unwrap the temporary svg shell
       if (ns === "svg" && tag !== "svg") {
-        if (base.length === 1 && base[0]?._tag === "svg") {
+        if (base.length === 1 && base[0]?.$_tag === "svg") {
           return extract_real_element_children(base[0]);
         }
       }
@@ -137,10 +137,10 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
       // append the intended children, not the temporary wrapper root
       const tempRoot = CREATE_NODE({
-        _tag: ROOT_TAG,
+        $_tag: ROOT_TAG,
         _content: [
           CREATE_NODE({
-            _tag: ELEM_TAG,
+            $_tag: ELEM_TAG,
             _content: appended,
           }),
         ],
@@ -203,7 +203,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     }
 
     const node = createdChildren[0];
-    if (!node || node._tag !== expectedTag) {
+    if (!node || node.$_tag !== expectedTag) {
       throw new Error(
         `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
       );
@@ -219,11 +219,11 @@ export function make_create_core(tree: LiveTree): CreateCore {
   }
 
   function hasParserError(node: HsonNode): boolean {
-    if (node._tag === "parsererror") return true;
+    if (node.$_tag === "parsererror") return true;
 
     const kids = Array.isArray(node._content) ? node._content : [];
     for (const child of kids) {
-      if (child && typeof child === "object" && "_tag" in child) {
+      if (child && typeof child === "object" && "$_tag" in child) {
         if (hasParserError(child as HsonNode)) return true;
       }
     }
@@ -264,7 +264,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     if (expectedTag === "svg") {
       createdChildren = baseChildren;
     } else {
-      if (baseChildren.length !== 1 || baseChildren[0]?._tag !== "svg") {
+      if (baseChildren.length !== 1 || baseChildren[0]?.$_tag !== "svg") {
         throw new Error(
           `[LiveTree.create.${expectedTag}] expected temporary <svg> wrapper`,
         );
@@ -282,7 +282,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
     }
 
     const node = createdChildren[0];
-    if (!node || node._tag !== expectedTag) {
+    if (!node || node.$_tag !== expectedTag) {
       throw new Error(
         `[LiveTree.create.${expectedTag}] expected exactly one <${expectedTag}> root`,
       );

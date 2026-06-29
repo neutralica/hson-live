@@ -56,7 +56,7 @@ export const $_ERROR = "_error" as const;
  * HSON defines a small, closed set of structural markers
  * (`_-str`, `_-val`, `_-obj`, `_-arr`, `_-elem`, `_-ii`, `_-root`) that
  * encode the logical shape of the document tree. These tags are
- * the *only* valid `_tag` values on HsonNode objects.
+ * the *only* valid `$_tag` values on HsonNode objects.
  *
  *   - `_-str`   : leaf wrapper for string primitives
  *   - `_-val`   : leaf wrapper for non-string primitives
@@ -81,8 +81,8 @@ export const HSON_SYS_PREFIX = "_-" as const;
 export const HTML_KEY_PREFIX = "_-_-" as const;
 
 export const ATTRS_KEY = "$_attrs" as const;
-export const META_KEY = "_meta" as const;
-export const TAG_KEY = "_tag" as const;
+export const META_KEY = "$_meta" as const;
+export const TAG_KEY = "$_tag" as const;
 export const CONTENT_KEY = "_content" as const;
 
 /***************************************************************
@@ -208,7 +208,7 @@ export const $HSON_FRAME = {
  * HSON metadata constants
  *
  * `_META_DATA_PREFIX`:
- *     Reserved prefix for all legal `_meta` keys (`"data-_*"`).
+ *     Reserved prefix for all legal `$_meta` keys (`"data-_*"`).
  *     Enforced by assert_invariants and assertNewShapeQuick.
  *
  * `_DATA_INDEX`:
@@ -216,7 +216,7 @@ export const $HSON_FRAME = {
  *     their canonical array index as a string.
  *
  * `_DATA_QUID`:
- *     Stable identity key (`"data-_quid"`) inserted into `_meta`
+ *     Stable identity key (`"data-_quid"`) inserted into `$_meta`
  *     when a node receives a QUID (unique identifier).
  *     Enables DOM↔HsonNode tracking and LiveTree operations.
  ***************************************************************/

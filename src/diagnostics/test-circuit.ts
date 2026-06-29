@@ -51,7 +51,7 @@ function runRing(
   // 1) enter the ring
   let node = safe_parse(entryFmt, entryText, `enter:${entryFmt}`, opt, { lap: 0, fmt: entryFmt, phase: "parse" });
   if (!node) {
-    return { ok: false, final: { fmt: entryFmt, text: entryText }, finalNode: { _tag: "_bad", _content: [] } as any };
+    return { ok: false, final: { fmt: entryFmt, text: entryText }, finalNode: { $_tag: "_bad", _content: [] } as any };
   }
 
   // 2) choose direction (a visible ring order)

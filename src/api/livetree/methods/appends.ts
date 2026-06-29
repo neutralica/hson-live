@@ -43,10 +43,10 @@ function appendNodes(
   let containerNode: HsonNode;
   const firstChild = targetNode._content[0];
 
-  if (firstChild && typeof firstChild === "object" && firstChild._tag === ELEM_TAG) {
+  if (firstChild && typeof firstChild === "object" && firstChild.$_tag === ELEM_TAG) {
     containerNode = firstChild;
   } else {
-    containerNode = CREATE_NODE({ _tag: ELEM_TAG, _content: [] });
+    containerNode = CREATE_NODE({ $_tag: ELEM_TAG, _content: [] });
     targetNode._content = [containerNode, ...targetNode._content];
   }
 
@@ -112,7 +112,7 @@ export function append_branch<TTree extends AppendTreeLike>(
 
   if (!can_append_branch_to_tree(this, branch)) {
     throw new Error(
-      `[LiveTree.append] incompatible branch scope: cannot append <${String(unwrap_root_elem(srcNode)[0]?._tag ?? "?")}> to <${String(targetNode._tag)}>`
+      `[LiveTree.append] incompatible branch scope: cannot append <${String(unwrap_root_elem(srcNode)[0]?.$_tag ?? "?")}> to <${String(targetNode.$_tag)}>`
     );
   }
 
@@ -128,13 +128,13 @@ function is_svg_tag(tag: string): boolean {
 }
 
 function can_append_branch_to_tree(target: AppendTreeLike, branch: AppendTreeLike): boolean {
-  const targetTag = String(target.node._tag);
+  const targetTag = String(target.node.$_tag);
 
   const roots = unwrap_root_elem(branch.node);
   const first = roots[0];
   if (!first) return false;
 
-  const branchRootTag = String(first._tag);
+  const branchRootTag = String(first.$_tag);
 
   const targetIsSvg = is_svg_tag(targetTag);
   const branchIsSvg = is_svg_tag(branchRootTag);

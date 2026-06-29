@@ -229,7 +229,7 @@ export function make_canvas_api<TTree extends LiveTree>(
   };
 
   return {
-    inScope: () => tree.node._tag === "canvas",
+    inScope: () => tree.node.$_tag === "canvas",
 
     el,
 

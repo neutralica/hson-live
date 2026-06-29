@@ -132,8 +132,8 @@ export function element_for_node_checked(
 
   // Invariant: no HSON virtual/internal tags should ever exist as DOM elements.
   if (tag.startsWith(HSON_SYS_PREFIX)) {
-    const quid = node._meta?._quid ?? "<no-quid>";
-    const msg = `[element_for_node_checked] unexpected DOM element tag "${tag}" for purpose="${purpose}" (node._tag=${node._tag}, quid=${quid})`;
+    const quid = node.$_meta?._quid ?? "<no-quid>";
+    const msg = `[element_for_node_checked] unexpected DOM element tag "${tag}" for purpose="${purpose}" (node.$_tag=${node.$_tag}, quid=${quid})`;
 
     if (policy === "warn") {
       console.warn(msg, { node, el });

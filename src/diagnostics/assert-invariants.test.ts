@@ -42,7 +42,7 @@ type DevCfg = { throwOnFirst?: boolean };
 export function assert_invariants(root: HsonNode, fn = "[source fn not given]", cfg: DevCfg = { throwOnFirst: true }): void {
   const errs: string[] = [];
   assertNewShapeQuick(root, fn);
-  walk(root, "", root._tag, cfg, errs);
+  walk(root, "", root.$_tag, cfg, errs);
   if (errs.length) {
     const msg = errs.slice(0, 12).join("\n  - ");
     _throw_transform_err(`invariant violation(s):\n  - ${msg}`, fn, make_string(root));
@@ -66,7 +66,7 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
  *   - _-ii:
  *       • must appear directly under `_-arr`,
  *       • no `_attrs`,
- *       • carries `data-_index` (or `data-__index` alias) as string in `_meta`,
+ *       • carries `data-_index` (or `data-__index` alias) as string in `$_meta`,
  *       • exactly one child node.
  *   - _-arr:
  *       • content is `_-ii` nodes only, no bare primitives.
@@ -93,11 +93,11 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
  *   - If `cfg.throwOnFirst` is true, returns early on first push to `errs`.
  **********************************************************/
 function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, errs: string[]): void {
-  const here = path + seg(n._tag);
+  const here = path + seg(n.$_tag);
 
   // meta keys: only data-_*
-  if (n._meta) {
-    for (const k of Object.keys(n._meta as HsonMeta)) {
+  if (n.$_meta) {
+    for (const k of Object.keys(n.$_meta as HsonMeta)) {
       if (!k.startsWith(_META_DATA_PREFIX)) {
         push(errs, cfg, `${here}@meta:${k}: illegal meta key (only "${_META_DATA_PREFIX}*" allowed)`); if (cfg.throwOnFirst) return;
       }
@@ -105,21 +105,21 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // VSNs never carry _attrs
-  if (isVSN(n._tag) && n.$_attrs && Object.keys(n.$_attrs as HsonAttrs).length) {
-    push(errs, cfg, `${here}: VSN "${n._tag}" must not have _attrs`); if (cfg.throwOnFirst) return;
+  if (isVSN(n.$_tag) && n.$_attrs && Object.keys(n.$_attrs as HsonAttrs).length) {
+    push(errs, cfg, `${here}: VSN "${n.$_tag}" must not have _attrs`); if (cfg.throwOnFirst) return;
   }
 
   // value wrappers
-  if (n._tag === STR_TAG || n._tag === VAL_TAG) {
+  if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
     const c = n._content ?? [];
     if (c.length !== 1) {
-      push(errs, cfg, `${here}: ${n._tag} must have exactly one item in _content`); if (cfg.throwOnFirst) return;
+      push(errs, cfg, `${here}: ${n.$_tag} must have exactly one item in _content`); if (cfg.throwOnFirst) return;
     } else {
       const v = c[0] as Primitive;
-      if (n._tag === STR_TAG && typeof v !== "string") {
+      if (n.$_tag === STR_TAG && typeof v !== "string") {
         push(errs, cfg, `${here}: _-str payload must be string`); if (cfg.throwOnFirst) return;
       }
-      if (n._tag === VAL_TAG && typeof v === "string") {
+      if (n.$_tag === VAL_TAG && typeof v === "string") {
         push(errs, cfg, `${here}: _-val payload must be non-string primitive`); if (cfg.throwOnFirst) return;
       }
     }
@@ -127,11 +127,11 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // _-ii allowed only directly under _-arr; must have exactly one child node; meta only data-_index; no attrs
-  if (n._tag === II_TAG) {
+  if (n.$_tag === II_TAG) {
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _-ii must appear directly under _-arr`); if (cfg.throwOnFirst) return; }
     if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _-ii must not have _attrs`); if (cfg.throwOnFirst) return; }
-    const idx = n._meta?.[`${_META_DATA_PREFIX}index`] ?? n._meta?.[_DATA_INDEX];
-    if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in _meta`); if (cfg.throwOnFirst) return; }
+    const idx = n.$_meta?.[`${_META_DATA_PREFIX}index`] ?? n.$_meta?.[_DATA_INDEX];
+    if (typeof idx !== "string") { push(errs, cfg, `${here}: _-ii must carry "${_META_DATA_PREFIX}index" as a string in $_meta`); if (cfg.throwOnFirst) return; }
 
     const cc = n._content;
     if (cc.length !== 1) { push(errs, cfg, `${here}: _-ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
@@ -140,14 +140,14 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // _-arr: only _-ii children; no bare primitives
-  if (n._tag === ARR_TAG) {
+  if (n.$_tag === ARR_TAG) {
     const kids = n._content;
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];
       const childPath = `${path}/_-arr/[${i}]`;
 
       if (!is_Node(k)) { push(errs, cfg, `${childPath}: primitive/null outside _-str/_-val`); if (cfg.throwOnFirst) return; continue; }
-      if (k._tag !== II_TAG) { push(errs, cfg, `${childPath}: only _-ii allowed directly under _-arr`); if (cfg.throwOnFirst) return; }
+      if (k.$_tag !== II_TAG) { push(errs, cfg, `${childPath}: only _-ii allowed directly under _-arr`); if (cfg.throwOnFirst) return; }
 
       walk(k, childPath, ARR_TAG, cfg, errs);
       if (cfg.throwOnFirst && errs.length) return;
@@ -156,7 +156,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
   // _-elem validation — only normal element nodes or _-str are allowed.
   // _-val belongs to data-space (_-obj/_-arr), not renderable element content.
-  if (n._tag === ELEM_TAG) {
+  if (n.$_tag === ELEM_TAG) {
     const kids = n._content;
 
     for (let i = 0; i < kids.length; i++) {
@@ -169,14 +169,14 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         continue;
       }
 
-      if (k._tag === VAL_TAG) {
+      if (k.$_tag === VAL_TAG) {
         push(errs, cfg, `${childPath}: _-elem cannot contain _-val; quote scalar text as _-str instead`);
         if (cfg.throwOnFirst) return;
         continue;
       }
 
-      if (k._tag === OBJ_TAG || k._tag === ARR_TAG || k._tag === II_TAG) {
-        push(errs, cfg, `${childPath}: _-elem cannot contain ${k._tag} (only _-str or normal element tags allowed)`);
+      if (k.$_tag === OBJ_TAG || k.$_tag === ARR_TAG || k.$_tag === II_TAG) {
+        push(errs, cfg, `${childPath}: _-elem cannot contain ${k.$_tag} (only _-str or normal element tags allowed)`);
         if (cfg.throwOnFirst) return;
         continue;
       }
@@ -189,21 +189,21 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   // _-root: 0 or 1 child; if present it must be cluster
-  if (n._tag === ROOT_TAG) {
+  if (n.$_tag === ROOT_TAG) {
     const kids = n._content;
     if (kids.length > 1) { push(errs, cfg, `${here}: _-root must contain at most one child`); if (cfg.throwOnFirst) return; }
     if (kids.length === 1) {
       const only = kids[0] as HsonNode | Primitive;
       if (!is_Node(only)) {
         push(errs, cfg, `${here}: _-root child must be a node; found: primitive (${only})`); if (cfg.throwOnFirst) return;
-      } else if (!(only._tag === OBJ_TAG || only._tag === ELEM_TAG || only._tag === ARR_TAG)) {
+      } else if (!(only.$_tag === OBJ_TAG || only.$_tag === ELEM_TAG || only.$_tag === ARR_TAG)) {
         push(errs, cfg, `${here}: _-root child must be one of _-obj/_-elem/_-arr`); if (cfg.throwOnFirst) return;
       }
     }
   }
 
   // _-obj: shallow checks only; then recurse into each child
-  if (n._tag === OBJ_TAG) {
+  if (n.$_tag === OBJ_TAG) {
     const kids = n._content;
     const seen = new Set<string>();
 
@@ -225,18 +225,18 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
 
       // OBJ004 — _-elem must not appear directly under _-obj
-      if (p._tag === ELEM_TAG) {
+      if (p.$_tag === ELEM_TAG) {
         push(errs, cfg, `${pHere}: [ERR: OBJ004] _-elem is not allowed directly under _-obj`);
         if (cfg.throwOnFirst) return;
       }
 
       // OBJ003 — duplicate *property* names (only enforce for non-VSN tags)
-      if (!p._tag.startsWith(HSON_SYS_PREFIX)) {
-        if (seen.has(p._tag)) {
-          push(errs, cfg, `${pHere}: [ERR: OBJ003] duplicate property tag "${p._tag}" inside _-obj`);
+      if (!p.$_tag.startsWith(HSON_SYS_PREFIX)) {
+        if (seen.has(p.$_tag)) {
+          push(errs, cfg, `${pHere}: [ERR: OBJ003] duplicate property tag "${p.$_tag}" inside _-obj`);
           if (cfg.throwOnFirst) return;
         }
-        seen.add(p._tag);
+        seen.add(p.$_tag);
       }
 
       // Recurse; deeper shape is validated by its own case (_-str/_-val/_-arr/_-obj/element)
@@ -252,7 +252,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   for (let i = 0; i < kids.length; i++) {
     const k = kids[i];
     if (is_Node(k)) {
-      walk(k as HsonNode, here, n._tag, cfg, errs);
+      walk(k as HsonNode, here, n.$_tag, cfg, errs);
       if (cfg.throwOnFirst && errs.length) return;
     } else {
       push(errs, cfg, `${here}/[${i}]: primitive outside _-str/_-val`);
@@ -282,7 +282,7 @@ function isVSN(t: string) {
  * Build a human-readable path segment for an invariant path.
  *
  * Behavior:
- *   - VSN-like tags (starting with "_-") → `"/_tag"`,
+ *   - VSN-like tags (starting with "_-") → `"/$_tag"`,
  *   - normal tags → `"/tag:<name>"`.
  *
  * Used in:
@@ -311,9 +311,9 @@ function push(errs: string[], cfg: DevCfg, s: string) { errs.push(s); }
  *
  * Checks:
  *   1) Legacy meta shape:
- *        - Fails if `_meta.attrs` or `_meta.flags` is present.
+ *        - Fails if `$_meta.attrs` or `$_meta.flags` is present.
  *   2) Meta key domain:
- *        - All keys in `_meta` must start with `data-_`.
+ *        - All keys in `$_meta` must start with `data-_`.
  *   3) VSN + attrs:
  *        - Any VSN (_-str/_-val/_-arr/_-obj/_-elem/_-root/_-ii) that carries
  *          non-empty `_attrs` is rejected.
@@ -334,17 +334,17 @@ export function assertNewShapeQuick(n: any, where: string): void {
     const node = stack.pop();
     if (!node || typeof node !== "object") continue;
 
-    const tag = node._tag as string | undefined;
-    const meta = node._meta as HsonMeta | undefined;
+    const tag = node.$_tag as string | undefined;
+    const meta = node.$_meta as HsonMeta | undefined;
     const attrs = node.$_attrs as HsonAttrs | undefined;
 
-    // 1) OLD giveaways in _meta
+    // 1) OLD giveaways in $_meta
     if (meta && ("attrs" in meta || "flags" in meta)) {
       throw new Error(`[NEW-only] old-shaped meta in ${where} at <${tag ?? "?"}>
-  Found _meta.attrs or _meta.flags`);
+  Found $_meta.attrs or $_meta.flags`);
     }
 
-    // 2) Only data-_ keys allowed in _meta
+    // 2) Only data-_ keys allowed in $_meta
     if (meta) {
       for (const k of Object.keys(meta)) {
         if (!k.startsWith(_META_DATA_PREFIX)) {

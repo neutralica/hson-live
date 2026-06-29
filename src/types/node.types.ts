@@ -9,16 +9,16 @@ import { _DATA_INDEX, _DATA_QUID } from "../consts/constants.js";
  * Core HSON structural node.
  *
  * Each node models a single unit in the IR:
- * - `_tag` identifies the node kind (HTML tag or VSN like "_-obj", "_-arr").
- * - `_meta` holds only *data-* metadata (e.g. QUID, array index).
+ * - `$_tag` identifies the node kind (HTML tag or VSN like "_-obj", "_-arr").
+ * - `$_meta` holds only *data-* metadata (e.g. QUID, array index).
  * - `_attrs` contains HTML-style attributes for element nodes.
  * - `_content` contains either child nodes or primitive leaf values.
  *
  * All transformation, LiveTree, and serialization layers operate on this shape.
  *******/
 export interface HsonNode {
-    _tag: string;
-    _meta: HsonMeta;
+    $_tag: string;
+    $_meta: HsonMeta;
     $_attrs: HsonAttrs;
     _content: NodeContent;
 }
@@ -61,7 +61,7 @@ export type AttrMap = Readonly<Record<string, AttrValue>>;
  * - `data-_quid`  — stable identifier assigned by the QUID system.
  *
  * Additional `data-_…` keys may be used internally, but non-prefixed
- * metadata is rejected by invariants. `_meta` never reflects HTML attrs.
+ * metadata is rejected by invariants. `$_meta` never reflects HTML attrs.
  *******/
 export type HsonMeta = {
     [_DATA_INDEX]?: string;

@@ -39,7 +39,7 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * - Other node types (comments, processing instructions, etc.) are ignored.
  *
  * Output shape:
- * - Produces a structural node with `_tag`, `_attrs`, `_content`, and an empty `_meta`.
+ * - Produces a structural node with `$_tag`, `_attrs`, `_content`, and an empty `$_meta`.
  *
  * @param el - The root SVG `Element` to convert.
  * @returns An `HsonNode` representing `el` and its SVG subtree.
@@ -55,13 +55,13 @@ export function node_from_svg(el: Element): HsonNode {
   el.childNodes.forEach(n => {
     if (n.nodeType === Node.ELEMENT_NODE) kids.push(node_from_svg(n as Element));
     else if (n.nodeType === Node.TEXT_NODE && n.nodeValue) {
-      kids.push({ _tag: STR_TAG, _content: [n.nodeValue], $_attrs: {}, _meta: {} } as HsonNode);
+      kids.push({ $_tag: STR_TAG, _content: [n.nodeValue], $_attrs: {}, $_meta: {} } as HsonNode);
     }
   });
   return {
-    _tag: tag,              
+    $_tag: tag,
     $_attrs: attrs,
     _content: kids.length ? kids : [],
-    _meta: { }       
+    $_meta: { }
   } as HsonNode;
 }

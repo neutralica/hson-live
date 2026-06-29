@@ -45,7 +45,7 @@ function collect_raw_text(nodes: (HsonNode | Primitive)[] | undefined): string {
   let out = "";
   for (const ch of nodes) {
     if (is_Node(ch)) {
-      if (ch._tag === STR_TAG) {
+      if (ch.$_tag === STR_TAG) {
         const seg = (ch._content?.[0] ?? "") as unknown;
         out += typeof seg === "string" ? seg : String(seg);
       } else {
@@ -173,7 +173,7 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
   }
 
   const {
-    _tag: rawTag,
+    $_tag: rawTag,
     _content: content = [],
   } = node;
 
@@ -182,11 +182,11 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
 
   // correct origin label for error
   if (
-    node._tag.startsWith(HSON_SYS_PREFIX) &&
-    !node._tag.startsWith(HTML_KEY_PREFIX) &&
-    !EVERY_VSN.includes(node._tag)
+    node.$_tag.startsWith(HSON_SYS_PREFIX) &&
+    !node.$_tag.startsWith(HTML_KEY_PREFIX) &&
+    !EVERY_VSN.includes(node.$_tag)
   ) {
-    _throw_transform_err(`unknown VSN-like tag: <${node._tag}>`, "serialize-hson");
+    _throw_transform_err(`unknown VSN-like tag: <${node.$_tag}>`, "serialize-hson");
   }
 
   switch (tag) {

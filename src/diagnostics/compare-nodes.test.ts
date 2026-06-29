@@ -24,22 +24,22 @@ function normalize_newlines_lf(s: string): string {
 
 function semanticChildren(n: HsonNode): HsonNode[] {
     const kids = (n._content ?? []).filter(is_Node);
-    if (kids.length === 1 && kids[0]._tag === ELEM_TAG) {
+    if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
         return (kids[0]._content ?? []).filter(is_Node);
     }
     return kids;
 }
 
 function collapseTrivial(n: HsonNode): HsonNode {
-    if (n._tag === ELEM_TAG) {
+    if (n.$_tag === ELEM_TAG) {
         const c = (n._content ?? []).filter(is_Node);
-        if (c.length === 1 && LEAF.has(c[0]._tag)) return c[0];
+        if (c.length === 1 && LEAF.has(c[0].$_tag)) return c[0];
     }
     return n;
 }
 
 function compareLeaf(a: HsonNode, b: HsonNode, path: string, diffs: string[], opts?: CompareNodesOpts): boolean {
-    if (!(LEAF.has(a._tag) && LEAF.has(b._tag))) return false;
+    if (!(LEAF.has(a.$_tag) && LEAF.has(b.$_tag))) return false;
 
     const va = a._content?.[0];
     const vb = b._content?.[0];
@@ -92,8 +92,8 @@ function compareChildrenByKeyForObj(
 ) {
     const mapA = new Map<string, HsonNode>();
     const mapB = new Map<string, HsonNode>();
-    for (const n of aKids) mapA.set(n._tag, n);
-    for (const n of bKids) mapB.set(n._tag, n);
+    for (const n of aKids) mapA.set(n.$_tag, n);
+    for (const n of bKids) mapB.set(n.$_tag, n);
 
     for (const k of mapA.keys()) if (!mapB.has(k)) diffs.push(`Key missing in B @ ${path}.${k}`);
     for (const k of mapB.keys()) if (!mapA.has(k)) diffs.push(`Key missing in A @ ${path}.${k}`);
@@ -153,7 +153,7 @@ function compareContent(aC?: any[], bC?: any[], path = ""): string[] {
 
 function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareNodesOpts): string[] {
     const diffs: string[] = [];
-    if (nodeA._tag !== nodeB._tag) diffs.push(`_tag mismatch @ ${path}: "${nodeA._tag}" vs "${nodeB._tag}"`);
+    if (nodeA.$_tag !== nodeB.$_tag) diffs.push(`$_tag mismatch @ ${path}: "${nodeA.$_tag}" vs "${nodeB.$_tag}"`);
 
     const collapseA = collapseTrivial(nodeA);
     const collapseB = collapseTrivial(nodeB);
@@ -167,9 +167,9 @@ function compare(nodeA: HsonNode, nodeB: HsonNode, path: string, opts?: CompareN
     const aKids = semanticChildren(collapseA);
     const bKids = semanticChildren(collapseB);
 
-    if (collapseA._tag === OBJ_TAG && collapseB._tag === OBJ_TAG) {
+    if (collapseA.$_tag === OBJ_TAG && collapseB.$_tag === OBJ_TAG) {
         compareChildrenByKeyForObj(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
-    } else if (collapseA._tag === ARR_TAG && collapseB._tag === ARR_TAG) {
+    } else if (collapseA.$_tag === ARR_TAG && collapseB.$_tag === ARR_TAG) {
         compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
     } else {
         compareChildrenByIndex(aKids, bKids, path, diffs, (x, y, p) => diffs.push(...compare(x, y, p, opts))); 
@@ -221,7 +221,7 @@ function compareAny(a: any, b: any, path: string): string[] {
  *
  * Comparison rules:
  *   - Tag:
- *       • `_tag` must match (`_tag mismatch @ path: "A" vs "B"`).
+ *       • `$_tag` must match (`$_tag mismatch @ path: "A" vs "B"`).
  *
  *   - Leaf nodes:
  *       • `_-str` and `_-val` are treated as leaf VSNs.

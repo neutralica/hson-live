@@ -20,7 +20,7 @@ import { Primitive } from "../../types/core.types.js";
  *
  * @param text - Raw value text from the tokenizer (without surrounding quotes).
  * @param quoted - True iff the tokenizer recognized this value as quoted.
- * @returns The decoded string value suitable for storing in `_attrs` or `_meta`.
+ * @returns The decoded string value suitable for storing in `_attrs` or `$_meta`.
  *******/
 function decode_hson_value(text: string, quoted: boolean | undefined): string {
   // single, explicit decision point
@@ -28,7 +28,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
 }
 
 /*******
- * Split raw parsed attributes into `_attrs` vs `_meta`, applying HSON-edge decoding.
+ * Split raw parsed attributes into `_attrs` vs `$_meta`, applying HSON-edge decoding.
  *
  * Input:
  * - `RawAttr[]` emitted by the tokenizer for a single open tag.
@@ -38,7 +38,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  *
  * Routing rules:
  * - Meta keys:
- *   - Only keys starting with `data-_` (via `_META_DATA_PREFIX`) are stored in `_meta`.
+ *   - Only keys starting with `data-_` (via `_META_DATA_PREFIX`) are stored in `$_meta`.
  *   - Meta values are decoded using HSON quoting rules (no HTML entity decoding).
  * - Attribute keys:
  *   - Everything else is stored in `_attrs`.
@@ -77,7 +77,7 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
   for (const ra of raw) {
     const k: string = ra.name;
 
-    // Route meta: ONLY data-_* goes to _meta (HSON edge — no HTML entities here)
+    // Route meta: ONLY data-_* goes to $_meta (HSON edge — no HTML entities here)
     if (k.startsWith(_META_DATA_PREFIX)) {
       // decode quoted HSON once before storing
       if (ra.value) {

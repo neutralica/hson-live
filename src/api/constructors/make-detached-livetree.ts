@@ -20,7 +20,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
   // CHANGED: local detached html host
   function makeHtmlHost(): LiveTree {
     const node = CREATE_NODE({
-      _tag: "div",
+      $_tag: "div",
       _content: [],
     }) as HsonNode;
 
@@ -30,7 +30,7 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
   // CHANGED: local detached svg host
   function makeSvgHost(): SvgLiveTree {
     const node = CREATE_NODE({
-      _tag: "svg",
+      $_tag: "svg",
       $_attrs: {
         xmlns: "http://www.w3.org/2000/svg",
       },

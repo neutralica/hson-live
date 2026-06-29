@@ -76,7 +76,7 @@ export class ContentManager {
       for (const it of items) {
         if (!is_Node(it)) continue;
 
-        const tag = it._tag;
+        const tag = it.$_tag;
 
         // leaf wrappers are invisible at the “element-children” level
         if (is_leaf_vsn(tag)) {
@@ -107,7 +107,7 @@ export class ContentManager {
       for (const it of items) {
         if (!is_Node(it)) continue;
 
-        const tag = it._tag;
+        const tag = it.$_tag;
 
         // leaf wrappers are invisible at the “element-descendants” level
         if (is_leaf_vsn(tag)) {
@@ -223,7 +223,7 @@ export class ContentManager {
     if (kids.length !== 1) {
       const msg =
         `ContentManager.mustOnly(): expected 1 node-content, got ${kids.length}.\n` +
-        `(on: ${this.owner.node._tag})`;
+        `(on: ${this.owner.node.$_tag})`;
       if (warn) console.warn(msg);
       throw new Error(msg);
     }

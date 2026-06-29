@@ -13,9 +13,9 @@ import { _DATA_INDEX, _DATA_QUID } from "../../consts/constants.js";
  * Features:
  * - Stable key ordering for plain objects (sorted keys).
  * - HSON-aware ordering for nodes:
- *   - `_tag` first
+ *   - `$_tag` first
  *   - `_attrs` next (sorted; `style` objects sorted too)
- *   - `_meta` next (prioritizes `data-_quid` and `data-_index`)
+ *   - `$_meta` next (prioritizes `data-_quid` and `data-_index`)
  *   - `_content` last (recursively canonicalized)
  * - Handles arrays recursively.
  * - Detects circular references and replaces repeats with the string `"[[Circular]]"`.
@@ -67,16 +67,16 @@ function orderNode(n: HsonNode, seen: WeakSet<object>) {
   const out: any = {};
 
   // 1) canonical node-key order
-  out._tag = n._tag;
+  out.$_tag = n.$_tag;
 
   // 2) _attrs (sorted keys; style object also sorted)
   if (n.$_attrs && Object.keys(n.$_attrs).length) {
     out.$_attrs = orderAttrs(n.$_attrs);
   }
 
-  // 3) _meta (sorted keys)
-  if (n._meta && Object.keys(n._meta).length) {
-    out._meta = orderMeta(n._meta);
+  // 3) $_meta (sorted keys)
+  if (n.$_meta && Object.keys(n.$_meta).length) {
+    out.$_meta = orderMeta(n.$_meta);
   }
 
   // 4) _content (recursively canonicalized)
@@ -108,7 +108,7 @@ function orderStyleObject(s: Record<string, unknown>) {
 
 function orderMeta(m: HsonMeta) {
   const out: any = {};
-  // prioritize _meta keys
+  // prioritize $_meta keys
   const priority = [_DATA_QUID, _DATA_INDEX];
   const keys = [
     ...priority.filter(k => k in (m as any)),

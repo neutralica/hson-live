@@ -10,10 +10,10 @@ import { HsonNode } from "../../types/node.types.js";
  *
  * What it checks:
  * - `bit` is a non-null object.
- * - Has a string `_tag` (the minimal structural discriminator used everywhere else).
+ * - Has a string `$_tag` (the minimal structural discriminator used everywhere else).
  *
  * What it *also* does (compat rejection):
- * - If `_meta` is an object, rejects legacy nodes that used `_meta.attrs` or `_meta.flags`.
+ * - If `$_meta` is an object, rejects legacy nodes that used `$_meta.attrs` or `$_meta.flags`.
  *   This avoids silently accepting old shapes during the migration.
  *
  * What it intentionally does *not* check:
@@ -27,11 +27,11 @@ export function is_Node(bit: unknown): bit is HsonNode {
   if (!bit || typeof bit !== "object") return false;
 
   // minimal structural check first (enables narrowing)
-  const b = bit as { _tag?: unknown; _meta?: unknown };
-  if (typeof b._tag !== "string") return false;
+  const b = bit as { $_tag?: unknown; $_meta?: unknown };
+  if (typeof b.$_tag !== "string") return false;
 
-  // legacy rejection: only if _meta is an object; otherwise it's fine
-  const meta = (b as any)._meta as unknown;
+  // legacy rejection: only if $_meta is an object; otherwise it's fine
+  const meta = (b as any).$_meta as unknown;
   if (meta && typeof meta === "object") {
     // IMPORTANT: don't assume shape; just probe keys safely
     if ("attrs" in (meta as Record<string, unknown>)) return false;
@@ -60,8 +60,8 @@ export function is_Primitive_node(node: HsonNode): boolean {
   return (
     node._content.length === 1 &&
     is_Primitive(node._content[0]) &&
-    (node._tag === STR_TAG ||
-      node._tag === VAL_TAG)
+    (node.$_tag === STR_TAG ||
+      node.$_tag === VAL_TAG)
   )
 }
 
@@ -71,7 +71,7 @@ export function is_Primitive_node(node: HsonNode): boolean {
  * An indexed item is defined as:
  * - tag is `_-ii`,
  * - `_content` is an array with exactly one entry (the wrapped item),
- * - and `_meta[data-_index]` is present as a string.
+ * - and `$_meta[data-_index]` is present as a string.
  *
  * This supports array representations where items may carry explicit stable indices
  * (e.g. for round-tripping order or matching back to source positions).
@@ -81,9 +81,9 @@ export function is_Primitive_node(node: HsonNode): boolean {
  */
 export function is_indexed(node: HsonNode): boolean {
   return (
-    node._tag === II_TAG &&
+    node.$_tag === II_TAG &&
     Array.isArray(node._content) &&
     node._content.length === 1 &&
-    typeof node._meta?.[_DATA_INDEX] === "string"
+    typeof node.$_meta?.[_DATA_INDEX] === "string"
   );
 }

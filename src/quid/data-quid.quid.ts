@@ -28,14 +28,14 @@ function mint_quid(): string {
  * associated with a node, if any.
  *
  * Sources:
- * - n._meta["data-_quid"] if present,
+ * - n.$_meta["data-_quid"] if present,
  * - otherwise the NODE_TO_QUID registry.
  *
  * Returns `undefined` if the node has never
  * been assigned a QUID.
  ***************************************/
 export function get_quid(n: HsonNode): string | undefined {
-  const q = n._meta?.[_DATA_QUID];
+  const q = n.$_meta?.[_DATA_QUID];
   if (typeof q === "string" && q) return q;
   return NODE_TO_QUID.get(n);
 }
@@ -52,7 +52,7 @@ export function get_quid(n: HsonNode): string | undefined {
  *     QUID → node  (Map)
  *     node → QUID  (WeakMap)
  * - If `persist` (default true), writes the QUID
- *   into n._meta["data-_quid"] so it survives
+ *   into n.$_meta["data-_quid"] so it survives
  *   serialization.
  *
  * Returns the node’s QUID.
@@ -70,7 +70,7 @@ export function ensure_quid(
   NODE_TO_QUID.set(n, q);
 
   if (persist) {
-    (n._meta ??= {})[_DATA_QUID] = q;
+    (n.$_meta ??= {})[_DATA_QUID] = q;
   }
 
   return q;
@@ -122,7 +122,7 @@ export { _DATA_QUID }; //???
  *     QUID_TO_NODE[quid]
  *     NODE_TO_QUID[node]
  * - If `scrubMeta`, removes the QUID from
- *   n._meta so future serialization does not
+ *   n.$_meta so future serialization does not
  *   embed identity.
  * - If `stripDomAttr`, removes the DOM-side
  *   `[data-_quid]` attribute if the node is
@@ -142,8 +142,8 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
   NODE_TO_QUID.delete(n);
 
   // optional: remove from meta to avoid persistence
-  if (opts?.scrubMeta && n._meta && _DATA_QUID in n._meta) {
-    delete n._meta[_DATA_QUID];
+  if (opts?.scrubMeta && n.$_meta && _DATA_QUID in n.$_meta) {
+    delete n.$_meta[_DATA_QUID];
   }
 
   // optional: strip DOM attribute if mounted
@@ -178,7 +178,7 @@ export function remint_quid(
   NODE_TO_QUID.set(n, q);
 
   if (opts?.persist ?? true) {
-    (n._meta ??= {})[_DATA_QUID] = q;
+    (n.$_meta ??= {})[_DATA_QUID] = q;
   }
   return q;
 }

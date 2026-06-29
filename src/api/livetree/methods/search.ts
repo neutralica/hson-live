@@ -42,7 +42,7 @@ function nodeText(n: HsonNode): string {
 
   const kids = (n._content ?? []).filter(is_Node);
   for (const k of kids) {
-    if (k._tag === STR_TAG && typeof k._content?.[0] === "string") {
+    if (k.$_tag === STR_TAG && typeof k._content?.[0] === "string") {
       return k._content[0] as string;
     }
   }
@@ -140,20 +140,20 @@ export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
  * Behavior:
  * - If `query.meta` is absent or falsy, returns `true` (no constraint).
  * - Otherwise, for each `[key, qv]` in `query.meta`:
- *   - Let `nv = node._meta[key]`.
+ *   - Let `nv = node.$_meta[key]`.
  *   - If `qv` is a `RegExp`:
  *       - Requires `nv` to be a string that passes `qv.test(nv)`.
  *   - Otherwise:
  *       - Requires strict equality `nv === qv`.
  * - Returns `false` on the first mismatch; `true` if all meta entries match.
  *
- * @param node - The `HsonNode` whose `_meta` object will be tested.
+ * @param node - The `HsonNode` whose `$_meta` object will be tested.
  * @param query - The `HsonQuery` providing a `meta` constraint.
  * @returns `true` if the node satisfies all meta rules, else `false`.
  */
 export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
   if (!query.meta) return true;
-  const nm = node._meta ?? {};
+  const nm = node.$_meta ?? {};
   const qMeta = query.meta as Record<string, unknown>;
 
   for (const [k, qv] of Object.entries(qMeta)) {
@@ -172,7 +172,7 @@ export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
  *
  * Matching:
  * - A node is considered a match if all of the following pass:
- *   - Tag: `query.tag` is absent, or equals `node._tag` (case-insensitive).
+ *   - Tag: `query.tag` is absent, or equals `node.$_tag` (case-insensitive).
  *   - Attributes: `matchAttrs(node, query)` is `true`.
  *   - Meta: `matchMeta(node, query)` is `true`.
  *   - Text: `matchText(node, query)` is `true`.
@@ -207,7 +207,7 @@ export function search_nodes(
   const checkNode = (node: HsonNode): boolean => {
     const tagOK =
       !query.tag ||
-      node._tag.toLowerCase() === query.tag.toLowerCase();
+      node.$_tag.toLowerCase() === query.tag.toLowerCase();
 
     return (
       tagOK &&

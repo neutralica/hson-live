@@ -24,7 +24,7 @@ import { Primitive } from "../../types/core.types.js";
  * - non-string primitive (`number | boolean | null`) → `<_-val>` node with `_content: [value]`.
  *
  * Notes:
- * - `_meta` is always initialized to an empty object for leaf nodes created here.
+ * - `$_meta` is always initialized to an empty object for leaf nodes created here.
  * - This is the preferred constructor for primitive payloads to keep string vs non-string
  *   semantics explicit in the IR.
  *
@@ -33,8 +33,8 @@ import { Primitive } from "../../types/core.types.js";
  */
 export const make_leaf = (v: Primitive): HsonNode =>
 (is_string(v)
-    ? CREATE_NODE({ _tag: STR_TAG, _meta: {}, _content: [v] })
-    : CREATE_NODE({ _tag: VAL_TAG, _meta: {}, _content: [v] }));
+    ? CREATE_NODE({ $_tag: STR_TAG, $_meta: {}, _content: [v] })
+    : CREATE_NODE({ $_tag: VAL_TAG, $_meta: {}, _content: [v] }));
 
 
 /**
@@ -131,7 +131,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const open = tok as TokenOpen;
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
-        const node = CREATE_NODE({ _tag: open.tag, _meta: meta });
+        const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
 
         // VSNs carry no _attrs
         const isVSN =
@@ -198,16 +198,16 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         if (open.tag === ROOT_TAG) {
             //  explicit "<>" under root => single empty _-obj cluster
             if (sawEmptyObjShorthand) {
-                node._content = [CREATE_NODE({ _tag: OBJ_TAG })];
+                node._content = [CREATE_NODE({ $_tag: OBJ_TAG })];
                 if (isTopLevel) topCloseKinds.push(closeKind);
                 return { node, closeKind };
             }
 
-            if (kids.length === 1 && kids[0]._tag === ARR_TAG) {
+            if (kids.length === 1 && kids[0].$_tag === ARR_TAG) {
                 node._content = kids; // passthrough array cluster
             } else if (kids.length > 0) {
                 const clusterTag = (closeKind === CLOSE_KIND.elem) ? ELEM_TAG : OBJ_TAG;
-                node._content = [CREATE_NODE({ _tag: clusterTag, _content: kids })];
+                node._content = [CREATE_NODE({ $_tag: clusterTag, _content: kids })];
             } else {
                 node._content = [];
             }
@@ -231,34 +231,34 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         // ---------- Normal tag: SINGLE-MODE shaping (no _-elem/_-obj mixing) ----------
         if (closeKind === CLOSE_KIND.obj) {
             // OBJECT semantics: ensure exactly one inner _-obj OR pass through a single _-arr/_-obj
-            if (kids.length === 1 && (kids[0]._tag === OBJ_TAG || kids[0]._tag === ARR_TAG)) {
+            if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG)) {
                 node._content = [kids[0]]; // passthrough a single cluster
             } else {
                 node._content = [CREATE_NODE({
-                    _tag: OBJ_TAG,
+                    $_tag: OBJ_TAG,
                     _content: kids as NodeContent
                 })];
             }
 
             // Guardrail: object mode must yield a single _-obj/_-arr
             const c = node._content as HsonNode[];
-            if (!(c.length === 1 && (c[0]._tag === OBJ_TAG || c[0]._tag === ARR_TAG))) {
+            if (!(c.length === 1 && (c[0].$_tag === OBJ_TAG || c[0].$_tag === ARR_TAG))) {
                 _throw_transform_err("object semantics must yield a single _-obj/_-arr child", "parse_tokens.object");
             }
         } else {
             // ELEMENT semantics: ensure exactly one inner _-elem (idempotent)
-            if (kids.length === 1 && kids[0]._tag === ELEM_TAG) {
+            if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
                 node._content = kids as NodeContent; // already clustered
             } else {
                 node._content = [CREATE_NODE({
-                    _tag: ELEM_TAG,
+                    $_tag: ELEM_TAG,
                     _content: kids as NodeContent
                 })];
             }
 
             // Guardrail: element mode must yield a single _-elem
             const c = node._content as HsonNode[];
-            if (!(c.length === 1 && c[0]._tag === ELEM_TAG)) {
+            if (!(c.length === 1 && c[0].$_tag === ELEM_TAG)) {
                 _throw_transform_err("element semantics must yield a single _-elem child", "parse_tokens.element");
             }
         }
@@ -289,7 +289,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
 
                 _take();
                 // build an empty object *item*
-                childNode = CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [] });
+                childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, _content: [] });
 
             } else if (t.kind === TOKEN_KIND.TEXT) {
                 // FIX: keep primitives inside the array (do NOT push to outer "nodes")
@@ -306,20 +306,20 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             }
 
             const passThruVSNs = new Set<string>([OBJ_TAG, ARR_TAG, ELEM_TAG, STR_TAG, VAL_TAG]);
-            if (!passThruVSNs.has(childNode._tag)) {
+            if (!passThruVSNs.has(childNode.$_tag)) {
                 // standard tag → wrap in _-obj to honor always-wrap in JSON-mode
-                childNode = CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [childNode] });
+                childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, _content: [childNode] });
             }
             childNode = unwrap_root_obj(childNode);
             items.push((CREATE_NODE({
-                _tag: II_TAG,
-                _meta: { [_DATA_INDEX]: String(idx) },
+                $_tag: II_TAG,
+                $_meta: { [_DATA_INDEX]: String(idx) },
                 _content: [childNode],
             })));
             idx++;
         }
 
-        return CREATE_NODE({ _tag: ARR_TAG, _meta: {}, _content: items });
+        return CREATE_NODE({ $_tag: ARR_TAG, $_meta: {}, _content: items });
     }
 
     /* drive the stream */
@@ -340,7 +340,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         }
         if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
             _take(TOKEN_KIND.EMPTY_OBJ);
-            nodes.push(CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [] }));
+            nodes.push(CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, _content: [] }));
             topCloseKinds.push("obj");
             continue;
         }
@@ -355,7 +355,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         _throw_transform_err(`unexpected top-level token ${t.kind}`, "parse_tokens");
     }
 
-    if (nodes.length === 1 && nodes[0]._tag === ROOT_TAG) {
+    if (nodes.length === 1 && nodes[0].$_tag === ROOT_TAG) {
         return nodes[0];
     }
 
@@ -366,25 +366,25 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         // 0) single <_-root> already (kept earlier) — nothing to do
 
         // 1) already a single cluster → keep as-is
-        if (kids.length === 1 && (kids[0]._tag === OBJ_TAG || kids[0]._tag === ARR_TAG || kids[0]._tag === ELEM_TAG)) {
+        if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG || kids[0].$_tag === ELEM_TAG)) {
             const child = kids[0];
-            return CREATE_NODE({ _tag: ROOT_TAG, _meta: {}, _content: [child] });
+            return CREATE_NODE({ $_tag: ROOT_TAG, $_meta: {}, _content: [child] });
         }
 
         // 2) single standard tag → wrap according to its closer
-        if (kids.length === 1 && typeof kids[0]._tag === "string" && !kids[0]._tag.startsWith(HSON_SYS_PREFIX)) {
+        if (kids.length === 1 && typeof kids[0].$_tag === "string" && !kids[0].$_tag.startsWith(HSON_SYS_PREFIX)) {
             const mode = topCloseKinds[0] === CLOSE_KIND.obj ? OBJ_TAG : ELEM_TAG; // CHANGED
             return CREATE_NODE({
-                _tag: ROOT_TAG, _meta: {},
-                _content: [CREATE_NODE({ _tag: mode, _meta: {}, _content: [kids[0]] })],
+                $_tag: ROOT_TAG, $_meta: {},
+                _content: [CREATE_NODE({ $_tag: mode, $_meta: {}, _content: [kids[0]] })],
             });
         }
 
         // 3) empty → empty object cluster
         if (kids.length === 0) {
             return CREATE_NODE({
-                _tag: ROOT_TAG, _meta: {},
-                _content: [CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [] })],
+                $_tag: ROOT_TAG, $_meta: {},
+                _content: [CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, _content: [] })],
             });
         }
 
@@ -394,8 +394,8 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const clusterTag = allObj ? OBJ_TAG : (allElem ? ELEM_TAG : ELEM_TAG); // mixed → _-elem
 
         return CREATE_NODE({
-            _tag: ROOT_TAG, _meta: {},
-            _content: [CREATE_NODE({ _tag: clusterTag, _meta: {}, _content: kids })],
+            $_tag: ROOT_TAG, $_meta: {},
+            _content: [CREATE_NODE({ $_tag: clusterTag, $_meta: {}, _content: kids })],
         });
     }
 

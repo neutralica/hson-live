@@ -9,7 +9,7 @@ import { serialize_style } from "../attrs-utils/serialize-style.js";
  * Build a DOM-ready attribute map for an `HsonNode`.
  *
  * This is the “wire format” step: it flattens a node’s internal `_attrs` plus
- * selected `_meta` keys into a plain `{ [name]: string }` dictionary suitable
+ * selected `$_meta` keys into a plain `{ [name]: string }` dictionary suitable
  * for `Element.setAttribute(...)` / element construction.
  *
  * Rules:
@@ -18,7 +18,7 @@ import { serialize_style } from "../attrs-utils/serialize-style.js";
  *     - If `style` is an object (your `StyleObject` shape), it is serialized to
  *       CSS text via `serialize_style(...)`.
  *     - If `style` is already a string, it is passed through unchanged.
- * - Meta attributes (`n._meta`) are *not* generally exposed.
+ * - Meta attributes (`n.$_meta`) are *not* generally exposed.
  *   - Only keys beginning with the `_META_DATA_PREFIX` (e.g. `"data-_"`) are
  *     included, and the key is preserved exactly.
  *
@@ -28,7 +28,7 @@ import { serialize_style } from "../attrs-utils/serialize-style.js";
  * - It intentionally ignores non-`data-_` meta so internal bookkeeping doesn’t
  *   leak into rendered markup.
  *
- * @param n - Source HSON node whose `_attrs` and `_meta` will be projected onto
+ * @param n - Source HSON node whose `_attrs` and `$_meta` will be projected onto
  *            a DOM attribute dictionary.
  * @returns A string-valued attribute record representing the node’s wire attrs.
  */
@@ -57,7 +57,7 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
   }
 
   // 2) meta: only keys that start with 'data-_', keep EXACT key
-  const m = n._meta;
+  const m = n.$_meta;
   if (m) {
     for (const [k, v] of Object.entries(m)) {
       if (k.startsWith(_META_DATA_PREFIX)) out[k] = String(v);

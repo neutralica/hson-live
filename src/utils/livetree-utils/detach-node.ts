@@ -51,7 +51,7 @@ type NodeWithKids = { _content?: unknown[] };
   }
 
   // changed: clear all CSS/listener/lifecycle artifacts owned by this node QUID.
-  const quid = (node as any)?._meta?.["data-_quid"];
+  const quid = (node as any)?.$_meta?.["data-_quid"];
   if (typeof quid === "string" && quid.length) {
     CssManager.invoke().releaseOwnedCssForQuid(quid);
     listeners_off_for_owner_quid(quid);

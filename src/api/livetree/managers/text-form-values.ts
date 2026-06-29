@@ -45,14 +45,14 @@ type FormEl = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 const isElemObjArr = (tag: string): boolean => ELEM_OBJ_ARR.includes(tag);
 function ensureVsn(node: HsonNode): HsonNode {
   // find first VSN child
-  const found = node._content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c._tag));
+  const found = node._content.find((c): c is HsonNode => is_Node(c) && isElemObjArr(c.$_tag));
   if (found) return found;
 
   // create bucket; prefer `_-elem` as the generic container
   const bucket = CREATE_NODE({
-    _tag: ELEM_TAG,     
+    $_tag: ELEM_TAG,
     $_attrs: {},         
-    _meta: {},
+    $_meta: {},
     _content: node._content, // move existing content under the bucket
   });
 
@@ -98,9 +98,9 @@ function form_el_for_node(node: HsonNode): FormEl | null {
 
 // optional strictness helper 
 function throw_missing_el(node: HsonNode, source: string): never {
-  const quid = node._meta?._quid ?? "<no-quid>";
+  const quid = node.$_meta?._quid ?? "<no-quid>";
   _throw_transform_err(
-    `missing element for node (tag=${node._tag}, quid=${quid})`,
+    `missing element for node (tag=${node.$_tag}, quid=${quid})`,
     source,
     make_string(node),
   );
@@ -115,7 +115,7 @@ export function get_node_text_content(node: HsonNode): string {
         continue;
       }
 
-      if (child._tag === STR_TAG || child._tag === VAL_TAG) {
+      if (child.$_tag === STR_TAG || child.$_tag === VAL_TAG) {
         const first = child._content?.[0];
         if (first !== null && first !== undefined) out += String(first);
         continue;
@@ -402,7 +402,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
   const next = [] as typeof bucket._content;
 
   for (const child of bucket._content) {
-    if (is_Node(child) && isLeafTag(child._tag)) {
+    if (is_Node(child) && isLeafTag(child.$_tag)) {
       if (!replaced) {
         next.push(leaf);
         replaced = true;

@@ -32,7 +32,7 @@ function unwrap_single_elem(node: HsonNode): HsonNode {
     if (count > 1) return node;
   }
 
-  return (count === 1 && only && only._tag === ELEM_TAG) ? only : node;
+  return (count === 1 && only && only.$_tag === ELEM_TAG) ? only : node;
 }
 
 /**
@@ -51,7 +51,7 @@ export function remove_node_children(parent: HsonNode): number {
   const toRemove: HsonNode[] = [];
   for (const v of kids as ContentItem[]) {
     if (!is_Node(v)) continue;
-    if (is_vsn_tag(v._tag)) continue; // skip _-str/_-val/_-elem/_-obj/_-arr/_-ii/_-root
+    if (is_vsn_tag(v.$_tag)) continue; // skip _-str/_-val/_-elem/_-obj/_-arr/_-ii/_-root
     toRemove.push(v);
   }
   if (toRemove.length === 0) return 0;
@@ -91,7 +91,7 @@ export function empty_contents(this: LiveTree): LiveTree {
 
 // factor out “does this node match the query”
 function matches_query(node: HsonNode, query: HsonQuery): boolean {
-  const tagOK = !query.tag || node._tag.toLowerCase() === query.tag.toLowerCase();
+  const tagOK = !query.tag || node.$_tag.toLowerCase() === query.tag.toLowerCase();
   return tagOK && matchAttrs(node, query) && matchMeta(node, query) && matchText(node, query);
 }
 

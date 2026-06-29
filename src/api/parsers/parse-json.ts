@@ -124,7 +124,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *    - For each item:
  *      - Computes the child tag with `getTag(val)`.
  *      - Recursively calls `nodeFromJson(val, childTag)` to get a child node.
- *      - Wraps the child in an `<_-ii>` node with `_meta.data-_index` equal
+ *      - Wraps the child in an `<_-ii>` node with `$_meta.data-_index` equal
  *        to the array index.
  *    - Returns `<_-arr>` containing the `_-ii` children.
  *
@@ -145,11 +145,11 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *         - `string` → `<_-str>` child,
  *         - `number | boolean | null` → `<_-val>` child,
  *         - element-object:
- *           `{ tagName: payload, _attrs?, _meta? }`
+ *           `{ tagName: payload, _attrs?, $_meta? }`
  *           - Rejects reserved VSN keys via
  *             `assertNoForbiddenVSNKeysInJSON`.
  *           - Requires exactly one non-underscore tag key.
- *           - Hoists `_attrs` and `_meta` onto the created element node.
+ *           - Hoists `_attrs` and `$_meta` onto the created element node.
  *           - Normalizes `_attrs.style`, accepting:
  *             - style object → `serialize_style` → `parse_style_string`,
  *             - style string → `parse_style_string`,
@@ -203,8 +203,8 @@ export function nodeFromJson(
             }
             return {
                 node: CREATE_NODE({
-                    _tag: STR_TAG,
-                    _meta: {},
+                    $_tag: STR_TAG,
+                    $_meta: {},
                     _content: [srcJson] // "" included
                 })
             };
@@ -214,8 +214,8 @@ export function nodeFromJson(
             }
             return {
                 node: CREATE_NODE({
-                    _tag: VAL_TAG,
-                    _meta: {},
+                    $_tag: VAL_TAG,
+                    $_meta: {},
                     _content: [srcJson] // null/number/boolean
                 })
             };
@@ -231,12 +231,12 @@ export function nodeFromJson(
             const childTag = getTag(val);
             const child = nodeFromJson(val, childTag).node;
             return CREATE_NODE({
-                _tag: II_TAG,
-                _meta: { "data-_index": String(ix) },
+                $_tag: II_TAG,
+                $_meta: { "data-_index": String(ix) },
                 _content: [child]
             });
         });
-        return { node: CREATE_NODE({ _tag: ARR_TAG, _content: items }) };
+        return { node: CREATE_NODE({ $_tag: ARR_TAG, _content: items }) };
     }
 
     // ---- 2) Object branch (three mutually exclusive shapes) ----
@@ -260,18 +260,18 @@ export function nodeFromJson(
             const rootPayload = obj[ROOT_TAG] as JsonValue;
             if (rootPayload === undefined) {
                 // Empty _-root (allowed) → no children
-                return { node: CREATE_NODE({ _tag: ROOT_TAG, _content: [] }) };
+                return { node: CREATE_NODE({ $_tag: ROOT_TAG, _content: [] }) };
             }
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
 
             // Enforce: _-root child must be a cluster (_-obj|_-arr|_-elem). If scalar, coerce to _-elem wrapper.
-            const isScalar = (child._tag === STR_TAG || child._tag === VAL_TAG);
+            const isScalar = (child.$_tag === STR_TAG || child.$_tag === VAL_TAG);
             const clusterChild = isScalar
-                ? CREATE_NODE({ _tag: ELEM_TAG, _content: [child] })
+                ? CREATE_NODE({ $_tag: ELEM_TAG, _content: [child] })
                 : child;
 
-            return { node: CREATE_NODE({ _tag: ROOT_TAG, _content: [clusterChild] }) };
+            return { node: CREATE_NODE({ $_tag: ROOT_TAG, _content: [clusterChild] }) };
         }
 
         // B) ELEMENT HANDLING { _-elem: [...] } 
@@ -284,13 +284,13 @@ export function nodeFromJson(
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
                 // string → _-str, number|boolean|null → _-val
                 if (is_string(val)) {
-                    return CREATE_NODE({ _tag: STR_TAG, _meta: {}, _content: [val] });
+                    return CREATE_NODE({ $_tag: STR_TAG, $_meta: {}, _content: [val] });
                 }
                 if (is_Primitive(val)) {
-                    return CREATE_NODE({ _tag: VAL_TAG, _meta: {}, _content: [val as Primitive] });
+                    return CREATE_NODE({ $_tag: VAL_TAG, $_meta: {}, _content: [val as Primitive] });
                 }
 
-                // object → element-object (allow _attrs/_meta; preserve them)
+                // object → element-object (allow _attrs/$_meta; preserve them)
                 if (val && typeof val === "object" && !Array.isArray(val)) {
                     const elObj = val as Record<string, unknown>;
 
@@ -340,9 +340,9 @@ export function nodeFromJson(
                         tagKids = [kidNode];
                     }
 
-                    const elemNode = CREATE_NODE({ _tag: tagName, _content: tagKids });
+                    const elemNode = CREATE_NODE({ $_tag: tagName, _content: tagKids });
                     if (hoistedAttrs && Object.keys(hoistedAttrs).length) elemNode.$_attrs = hoistedAttrs;  // ← preserve
-                    if (hoistedMeta && Object.keys(hoistedMeta).length) elemNode._meta = { ...elemNode._meta, ...hoistedMeta };
+                    if (hoistedMeta && Object.keys(hoistedMeta).length) elemNode.$_meta = { ...elemNode.$_meta, ...hoistedMeta };
 
                     return elemNode;
                 }
@@ -354,7 +354,7 @@ export function nodeFromJson(
                 );
             });
 
-            return { node: CREATE_NODE({ _tag: ELEM_TAG, _meta: {}, _content: children }) };
+            return { node: CREATE_NODE({ $_tag: ELEM_TAG, $_meta: {}, _content: children }) };
 
         }
 
@@ -372,8 +372,8 @@ export function nodeFromJson(
             if (typeof raw === "string") {
                 // strings (including "") → _-str(["..."])
                 child = CREATE_NODE({
-                    _tag: STR_TAG,
-                    _meta: {},
+                    $_tag: STR_TAG,
+                    $_meta: {},
                     _content: [raw] // "" preserved
                 });
             } else if (
@@ -383,8 +383,8 @@ export function nodeFromJson(
             ) {
                 // numbers/booleans/null → _-val([...])
                 child = CREATE_NODE({
-                    _tag: VAL_TAG,
-                    _meta: {},
+                    $_tag: VAL_TAG,
+                    $_meta: {},
                     _content: [raw]
                 });
             } else if (Array.isArray(raw)) {
@@ -399,21 +399,21 @@ export function nodeFromJson(
 
             // JSON-mode property ⇒ inner _-obj wrapper unless the child is already a cluster
             const payload =
-                (child._tag === OBJ_TAG || child._tag === ARR_TAG)
+                (child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG)
                     ? [child]                                    // passthrough single cluster
-                    : [CREATE_NODE({ _tag: OBJ_TAG, _meta: {}, _content: [child] })]; // wrap leaf in _-obj
+                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, _content: [child] })]; // wrap leaf in _-obj
 
             return CREATE_NODE({
-                _tag: key,
-                _meta: {},
+                $_tag: key,
+                $_meta: {},
                 _content: payload
             });
         });
 
         return {
             node: CREATE_NODE({
-                _tag: OBJ_TAG,
-                _meta: {},
+                $_tag: OBJ_TAG,
+                $_meta: {},
                 _content: propertyNodes
             })
         };
@@ -433,10 +433,10 @@ export function nodeFromJson(
  *
  * Legacy `_-root` unwrapping:
  * - If the top-level value is an object of the form:
- *     `{ "_-root: <payload>, "_meta"?: { ... } }`
+ *     `{ "_-root: <payload>, "$_meta"?: { ... } }`
  *   then:
  *   - `jsonToProcess` is set to `<payload>`.
- *   - Any `_meta` entries whose keys begin with the data-meta prefix
+ *   - Any `$_meta` entries whose keys begin with the data-meta prefix
  *     (`data-_*`) are copied into `rootMeta` and attached to the final
  *     `_-root` node.
  * - All other keys (including non-`data-_*` meta) are ignored for the
@@ -446,8 +446,8 @@ export function nodeFromJson(
  * - Delegates to `nodeFromJson(jsonToProcess, getTag(jsonToProcess))`
  *   to build the main HSON subtree.
  * - Wraps the resulting node in a `_-root` wrapper:
- *   - `_tag: ROOT_TAG`
- *   - `_meta: rootMeta` (if any data-meta was preserved)
+ *   - `$_tag: ROOT_TAG`
+ *   - `$_meta: rootMeta` (if any data-meta was preserved)
  *   - `_content: [node]`
  * - Runs `assert_invariants` on the final root to ensure structural
  *   correctness.
@@ -472,12 +472,12 @@ export function parse_json(input: string | JsonValue): HsonNode {
     let rootMeta: HsonMeta | undefined;
     if (is_Object(parsed)) {
         const obj = parsed as JsonObj;
-        const keys = Object.keys(obj).filter(k => k !== "_meta");
+        const keys = Object.keys(obj).filter(k => k !== "$_meta");
         if (keys.length === 1 && keys[0] === ROOT_TAG) {
             jsonToProcess = obj[ROOT_TAG] as JsonValue;
-            if (obj._meta && is_Object(obj._meta)) {
+            if (obj.$_meta && is_Object(obj.$_meta)) {
                 const filtered: HsonMeta = {};
-                for (const [k, v] of Object.entries(obj._meta)) {
+                for (const [k, v] of Object.entries(obj.$_meta)) {
                     if (k.startsWith(_META_DATA_PREFIX)) (filtered as any)[k] = v;
                 }
                 if (Object.keys(filtered).length) rootMeta = filtered;
@@ -490,8 +490,8 @@ export function parse_json(input: string | JsonValue): HsonNode {
 
     const { node } = nodeFromJson(jsonToProcess, getTag(jsonToProcess));
     const root = CREATE_NODE({
-        _tag: ROOT_TAG,
-        _meta: rootMeta,
+        $_tag: ROOT_TAG,
+        $_meta: rootMeta,
         _content: [node],
     });
     assert_invariants(root, "root");

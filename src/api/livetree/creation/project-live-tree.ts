@@ -68,21 +68,21 @@ export function project_livetree(
   const n = node as HsonNode;
 
   // Primitive wrappers → text
-  if (n._tag === STR_TAG || n._tag === VAL_TAG) {
+  if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
     const v = n._content?.[0];
     return document.createTextNode(String(v ?? ""));
   }
 
   // VSNs: unwrap into a fragment
   if (
-    n._tag === ROOT_TAG ||
-    n._tag === OBJ_TAG ||
-    n._tag === ELEM_TAG ||
-    n._tag === ARR_TAG
+    n.$_tag === ROOT_TAG ||
+    n.$_tag === OBJ_TAG ||
+    n.$_tag === ELEM_TAG ||
+    n.$_tag === ARR_TAG
   ) {
     const frag = document.createDocumentFragment();
 
-    if (n._tag === ARR_TAG) {
+    if (n.$_tag === ARR_TAG) {
       // _-arr contains <_-ii> items; unwrap each item’s single child
       for (const ii of n._content ?? []) {
         const payload =
@@ -103,13 +103,13 @@ export function project_livetree(
 
   // REAL ELEMENT NODE --------------------------------------
 
-  const tag = n._tag;
+  const tag = n.$_tag;
   const illegalDomTag = (badTag: string) =>
     new Error(
-      `[create_live_tree2] illegal DOM tag "${badTag}" (node._tag=${n._tag})`
+      `[create_live_tree2] illegal DOM tag "${badTag}" (node.$_tag=${n.$_tag})`
     );
 
-  // "_-" prefixes are reserved for HSON virtual/internal nodes (and (soon) meta like `_tag`).
+  // "_-" prefixes are reserved for HSON virtual/internal nodes (and (soon) meta like `$_tag`).
   // They must never be materialized as real DOM elements.
   if (tag.startsWith(HSON_SYS_PREFIX)) {
     throw illegalDomTag(tag);
@@ -192,13 +192,13 @@ export function project_livetree(
   if (
     kids.length === 1 &&
     is_Node(kids[0]) &&
-    (kids[0]._tag === OBJ_TAG ||
-      kids[0]._tag === ELEM_TAG ||
-      kids[0]._tag === ARR_TAG)
+    (kids[0].$_tag === OBJ_TAG ||
+      kids[0].$_tag === ELEM_TAG ||
+      kids[0].$_tag === ARR_TAG)
   ) {
     const container = kids[0];
 
-    if (container._tag === ARR_TAG) {
+    if (container.$_tag === ARR_TAG) {
       for (const ii of container._content ?? []) {
         const payload =
           is_Node(ii) && Array.isArray(ii._content) ? ii._content[0] : null;

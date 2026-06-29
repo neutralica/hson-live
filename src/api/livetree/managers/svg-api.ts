@@ -190,7 +190,7 @@ export function make_svg_api<TTree extends LiveTree>(tree: TTree): SvgApi<TTree>
         return tree;
     };
     return {
-        inScope: () => SVG_TAGS.includes(tree.node._tag as SvgTag),
+        inScope: () => SVG_TAGS.includes(tree.node.$_tag as SvgTag),
 
 
         preserveAspectRatio: {

@@ -68,7 +68,7 @@ export function parse_html_attrs(el: Element): {
     // A) strip transit-only hints outright
     if (key.startsWith(_TRANSIT_PREFIX)) continue;
 
-    // B) _meta-on-wire (reserved)
+    // B) $_meta-on-wire (reserved)
     if (key === _DATA_INDEX) {
       (meta ??= {})[_DATA_INDEX] = v;
       continue;

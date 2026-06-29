@@ -21,7 +21,7 @@ function clone_branch_inner(
 
   // deep clone containers 
   if (src.$_attrs) dst.$_attrs = { ...src.$_attrs };
-  if (src._meta)  dst._meta  = { ...src._meta };
+  if (src.$_meta)  dst.$_meta  = { ...src.$_meta };
 
   // deep clone content
   if (src._content) {
@@ -39,8 +39,8 @@ function clone_branch_inner(
 
   // If you’re cloning, you never want the old quid hanging around in meta by accident.
   // ensure_quid() should have overwritten it when persist=true, but when persist=false, scrub it.
-  if ((opts.persistQuidMeta ?? true) === false && dst._meta && _DATA_QUID in dst._meta) {
-    delete dst._meta[_DATA_QUID];
+  if ((opts.persistQuidMeta ?? true) === false && dst.$_meta && _DATA_QUID in dst.$_meta) {
+    delete dst.$_meta[_DATA_QUID];
   }
 
   if (oldQ) quidMap.set(oldQ, newQ);
