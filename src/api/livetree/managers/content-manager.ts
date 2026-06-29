@@ -99,6 +99,39 @@ export class ContentManager {
     return out;
   }
 
+  /** Return all effective descendant nodes below the owner, excluding the owner itself. */
+  private effective_descendant_nodes(): readonly HsonNode[] {
+    const out: HsonNode[] = [];
+
+    const walk_items = (items: readonly ContentItem[]): void => {
+      for (const it of items) {
+        if (!is_Node(it)) continue;
+
+        const tag = it._tag;
+
+        // leaf wrappers are invisible at the “element-descendants” level
+        if (is_leaf_vsn(tag)) {
+          continue;
+        }
+
+        const kids = (it._content ?? []) as readonly ContentItem[];
+
+        // container wrappers are invisible; descend into their content
+        if (is_vsn_tag(tag)) {
+          walk_items(kids);
+          continue;
+        }
+
+        // normal element node: include it, then continue through its descendants
+        out.push(it);
+        walk_items(kids);
+      }
+    };
+
+    walk_items(this.pure_nodes());
+    return out;
+  }
+
   /** Return the effective node-child at `ix`, or `undefined` when out of range. */
   private at_node(ix: number): HsonNode | undefined {
     const a = this.effective_node_children();
@@ -154,6 +187,23 @@ export class ContentManager {
   public all(): readonly LiveTree[] {
     const out: LiveTree[] = [];
     for (const n of this.effective_node_children()) {
+      const t = create_livetree(n);
+      t.adoptRoots(this.owner.hostRootNode());
+      out.push(t);
+    }
+    return out;
+  }
+
+  /**
+   * Return `LiveTree` handles for all effective descendant nodes, excluding self.
+   *
+   * This is the graph-backed equivalent of `querySelectorAll("*")`: it walks the
+   * subtree below the owner in document/tree order, skips primitive leaves, hides
+   * structural VSN wrappers, and returns normal element nodes at every depth.
+   */
+  public deep(): readonly LiveTree[] {
+    const out: LiveTree[] = [];
+    for (const n of this.effective_descendant_nodes()) {
       const t = create_livetree(n);
       t.adoptRoots(this.owner.hostRootNode());
       out.push(t);

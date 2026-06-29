@@ -3,8 +3,8 @@
 # 2DÜ
 
 ## 28JUN2026
-• add: tree.find(...).asSvg()/.must.asSvg()
-• SvgLiveTree = Omit<LiveTree, ...> & { ... }  - make SVG/HTML tree types derive from the same generic interface surface instead of manually overriding pieces.
+~~• add: tree.find(...).asSvg()/.must.asSvg()~~
+??• SvgLiveTree = Omit<LiveTree, ...> & { ... }  - make SVG/HTML tree types derive from the same generic interface surface instead of manually overriding pieces.
 
 ## 22JUN2026
 •  add: liveTree.dom.walkText/walkTree (document.treeWalker)
