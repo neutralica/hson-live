@@ -1,0 +1,132 @@
+// livemap-feed.ts
+
+import type { JsonValue } from "../../core/types.js";
+import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "./livemap.types.js";
+
+/**
+ * Reads the current projected JSON value at a LiveMap path.
+ *
+ * Feed does not own graph traversal. Instead, Core passes a snap function into
+ * `emit()`, so Feed can report the current value at the subscribed path without
+ * importing or knowing about the editor.
+ */
+export type LiveMapSnapFn = (path: LivePath) => JsonValue | undefined;
+
+/**
+ * One registered feed subscription.
+ *
+ * `path` is the subscriber's projected value path, not a raw HSON node path.
+ * `listener` is called when an emitted op overlaps that path.
+ */
+type FeedEntry = Readonly<{
+  path: LivePath;
+  listener: LiveMapFeedListener;
+}>;
+
+/**
+ * Return true when two projected paths can affect each other.
+ *
+ * The rule is intentionally symmetric:
+ * - a parent feed hears child changes: `["user"]` hears `["user", "name"]`
+ * - a child feed hears parent replacement: `["user", "name"]` hears `["user"]`
+ * - sibling paths do not overlap: `["user", "name"]` ignores `["user", "role"]`
+ *
+ * This is the core matching rule for LiveMap feeds.
+ */
+export function paths_overlap(a: LivePath, b: LivePath): boolean {
+  return path_is_prefix(a, b) || path_is_prefix(b, a);
+}
+
+/**
+ * Create an in-memory feed registry for one LiveMap core instance.
+ *
+ * The hub stores path/listener pairs, accepts normalized commits from Core, and
+ * emits listener events for any subscription whose path overlaps a commit op.
+ * It is deliberately graph-agnostic: it never mutates nodes and never resolves
+ * HSON wrappers directly.
+ */
+export function make_livemap_feed_hub(): LiveMapFeedHub {
+  /**
+   * Mutable registry of active subscriptions.
+   *
+   * This is intentionally local closure state rather than graph state. Feed
+   * subscriptions are runtime observers, not part of the HSON data graph.
+   */
+  const entries: FeedEntry[] = [];
+
+  return {
+    /**
+     * Register a listener at a projected path and return a disposer.
+     *
+     * The path is copied on entry so later caller-side array mutation cannot
+     * silently move the subscription.
+     */
+    add: (path, listener) => {
+      const entry: FeedEntry = { path: [...path], listener };
+      entries.push(entry);
+
+      /**
+       * Remove this exact subscription if it is still active.
+       *
+       * Calling the disposer more than once is harmless.
+       */
+      return () => {
+        const index = entries.indexOf(entry);
+        if (index !== -1) entries.splice(index, 1);
+      };
+    },
+
+    /**
+     * Emit a commit to all overlapping subscriptions.
+     *
+     * The event value is the current value at the subscriber's path, not
+     * necessarily the op's `next` value. That distinction matters for parent
+     * feeds: a feed on `["user"]` should receive the full current user object
+     * when `["user", "name"]` changes.
+     */
+    emit: (commit, snap) => {
+      if (!commit.changed) return;
+
+      for (const op of commit.ops) {
+        /**
+         * Copy the registry before iterating so listeners may safely dispose or
+         * add subscriptions during emission without corrupting this pass.
+         */
+        for (const entry of [...entries]) {
+          if (!paths_overlap(entry.path, op.path)) continue;
+
+          const event: LiveMapFeedEvent = {
+            op,
+            path: entry.path,
+            value: snap(entry.path),
+          };
+
+          entry.listener(event);
+        }
+      }
+    },
+  };
+}
+
+/**
+ * Runtime feed registry used by LiveMap Core.
+ *
+ * `add()` subscribes a listener at a projected path.
+ * `emit()` fans a normalized commit out to matching listeners.
+ */
+export type LiveMapFeedHub = Readonly<{
+  add: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
+  emit: (commit: LiveMapCommit, snap: LiveMapSnapFn) => void;
+}>;
+
+/**
+ * Return true when `prefix` is an exact ancestor-or-self prefix of `path`.
+ *
+ * This is intentionally strict equality per path segment. No dot splitting,
+ * coercion, stringification, or wildcard behavior happens here.
+ */
+function path_is_prefix(prefix: LivePath, path: LivePath): boolean {
+  if (prefix.length > path.length) return false;
+
+  return prefix.every((part, index) => part === path[index]);
+}
