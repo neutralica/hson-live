@@ -171,7 +171,11 @@ export type LiveMapNodeHandle = Readonly<{
   mustChild: (tag: string) => HsonNode;
   /** Append a direct HSON child node to the current underlying node. */
   append: (child: HsonNode) => LiveMapNodeHandle;
+  /** API for node removal (returns self, child, children). */
   remove: LiveMapNodeRemoveApi;
+  replace: LiveMapNodeReplaceApi;
+  insert: LiveMapNodeInsertApi;
+  move: LiveMapNodeMoveApi;
 }>;
 
 export type LiveMapPathHandle = Readonly<{
@@ -188,4 +192,17 @@ export type LiveMapPathHandle = Readonly<{
 export type LiveMapNodeRemoveApi = Readonly<{
   children: () => LiveMapNodeHandle;
   child: (index: number) => LiveMapNodeHandle;
+}>;
+
+export type LiveMapNodeReplaceApi = Readonly<{
+  children: (children: readonly HsonNode[]) => LiveMapNodeHandle;
+  child: (index: number, child: HsonNode) => LiveMapNodeHandle;
+}>;
+
+export type LiveMapNodeInsertApi = Readonly<{
+  child: (index: number, child: HsonNode) => LiveMapNodeHandle;
+}>;
+
+export type LiveMapNodeMoveApi = Readonly<{
+  child: (fromIndex: number, toIndex: number) => LiveMapNodeHandle;
 }>;
