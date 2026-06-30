@@ -4,7 +4,8 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
 import { delete_live_path, set_live_path, snap_live_path } from "./livemap-editor.js";
 import { make_livemap_feed_hub } from "./livemap-feed.js";
-import { make_livemap_path_handle } from "./map-handle.js";
+import { make_livemap_node_handle } from "./livemap-node.js";
+import { make_livemap_path_handle } from "./livemap-handle.js";
 
 /**
  * Create the first Core facade for a LiveMap graph.
@@ -25,6 +26,9 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
 
     /** Create an ergonomic handle scoped to one projected path. */
     at: (path) => make_livemap_path_handle(core, path),
+
+    /** Create a HSON-node-facing handle scoped to one projected path. */
+    node: (path) => make_livemap_node_handle(root, path),
 
     /** Mutate a projected path, emit the resulting commit, and return it. */
     set: (path, value) => {

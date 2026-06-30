@@ -2,25 +2,9 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveMapCommit,
-  LiveMapCore,
-  LiveMapDisposer,
-  LiveMapFeedListener,
-  LiveMapSetManyValues,
-  LivePath,
+  LiveMapCore, LiveMapPathHandle, LivePath
 } from "./livemap.types.js";
 import { path_is_prefix } from "./livemap-path.js";
-
-export type LiveMapPathHandle = Readonly<{
-  path: () => LivePath;
-  snap: () => JsonValue | undefined;
-  set: (value: JsonValue) => LiveMapCommit;
-  setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
-  delete: () => LiveMapCommit;
-  update: (updater: (value: JsonValue | undefined) => JsonValue) => LiveMapCommit;
-  feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
-  linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
-}>;
 
 type LiveMapPathHandleCore = Pick<LiveMapCore, "snap" | "set" | "setMany" | "delete" | "feed">;
 

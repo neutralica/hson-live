@@ -1,7 +1,6 @@
 // livemap.types.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapPathHandle } from "./map-handle.js";
 
 /**
  * One segment of a projected LiveMap path.
@@ -52,6 +51,7 @@ export type LiveMapCore = Readonly<{
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
+  node: (path: LivePath) => LiveMapNodeHandle;
 }>;
 
 /**
@@ -133,4 +133,57 @@ export type LiveMapSamePathLinkOptions = Readonly<{
 export type LiveMapMappedLinkOptions = Readonly<{
   from: LivePath;
   to: LivePath;
+}>;
+
+
+export type LiveMapNodeAttrs = NonNullable<HsonNode["$_attrs"]>;
+export type LiveMapNodeAttrValue = LiveMapNodeAttrs[string];
+
+export type LiveMapNodeHandle = Readonly<{
+  /** Return a defensive copy of the projected path this node handle points at. */
+  path: () => LivePath;
+
+  /** Resolve the projected path to the current underlying HSON node, if present. */
+  get: () => HsonNode | undefined;
+
+  /** Resolve the projected path to a current HSON node, or throw with path context. */
+  must: () => HsonNode;
+
+  /** Read the current underlying HSON node tag, if present. */
+  tag: () => string | undefined;
+
+  /** Read a defensive copy of the current underlying HSON node attrs, if present. */
+  attrs: () => LiveMapNodeAttrs | undefined;
+
+  /** Read one current underlying HSON node attr, if present. */
+  attr: (name: string) => LiveMapNodeAttrValue | undefined;
+
+  /** Set one attr on the current underlying HSON node. */
+  setAttr: (name: string, value: LiveMapNodeAttrValue) => LiveMapNodeHandle;
+
+  /** Set many attrs on the current underlying HSON node. */
+  setAttrs: (attrs: Readonly<Record<string, LiveMapNodeAttrValue>>) => LiveMapNodeHandle;
+
+  /** Remove one attr from the current underlying HSON node. */
+  removeAttr: (name: string) => LiveMapNodeHandle;
+
+  /** Remove all attrs from the current underlying HSON node. */
+  clearAttrs: () => LiveMapNodeHandle;
+
+  /** Read the current underlying HSON node meta object, if present. System-owned. */
+  meta: () => HsonNode["$_meta"] | undefined;
+
+  /** Read the current underlying HSON node content array, if present. */
+  content: () => HsonNode["$_content"] | undefined;
+}>;
+
+export type LiveMapPathHandle = Readonly<{
+  path: () => LivePath;
+  snap: () => JsonValue | undefined;
+  set: (value: JsonValue) => LiveMapCommit;
+  setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
+  delete: () => LiveMapCommit;
+  update: (updater: (value: JsonValue | undefined) => JsonValue) => LiveMapCommit;
+  feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
+  linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
