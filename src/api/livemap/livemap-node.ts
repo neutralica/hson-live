@@ -7,6 +7,34 @@ import type { LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapNodeHandle, LivePat
 import { resolve_wrapper_node } from "./livemap-editor.js";
 import { format_live_path } from "./livemap-path.js";
 
+function remove_child_nodes(parent: HsonNode): void {
+  parent.$_content = parent.$_content.filter((child) => !is_Node(child));
+}
+
+function remove_child_node_at(parent: HsonNode, path: LivePath, index: number): void {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`LiveMap node child index does not resolve: ${format_live_path(path)}[${index}]`);
+  }
+
+  let childIndex = -1;
+  let contentIndex = -1;
+
+  for (let indexInContent = 0; indexInContent < parent.$_content.length; indexInContent += 1) {
+    if (!is_Node(parent.$_content[indexInContent])) continue;
+
+    childIndex += 1;
+    if (childIndex !== index) continue;
+
+    contentIndex = indexInContent;
+    break;
+  }
+
+  if (contentIndex < 0) {
+    throw new Error(`LiveMap node child index does not resolve: ${format_live_path(path)}[${index}]`);
+  }
+
+  parent.$_content.splice(contentIndex, 1);
+}
 
 /**
  * Create a HSON-node-facing handle for one projected LiveMap path.
@@ -51,9 +79,23 @@ export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMa
     meta: () => getNode()?.$_meta,
     content: () => getNode()?.$_content,
     children: () => copy_child_nodes(getNode()),
-    childrenByTag: (tag) => copy_child_nodes_by_tag(getNode(), tag),
-    child: (tag) => find_direct_child_node_by_tag(getNode(), tag),
-    mustChild: (tag) => must_find_direct_child_node_by_tag(root, handlePath, tag),
+    childrenByTag: (tag: string) => copy_child_nodes_by_tag(getNode(), tag),
+    child: (tag: string) => find_direct_child_node_by_tag(getNode(), tag),
+    mustChild: (tag: string) => must_find_direct_child_node_by_tag(root, handlePath, tag),
+    append: (child: HsonNode) => {
+      append_child_node(must_resolve_node(root, handlePath), child);
+      return handle;
+    },
+    remove: {
+      children: () => {
+        remove_child_nodes(must_resolve_node(root, handlePath));
+        return handle;
+      },
+      child: (index) => {
+        remove_child_node_at(must_resolve_node(root, handlePath), handlePath, index);
+        return handle;
+      },
+    },
   };
 
   return handle;
@@ -142,6 +184,10 @@ function must_find_direct_child_node_by_tag(root: HsonNode, path: LivePath, tag:
   if (child !== undefined) return child;
 
   throw new Error(`LiveMap node child does not resolve: ${format_live_path(path)}.${JSON.stringify(tag)}`);
+}
+
+function append_child_node(parent: HsonNode, child: HsonNode): void {
+  parent.$_content.push(child);
 }
 
 /**

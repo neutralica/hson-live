@@ -142,43 +142,36 @@ export type LiveMapNodeAttrValue = LiveMapNodeAttrs[string];
 export type LiveMapNodeHandle = Readonly<{
   /** Return a defensive copy of the projected path this node handle points at. */
   path: () => LivePath;
-
   /** Resolve the projected path to the current underlying HSON node, if present. */
   get: () => HsonNode | undefined;
-
   /** Resolve the projected path to a current HSON node, or throw with path context. */
   must: () => HsonNode;
-
   /** Read the current underlying HSON node tag, if present. */
   tag: () => string | undefined;
-
   /** Read a defensive copy of the current underlying HSON node attrs, if present. */
   attrs: () => LiveMapNodeAttrs | undefined;
-
   /** Read one current underlying HSON node attr, if present. */
   attr: (name: string) => LiveMapNodeAttrValue | undefined;
-
   /** Set one attr on the current underlying HSON node. */
   setAttr: (name: string, value: LiveMapNodeAttrValue) => LiveMapNodeHandle;
-
   /** Set many attrs on the current underlying HSON node. */
   setAttrs: (attrs: Readonly<Record<string, LiveMapNodeAttrValue>>) => LiveMapNodeHandle;
-
   /** Remove one attr from the current underlying HSON node. */
   removeAttr: (name: string) => LiveMapNodeHandle;
-
   /** Remove all attrs from the current underlying HSON node. */
   clearAttrs: () => LiveMapNodeHandle;
-
   /** Read the current underlying HSON node meta object, if present. System-owned. */
   meta: () => HsonNode["$_meta"] | undefined;
-
   /** Read the current underlying HSON node content array, if present. */
   content: () => HsonNode["$_content"] | undefined;
+  /** Return all children as HsonNodes. */
   children: () => readonly HsonNode[];
   childrenByTag: (tag: string) => readonly HsonNode[];
   child: (tag: string) => HsonNode | undefined;
   mustChild: (tag: string) => HsonNode;
+  /** Append a direct HSON child node to the current underlying node. */
+  append: (child: HsonNode) => LiveMapNodeHandle;
+  remove: LiveMapNodeRemoveApi;
 }>;
 
 export type LiveMapPathHandle = Readonly<{
@@ -190,4 +183,9 @@ export type LiveMapPathHandle = Readonly<{
   update: (updater: (value: JsonValue | undefined) => JsonValue) => LiveMapCommit;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
+}>;
+
+export type LiveMapNodeRemoveApi = Readonly<{
+  children: () => LiveMapNodeHandle;
+  child: (index: number) => LiveMapNodeHandle;
 }>;
