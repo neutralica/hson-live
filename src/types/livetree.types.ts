@@ -4,7 +4,7 @@ import { LiveTree } from "../api/livetree/livetree.js";
 import { HsonAttrs, HsonMeta, HsonNode } from "../core/types.js";
 import { FindQuery } from "../api/livetree/methods/find.js";
 import { TreeSelector } from "../api/livetree/creation/tree-selector.js";
-import { HTML_TAGS, SVG_TAGS } from "../consts/all-html-tags.js";
+import { HTML_TAGS, SVG_TAGS } from "../core/all-html-tags.js";
 import { SvgBox, SvgLiveTree } from "./svg.types.js";
 import { CanvasLiveTree } from "./livetree-internals.types.js";
 

@@ -9,7 +9,7 @@ import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { normalize_ix } from "../../transform/utils/json-utils/normalize-ix.js";
 import { TreeSelector } from "../creation/tree-selector.js";
-import { SVG_TAGS } from "../../../consts/all-html-tags.js";
+import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 

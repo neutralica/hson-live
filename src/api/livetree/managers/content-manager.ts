@@ -2,9 +2,11 @@ import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../core/constants.js";
 import { Primitive } from "../../../core/types.js";
 import { HsonNode } from "../../../core/types.js";
 import { is_Node } from "../../../core/node-guards.js";
-import { serialize_xml } from "../../serializers/serialize-html.js";
+import { serialize_xml } from "../../transform/serializers/serialize-html.js";
+import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { create_livetree } from "../creation/create-livetree.js";
 import { LiveTree } from "../livetree.js";
+import { TreeSelector } from "../creation/tree-selector.js";
 
 type ContentItem = HsonNode | Primitive;
 
@@ -183,15 +185,15 @@ export class ContentManager {
     return t;
   }
 
-  /** Return `LiveTree` handles for all effective node-children. */
-  public all(): readonly LiveTree[] {
-    const out: LiveTree[] = [];
-    for (const n of this.effective_node_children()) {
+  /** Return a selector containing all effective node-children. */
+  public all(): TreeSelector {
+    const trees = this.effective_node_children().map((n) => {
       const t = create_livetree(n);
       t.adoptRoots(this.owner.hostRootNode());
-      out.push(t);
-    }
-    return out;
+      return t;
+    });
+
+    return make_tree_selector(trees);
   }
 
   /**
@@ -199,16 +201,16 @@ export class ContentManager {
    *
    * This is the graph-backed equivalent of `querySelectorAll("*")`: it walks the
    * subtree below the owner in document/tree order, skips primitive leaves, hides
-   * structural VSN wrappers, and returns normal element nodes at every depth.
+   * structural VSN wrappers, and selects normal element nodes at every depth.
    */
-  public deep(): readonly LiveTree[] {
-    const out: LiveTree[] = [];
-    for (const n of this.effective_descendant_nodes()) {
+  public deep(): TreeSelector {
+    const trees = this.effective_descendant_nodes().map((n) => {
       const t = create_livetree(n);
       t.adoptRoots(this.owner.hostRootNode());
-      out.push(t);
-    }
-    return out;
+      return t;
+    });
+
+    return make_tree_selector(trees);
   }
 
   /**

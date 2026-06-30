@@ -6,7 +6,7 @@ import { is_Node } from "../../../core/node-guards.js";
 import { make_string } from "../../../core/stringify.js";
 import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
-import { make_leaf } from "../../parsers/parse-tokens.js";
+import { make_leaf } from "../../transform/parsers/parse-tokens.js";
 import { Primitive } from "../../../core/types.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";

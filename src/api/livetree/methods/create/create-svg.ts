@@ -1,4 +1,4 @@
-import { SVG_TAGS } from "../../../../consts/all-html-tags.js";
+import { SVG_TAGS } from "../../../../core/all-html-tags.js";
 import { SvgCreateHelper, SvgTag } from "../../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../../types/svg.types.js";
 import { LiveTree } from "../../livetree.js";

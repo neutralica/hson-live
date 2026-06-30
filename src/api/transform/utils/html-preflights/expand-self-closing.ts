@@ -40,7 +40,6 @@ const voidTags = [
  * @param $input - HTML source text to normalize.
  * @returns HTML with matching void tags rewritten as `<tag ... />`.
  *******/
-// src/utils/html-utils/expand-void-tags.ts (or wherever yours lives)
 export function expand_void_tags(src: string): string {
   // include embed + full HTML void set; keep lowercase canonical
   const VOID = new Set([

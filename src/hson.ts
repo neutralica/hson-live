@@ -1,12 +1,12 @@
 
-import { construct_source_1 } from "./api/constructors/construct-source-1.js";
+import { construct_source_1 } from "./api/transform/constructors/construct-source-1.js";
 import type { GraftConstructor, OutputConstructor_2 } from "./types/constructor.types.js";
 import type { HsonNode } from "./types/node.types.js";
 import type { JsonValue } from "./types/core.types.js";
 import { LiveTree } from "./api/livetree/livetree.js";
 import { make_branch_from_node } from "./api/livetree/creation/create-branch.js";
 import { graft } from "./api/livetree/creation/graft.js";
-import { make_detached_livetree_create } from "./api/constructors/make-detached-livetree.js";
+import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
 
 
 (globalThis as any)._test_ON = () => { (globalThis as any).test = true; location.reload(); };
