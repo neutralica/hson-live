@@ -9,13 +9,17 @@ import { path_is_prefix } from "./livemap-path.js";
  *
  * This is still deliberately narrow:
  * - one-way only
- * - set-op propagation only
+ * - set/delete propagation only
  * - optional source-prefix to target-prefix path mapping
  * - no transforms
  * - no conflict resolution
  * - no bidirectional loop handling
  *
  * Same-path links use `{ path }`. Mapped links use `{ from, to }`.
+ *
+ * Delete propagation follows link scope. Deleting the linked source path deletes
+ * the target path. Deleting below the linked source path writes the updated
+ * linked source value into the target path.
  */
 export function link_livemap(source: LiveMapCore, target: LiveMapCore, options: LiveMapLinkOptions): LiveMapDisposer {
   const linkPath = link_source_path(options);
@@ -42,15 +46,43 @@ function link_source_path(options: LiveMapLinkOptions): LivePath {
  * that is the precise location that changed in the source.
  */
 function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options: LiveMapLinkOptions): void {
-  if (event.op.kind !== "set") return;
+  const targetPath = link_target_path(event.op.path, options);
+  if (targetPath === undefined) return;
+
+  if (event.op.kind === "delete") {
+    apply_delete_link_event(target, event, options, targetPath);
+    return;
+  }
 
   const next = event.op.next;
   if (next === undefined) return;
 
-  const targetPath = link_target_path(event.op.path, options);
-  if (targetPath === undefined) return;
-
   target.set(targetPath, next as JsonValue);
+}
+
+/**
+ * Apply a delete event according to the source link scope.
+ *
+ * If the deleted path removes the linked source path itself, or one of its
+ * ancestors, delete the translated target path. If the deleted path is below the
+ * linked source path, write the updated linked source value to the target scope.
+ */
+function apply_delete_link_event(
+  target: LiveMapCore,
+  event: LiveMapFeedEvent,
+  options: LiveMapLinkOptions,
+  targetPath: LivePath,
+): void {
+  const sourcePath = link_source_path(options);
+
+  if (path_is_prefix(event.op.path, sourcePath)) {
+    target.delete(targetPath);
+    return;
+  }
+
+  if (path_is_prefix(sourcePath, event.op.path) && event.value !== undefined) {
+    target.set(link_target_path(sourcePath, options) ?? targetPath, event.value);
+  }
 }
 
 /**

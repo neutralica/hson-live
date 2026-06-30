@@ -34,6 +34,9 @@ export type LiveMapEditResult = Readonly<{
   next: JsonValue | undefined;
 }>;
 
+/** Object-shaped values accepted by object-property batch setters. */
+export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
+
 /**
  * First public core surface for one LiveMap graph.
  *
@@ -46,17 +49,19 @@ export type LiveMapCore = Readonly<{
   snap: (path?: LivePath) => JsonValue | undefined;
   at: (path: LivePath) => LiveMapPathHandle;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
+  setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
+  delete: (path: LivePath) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
 }>;
 
 /**
- * Normalized operation emitted by a LiveMap mutation.
+ * Normalized set operation emitted by a LiveMap mutation.
  *
- * Ops are intentionally data-shaped and replayable. `update(fn)` should later
- * emit a `set` op too, because functions are not serializable across feeds,
- * logs, or future transport.
+ * Ops are intentionally data-shaped and replayable. `update(fn)` emits a `set`
+ * op too, because functions are not serializable across feeds, logs, or future
+ * transport.
  */
-export type LiveMapOp = Readonly<{
+export type LiveMapSetOp = Readonly<{
   kind: "set";
   path: LivePath;
   prev: JsonValue | undefined;
@@ -64,10 +69,26 @@ export type LiveMapOp = Readonly<{
 }>;
 
 /**
+ * Normalized delete operation emitted by a LiveMap mutation.
+ *
+ * Delete is distinct from `set(undefined)` because undefined is not a JSON value
+ * and should not become part of the set-value surface.
+ */
+export type LiveMapDeleteOp = Readonly<{
+  kind: "delete";
+  path: LivePath;
+  prev: JsonValue | undefined;
+  next: undefined;
+}>;
+
+/** Normalized operation emitted by a LiveMap mutation. */
+export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp;
+
+/**
  * Normalized mutation record returned by Core.
  *
- * A commit can contain one or more ops. The current slice only emits zero or one
- * `set` op, but the shape is already ready for batch/multi-op commits.
+ * A commit can contain zero, one, or many ops. Empty commits represent unchanged
+ * writes/deletes. Multi-op commits are used by object-property batch writes.
  */
 export type LiveMapCommit = Readonly<{
   changed: boolean;

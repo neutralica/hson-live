@@ -118,6 +118,45 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
     next,
   };
 }
+
+/**
+ * Delete a projected object-property path.
+ *
+ * This first delete slice is intentionally narrow:
+ * - it can remove object properties from an already-resolved object
+ * - missing object properties are unchanged, not errors
+ * - it does not replace or delete the root
+ * - it does not delete array indexes yet
+ * - it does not auto-remove empty parent containers
+ *
+ * The editor returns raw edit information. Core wraps that into commit/op form.
+ */
+export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditResult {
+  if (path.length === 0) {
+    throw new Error("LiveMap editor cannot delete the root node yet.");
+  }
+
+  const prev = snap_live_path(root, path);
+  const resolved = resolve_parent_node(root, path);
+
+  if (resolved === undefined) {
+    return {
+      changed: false,
+      prev,
+      next: undefined,
+    };
+  }
+
+  delete_child_value(resolved.parent, resolved.key, path);
+
+  const next = snap_live_path(root, path);
+
+  return {
+    changed: !json_values_equal(prev, next),
+    prev,
+    next,
+  };
+}
 /**
  * Write one projected child value under an already-resolved parent value node.
  *
@@ -177,6 +216,36 @@ function write_array_index(parent: HsonNode, index: number, value: JsonValue, pa
   }
 
   parent.$_content[existingIndex] = make_array_item_wrapper(index, value);
+}
+
+/**
+ * Delete one projected child value under an already-resolved parent value node.
+ *
+ * Objects support property deletion by string key. Arrays are deliberately not
+ * supported yet because index deletion needs an explicit shifting/hole policy.
+ */
+function delete_child_value(parent: HsonNode, key: LivePathPart, path: LivePath): void {
+  if (parent.$_tag === OBJ_TAG && typeof key === "string") {
+    delete_object_property(parent, key);
+    return;
+  }
+
+  if (parent.$_tag === ARR_TAG && typeof key === "number") {
+    throw new Error(`LiveMap editor cannot delete array indexes yet: ${format_live_path(path)}`);
+  }
+
+  throw new Error(`LiveMap editor cannot delete this path yet: ${format_live_path(path)}`);
+}
+
+/**
+ * Remove an object property wrapper when it exists.
+ *
+ * Missing properties are no-ops so callers can treat delete as idempotent.
+ */
+function delete_object_property(parent: HsonNode, key: string): void {
+  const existingIndex = parent.$_content.findIndex((child) => is_Node(child) && child.$_tag === key);
+  if (existingIndex === -1) return;
+  parent.$_content.splice(existingIndex, 1);
 }
 
 /**
