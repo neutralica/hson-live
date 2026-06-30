@@ -89,3 +89,25 @@ export type LiveMapFeedListener = (event: LiveMapFeedEvent) => void;
 
 /** Idempotent cleanup function returned by subscriptions and future bindings. */
 export type LiveMapDisposer = () => void;
+/**
+ * Options for one-way LiveMap links.
+ *
+ * `{ path }` is the same-path shorthand: source ops overlapping `path` are
+ * replayed at their original op path on the target.
+ *
+ * `{ from, to }` maps a source path prefix to a target path prefix. For example,
+ * an op at `["draft", "name"]` with `{ from: ["draft"], to: ["user"] }`
+ * replays to `["user", "name"]`.
+ */
+export type LiveMapLinkOptions = LiveMapSamePathLinkOptions | LiveMapMappedLinkOptions;
+
+/** One-way link where source and target use the same projected path. */
+export type LiveMapSamePathLinkOptions = Readonly<{
+  path: LivePath;
+}>;
+
+/** One-way link where source ops are translated from one path prefix to another. */
+export type LiveMapMappedLinkOptions = Readonly<{
+  from: LivePath;
+  to: LivePath;
+}>;
