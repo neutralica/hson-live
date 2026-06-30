@@ -175,6 +175,10 @@ export type LiveMapNodeHandle = Readonly<{
 
   /** Read the current underlying HSON node content array, if present. */
   content: () => HsonNode["$_content"] | undefined;
+  children: () => readonly HsonNode[];
+  childrenByTag: (tag: string) => readonly HsonNode[];
+  child: (tag: string) => HsonNode | undefined;
+  mustChild: (tag: string) => HsonNode;
 }>;
 
 export type LiveMapPathHandle = Readonly<{

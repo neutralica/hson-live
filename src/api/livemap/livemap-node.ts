@@ -50,6 +50,10 @@ export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMa
     },
     meta: () => getNode()?.$_meta,
     content: () => getNode()?.$_content,
+    children: () => copy_child_nodes(getNode()),
+    childrenByTag: (tag) => copy_child_nodes_by_tag(getNode(), tag),
+    child: (tag) => find_direct_child_node_by_tag(getNode(), tag),
+    mustChild: (tag) => must_find_direct_child_node_by_tag(root, handlePath, tag),
   };
 
   return handle;
@@ -116,6 +120,28 @@ function remove_node_attr(node: HsonNode, name: string): void {
 
 function clear_node_attrs(node: HsonNode): void {
   node.$_attrs = {};
+}
+
+function copy_child_nodes(node: HsonNode | undefined): readonly HsonNode[] {
+  if (node === undefined) return [];
+  return node.$_content.filter(is_Node);
+}
+
+function copy_child_nodes_by_tag(node: HsonNode | undefined, tag: string): readonly HsonNode[] {
+  if (node === undefined) return [];
+  return node.$_content.filter((child): child is HsonNode => is_Node(child) && child.$_tag === tag);
+}
+
+function find_direct_child_node_by_tag(node: HsonNode | undefined, tag: string): HsonNode | undefined {
+  if (node === undefined) return undefined;
+  return node.$_content.find((child): child is HsonNode => is_Node(child) && child.$_tag === tag);
+}
+
+function must_find_direct_child_node_by_tag(root: HsonNode, path: LivePath, tag: string): HsonNode {
+  const child = find_direct_child_node_by_tag(must_resolve_node(root, path), tag);
+  if (child !== undefined) return child;
+
+  throw new Error(`LiveMap node child does not resolve: ${format_live_path(path)}.${JSON.stringify(tag)}`);
 }
 
 /**
