@@ -17,4 +17,6 @@ export {
 export  { format_live_path, path_is_prefix } from "./api/livemap/livemap-path.js";
 export  { link_livemap } from "./api/livemap/livemap-link.js";
 export { make_livemap_feed_hub, paths_overlap } from "./api/livemap/livemap-feed.js";
-export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener,LiveMapDisposer, LiveMapCore } from "./types/index.js";
+export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore } from "./types/index.js";
+export type { LiveMapPathHandle } from "./types/index.js";
+

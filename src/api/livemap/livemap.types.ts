@@ -1,6 +1,7 @@
 // livemap.types.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
+import type { LiveMapPathHandle } from "./map-handle.js";
 
 /**
  * One segment of a projected LiveMap path.
@@ -43,6 +44,7 @@ export type LiveMapEditResult = Readonly<{
 export type LiveMapCore = Readonly<{
   root: () => HsonNode;
   snap: (path?: LivePath) => JsonValue | undefined;
+  at: (path: LivePath) => LiveMapPathHandle;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
 }>;

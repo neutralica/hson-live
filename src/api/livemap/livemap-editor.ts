@@ -6,6 +6,7 @@ import { is_Node } from "../../core/node-guards.js";
 import { LivePathPart, LivePath, LiveMapEditResult } from "./livemap.types.js";
 import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
+import { format_live_path } from "./livemap-path.js";
 
 /**
  * Parent resolution for a projected LiveMap path.
@@ -89,7 +90,8 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
  * This is the first mutation slice and is intentionally narrow:
  * - it supports replacing or adding properties on an already-resolved object
  * - it does not replace the root yet
- * - it does not set array indexes yet
+ * - it can replace existing array indexes
+ * - it does not append or insert array items yet
  * - it does not auto-create missing parent containers yet
  *
  * The editor returns raw edit information. Core wraps that into commit/op form.
@@ -106,22 +108,7 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
     throw new Error(`LiveMap editor could not resolve parent path: ${format_live_path(path.slice(0, -1))}`);
   }
 
-  if (resolved.parent.$_tag !== OBJ_TAG) {
-    throw new Error(`LiveMap editor can only set object properties in this slice: ${format_live_path(path)}`);
-  }
-
-  if (typeof resolved.key !== "string") {
-    throw new Error(`LiveMap editor cannot set array indexes yet: ${format_live_path(path)}`);
-  }
-
-  const nextWrapper = make_object_property_wrapper(resolved.key, value);
-  const existingIndex = resolved.parent.$_content.findIndex((child) => is_Node(child) && child.$_tag === resolved.key);
-
-  if (existingIndex === -1) {
-    resolved.parent.$_content.push(nextWrapper);
-  } else {
-    resolved.parent.$_content[existingIndex] = nextWrapper;
-  }
+  write_child_value(resolved.parent, resolved.key, value, path);
 
   const next = snap_live_path(root, path);
 
@@ -130,6 +117,66 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
     prev,
     next,
   };
+}
+/**
+ * Write one projected child value under an already-resolved parent value node.
+ *
+ * Objects support property add/replace by string key. Arrays support replacing
+ * an existing numeric index only. Array append/insert policy is intentionally
+ * deferred until we decide how list mutation should be represented in ops.
+ */
+function write_child_value(parent: HsonNode, key: LivePathPart, value: JsonValue, path: LivePath): void {
+  if (parent.$_tag === OBJ_TAG && typeof key === "string") {
+    write_object_property(parent, key, value);
+    return;
+  }
+
+  if (parent.$_tag === ARR_TAG && typeof key === "number") {
+    write_array_index(parent, key, value, path);
+    return;
+  }
+
+  throw new Error(`LiveMap editor cannot set this path yet: ${format_live_path(path)}`);
+}
+
+/**
+ * Add or replace an object property wrapper.
+ *
+ * Missing object properties are allowed because object shape can expand without
+ * needing list insertion semantics.
+ */
+function write_object_property(parent: HsonNode, key: string, value: JsonValue): void {
+  const nextWrapper = make_object_property_wrapper(key, value);
+  const existingIndex = parent.$_content.findIndex((child) => is_Node(child) && child.$_tag === key);
+
+  if (existingIndex === -1) {
+    parent.$_content.push(nextWrapper);
+  } else {
+    parent.$_content[existingIndex] = nextWrapper;
+  }
+}
+
+/**
+ * Replace an existing array item wrapper by numeric index.
+ *
+ * Missing indexes throw for now. That keeps this first array mutation slice to
+ * deterministic replacement and avoids deciding append/sparse-array behavior.
+ */
+function write_array_index(parent: HsonNode, index: number, value: JsonValue, path: LivePath): void {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new Error(`LiveMap editor cannot set invalid array index: ${format_live_path(path)}`);
+  }
+
+  const existingIndex = parent.$_content.findIndex((child) => {
+    if (!is_Node(child) || child.$_tag !== II_TAG) return false;
+    return child.$_meta?.[_DATA_INDEX] === String(index);
+  });
+
+  if (existingIndex === -1) {
+    throw new Error(`LiveMap editor cannot append or insert array indexes yet: ${format_live_path(path)}`);
+  }
+
+  parent.$_content[existingIndex] = make_array_item_wrapper(index, value);
 }
 
 /**
@@ -287,6 +334,20 @@ function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
 }
 
 /**
+ * Create the `_hson_ii` wrapper for an array item.
+ *
+ * The item index is stored in `data-_index`, matching the canonical HSON array
+ * representation used by the parser/serializer pipeline.
+ */
+function make_array_item_wrapper(index: number, value: JsonValue): HsonNode {
+  return CREATE_NODE({
+    $_tag: II_TAG,
+    $_content: [json_value_to_node(value)],
+    $_meta: { [_DATA_INDEX]: String(index) },
+  });
+}
+
+/**
  * Convert projected JSON data into the corresponding HSON value node.
  *
  * This is the editor-local writer equivalent of `node_to_json_value()`. It is
@@ -363,12 +424,3 @@ function preview_json_value(value: JsonValue | undefined): string {
   return JSON.stringify(value);
 }
 
-/**
- * Format a LivePath for error messages.
- *
- * The output intentionally mirrors array path syntax because LivePath is the
- * canonical, unambiguous representation beneath later ergonomic surfaces.
- */
-function format_live_path(path: LivePath): string {
-  return `[${path.map((part) => JSON.stringify(part)).join(", ")}]`;
-}

@@ -4,6 +4,7 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapFeedListener, LivePath } from "./livemap.types.js";
 import { set_live_path, snap_live_path } from "./livemap-editor.js";
 import { make_livemap_feed_hub } from "./livemap-feed.js";
+import { make_livemap_path_handle } from "./map-handle.js";
 
 /**
  * Create the first Core facade for a LiveMap graph.
@@ -15,12 +16,15 @@ import { make_livemap_feed_hub } from "./livemap-feed.js";
 export function make_livemap_core(root: HsonNode): LiveMapCore {
   const feedHub = make_livemap_feed_hub();
 
-  return {
+  const core: LiveMapCore = {
     /** Return the live root node owned by this map core. */
     root: () => root,
 
     /** Read the current projected JSON value at a path, or the whole graph. */
     snap: (path = []) => snap_live_path(root, path),
+
+    /** Create an ergonomic handle scoped to one projected path. */
+    at: (path) => make_livemap_path_handle(core, path),
 
     /** Mutate a projected path, emit the resulting commit, and return it. */
     set: (path, value) => {
@@ -32,6 +36,8 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, path, listener),
   };
+
+  return core;
 }
 
 /**
