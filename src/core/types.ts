@@ -1,3 +1,5 @@
+// types.ts
+
 import type { _DATA_INDEX, _DATA_QUID } from "./constants.js";
 import type { CssMap } from "./style.types.js";
 

@@ -1,3 +1,5 @@
+// clone.ts
+
 import { HsonNode } from "../../../core/types.js";
 import { _DATA_QUID, ensure_quid, get_quid } from "../quid/data-quid.quid.js";
 import { LiveTree } from "../livetree.js";

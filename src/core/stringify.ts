@@ -1,3 +1,5 @@
+// stringify.ts
+
 import { _DATA_INDEX, _DATA_QUID } from "./constants.js";
 import { is_Node } from "./node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode } from "./types.js";

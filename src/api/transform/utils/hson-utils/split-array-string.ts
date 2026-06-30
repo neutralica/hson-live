@@ -1,4 +1,4 @@
-// split-top-2.ts
+// split-array-string.ts
 
 
 /*******

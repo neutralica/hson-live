@@ -1,4 +1,4 @@
-// html-tags.ts
+// all-html-tags.ts
 
 /**
  * Supported HTML tag names for the built-in `tree.create.<tag>()` sugar.

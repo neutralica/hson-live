@@ -1,4 +1,4 @@
-// tokenize-full-string.ts
+// scan-quoted-block.ts
 
 import type { Position } from "../../token.types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";

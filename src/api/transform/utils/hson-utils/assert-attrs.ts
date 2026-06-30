@@ -1,3 +1,5 @@
+// assert-attrs.ts
+
 // import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 // export function assert_no_attr_assignment_in_tail(tail: string, tag: string): void {

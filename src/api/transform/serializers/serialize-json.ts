@@ -1,4 +1,4 @@
-// serialize-json.new.render.ts
+// serialize-json.ts
 
 import { JsonObj, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";

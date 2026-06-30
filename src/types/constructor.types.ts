@@ -1,3 +1,5 @@
+// constructor.types.ts
+
 
 import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
 import { HsonNode } from "../core/types.js";

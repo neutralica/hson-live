@@ -1,3 +1,5 @@
+// livemap-editor.ts
+
 
 import { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";

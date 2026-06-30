@@ -1,4 +1,4 @@
-// graft.tree.hson.ts
+// graft.ts
 
 import { HsonNode } from "../../../core/types.js";
 import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";

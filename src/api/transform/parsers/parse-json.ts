@@ -1,4 +1,4 @@
-// parse-json.transform.hson.ts
+// parse-json.ts
 
 import { is_Primitive, is_Object, is_string } from "../../../core/value-guards.js";
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";

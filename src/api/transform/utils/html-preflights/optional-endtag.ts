@@ -1,3 +1,5 @@
+// optional-endtag.ts
+
 import { HSON_SYS_PREFIX } from "../../../../core/constants.js";
 
 

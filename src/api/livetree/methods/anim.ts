@@ -1,4 +1,4 @@
-// animate.ts
+// anim.ts
 
 import { AnimAdapters, AnimApi, AnimApiCore, AnimSpec, AnimationName, AnimationEndMode } from "../../../types/animate.types.js";
 

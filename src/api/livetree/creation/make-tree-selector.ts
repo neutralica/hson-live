@@ -1,4 +1,4 @@
-// tree-selector.ts
+// make-tree-selector.ts
 
 import { LiveTree } from "../livetree.js";
 import { TreeSelector } from "./tree-selector.js";

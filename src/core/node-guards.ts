@@ -1,3 +1,5 @@
+// node-guards.ts
+
 import { II_TAG, STR_TAG, VAL_TAG, _DATA_INDEX } from "./constants.js";
 import type { HsonNode } from "./types.js";
 import { is_Primitive } from "./value-guards.js";

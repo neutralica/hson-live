@@ -1,3 +1,5 @@
+// livetree-internals.types.ts
+
 import { LiveTree } from "../api/livetree/livetree.js";
 import { CanvasApi, LiveTreeCanvas } from "../api/livetree/managers/canvas/canvas.types.js";
 import { ContentManager } from "../api/livetree/managers/content-manager.js";

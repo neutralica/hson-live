@@ -1,4 +1,4 @@
-// node-search.ts
+// search.ts
 
 import { HsonNode } from "../../../core/types.js";
 import { STR_TAG } from "../../../core/constants.js";

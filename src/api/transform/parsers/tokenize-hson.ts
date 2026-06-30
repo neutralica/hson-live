@@ -1,4 +1,4 @@
-// tokenize-hson.old.hson.ts
+// tokenize-hson.ts
 
 import { OBJ_TAG } from "../../../core/constants.js";
 import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../token-factories.js";

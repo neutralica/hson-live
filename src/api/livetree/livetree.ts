@@ -1,4 +1,4 @@
-// livetree2.ts
+// livetree.ts
 
 import { ensure_quid, get_node_by_quid } from "./quid/data-quid.quid.js";
 import { HsonNode } from "../../core/types.js";

@@ -1,3 +1,5 @@
+// svg-api.ts
+
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
 import { SvgBox, SvgLiveTree } from "../../../types/svg.types.js";

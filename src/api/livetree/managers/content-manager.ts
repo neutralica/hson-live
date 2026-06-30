@@ -1,3 +1,5 @@
+// content-manager.ts
+
 import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../core/constants.js";
 import { Primitive } from "../../../core/types.js";
 import { HsonNode } from "../../../core/types.js";

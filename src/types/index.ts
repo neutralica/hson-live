@@ -1,4 +1,4 @@
-// src/types/index.ts
+// index.ts
 
 export type { Primitive, BasicValue, JsonValue } from "./core.types.js";
 export type { HsonNode, HsonAttrs, HsonMeta } from "./node.types.js";

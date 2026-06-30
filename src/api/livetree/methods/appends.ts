@@ -1,4 +1,4 @@
-// append-other.ts
+// appends.ts
 
 import { HsonNode } from "../../../core/types.js";
 import { ELEM_TAG } from "../../../core/constants.js";

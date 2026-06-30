@@ -1,3 +1,5 @@
+// create-core.ts
+
 import { ELEM_TAG, HSON_SYS_PREFIX, ROOT_TAG } from "../../../../core/constants.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
 import { is_svg_context_tag } from "../../../../core/all-html-tags.js";

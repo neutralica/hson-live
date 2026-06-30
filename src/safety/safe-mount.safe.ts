@@ -1,4 +1,4 @@
-// safe-mount.ts
+// safe-mount.safe.ts
 import {  ALLOWED_URI_REGEX, sanitize_external } from "./sanitize-html.utils.js";
 
 const DANGEROUS_TAGS = new Set([

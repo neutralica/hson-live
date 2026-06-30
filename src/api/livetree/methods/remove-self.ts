@@ -1,4 +1,4 @@
-// remove2.ts
+// remove-self.ts
 
 import { drop_quid } from "../quid/data-quid.quid.js";
 import { HsonNode } from "../../../core/types.js";

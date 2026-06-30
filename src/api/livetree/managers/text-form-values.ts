@@ -1,4 +1,4 @@
-// text-manager.ts
+// text-form-values.ts
 
 import { HsonAttrs, HsonNode } from "../../../core/types.js";
 import { ELEM_OBJ_ARR, ELEM_TAG, LEAF_NODES, STR_TAG, VAL_TAG } from "../../../core/constants.js";

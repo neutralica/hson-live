@@ -1,4 +1,4 @@
-// livetree2.types.ts
+// livetree.types.ts
 
 import { LiveTree } from "../api/livetree/livetree.js";
 import { HsonAttrs, HsonMeta, HsonNode } from "../core/types.js";

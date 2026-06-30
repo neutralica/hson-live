@@ -1,3 +1,5 @@
+// core.types.ts
+
 export type {
   BasicValue,
   JsonObj,

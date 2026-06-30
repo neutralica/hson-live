@@ -1,4 +1,4 @@
-// events-handler.ts
+// make-events.ts
 
 import { TreeEventHandler, TreeEvents } from "../../../types/events.types.js";
 

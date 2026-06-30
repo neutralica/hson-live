@@ -1,4 +1,4 @@
-// serialize-hson.new.render.ts
+// serialize-hson.ts
 
 import { Primitive } from "../../../core/types.js";
 import { ARR_TAG, ELEM_OBJ_ARR, ELEM_TAG, EVERY_VSN, HSON_SYS_PREFIX, II_TAG, OBJ_TAG, ROOT_TAG, STR_TAG, VAL_TAG } from "../../../core/constants.js";

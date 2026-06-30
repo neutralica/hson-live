@@ -1,3 +1,5 @@
+// key-prefix-guard.ts
+
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 import { HSON_SYS_PREFIX } from "../../../../core/constants.js";
 

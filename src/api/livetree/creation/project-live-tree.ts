@@ -1,4 +1,4 @@
-// create-live-tree.new.ts
+// project-live-tree.ts
 import { Primitive } from "../../../core/types.js";
 import { ensure_quid } from "../quid/data-quid.quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";

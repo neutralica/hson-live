@@ -1,4 +1,4 @@
-// at-property.ts
+// at-property-builder.ts
 
 import { CssCustomPropName, PropertyInput, PropertyInputTuple, PropertyManager, PropertyRegistration, PropertySyntax } from "../../../types/at-property.types.js";
 

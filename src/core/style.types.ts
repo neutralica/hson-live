@@ -1,3 +1,5 @@
+// style.types.ts
+
 // Dependency-free CSS value/map types shared by core HSON attrs and LiveTree CSS APIs.
 
 export type CssUnit =

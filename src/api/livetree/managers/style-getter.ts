@@ -1,3 +1,5 @@
+// style-getter.ts
+
 import { AllowedStyleKey, CssKey, CssVarName } from "../../../types/css.types.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";

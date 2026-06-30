@@ -1,4 +1,4 @@
-// // next-frame-after-paint.ts
+// next-frame-after-paint.ts
 
 // /**
 //  * Await the browser’s next animation frame.

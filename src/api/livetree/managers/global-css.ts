@@ -1,4 +1,4 @@
-// global_css.ts
+// global-css.ts
 
 import { canon_to_css_prop, normalize_css_value } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { CssMapBase, CssPseudoKey, CssValue, GlobalRule, GlobalRuleHandle, GlobalVarFacade, MediaQueryInput, SupportsQueryInput } from "../../../types/css.types.js";

@@ -1,3 +1,5 @@
+// make-canvas-api.ts
+
 import { LiveTree } from "../../livetree.js";
 import { disposable_add_for_owner, disposable_remove_for_owner } from "../lifecycle-registry.js";
 import { CanvasApi, CanvasDisplayMatchOptions, CanvasDisplaySize, CanvasMatchFn, CanvasPoint, CanvasSize, CanvasWatchHandle } from "./canvas.types.js";

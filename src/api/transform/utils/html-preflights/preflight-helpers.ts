@@ -1,3 +1,5 @@
+// preflight-helpers.ts
+
 export function should_try_optional_endtags(msg: string): boolean {
   const OPT = /(li|p|td|th|tr|table|thead|tbody|tfoot)\b/i;
 

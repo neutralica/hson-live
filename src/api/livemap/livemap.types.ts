@@ -1,3 +1,5 @@
+// livemap.types.ts
+
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
 /**
@@ -35,13 +37,14 @@ export type LiveMapEditResult = Readonly<{
  * First public core surface for one LiveMap graph.
  *
  * Core owns the root node, delegates low-level graph edits to the editor, and
- * returns normalized commits for mutations. Feed/link/proxy surfaces will hang
- * off this layer rather than talking to the editor directly.
+ * returns normalized commits for mutations. Feed now hangs directly off this
+ * layer; link/proxy surfaces should also talk to Core rather than the editor.
  */
 export type LiveMapCore = Readonly<{
   root: () => HsonNode;
   snap: (path?: LivePath) => JsonValue | undefined;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
+  feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
 }>;
 
 /**

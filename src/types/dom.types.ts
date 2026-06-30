@@ -1,4 +1,4 @@
-// dom.ts
+// dom.types.ts
 import { LiveTree } from "../api/livetree/livetree.js";
 import { TreeSelector } from "../api/livetree/creation/tree-selector.js";
 

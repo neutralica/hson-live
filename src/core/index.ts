@@ -1,3 +1,5 @@
+// index.ts
+
 export * from "./constants.js";
 export * from "./factories.js";
 export * from "./value-guards.js";

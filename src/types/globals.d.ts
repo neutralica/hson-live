@@ -1,3 +1,5 @@
+// globals.d.ts
+
 /* globals.d.ts */
 
 declare global {

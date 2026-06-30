@@ -1,3 +1,5 @@
+// canvas.types.ts
+
 export interface CanvasApi<TSelf> {
   inScope(): boolean;
 

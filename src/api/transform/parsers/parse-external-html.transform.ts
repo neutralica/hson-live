@@ -1,4 +1,4 @@
-// parse-external-html.utils.ts
+// parse-external-html.transform.ts
 
 import { sanitize_external } from "../../../safety/sanitize-html.utils.js";
 import { HsonNode } from "../../../core/types.js";

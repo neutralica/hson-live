@@ -1,4 +1,4 @@
-// data-manager.utils.ts
+// data-manager.ts
 
 import { Primitive } from "../../../core/types.js";
 import { AttrValue } from "../../../core/types.js";

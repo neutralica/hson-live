@@ -1,3 +1,5 @@
+// diagnostics.types.ts
+
 import { HsonNode } from "../core/types.js";
 
 /**

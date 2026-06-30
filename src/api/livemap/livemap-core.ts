@@ -1,8 +1,9 @@
 // livemap-core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LivePath } from "./livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapFeedListener, LivePath } from "./livemap.types.js";
 import { set_live_path, snap_live_path } from "./livemap-editor.js";
+import { make_livemap_feed_hub } from "./livemap-feed.js";
 
 /**
  * Create the first Core facade for a LiveMap graph.
@@ -12,6 +13,8 @@ import { set_live_path, snap_live_path } from "./livemap-editor.js";
  * generation, feeds, links, batching, and later transport-compatible behavior.
  */
 export function make_livemap_core(root: HsonNode): LiveMapCore {
+  const feedHub = make_livemap_feed_hub();
+
   return {
     /** Return the live root node owned by this map core. */
     root: () => root,
@@ -19,9 +22,30 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     /** Read the current projected JSON value at a path, or the whole graph. */
     snap: (path = []) => snap_live_path(root, path),
 
-    /** Mutate a projected path and return a normalized commit. */
-    set: (path, value) => commit_set(root, path, value),
+    /** Mutate a projected path, emit the resulting commit, and return it. */
+    set: (path, value) => {
+      const commit = commit_set(root, path, value);
+      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+      return commit;
+    },
+
+    /** Subscribe to commits whose op paths overlap the requested path. */
+    feed: (path, listener) => feed_core_path(feedHub, path, listener),
   };
+}
+
+/**
+ * Register a Core-level feed listener.
+ *
+ * This small wrapper keeps the public Core method phrased in LiveMap terms
+ * while the FeedHub owns the subscription registry and path matching behavior.
+ */
+function feed_core_path(
+  feedHub: ReturnType<typeof make_livemap_feed_hub>,
+  path: LivePath,
+  listener: LiveMapFeedListener,
+) {
+  return feedHub.add(path, listener);
 }
 
 /**

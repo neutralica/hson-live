@@ -1,3 +1,5 @@
+// node.types.ts
+
 export type {
   AttrMap,
   AttrValue,

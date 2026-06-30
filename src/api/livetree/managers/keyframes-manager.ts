@@ -1,4 +1,4 @@
-// keyframes.ts
+// keyframes-manager.ts
 
 import { canon_to_css_prop } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { KeyframesInput, KeyframesInputTuple, KeyframeSelector, CssDeclMap, KeyframeStep, KeyframesDef, KeyframesName, KeyframesManager, KeyframesOwner } from "../../../types/keyframes.types.js";

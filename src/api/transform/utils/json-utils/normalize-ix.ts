@@ -1,4 +1,4 @@
-// append.ts
+// normalize-ix.ts
 
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 

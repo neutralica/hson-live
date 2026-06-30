@@ -1,3 +1,5 @@
+// constants.ts
+
 // Core HSON protocol constants.
 
 export const $_FALSE = "_false" as const;

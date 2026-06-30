@@ -1,3 +1,5 @@
+// token-factories.ts
+
 import { TOKEN_KIND } from "./token.types.js";
 import type { ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenText, TokenEmptyObj } from "./token.types.js";
 

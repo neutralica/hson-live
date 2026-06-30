@@ -1,3 +1,5 @@
+// diagnostics-helpers.ts
+
 import { hson } from "../hson.js";
 import { FixtureAtom, SourceFormat, CoreOpt, Fmt, LoopDir, Step, Artifact, NodeMark, LoopReport } from "../types/diagnostics.types.js";
 import { HsonNode } from "../core/types.js";

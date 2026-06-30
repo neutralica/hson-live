@@ -1,4 +1,4 @@
-// parse-tokens.transform.hson.ts
+// parse-tokens.ts
 
 import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";

@@ -1,4 +1,4 @@
-// css_for_quids.ts
+// css-for-quids.ts
 
 
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";

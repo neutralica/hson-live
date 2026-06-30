@@ -1,3 +1,5 @@
+// attr-handle.ts
+
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
 import { Primitive } from "../../../core/types.js";

@@ -1,3 +1,5 @@
+// factories.ts
+
 import type { HsonNode } from "./types.js";
 
 export const CREATE_NODE = (partial: Partial<HsonNode> = {}): HsonNode => ({

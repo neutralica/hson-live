@@ -1,4 +1,4 @@
-// /diagnostics/index.ts
+// index.ts
 
 
 export { assert_invariants as _assert_invariants } from "./assert-invariants.test.js";

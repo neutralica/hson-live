@@ -1,4 +1,4 @@
-// sanitize-html.ts
+// sanitize-html.utils.ts
 
 import DOMPurify from "dompurify";
 

@@ -1,4 +1,4 @@
-// compare-nodes.ts
+// compare-nodes.test.ts
 
 import { ARR_TAG, ELEM_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../core/constants.js";
 import type { HsonNode } from "../core/types.js";

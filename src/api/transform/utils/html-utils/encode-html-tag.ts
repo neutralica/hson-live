@@ -1,3 +1,5 @@
+// encode-html-tag.ts
+
 import { EVERY_VSN, HTML_KEY_PREFIX } from "../../../../core/constants.js";
 
 

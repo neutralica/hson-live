@@ -1,3 +1,5 @@
+// make-detached-livetree.ts
+
 import { CREATE_NODE } from "../../../core/factories.js";
 import { SVG_TAGS, HTML_TAGS } from "../../../core/all-html-tags.js";
 import { TagName, SvgTag, SvgCreateHelper, HtmlTag, DetachedCreateHelper } from "../../../types/livetree.types.js";

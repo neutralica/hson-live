@@ -1,3 +1,5 @@
+// attrs.types.ts
+
 import { LiveTree } from "../api/livetree/livetree.js";
 import { Primitive } from "../core/types.js";
 import { AttrMap, AttrValue } from "../core/types.js";

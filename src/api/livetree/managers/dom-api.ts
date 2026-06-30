@@ -1,3 +1,5 @@
+// dom-api.ts
+
 import { LiveTree } from "../livetree.js";
 import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi, DomSize, LiveTreeDocument } from "../../../types/dom.types.js";
 import { _snip } from "../../transform/utils/sys-utils/snip.utils.js";

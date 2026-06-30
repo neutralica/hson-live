@@ -1,4 +1,4 @@
-// tokens.types.ts
+// token.types.ts
 
 /*******
  * Source position marker produced by the tokenizer.

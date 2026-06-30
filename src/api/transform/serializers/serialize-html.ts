@@ -1,4 +1,4 @@
-// serialize-html.new.render.ts
+// serialize-html.ts
 
 import { Primitive } from '../../../core/types.js'
 import { is_Primitive } from '../../../core/value-guards.js';
