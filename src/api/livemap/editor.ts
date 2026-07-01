@@ -91,9 +91,9 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
  * - it supports replacing or adding properties on an already-resolved object
  * - it does not replace the root yet
  * - it can replace existing array indexes
- * - it does not append or insert array items yet
  * - it does not auto-create missing parent containers yet
  *
+ * The editor path setter only replaces existing array indexes; higher-level array handle helpers perform append/insert/remove by replacing the scoped array value
  * The editor returns raw edit information. Core wraps that into commit/op form.
  */
 export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {

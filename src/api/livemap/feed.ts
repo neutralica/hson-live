@@ -2,6 +2,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "./livemap.types.js";
+import { path_is_prefix } from "./path.js";
 
 /**
  * Reads the current projected JSON value at a LiveMap path.
@@ -119,14 +120,14 @@ export type LiveMapFeedHub = Readonly<{
   emit: (commit: LiveMapCommit, snap: LiveMapSnapFn) => void;
 }>;
 
-/**
- * Return true when `prefix` is an exact ancestor-or-self prefix of `path`.
- *
- * This is intentionally strict equality per path segment. No dot splitting,
- * coercion, stringification, or wildcard behavior happens here.
- */
-function path_is_prefix(prefix: LivePath, path: LivePath): boolean {
-  if (prefix.length > path.length) return false;
+// /**
+//  * Return true when `prefix` is an exact ancestor-or-self prefix of `path`.
+//  *
+//  * This is intentionally strict equality per path segment. No dot splitting,
+//  * coercion, stringification, or wildcard behavior happens here.
+//  */
+// function path_is_prefix(prefix: LivePath, path: LivePath): boolean {
+//   if (prefix.length > path.length) return false;
 
-  return prefix.every((part, index) => part === path[index]);
-}
+//   return prefix.every((part, index) => part === path[index]);
+// }

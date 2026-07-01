@@ -18,7 +18,7 @@ import { must_feed_listener, must_json_value, must_live_path, must_set_many_valu
  * `at(path)` is the projected data handle. `node(path)` is the lower-level HSON
  * graph handle used to build and test the machinery underneath later public data
  * APIs. Keep projected JSON behavior in Core/editor/handles, and keep physical
- * node surgery isolated to the node handle.
+ * node manipulation isolated to the node handle.
  */
 export function make_livemap_core(root: HsonNode): LiveMapCore {
   const feedHub = make_livemap_feed_hub();
