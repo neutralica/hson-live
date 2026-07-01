@@ -467,12 +467,12 @@ function schema_node_at_path(node: LiveMapSchemaNode, path: LivePath): LiveMapSc
 
 function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
   if (value === undefined) {
-    return node.optional ? validation_ok() : validation_issue(path, `LiveMap schema value is missing at ${format_schema_path(path)}`);
+    return node.optional ? validation_ok() : expected_schema_value_issue(node, path, "undefined");
   }
 
   if (value === null) {
     if (node.kind === "null" || node.nullable) return validation_ok();
-    return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received null`);
+    return expected_schema_value_issue(node, path, "null");
   }
 
   if (node.kind === "unknown") return validation_ok();
@@ -487,7 +487,7 @@ function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: Js
   if (node.kind === "record") return validate_record_node(node, path, value);
 
   if (typeof value !== node.kind) {
-    return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+    return expected_schema_value_issue(node, path, json_value_type_label(value));
   }
 
   return validation_ok();
@@ -497,7 +497,7 @@ function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 function validate_literal_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (node.literals.some((literal) => json_values_equal(literal, value))) return validation_ok();
 
-  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${JSON.stringify(value)}`);
+  return expected_schema_value_issue(node, path, JSON.stringify(value));
 }
 
 function closest_schema_validation(validations: readonly LiveMapSchemaValidation[]): LiveMapSchemaValidation | undefined {
@@ -522,11 +522,11 @@ function validate_pick_node(node: LiveMapSchemaNode, path: LivePath, value: Json
     if (closestValidation !== undefined && closestValidation.issues.length > 0) return closestValidation;
   }
 
-  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  return expected_schema_value_issue(node, path, json_value_type_label(value));
 }
 
 function validate_lazy_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
-  if (node.lazy === undefined) return validation_issue(path, `LiveMap schema lazy value is not defined at ${format_schema_path(path)}`);
+  if (node.lazy === undefined) return validation_issue(path, `LiveMap schema lazy rule is not defined at ${format_schema_path(path)}`);
   return validate_schema_node(node.lazy(), path, value);
 }
 
@@ -540,12 +540,12 @@ function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 
   if (node.validate(value)) return validation_ok();
 
-  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${JSON.stringify(value)}`);
+  return expected_schema_value_issue(node, path, JSON.stringify(value));
 }
 
 function validate_array_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (!Array.isArray(value)) {
-    return validation_issue(path, `LiveMap schema expected array at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+    return expected_schema_value_issue(node, path, json_value_type_label(value));
   }
 
   if (node.item === undefined) return validation_ok();
@@ -555,7 +555,7 @@ function validate_array_node(node: LiveMapSchemaNode, path: LivePath, value: Jso
 
 function validate_tuple_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (!Array.isArray(value)) {
-    return validation_issue(path, `LiveMap schema expected tuple at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+    return expected_schema_value_issue(node, path, json_value_type_label(value));
   }
 
   const items = node.items ?? [];
@@ -567,7 +567,7 @@ function validate_tuple_node(node: LiveMapSchemaNode, path: LivePath, value: Jso
 
   if (value.length > items.length) {
     for (let index = items.length; index < value.length; index += 1) {
-      validations.push(validation_issue([...path, index], `LiveMap schema does not allow tuple index ${index} at ${format_schema_path(path)}`));
+      validations.push(validation_issue([...path, index], `LiveMap schema does not allow tuple index ${index} at ${format_schema_path([...path, index])}`));
     }
   }
 
@@ -576,7 +576,7 @@ function validate_tuple_node(node: LiveMapSchemaNode, path: LivePath, value: Jso
 
 function validate_object_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (!is_plain_json_object(value)) {
-    return validation_issue(path, `LiveMap schema expected object at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+    return expected_schema_value_issue(node, path, json_value_type_label(value));
   }
 
   const validations: LiveMapSchemaValidation[] = [];
@@ -588,7 +588,7 @@ function validate_object_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 
   if (node.exact) {
     for (const key of Object.keys(value)) {
-      if (!(key in props)) validations.push(validation_issue([...path, key], `LiveMap schema does not allow key ${JSON.stringify(key)} at ${format_schema_path(path)}`));
+      if (!(key in props)) validations.push(validation_issue([...path, key], `LiveMap schema does not allow key ${JSON.stringify(key)} at ${format_schema_path([...path, key])}`));
     }
   }
 
@@ -597,12 +597,16 @@ function validate_object_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 
 function validate_record_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (!is_plain_json_object(value)) {
-    return validation_issue(path, `LiveMap schema expected record at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+    return expected_schema_value_issue(node, path, json_value_type_label(value));
   }
 
   if (node.record === undefined) return validation_ok();
 
   return merge_validations(Object.entries(value).map(([key, item]) => validate_schema_node(node.record as LiveMapSchemaNode, [...path, key], item)));
+}
+
+function expected_schema_value_issue(node: LiveMapSchemaNode, path: LivePath, received: string): LiveMapSchemaValidation {
+  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${received}`);
 }
 
 function validation_ok(): LiveMapSchemaValidation {

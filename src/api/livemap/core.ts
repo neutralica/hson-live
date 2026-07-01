@@ -77,13 +77,13 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
-   delete: (path) => {
-  const livePath = must_live_path(path);
-  must_core_schema_delete(currentSchema, root, livePath);
-  const commit = commit_delete(root, livePath);
-  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
-  return commit;
-},
+    delete: (path) => {
+      const livePath = must_live_path(path);
+      must_core_schema_delete(currentSchema, root, livePath);
+      const commit = commit_delete(root, livePath);
+      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+      return commit;
+    },
 
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, must_live_path(path), must_feed_listener(listener)),
@@ -198,13 +198,13 @@ function commit_set(root: HsonNode, path: LivePath, value: JsonValue): LiveMapCo
     changed: edit.changed,
     ops: edit.changed
       ? [
-          {
-            kind: "set",
-            path: opPath,
-            prev: edit.prev,
-            next: edit.next,
-          },
-        ]
+        {
+          kind: "set",
+          path: opPath,
+          prev: edit.prev,
+          next: edit.next,
+        },
+      ]
       : [],
   };
 }
@@ -222,13 +222,13 @@ function commit_set_many(root: HsonNode, path: LivePath, values: LiveMapSetManyV
 
     return edit.changed
       ? [
-          {
-            kind: "set" as const,
-            path: opPath,
-            prev: edit.prev,
-            next: edit.next,
-          },
-        ]
+        {
+          kind: "set" as const,
+          path: opPath,
+          prev: edit.prev,
+          next: edit.next,
+        },
+      ]
       : [];
   });
 
@@ -252,13 +252,13 @@ function commit_delete(root: HsonNode, path: LivePath): LiveMapCommit {
     changed: edit.changed,
     ops: edit.changed
       ? [
-          {
-            kind: "delete",
-            path: opPath,
-            prev: edit.prev,
-            next: undefined,
-          },
-        ]
+        {
+          kind: "delete",
+          path: opPath,
+          prev: edit.prev,
+          next: undefined,
+        },
+      ]
       : [],
   };
 }
