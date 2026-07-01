@@ -21,6 +21,21 @@ export type LivePathPart = string | number;
 export type LivePath = readonly LivePathPart[];
 
 /**
+ * Runtime Proxy surface for ergonomic projected-path access.
+ *
+ * Normal property access extends the path. `$_` exits the Proxy surface and
+ * returns the existing path handle for the current projected path.
+ *
+ * The index signatures are intentionally loose. Schema-aware proxy typing can
+ * tighten this later without making the base proxy type recursive.
+ */
+export interface LiveMapProxy {
+  readonly $_: LiveMapPathHandle;
+  readonly [key: string]: unknown;
+  readonly [key: number]: unknown;
+}
+
+/**
  * Raw result returned by the editor after a graph mutation.
  *
  * The editor reports the local before/after value at one path. Core turns this
@@ -48,8 +63,8 @@ export type LiveMapSortDirection = "asc" | "desc";
  * the editor.
  *
  * `node(path)` is intentionally lower level than `at(path)`: it exposes direct
- * HSON graph inspection and surgery so LiveMap internals can be built and tested
- * without prematurely freezing the public projected-data API.
+ * HSON graph inspection and physical node operations so LiveMap internals can be
+ * built and tested without prematurely freezing the public projected-data API.
  */
 export type LiveMapCore = Readonly<{
   root: () => HsonNode;
