@@ -10,6 +10,7 @@ import { make_livemap_path_handle } from "./handle.js";
 import { make_livemap_proxy } from "./proxy.js";
 import { must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./guard.js";
 
+
 /**
  * Create the first Core facade for a LiveMap graph.
  *
@@ -76,12 +77,13 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
-    delete: (path) => {
-      const livePath = must_live_path(path);
-      const commit = commit_delete(root, livePath);
-      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
-      return commit;
-    },
+   delete: (path) => {
+  const livePath = must_live_path(path);
+  must_core_schema_delete(currentSchema, root, livePath);
+  const commit = commit_delete(root, livePath);
+  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+  return commit;
+},
 
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, must_live_path(path), must_feed_listener(listener)),
@@ -259,4 +261,43 @@ function commit_delete(root: HsonNode, path: LivePath): LiveMapCommit {
         ]
       : [],
   };
+}
+
+function must_core_schema_delete(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath): void {
+  if (schema === undefined) return;
+
+  const candidate = clone_json_value(snap_live_path(root, []));
+  delete_json_path(candidate, path);
+  must_schema_validation(schema.validateRoot(candidate), path);
+}
+function delete_json_path(root: JsonValue, path: LivePath): void {
+  if (path.length === 0) return;
+
+  let cursor = root;
+
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const part = path[index];
+
+    if (typeof part === "number") {
+      if (!Array.isArray(cursor)) return;
+      cursor = cursor[part];
+      if (cursor === undefined) return;
+      continue;
+    }
+
+    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
+    cursor = cursor[part];
+    if (cursor === undefined) return;
+  }
+
+  const leaf = path[path.length - 1];
+
+  if (typeof leaf === "number") {
+    if (!Array.isArray(cursor)) return;
+    cursor.splice(leaf, 1);
+    return;
+  }
+
+  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
+  delete cursor[leaf];
 }
