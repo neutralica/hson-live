@@ -1,9 +1,9 @@
-// livemap-editor.ts
+// editor.ts
 
 
-import { HsonNode, JsonValue, Primitive } from "../../core/types.js";
+import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
-import { LivePathPart, LivePath, LiveMapEditResult } from "./livemap.types.js";
+import type { LivePathPart, LivePath, LiveMapEditResult } from "./livemap.types.js";
 import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./path.js";
@@ -93,7 +93,7 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
  * - it can replace existing array indexes
  * - it does not auto-create missing parent containers yet
  *
- * The editor path setter only replaces existing array indexes; higher-level array handle helpers perform append/insert/remove by replacing the scoped array value
+ * The editor path setter only replaces existing array indexes. Higher-level array handle helpers perform append/insert/remove by replacing the scoped array value.
  * The editor returns raw edit information. Core wraps that into commit/op form.
  */
 export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
@@ -126,7 +126,7 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
  * - it can remove object properties from an already-resolved object
  * - missing object properties are unchanged, not errors
  * - it does not replace or delete the root
- * - it does not delete array indexes yet
+ * - it does not delete array indexes directly; higher-level array handle helpers remove/reorder by replacing the scoped array value
  * - it does not auto-remove empty parent containers
  *
  * The editor returns raw edit information. Core wraps that into commit/op form.
@@ -161,8 +161,8 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  * Write one projected child value under an already-resolved parent value node.
  *
  * Objects support property add/replace by string key. Arrays support replacing
- * an existing numeric index only. Array append/insert policy is intentionally
- * deferred until we decide how list mutation should be represented in ops.
+ * an existing numeric index only. Array append/insert/remove operations are
+ * handled by path-handle array helpers that replace the scoped array value.
  */
 function write_child_value(parent: HsonNode, key: LivePathPart, value: JsonValue, path: LivePath): void {
   if (parent.$_tag === OBJ_TAG && typeof key === "string") {
@@ -221,8 +221,8 @@ function write_array_index(parent: HsonNode, index: number, value: JsonValue, pa
 /**
  * Delete one projected child value under an already-resolved parent value node.
  *
- * Objects support property deletion by string key. Arrays are deliberately not
- * supported yet because index deletion needs an explicit shifting/hole policy.
+ * Objects support property deletion by string key. Arrays are not deleted here;
+ * path-handle array helpers remove/reorder by replacing the scoped array value.
  */
 function delete_child_value(parent: HsonNode, key: LivePathPart, path: LivePath): void {
   if (parent.$_tag === OBJ_TAG && typeof key === "string") {

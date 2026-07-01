@@ -34,7 +34,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     /** Create an ergonomic handle scoped to one projected path. */
     at: (path) => make_livemap_path_handle(core, must_live_path(path)),
 
-    /** Create an ergonomic Proxy scoped to one projected path. */
+    /** Create an ergonomic Proxy path-builder scoped to one projected path. */
     proxy: (path = []) => make_livemap_proxy(core, must_live_path(path)),
 
     /** Create a low-level HSON-node-facing handle scoped to one projected path. */
@@ -90,9 +90,9 @@ function feed_core_path(
 /**
  * Apply a set mutation through the editor and wrap the result as a commit.
  *
- * The editor knows how to perform the graph surgery. Core is responsible for
- * turning that local edit result into a stable op record that feeds and future
- * sync/transport layers can consume.
+ * The editor knows how to perform projected graph edits. Core is responsible
+ * for turning that local edit result into a stable op record that feeds and
+ * future sync/transport layers can consume.
  *
  * Commit ops copy the requested path so later caller-side array mutation cannot
  * rewrite already-returned history.
