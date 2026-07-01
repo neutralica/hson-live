@@ -2,6 +2,7 @@
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
+import type { LiveMapSchema, LiveMapSchemaValidation } from "./schema.js";
 import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
@@ -23,6 +24,10 @@ import { must_feed_listener, must_json_value, must_live_path, must_set_many_valu
  */
 export function make_livemap_core(root: HsonNode): LiveMapCore {
   const feedHub = make_livemap_feed_hub();
+  // This closure-local schema is fine for the first enforcement pass. Revisit
+  // once the Core facade grows: schema attachment may want an immutable facade
+  // wrapper or shared Core state object instead of mutating closure-local state.
+  let currentSchema: LiveMapSchema | undefined;
 
   const core: LiveMapCore = {
     /** Return the live root node owned by this map core. */
@@ -30,6 +35,17 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
 
     /** Read the current projected JSON value at a path, or the whole graph. */
     snap: (path = []) => snap_live_path(root, must_live_path(path)),
+
+    /** Read the schema currently attached to this Core, if present. */
+    schema: () => currentSchema,
+
+    /** Attach a schema to this Core after validating the current projected root. */
+    withSchema: (schema) => {
+      const validation = schema.validateRoot(snap_live_path(root, []));
+      must_schema_validation(validation, []);
+      currentSchema = schema;
+      return core;
+    },
 
     /** Create an ergonomic handle scoped to one projected path. */
     at: (path) => make_livemap_path_handle(core, must_live_path(path)),
@@ -44,6 +60,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     set: (path, value) => {
       const livePath = must_live_path(path);
       const jsonValue = must_json_value(value, livePath);
+      must_core_schema_value(currentSchema, livePath, jsonValue);
       const commit = commit_set(root, livePath, jsonValue);
       feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
       return commit;
@@ -53,6 +70,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     setMany: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
+      must_core_schema_set_many(currentSchema, livePath, jsonValues);
       const commit = commit_set_many(root, livePath, jsonValues);
       feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
       return commit;
@@ -85,6 +103,32 @@ function feed_core_path(
   listener: LiveMapFeedListener,
 ) {
   return feedHub.add(path, listener);
+}
+
+function must_core_schema_value(schema: LiveMapSchema | undefined, path: LivePath, value: JsonValue): void {
+  if (schema === undefined) return;
+  must_schema_validation(schema.validateValue(path, value), path);
+}
+
+function must_core_schema_set_many(schema: LiveMapSchema | undefined, path: LivePath, values: LiveMapSetManyValues): void {
+  if (schema === undefined) return;
+
+  for (const [key, value] of Object.entries(values)) {
+    const valuePath: LivePath = [...path, key];
+    must_schema_validation(schema.validateValue(valuePath, value), valuePath);
+  }
+}
+
+function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath): void {
+  if (validation.ok) return;
+
+  throw new Error(format_schema_validation_error(validation, path));
+}
+
+function format_schema_validation_error(validation: LiveMapSchemaValidation, path: LivePath): string {
+  const issueLines = validation.issues.map((issue) => `- ${issue.message}`);
+
+  return [`LiveMap schema rejected value at ${JSON.stringify(path)}:`, ...issueLines].join("\n");
 }
 
 /**

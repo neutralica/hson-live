@@ -38,13 +38,13 @@ export type LiveMapSchemaRule = Readonly<{
   literals?: readonly JsonValue[];
 }>;
 
-export type LiveMapSchema = Readonly<{
+export type LiveMapSchema<TValue = unknown> = Readonly<{
   root: LiveMapSchemaNode;
   rules: readonly LiveMapSchemaRule[];
   match: (path: LivePath) => LiveMapSchemaRule | undefined;
   validateRoot: (value: JsonValue | undefined) => LiveMapSchemaValidation;
   validateValue: (path: LivePath, value: JsonValue | undefined) => LiveMapSchemaValidation;
-}>;
+}> & Readonly<{ readonly __value?: TValue }>;
 
 export interface LiveMapSchemaShape {
   readonly [key: string]: LiveMapSchemaInput;
@@ -54,42 +54,84 @@ export interface LiveMapSchemaVariants {
   readonly [variant: string]: LiveMapSchemaShape;
 }
 
-export type LiveMapSchemaInput =
-  | LiveMapSchemaToken
+export type LiveMapSchemaInput<TValue = unknown> =
+  | LiveMapSchemaToken<TValue>
   | LiveMapSchemaShape;
 
 export type LiveMapSchemaChoice =
   | JsonValue
   | LiveMapSchemaInput;
 
-export type LiveMapSchemaRefinement = (value: JsonValue) => boolean;
+export type LiveMapSchemaRefinement<TValue = JsonValue> = (value: TValue) => boolean;
 
-export type LiveMapSchemaBuilder = Readonly<{
-  unknown: LiveMapSchemaToken;
-  string: LiveMapSchemaToken;
-  number: LiveMapSchemaToken;
-  boolean: LiveMapSchemaToken;
-  null: LiveMapSchemaToken;
-  literal: (...values: readonly JsonValue[]) => LiveMapSchemaToken;
-  pick: (...choices: readonly LiveMapSchemaChoice[]) => LiveMapSchemaToken;
-  tagged: (discriminator: string, variants: LiveMapSchemaVariants) => LiveMapSchemaToken;
-  lazy: (makeInput: () => LiveMapSchemaInput) => LiveMapSchemaToken;
-  refine: (base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaRefinement) => LiveMapSchemaToken;
-  array: (item: LiveMapSchemaInput) => LiveMapSchemaToken;
-  tuple: (...items: readonly LiveMapSchemaInput[]) => LiveMapSchemaToken;
-  record: (value: LiveMapSchemaInput) => LiveMapSchemaToken;
-  object: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
-  partial: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
-  deepPartial: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
-  exact: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
+export type InferLiveMapSchema<TSchema> = TSchema extends LiveMapSchema<infer TValue> ? TValue : never;
+export type LiveMapSchemaValue<TSchema> = InferLiveMapSchema<TSchema>;
+export type InferLiveMapSchemaToken<TToken> = TToken extends LiveMapSchemaToken<infer TValue> ? TValue : never;
+
+export type InferLiveMapSchemaInput<TInput> =
+  TInput extends LiveMapSchemaToken<infer TValue> ? TValue :
+  TInput extends LiveMapSchemaShape ? InferLiveMapSchemaShape<TInput> :
+  never;
+
+export type InferLiveMapSchemaChoice<TChoice> =
+  TChoice extends LiveMapSchemaInput ? InferLiveMapSchemaInput<TChoice> :
+  TChoice extends JsonValue ? TChoice :
+  never;
+
+export type InferLiveMapSchemaShape<TShape extends LiveMapSchemaShape> = Simplify<{
+  [Key in RequiredSchemaShapeKeys<TShape>]: InferLiveMapSchemaInput<TShape[Key]>;
+} & {
+  [Key in OptionalSchemaShapeKeys<TShape>]?: Exclude<InferLiveMapSchemaInput<TShape[Key]>, undefined>;
 }>;
 
-export type LiveMapSchemaToken = Readonly<{
+type OptionalSchemaShapeKeys<TShape extends LiveMapSchemaShape> = {
+  [Key in keyof TShape]: undefined extends InferLiveMapSchemaInput<TShape[Key]> ? Key : never;
+}[keyof TShape];
+
+type RequiredSchemaShapeKeys<TShape extends LiveMapSchemaShape> = Exclude<keyof TShape, OptionalSchemaShapeKeys<TShape>>;
+
+type InferLiveMapSchemaTuple<TItems extends readonly LiveMapSchemaInput[]> = {
+  readonly [Index in keyof TItems]: InferLiveMapSchemaInput<TItems[Index]>;
+};
+
+type InferLiveMapTaggedSchema<TDiscriminator extends string, TVariants extends LiveMapSchemaVariants> = {
+  [Tag in keyof TVariants & string]: Simplify<InferLiveMapSchemaShape<TVariants[Tag]> & { [Key in TDiscriminator]: Tag }>;
+}[keyof TVariants & string];
+
+type DeepPartialSchemaValue<TValue> =
+  TValue extends readonly (infer Item)[] ? readonly DeepPartialSchemaValue<Item>[] :
+  TValue extends object ? string extends keyof TValue ? Readonly<Record<string, DeepPartialSchemaValue<TValue[string]>>> : { [Key in keyof TValue]?: DeepPartialSchemaValue<TValue[Key]> } :
+  TValue;
+
+type Simplify<TValue> = { [Key in keyof TValue]: TValue[Key] } & {};
+
+export type LiveMapSchemaBuilder = Readonly<{
+  unknown: LiveMapSchemaToken<JsonValue>;
+  string: LiveMapSchemaToken<string>;
+  number: LiveMapSchemaToken<number>;
+  boolean: LiveMapSchemaToken<boolean>;
+  null: LiveMapSchemaToken<null>;
+  literal: <const TValues extends readonly JsonValue[]>(...values: TValues) => LiveMapSchemaToken<TValues[number]>;
+  pick: <const TChoices extends readonly LiveMapSchemaChoice[]>(...choices: TChoices) => LiveMapSchemaToken<InferLiveMapSchemaChoice<TChoices[number]>>;
+  tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
+  lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput) => LiveMapSchemaToken<InferLiveMapSchemaInput<TInput>>;
+  refine: <TValue>(base: LiveMapSchemaInput<TValue>,label: string,validate: LiveMapSchemaRefinement<TValue & JsonValue>) => LiveMapSchemaToken<TValue>;
+  array: <TInput extends LiveMapSchemaInput>(item: TInput) => LiveMapSchemaToken<readonly InferLiveMapSchemaInput<TInput>[]>;
+  tuple: <TItems extends readonly LiveMapSchemaInput[]>(...items: TItems) => LiveMapSchemaToken<InferLiveMapSchemaTuple<TItems>>;
+  record: <TInput extends LiveMapSchemaInput>(value: TInput) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaInput<TInput>>>>;
+  object: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
+  partial: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<Partial<InferLiveMapSchemaShape<TShape>>>;
+  deepPartial: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaShape<TShape>>>;
+  exact: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
+}>;
+
+export type LiveMapSchemaToken<TValue = unknown> = Readonly<{
   kind: LiveMapSchemaKind;
-  optional: LiveMapSchemaToken;
-  nullable: LiveMapSchemaToken;
-  readonly: LiveMapSchemaToken;
-  array: LiveMapSchemaToken;
+  optional: LiveMapSchemaToken<TValue | undefined>;
+  nullable: LiveMapSchemaToken<TValue | null>;
+  readonly: LiveMapSchemaToken<TValue>;
+  array: LiveMapSchemaToken<readonly TValue[]>;
+  readonly __value?: TValue;
 }>;
 
 type LiveMapSchemaNode = Readonly<{
@@ -132,44 +174,46 @@ const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
 const ARRAY_INDEX_PATH_PART = "*";
 const RECORD_KEY_PATH_PART = "*";
 
-export const LIVEMAP_SCHEMA: LiveMapSchemaBuilder = Object.freeze({
-  unknown: make_schema_token({ kind: "unknown" }),
-  string: make_schema_token({ kind: "string" }),
-  number: make_schema_token({ kind: "number" }),
-  boolean: make_schema_token({ kind: "boolean" }),
-  null: make_schema_token({ kind: "null" }),
-  literal: (...values) => make_schema_token({ kind: "literal", literals: values }),
-  pick: (...choices) => make_schema_token({ kind: "pick", choices }),
-  tagged: (discriminator, variants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) }),
-  lazy: (makeInput) => make_schema_token({ kind: "lazy", lazy: makeInput }),
-  refine: (base, label, validate) => make_schema_token({ kind: "refine", base, label, validate }),
-  array: (item) => make_schema_token({ kind: "array", item }),
-  tuple: (...items) => make_schema_token({ kind: "tuple", items }),
-  record: (value) => make_schema_token({ kind: "record", record: value }),
-  object: (shape) => make_schema_token({ kind: "object", props: shape }),
-  partial: (shape) => make_schema_token({ kind: "object", props: make_partial_schema_shape(shape) }),
-  deepPartial: (shape) => make_schema_token({ kind: "object", props: make_deep_partial_schema_shape(shape) }),
-  exact: (shape) => make_schema_token({ kind: "object", props: shape, exact: true }),
+const LIVEMAP_SCHEMA_RUNTIME = Object.freeze({
+  unknown: make_schema_token<JsonValue>({ kind: "unknown" }),
+  string: make_schema_token<string>({ kind: "string" }),
+  number: make_schema_token<number>({ kind: "number" }),
+  boolean: make_schema_token<boolean>({ kind: "boolean" }),
+  null: make_schema_token<null>({ kind: "null" }),
+  literal: (...values: readonly JsonValue[]) => make_schema_token({ kind: "literal", literals: values }),
+  pick: (...choices: readonly LiveMapSchemaChoice[]) => make_schema_token({ kind: "pick", choices }),
+  tagged: (discriminator: string, variants: LiveMapSchemaVariants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) }),
+  lazy: (makeInput: () => LiveMapSchemaInput) => make_schema_token({ kind: "lazy", lazy: makeInput }),
+  refine: (base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaRefinement) => make_schema_token({ kind: "refine", base, label, validate }),
+  array: (item: LiveMapSchemaInput) => make_schema_token({ kind: "array", item }),
+  tuple: (...items: readonly LiveMapSchemaInput[]) => make_schema_token({ kind: "tuple", items }),
+  record: (value: LiveMapSchemaInput) => make_schema_token({ kind: "record", record: value }),
+  object: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape }),
+  partial: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: make_partial_schema_shape(shape) }),
+  deepPartial: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: make_deep_partial_schema_shape(shape) }),
+  exact: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape, exact: true }),
 });
 
-export function define_livemap_schema(makeShape: (schema: LiveMapSchemaBuilder) => LiveMapSchemaInput): LiveMapSchema {
+export const LIVEMAP_SCHEMA = LIVEMAP_SCHEMA_RUNTIME as unknown as LiveMapSchemaBuilder;
+
+export function define_livemap_schema<const TInput>(makeShape: (schema: LiveMapSchemaBuilder) => TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
   return make_livemap_schema(makeShape(LIVEMAP_SCHEMA));
 }
 
-export function make_livemap_schema(input: LiveMapSchemaInput): LiveMapSchema {
-  const root = normalize_schema_input(input);
+export function make_livemap_schema<const TInput>(input: TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
+  const root = normalize_schema_input(input as LiveMapSchemaInput);
   const rules = collect_schema_rules(root, []);
 
   return Object.freeze({
     root,
     rules,
-    match: (path) => match_schema_rule(rules, path),
-    validateRoot: (value) => validate_schema_node(root, [], value),
-    validateValue: (path, value) => validate_schema_value(root, path, value),
-  });
+    match: (path: LivePath) => match_schema_rule(rules, path),
+    validateRoot: (value: JsonValue | undefined) => validate_schema_node(root, [], value),
+    validateValue: (path: LivePath, value: JsonValue | undefined) => validate_schema_value(root, path, value),
+  }) as LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
 }
 
-function make_schema_token(draft: LiveMapSchemaDraft): LiveMapSchemaToken {
+function make_schema_token<TValue = unknown>(draft: LiveMapSchemaDraft): LiveMapSchemaToken<TValue> {
   const token = Object.freeze({
     kind: draft.kind,
     get optional() {
@@ -185,7 +229,7 @@ function make_schema_token(draft: LiveMapSchemaDraft): LiveMapSchemaToken {
       return make_schema_token({ kind: "array", item: token });
     },
     [SCHEMA_DRAFT]: draft,
-  }) as LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
+  }) as LiveMapSchemaToken<TValue> & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
 
   return token;
 }

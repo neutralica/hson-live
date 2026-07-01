@@ -1,6 +1,7 @@
 // livemap.types.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
+import type { LiveMapSchema } from "./schema.js";
 
 /**
  * One segment of a projected LiveMap path.
@@ -69,6 +70,8 @@ export type LiveMapSortDirection = "asc" | "desc";
 export type LiveMapCore = Readonly<{
   root: () => HsonNode;
   snap: (path?: LivePath) => JsonValue | undefined;
+  schema: () => LiveMapSchema | undefined;
+  withSchema: (schema: LiveMapSchema) => LiveMapCore;
   at: (path: LivePath) => LiveMapPathHandle;
   proxy: (path?: LivePath) => LiveMapProxy;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
