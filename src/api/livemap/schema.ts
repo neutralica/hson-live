@@ -1,0 +1,625 @@
+// schema.ts
+
+import type { JsonValue } from "../../core/types.js";
+import type { LivePath } from "./livemap.types.js";
+
+export type LiveMapSchemaKind =
+  | "unknown"
+  | "string"
+  | "number"
+  | "boolean"
+  | "null"
+  | "literal"
+  | "pick"
+  | "lazy"
+  | "refine"
+  | "array"
+  | "tuple"
+  | "object"
+  | "record";
+
+export type LiveMapSchemaIssue = Readonly<{
+  path: LivePath;
+  message: string;
+}>;
+
+export type LiveMapSchemaValidation = Readonly<{
+  ok: boolean;
+  issues: readonly LiveMapSchemaIssue[];
+}>;
+
+export type LiveMapSchemaRule = Readonly<{
+  kind: LiveMapSchemaKind;
+  path: LivePath;
+  optional: boolean;
+  nullable: boolean;
+  readonly: boolean;
+  exact: boolean;
+  literals?: readonly JsonValue[];
+}>;
+
+export type LiveMapSchema = Readonly<{
+  root: LiveMapSchemaNode;
+  rules: readonly LiveMapSchemaRule[];
+  match: (path: LivePath) => LiveMapSchemaRule | undefined;
+  validateRoot: (value: JsonValue | undefined) => LiveMapSchemaValidation;
+  validateValue: (path: LivePath, value: JsonValue | undefined) => LiveMapSchemaValidation;
+}>;
+
+export interface LiveMapSchemaShape {
+  readonly [key: string]: LiveMapSchemaInput;
+}
+
+export interface LiveMapSchemaVariants {
+  readonly [variant: string]: LiveMapSchemaShape;
+}
+
+export type LiveMapSchemaInput =
+  | LiveMapSchemaToken
+  | LiveMapSchemaShape;
+
+export type LiveMapSchemaChoice =
+  | JsonValue
+  | LiveMapSchemaInput;
+
+export type LiveMapSchemaRefinement = (value: JsonValue) => boolean;
+
+export type LiveMapSchemaBuilder = Readonly<{
+  unknown: LiveMapSchemaToken;
+  string: LiveMapSchemaToken;
+  number: LiveMapSchemaToken;
+  boolean: LiveMapSchemaToken;
+  null: LiveMapSchemaToken;
+  literal: (...values: readonly JsonValue[]) => LiveMapSchemaToken;
+  pick: (...choices: readonly LiveMapSchemaChoice[]) => LiveMapSchemaToken;
+  tagged: (discriminator: string, variants: LiveMapSchemaVariants) => LiveMapSchemaToken;
+  lazy: (makeInput: () => LiveMapSchemaInput) => LiveMapSchemaToken;
+  refine: (base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaRefinement) => LiveMapSchemaToken;
+  array: (item: LiveMapSchemaInput) => LiveMapSchemaToken;
+  tuple: (...items: readonly LiveMapSchemaInput[]) => LiveMapSchemaToken;
+  record: (value: LiveMapSchemaInput) => LiveMapSchemaToken;
+  object: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
+  partial: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
+  deepPartial: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
+  exact: (shape: LiveMapSchemaShape) => LiveMapSchemaToken;
+}>;
+
+export type LiveMapSchemaToken = Readonly<{
+  kind: LiveMapSchemaKind;
+  optional: LiveMapSchemaToken;
+  nullable: LiveMapSchemaToken;
+  readonly: LiveMapSchemaToken;
+  array: LiveMapSchemaToken;
+}>;
+
+type LiveMapSchemaNode = Readonly<{
+  kind: LiveMapSchemaKind;
+  optional: boolean;
+  nullable: boolean;
+  readonly: boolean;
+  exact: boolean;
+  literals: readonly JsonValue[];
+  choices?: readonly LiveMapSchemaNode[];
+  lazy?: () => LiveMapSchemaNode;
+  base?: LiveMapSchemaNode;
+  label?: string;
+  validate?: LiveMapSchemaRefinement;
+  item?: LiveMapSchemaNode;
+  items?: readonly LiveMapSchemaNode[];
+  props?: Readonly<Record<string, LiveMapSchemaNode>>;
+  record?: LiveMapSchemaNode;
+}>;
+
+type LiveMapSchemaDraft = Readonly<{
+  kind: LiveMapSchemaKind;
+  optional?: boolean;
+  nullable?: boolean;
+  readonly?: boolean;
+  exact?: boolean;
+  literals?: readonly JsonValue[];
+  choices?: readonly LiveMapSchemaChoice[];
+  lazy?: () => LiveMapSchemaInput;
+  base?: LiveMapSchemaInput;
+  label?: string;
+  validate?: LiveMapSchemaRefinement;
+  item?: LiveMapSchemaInput;
+  items?: readonly LiveMapSchemaInput[];
+  props?: LiveMapSchemaShape;
+  record?: LiveMapSchemaInput;
+}>;
+
+const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
+const ARRAY_INDEX_PATH_PART = "*";
+const RECORD_KEY_PATH_PART = "*";
+
+export const LIVEMAP_SCHEMA: LiveMapSchemaBuilder = Object.freeze({
+  unknown: make_schema_token({ kind: "unknown" }),
+  string: make_schema_token({ kind: "string" }),
+  number: make_schema_token({ kind: "number" }),
+  boolean: make_schema_token({ kind: "boolean" }),
+  null: make_schema_token({ kind: "null" }),
+  literal: (...values) => make_schema_token({ kind: "literal", literals: values }),
+  pick: (...choices) => make_schema_token({ kind: "pick", choices }),
+  tagged: (discriminator, variants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) }),
+  lazy: (makeInput) => make_schema_token({ kind: "lazy", lazy: makeInput }),
+  refine: (base, label, validate) => make_schema_token({ kind: "refine", base, label, validate }),
+  array: (item) => make_schema_token({ kind: "array", item }),
+  tuple: (...items) => make_schema_token({ kind: "tuple", items }),
+  record: (value) => make_schema_token({ kind: "record", record: value }),
+  object: (shape) => make_schema_token({ kind: "object", props: shape }),
+  partial: (shape) => make_schema_token({ kind: "object", props: make_partial_schema_shape(shape) }),
+  deepPartial: (shape) => make_schema_token({ kind: "object", props: make_deep_partial_schema_shape(shape) }),
+  exact: (shape) => make_schema_token({ kind: "object", props: shape, exact: true }),
+});
+
+export function define_livemap_schema(makeShape: (schema: LiveMapSchemaBuilder) => LiveMapSchemaInput): LiveMapSchema {
+  return make_livemap_schema(makeShape(LIVEMAP_SCHEMA));
+}
+
+export function make_livemap_schema(input: LiveMapSchemaInput): LiveMapSchema {
+  const root = normalize_schema_input(input);
+  const rules = collect_schema_rules(root, []);
+
+  return Object.freeze({
+    root,
+    rules,
+    match: (path) => match_schema_rule(rules, path),
+    validateRoot: (value) => validate_schema_node(root, [], value),
+    validateValue: (path, value) => validate_schema_value(root, path, value),
+  });
+}
+
+function make_schema_token(draft: LiveMapSchemaDraft): LiveMapSchemaToken {
+  const token = Object.freeze({
+    kind: draft.kind,
+    get optional() {
+      return make_schema_token({ ...draft, optional: true });
+    },
+    get nullable() {
+      return make_schema_token({ ...draft, nullable: true });
+    },
+    get readonly() {
+      return make_schema_token({ ...draft, readonly: true });
+    },
+    get array() {
+      return make_schema_token({ kind: "array", item: token });
+    },
+    [SCHEMA_DRAFT]: draft,
+  }) as LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
+
+  return token;
+}
+
+
+function make_partial_schema_shape(shape: LiveMapSchemaShape): LiveMapSchemaShape {
+  const partialShape: Record<string, LiveMapSchemaInput> = {};
+
+  for (const [key, value] of Object.entries(shape)) {
+    partialShape[key] = make_optional_schema_input(value);
+  }
+
+  return Object.freeze(partialShape);
+}
+
+function make_deep_partial_schema_shape(shape: LiveMapSchemaShape): LiveMapSchemaShape {
+  const partialShape: Record<string, LiveMapSchemaInput> = {};
+
+  for (const [key, value] of Object.entries(shape)) {
+    partialShape[key] = make_deep_optional_schema_input(value);
+  }
+
+  return Object.freeze(partialShape);
+}
+
+function make_deep_optional_schema_input(input: LiveMapSchemaInput): LiveMapSchemaInput {
+  if (is_schema_token(input)) return make_deep_optional_schema_token(input);
+
+  return make_schema_token({ kind: "object", props: make_deep_partial_schema_shape(input as LiveMapSchemaShape), optional: true });
+}
+
+function make_deep_optional_schema_token(input: LiveMapSchemaToken): LiveMapSchemaToken {
+  const token = input as LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
+  const draft = token[SCHEMA_DRAFT];
+
+  if (draft.kind === "object" && draft.props !== undefined) {
+    return make_schema_token({ ...draft, props: make_deep_partial_schema_shape(draft.props), optional: true });
+  }
+
+  if (draft.kind === "array" && draft.item !== undefined) {
+    return make_schema_token({ ...draft, item: make_deep_optional_schema_input(draft.item), optional: true });
+  }
+
+  if (draft.kind === "tuple" && draft.items !== undefined) {
+    return make_schema_token({ ...draft, items: draft.items.map((item) => make_deep_optional_schema_input(item)), optional: true });
+  }
+
+  if (draft.kind === "record" && draft.record !== undefined) {
+    return make_schema_token({ ...draft, record: make_deep_optional_schema_input(draft.record), optional: true });
+  }
+
+  return input.optional;
+}
+
+
+function make_optional_schema_input(input: LiveMapSchemaInput): LiveMapSchemaInput {
+  if (is_schema_token(input)) return input.optional;
+
+  return make_schema_token({ kind: "object", props: input as LiveMapSchemaShape, optional: true });
+}
+
+
+function make_tagged_schema_choices(discriminator: string, variants: LiveMapSchemaVariants): readonly LiveMapSchemaChoice[] {
+  const choices: LiveMapSchemaChoice[] = [];
+
+  for (const [tag, shape] of Object.entries(variants)) {
+    choices.push(Object.freeze({
+      ...shape,
+      [discriminator]: make_schema_token({ kind: "literal", literals: [tag] }),
+    }));
+  }
+
+  return Object.freeze(choices);
+}
+
+
+
+function normalize_schema_input(input: LiveMapSchemaInput): LiveMapSchemaNode {
+  if (is_schema_token(input)) return normalize_schema_draft(input[SCHEMA_DRAFT]);
+  return normalize_schema_draft({ kind: "object", props: input as LiveMapSchemaShape });
+}
+
+function normalize_schema_draft(draft: LiveMapSchemaDraft): LiveMapSchemaNode {
+  return Object.freeze({
+    kind: draft.kind,
+    optional: draft.optional === true,
+    nullable: draft.nullable === true,
+    readonly: draft.readonly === true,
+    exact: draft.exact === true,
+    literals: draft.literals ?? [],
+    choices: draft.choices === undefined ? undefined : draft.choices.map((choice) => normalize_schema_choice(choice)),
+    lazy: draft.lazy === undefined ? undefined : memoize_schema_lazy(draft.lazy),
+    base: draft.base === undefined ? undefined : normalize_schema_input(draft.base),
+    label: draft.label,
+    validate: draft.validate,
+    item: draft.item === undefined ? undefined : normalize_schema_input(draft.item),
+    items: draft.items === undefined ? undefined : draft.items.map((item) => normalize_schema_input(item)),
+    props: draft.props === undefined ? undefined : normalize_schema_props(draft.props),
+    record: draft.record === undefined ? undefined : normalize_schema_input(draft.record),
+  });
+}
+
+function normalize_schema_choice(choice: LiveMapSchemaChoice): LiveMapSchemaNode {
+  if (is_schema_input(choice)) return normalize_schema_input(choice);
+  return normalize_schema_draft({ kind: "literal", literals: [choice] });
+}
+
+function memoize_schema_lazy(makeInput: () => LiveMapSchemaInput): () => LiveMapSchemaNode {
+  let node: LiveMapSchemaNode | undefined;
+
+  return () => {
+    node ??= normalize_schema_input(makeInput());
+    return node;
+  };
+}
+
+function normalize_schema_props(shape: LiveMapSchemaShape): Readonly<Record<string, LiveMapSchemaNode>> {
+  const props: Record<string, LiveMapSchemaNode> = {};
+
+  for (const [key, value] of Object.entries(shape)) {
+    props[key] = normalize_schema_input(value);
+  }
+
+  return Object.freeze(props);
+}
+
+function is_schema_input(value: LiveMapSchemaChoice): value is LiveMapSchemaInput {
+  return is_schema_token(value) || is_schema_shape(value);
+}
+
+function is_schema_shape(value: LiveMapSchemaChoice): value is LiveMapSchemaShape {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  return Object.values(value).some((item) => is_schema_input(item as LiveMapSchemaChoice));
+}
+
+function is_schema_token(value: LiveMapSchemaChoice): value is LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }> {
+  return typeof value === "object" && value !== null && SCHEMA_DRAFT in value;
+}
+
+function collect_schema_rules(node: LiveMapSchemaNode, path: LivePath): readonly LiveMapSchemaRule[] {
+  const rules: LiveMapSchemaRule[] = [schema_rule_from_node(node, path)];
+  if (node.kind === "lazy") return rules;
+  if (node.kind === "refine") return rules;
+
+  if (node.kind === "object" && node.props !== undefined) {
+    for (const [key, child] of Object.entries(node.props)) {
+      rules.push(...collect_schema_rules(child, [...path, key]));
+    }
+  }
+
+  if (node.kind === "array" && node.item !== undefined) {
+    rules.push(...collect_schema_rules(node.item, [...path, ARRAY_INDEX_PATH_PART]));
+  }
+
+  if (node.kind === "tuple" && node.items !== undefined) {
+    node.items.forEach((item, index) => {
+      rules.push(...collect_schema_rules(item, [...path, index]));
+    });
+  }
+
+  if (node.kind === "record" && node.record !== undefined) {
+    rules.push(...collect_schema_rules(node.record, [...path, RECORD_KEY_PATH_PART]));
+  }
+
+  return rules;
+}
+
+function schema_rule_from_node(node: LiveMapSchemaNode, path: LivePath): LiveMapSchemaRule {
+  return Object.freeze({
+    kind: node.kind,
+    path,
+    optional: node.optional,
+    nullable: node.nullable,
+    readonly: node.readonly,
+    exact: node.exact,
+    literals: node.literals.length === 0 ? undefined : node.literals,
+  });
+}
+
+function match_schema_rule(rules: readonly LiveMapSchemaRule[], path: LivePath): LiveMapSchemaRule | undefined {
+  let bestRule: LiveMapSchemaRule | undefined;
+
+  for (const rule of rules) {
+    if (!schema_paths_match(rule.path, path)) continue;
+    if (bestRule === undefined || rule.path.length > bestRule.path.length) bestRule = rule;
+  }
+
+  return bestRule;
+}
+
+function schema_paths_match(pattern: LivePath, path: LivePath): boolean {
+  if (pattern.length !== path.length) return false;
+
+  return pattern.every((part, index) => part === ARRAY_INDEX_PATH_PART || part === RECORD_KEY_PATH_PART || part === path[index]);
+}
+
+function validate_schema_value(root: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
+  const node = schema_node_at_path(root, path);
+  if (node === undefined) {
+    return validation_issue(path, `LiveMap schema has no rule for ${format_schema_path(path)}`);
+  }
+
+  return validate_schema_node(node, path, value);
+}
+
+function schema_node_at_path(node: LiveMapSchemaNode, path: LivePath): LiveMapSchemaNode | undefined {
+  if (path.length === 0) return node;
+  if (node.kind === "lazy") return node.lazy === undefined ? undefined : schema_node_at_path(node.lazy(), path);
+  if (node.kind === "refine") return node.base === undefined ? undefined : schema_node_at_path(node.base, path);
+
+  const [part, ...rest] = path;
+
+  if (node.kind === "object" && typeof part === "string") {
+    const child = node.props?.[part];
+    if (child !== undefined) return schema_node_at_path(child, rest);
+    if (node.exact) return undefined;
+    return undefined;
+  }
+
+  if (node.kind === "array" && typeof part === "number") {
+    return node.item === undefined ? undefined : schema_node_at_path(node.item, rest);
+  }
+
+  if (node.kind === "tuple" && typeof part === "number") {
+    const child = node.items?.[part];
+    return child === undefined ? undefined : schema_node_at_path(child, rest);
+  }
+
+  if (node.kind === "record" && typeof part === "string") {
+    return node.record === undefined ? undefined : schema_node_at_path(node.record, rest);
+  }
+
+  return undefined;
+}
+
+function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
+  if (value === undefined) {
+    return node.optional ? validation_ok() : validation_issue(path, `LiveMap schema value is missing at ${format_schema_path(path)}`);
+  }
+
+  if (value === null) {
+    if (node.kind === "null" || node.nullable) return validation_ok();
+    return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received null`);
+  }
+
+  if (node.kind === "unknown") return validation_ok();
+
+  if (node.kind === "literal") return validate_literal_node(node, path, value);
+  if (node.kind === "pick") return validate_pick_node(node, path, value);
+  if (node.kind === "lazy") return validate_lazy_node(node, path, value);
+  if (node.kind === "refine") return validate_refine_node(node, path, value);
+  if (node.kind === "array") return validate_array_node(node, path, value);
+  if (node.kind === "tuple") return validate_tuple_node(node, path, value);
+  if (node.kind === "object") return validate_object_node(node, path, value);
+  if (node.kind === "record") return validate_record_node(node, path, value);
+
+  if (typeof value !== node.kind) {
+    return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  }
+
+  return validation_ok();
+}
+
+
+function validate_literal_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (node.literals.some((literal) => json_values_equal(literal, value))) return validation_ok();
+
+  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${JSON.stringify(value)}`);
+}
+
+function closest_schema_validation(validations: readonly LiveMapSchemaValidation[]): LiveMapSchemaValidation | undefined {
+  let closestValidation: LiveMapSchemaValidation | undefined;
+
+  for (const validation of validations) {
+    if (closestValidation === undefined || validation.issues.length < closestValidation.issues.length) {
+      closestValidation = validation;
+    }
+  }
+
+  return closestValidation;
+}
+
+function validate_pick_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  const choices = node.choices ?? [];
+  const validations = choices.map((choice) => validate_schema_node(choice, path, value));
+  if (validations.some((validation) => validation.ok)) return validation_ok();
+
+  if (is_plain_json_object(value) && choices.some((choice) => choice.kind === "object")) {
+    const closestValidation = closest_schema_validation(validations);
+    if (closestValidation !== undefined && closestValidation.issues.length > 0) return closestValidation;
+  }
+
+  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+}
+
+function validate_lazy_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (node.lazy === undefined) return validation_issue(path, `LiveMap schema lazy value is not defined at ${format_schema_path(path)}`);
+  return validate_schema_node(node.lazy(), path, value);
+}
+
+function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (node.base === undefined || node.validate === undefined) {
+    return validation_issue(path, `LiveMap schema refinement is not defined at ${format_schema_path(path)}`);
+  }
+
+  const baseValidation = validate_schema_node(node.base, path, value);
+  if (!baseValidation.ok) return baseValidation;
+
+  if (node.validate(value)) return validation_ok();
+
+  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${JSON.stringify(value)}`);
+}
+
+function validate_array_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (!Array.isArray(value)) {
+    return validation_issue(path, `LiveMap schema expected array at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  }
+
+  if (node.item === undefined) return validation_ok();
+
+  return merge_validations(value.map((item, index) => validate_schema_node(node.item as LiveMapSchemaNode, [...path, index], item)));
+}
+
+function validate_tuple_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (!Array.isArray(value)) {
+    return validation_issue(path, `LiveMap schema expected tuple at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  }
+
+  const items = node.items ?? [];
+  const validations: LiveMapSchemaValidation[] = [];
+
+  items.forEach((item, index) => {
+    validations.push(validate_schema_node(item, [...path, index], value[index]));
+  });
+
+  if (value.length > items.length) {
+    for (let index = items.length; index < value.length; index += 1) {
+      validations.push(validation_issue([...path, index], `LiveMap schema does not allow tuple index ${index} at ${format_schema_path(path)}`));
+    }
+  }
+
+  return merge_validations(validations);
+}
+
+function validate_object_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (!is_plain_json_object(value)) {
+    return validation_issue(path, `LiveMap schema expected object at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  }
+
+  const validations: LiveMapSchemaValidation[] = [];
+  const props = node.props ?? {};
+
+  for (const [key, child] of Object.entries(props)) {
+    validations.push(validate_schema_node(child, [...path, key], value[key]));
+  }
+
+  if (node.exact) {
+    for (const key of Object.keys(value)) {
+      if (!(key in props)) validations.push(validation_issue([...path, key], `LiveMap schema does not allow key ${JSON.stringify(key)} at ${format_schema_path(path)}`));
+    }
+  }
+
+  return merge_validations(validations);
+}
+
+function validate_record_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
+  if (!is_plain_json_object(value)) {
+    return validation_issue(path, `LiveMap schema expected record at ${format_schema_path(path)}, received ${json_value_type_label(value)}`);
+  }
+
+  if (node.record === undefined) return validation_ok();
+
+  return merge_validations(Object.entries(value).map(([key, item]) => validate_schema_node(node.record as LiveMapSchemaNode, [...path, key], item)));
+}
+
+function validation_ok(): LiveMapSchemaValidation {
+  return Object.freeze({ ok: true, issues: [] });
+}
+
+function validation_issue(path: LivePath, message: string): LiveMapSchemaValidation {
+  return Object.freeze({
+    ok: false,
+    issues: [Object.freeze({ path, message })],
+  });
+}
+
+function merge_validations(validations: readonly LiveMapSchemaValidation[]): LiveMapSchemaValidation {
+  const issues = validations.flatMap((validation) => validation.issues);
+
+  return Object.freeze({
+    ok: issues.length === 0,
+    issues,
+  });
+}
+
+function schema_kind_label(node: LiveMapSchemaNode): string {
+  if (node.kind === "literal") return node.literals.map((literal) => JSON.stringify(literal)).join(" | ");
+  if (node.kind === "pick") return (node.choices ?? []).map(schema_kind_label).join(" | ") || "pick";
+  if (node.kind === "lazy") return node.lazy === undefined ? "lazy" : schema_kind_label(node.lazy());
+  if (node.kind === "refine") return node.label ?? "refinement";
+  if (node.nullable && node.kind !== "null") return `${node.kind} | null`;
+
+  return node.kind;
+}
+
+function json_value_type_label(value: JsonValue): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+
+  return typeof value;
+}
+
+function is_plain_json_object(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function json_values_equal(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) return true;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+
+    return left.every((item, index) => json_values_equal(item, right[index] as JsonValue));
+  }
+
+  if (!is_plain_json_object(left) || !is_plain_json_object(right)) return false;
+
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+
+  return leftKeys.every((key) => key in right && json_values_equal(left[key] as JsonValue, right[key] as JsonValue));
+}
+
+function format_schema_path(path: LivePath): string {
+  return JSON.stringify(path);
+}
