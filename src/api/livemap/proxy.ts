@@ -6,8 +6,12 @@ const PROXY_METHODS = new Set<PropertyKey>(["$_"]);
 
 export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): LiveMapProxy {
   const proxyPath = [...path];
-
-  const target = Object.freeze({});
+  const target = Object.defineProperty({}, "$_", {
+    configurable: true,
+    enumerable: false,
+    value: undefined,
+    writable: false,
+  });
 
   return new Proxy(target, {
     get: (_target, property) => {
@@ -22,10 +26,7 @@ export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): Live
     getOwnPropertyDescriptor: (_target, property) => {
       if (!PROXY_METHODS.has(property)) return undefined;
 
-      return {
-        configurable: true,
-        enumerable: false,
-      };
+      return Object.getOwnPropertyDescriptor(_target, property);
     },
     set: () => {
       throw new Error("LiveMap proxy values must be changed through $_.");

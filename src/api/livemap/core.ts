@@ -6,6 +6,7 @@ import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
 import { make_livemap_path_handle } from "./handle.js";
+import { make_livemap_proxy } from "./proxy.js";
 import { must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./guard.js";
 
 /**
@@ -32,6 +33,9 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
 
     /** Create an ergonomic handle scoped to one projected path. */
     at: (path) => make_livemap_path_handle(core, must_live_path(path)),
+
+    /** Create an ergonomic Proxy scoped to one projected path. */
+    proxy: (path = []) => make_livemap_proxy(core, must_live_path(path)),
 
     /** Create a low-level HSON-node-facing handle scoped to one projected path. */
     node: (path) => make_livemap_node_handle(root, must_live_path(path)),

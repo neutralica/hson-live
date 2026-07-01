@@ -70,6 +70,7 @@ export type LiveMapCore = Readonly<{
   root: () => HsonNode;
   snap: (path?: LivePath) => JsonValue | undefined;
   at: (path: LivePath) => LiveMapPathHandle;
+  proxy: (path?: LivePath) => LiveMapProxy;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
