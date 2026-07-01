@@ -39,9 +39,14 @@ export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
 /**
  * First public core surface for one LiveMap graph.
  *
- * Core owns the root node, delegates low-level graph edits to the editor, and
- * returns normalized commits for mutations. Feed now hangs directly off this
- * layer; link/proxy surfaces should also talk to Core rather than the editor.
+ * Core owns the root node, delegates projected JSON edits to the editor, and
+ * returns normalized commits for mutations. Feed hangs directly off this layer;
+ * link/proxy/future projected-data APIs should also talk to Core rather than
+ * the editor.
+ *
+ * `node(path)` is intentionally lower level than `at(path)`: it exposes direct
+ * HSON graph inspection and surgery so LiveMap internals can be built and tested
+ * without prematurely freezing the public projected-data API.
  */
 export type LiveMapCore = Readonly<{
   root: () => HsonNode;
@@ -171,13 +176,19 @@ export type LiveMapNodeHandle = Readonly<{
   mustChild: (tag: string) => HsonNode;
   /** Append a direct HSON child node to the current underlying node. */
   append: (child: HsonNode) => LiveMapNodeHandle;
-  /** API for node removal (returns self, child, children). */
+
+  /** Low-level direct HSON child removal helpers. */
   remove: LiveMapNodeRemoveApi;
+
+  /** Low-level direct HSON child replacement helpers. */
   replace: LiveMapNodeReplaceApi;
+
+  /** Low-level direct HSON child insertion helpers. */
   insert: LiveMapNodeInsertApi;
+
+  /** Low-level direct HSON child movement helpers. */
   move: LiveMapNodeMoveApi;
 }>;
-
 export type LiveMapPathHandle = Readonly<{
   path: () => LivePath;
   snap: () => JsonValue | undefined;
@@ -185,24 +196,49 @@ export type LiveMapPathHandle = Readonly<{
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   delete: () => LiveMapCommit;
   update: (updater: (value: JsonValue | undefined) => JsonValue) => LiveMapCommit;
+  array: LiveMapPathArrayApi;
+  object: LiveMapPathObjectApi;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
 
+export type LiveMapPathArrayApi = Readonly<{
+  insert: (index: number, value: JsonValue) => LiveMapCommit;
+  remove: (index: number) => LiveMapCommit;
+  replace: (index: number, value: JsonValue) => LiveMapCommit;
+  move: (fromIndex: number, toIndex: number) => LiveMapCommit;
+}>;
+
+export type LiveMapPathObjectApi = Readonly<{
+  setKey: (key: string, value: JsonValue) => LiveMapCommit;
+  deleteKey: (key: string) => LiveMapCommit;
+  renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
+}>;
+
+/** Low-level physical child removal. Indexes count direct HsonNode children, not raw $_content slots. */
 export type LiveMapNodeRemoveApi = Readonly<{
   children: () => LiveMapNodeHandle;
   child: (index: number) => LiveMapNodeHandle;
 }>;
 
+/** Low-level physical child replacement. Indexes count direct HsonNode children, not raw $_content slots. */
 export type LiveMapNodeReplaceApi = Readonly<{
   children: (children: readonly HsonNode[]) => LiveMapNodeHandle;
   child: (index: number, child: HsonNode) => LiveMapNodeHandle;
 }>;
 
+/** Low-level physical child insertion. Indexes count direct HsonNode children, not raw $_content slots. */
 export type LiveMapNodeInsertApi = Readonly<{
   child: (index: number, child: HsonNode) => LiveMapNodeHandle;
 }>;
 
+/**
+ * Low-level physical child movement.
+ *
+ * Indexes count direct HsonNode children, not raw $_content slots. `toIndex` is
+ * resolved after the source child is removed, so moving child 0 to index 2 in a
+ * three-child list moves it to the end.
+ */
 export type LiveMapNodeMoveApi = Readonly<{
   child: (fromIndex: number, toIndex: number) => LiveMapNodeHandle;
 }>;
