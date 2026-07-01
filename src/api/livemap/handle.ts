@@ -4,11 +4,30 @@ import type { JsonValue } from "../../core/types.js";
 import type {
   LiveMapCore, LiveMapPathHandle, LivePath
 } from "./livemap.types.js";
-import { path_is_prefix } from "./livemap-path.js";
+import { path_is_prefix } from "./path.js";
+import {
+  array_index_error,
+  must_json_value,
+  must_live_path,
+  must_object_key,
+  must_set_many_values,
+  path_kind_error,
+} from "./guard.js";
+
 
 type LiveMapPathHandleCore = Pick<LiveMapCore, "snap" | "set" | "setMany" | "delete" | "feed">;
-type LiveMapPathKind = "array" | "object";
 
+function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mustObjectValue(value: JsonValue | undefined, path: LivePath): Readonly<Record<string, JsonValue>> {
+  if (!isObjectValue(value)) {
+    throw path_kind_error(path, "object");
+  }
+
+  return value;
+}
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
  *
@@ -30,33 +49,73 @@ type LiveMapPathKind = "array" | "object";
  * deleting below the handle path writes the updated source handle value.
  */
 export function make_livemap_path_handle(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle {
-  const handlePath = mustLivePath(path);
+  const handlePath = must_live_path(path);
 
   return {
     path: () => [...handlePath],
     snap: () => core.snap(handlePath),
-    set: (value) => core.set(handlePath, mustJsonValue(value, handlePath)),
-    setMany: (values) => core.setMany(handlePath, mustSetManyValues(values, handlePath)),
+    set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
+    setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
     delete: () => core.delete(handlePath),
-    update: (updater) => core.set(handlePath, mustJsonValue(updater(core.snap(handlePath)), handlePath)),
+    update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath)), handlePath)),
     array: {
-      insert: (index, value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, index, mustJsonValue(value, [...handlePath, index]))),
+      is: () => Array.isArray(core.snap(handlePath)),
+      length: () => mustArrayValue(core.snap(handlePath), handlePath).length,
+      at: (index) => {
+        const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+        return arrayValue[arrayIndex(arrayValue, handlePath, index)];
+      },
+      push: (value) => {
+        const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+        return core.set(handlePath, arrayInsert(arrayValue, handlePath, arrayValue.length, must_json_value(value, [...handlePath, arrayValue.length])));
+      },
+      unshift: (value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, 0, must_json_value(value, [...handlePath, 0]))),
+      pop: () => {
+        const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+        return core.set(handlePath, arrayRemove(arrayValue, handlePath, arrayValue.length - 1));
+      },
+      shift: () => core.set(handlePath, arrayRemove(core.snap(handlePath), handlePath, 0)),
+      clear: () => {
+        mustArrayValue(core.snap(handlePath), handlePath);
+        return core.set(handlePath, []);
+      },
+      insert: (index, value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
       remove: (index) => core.set(handlePath, arrayRemove(core.snap(handlePath), handlePath, index)),
-      replace: (index, value) => core.set(handlePath, arrayReplace(core.snap(handlePath), handlePath, index, mustJsonValue(value, [...handlePath, index]))),
+      replace: (index, value) => core.set(handlePath, arrayReplace(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
       move: (fromIndex, toIndex) => core.set(handlePath, arrayMove(core.snap(handlePath), handlePath, fromIndex, toIndex)),
     },
     object: {
+      is: () => isObjectValue(core.snap(handlePath)),
+      hasKey: (key) => {
+        const objectKey = must_object_key(key, handlePath);
+        return objectKey in mustObjectValue(core.snap(handlePath), handlePath);
+      },
+      getKey: (key) => {
+        const objectKey = must_object_key(key, handlePath);
+        return mustObjectValue(core.snap(handlePath), handlePath)[objectKey];
+      },
+      keys: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)),
+      values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)),
+      entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)),
       setKey: (key, value) => {
-        const objectKey = mustObjectKey(key, handlePath);
+        const objectKey = must_object_key(key, handlePath);
         mustObjectValue(core.snap(handlePath), handlePath);
-        return core.set([...handlePath, objectKey], mustJsonValue(value, [...handlePath, objectKey]));
+        return core.set([...handlePath, objectKey], must_json_value(value, [...handlePath, objectKey]));
+      },
+      setMany: (values) => {
+        mustObjectValue(core.snap(handlePath), handlePath);
+        return core.setMany(handlePath, must_set_many_values(values, handlePath));
+      },
+      clear: () => {
+        mustObjectValue(core.snap(handlePath), handlePath);
+        return core.set(handlePath, {});
       },
       deleteKey: (key) => {
-        const objectKey = mustObjectKey(key, handlePath);
+        const objectKey = must_object_key(key, handlePath);
         mustObjectValue(core.snap(handlePath), handlePath);
         return core.delete([...handlePath, objectKey]);
       },
-      renameKey: (fromKey, toKey) => core.set(handlePath, objectRenameKey(core.snap(handlePath), handlePath, mustObjectKey(fromKey, handlePath), mustObjectKey(toKey, handlePath))),
+      renameKey: (fromKey, toKey) => core.set(handlePath, objectRenameKey(core.snap(handlePath), handlePath, must_object_key(fromKey, handlePath), must_object_key(toKey, handlePath))),
     },
     feed: (listener) => core.feed(handlePath, listener),
     linkTo: (target) => core.feed(handlePath, (event) => {
@@ -72,89 +131,14 @@ export function make_livemap_path_handle(core: LiveMapPathHandleCore, path: Live
 }
 
 
-function mustLivePath(path: unknown): LivePath {
-  if (!Array.isArray(path)) {
-    throw new Error("LiveMap path is not an array");
-  }
-
-  return path.map((part, index) => mustLivePathPart(part, index));
-}
-
-function mustLivePathPart(part: unknown, index: number): string | number {
-  if (typeof part === "string") return part;
-  if (typeof part === "number" && Number.isInteger(part) && part >= 0) return part;
-
-  throw new Error(`LiveMap path part is not valid at index ${index}`);
-}
-
-function mustSetManyValues(value: unknown, path: LivePath): Readonly<Record<string, JsonValue>> {
-  if (!isPlainJsonObjectValue(value)) {
-    throw new Error(`LiveMap setMany value is not an object at ${formatHandlePath(path)}`);
-  }
-
-  const values: Record<string, JsonValue> = {};
-
-  for (const [key, item] of Object.entries(value)) {
-    values[key] = mustJsonValue(item, [...path, key]);
-  }
-
-  return values;
-}
-
-
-function mustJsonValue(value: unknown, path: LivePath): JsonValue {
-  if (isJsonValue(value)) return value;
-
-  throw new Error(`LiveMap value is not JSON at ${formatHandlePath(path)}`);
-}
-
-function isJsonValue(value: unknown): value is JsonValue {
-  if (value === null) return true;
-
-  switch (typeof value) {
-    case "string":
-    case "boolean":
-      return true;
-    case "number":
-      return Number.isFinite(value);
-    case "object":
-      return Array.isArray(value)
-        ? value.every(isJsonValue)
-        : isPlainJsonObjectValue(value) && Object.values(value).every(isJsonValue);
-    default:
-      return false;
-  }
-}
-
-function isPlainJsonObjectValue(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function mustObjectKey(key: unknown, path: LivePath): string {
-  if (typeof key === "string") return key;
-
-  throw new Error(`LiveMap object key is not a string at ${formatHandlePath(path)}`);
-}
-
-
 function mustArrayValue(value: JsonValue | undefined, path: LivePath): JsonValue[] {
   if (!Array.isArray(value)) {
-    throw pathKindError(path, "array");
+    throw path_kind_error(path, "array");
   }
 
   return [...value];
 }
 
-function mustObjectValue(value: JsonValue | undefined, path: LivePath): Readonly<Record<string, JsonValue>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw pathKindError(path, "object");
-  }
-
-  return value;
-}
 
 function objectRenameKey(value: JsonValue | undefined, path: LivePath, fromKey: string, toKey: string): JsonValue {
   const objectValue = mustObjectValue(value, path);
@@ -206,7 +190,7 @@ function arrayMove(value: JsonValue | undefined, path: LivePath, fromIndex: numb
 
 function arrayIndex(value: readonly JsonValue[], path: LivePath, index: number): number {
   if (!Number.isInteger(index) || index < 0 || index >= value.length) {
-    throw arrayIndexError(path, index);
+    throw array_index_error(path, index);
   }
 
   return index;
@@ -214,23 +198,12 @@ function arrayIndex(value: readonly JsonValue[], path: LivePath, index: number):
 
 function arrayInsertIndex(value: readonly JsonValue[], path: LivePath, index: number): number {
   if (!Number.isInteger(index) || index < 0 || index > value.length) {
-    throw arrayIndexError(path, index);
+    throw array_index_error(path, index);
   }
 
   return index;
 }
 
-function arrayIndexError(path: LivePath, index: number): Error {
-  return new Error(`LiveMap array index does not resolve: ${formatHandlePath(path)}[${index}]`);
-}
-
-function pathKindError(path: LivePath, kind: LiveMapPathKind): Error {
-  return new Error(`LiveMap path is not an ${kind}: ${formatHandlePath(path)}`);
-}
-
-function formatHandlePath(path: LivePath): string {
-  return `[${path.map((part) => JSON.stringify(part)).join(", ")}]`;
-}
 
 /**
  * Propagate a delete observed by a source handle to its target handle.

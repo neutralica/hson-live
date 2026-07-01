@@ -203,6 +203,14 @@ export type LiveMapPathHandle = Readonly<{
 }>;
 
 export type LiveMapPathArrayApi = Readonly<{
+  is: () => boolean;
+  length: () => number;
+  at: (index: number) => JsonValue;
+  push: (value: JsonValue) => LiveMapCommit;
+  unshift: (value: JsonValue) => LiveMapCommit;
+  pop: () => LiveMapCommit;
+  shift: () => LiveMapCommit;
+  clear: () => LiveMapCommit;
   insert: (index: number, value: JsonValue) => LiveMapCommit;
   remove: (index: number) => LiveMapCommit;
   replace: (index: number, value: JsonValue) => LiveMapCommit;
@@ -210,7 +218,15 @@ export type LiveMapPathArrayApi = Readonly<{
 }>;
 
 export type LiveMapPathObjectApi = Readonly<{
+  is: () => boolean;
+  hasKey: (key: string) => boolean;
+  getKey: (key: string) => JsonValue | undefined;
+  keys: () => readonly string[];
+  values: () => readonly JsonValue[];
+  entries: () => readonly (readonly [string, JsonValue])[];
   setKey: (key: string, value: JsonValue) => LiveMapCommit;
+  setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
+  clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
   renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
 }>;

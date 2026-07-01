@@ -4,8 +4,8 @@ import type { HsonNode } from "../../core/types.js";
 import { ELEM_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapNodeHandle, LivePath } from "./livemap.types.js";
-import { resolve_wrapper_node } from "./livemap-editor.js";
-import { format_live_path } from "./livemap-path.js";
+import { resolve_wrapper_node } from "./editor.js";
+import { format_live_path } from "./path.js";
 
 function removeChildNodes(parent: HsonNode): void {
   parent.$_content = parent.$_content.filter((child) => !is_Node(child));
