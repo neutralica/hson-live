@@ -41,8 +41,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
 
     /** Attach a schema to this Core after validating the current projected root. */
     withSchema: (schema) => {
-      const validation = schema.validateRoot(snap_live_path(root, []));
-      must_schema_validation(validation, []);
+      must_core_schema_root(schema, root);
       currentSchema = schema;
       return core;
     },
@@ -60,7 +59,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     set: (path, value) => {
       const livePath = must_live_path(path);
       const jsonValue = must_json_value(value, livePath);
-      must_core_schema_value(currentSchema, livePath, jsonValue);
+      must_core_schema_set(currentSchema, root, livePath, jsonValue);
       const commit = commit_set(root, livePath, jsonValue);
       feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
       return commit;
@@ -70,7 +69,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore {
     setMany: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
-      must_core_schema_set_many(currentSchema, livePath, jsonValues);
+      must_core_schema_set_many(currentSchema, root, livePath, jsonValues);
       const commit = commit_set_many(root, livePath, jsonValues);
       feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
       return commit;
@@ -105,18 +104,28 @@ function feed_core_path(
   return feedHub.add(path, listener);
 }
 
-function must_core_schema_value(schema: LiveMapSchema | undefined, path: LivePath, value: JsonValue): void {
+function must_core_schema_set(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath, value: JsonValue): void {
   if (schema === undefined) return;
-  must_schema_validation(schema.validateValue(path, value), path);
+
+  const candidate = clone_json_value(snap_live_path(root, []));
+  set_json_path(candidate, path, value);
+  must_schema_validation(schema.validateRoot(candidate), path);
 }
 
-function must_core_schema_set_many(schema: LiveMapSchema | undefined, path: LivePath, values: LiveMapSetManyValues): void {
+function must_core_schema_root(schema: LiveMapSchema, root: HsonNode): void {
+  must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
+}
+
+function must_core_schema_set_many(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath, values: LiveMapSetManyValues): void {
   if (schema === undefined) return;
 
+  const candidate = clone_json_value(snap_live_path(root, []));
+
   for (const [key, value] of Object.entries(values)) {
-    const valuePath: LivePath = [...path, key];
-    must_schema_validation(schema.validateValue(valuePath, value), valuePath);
+    set_json_path(candidate, [...path, key], value);
   }
+
+  must_schema_validation(schema.validateRoot(candidate), path);
 }
 
 function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath): void {
@@ -129,6 +138,44 @@ function format_schema_validation_error(validation: LiveMapSchemaValidation, pat
   const issueLines = validation.issues.map((issue) => `- ${issue.message}`);
 
   return [`LiveMap schema rejected value at ${JSON.stringify(path)}:`, ...issueLines].join("\n");
+}
+
+function clone_json_value(value: JsonValue | undefined): JsonValue {
+  if (value === undefined) return null;
+  return JSON.parse(JSON.stringify(value)) as JsonValue;
+}
+
+function set_json_path(root: JsonValue, path: LivePath, value: JsonValue): void {
+  if (path.length === 0) return;
+
+  let cursor = root;
+
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const part = path[index];
+    const nextPart = path[index + 1];
+
+    if (typeof part === "number") {
+      if (!Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-array path ${JSON.stringify(path)}`);
+      if (cursor[part] === undefined || cursor[part] === null || typeof cursor[part] !== "object") cursor[part] = typeof nextPart === "number" ? [] : {};
+      cursor = cursor[part];
+      continue;
+    }
+
+    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-object path ${JSON.stringify(path)}`);
+    if (cursor[part] === undefined || cursor[part] === null || typeof cursor[part] !== "object") cursor[part] = typeof nextPart === "number" ? [] : {};
+    cursor = cursor[part];
+  }
+
+  const leaf = path[path.length - 1];
+
+  if (typeof leaf === "number") {
+    if (!Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-array path ${JSON.stringify(path)}`);
+    cursor[leaf] = value;
+    return;
+  }
+
+  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-object path ${JSON.stringify(path)}`);
+  cursor[leaf] = value;
 }
 
 /**
