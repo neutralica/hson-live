@@ -33,8 +33,11 @@ export type LiveMapEditResult = Readonly<{
   next: JsonValue | undefined;
 }>;
 
+
 /** Object-shaped values accepted by object-property batch setters. */
 export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
+
+export type LiveMapSortDirection = "asc" | "desc";
 
 /**
  * First public core surface for one LiveMap graph.
@@ -201,34 +204,58 @@ export type LiveMapPathHandle = Readonly<{
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
-
-export type LiveMapPathArrayApi = Readonly<{
-  is: () => boolean;
-  length: () => number;
-  at: (index: number) => JsonValue;
-  push: (value: JsonValue) => LiveMapCommit;
-  unshift: (value: JsonValue) => LiveMapCommit;
-  pop: () => LiveMapCommit;
-  shift: () => LiveMapCommit;
-  clear: () => LiveMapCommit;
-  insert: (index: number, value: JsonValue) => LiveMapCommit;
-  remove: (index: number) => LiveMapCommit;
-  replace: (index: number, value: JsonValue) => LiveMapCommit;
-  move: (fromIndex: number, toIndex: number) => LiveMapCommit;
-}>;
-
 export type LiveMapPathObjectApi = Readonly<{
   is: () => boolean;
+  toObject: () => Readonly<Record<string, JsonValue>>;
+  pick: (keys: readonly string[]) => Readonly<Record<string, JsonValue>>;
+  omit: (keys: readonly string[]) => Readonly<Record<string, JsonValue>>;
   hasKey: (key: string) => boolean;
   getKey: (key: string) => JsonValue | undefined;
   keys: () => readonly string[];
+  isEmpty: () => boolean;
+  size: () => number;
   values: () => readonly JsonValue[];
   entries: () => readonly (readonly [string, JsonValue])[];
   setKey: (key: string, value: JsonValue) => LiveMapCommit;
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
+  deleteMany: (keys: readonly string[]) => LiveMapCommit;
   renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
+}>;
+export type LiveMapPathArrayApi = Readonly<{
+  is: () => boolean;
+  toArray: () => readonly JsonValue[];
+  slice: (start?: number, end?: number) => readonly JsonValue[];
+  take: (count: number) => readonly JsonValue[];
+  drop: (count: number) => readonly JsonValue[];
+  takeLast: (count: number) => readonly JsonValue[];
+  dropLast: (count: number) => readonly JsonValue[];
+  length: () => number;
+  isEmpty: () => boolean;
+  at: (index: number) => JsonValue;
+  first: () => JsonValue;
+  last: () => JsonValue;
+  includes: (value: JsonValue) => boolean;
+  indexOf: (value: JsonValue) => number;
+  push: (value: JsonValue) => LiveMapCommit;
+  pushMany: (values: readonly JsonValue[]) => LiveMapCommit;
+  unshift: (value: JsonValue) => LiveMapCommit;
+  unshiftMany: (values: readonly JsonValue[]) => LiveMapCommit;
+  pop: () => LiveMapCommit;
+  shift: () => LiveMapCommit;
+  clear: () => LiveMapCommit;
+  reverse: () => LiveMapCommit;
+  sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit;
+  sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit;
+  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: JsonValue[]]) => LiveMapCommit;
+  insert: (index: number, value: JsonValue) => LiveMapCommit;
+  remove: (index: number) => LiveMapCommit;
+  replace: (index: number, value: JsonValue) => LiveMapCommit;
+  move: (fromIndex: number, toIndex: number) => LiveMapCommit;
+  unique: () => LiveMapCommit;
+  removeValue: (value: JsonValue) => LiveMapCommit;
+  removeAll: (value: JsonValue) => LiveMapCommit;
 }>;
 
 /** Low-level physical child removal. Indexes count direct HsonNode children, not raw $_content slots. */
