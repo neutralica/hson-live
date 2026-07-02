@@ -9,12 +9,52 @@ import { LiveTree } from "./api/livetree/livetree.js";
 import { make_branch_from_node } from "./api/livetree/creation/create-branch.js";
 import { graft } from "./api/livetree/creation/graft.js";
 import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
+import { make_livemap_core } from "./api/livemap/core.js";
+import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/schema.js";
+import type { LiveMapCore } from "./api/livemap/livemap.types.js";
+import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder, LiveMapSchemaInput } from "./api/livemap/schema.js";
 
 
 (globalThis as any)._test_ON = () => { (globalThis as any).test = true; location.reload(); };
 (globalThis as any)._test_OFF = () => { (globalThis as any).test = false; location.reload(); };
 const SAFE_SOURCE = construct_source_1({ unsafe: false });
 const UNSAFE_SOURCE = construct_source_1({ unsafe: true });
+
+type LiveMapSchemaNamespace = LiveMapSchemaBuilder & Readonly<{
+  define: <const TInput>(makeShape: (schema: LiveMapSchemaBuilder) => TInput) => LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
+  make: <const TInput>(input: TInput) => LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
+}>;
+
+const LIVE_MAP_SCHEMA_NAMESPACE: LiveMapSchemaNamespace = Object.assign(
+  {},
+  LIVEMAP_SCHEMA,
+  {
+    define: define_livemap_schema,
+    make: make_livemap_schema,
+  },
+);
+
+function make_livemap_core_from_json(input: string | JsonValue): LiveMapCore {
+  const value = typeof input === "string" ? JSON.parse(input) as JsonValue : input;
+
+  if (!is_livemap_seed_object(value)) {
+    const out = UNSAFE_SOURCE.fromJson(value);
+    return make_livemap_core(out.toHson().parse());
+  }
+
+  const out = UNSAFE_SOURCE.fromJson({});
+  const map = make_livemap_core(out.toHson().parse());
+
+  for (const [key, item] of Object.entries(value)) {
+    map.set([key], item);
+  }
+
+  return map;
+}
+
+function is_livemap_seed_object(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 /**
  * Public entrypoint for hson-live.
@@ -60,6 +100,30 @@ export const hson = {
 
   fromNode(node: HsonNode): OutputConstructor_2 {
     return UNSAFE_SOURCE.fromNode(node);
+  },
+
+  /**
+   * Direct LiveMap construction API.
+   *
+   * LiveMap projects an HSON graph as mutable JSON-path state. It can be used
+   * without a schema, or configured through `map.schema.use(schema)` for runtime
+   * validation and schema-derived TypeScript types.
+   */
+  liveMap: {
+    schema: LIVE_MAP_SCHEMA_NAMESPACE,
+
+    fromJson(input: string | JsonValue): LiveMapCore {
+      return make_livemap_core_from_json(input);
+    },
+
+    fromHson(input: string): LiveMapCore {
+      const out = UNSAFE_SOURCE.fromHson(input);
+      return make_livemap_core(out.toHson().parse());
+    },
+
+    fromNode(node: HsonNode): LiveMapCore {
+      return make_livemap_core(node);
+    },
   },
 
   /**

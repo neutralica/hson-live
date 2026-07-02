@@ -1,8 +1,8 @@
 // livemap-core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
-import type { LiveMapSchema, LiveMapSchemaValidation } from "./schema.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
+import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
 import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
@@ -23,29 +23,37 @@ import { must_feed_listener, must_json_value, must_live_path, must_set_many_valu
  * APIs. Keep projected JSON behavior in Core/editor/handles, and keep physical
  * node manipulation isolated to the node handle.
  */
-export function make_livemap_core(root: HsonNode): LiveMapCore {
+export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undefined> {
   const feedHub = make_livemap_feed_hub();
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined;
 
-  const core: LiveMapCore = {
+  const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.assign(
+    () => currentSchema,
+    {
+      get: () => currentSchema,
+      use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
+        must_core_schema_root(schema, root);
+        currentSchema = schema;
+        return core as LiveMapCore<LiveMapSchemaValue<TSchema>>;
+      },
+    },
+  );
+
+  const core: LiveMapCore<JsonValue | undefined> = {
     /** Return the live root node owned by this map core. */
     root: () => root,
 
     /** Read the current projected JSON value at a path, or the whole graph. */
-    snap: (path = []) => snap_live_path(root, must_live_path(path)),
+    snap: ((path: LivePath = []) => snap_live_path(root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
 
-    /** Read the schema currently attached to this Core, if present. */
-    schema: () => currentSchema,
+    /** Read and manage the schema currently attached to this Core, if present. */
+    schema: schemaApi,
 
     /** Attach a schema to this Core after validating the current projected root. */
-    withSchema: (schema) => {
-      must_core_schema_root(schema, root);
-      currentSchema = schema;
-      return core;
-    },
+    withSchema: (schema) => schemaApi.use(schema),
 
     /** Create an ergonomic handle scoped to one projected path. */
     at: (path) => make_livemap_path_handle(core, must_live_path(path)),
@@ -128,6 +136,47 @@ function must_core_schema_set_many(schema: LiveMapSchema | undefined, root: Hson
   }
 
   must_schema_validation(schema.validateRoot(candidate), path);
+}
+
+
+function must_core_schema_delete(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath): void {
+  if (schema === undefined) return;
+
+  const candidate = clone_json_value(snap_live_path(root, []));
+  delete_json_path(candidate, path);
+  must_schema_validation(schema.validateRoot(candidate), path);
+}
+
+function delete_json_path(root: JsonValue, path: LivePath): void {
+  if (path.length === 0) return;
+
+  let cursor = root;
+
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const part = path[index];
+
+    if (typeof part === "number") {
+      if (!Array.isArray(cursor)) return;
+      cursor = cursor[part];
+      if (cursor === undefined) return;
+      continue;
+    }
+
+    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
+    cursor = cursor[part];
+    if (cursor === undefined) return;
+  }
+
+  const leaf = path[path.length - 1];
+
+  if (typeof leaf === "number") {
+    if (!Array.isArray(cursor)) return;
+    cursor.splice(leaf, 1);
+    return;
+  }
+
+  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
+  delete cursor[leaf];
 }
 
 function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath): void {
@@ -261,43 +310,4 @@ function commit_delete(root: HsonNode, path: LivePath): LiveMapCommit {
       ]
       : [],
   };
-}
-
-function must_core_schema_delete(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath): void {
-  if (schema === undefined) return;
-
-  const candidate = clone_json_value(snap_live_path(root, []));
-  delete_json_path(candidate, path);
-  must_schema_validation(schema.validateRoot(candidate), path);
-}
-function delete_json_path(root: JsonValue, path: LivePath): void {
-  if (path.length === 0) return;
-
-  let cursor = root;
-
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const part = path[index];
-
-    if (typeof part === "number") {
-      if (!Array.isArray(cursor)) return;
-      cursor = cursor[part];
-      if (cursor === undefined) return;
-      continue;
-    }
-
-    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
-    cursor = cursor[part];
-    if (cursor === undefined) return;
-  }
-
-  const leaf = path[path.length - 1];
-
-  if (typeof leaf === "number") {
-    if (!Array.isArray(cursor)) return;
-    cursor.splice(leaf, 1);
-    return;
-  }
-
-  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
-  delete cursor[leaf];
 }

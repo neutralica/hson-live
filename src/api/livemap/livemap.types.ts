@@ -1,7 +1,7 @@
 // livemap.types.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapSchema } from "./schema.js";
+import type { LiveMapSchema, LiveMapSchemaValue } from "./schema.js";
 
 /**
  * One segment of a projected LiveMap path.
@@ -55,6 +55,11 @@ export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
 
 export type LiveMapSortDirection = "asc" | "desc";
 
+export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
+  (path: LivePath): JsonValue | undefined;
+  (): TValue;
+};
+
 /**
  * First public core surface for one LiveMap graph.
  *
@@ -67,11 +72,17 @@ export type LiveMapSortDirection = "asc" | "desc";
  * HSON graph inspection and physical node operations so LiveMap internals can be
  * built and tested without prematurely freezing the public projected-data API.
  */
-export type LiveMapCore = Readonly<{
+export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
+  (): LiveMapSchema | undefined;
+  get: () => LiveMapSchema | undefined;
+  use: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMapCore<LiveMapSchemaValue<TSchema>>;
+}>;
+
+export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   root: () => HsonNode;
-  snap: (path?: LivePath) => JsonValue | undefined;
-  schema: () => LiveMapSchema | undefined;
-  withSchema: (schema: LiveMapSchema) => LiveMapCore;
+  snap: LiveMapCoreSnap<TValue>;
+  schema: LiveMapCoreSchemaApi<TValue>;
+  withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMapCore<LiveMapSchemaValue<TSchema>>;
   at: (path: LivePath) => LiveMapPathHandle;
   proxy: (path?: LivePath) => LiveMapProxy;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
