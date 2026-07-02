@@ -2,7 +2,7 @@
 
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectShape, LiveMapObjectValue, LiveMapObjectWriteValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectShape, LiveMapObjectValue, LiveMapObjectWriteValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
 import { must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "delete">;
@@ -31,7 +31,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
       mustObjectValue(core.snap(handlePath), handlePath);
       return core.set([...handlePath, objectKey], must_json_value(value, [...handlePath, objectKey]));
     },
-    setMany: (values: unknown) => {
+    setMany: (values: LiveMapObjectSetManyValues<TValue>) => {
       mustObjectValue(core.snap(handlePath), handlePath);
       return core.setMany(handlePath, must_set_many_values(values, handlePath));
     },

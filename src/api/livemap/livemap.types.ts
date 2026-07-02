@@ -282,6 +282,10 @@ export type LiveMapObjectWriteValue<TValue, TKey extends string> = TKey extends 
   ? LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>
   : JsonValue;
 
+  export type LiveMapObjectSetManyValues<TValue> = Readonly<{
+  [TKey in LiveMapObjectKey<TValue>]?: LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
+  }> & Readonly<Record<string, JsonValue>>;
+
 export type LiveMapObjectEntry<TValue> = {
   [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
 }[LiveMapObjectKey<TValue>];
@@ -321,7 +325,7 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   setKey: <const TKey extends string>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
-  setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
   deleteMany: (keys: readonly string[]) => LiveMapCommit;
