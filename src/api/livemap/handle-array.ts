@@ -4,41 +4,41 @@
 // handle-array.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./guard.js";
 
-type LiveMapArrayHandleCore = Pick<LiveMapCore, "snap" | "set">;
+type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set">;
 
-export function make_livemap_array_api(core: LiveMapArrayHandleCore, handlePath: LivePath): LiveMapPathArrayApi {
+export function make_livemap_array_api<TValue = JsonValue | undefined>(core: LiveMapArrayHandleCore, handlePath: LivePath): LiveMapPathArrayApi<TValue> {
   return {
     is: () => Array.isArray(core.snap(handlePath)),
-    toArray: () => mustArrayValue(core.snap(handlePath), handlePath),
-    slice: (start, end) => arraySlice(core.snap(handlePath), handlePath, start, end),
-    take: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(0, arrayCount(count, handlePath)),
-    drop: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(arrayCount(count, handlePath)),
+    toArray: () => mustArrayValue(core.snap(handlePath), handlePath) as unknown as LiveMapArrayShape<TValue>,
+    slice: (start, end) => arraySlice(core.snap(handlePath), handlePath, start, end) as unknown as LiveMapArrayShape<TValue>,
+    take: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(0, arrayCount(count, handlePath)) as unknown as LiveMapArrayShape<TValue>,
+    drop: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(arrayCount(count, handlePath)) as unknown as LiveMapArrayShape<TValue>,
     takeLast: (count) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
       const itemCount = arrayCount(count, handlePath);
-      return itemCount === 0 ? [] : arrayValue.slice(-itemCount);
+      return (itemCount === 0 ? [] : arrayValue.slice(-itemCount)) as unknown as LiveMapArrayShape<TValue>;
     },
     dropLast: (count) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
       const itemCount = arrayCount(count, handlePath);
-      return itemCount === 0 ? arrayValue : arrayValue.slice(0, -itemCount);
+      return (itemCount === 0 ? arrayValue : arrayValue.slice(0, -itemCount)) as unknown as LiveMapArrayShape<TValue>;
     },
     length: () => mustArrayValue(core.snap(handlePath), handlePath).length,
     isEmpty: () => mustArrayValue(core.snap(handlePath), handlePath).length === 0,
     at: (index) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, index)];
+      return arrayValue[arrayIndex(arrayValue, handlePath, index)] as unknown as LiveMapArrayItem<TValue>;
     },
     first: () => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, 0)];
+      return arrayValue[arrayIndex(arrayValue, handlePath, 0)] as unknown as LiveMapArrayItem<TValue>;
     },
     last: () => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, -1)];
+      return arrayValue[arrayIndex(arrayValue, handlePath, -1)] as unknown as LiveMapArrayItem<TValue>;
     },
     includes: (value) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);

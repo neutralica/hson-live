@@ -262,6 +262,14 @@ export type LiveMapObjectEntry<TValue> = {
   [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
 }[LiveMapObjectKey<TValue>];
 
+export type LiveMapArrayShape<TValue> = NonNullable<TValue> extends readonly unknown[]
+  ? NonNullable<TValue>
+  : readonly JsonValue[];
+
+export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonly (infer TItem)[]
+  ? TItem
+  : JsonValue;
+
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
   snap: () => TValue;
@@ -269,7 +277,7 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   delete: () => LiveMapCommit;
   update: (updater: (value: TValue) => JsonValue) => LiveMapCommit;
-  array: LiveMapPathArrayApi;
+  array: LiveMapPathArrayApi<TValue>;
   object: LiveMapPathObjectApi<TValue>;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
@@ -293,19 +301,19 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   deleteMany: (keys: readonly string[]) => LiveMapCommit;
   renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
 }>;
-export type LiveMapPathArrayApi = Readonly<{
+export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   is: () => boolean;
-  toArray: () => readonly JsonValue[];
-  slice: (start?: number, end?: number) => readonly JsonValue[];
-  take: (count: number) => readonly JsonValue[];
-  drop: (count: number) => readonly JsonValue[];
-  takeLast: (count: number) => readonly JsonValue[];
-  dropLast: (count: number) => readonly JsonValue[];
+  toArray: () => LiveMapArrayShape<TValue>;
+  slice: (start?: number, end?: number) => LiveMapArrayShape<TValue>;
+  take: (count: number) => LiveMapArrayShape<TValue>;
+  drop: (count: number) => LiveMapArrayShape<TValue>;
+  takeLast: (count: number) => LiveMapArrayShape<TValue>;
+  dropLast: (count: number) => LiveMapArrayShape<TValue>;
   length: () => number;
   isEmpty: () => boolean;
-  at: (index: number) => JsonValue;
-  first: () => JsonValue;
-  last: () => JsonValue;
+  at: (index: number) => LiveMapArrayItem<TValue>;
+  first: () => LiveMapArrayItem<TValue>;
+  last: () => LiveMapArrayItem<TValue>;
   includes: (value: JsonValue) => boolean;
   indexOf: (value: JsonValue) => number;
   push: (value: JsonValue) => LiveMapCommit;
