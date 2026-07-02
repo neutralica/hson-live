@@ -4,7 +4,7 @@
 // handle-array.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapArrayWriteItem, LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./guard.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set">;
@@ -75,7 +75,7 @@ export function make_livemap_array_api<TValue = JsonValue | undefined>(core: Liv
     reverse: () => core.set(handlePath, mustArrayValue(core.snap(handlePath), handlePath).reverse()),
     sortNumbers: (direction) => core.set(handlePath, arraySortNumbers(core.snap(handlePath), handlePath, direction)),
     sortStrings: (direction) => core.set(handlePath, arraySortStrings(core.snap(handlePath), handlePath, direction)),
-    splice: (...args) => core.set(handlePath, arraySplice(core.snap(handlePath), handlePath, args)),
+   splice: (...args) => core.set(handlePath, arraySplice<TValue>(core.snap(handlePath), handlePath, args)),
     insert: (index, value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
     remove: (index) => core.set(handlePath, arrayRemove(core.snap(handlePath), handlePath, index)),
     replace: (index, value) => core.set(handlePath, arrayReplace(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
@@ -176,7 +176,7 @@ function arraySortStrings(value: JsonValue | undefined, path: LivePath, directio
   });
 }
 
-function arraySplice(value: JsonValue | undefined, path: LivePath, args: readonly [start: number] | readonly [start: number, deleteCount: number, ...items: JsonValue[]]): JsonValue {
+function arraySplice<TValue>(value: JsonValue | undefined, path: LivePath, args: readonly [start: number] | readonly [start: number, deleteCount: number, ...items: LiveMapArrayWriteItem<TValue>[]]): JsonValue {
   const next = mustArrayValue(value, path);
   const [start, deleteCount, ...items] = args;
   const spliceStart = arraySpliceStart(start, path);

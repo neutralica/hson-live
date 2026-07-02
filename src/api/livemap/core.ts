@@ -37,7 +37,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
         must_core_schema_root(schema, root);
         currentSchema = schema;
-        return core as LiveMapCore<LiveMapSchemaValue<TSchema>>;
+        return core as unknown as LiveMapCore<LiveMapSchemaValue<TSchema>>;
       },
     },
   );

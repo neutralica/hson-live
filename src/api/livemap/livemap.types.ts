@@ -273,9 +273,14 @@ export type LiveMapObjectShape<TValue> = NonNullable<TValue> extends readonly un
 
 export type LiveMapObjectKey<TValue> = Extract<keyof LiveMapObjectShape<TValue>, string>;
 
+
 export type LiveMapObjectValue<TValue, TKey extends string> = TKey extends keyof LiveMapObjectShape<TValue>
   ? LiveMapObjectShape<TValue>[TKey]
   : JsonValue | undefined;
+
+export type LiveMapObjectWriteValue<TValue, TKey extends string> = TKey extends keyof LiveMapObjectShape<TValue>
+  ? LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>
+  : JsonValue;
 
 export type LiveMapObjectEntry<TValue> = {
   [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
@@ -288,6 +293,8 @@ export type LiveMapArrayShape<TValue> = NonNullable<TValue> extends readonly unk
 export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonly (infer TItem)[]
   ? TItem
   : JsonValue;
+
+export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<TValue>>;
 
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
@@ -313,7 +320,7 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   size: () => number;
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
-  setKey: (key: string, value: JsonValue) => LiveMapCommit;
+  setKey: <const TKey extends string>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
@@ -335,20 +342,20 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   last: () => LiveMapArrayItem<TValue>;
   includes: (value: JsonValue) => boolean;
   indexOf: (value: JsonValue) => number;
-  push: (value: JsonValue) => LiveMapCommit;
-  pushMany: (values: readonly JsonValue[]) => LiveMapCommit;
-  unshift: (value: JsonValue) => LiveMapCommit;
-  unshiftMany: (values: readonly JsonValue[]) => LiveMapCommit;
+ push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
+unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
   pop: () => LiveMapCommit;
   shift: () => LiveMapCommit;
   clear: () => LiveMapCommit;
   reverse: () => LiveMapCommit;
   sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit;
   sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit;
-  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: JsonValue[]]) => LiveMapCommit;
-  insert: (index: number, value: JsonValue) => LiveMapCommit;
-  remove: (index: number) => LiveMapCommit;
-  replace: (index: number, value: JsonValue) => LiveMapCommit;
+  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => LiveMapCommit;
+insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+remove: (index: number) => LiveMapCommit;
+replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
   move: (fromIndex: number, toIndex: number) => LiveMapCommit;
   unique: () => LiveMapCommit;
   removeValue: (value: JsonValue) => LiveMapCommit;
