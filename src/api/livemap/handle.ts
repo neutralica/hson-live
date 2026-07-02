@@ -7,7 +7,7 @@ import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";
 import { path_is_prefix } from "./path.js";
 
-type LiveMapPathHandleCore = Pick<LiveMapCore, "snap" | "set" | "setMany" | "delete" | "feed">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "delete" | "feed">;
 
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
@@ -29,16 +29,16 @@ type LiveMapPathHandleCore = Pick<LiveMapCore, "snap" | "set" | "setMany" | "del
  * handle scope: deleting the exact handle path deletes the target handle, while
  * deleting below the handle path writes the updated source handle value.
  */
-export function make_livemap_path_handle(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle {
+export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle<TValue> {
   const handlePath = must_live_path(path);
 
   return {
     path: () => [...handlePath],
-    snap: () => core.snap(handlePath),
+    snap: () => core.snap(handlePath) as TValue,
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
     setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
     delete: () => core.delete(handlePath),
-    update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath)), handlePath)),
+    update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath) as TValue), handlePath)),
     array: make_livemap_array_api(core, handlePath),
     object: make_livemap_object_api(core, handlePath),
     feed: (listener) => core.feed(handlePath, listener),

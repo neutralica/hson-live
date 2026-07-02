@@ -56,7 +56,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     withSchema: (schema) => schemaApi.use(schema),
 
     /** Create an ergonomic handle scoped to one projected path. */
-    at: (path) => make_livemap_path_handle(core, must_live_path(path)),
+  at: ((path: LivePath) => make_livemap_path_handle(core, must_live_path(path))) as LiveMapCore<JsonValue | undefined>["at"],
 
     /** Create an ergonomic Proxy path-builder scoped to one projected path. */
     proxy: (path = []) => make_livemap_proxy(core, must_live_path(path)),

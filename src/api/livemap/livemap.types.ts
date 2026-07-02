@@ -60,6 +60,19 @@ export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
   (): TValue;
 };
 
+export type LiveMapPathValue<TValue, TPath extends LivePath> =
+  TPath extends readonly []
+    ? TValue
+    : TPath extends readonly [infer THead, ...infer TRest]
+      ? THead extends keyof NonNullable<TValue>
+        ? LiveMapPathValue<NonNullable<TValue>[THead], Extract<TRest, LivePath>>
+        : THead extends number
+          ? NonNullable<TValue> extends readonly (infer TItem)[]
+            ? LiveMapPathValue<TItem, Extract<TRest, LivePath>>
+            : JsonValue | undefined
+          : JsonValue | undefined
+      : JsonValue | undefined;
+
 /**
  * First public core surface for one LiveMap graph.
  *
@@ -83,7 +96,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   snap: LiveMapCoreSnap<TValue>;
   schema: LiveMapCoreSchemaApi<TValue>;
   withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMapCore<LiveMapSchemaValue<TSchema>>;
-  at: (path: LivePath) => LiveMapPathHandle;
+  at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: (path?: LivePath) => LiveMapProxy;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
@@ -222,13 +235,13 @@ export type LiveMapNodeHandle = Readonly<{
   /** Low-level direct HSON child movement helpers. */
   move: LiveMapNodeMoveApi;
 }>;
-export type LiveMapPathHandle = Readonly<{
+export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
-  snap: () => JsonValue | undefined;
+  snap: () => TValue;
   set: (value: JsonValue) => LiveMapCommit;
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   delete: () => LiveMapCommit;
-  update: (updater: (value: JsonValue | undefined) => JsonValue) => LiveMapCommit;
+  update: (updater: (value: TValue) => JsonValue) => LiveMapCommit;
   array: LiveMapPathArrayApi;
   object: LiveMapPathObjectApi;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
