@@ -246,6 +246,22 @@ export type LiveMapNodeHandle = Readonly<{
   /** Low-level direct HSON child movement helpers. */
   move: LiveMapNodeMoveApi;
 }>;
+export type LiveMapObjectShape<TValue> = NonNullable<TValue> extends readonly unknown[]
+  ? Readonly<Record<string, JsonValue>>
+  : NonNullable<TValue> extends object
+    ? NonNullable<TValue>
+    : Readonly<Record<string, JsonValue>>;
+
+export type LiveMapObjectKey<TValue> = Extract<keyof LiveMapObjectShape<TValue>, string>;
+
+export type LiveMapObjectValue<TValue, TKey extends string> = TKey extends keyof LiveMapObjectShape<TValue>
+  ? LiveMapObjectShape<TValue>[TKey]
+  : JsonValue | undefined;
+
+export type LiveMapObjectEntry<TValue> = {
+  [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
+}[LiveMapObjectKey<TValue>];
+
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
   snap: () => TValue;
@@ -254,22 +270,22 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   delete: () => LiveMapCommit;
   update: (updater: (value: TValue) => JsonValue) => LiveMapCommit;
   array: LiveMapPathArrayApi;
-  object: LiveMapPathObjectApi;
+  object: LiveMapPathObjectApi<TValue>;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
-export type LiveMapPathObjectApi = Readonly<{
+export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   is: () => boolean;
-  toObject: () => Readonly<Record<string, JsonValue>>;
-  pick: (keys: readonly string[]) => Readonly<Record<string, JsonValue>>;
-  omit: (keys: readonly string[]) => Readonly<Record<string, JsonValue>>;
-  hasKey: (key: string) => boolean;
-  getKey: (key: string) => JsonValue | undefined;
-  keys: () => readonly string[];
+  toObject: () => LiveMapObjectShape<TValue>;
+  pick: <const TKeys extends readonly string[]>(keys: TKeys) => Pick<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>;
+  omit: <const TKeys extends readonly string[]>(keys: TKeys) => Omit<LiveMapObjectShape<TValue>, Extract<TKeys[number], keyof LiveMapObjectShape<TValue>>>;
+  hasKey: <const TKey extends string>(key: TKey) => boolean;
+  getKey: <const TKey extends string>(key: TKey) => LiveMapObjectValue<TValue, TKey>;
+  keys: () => readonly LiveMapObjectKey<TValue>[];
   isEmpty: () => boolean;
   size: () => number;
-  values: () => readonly JsonValue[];
-  entries: () => readonly (readonly [string, JsonValue])[];
+  values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
+  entries: () => readonly LiveMapObjectEntry<TValue>[];
   setKey: (key: string, value: JsonValue) => LiveMapCommit;
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   clear: () => LiveMapCommit;

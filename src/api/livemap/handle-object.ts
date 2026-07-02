@@ -2,30 +2,30 @@
 
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
 import { must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
-type LiveMapObjectHandleCore = Pick<LiveMapCore, "snap" | "set" | "setMany" | "delete">;
+type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "delete">;
 
-export function make_livemap_object_api(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi {
+export function make_livemap_object_api<TValue = JsonValue | undefined>(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi<TValue> {
   return {
     is: () => isObjectValue(core.snap(handlePath)),
-    toObject: () => ({ ...mustObjectValue(core.snap(handlePath), handlePath) }),
-    pick: (keys: unknown) => objectPick(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)),
-    omit: (keys: unknown) => objectOmit(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)),
+    toObject: () => ({ ...mustObjectValue(core.snap(handlePath), handlePath) }) as LiveMapObjectShape<TValue>,
+    pick: (keys) => objectPick(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)) as ReturnType<LiveMapPathObjectApi<TValue>["pick"]>,
+    omit: (keys) => objectOmit(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)) as ReturnType<LiveMapPathObjectApi<TValue>["omit"]>,
     hasKey: (key: unknown) => {
       const objectKey = must_object_key(key, handlePath);
       return objectKey in mustObjectValue(core.snap(handlePath), handlePath);
     },
-    getKey: (key: unknown) => {
+    getKey: <const TKey extends string>(key: TKey): LiveMapObjectValue<TValue, TKey> => {
       const objectKey = must_object_key(key, handlePath);
-      return mustObjectValue(core.snap(handlePath), handlePath)[objectKey];
+      return mustObjectValue(core.snap(handlePath), handlePath)[objectKey] as unknown as LiveMapObjectValue<TValue, TKey>;
     },
-    keys: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)),
+    keys: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectKey<TValue>[],
     isEmpty: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length === 0,
     size: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length,
-    values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)),
-    entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)),
+    values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
+    entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectEntry<TValue>[],
     setKey: (key: unknown, value: unknown) => {
       const objectKey = must_object_key(key, handlePath);
       mustObjectValue(core.snap(handlePath), handlePath);

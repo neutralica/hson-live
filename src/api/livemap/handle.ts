@@ -40,7 +40,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     delete: () => core.delete(handlePath),
     update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath) as TValue), handlePath)),
     array: make_livemap_array_api(core, handlePath),
-    object: make_livemap_object_api(core, handlePath),
+    object: make_livemap_object_api<TValue>(core, handlePath),
     feed: (listener) => core.feed(handlePath, listener),
     linkTo: (target) => core.feed(handlePath, (event) => {
       if (event.op.kind === "delete") {
