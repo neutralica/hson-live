@@ -43,7 +43,6 @@
     "check": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.2",
     "@types/dompurify": "^3.2.0",
     "@types/node": "^22.16.3",
     "chokidar-cli": "^3.0.0",

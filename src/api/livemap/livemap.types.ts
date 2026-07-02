@@ -3,6 +3,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapSchema, LiveMapSchemaValue } from "./schema.js";
 
+
 /**
  * One segment of a projected LiveMap path.
  *
@@ -74,28 +75,28 @@ export type LiveMapPathValue<TValue, TPath extends LivePath> =
       : JsonValue | undefined;
 
 /**
- * First public core surface for one LiveMap graph.
+ * Schema attachment surface for a LiveMap.
  *
- * Core owns the root node, delegates projected JSON edits to the editor, and
- * returns normalized commits for mutations. Feed hangs directly off this layer;
- * link/proxy/future projected-data APIs should also talk to Core rather than
- * the editor.
+ * `schema.use(schema)` returns the same runtime map object as a schema-bound
+ * TypeScript view. The static value type is preserved only when the schema value
+ * still carries its generic, usually by allowing `hson.liveMap.schema.define(...)`
+ * to infer the schema variable type.
  *
- * `node(path)` is intentionally lower level than `at(path)`: it exposes direct
- * HSON graph inspection and physical node operations so LiveMap internals can be
- * built and tested without prematurely freezing the public projected-data API.
+ * Avoid widening schemas to bare `LiveMapSchema` before passing them to `use`.
+ * A bare `LiveMapSchema` means `LiveMapSchema<unknown>`, so the resulting map is
+ * correctly typed as `LiveMap<unknown>`.
  */
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   (): LiveMapSchema | undefined;
   get: () => LiveMapSchema | undefined;
-  use: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMapCore<LiveMapSchemaValue<TSchema>>;
+  use: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
 }>;
 
 export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   root: () => HsonNode;
   snap: LiveMapCoreSnap<TValue>;
   schema: LiveMapCoreSchemaApi<TValue>;
-  withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMapCore<LiveMapSchemaValue<TSchema>>;
+  withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
   at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: (path?: LivePath) => LiveMapProxy;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
@@ -104,6 +105,16 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   node: (path: LivePath) => LiveMapNodeHandle;
 }>;
+
+/**
+ * Public LiveMap surface.
+ *
+ * `TValue` is the current projected root value type. A map created without a
+ * schema starts as `LiveMap<JsonValue | undefined>`. After attaching an inferred
+ * schema with `map.schema.use(schema)` or `map.withSchema(schema)`, the returned
+ * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
+ */
+export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TValue> {}
 
 /**
  * Normalized set operation emitted by a LiveMap mutation.

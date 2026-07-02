@@ -11,8 +11,8 @@ import { graft } from "./api/livetree/creation/graft.js";
 import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
 import { make_livemap_core } from "./api/livemap/core.js";
 import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/schema.js";
-import type { LiveMapCore } from "./api/livemap/livemap.types.js";
-import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder, LiveMapSchemaInput } from "./api/livemap/schema.js";
+import type { LiveMap } from "./api/livemap/livemap.types.js";
+import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/schema.js";
 
 
 (globalThis as any)._test_ON = () => { (globalThis as any).test = true; location.reload(); };
@@ -34,7 +34,7 @@ const LIVE_MAP_SCHEMA_NAMESPACE: LiveMapSchemaNamespace = Object.assign(
   },
 );
 
-function make_livemap_core_from_json(input: string | JsonValue): LiveMapCore {
+function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
   const value = typeof input === "string" ? JSON.parse(input) as JsonValue : input;
 
   if (!is_livemap_seed_object(value)) {
@@ -112,16 +112,16 @@ export const hson = {
   liveMap: {
     schema: LIVE_MAP_SCHEMA_NAMESPACE,
 
-    fromJson(input: string | JsonValue): LiveMapCore {
+    fromJson(input: string | JsonValue): LiveMap {
       return make_livemap_core_from_json(input);
     },
 
-    fromHson(input: string): LiveMapCore {
+    fromHson(input: string): LiveMap {
       const out = UNSAFE_SOURCE.fromHson(input);
       return make_livemap_core(out.toHson().parse());
     },
 
-    fromNode(node: HsonNode): LiveMapCore {
+    fromNode(node: HsonNode): LiveMap {
       return make_livemap_core(node);
     },
   },
