@@ -59,7 +59,11 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
   at: ((path: LivePath) => make_livemap_path_handle(core, must_live_path(path))) as LiveMapCore<JsonValue | undefined>["at"],
 
     /** Create an ergonomic Proxy path-builder scoped to one projected path. */
-    proxy: (path = []) => make_livemap_proxy(core, must_live_path(path)),
+    proxy: <const TPath extends LivePath = []>(path?: TPath) =>
+  make_livemap_proxy<JsonValue | undefined, TPath>(
+    core,
+    path ?? ([] as unknown as TPath),
+  ),
 
     /** Create a low-level HSON-node-facing handle scoped to one projected path. */
     node: (path) => make_livemap_node_handle(root, must_live_path(path)),

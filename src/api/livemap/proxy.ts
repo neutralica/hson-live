@@ -1,6 +1,7 @@
 // proxy.ts
 
-import type { LiveMapCore, LiveMapPathHandle, LiveMapProxy, LivePath, LivePathPart } from "./livemap.types.js";
+import type { JsonValue } from "../../core/types.js";
+import type { LiveMapCore, LiveMapPathHandle, LiveMapPathValue, LiveMapProxy, LivePath, LivePathPart } from "./livemap.types.js";
 
 
 const PROXY_METHODS = new Set<PropertyKey>(["$_"]);
@@ -31,9 +32,12 @@ const PROXY_RESERVED_PROPERTIES = new Set<PropertyKey>([
   "__lookupSetter__",
 ]);
 
-export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): LiveMapProxy {
-  const proxyPath = [...path];
-  let pathHandle: LiveMapPathHandle | undefined;
+export function make_livemap_proxy<TValue = JsonValue | undefined, TPath extends LivePath = []>(
+  core: LiveMapCore<TValue>,
+  path: TPath = [] as unknown as TPath,
+): LiveMapProxy<TValue, TPath> {
+  const proxyPath = [...path] as LivePath;
+  let pathHandle: LiveMapPathHandle<LiveMapPathValue<TValue, TPath>> | undefined;
  
   /**
    * `$_` is a real own property, not only a synthetic trap result. That keeps
@@ -54,12 +58,12 @@ export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): Live
    * Cache child proxies so repeated property access is identity-stable:
    * `proxy.user === proxy.user`.
    */
-  const childProxies = new Map<string, LiveMapProxy>();
+  const childProxies = new Map<string, LiveMapProxy<TValue, [...TPath, LivePathPart]>>();
 
   return new Proxy(target, {
     get: (_target, property) => {
       if (property === "$_") {
-        pathHandle ??= core.at(proxyPath);
+        pathHandle ??= core.at(path as TPath);
         return pathHandle;
       }
 
@@ -71,7 +75,7 @@ export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): Live
       const existingChildProxy = childProxies.get(childProxyKey);
       if (existingChildProxy !== undefined) return existingChildProxy;
 
-      const childProxy = make_livemap_proxy(core, [...proxyPath, childPathPart]);
+      const childProxy = make_livemap_proxy<TValue, [...TPath, LivePathPart]>(core, [...proxyPath, childPathPart] as [...TPath, LivePathPart]);
       childProxies.set(childProxyKey, childProxy);
       return childProxy;
     },
@@ -98,7 +102,7 @@ export function make_livemap_proxy(core: LiveMapCore, path: LivePath = []): Live
     preventExtensions: () => {
       throw new Error("LiveMap proxy extensibility must not be changed.");
     },
-  }) as LiveMapProxy;
+  }) as LiveMapProxy<TValue, TPath>;
 }
 
 /**

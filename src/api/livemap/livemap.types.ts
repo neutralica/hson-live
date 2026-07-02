@@ -28,14 +28,27 @@ export type LivePath = readonly LivePathPart[];
  * Normal property access extends the path. `$_` exits the Proxy surface and
  * returns the existing path handle for the current projected path.
  *
- * The index signatures are intentionally loose. Schema-aware proxy typing can
- * tighten this later without making the base proxy type recursive.
+ * Schema-aware maps expose known object keys and array indexes as typed child
+ * proxies. Unknown property names remain allowed as `unknown` so loose dynamic
+ * proxy usage is still possible without widening known schema paths.
  */
-export interface LiveMapProxy {
-  readonly $_: LiveMapPathHandle;
-  readonly [key: string]: unknown;
-  readonly [key: number]: unknown;
-}
+export type LiveMapProxy<TValue = JsonValue | undefined, TPath extends LivePath = []> = Readonly<{
+  readonly $_: LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
+}> & LiveMapProxyObjectChildren<TValue, TPath> & LiveMapProxyArrayChildren<TValue, TPath>;
+
+export type LiveMapProxyObjectChildren<TValue, TPath extends LivePath> = NonNullable<LiveMapPathValue<TValue, TPath>> extends readonly unknown[]
+  ? Readonly<Record<never, never>>
+  : NonNullable<LiveMapPathValue<TValue, TPath>> extends object
+    ? Readonly<{
+      [TKey in Extract<keyof NonNullable<LiveMapPathValue<TValue, TPath>>, string>]: LiveMapProxy<TValue, [...TPath, TKey]>;
+    }>
+    : Readonly<Record<never, never>>;
+
+export type LiveMapProxyArrayChildren<TValue, TPath extends LivePath> = NonNullable<LiveMapPathValue<TValue, TPath>> extends readonly unknown[]
+  ? Readonly<{
+    [index: number]: LiveMapProxy<TValue, [...TPath, number]>;
+  }>
+  : Readonly<Record<never, never>>;
 
 /**
  * Raw result returned by the editor after a graph mutation.
@@ -98,7 +111,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   schema: LiveMapCoreSchemaApi<TValue>;
   withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
   at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
-  proxy: (path?: LivePath) => LiveMapProxy;
+  proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   set: (path: LivePath, value: JsonValue) => LiveMapCommit;
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
