@@ -278,13 +278,13 @@ export type LiveMapObjectValue<TValue, TKey extends string> = TKey extends keyof
   ? LiveMapObjectShape<TValue>[TKey]
   : JsonValue | undefined;
 
-export type LiveMapObjectWriteValue<TValue, TKey extends string> = TKey extends keyof LiveMapObjectShape<TValue>
-  ? LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>
-  : JsonValue;
+export type LiveMapObjectWriteValue<TValue, TKey extends LiveMapObjectKey<TValue>> = LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
 
-  export type LiveMapObjectSetManyValues<TValue> = Readonly<{
-  [TKey in LiveMapObjectKey<TValue>]?: LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
-  }> & Readonly<Record<string, JsonValue>>;
+export type LiveMapObjectSetManyValues<TValue> = string extends LiveMapObjectKey<TValue>
+  ? LiveMapSetManyValues
+  : Readonly<{
+    [TKey in LiveMapObjectKey<TValue>]?: LiveMapWriteValue<LiveMapObjectShape<TValue>[TKey]>;
+  }>;
 
 export type LiveMapObjectEntry<TValue> = {
   [TKey in LiveMapObjectKey<TValue>]: readonly [TKey, LiveMapObjectValue<TValue, TKey>];
@@ -312,6 +312,7 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
+
 export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   is: () => boolean;
   toObject: () => LiveMapObjectShape<TValue>;
@@ -324,7 +325,7 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   size: () => number;
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
-  setKey: <const TKey extends string>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
+  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;

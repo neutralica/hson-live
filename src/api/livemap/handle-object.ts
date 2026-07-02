@@ -26,7 +26,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
     size: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length,
     values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
     entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectEntry<TValue>[],
-    setKey: <const TKey extends string>(key: TKey, value: LiveMapObjectWriteValue<TValue, TKey>) => {
+    setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectWriteValue<TValue, TKey>) => {
       const objectKey = must_object_key(key, handlePath);
       mustObjectValue(core.snap(handlePath), handlePath);
       return core.set([...handlePath, objectKey], must_json_value(value, [...handlePath, objectKey]));
