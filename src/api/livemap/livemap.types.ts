@@ -39,10 +39,10 @@ export type LiveMapProxy<TValue = JsonValue | undefined, TPath extends LivePath 
 export type LiveMapProxyObjectChildren<TValue, TPath extends LivePath> = NonNullable<LiveMapPathValue<TValue, TPath>> extends readonly unknown[]
   ? Readonly<Record<never, never>>
   : NonNullable<LiveMapPathValue<TValue, TPath>> extends object
-    ? Readonly<{
-      [TKey in Extract<keyof NonNullable<LiveMapPathValue<TValue, TPath>>, string>]: LiveMapProxy<TValue, [...TPath, TKey]>;
-    }>
-    : Readonly<Record<never, never>>;
+  ? Readonly<{
+    [TKey in Extract<keyof NonNullable<LiveMapPathValue<TValue, TPath>>, string>]: LiveMapProxy<TValue, [...TPath, TKey]>;
+  }>
+  : Readonly<Record<never, never>>;
 
 export type LiveMapProxyArrayChildren<TValue, TPath extends LivePath> = NonNullable<LiveMapPathValue<TValue, TPath>> extends readonly unknown[]
   ? Readonly<{
@@ -76,16 +76,22 @@ export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
 
 export type LiveMapPathValue<TValue, TPath extends LivePath> =
   TPath extends readonly []
-    ? TValue
-    : TPath extends readonly [infer THead, ...infer TRest]
-      ? THead extends keyof NonNullable<TValue>
-        ? LiveMapPathValue<NonNullable<TValue>[THead], Extract<TRest, LivePath>>
-        : THead extends number
-          ? NonNullable<TValue> extends readonly (infer TItem)[]
-            ? LiveMapPathValue<TItem, Extract<TRest, LivePath>>
-            : JsonValue | undefined
-          : JsonValue | undefined
-      : JsonValue | undefined;
+  ? TValue
+  : TPath extends readonly [infer THead, ...infer TRest]
+  ? THead extends keyof NonNullable<TValue>
+  ? LiveMapPathValue<NonNullable<TValue>[THead], Extract<TRest, LivePath>>
+  : THead extends number
+  ? NonNullable<TValue> extends readonly (infer TItem)[]
+  ? LiveMapPathValue<TItem, Extract<TRest, LivePath>>
+  : JsonValue | undefined
+  : JsonValue | undefined
+  : JsonValue | undefined;
+
+export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [JsonValue]
+  ? Exclude<TValue, undefined>
+  : JsonValue;
+
+export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
 
 /**
  * Schema attachment surface for a LiveMap.
@@ -112,7 +118,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
   at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
-  set: (path: LivePath, value: JsonValue) => LiveMapCommit;
+  set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>) => LiveMapCommit;
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
@@ -127,7 +133,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
  * schema with `map.schema.use(schema)` or `map.withSchema(schema)`, the returned
  * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
  */
-export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TValue> {}
+export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TValue> { }
 
 /**
  * Normalized set operation emitted by a LiveMap mutation.
@@ -262,8 +268,8 @@ export type LiveMapNodeHandle = Readonly<{
 export type LiveMapObjectShape<TValue> = NonNullable<TValue> extends readonly unknown[]
   ? Readonly<Record<string, JsonValue>>
   : NonNullable<TValue> extends object
-    ? NonNullable<TValue>
-    : Readonly<Record<string, JsonValue>>;
+  ? NonNullable<TValue>
+  : Readonly<Record<string, JsonValue>>;
 
 export type LiveMapObjectKey<TValue> = Extract<keyof LiveMapObjectShape<TValue>, string>;
 
@@ -286,10 +292,10 @@ export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonl
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
   snap: () => TValue;
-  set: (value: JsonValue) => LiveMapCommit;
+  set: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
   setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
   delete: () => LiveMapCommit;
-  update: (updater: (value: TValue) => JsonValue) => LiveMapCommit;
+  update: (updater: (value: TValue) => LiveMapWriteValue<TValue>) => LiveMapCommit;
   array: LiveMapPathArrayApi<TValue>;
   object: LiveMapPathObjectApi<TValue>;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
