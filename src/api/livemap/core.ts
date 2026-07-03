@@ -1,13 +1,14 @@
 // livemap-core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath } from "./livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
 import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
 import { make_livemap_path_handle } from "./handle.js";
 import { make_livemap_proxy } from "./proxy.js";
+import { make_livemap_store_api } from "./store.js";
 import { must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./guard.js";
 
 
@@ -29,6 +30,41 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined;
+
+  let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
+
+  const getStoreApi = (): LiveMapStoreApi<JsonValue | undefined> => {
+    return storeApi ??= make_livemap_store_api(core);
+  };
+  const subBase: LiveMapStoreApi<JsonValue | undefined>["subscribe"] = (listener) => {
+    return getStoreApi().subscribe(listener);
+  };
+
+  const subDiff: LiveMapStoreApi<JsonValue | undefined>["subscribeDiff"] = (listener) => {
+    return getStoreApi().subscribeDiff(listener);
+  };
+
+    const subSel: LiveMapStoreApi<JsonValue | undefined>["subscribeSel"] = <TSelected>(
+    selector: (state: JsonValue | undefined) => TSelected,
+    listener: LiveMapStoreSelectedListener<TSelected, JsonValue | undefined>,
+    options?: LiveMapStoreSubscribeOptions<TSelected>,
+  ) => {
+    return getStoreApi().subscribeSel(selector, listener, options);
+  };
+
+  const subPath: LiveMapStoreApi<JsonValue | undefined>["subscribePath"] = <const TPath extends LivePath>(
+    path: TPath,
+    listener: LiveMapStorePathListener<JsonValue | undefined, TPath>,
+    options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<JsonValue | undefined, TPath>>,
+  ) => {
+    return getStoreApi().subscribePath(path, listener, options);
+  };
+
+  const subApi: LiveMapSubApi<JsonValue | undefined> = Object.assign(subBase, {
+    diff: subDiff,
+    sel: subSel,
+    path: subPath,
+  });
 
   const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.assign(
     () => currentSchema,
@@ -99,6 +135,9 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
 
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, must_live_path(path), must_feed_listener(listener)),
+
+    /** Subscribe to projected value changes. */
+    sub: subApi,
   };
 
   return core;

@@ -122,6 +122,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
+  sub: LiveMapSubApi<TValue>;
   node: (path: LivePath) => LiveMapNodeHandle;
 }>;
 
@@ -223,6 +224,12 @@ export type LiveMapStoreApi<TValue = JsonValue | undefined> = Readonly<{
     listener: LiveMapStorePathListener<TValue, TPath>,
     options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<TValue, TPath>>,
   ) => LiveMapDisposer;
+}>;
+
+export type LiveMapSubApi<TValue = JsonValue | undefined> = LiveMapStoreApi<TValue>["subscribe"] & Readonly<{
+  diff: LiveMapStoreApi<TValue>["subscribeDiff"];
+  sel: LiveMapStoreApi<TValue>["subscribeSel"];
+  path: LiveMapStoreApi<TValue>["subscribePath"];
 }>;
 /**
  * Options for one-way LiveMap links.
