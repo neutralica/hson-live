@@ -205,8 +205,8 @@ export type LiveMapStoreListener<TValue> = (next: TValue) => void;
 export type LiveMapStoreDiffListener<TValue> = (next: TValue, prev: TValue) => void;
 export type LiveMapStoreSelectedListener<TSelected, TValue> = (next: TSelected, prev: TSelected, state: TValue) => void;
 export type LiveMapStorePathListener<TValue, TPath extends LivePath> = (
-  next: LiveMapPathValue<TValue, TPath>,
-  prev: LiveMapPathValue<TValue, TPath>,
+  next: NoInfer<LiveMapPathValue<TValue, TPath>>,
+  prev: NoInfer<LiveMapPathValue<TValue, TPath>>,
   event: LiveMapFeedEvent,
 ) => void;
 
@@ -222,7 +222,7 @@ export type LiveMapStoreApi<TValue = JsonValue | undefined> = Readonly<{
   subscribePath: <const TPath extends LivePath>(
     path: TPath,
     listener: LiveMapStorePathListener<TValue, TPath>,
-    options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<TValue, TPath>>,
+    options?: LiveMapStoreSubscribeOptions<NoInfer<LiveMapPathValue<TValue, TPath>>>,
   ) => LiveMapDisposer;
 }>;
 
@@ -385,10 +385,10 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   last: () => LiveMapArrayItem<TValue>;
   includes: (value: JsonValue) => boolean;
   indexOf: (value: JsonValue) => number;
- push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
-unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
+  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
+  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
   pop: () => LiveMapCommit;
   shift: () => LiveMapCommit;
   clear: () => LiveMapCommit;
@@ -396,9 +396,9 @@ unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => Live
   sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit;
   sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit;
   splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => LiveMapCommit;
-insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-remove: (index: number) => LiveMapCommit;
-replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
+  remove: (index: number) => LiveMapCommit;
+  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
   move: (fromIndex: number, toIndex: number) => LiveMapCommit;
   unique: () => LiveMapCommit;
   removeValue: (value: JsonValue) => LiveMapCommit;
