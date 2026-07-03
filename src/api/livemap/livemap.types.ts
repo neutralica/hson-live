@@ -193,6 +193,37 @@ export type LiveMapFeedListener = (event: LiveMapFeedEvent) => void;
 
 /** Idempotent cleanup function returned by subscriptions and future bindings. */
 export type LiveMapDisposer = () => void;
+
+export type LiveMapStoreEqual<TValue> = (next: TValue, prev: TValue) => boolean;
+
+export type LiveMapStoreSubscribeOptions<TValue> = Readonly<{
+  equal?: LiveMapStoreEqual<TValue>;
+}>;
+
+export type LiveMapStoreListener<TValue> = (next: TValue) => void;
+export type LiveMapStoreDiffListener<TValue> = (next: TValue, prev: TValue) => void;
+export type LiveMapStoreSelectedListener<TSelected, TValue> = (next: TSelected, prev: TSelected, state: TValue) => void;
+export type LiveMapStorePathListener<TValue, TPath extends LivePath> = (
+  next: LiveMapPathValue<TValue, TPath>,
+  prev: LiveMapPathValue<TValue, TPath>,
+  event: LiveMapFeedEvent,
+) => void;
+
+export type LiveMapStoreApi<TValue = JsonValue | undefined> = Readonly<{
+  snapshot: () => TValue;
+  subscribe: (listener: LiveMapStoreListener<TValue>) => LiveMapDisposer;
+  subscribeDiff: (listener: LiveMapStoreDiffListener<TValue>) => LiveMapDisposer;
+  subscribeSel: <TSelected>(
+    selector: (state: TValue) => TSelected,
+    listener: LiveMapStoreSelectedListener<TSelected, TValue>,
+    options?: LiveMapStoreSubscribeOptions<TSelected>,
+  ) => LiveMapDisposer;
+  subscribePath: <const TPath extends LivePath>(
+    path: TPath,
+    listener: LiveMapStorePathListener<TValue, TPath>,
+    options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<TValue, TPath>>,
+  ) => LiveMapDisposer;
+}>;
 /**
  * Options for one-way LiveMap links.
  *
