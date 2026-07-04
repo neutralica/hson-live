@@ -1,9 +1,9 @@
 // livemap-core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp } from "./livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx } from "./livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
-import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
+import { clone_live_root, delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
 import { make_livemap_path_handle } from "./handle.js";
@@ -44,7 +44,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     return getStoreApi().subscribeDiff(listener);
   };
 
-    const subSel: LiveMapStoreApi<JsonValue | undefined>["subscribeSel"] = <TSelected>(
+  const subSel: LiveMapStoreApi<JsonValue | undefined>["subscribeSel"] = <TSelected>(
     selector: (state: JsonValue | undefined) => TSelected,
     listener: LiveMapStoreSelectedListener<TSelected, JsonValue | undefined>,
     options?: LiveMapStoreSubscribeOptions<TSelected>,
@@ -128,6 +128,21 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       ]);
     },
 
+    /** Collect several projected writes and apply them as one commit. */
+    batch: (fn) => {
+      const writeOps: LiveMapWriteOp[] = [];
+      let isOpen = true;
+      const tx = make_batch_tx(writeOps, () => isOpen);
+
+      try {
+        fn(tx);
+      } finally {
+        isOpen = false;
+      }
+
+      return commit_ops(root, currentSchema, feedHub, writeOps);
+    },
+
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, must_live_path(path), must_feed_listener(listener)),
 
@@ -150,6 +165,40 @@ function feed_core_path(
   listener: LiveMapFeedListener,
 ) {
   return feedHub.add(path, listener);
+}
+
+function make_batch_tx(
+  writeOps: LiveMapWriteOp[],
+  isOpen: () => boolean,
+): LiveMapBatchTx<JsonValue | undefined> {
+  const tx: LiveMapBatchTx<JsonValue | undefined> = {
+    set: (path, value) => {
+      must_batch_open(isOpen);
+      const livePath = must_live_path(path);
+      const jsonValue = must_json_value(value, livePath);
+      writeOps.push({ kind: "set", path: livePath, value: jsonValue });
+      return tx;
+    },
+    setMany: (path, values) => {
+      must_batch_open(isOpen);
+      const livePath = must_live_path(path);
+      const jsonValues = must_set_many_values(values, livePath);
+      writeOps.push(...write_ops_from_set_many(livePath, jsonValues));
+      return tx;
+    },
+    delete: (path) => {
+      must_batch_open(isOpen);
+      writeOps.push({ kind: "delete", path: must_live_path(path) });
+      return tx;
+    },
+  };
+
+  return tx;
+}
+
+function must_batch_open(isOpen: () => boolean): void {
+  if (isOpen()) return;
+  throw new Error("LiveMap batch transaction is already closed");
 }
 
 
@@ -248,6 +297,7 @@ function commit_ops(
   writeOps: readonly LiveMapWriteOp[],
 ): LiveMapCommit {
   must_core_schema_write_ops(schema, root, writeOps);
+  must_editor_write_ops(root, writeOps);
   const commit = apply_write_ops(root, writeOps);
   feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
   return commit;
@@ -259,6 +309,10 @@ function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues): 
     path: [...path, key],
     value,
   }));
+}
+
+function must_editor_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): void {
+  apply_write_ops(clone_live_root(root), writeOps);
 }
 
 function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): LiveMapCommit {

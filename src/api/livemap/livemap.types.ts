@@ -109,6 +109,15 @@ export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [Js
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
 
+export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
+  set: <const TPath extends LivePath>(
+    path: TPath,
+    value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
+  ) => LiveMapBatchTx<TValue>;
+  setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapBatchTx<TValue>;
+  delete: (path: LivePath) => LiveMapBatchTx<TValue>;
+}>;
+
 /**
  * Schema attachment surface for a LiveMap.
  *
@@ -137,6 +146,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>) => LiveMapCommit;
   setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
+  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   sub: LiveMapSubApi<TValue>;
   node: (path: LivePath) => LiveMapNodeHandle;

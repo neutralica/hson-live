@@ -21,6 +21,18 @@ type ResolvedParent = Readonly<{
 }>;
 
 /**
+ * Clone a LiveMap HSON root for staged editor preflight.
+ *
+ * Batch validation uses this to prove every editor operation can apply before
+ * mutating the live graph. This is intentionally structural and local to the
+ * LiveMap editor projection; it preserves attrs/meta/content without sharing
+ * node object identity.
+ */
+export function clone_live_root(root: HsonNode): HsonNode {
+  return clone_hson_node(root);
+}
+
+/**
  * Read the projected JSON value at a LiveMap path.
  *
  * This is the editor's read entry point. It resolves the projected path through
@@ -470,6 +482,19 @@ function make_value_node(tag: string, content: HsonNode[] | Primitive[]): HsonNo
     $_tag: tag,
     $_content: content,
   });
+}
+
+function clone_hson_node(node: HsonNode): HsonNode {
+  return CREATE_NODE({
+    $_tag: node.$_tag,
+    $_attrs: node.$_attrs === undefined ? undefined : { ...node.$_attrs },
+    $_meta: node.$_meta === undefined ? undefined : { ...node.$_meta },
+    $_content: node.$_content.map(clone_hson_content),
+  });
+}
+
+function clone_hson_content(value: HsonNode | Primitive): HsonNode | Primitive {
+  return is_Node(value) ? clone_hson_node(value) : value;
 }
 
 /**

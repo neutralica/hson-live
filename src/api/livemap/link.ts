@@ -46,45 +46,30 @@ function link_source_path(options: LiveMapLinkOptions): LivePath {
  * that is the precise location that changed in the source.
  */
 function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options: LiveMapLinkOptions): void {
+  const sourcePath = link_source_path(options);
+  const targetSourcePath = link_target_path(sourcePath, options);
+  if (targetSourcePath === undefined) return;
+
+  if (event.value === undefined) {
+    target.delete(targetSourcePath);
+    return;
+  }
+
+  if (event.ops.some((op) => op.kind === "delete")) {
+    target.set(targetSourcePath, event.value);
+    return;
+  }
+
   for (const op of event.ops) {
+    if (op.kind !== "set") continue;
+
     const targetPath = link_target_path(op.path, options);
     if (targetPath === undefined) continue;
-
-    if (op.kind === "delete") {
-      apply_delete_link_op(target, event, options, targetPath, op.path);
-      continue;
-    }
 
     const next = op.next;
     if (next === undefined) continue;
 
     target.set(targetPath, next as JsonValue);
-  }
-}
-
-/**
- * Apply a delete event according to the source link scope.
- *
- * If the deleted path removes the linked source path itself, or one of its
- * ancestors, delete the translated target path. If the deleted path is below the
- * linked source path, write the updated linked source value to the target scope.
- */
-function apply_delete_link_op(
-  target: LiveMapCore,
-  event: LiveMapFeedEvent,
-  options: LiveMapLinkOptions,
-  targetPath: LivePath,
-  opPath: LivePath,
-): void {
-  const sourcePath = link_source_path(options);
-
-  if (path_is_prefix(opPath, sourcePath)) {
-    target.delete(targetPath);
-    return;
-  }
-
-  if (path_is_prefix(sourcePath, opPath) && event.value !== undefined) {
-    target.set(link_target_path(sourcePath, options) ?? targetPath, event.value);
   }
 }
 
