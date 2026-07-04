@@ -88,22 +88,23 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
     emit: (commit, snap) => {
       if (!commit.changed) return;
 
-      for (const op of commit.ops) {
-        /**
-         * Copy the registry before iterating so listeners may safely dispose or
-         * add subscriptions during emission without corrupting this pass.
-         */
-        for (const entry of [...entries]) {
-          if (!paths_overlap(entry.path, op.path)) continue;
+      /**
+       * Copy the registry before iterating so listeners may safely dispose or
+       * add subscriptions during emission without corrupting this pass.
+       */
+      for (const entry of [...entries]) {
+        const ops = commit.ops.filter((op) => paths_overlap(entry.path, op.path));
+        const op = ops[0];
+        if (op === undefined) continue;
 
-          const event: LiveMapFeedEvent = {
-            op,
-            path: entry.path,
-            value: snap(entry.path),
-          };
+        const event: LiveMapFeedEvent = {
+          op,
+          ops,
+          path: entry.path,
+          value: snap(entry.path),
+        };
 
-          entry.listener(event);
-        }
+        entry.listener(event);
       }
     },
   };

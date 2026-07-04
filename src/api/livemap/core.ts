@@ -1,7 +1,7 @@
 // livemap-core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath } from "./livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp } from "./livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
 import { delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
@@ -108,29 +108,24 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     set: (path, value) => {
       const livePath = must_live_path(path);
       const jsonValue = must_json_value(value, livePath);
-      must_core_schema_set(currentSchema, root, livePath, jsonValue);
-      const commit = commit_set(root, livePath, jsonValue);
-      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
-      return commit;
+      return commit_ops(root, currentSchema, feedHub, [
+        { kind: "set", path: livePath, value: jsonValue },
+      ]);
     },
 
     /** Mutate multiple object properties under one projected path as one commit. */
     setMany: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
-      must_core_schema_set_many(currentSchema, root, livePath, jsonValues);
-      const commit = commit_set_many(root, livePath, jsonValues);
-      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
-      return commit;
+      return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues));
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
-      must_core_schema_delete(currentSchema, root, livePath);
-      const commit = commit_delete(root, livePath);
-      feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
-      return commit;
+      return commit_ops(root, currentSchema, feedHub, [
+        { kind: "delete", path: livePath },
+      ]);
     },
 
     /** Subscribe to commits whose op paths overlap the requested path. */
@@ -157,38 +152,11 @@ function feed_core_path(
   return feedHub.add(path, listener);
 }
 
-function must_core_schema_set(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath, value: JsonValue): void {
-  if (schema === undefined) return;
-
-  const candidate = clone_json_value(snap_live_path(root, []));
-  set_json_path(candidate, path, value);
-  must_schema_validation(schema.validateRoot(candidate), path);
-}
 
 function must_core_schema_root(schema: LiveMapSchema, root: HsonNode): void {
   must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
 }
 
-function must_core_schema_set_many(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath, values: LiveMapSetManyValues): void {
-  if (schema === undefined) return;
-
-  const candidate = clone_json_value(snap_live_path(root, []));
-
-  for (const [key, value] of Object.entries(values)) {
-    set_json_path(candidate, [...path, key], value);
-  }
-
-  must_schema_validation(schema.validateRoot(candidate), path);
-}
-
-
-function must_core_schema_delete(schema: LiveMapSchema | undefined, root: HsonNode, path: LivePath): void {
-  if (schema === undefined) return;
-
-  const candidate = clone_json_value(snap_live_path(root, []));
-  delete_json_path(candidate, path);
-  must_schema_validation(schema.validateRoot(candidate), path);
-}
 
 function delete_json_path(root: JsonValue, path: LivePath): void {
   if (path.length === 0) return;
@@ -272,57 +240,54 @@ function set_json_path(root: JsonValue, path: LivePath, value: JsonValue): void 
   cursor[leaf] = value;
 }
 
-/**
- * Apply a set mutation through the editor and wrap the result as a commit.
- *
- * The editor knows how to perform projected graph edits. Core is responsible
- * for turning that local edit result into a stable op record that feeds and
- * future sync/transport layers can consume.
- *
- * Commit ops copy the requested path so later caller-side array mutation cannot
- * rewrite already-returned history.
- */
-function commit_set(root: HsonNode, path: LivePath, value: JsonValue): LiveMapCommit {
-  const edit = set_live_path(root, path, value);
-  const opPath = [...path];
 
-  return {
-    changed: edit.changed,
-    ops: edit.changed
-      ? [
-        {
-          kind: "set",
-          path: opPath,
-          prev: edit.prev,
-          next: edit.next,
-        },
-      ]
-      : [],
-  };
+function commit_ops(
+  root: HsonNode,
+  schema: LiveMapSchema | undefined,
+  feedHub: ReturnType<typeof make_livemap_feed_hub>,
+  writeOps: readonly LiveMapWriteOp[],
+): LiveMapCommit {
+  must_core_schema_write_ops(schema, root, writeOps);
+  const commit = apply_write_ops(root, writeOps);
+  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+  return commit;
 }
 
-/**
- * Apply several object-property set mutations and wrap changed edits as one commit.
- *
- * Each value is written at `path + key`. Unchanged edits are omitted from the op
- * list. Feed still receives one commit containing all changed ops.
- */
-function commit_set_many(root: HsonNode, path: LivePath, values: LiveMapSetManyValues): LiveMapCommit {
-  const ops = Object.entries(values).flatMap(([key, value]) => {
-    const opPath: LivePath = [...path, key];
-    const edit = set_live_path(root, opPath, value);
+function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues): readonly LiveMapWriteOp[] {
+  return Object.entries(values).map(([key, value]) => ({
+    kind: "set" as const,
+    path: [...path, key],
+    value,
+  }));
+}
 
-    return edit.changed
-      ? [
-        {
-          kind: "set" as const,
-          path: opPath,
-          prev: edit.prev,
-          next: edit.next,
-        },
-      ]
-      : [];
-  });
+function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): LiveMapCommit {
+  const ops: LiveMapOp[] = [];
+
+  for (const op of writeOps) {
+    if (op.kind === "set") {
+      const edit = set_live_path(root, op.path, op.value);
+      if (!edit.changed) continue;
+
+      ops.push({
+        kind: "set",
+        path: [...op.path],
+        prev: edit.prev,
+        next: edit.next,
+      });
+      continue;
+    }
+
+    const edit = delete_live_path(root, op.path);
+    if (!edit.changed) continue;
+
+    ops.push({
+      kind: "delete",
+      path: [...op.path],
+      prev: edit.prev,
+      next: undefined,
+    });
+  }
 
   return {
     changed: ops.length > 0,
@@ -330,27 +295,23 @@ function commit_set_many(root: HsonNode, path: LivePath, values: LiveMapSetManyV
   };
 }
 
-/**
- * Apply a delete mutation through the editor and wrap the result as a commit.
- *
- * Delete is a distinct op kind rather than `set(undefined)` because undefined is
- * not a JSON value and should not become part of the set-value surface.
- */
-function commit_delete(root: HsonNode, path: LivePath): LiveMapCommit {
-  const edit = delete_live_path(root, path);
-  const opPath = [...path];
+function must_core_schema_write_ops(
+  schema: LiveMapSchema | undefined,
+  root: HsonNode,
+  writeOps: readonly LiveMapWriteOp[],
+): void {
+  if (schema === undefined) return;
 
-  return {
-    changed: edit.changed,
-    ops: edit.changed
-      ? [
-        {
-          kind: "delete",
-          path: opPath,
-          prev: edit.prev,
-          next: undefined,
-        },
-      ]
-      : [],
-  };
+  const candidate = clone_json_value(snap_live_path(root, []));
+
+  for (const op of writeOps) {
+    if (op.kind === "set") {
+      set_json_path(candidate, op.path, op.value);
+      continue;
+    }
+
+    delete_json_path(candidate, op.path);
+  }
+
+  must_schema_validation(schema.validateRoot(candidate), writeOps[0]?.path ?? []);
 }

@@ -67,6 +67,22 @@ export type LiveMapEditResult = Readonly<{
 /** Object-shaped values accepted by object-property batch setters. */
 export type LiveMapSetManyValues = Readonly<Record<string, JsonValue>>;
 
+/** Write intent collected before editor application. */
+export type LiveMapSetWriteOp = Readonly<{
+  kind: "set";
+  path: LivePath;
+  value: JsonValue;
+}>;
+
+/** Delete intent collected before editor application. */
+export type LiveMapDeleteWriteOp = Readonly<{
+  kind: "delete";
+  path: LivePath;
+}>;
+
+/** Internal write intent consumed by the Core commit pipeline. */
+export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp;
+
 export type LiveMapSortDirection = "asc" | "desc";
 
 export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
@@ -187,6 +203,7 @@ export type LiveMapFeedEvent = Readonly<{
   op: LiveMapOp;
   path: LivePath;
   value: JsonValue | undefined;
+  ops: readonly LiveMapOp[];
 }>;
 
 /** Listener called when a feed receives an overlapping operation. */
