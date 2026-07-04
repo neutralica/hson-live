@@ -6,7 +6,7 @@ import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from 
 import { clone_live_root, delete_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
-import { make_livemap_path_handle } from "./handle.js";
+import { make_livemap_path_handle } from "./handle-api.js";
 import { make_livemap_proxy } from "./proxy.js";
 import { make_livemap_store_api } from "./store.js";
 import { must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./guard.js";

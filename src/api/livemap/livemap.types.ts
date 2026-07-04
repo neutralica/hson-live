@@ -108,13 +108,18 @@ export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [Js
   : JsonValue;
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
+export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
+  LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
 export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
   set: <const TPath extends LivePath>(
     path: TPath,
     value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
-  setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapBatchTx<TValue>;
+  setMany: <const TPath extends LivePath>(
+    path: TPath,
+    values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
+  ) => LiveMapBatchTx<TValue>;
   delete: (path: LivePath) => LiveMapBatchTx<TValue>;
 }>;
 
@@ -144,7 +149,10 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>) => LiveMapCommit;
-  setMany: (path: LivePath, values: LiveMapSetManyValues) => LiveMapCommit;
+  setMany: <const TPath extends LivePath>(
+    path: TPath,
+    values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
+  ) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
   batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
@@ -369,7 +377,7 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
   snap: () => TValue;
   set: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
-  setMany: (values: LiveMapSetManyValues) => LiveMapCommit;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
   delete: () => LiveMapCommit;
   update: (updater: (value: TValue) => LiveMapWriteValue<TValue>) => LiveMapCommit;
   array: LiveMapPathArrayApi<TValue>;
