@@ -7,6 +7,13 @@ import { must_json_value, must_object_key, must_set_many_values, path_kind_error
 
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "write" | "delete">;
 
+/**
+ * Object-scoped helpers for a projected LiveMap path.
+ *
+ * `setKey` replaces one child key. `setMany` replaces the whole object at the
+ * handle path from a property bag. `write` performs a shallow sibling-preserving
+ * write by setting only the provided child keys.
+ */
 export function make_livemap_object_api<TValue = JsonValue | undefined>(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi<TValue> {
   return {
     is: () => isObjectValue(core.snap(handlePath)),

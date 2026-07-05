@@ -104,7 +104,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     /** Create a low-level HSON-node-facing handle scoped to one projected path. */
     node: (path) => make_livemap_node_handle(root, must_live_path(path)),
 
-    /** Mutate a projected path, emit the resulting commit, and return it. */
+    /** Exact replacement at a projected path. */
     set: (path, value) => {
       const livePath = must_live_path(path);
       const jsonValue = must_json_value(value, livePath);
@@ -113,23 +113,27 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       ]);
     },
 
-    /** Replace a projected object value from a property bag as one commit. */
+    /** Write multiple object properties while preserving unspecified siblings. */
     setMany: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
-      return commit_ops(root, currentSchema, feedHub, [
-        { kind: "set", path: livePath, value: jsonValues },
-      ]);
+      return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues));
     },
 
-    /** Write object properties under one projected path without removing unspecified siblings. */
+    /** Shallow object write: expand the bag into child sets and preserve unspecified siblings. */
     write: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
       return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues));
     },
 
-    /** Replace the projected root value, emit the resulting commit, and return it. */
+    /**
+     * Exact root replacement.
+     *
+     * `set([])` remains invalid, so root replacement is explicit. The editor
+     * overwrites the existing root node in place so existing handles stay
+     * attached to this map.
+     */
     replace: (value) => {
       const jsonValue = must_json_value(value, []);
       return commit_ops(root, currentSchema, feedHub, [
@@ -145,7 +149,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       ]);
     },
 
-    /** Collect several projected writes and apply them as one commit. */
+    /** Explicit synchronous transaction grouping, not automatic notification coalescing. */
     batch: (fn) => {
       const writeOps: LiveMapWriteOp[] = [];
       let isOpen = true;
@@ -188,6 +192,7 @@ function make_batch_tx(
   writeOps: LiveMapWriteOp[],
   isOpen: () => boolean,
 ): LiveMapBatchTx<JsonValue | undefined> {
+  /** The transaction mirrors Core write semantics. */
   const tx: LiveMapBatchTx<JsonValue | undefined> = {
     set: (path, value) => {
       must_batch_open(isOpen);
@@ -200,7 +205,7 @@ function make_batch_tx(
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
-      writeOps.push({ kind: "set", path: livePath, value: jsonValues });
+      writeOps.push(...write_ops_from_set_many(livePath, jsonValues));
       return tx;
     },
     write: (path, values) => {
@@ -320,6 +325,11 @@ function commit_ops(
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
   writeOps: readonly LiveMapWriteOp[],
 ): LiveMapCommit {
+  /**
+   * Preflight against a cloned JSON view and cloned editor root before touching
+   * the live root. That keeps explicit batches all-or-nothing for schema/editor
+   * failures.
+   */
   must_core_schema_write_ops(schema, root, writeOps);
   must_editor_write_ops(root, writeOps);
   const commit = apply_write_ops(root, writeOps);
@@ -328,6 +338,7 @@ function commit_ops(
 }
 
 function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues): readonly LiveMapWriteOp[] {
+  /** Build the child-path set ops used by sibling-preserving object writes. */
   return Object.entries(values).map(([key, value]) => ({
     kind: "set" as const,
     path: [...path, key],
@@ -336,10 +347,12 @@ function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues): 
 }
 
 function must_editor_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): void {
+  /** Validate that the editor can apply the full write set before mutating the live root. */
   apply_write_ops(clone_live_root(root), writeOps);
 }
 
 function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): LiveMapCommit {
+  /** Apply normalized write intents in order and collect the changed public ops. */
   const ops: LiveMapOp[] = [];
 
   for (const op of writeOps) {
@@ -393,6 +406,7 @@ function must_core_schema_write_ops(
 ): void {
   if (schema === undefined) return;
 
+  /** Preview all writes against projected JSON, then validate the whole candidate root. */
   let candidate = clone_json_value(snap_live_path(root, []));
 
   for (const op of writeOps) {

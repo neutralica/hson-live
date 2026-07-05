@@ -16,12 +16,12 @@ type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "
  * even if a caller passed a mutable array and later changes it at runtime.
  *
  * `update` is deliberately just read/compute/write. It does not introduce
- * derived state, async lifecycle, patch semantics, or batching.
+ * derived state, async lifecycle, patch/merge semantics, or batching.
  *
- * `setMany` replaces the handle path with an object built from the provided
- * properties. `write` writes object properties below the handle path without
- * removing unspecified siblings. Neither implies array append, array insert, or
- * deep merge semantics.
+ * `set` is exact replacement at the handle path. `setMany` replaces the handle
+ * path with an object built from the provided properties. `write` writes object
+ * properties below the handle path without removing unspecified siblings. None
+ * of these imply array append, array insert, or deep merge semantics.
  *
  * `delete` delegates to Core delete for this handle path. Delete is distinct
  * from setting undefined because undefined is not a JSON value.

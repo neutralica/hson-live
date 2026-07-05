@@ -9,7 +9,7 @@ import { path_is_prefix } from "./path.js";
  *
  * This is still deliberately narrow:
  * - one-way only
- * - set/delete propagation only
+ * - set-shaped and delete propagation only
  * - optional source-prefix to target-prefix path mapping
  * - no transforms
  * - no conflict resolution
@@ -17,9 +17,13 @@ import { path_is_prefix } from "./path.js";
  *
  * Same-path links use `{ path }`. Mapped links use `{ from, to }`.
  *
+ * `setMany` and `write` reach links as shallow child set ops, preserving
+ * unspecified siblings.
+ *
  * Delete propagation follows link scope. Deleting the linked source path deletes
  * the target path. Deleting below the linked source path writes the updated
- * linked source value into the target path.
+ * linked source value into the target path. Root replacement can still overlap
+ * a linked source scope because feeds report the current scoped `event.value`.
  */
 export function link_livemap(source: LiveMapCore, target: LiveMapCore, options: LiveMapLinkOptions): LiveMapDisposer {
   const linkPath = link_source_path(options);
@@ -43,7 +47,9 @@ function link_source_path(options: LiveMapLinkOptions): LivePath {
  *
  * Feed events include both the subscribed path and the actual op path. Link uses
  * the actual op path, optionally translated through the link mapping, because
- * that is the precise location that changed in the source.
+ * that is the precise location that changed in the source. Shallow `setMany`
+ * and `write` calls propagate as child set ops. Root replacement propagates the
+ * current linked source value into the target source path.
  */
 function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options: LiveMapLinkOptions): void {
   const sourcePath = link_source_path(options);
@@ -56,6 +62,11 @@ function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options:
   }
 
   if (event.ops.some((op) => op.kind === "delete")) {
+    target.set(targetSourcePath, event.value);
+    return;
+  }
+
+  if (event.ops.some((op) => op.kind === "replace")) {
     target.set(targetSourcePath, event.value);
     return;
   }

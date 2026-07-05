@@ -30,6 +30,7 @@ type FeedEntry = Readonly<{
  * The rule is intentionally symmetric:
  * - a parent feed hears child changes: `["user"]` hears `["user", "name"]`
  * - a child feed hears parent replacement: `["user", "name"]` hears `["user"]`
+ * - any feed hears root replacement: `["user", "name"]` hears `[]`
  * - sibling paths do not overlap: `["user", "name"]` ignores `["user", "role"]`
  *
  * This is the core matching rule for LiveMap feeds.
@@ -79,6 +80,9 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
 
     /**
      * Emit a commit to all overlapping subscriptions.
+     *
+     * Feed emits at most once per subscriber per commit. `event.op` is the first
+     * matching op for compatibility; `event.ops` contains every matching op.
      *
      * The event value is the current value at the subscriber's path, not
      * necessarily the op's `next` value. That distinction matters for parent

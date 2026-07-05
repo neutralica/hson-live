@@ -291,6 +291,9 @@ function delete_object_property(parent: HsonNode, key: string): void {
  * object projection for now because LiveMap v0.1 is focused on data-shaped HSON.
  */
 export function node_to_json_value(node: HsonNode): JsonValue {
+  const transparentPayload = unwrap_transparent_object_payload(node);
+  if (transparentPayload !== undefined) return node_to_json_value(transparentPayload);
+
   switch (node.$_tag) {
     case STR_TAG:
       return string_node_to_value(node);
@@ -338,6 +341,28 @@ function unwrap_value_payload(wrapper: HsonNode): HsonNode | undefined {
   const [first] = wrapper.$_content;
   if (!is_Node(first)) return undefined;
   return first;
+}
+
+/**
+ * Collapse canonical JSON value clusters such as `_hson_obj -> _hson_str`.
+ *
+ * The transform pipeline can wrap primitive and array JSON values in an
+ * `_hson_obj` cluster under a user-key wrapper. LiveMap's projected reader
+ * treats that cluster as transparent only when it contains exactly one
+ * structural value child and no user-key children.
+ */
+function unwrap_transparent_object_payload(node: HsonNode): HsonNode | undefined {
+  if (node.$_tag !== OBJ_TAG) return undefined;
+
+  const nodeChildren = node.$_content.filter(is_Node);
+  if (nodeChildren.length !== 1) return undefined;
+
+  const [onlyChild] = nodeChildren;
+  if (onlyChild.$_tag === STR_TAG || onlyChild.$_tag === VAL_TAG || onlyChild.$_tag === ARR_TAG) {
+    return onlyChild;
+  }
+
+  return undefined;
 }
 
 /**
