@@ -17,8 +17,8 @@ import { path_is_prefix } from "./path.js";
  *
  * Same-path links use `{ path }`. Mapped links use `{ from, to }`.
  *
- * `setMany` and `write` reach links as shallow child set ops, preserving
- * unspecified siblings.
+ * `setMany` and object-valued `set` reach links as shallow child set ops,
+ * preserving unspecified siblings.
  *
  * Delete propagation follows link scope. Deleting the linked source path deletes
  * the target path. Deleting below the linked source path writes the updated
@@ -48,10 +48,10 @@ function link_source_path(options: LiveMapLinkOptions): LivePath {
  * Feed events include both the subscribed path and the actual op path. Link uses
  * the actual op path, optionally translated through the link mapping, because
  * that is the precise location that changed in the source. Shallow `setMany`
- * and `write` calls propagate as child set ops. Replacement at or above the
- * linked source scope propagates the current linked source value into the
- * target source path. Replacement below the linked source scope is translated
- * to the corresponding target path.
+ * and object-valued `set` calls propagate as child set ops. Replacement at or
+ * above the linked source scope propagates the current linked source value into
+ * the target source path. Replacement below the linked source scope is
+ * translated to the corresponding target path.
  */
 function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options: LiveMapLinkOptions): void {
   const sourcePath = link_source_path(options);
@@ -64,7 +64,7 @@ function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options:
   }
 
   if (event.ops.some((op) => op.kind === "delete")) {
-    target.set(targetSourcePath, event.value);
+    target.replace(targetSourcePath, event.value);
     return;
   }
 
@@ -81,7 +81,7 @@ function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options:
       const next = op.next;
       if (next === undefined) continue;
 
-      target.set(targetPath, next as JsonValue);
+      apply_link_set(target, targetPath, next as JsonValue);
       continue;
     }
 
@@ -95,6 +95,17 @@ function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options:
       target.replace(targetPath, next as JsonValue);
     }
   }
+}
+
+function apply_link_set(target: LiveMapCore, targetPath: LivePath, value: JsonValue): void {
+  const [key] = targetPath.slice(-1);
+
+  if (typeof key !== "string") {
+    target.set(targetPath, value);
+    return;
+  }
+
+  target.setMany(targetPath.slice(0, -1), { [key]: value });
 }
 
 /**

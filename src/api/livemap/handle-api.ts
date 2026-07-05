@@ -7,7 +7,7 @@ import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";
 import { path_is_prefix } from "./path.js";
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "write" | "delete" | "feed">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed">;
 
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
@@ -15,14 +15,15 @@ type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "
  * The handle copies the path once at creation time. That keeps the handle stable
  * even if a caller passed a mutable array and later changes it at runtime.
  *
- * `update` is deliberately just read/compute/write. It does not introduce
+ * `update` is deliberately just read/compute/set. It does not introduce
  * derived state, async lifecycle, patch/merge semantics, or batching.
  *
- * `set` is exact assignment at the handle path. `replace` is exact replacement
- * at the handle path with replace-shaped commit ops. `setMany` and `write`
- * write object properties below the handle path without removing unspecified
- * siblings. None of these imply array append, array insert, or deep merge
- * semantics.
+ * `set` requires the handle path to resolve and assigns primitives, arrays,
+ * and null exactly; plain objects are shallow child writes that preserve
+ * unspecified siblings. `replace` is exact replacement at the handle path with
+ * replace-shaped commit ops. `setMany`
+ * writes object properties below the handle path without removing unspecified
+ * siblings. None of these imply array append, array insert, or deep merge.
  *
  * `delete` delegates to Core delete for this handle path. Delete is distinct
  * from setting undefined because undefined is not a JSON value.
@@ -41,7 +42,6 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
     replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
     setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
-    write: (values) => core.write(handlePath, must_set_many_values(values, handlePath)),
     delete: () => core.delete(handlePath),
     update: (updater) => core.set(handlePath, must_json_value(updater(core.snap(handlePath) as TValue), handlePath)),
     array: make_livemap_array_api(core, handlePath),
@@ -83,6 +83,6 @@ function propagate_delete_link(
   }
 
   if (path_is_prefix(sourcePath, deletePath) && sourceValue !== undefined) {
-    target.set(sourceValue);
+    target.replace(sourceValue);
   }
 }

@@ -149,14 +149,14 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
   }
 
   const prev = snap_live_path(root, path);
+  if (prev === undefined) {
+    throw new Error(`LiveMap delete path does not resolve: ${format_live_path(path)}`);
+  }
+
   const resolved = resolve_parent_node(root, path);
 
   if (resolved === undefined) {
-    return {
-      changed: false,
-      prev,
-      next: undefined,
-    };
+    throw new Error(`LiveMap editor could not resolve parent path: ${format_live_path(path.slice(0, -1))}`);
   }
 
   delete_child_value(resolved.parent, resolved.key, path);
@@ -205,6 +205,10 @@ export function replace_live_path(root: HsonNode, path: LivePath, value: JsonVal
   if (path.length === 0) return replace_live_root(root, value);
 
   const prev = snap_live_path(root, path);
+  if (prev === undefined) {
+    throw new Error(`LiveMap replace path does not resolve: ${format_live_path(path)}`);
+  }
+
   const resolved = resolve_parent_node(root, path);
 
   if (resolved === undefined) {

@@ -2,17 +2,16 @@
 
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectShape, LiveMapObjectValue, LiveMapObjectWriteValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
-import { must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
+import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
+import { format_live_path, must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
-type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "write" | "delete">;
+type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete">;
 
 /**
  * Object-scoped helpers for a projected LiveMap path.
  *
- * `setKey` replaces one child key. `setMany` replaces the whole object at the
- * handle path from a property bag. `write` performs a shallow sibling-preserving
- * write by setting only the provided child keys.
+ * `setKey` uses normal set semantics for one child key. `setMany` performs a
+ * shallow sibling-preserving set by changing only the provided child keys.
  */
 export function make_livemap_object_api<TValue = JsonValue | undefined>(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi<TValue> {
   return {
@@ -33,7 +32,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
     size: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length,
     values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
     entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectEntry<TValue>[],
-    setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectWriteValue<TValue, TKey>) => {
+    setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectSetValue<TValue, TKey>) => {
       const objectKey = must_object_key(key, handlePath);
       mustObjectValue(core.snap(handlePath), handlePath);
       return core.set([...handlePath, objectKey], must_json_value(value, [...handlePath, objectKey]));
@@ -42,13 +41,9 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
       mustObjectValue(core.snap(handlePath), handlePath);
       return core.setMany(handlePath, must_set_many_values(values, handlePath));
     },
-    write: (values: LiveMapObjectSetManyValues<TValue>) => {
-      mustObjectValue(core.snap(handlePath), handlePath);
-      return core.write(handlePath, must_set_many_values(values, handlePath));
-    },
     clear: () => {
       mustObjectValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, {});
+      return core.replace(handlePath, {});
     },
     deleteKey: (key: unknown) => {
       const objectKey = must_object_key(key, handlePath);
@@ -56,15 +51,22 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
       return core.delete([...handlePath, objectKey]);
     },
     deleteMany: (keys: unknown) => {
-      mustObjectValue(core.snap(handlePath), handlePath);
-      const objectKeys = mustObjectKeyList(keys, handlePath);
+      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
+      const objectKeys = [...new Set(mustObjectKeyList(keys, handlePath))];
+
+      for (const objectKey of objectKeys) {
+        if (!(objectKey in objectValue)) {
+          throw new Error(`LiveMap delete path does not resolve: ${format_live_path([...handlePath, objectKey])}`);
+        }
+      }
+
       const commits = objectKeys.map((objectKey) => core.delete([...handlePath, objectKey]));
       return {
         changed: commits.some((commit) => commit.changed),
         ops: commits.flatMap((commit) => commit.ops),
       };
     },
-    renameKey: (fromKey: unknown, toKey: unknown) => core.set(handlePath, objectRenameKey(core.snap(handlePath), handlePath, must_object_key(fromKey, handlePath), must_object_key(toKey, handlePath))),
+    renameKey: (fromKey: unknown, toKey: unknown) => core.replace(handlePath, objectRenameKey(core.snap(handlePath), handlePath, must_object_key(fromKey, handlePath), must_object_key(toKey, handlePath))),
   };
 }
 
@@ -113,7 +115,11 @@ function objectOmit(value: JsonValue | undefined, path: LivePath, keys: readonly
 
 function objectRenameKey(value: JsonValue | undefined, path: LivePath, fromKey: string, toKey: string): JsonValue {
   const objectValue = mustObjectValue(value, path);
-  if (fromKey === toKey || !(fromKey in objectValue)) return { ...objectValue };
+  if (!(fromKey in objectValue)) {
+    throw new Error(`LiveMap rename path does not resolve: ${format_live_path([...path, fromKey])}`);
+  }
+
+  if (fromKey === toKey) return { ...objectValue };
 
   const next: Record<string, JsonValue> = {};
 

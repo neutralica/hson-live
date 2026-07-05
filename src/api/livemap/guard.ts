@@ -84,7 +84,7 @@ function is_json_value(value: unknown): value is JsonValue {
   }
 }
 
-function is_plain_json_object_value(value: unknown): value is Readonly<Record<string, unknown>> {
+export function is_plain_json_object_value(value: unknown): value is Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
 
   const prototype = Object.getPrototypeOf(value);

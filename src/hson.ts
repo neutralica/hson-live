@@ -45,9 +45,7 @@ function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
   const out = UNSAFE_SOURCE.fromJson({});
   const map = make_livemap_core(out.toHson().parse());
 
-  for (const [key, item] of Object.entries(value)) {
-    map.set([key], item);
-  }
+  map.replace(value);
 
   return map;
 }
