@@ -113,8 +113,17 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       ]);
     },
 
-    /** Mutate multiple object properties under one projected path as one commit. */
+    /** Replace a projected object value from a property bag as one commit. */
     setMany: (path, values) => {
+      const livePath = must_live_path(path);
+      const jsonValues = must_set_many_values(values, livePath);
+      return commit_ops(root, currentSchema, feedHub, [
+        { kind: "set", path: livePath, value: jsonValues },
+      ]);
+    },
+
+    /** Write object properties under one projected path without removing unspecified siblings. */
+    write: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
       return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues));
@@ -188,6 +197,13 @@ function make_batch_tx(
       return tx;
     },
     setMany: (path, values) => {
+      must_batch_open(isOpen);
+      const livePath = must_live_path(path);
+      const jsonValues = must_set_many_values(values, livePath);
+      writeOps.push({ kind: "set", path: livePath, value: jsonValues });
+      return tx;
+    },
+    write: (path, values) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);

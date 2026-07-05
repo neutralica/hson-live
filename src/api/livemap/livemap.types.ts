@@ -126,6 +126,10 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
+  write: <const TPath extends LivePath>(
+    path: TPath,
+    values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
+  ) => LiveMapBatchTx<TValue>;
   delete: (path: LivePath) => LiveMapBatchTx<TValue>;
 }>;
 
@@ -156,6 +160,10 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>) => LiveMapCommit;
   setMany: <const TPath extends LivePath>(
+    path: TPath,
+    values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
+  ) => LiveMapCommit;
+  write: <const TPath extends LivePath>(
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCommit;
@@ -399,6 +407,7 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   snap: () => TValue;
   set: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
+  write: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
   delete: () => LiveMapCommit;
   update: (updater: (value: TValue) => LiveMapWriteValue<TValue>) => LiveMapCommit;
   array: LiveMapPathArrayApi<TValue>;
@@ -421,6 +430,7 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
+  write: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
   deleteMany: (keys: readonly string[]) => LiveMapCommit;
