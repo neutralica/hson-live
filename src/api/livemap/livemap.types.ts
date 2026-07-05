@@ -80,8 +80,14 @@ export type LiveMapDeleteWriteOp = Readonly<{
   path: LivePath;
 }>;
 
+/** Root replacement intent collected before editor application. */
+export type LiveMapReplaceWriteOp = Readonly<{
+  kind: "replace";
+  value: JsonValue;
+}>;
+
 /** Internal write intent consumed by the Core commit pipeline. */
-export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp;
+export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapReplaceWriteOp;
 
 export type LiveMapSortDirection = "asc" | "desc";
 
@@ -153,6 +159,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCommit;
+  replace: (value: NoInfer<LiveMapWriteValue<TValue>>) => LiveMapCommit;
   delete: (path: LivePath) => LiveMapCommit;
   batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
@@ -197,8 +204,22 @@ export type LiveMapDeleteOp = Readonly<{
   next: undefined;
 }>;
 
+/**
+ * Normalized root replacement operation emitted by a LiveMap mutation.
+ *
+ * Root replacement is intentionally distinct from `set([])`: projected child
+ * path writes still reject empty paths, while `replace(...)` makes whole-root
+ * overwrite explicit.
+ */
+export type LiveMapReplaceOp = Readonly<{
+  kind: "replace";
+  path: [];
+  prev: JsonValue | undefined;
+  next: JsonValue | undefined;
+}>;
+
 /** Normalized operation emitted by a LiveMap mutation. */
-export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp;
+export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp;
 
 /**
  * Normalized mutation record returned by Core.

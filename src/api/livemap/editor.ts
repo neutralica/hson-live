@@ -169,6 +169,29 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
     next,
   };
 }
+
+/**
+ * Replace the projected LiveMap root value in place.
+ *
+ * Core owns a stable root node reference that path handles and subscriptions
+ * close over, so root replacement must overwrite the existing root node rather
+ * than returning a new one. The replacement value is converted through the same
+ * editor-local JSON projection used by path writes.
+ */
+export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
+  const prev = snap_live_path(root, []);
+  const nextRoot = json_value_to_node(value);
+
+  overwrite_hson_node(root, nextRoot);
+
+  const next = snap_live_path(root, []);
+
+  return {
+    changed: !json_values_equal(prev, next),
+    prev,
+    next,
+  };
+}
 /**
  * Write one projected child value under an already-resolved parent value node.
  *
@@ -495,6 +518,13 @@ function clone_hson_node(node: HsonNode): HsonNode {
 
 function clone_hson_content(value: HsonNode | Primitive): HsonNode | Primitive {
   return is_Node(value) ? clone_hson_node(value) : value;
+}
+
+function overwrite_hson_node(target: HsonNode, source: HsonNode): void {
+  target.$_tag = source.$_tag;
+  target.$_attrs = { ...source.$_attrs };
+  target.$_meta = { ...source.$_meta };
+  target.$_content = source.$_content.map(clone_hson_content);
 }
 
 /**

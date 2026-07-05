@@ -3,7 +3,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx } from "./livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
-import { clone_live_root, delete_live_path, set_live_path, snap_live_path } from "./editor.js";
+import { clone_live_root, delete_live_path, replace_live_root, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
 import { make_livemap_path_handle } from "./handle-api.js";
@@ -118,6 +118,14 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
       return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues));
+    },
+
+    /** Replace the projected root value, emit the resulting commit, and return it. */
+    replace: (value) => {
+      const jsonValue = must_json_value(value, []);
+      return commit_ops(root, currentSchema, feedHub, [
+        { kind: "replace", value: jsonValue },
+      ]);
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
@@ -332,6 +340,19 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): L
       continue;
     }
 
+    if (op.kind === "replace") {
+      const edit = replace_live_root(root, op.value);
+      if (!edit.changed) continue;
+
+      ops.push({
+        kind: "replace",
+        path: [],
+        prev: edit.prev,
+        next: edit.next,
+      });
+      continue;
+    }
+
     const edit = delete_live_path(root, op.path);
     if (!edit.changed) continue;
 
@@ -356,7 +377,7 @@ function must_core_schema_write_ops(
 ): void {
   if (schema === undefined) return;
 
-  const candidate = clone_json_value(snap_live_path(root, []));
+  let candidate = clone_json_value(snap_live_path(root, []));
 
   for (const op of writeOps) {
     if (op.kind === "set") {
@@ -364,8 +385,19 @@ function must_core_schema_write_ops(
       continue;
     }
 
+    if (op.kind === "replace") {
+      candidate = clone_json_value(op.value);
+      continue;
+    }
+
     delete_json_path(candidate, op.path);
   }
 
-  must_schema_validation(schema.validateRoot(candidate), writeOps[0]?.path ?? []);
+  must_schema_validation(schema.validateRoot(candidate), write_op_path(writeOps[0]));
+}
+
+function write_op_path(op: LiveMapWriteOp | undefined): LivePath {
+  if (op === undefined) return [];
+  if (op.kind === "replace") return [];
+  return op.path;
 }
