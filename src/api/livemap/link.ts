@@ -9,7 +9,7 @@ import { path_is_prefix } from "./path.js";
  *
  * This is still deliberately narrow:
  * - one-way only
- * - set-shaped and delete propagation only
+ * - set-shaped, replace-shaped, and delete propagation only
  * - optional source-prefix to target-prefix path mapping
  * - no transforms
  * - no conflict resolution
@@ -48,8 +48,10 @@ function link_source_path(options: LiveMapLinkOptions): LivePath {
  * Feed events include both the subscribed path and the actual op path. Link uses
  * the actual op path, optionally translated through the link mapping, because
  * that is the precise location that changed in the source. Shallow `setMany`
- * and `write` calls propagate as child set ops. Root replacement propagates the
- * current linked source value into the target source path.
+ * and `write` calls propagate as child set ops. Replacement at or above the
+ * linked source scope propagates the current linked source value into the
+ * target source path. Replacement below the linked source scope is translated
+ * to the corresponding target path.
  */
 function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options: LiveMapLinkOptions): void {
   const sourcePath = link_source_path(options);
@@ -66,21 +68,32 @@ function apply_link_event(target: LiveMapCore, event: LiveMapFeedEvent, options:
     return;
   }
 
-  if (event.ops.some((op) => op.kind === "replace")) {
-    target.set(targetSourcePath, event.value);
+  if (event.ops.some((op) => op.kind === "replace" && path_is_prefix(op.path, sourcePath))) {
+    target.replace(targetSourcePath, event.value);
     return;
   }
 
   for (const op of event.ops) {
-    if (op.kind !== "set") continue;
+    if (op.kind === "set") {
+      const targetPath = link_target_path(op.path, options);
+      if (targetPath === undefined) continue;
 
-    const targetPath = link_target_path(op.path, options);
-    if (targetPath === undefined) continue;
+      const next = op.next;
+      if (next === undefined) continue;
 
-    const next = op.next;
-    if (next === undefined) continue;
+      target.set(targetPath, next as JsonValue);
+      continue;
+    }
 
-    target.set(targetPath, next as JsonValue);
+    if (op.kind === "replace") {
+      const targetPath = link_target_path(op.path, options);
+      if (targetPath === undefined) continue;
+
+      const next = op.next;
+      if (next === undefined) continue;
+
+      target.replace(targetPath, next as JsonValue);
+    }
   }
 }
 

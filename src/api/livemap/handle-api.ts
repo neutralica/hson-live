@@ -7,7 +7,7 @@ import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";
 import { path_is_prefix } from "./path.js";
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "setMany" | "write" | "delete" | "feed">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "write" | "delete" | "feed">;
 
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
@@ -18,10 +18,11 @@ type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "
  * `update` is deliberately just read/compute/write. It does not introduce
  * derived state, async lifecycle, patch/merge semantics, or batching.
  *
- * `set` is exact replacement at the handle path. `setMany` replaces the handle
- * path with an object built from the provided properties. `write` writes object
- * properties below the handle path without removing unspecified siblings. None
- * of these imply array append, array insert, or deep merge semantics.
+ * `set` is exact assignment at the handle path. `replace` is exact replacement
+ * at the handle path with replace-shaped commit ops. `setMany` and `write`
+ * write object properties below the handle path without removing unspecified
+ * siblings. None of these imply array append, array insert, or deep merge
+ * semantics.
  *
  * `delete` delegates to Core delete for this handle path. Delete is distinct
  * from setting undefined because undefined is not a JSON value.
@@ -38,6 +39,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     path: () => [...handlePath],
     snap: () => core.snap(handlePath) as TValue,
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
+    replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
     setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
     write: (values) => core.write(handlePath, must_set_many_values(values, handlePath)),
     delete: () => core.delete(handlePath),
@@ -52,6 +54,11 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
       }
 
       if (event.value === undefined) return;
+      if (event.op.kind === "replace") {
+        target.replace(event.value);
+        return;
+      }
+
       target.set(event.value);
     }),
   };

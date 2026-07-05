@@ -192,6 +192,36 @@ export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEdit
     next,
   };
 }
+
+/**
+ * Replace the projected LiveMap value at any endpoint path.
+ *
+ * Root replacement preserves the root node object identity. Non-root
+ * replacement swaps the endpoint wrapper under its existing parent, so
+ * unspecified object siblings inside the replaced endpoint are removed while
+ * outer/root identity remains stable.
+ */
+export function replace_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
+  if (path.length === 0) return replace_live_root(root, value);
+
+  const prev = snap_live_path(root, path);
+  const resolved = resolve_parent_node(root, path);
+
+  if (resolved === undefined) {
+    throw new Error(`LiveMap editor could not resolve parent path: ${format_live_path(path.slice(0, -1))}`);
+  }
+
+  write_child_value(resolved.parent, resolved.key, value, path);
+
+  const next = snap_live_path(root, path);
+
+  return {
+    changed: !json_values_equal(prev, next),
+    prev,
+    next,
+  };
+}
+
 /**
  * Write one projected child value under an already-resolved parent value node.
  *
@@ -572,4 +602,3 @@ function preview_json_value(value: JsonValue | undefined): string {
   if (value === undefined) return "undefined";
   return JSON.stringify(value);
 }
-

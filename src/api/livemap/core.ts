@@ -3,7 +3,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx } from "./livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
-import { clone_live_root, delete_live_path, replace_live_root, set_live_path, snap_live_path } from "./editor.js";
+import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
 import { make_livemap_node_handle } from "./node.js";
 import { make_livemap_path_handle } from "./handle-api.js";
@@ -128,16 +128,16 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     },
 
     /**
-     * Exact root replacement.
+     * Exact root or endpoint replacement.
      *
      * `set([])` remains invalid, so root replacement is explicit. The editor
-     * overwrites the existing root node in place so existing handles stay
-     * attached to this map.
+     * overwrites the existing root node in place for root replace so existing
+     * handles stay attached to this map.
      */
-    replace: (value) => {
-      const jsonValue = must_json_value(value, []);
+    replace: function (pathOrValue: unknown, value?: unknown) {
+      const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
       return commit_ops(root, currentSchema, feedHub, [
-        { kind: "replace", value: jsonValue },
+        op,
       ]);
     },
 
@@ -201,6 +201,11 @@ function make_batch_tx(
       writeOps.push({ kind: "set", path: livePath, value: jsonValue });
       return tx;
     },
+    replace: function (pathOrValue: unknown, value?: unknown) {
+      must_batch_open(isOpen);
+      writeOps.push(replace_write_op_from_args(arguments.length, pathOrValue, value));
+      return tx;
+    },
     setMany: (path, values) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
@@ -228,6 +233,28 @@ function make_batch_tx(
 function must_batch_open(isOpen: () => boolean): void {
   if (isOpen()) return;
   throw new Error("LiveMap batch transaction is already closed");
+}
+
+function replace_write_op_from_args(
+  argCount: number,
+  pathOrValue: unknown,
+  value: unknown,
+): LiveMapWriteOp {
+  if (argCount <= 1) {
+    return {
+      kind: "replace",
+      path: [],
+      value: must_json_value(pathOrValue, []),
+    };
+  }
+
+  const livePath = must_live_path(pathOrValue);
+
+  return {
+    kind: "replace",
+    path: livePath,
+    value: must_json_value(value, livePath),
+  };
 }
 
 
@@ -370,12 +397,12 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapWriteOp[]): L
     }
 
     if (op.kind === "replace") {
-      const edit = replace_live_root(root, op.value);
+      const edit = replace_live_path(root, op.path, op.value);
       if (!edit.changed) continue;
 
       ops.push({
         kind: "replace",
-        path: [],
+        path: [...op.path],
         prev: edit.prev,
         next: edit.next,
       });
@@ -416,7 +443,11 @@ function must_core_schema_write_ops(
     }
 
     if (op.kind === "replace") {
-      candidate = clone_json_value(op.value);
+      if (op.path.length === 0) {
+        candidate = clone_json_value(op.value);
+      } else {
+        set_json_path(candidate, op.path, op.value);
+      }
       continue;
     }
 
@@ -428,6 +459,5 @@ function must_core_schema_write_ops(
 
 function write_op_path(op: LiveMapWriteOp | undefined): LivePath {
   if (op === undefined) return [];
-  if (op.kind === "replace") return [];
   return op.path;
 }

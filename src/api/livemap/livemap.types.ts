@@ -80,9 +80,10 @@ export type LiveMapDeleteWriteOp = Readonly<{
   path: LivePath;
 }>;
 
-/** Root replacement intent collected before editor application. */
+/** Endpoint replacement intent collected before editor application. */
 export type LiveMapReplaceWriteOp = Readonly<{
   kind: "replace";
+  path: LivePath;
   value: JsonValue;
 }>;
 
@@ -117,13 +118,29 @@ export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWrite
 export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
   LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
+export type LiveMapReplaceFn<TValue = JsonValue | undefined> = {
+  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCommit;
+  <const TPath extends LivePath>(
+    path: TPath,
+    value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
+  ): LiveMapCommit;
+};
+
+export type LiveMapBatchReplaceFn<TValue = JsonValue | undefined> = {
+  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapBatchTx<TValue>;
+  <const TPath extends LivePath>(
+    path: TPath,
+    value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
+  ): LiveMapBatchTx<TValue>;
+};
+
 /**
  * Synchronous transaction handle passed to `map.batch(...)`.
  *
  * Batch is an explicit grouping envelope, not automatic notification
- * coalescing. The transaction mirrors Core write semantics: `setMany` replaces
- * the projected object from a property bag, while `write` performs a shallow
- * sibling-preserving object write.
+ * coalescing. The transaction mirrors Core write semantics: `replace` performs
+ * exact endpoint replacement, while `setMany` and `write` perform shallow
+ * sibling-preserving object writes.
  */
 export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
   /** Exact replacement at the projected path. */
@@ -131,7 +148,9 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
-  /** Exact object replacement from a property bag. Use `write` to preserve unspecified siblings. */
+  /** Exact root replacement, or exact endpoint replacement at a projected path. */
+  replace: LiveMapBatchReplaceFn<TValue>;
+  /** Shallow object write that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
@@ -172,7 +191,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   /** Exact replacement at the projected path. */
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>) => LiveMapCommit;
-  /** Exact object replacement from a property bag. Use `write` to preserve unspecified siblings. */
+  /** Shallow object write that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
@@ -182,8 +201,8 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCommit;
-  /** Exact replacement of the projected root value; `set([])` remains invalid. */
-  replace: (value: NoInfer<LiveMapWriteValue<TValue>>) => LiveMapCommit;
+  /** Exact root replacement, or exact endpoint replacement at a projected path; `set([])` remains invalid. */
+  replace: LiveMapReplaceFn<TValue>;
   delete: (path: LivePath) => LiveMapCommit;
   /** Explicit synchronous transaction grouping for one commit. */
   batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
@@ -205,9 +224,9 @@ export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TVa
 /**
  * Normalized set operation emitted by a LiveMap mutation.
  *
- * Ops are intentionally data-shaped and replayable. Exact `set(...)`,
- * replacement `setMany(...)`, and `update(fn)` commits all report a `set` op
- * at the projected replacement path.
+ * Ops are intentionally data-shaped and replayable. Exact `set(...)`, shallow
+ * child writes from `setMany(...)`/`write(...)`, and `update(fn)` commits report
+ * `set` ops at the projected paths they changed.
  */
 export type LiveMapSetOp = Readonly<{
   kind: "set";
@@ -230,16 +249,16 @@ export type LiveMapDeleteOp = Readonly<{
 }>;
 
 /**
- * Normalized root replacement operation emitted by a LiveMap mutation.
+ * Normalized endpoint replacement operation emitted by a LiveMap mutation.
  *
  * Root replacement is intentionally distinct from `set([])`: projected child
- * path writes still reject empty paths, while `replace(...)` makes whole-root
- * overwrite explicit. The runtime overwrites the existing root node in place so
- * existing handles stay attached.
+ * path writes still reject empty paths, while `replace(...)` makes exact
+ * root/endpoint overwrite explicit. The runtime overwrites the existing root
+ * node in place for root replacement so existing handles stay attached.
  */
 export type LiveMapReplaceOp = Readonly<{
   kind: "replace";
-  path: [];
+  path: LivePath;
   prev: JsonValue | undefined;
   next: JsonValue | undefined;
 }>;
@@ -427,7 +446,9 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   snap: () => TValue;
   /** Exact replacement at this handle path. */
   set: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
-  /** Exact object replacement at this handle path from a property bag. */
+  /** Exact replacement at this handle path using replace-shaped commit ops. */
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
+  /** Shallow object write below this handle path, preserving unspecified siblings. */
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
   /** Shallow object write below this handle path, preserving unspecified siblings. */
   write: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
@@ -454,7 +475,7 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Exact replacement of one child key. */
   setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectWriteValue<TValue, TKey>>) => LiveMapCommit;
-  /** Exact object replacement at the handle path from a property bag. */
+  /** Shallow object write at the handle path, preserving unspecified siblings. */
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
   /** Shallow object write at the handle path, preserving unspecified siblings. */
   write: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
