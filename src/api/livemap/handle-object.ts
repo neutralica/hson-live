@@ -5,7 +5,7 @@ import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
 import { format_live_path, must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
-type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete">;
+type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
 
 /**
  * Object-scoped helpers for a projected LiveMap path.
@@ -35,7 +35,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
     setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectSetValue<TValue, TKey>) => {
       const objectKey = must_object_key(key, handlePath);
       mustObjectValue(core.snap(handlePath), handlePath);
-      return core.set([...handlePath, objectKey], must_json_value(value, [...handlePath, objectKey]));
+      return core.setMany(handlePath, { [objectKey]: must_json_value(value, [...handlePath, objectKey]) });
     },
     setMany: (values: LiveMapObjectSetManyValues<TValue>) => {
       mustObjectValue(core.snap(handlePath), handlePath);
@@ -47,27 +47,35 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
     },
     deleteKey: (key: unknown) => {
       const objectKey = must_object_key(key, handlePath);
-      mustObjectValue(core.snap(handlePath), handlePath);
+      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
+      if (!(objectKey in objectValue)) return emptyCommit();
       return core.delete([...handlePath, objectKey]);
     },
     deleteMany: (keys: unknown) => {
+      const objectKeys = mustObjectKeyList(keys, handlePath);
       const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      const objectKeys = [...new Set(mustObjectKeyList(keys, handlePath))];
-
-      for (const objectKey of objectKeys) {
-        if (!(objectKey in objectValue)) {
-          throw new Error(`LiveMap delete path does not resolve: ${format_live_path([...handlePath, objectKey])}`);
+      return core.batch((tx) => {
+        for (const key of new Set(objectKeys)) {
+          if (key in objectValue) tx.delete([...handlePath, key]);
         }
-      }
-
-      const commits = objectKeys.map((objectKey) => core.delete([...handlePath, objectKey]));
-      return {
-        changed: commits.some((commit) => commit.changed),
-        ops: commits.flatMap((commit) => commit.ops),
-      };
+      });
     },
-    renameKey: (fromKey: unknown, toKey: unknown) => core.replace(handlePath, objectRenameKey(core.snap(handlePath), handlePath, must_object_key(fromKey, handlePath), must_object_key(toKey, handlePath))),
+    renameKey: (fromKey: unknown, toKey: unknown) => {
+      const fromObjectKey = must_object_key(fromKey, handlePath);
+      const toObjectKey = must_object_key(toKey, handlePath);
+      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
+      if (!(fromObjectKey in objectValue)) return emptyCommit();
+      if (fromObjectKey === toObjectKey) return emptyCommit();
+      return core.replace(handlePath, objectRenameKey(objectValue, handlePath, fromObjectKey, toObjectKey));
+    },
   };
+}
+
+function emptyCommit() {
+  return Object.freeze({
+    changed: false,
+    ops: [],
+  });
 }
 
 function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {

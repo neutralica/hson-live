@@ -7,7 +7,15 @@ import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";
 import { path_is_prefix } from "./path.js";
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed">;
+
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch">;
+
+type LiveMapPathHandleInternals = Readonly<{
+  core: LiveMapPathHandleCore;
+  path: LivePath;
+}>;
+
+const pathHandleInternals = new WeakMap<LiveMapPathHandle, LiveMapPathHandleInternals>();
 
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
@@ -36,7 +44,7 @@ type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "
 export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle<TValue> {
   const handlePath = must_live_path(path);
 
-  return {
+  const handle: LiveMapPathHandle<TValue> = {
     path: () => [...handlePath],
     snap: () => core.snap(handlePath) as TValue,
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
@@ -54,14 +62,46 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
       }
 
       if (event.value === undefined) return;
-      if (event.op.kind === "replace") {
-        target.replace(event.value);
-        return;
-      }
-
-      target.set(event.value);
+      write_link_target(target, event.value, event.op.kind === "replace" ? "replace" : "set");
     }),
   };
+
+  pathHandleInternals.set(handle as unknown as LiveMapPathHandle, { core, path: handlePath });
+  return handle;
+}
+
+function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "replace" | "set"): void {
+  const internals = pathHandleInternals.get(target);
+
+  if (internals === undefined) {
+    if (mode === "replace") target.replace(value);
+    else target.set(value);
+    return;
+  }
+
+  const targetPath = internals.path;
+
+  if (targetPath.length === 0 || internals.core.snap(targetPath) !== undefined) {
+    if (mode === "replace") internals.core.replace(targetPath, value);
+    else internals.core.set(targetPath, value);
+    return;
+  }
+
+  const parentPath = targetPath.slice(0, -1);
+  const key = targetPath[targetPath.length - 1];
+  const parentValue = internals.core.snap(parentPath);
+
+  if (typeof key === "string" && is_object_value(parentValue)) {
+    internals.core.setMany(parentPath, { [key]: value });
+    return;
+  }
+
+  if (mode === "replace") internals.core.replace(targetPath, value);
+  else internals.core.set(targetPath, value);
+}
+
+function is_object_value(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
