@@ -1,28 +1,47 @@
-// bridge.ts
+// LiveMap ↔ LiveTree bridge helpers.
+//
+// Snap renderers perform one-time projection from LiveMap state into LiveTree.
+// Bindings subscribe LiveTree targets to LiveMap paths and return explicit disposers.
 
 import type { JsonValue } from "../../core/types.js";
-import type { LivePath } from "./livemap.types.js";
+import type { LiveMap, LivePath } from "./livemap.types.js";
 
 export type LiveMapBridgeBinding = Readonly<{
   dispose: () => void;
 }>;
 
-export type LiveMapBridgeMap = Readonly<{
-  snap: (path?: LivePath) => JsonValue | undefined;
-  set: (path: LivePath, value: JsonValue) => unknown;
-  sub: Readonly<{
-    path: (path: LivePath, listener: (next: JsonValue | undefined) => void) => () => void;
-  }>;
-}>;
+// LiveTree targets are narrow structural contracts. They name the small LiveTree
+// surfaces the bridge consumes without requiring callers to pass a concrete
+// LiveTree class.
 
-export type LiveTreeTextBridgeTarget = Readonly<{
+export type LiveTextBridgeTarget = Readonly<{
   text: Readonly<{
     get: () => string;
     set: (value: string) => unknown;
+    overwrite: (value: string) => unknown;
   }>;
 }>;
 
-export type LiveTreeAttrBridgeTarget = Readonly<{
+export type LiveContentBridgeTarget = Readonly<{
+  content: Readonly<{
+    markup: Readonly<{
+      innerHTML: string;
+    }>;
+  }>;
+}>;
+
+export type LiveCreateDivBridgeTarget = Readonly<{
+  create: Readonly<{
+    div: () => LiveSnapViewBridgeTarget;
+  }>;
+}>;
+
+export type LiveSnapViewBridgeTarget = LiveContentBridgeTarget &
+  LiveCreateDivBridgeTarget &
+  LiveTextBridgeTarget &
+  LiveAttrBridgeTarget;
+
+export type LiveAttrBridgeTarget = Readonly<{
   attr: Readonly<{
     get: (name: string) => string | undefined;
     set: (name: string, value: string) => unknown;
@@ -30,22 +49,24 @@ export type LiveTreeAttrBridgeTarget = Readonly<{
   }>;
 }>;
 
-export type LiveTreeInputListenerResult = Readonly<{
+export type LiveInputListenerResult = Readonly<{
   off: () => void;
   count: number;
   ok: boolean;
 }>;
 
-export type LiveTreeInputBridgeTarget = Readonly<{
+export type LiveInputBridgeTarget = Readonly<{
   form: Readonly<{
     getValue: () => JsonValue | undefined;
     setValue: (value: JsonValue, options?: { silent?: boolean }) => unknown;
   }>;
   listen: Readonly<{
-    onInput: (listener: () => void) => LiveTreeInputListenerResult;
+    onInput: (listener: () => void) => LiveInputListenerResult;
   }>;
 }>;
 
+// Preserve the current LiveMap primitive kind when possible. Form APIs surface
+// user input as display values, while LiveMap remains the state authority.
 function coerce_input_value(value: JsonValue | undefined, current: JsonValue | undefined): JsonValue {
   if (typeof current === "number") {
     const next = Number(value);
@@ -57,7 +78,6 @@ function coerce_input_value(value: JsonValue | undefined, current: JsonValue | u
   return value ?? "";
 }
 
-
 function value_to_text(value: JsonValue | undefined): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
@@ -65,11 +85,83 @@ function value_to_text(value: JsonValue | undefined): string {
   return JSON.stringify(value);
 }
 
-export function render_livemap_snap(map: LiveMapBridgeMap, tree: LiveTreeTextBridgeTarget, path?: LivePath): void {
+export function render_livemap_snap(map: LiveMap, tree: LiveTextBridgeTarget, path: LivePath = []): void {
   tree.text.set(value_to_text(map.snap(path)));
 }
 
-export function bind_livetree_text(map: LiveMapBridgeMap, path: LivePath, tree: LiveTreeTextBridgeTarget): LiveMapBridgeBinding {
+export function render_livemap_snap_view(map: LiveMap, tree: LiveSnapViewBridgeTarget, path: LivePath = []): void {
+  tree.text.overwrite("");
+  render_snap_value(tree, map.snap(path), snap_path_parts(path));
+}
+
+function snap_path_parts(path: LivePath): readonly string[] {
+  return path.map((part) => String(part));
+}
+
+function render_snap_value(tree: LiveSnapViewBridgeTarget, value: JsonValue | undefined, path: readonly string[]): void {
+  tree.attr.set("data-livemap-snap-path", path.join("."));
+
+  if (Array.isArray(value)) {
+    tree.attr.set("data-livemap-snap-kind", "array");
+    render_snap_array(tree, value, path);
+    return;
+  }
+
+  if (is_json_object(value)) {
+    tree.attr.set("data-livemap-snap-kind", "object");
+    render_snap_object(tree, value, path);
+    return;
+  }
+
+  tree.attr.set("data-livemap-snap-kind", primitive_snap_kind(value));
+  tree.text.set(value_to_text(value));
+}
+
+function render_snap_object(
+  tree: LiveSnapViewBridgeTarget,
+  value: Readonly<Record<string, JsonValue>>,
+  path: readonly string[],
+): void {
+  for (const key of Object.keys(value)) {
+    const row = tree.create.div();
+    row.attr.set("data-livemap-snap-key", key);
+
+    const label = row.create.div();
+    label.attr.set("data-livemap-snap-role", "key");
+    label.text.set(key);
+
+    const child = row.create.div();
+    child.attr.set("data-livemap-snap-role", "value");
+    render_snap_value(child, value[key], [...path, key]);
+  }
+}
+
+function render_snap_array(tree: LiveSnapViewBridgeTarget, value: readonly JsonValue[], path: readonly string[]): void {
+  value.forEach((item, index) => {
+    const row = tree.create.div();
+    row.attr.set("data-livemap-snap-index", String(index));
+
+    const label = row.create.div();
+    label.attr.set("data-livemap-snap-role", "index");
+    label.text.set(String(index));
+
+    const child = row.create.div();
+    child.attr.set("data-livemap-snap-role", "value");
+    render_snap_value(child, item, [...path, String(index)]);
+  });
+}
+
+function is_json_object(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function primitive_snap_kind(value: JsonValue | undefined): string {
+  if (value === undefined) return "undefined";
+  if (value === null) return "null";
+  return typeof value;
+}
+
+export function bind_livetree_text(map: LiveMap, path: LivePath, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
   const sync = (value: JsonValue | undefined) => {
     tree.text.set(value_to_text(value));
   };
@@ -81,9 +173,9 @@ export function bind_livetree_text(map: LiveMapBridgeMap, path: LivePath, tree: 
 }
 
 export function bind_livetree_attr(
-  map: LiveMapBridgeMap,
+  map: LiveMap,
   path: LivePath,
-  tree: LiveTreeAttrBridgeTarget,
+  tree: LiveAttrBridgeTarget,
   name: string,
 ): LiveMapBridgeBinding {
   const sync = (value: JsonValue | undefined) => {
@@ -102,20 +194,20 @@ export function bind_livetree_attr(
 }
 
 export function bind_livetree_input_value(
-  tree: LiveTreeInputBridgeTarget,
-  map: LiveMapBridgeMap,
+  tree: LiveInputBridgeTarget,
+  map: LiveMap,
   path: LivePath,
 ): LiveMapBridgeBinding {
-  let isSyncing = false;
+  let isSyncingFromMap = false;
 
   const syncFromMap = (value: JsonValue | undefined) => {
-    isSyncing = true;
+    isSyncingFromMap = true;
     tree.form.setValue(value_to_text(value), { silent: true });
-    isSyncing = false;
+    isSyncingFromMap = false;
   };
 
   const syncToMap = () => {
-    if (isSyncing) return;
+    if (isSyncingFromMap) return;
     map.set(path, coerce_input_value(tree.form.getValue(), map.snap(path)));
   };
 
