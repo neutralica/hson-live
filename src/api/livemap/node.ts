@@ -84,7 +84,7 @@ function replaceChildNodeAt(parent: HsonNode, path: LivePath, index: number, chi
  * Create a HSON-node-facing handle for one projected LiveMap path.
  *
  * This is the lower-level HSON graph toolbox: precise node resolution,
- * inspection, attrs editing, and surgical child-node content mutation. `_meta`
+ * inspection, attrs editing, and surgical child-node content mutation. `$_meta`
  * remains system-owned and read-only from this surface.
  *
  * Resolution is intentionally ordered: projected JSON wrapper resolution wins

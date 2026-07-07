@@ -15,8 +15,6 @@ import type { LiveMap } from "./api/livemap/livemap.types.js";
 import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/schema.js";
 
 
-(globalThis as any)._test_ON = () => { (globalThis as any).test = true; location.reload(); };
-(globalThis as any)._test_OFF = () => { (globalThis as any).test = false; location.reload(); };
 const SAFE_SOURCE = construct_source_1({ unsafe: false });
 const UNSAFE_SOURCE = construct_source_1({ unsafe: true });
 
@@ -34,6 +32,14 @@ const LIVE_MAP_SCHEMA_NAMESPACE: LiveMapSchemaNamespace = Object.assign(
   },
 );
 
+/**
+ * Build a LiveMap from projected JSON.
+ *
+ * Object roots are seeded through an empty HSON object and then `replace(...)`d
+ * so LiveMap construction uses the same editor path as later root replacement.
+ * Non-object roots can be transformed directly because there is no object graph
+ * to seed before replacement.
+ */
 function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
   const value = typeof input === "string" ? JSON.parse(input) as JsonValue : input;
 
@@ -50,6 +56,7 @@ function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
   return map;
 }
 
+/** True when LiveMap JSON construction should seed an object root via replace. */
 function is_livemap_seed_object(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -88,14 +95,21 @@ export const hson = {
     return UNSAFE_SOURCE.fromHtml(input, { sanitize: false });
   },
 
+  /**
+   * Convert JSON or a JSON string into the transformer pipeline.
+   *
+   * This is the serialization/conversion surface, not a mutable LiveMap.
+   */
   fromJson(input: string | JsonValue): OutputConstructor_2 {
     return UNSAFE_SOURCE.fromJson(input);
   },
 
+  /** Parse serialized HSON into the transformer pipeline. */
   fromHson(input: string): OutputConstructor_2 {
     return UNSAFE_SOURCE.fromHson(input);
   },
 
+  /** Wrap an existing HSON node in the transformer pipeline. */
   fromNode(node: HsonNode): OutputConstructor_2 {
     return UNSAFE_SOURCE.fromNode(node);
   },
@@ -108,17 +122,27 @@ export const hson = {
    * validation and schema-derived TypeScript types.
    */
   liveMap: {
+    /** Schema builder and schema-constructor namespace for LiveMap. */
     schema: LIVE_MAP_SCHEMA_NAMESPACE,
 
+    /**
+     * Create a mutable LiveMap from JSON or a JSON string.
+     *
+     * The resulting map uses the settled LiveMap mutation contract: `set` is
+     * strict and sibling-preserving for object endpoints, `setMany` writes child
+     * keys under an existing object, and `replace` is destructive.
+     */
     fromJson(input: string | JsonValue): LiveMap {
       return make_livemap_core_from_json(input);
     },
 
+    /** Create a mutable LiveMap from serialized HSON. */
     fromHson(input: string): LiveMap {
       const out = UNSAFE_SOURCE.fromHson(input);
       return make_livemap_core(out.toHson().parse());
     },
 
+    /** Create a mutable LiveMap over an existing HSON node graph. */
     fromNode(node: HsonNode): LiveMap {
       return make_livemap_core(node);
     },
@@ -138,26 +162,31 @@ export const hson = {
 
   liveTree: {
     /* see docs above */
+    /** Create a detached LiveTree branch from sanitized HTML or an Element. */
     fromUntrustedHtml(input: string | Element): LiveTree {
       const out = SAFE_SOURCE.fromHtml(input, { sanitize: true });
       return make_branch_from_node(out.toHson().parse());
     },
 
+    /** Create a detached LiveTree branch from trusted HTML or an Element. */
     fromTrustedHtml(input: string | Element): LiveTree {
       const out = UNSAFE_SOURCE.fromHtml(input, { sanitize: false });
       return make_branch_from_node(out.toHson().parse());
     },
 
+    /** Create a detached LiveTree branch from projected JSON. */
     fromJson(input: string | JsonValue): LiveTree {
       const out = UNSAFE_SOURCE.fromJson(input);
       return make_branch_from_node(out.toHson().parse());
     },
 
+    /** Create a detached LiveTree branch from serialized HSON. */
     fromHson(input: string): LiveTree {
       const out = UNSAFE_SOURCE.fromHson(input);
       return make_branch_from_node(out.toHson().parse());
     },
 
+    /** Create a detached LiveTree branch from an existing HSON node. */
     fromNode(node: HsonNode): LiveTree {
       return make_branch_from_node(node);
     },
@@ -202,8 +231,9 @@ export const hson = {
     /**
      * Detached node-creation helper.
      *
-     * Use this to create off-DOM LiveTree nodes directly without a parent tree. Supports HTML and SVG tag helpers plus
-     * insertion-position helpers such as `.prepend()` and `.at(index)`.
+     * Use this to create off-DOM LiveTree nodes directly without a parent tree.
+     * Supports HTML and SVG tag helpers plus insertion-position helpers such as
+     * `.prepend()` and `.at(index)`.
      */
     create: make_detached_livetree_create(),
   },
