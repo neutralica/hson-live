@@ -19,6 +19,20 @@ export type LiveMapBridgeBindingGroup = Readonly<{
   bindings: readonly LiveMapBridgeBinding[];
 }>;
 
+export type LiveMapSchemaControlKind = "string" | "number" | "boolean" | "enum";
+
+export type LiveMapSchemaControlNode = Readonly<{
+  kind?: LiveMapSchemaControlKind;
+  label?: string;
+  description?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  choices?: readonly string[];
+}>;
+
+export type LiveMapSchemaControlSpec = Readonly<Record<string, LiveMapSchemaControlNode>>;
+
 // LiveTree targets are narrow structural contracts. They name the small LiveTree
 // surfaces the bridge consumes without requiring callers to pass a concrete
 // LiveTree class.
@@ -129,6 +143,25 @@ export function render_livemap_controls_snap(
 
   tree.text.overwrite("");
   render_control_value(map, tree, map.snap(path), snap_path_parts(path), bindings);
+
+  return {
+    bindings,
+    dispose: () => {
+      for (const binding of bindings) binding.dispose();
+    },
+  };
+}
+
+export function render_livemap_schema_controls_snap(
+  map: LiveMap,
+  tree: LiveControlViewBridgeTarget,
+  schema: LiveMapSchemaControlSpec,
+  path: LivePath = [],
+): LiveMapBridgeBindingGroup {
+  const bindings: LiveMapBridgeBinding[] = [];
+
+  tree.text.overwrite("");
+  render_schema_control_value(map, tree, map.snap(path), snap_path_parts(path), schema, bindings);
 
   return {
     bindings,
@@ -260,6 +293,159 @@ function render_control_array(
     child.attr.set("data-livemap-control-role", "value");
     render_control_value(map, child, item, [...path, String(index)], bindings);
   });
+}
+
+function render_schema_control_value(
+  map: LiveMap,
+  tree: LiveControlViewBridgeTarget,
+  value: JsonValue | undefined,
+  path: readonly string[],
+  schema: LiveMapSchemaControlSpec,
+  bindings: LiveMapBridgeBinding[],
+): void {
+  tree.attr.set("data-livemap-control-path", path.join("."));
+
+  if (Array.isArray(value)) {
+    tree.attr.set("data-livemap-control-kind", "array");
+    value.forEach((item, index) => {
+      const row = tree.create.div();
+      row.attr.set("data-livemap-control-index", String(index));
+
+      const label = row.create.div();
+      label.attr.set("data-livemap-control-role", "index");
+      label.text.set(String(index));
+
+      const child = row.create.div();
+      child.attr.set("data-livemap-control-role", "value");
+      render_schema_control_value(map, child, item, [...path, String(index)], schema, bindings);
+    });
+    return;
+  }
+
+  if (is_json_object(value)) {
+    tree.attr.set("data-livemap-control-kind", "object");
+    for (const key of Object.keys(value)) {
+      const row = tree.create.div();
+      row.attr.set("data-livemap-control-key", key);
+
+      const label = row.create.div();
+      label.attr.set("data-livemap-control-role", "key");
+      label.text.set(key);
+
+      const child = row.create.div();
+      child.attr.set("data-livemap-control-role", "value");
+      render_schema_control_value(map, child, value[key], [...path, key], schema, bindings);
+    }
+    return;
+  }
+
+  const node = schema_control_node_for_path(schema, path);
+  tree.attr.set("data-livemap-control-kind", schema_control_kind(value, node));
+  render_schema_control_primitive(map, tree, value, path, node, bindings);
+}
+
+function render_schema_control_primitive(
+  map: LiveMap,
+  tree: LiveControlViewBridgeTarget,
+  value: JsonValue | undefined,
+  path: readonly string[],
+  schema: LiveMapSchemaControlNode | undefined,
+  bindings: LiveMapBridgeBinding[],
+): void {
+  render_schema_control_meta(tree, schema);
+
+  if (schema?.kind === "enum") {
+    render_schema_enum_control(map, tree, value, path, schema, bindings);
+    return;
+  }
+
+  const control = tree.create.tag("input");
+  control.attr.set("data-livemap-control-role", "input");
+  control.attr.set("data-livemap-control-path", path.join("."));
+  control.attr.set("data-livemap-control-kind", schema_control_kind(value, schema));
+  apply_schema_control_meta(control, schema);
+
+  const kind = schema_control_kind(value, schema);
+
+  if (kind === "boolean" && control.form.setChecked !== undefined && control.form.getChecked !== undefined) {
+    control.attr.set("type", "checkbox");
+    bindings.push(bind_livetree_input_checked(control, map, path_to_live_path(path)));
+    return;
+  }
+
+  if (kind === "number") {
+    control.attr.set("type", "number");
+    apply_schema_number_attrs(control, schema);
+  } else {
+    control.attr.set("type", "text");
+  }
+
+  bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
+}
+
+function render_schema_enum_control(
+  map: LiveMap,
+  tree: LiveControlViewBridgeTarget,
+  value: JsonValue | undefined,
+  path: readonly string[],
+  schema: LiveMapSchemaControlNode,
+  bindings: LiveMapBridgeBinding[],
+): void {
+  const select = tree.create.tag("select");
+  select.attr.set("data-livemap-control-role", "select");
+  select.attr.set("data-livemap-control-path", path.join("."));
+  select.attr.set("data-livemap-control-kind", "enum");
+  apply_schema_control_meta(select, schema);
+
+  for (const choice of schema.choices ?? []) {
+    const option = select.create.tag("option");
+    option.attr.set("value", choice);
+    option.text.set(choice);
+  }
+
+  select.form.setValue(value_to_text(value), { silent: true });
+  bindings.push(bind_livetree_input_value(select, map, path_to_live_path(path)));
+}
+
+function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
+  if (schema?.label !== undefined) {
+    const label = tree.create.div();
+    label.attr.set("data-livemap-control-role", "label");
+    label.text.set(schema.label);
+  }
+
+  if (schema?.description !== undefined) {
+    const description = tree.create.div();
+    description.attr.set("data-livemap-control-role", "description");
+    description.text.set(schema.description);
+  }
+}
+
+function apply_schema_control_meta(
+  tree: LiveAttrBridgeTarget,
+  schema: LiveMapSchemaControlNode | undefined,
+): void {
+  if (schema?.label !== undefined) tree.attr.set("data-livemap-control-label", schema.label);
+  if (schema?.description !== undefined) tree.attr.set("data-livemap-control-description", schema.description);
+}
+
+function apply_schema_number_attrs(tree: LiveAttrBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
+  if (schema?.min !== undefined) tree.attr.set("min", String(schema.min));
+  if (schema?.max !== undefined) tree.attr.set("max", String(schema.max));
+  if (schema?.step !== undefined) tree.attr.set("step", String(schema.step));
+}
+
+function schema_control_kind(value: JsonValue | undefined, schema: LiveMapSchemaControlNode | undefined): string {
+  if (schema?.kind !== undefined) return schema.kind;
+  return primitive_snap_kind(value);
+}
+
+function schema_control_node_for_path(
+  schema: LiveMapSchemaControlSpec,
+  path: readonly string[],
+): LiveMapSchemaControlNode | undefined {
+  const fullPath = path.join(".");
+  return schema[fullPath] ?? schema[path[path.length - 1] ?? ""];
 }
 
 function render_control_primitive(
