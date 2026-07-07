@@ -90,6 +90,8 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
 
   const parentPath = path.slice(0, -1);
   const key = path[path.length - 1];
+  if (key === undefined) return undefined;
+
   const parent = resolve_value_node(root, parentPath);
 
   if (parent === undefined) return undefined;
@@ -391,7 +393,9 @@ function unwrap_transparent_object_payload(node: HsonNode): HsonNode | undefined
   const nodeChildren = node.$_content.filter(is_Node);
   if (nodeChildren.length !== 1) return undefined;
 
-  const [onlyChild] = nodeChildren;
+  const onlyChild = nodeChildren[0];
+  if (onlyChild === undefined) return undefined;
+
   if (onlyChild.$_tag === STR_TAG || onlyChild.$_tag === VAL_TAG || onlyChild.$_tag === ARR_TAG) {
     return onlyChild;
   }
@@ -567,12 +571,15 @@ function make_value_node(tag: string, content: HsonNode[] | Primitive[]): HsonNo
 }
 
 function clone_hson_node(node: HsonNode): HsonNode {
-  return CREATE_NODE({
+  const partial: Partial<HsonNode> = {
     $_tag: node.$_tag,
-    $_attrs: node.$_attrs === undefined ? undefined : { ...node.$_attrs },
-    $_meta: node.$_meta === undefined ? undefined : { ...node.$_meta },
     $_content: node.$_content.map(clone_hson_content),
-  });
+  };
+
+  if (node.$_attrs !== undefined) partial.$_attrs = { ...node.$_attrs };
+  if (node.$_meta !== undefined) partial.$_meta = { ...node.$_meta };
+
+  return CREATE_NODE(partial);
 }
 
 function clone_hson_content(value: HsonNode | Primitive): HsonNode | Primitive {

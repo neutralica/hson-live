@@ -345,15 +345,15 @@ function normalize_schema_draft(draft: LiveMapSchemaDraft): LiveMapSchemaNode {
     readonly: draft.readonly === true,
     exact: draft.exact === true,
     literals: draft.literals ?? [],
-    choices: draft.choices === undefined ? undefined : draft.choices.map((choice) => normalize_schema_choice(choice)),
-    lazy: draft.lazy === undefined ? undefined : memoize_schema_lazy(draft.lazy),
-    base: draft.base === undefined ? undefined : normalize_schema_input(draft.base),
-    label: draft.label,
-    validate: draft.validate,
-    item: draft.item === undefined ? undefined : normalize_schema_input(draft.item),
-    items: draft.items === undefined ? undefined : draft.items.map((item) => normalize_schema_input(item)),
-    props: draft.props === undefined ? undefined : normalize_schema_props(draft.props),
-    record: draft.record === undefined ? undefined : normalize_schema_input(draft.record),
+    ...(draft.choices !== undefined ? { choices: draft.choices.map((choice) => normalize_schema_choice(choice)) } : {}),
+    ...(draft.lazy !== undefined ? { lazy: memoize_schema_lazy(draft.lazy) } : {}),
+    ...(draft.base !== undefined ? { base: normalize_schema_input(draft.base) } : {}),
+    ...(draft.label !== undefined ? { label: draft.label } : {}),
+    ...(draft.validate !== undefined ? { validate: draft.validate } : {}),
+    ...(draft.item !== undefined ? { item: normalize_schema_input(draft.item) } : {}),
+    ...(draft.items !== undefined ? { items: draft.items.map((item) => normalize_schema_input(item)) } : {}),
+    ...(draft.props !== undefined ? { props: normalize_schema_props(draft.props) } : {}),
+    ...(draft.record !== undefined ? { record: normalize_schema_input(draft.record) } : {}),
   });
 }
 
@@ -430,7 +430,7 @@ function schema_rule_from_node(node: LiveMapSchemaNode, path: LivePath): LiveMap
     nullable: node.nullable,
     readonly: node.readonly,
     exact: node.exact,
-    literals: node.literals.length === 0 ? undefined : node.literals,
+    ...(node.literals.length > 0 ? { literals: node.literals } : {}),
   });
 }
 

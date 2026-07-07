@@ -6,14 +6,6 @@ export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
 
 export { make_livemap_core } from "./api/livemap/core.js";
-export {
-  node_to_json_value,
-  resolve_parent_node,
-  resolve_value_node,
-  resolve_wrapper_node,
-  snap_live_path,
-  set_live_path,
-} from "./api/livemap/editor.js";
 export { make_livemap_store_api } from "./api/livemap/store.js";
 export { format_live_path, path_is_prefix } from "./api/livemap/path.js";
 export { link_livemap } from "./api/livemap/link.js";
