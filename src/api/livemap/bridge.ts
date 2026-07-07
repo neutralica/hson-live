@@ -376,10 +376,11 @@ function render_schema_control_primitive(
   if (kind === "number") {
     control.attr.set("type", "number");
     apply_schema_number_attrs(control, schema);
-  } else {
-    control.attr.set("type", "text");
+    bindings.push(bind_livetree_schema_number_input(control, map, path_to_live_path(path), schema));
+    return;
   }
 
+  control.attr.set("type", "text");
   bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
 }
 
@@ -570,6 +571,65 @@ export function bind_livetree_input_checked(
   const syncToMap = () => {
     if (isSyncingFromMap) return;
     map.set(path, tree.form.getChecked?.() === true);
+  };
+
+  syncFromMap(map.snap(path));
+  const disposePath = map.sub.path(path, syncFromMap);
+  const inputListener = tree.listen.onInput(syncToMap);
+
+  return {
+    dispose: () => {
+      inputListener.off();
+      disposePath();
+    },
+  };
+}
+
+export function bind_livetree_schema_number_input(
+  tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
+  map: LiveMap,
+  path: LivePath,
+  schema: LiveMapSchemaControlNode | undefined,
+): LiveMapBridgeBinding {
+  let isSyncingFromMap = false;
+
+  const markValid = () => {
+    tree.attr.set("data-livemap-control-valid", "true");
+    tree.attr.drop("data-livemap-control-error");
+  };
+
+  const markInvalid = (message: string) => {
+    tree.attr.set("data-livemap-control-valid", "false");
+    tree.attr.set("data-livemap-control-error", message);
+  };
+
+  const syncFromMap = (value: JsonValue | undefined) => {
+    isSyncingFromMap = true;
+    tree.form.setValue(value_to_text(value), { silent: true });
+    isSyncingFromMap = false;
+  };
+
+  const syncToMap = () => {
+    if (isSyncingFromMap) return;
+
+    const next = Number(tree.form.getValue());
+    if (!Number.isFinite(next)) {
+      markInvalid("Expected finite number");
+      return;
+    }
+
+    if (schema?.min !== undefined && next < schema.min) {
+      markInvalid(`Expected number >= ${schema.min}`);
+      return;
+    }
+
+    if (schema?.max !== undefined && next > schema.max) {
+      markInvalid(`Expected number <= ${schema.max}`);
+      return;
+    }
+
+    markValid();
+    map.set(path, next);
   };
 
   syncFromMap(map.snap(path));
