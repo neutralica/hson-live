@@ -92,11 +92,19 @@ export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapR
 
 export type LiveMapSortDirection = "asc" | "desc";
 
+/** Overloaded snapshot reader: root with no args, projected value with a path. */
 export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
   (path: LivePath): JsonValue | undefined;
   (): TValue;
 };
 
+/**
+ * Static value projection for a LivePath.
+ *
+ * Known object keys and array indexes narrow through `TValue`; unknown or
+ * impossible paths fall back to `JsonValue | undefined` so dynamic path usage
+ * remains possible without pretending the value is statically known.
+ */
 export type LiveMapPathValue<TValue, TPath extends LivePath> =
   TPath extends readonly []
   ? TValue
@@ -110,17 +118,26 @@ export type LiveMapPathValue<TValue, TPath extends LivePath> =
   : JsonValue | undefined
   : JsonValue | undefined;
 
+/** Remove `undefined` from write positions while preserving JSON value shape. */
 export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [JsonValue]
   ? Exclude<TValue, undefined>
   : JsonValue;
 
 export type LiveMapPathWriteValue<TValue, TPath extends LivePath> = LiveMapWriteValue<LiveMapPathValue<TValue, TPath>>;
+/**
+ * Value accepted by `set` at one path.
+ *
+ * Arrays and primitives are written as endpoint values. Object paths accept a
+ * shallow object patch shape because runtime `set` preserves unspecified object
+ * siblings. Use `replace` for exact object replacement.
+ */
 export type LiveMapSetValue<TValue> = NonNullable<TValue> extends readonly unknown[]
   ? LiveMapWriteValue<TValue>
   : NonNullable<TValue> extends object
   ? LiveMapObjectSetManyValues<TValue>
   : LiveMapWriteValue<TValue>;
 export type LiveMapPathSetValue<TValue, TPath extends LivePath> = LiveMapSetValue<LiveMapPathValue<TValue, TPath>>;
+/** Object patch shape accepted by `setMany` at a projected path. */
 export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
   LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
@@ -222,8 +239,8 @@ export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TVa
  *
  * Ops are intentionally data-shaped and replayable. Primitive/array/null
  * `set(...)`, shallow child writes from object-valued `set(...)` and
- * `setMany(...)`, and `update(fn)` commits report `set` ops at the projected
- * paths they changed.
+ * `setMany(...)`, array helper rewrites, and `update(fn)` commits report `set`
+ * ops at the projected paths they changed.
  */
 export type LiveMapSetOp = Readonly<{
   kind: "set";
@@ -469,15 +486,22 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   size: () => number;
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
-  /** Set one child key using normal set semantics. */
+  /** Set one child key under this object path, creating that key if needed. */
   setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => LiveMapCommit;
-  /** Shallow object set at the handle path, preserving unspecified siblings. */
+  /** Shallow child-key writes under this object path, preserving unspecified siblings. */
   setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
   clear: () => LiveMapCommit;
   deleteKey: (key: string) => LiveMapCommit;
   deleteMany: (keys: readonly string[]) => LiveMapCommit;
   renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
 }>;
+/**
+ * Array-scoped helper API.
+ *
+ * Helpers read the current array at the handle path, build a complete next
+ * array, then write it through `set` at the array endpoint. That means array
+ * helpers require the array path itself to resolve.
+ */
 export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   is: () => boolean;
   toArray: () => LiveMapArrayShape<TValue>;

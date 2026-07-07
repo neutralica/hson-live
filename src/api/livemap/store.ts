@@ -7,6 +7,10 @@
  * reusable implementation for snapshot, diff, selector, and path subscriptions;
  * the public surface can expose those amenities directly on a LiveMap without
  * requiring callers to treat the map as a separate store object.
+ *
+ * Store snapshots are cloned JSON values. Subscribers cannot mutate LiveMap by
+ * mutating a received snapshot, and path subscribers receive the same cloned
+ * value shape they would get from `map.at(path).snap()`.
  */
 
 import type { JsonValue } from "../../core/types.js";
@@ -51,6 +55,16 @@ function json_values_equal<TValue>(
     : options.equal(next, prev);
 }
 
+/**
+ * Create the subscription surface for one LiveMap.
+ *
+ * - `subscribe` notifies after any root feed event.
+ * - `subscribeDiff` notifies only when the cloned root JSON signature changes.
+ * - `subscribeSel` notifies when the selected value changes by `Object.is` or a
+ *   caller-provided equality function.
+ * - `subscribePath` listens to one LivePath and compares cloned path snapshots
+ *   by JSON signature unless a caller-provided equality function is supplied.
+ */
 export function make_livemap_store_api<TValue = JsonValue | undefined>(map: LiveMap<TValue>): LiveMapStoreApi<TValue> {
   const snapshot = (): TValue => clone_json_value(map.snap());
 

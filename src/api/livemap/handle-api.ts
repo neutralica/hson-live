@@ -1,4 +1,4 @@
-// handle.ts
+// handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapPathHandle, LivePath } from "./livemap.types.js";
@@ -37,9 +37,14 @@ const pathHandleInternals = new WeakMap<LiveMapPathHandle, LiveMapPathHandleInte
  * from setting undefined because undefined is not a JSON value.
  *
  * `linkTo` is one-way and live-only. It does not perform initial sync, loop
- * protection, transforms, or conflict resolution. Delete propagation follows the
- * handle scope: deleting the exact handle path deletes the target handle, while
- * deleting below the handle path writes the updated source handle value.
+ * protection, transforms, or conflict resolution. Writes normally target the
+ * linked handle with the same set/replace flavor observed from the source. If
+ * the target handle points at a missing object property whose parent exists,
+ * link propagation creates that property with `setMany`.
+ *
+ * Delete propagation follows the handle scope: deleting the exact handle path
+ * deletes the target handle, while deleting below the handle path writes the
+ * updated source handle value.
  */
 export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle<TValue> {
   const handlePath = must_live_path(path);
@@ -70,6 +75,13 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
   return handle;
 }
 
+/**
+ * Write a propagated link value to a target handle.
+ *
+ * Normal handle writes remain strict, but link propagation may create a missing
+ * object child when the target parent exists. This keeps `source.at(...).linkTo`
+ * useful for object-field fan-out without weakening public `set` semantics.
+ */
 function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "replace" | "set"): void {
   const internals = pathHandleInternals.get(target);
 
@@ -100,6 +112,7 @@ function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "r
   else internals.core.set(targetPath, value);
 }
 
+/** True for resolved JSON object values that can receive linked child writes. */
 function is_object_value(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -1,14 +1,23 @@
 // handle-array.ts
 
-
-// handle-array.ts
-
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapArrayWriteItem, LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./guard.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set">;
 
+/**
+ * Array-scoped helpers for a projected LiveMap path.
+ *
+ * Read helpers require the projected path to resolve to a JSON array. Mutation
+ * helpers build a complete next array and write it back through core `set`, so
+ * they preserve the public LiveMap rule that the addressed array path must
+ * already resolve.
+ *
+ * Helpers that accept negative indexes resolve them relative to the end of the
+ * current array. Insert positions may point one slot past the end; read,
+ * remove, replace, and move positions must resolve to an existing item.
+ */
 export function make_livemap_array_api<TValue = JsonValue | undefined>(core: LiveMapArrayHandleCore, handlePath: LivePath): LiveMapPathArrayApi<TValue> {
   return {
     is: () => Array.isArray(core.snap(handlePath)),
@@ -86,6 +95,7 @@ export function make_livemap_array_api<TValue = JsonValue | undefined>(core: Liv
   };
 }
 
+/** Validate the current path as an array and return a shallow editable copy. */
 function mustArrayValue(value: JsonValue | undefined, path: LivePath): JsonValue[] {
   if (!Array.isArray(value)) {
     throw path_kind_error(path, "array");
@@ -94,6 +104,7 @@ function mustArrayValue(value: JsonValue | undefined, path: LivePath): JsonValue
   return [...value];
 }
 
+/** Validate a user-supplied value as a JSON array and return a shallow copy. */
 function mustJsonArrayValue(value: unknown, path: LivePath): JsonValue[] {
   const jsonValue = must_json_value(value, path);
   if (!Array.isArray(jsonValue)) {
@@ -214,6 +225,7 @@ function arrayRemoveAll(value: JsonValue | undefined, path: LivePath, item: Json
   return mustArrayValue(value, path).filter((arrayItem) => !jsonValueEquals(arrayItem, item));
 }
 
+/** Structural equality for JSON values used by value-based array helpers. */
 function jsonValueEquals(left: JsonValue, right: JsonValue): boolean {
   if (left === right) return true;
 

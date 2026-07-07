@@ -7,8 +7,9 @@ import type { LiveMapCore, LiveMapPathHandle, LiveMapPathValue, LiveMapProxy, Li
 const PROXY_METHODS = new Set<PropertyKey>(["$_"]);
 
 /**
- * JavaScript runtimes, debuggers, serializers, and Promise machinery
- * commonly probe implicitly. These must not become projected data paths.
+ * JavaScript runtimes, debuggers, serializers, and Promise machinery commonly
+ * probe implicitly. These reads must remain inert: they must not create child
+ * proxies, mutate state, or make the proxy appear Promise-like.
  *
  * Data with these names is still reachable through `proxy.$_.object.getKey(...)`.
  */
@@ -31,7 +32,20 @@ const PROXY_RESERVED_PROPERTIES = new Set<PropertyKey>([
   "__lookupGetter__",
   "__lookupSetter__",
 ]);
-
+/**
+ * Build a path-projection proxy over a LiveMap core.
+ *
+ * Property access extends the projected path only. Mutations intentionally go
+ * through `$_`, so proxy writes keep the same contract as path handles:
+ *
+ * - `proxy.user.$_.set(...)` uses LiveMap `set` semantics.
+ * - `proxy.user.$_.setMany(...)` writes child fields under an object path.
+ * - `proxy.user.$_.replace(...)` destructively replaces the endpoint.
+ * - `proxy.user.$_.delete()` deletes the resolved endpoint.
+ *
+ * Direct assignment and `delete proxy.foo` are rejected so JavaScript property
+ * semantics do not bypass LiveMap validation, schema checks, or commit events.
+ */
 export function make_livemap_proxy<TValue = JsonValue | undefined, TPath extends LivePath = []>(
   core: LiveMapCore<TValue>,
   path: TPath = [] as unknown as TPath,

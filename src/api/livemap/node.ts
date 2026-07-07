@@ -1,12 +1,13 @@
 // livemap-node.ts
 
-import type { HsonNode } from "../../core/types.js";
 import { ELEM_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
-import type { LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapNodeHandle, LivePath } from "./livemap.types.js";
+import { HsonNode } from "../../core/types.js";
 import { resolve_wrapper_node } from "./editor.js";
+import { LivePath, LiveMapNodeHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue } from "./livemap.types.js";
 import { format_live_path } from "./path.js";
 
+/** Remove only child nodes and preserve primitive content. */
 function removeChildNodes(parent: HsonNode): void {
   parent.$_content = parent.$_content.filter((child) => !is_Node(child));
 }
@@ -69,6 +70,7 @@ function removeChildNodeAt(parent: HsonNode, path: LivePath, index: number): voi
   parent.$_content.splice(contentIndex, 1);
 }
 
+/** Replace child nodes while preserving primitive content already on the node. */
 function replaceChildNodes(parent: HsonNode, children: readonly HsonNode[]): void {
   parent.$_content = [...parent.$_content.filter((child) => !is_Node(child)), ...children];
 }
@@ -81,15 +83,19 @@ function replaceChildNodeAt(parent: HsonNode, path: LivePath, index: number, chi
 /**
  * Create a HSON-node-facing handle for one projected LiveMap path.
  *
- * This is the beginning of the lower-level HSON graph toolbox: precise node
- * resolution, inspection, attrs editing, and eventually surgical content
- * mutation. `_meta` remains system-owned and read-only from this surface.
+ * This is the lower-level HSON graph toolbox: precise node resolution,
+ * inspection, attrs editing, and surgical child-node content mutation. `_meta`
+ * remains system-owned and read-only from this surface.
  *
  * Resolution is intentionally ordered: projected JSON wrapper resolution wins
  * first, then direct child-tag lookup, then transparent descent through
  * _hson_elem clusters. That means JSON data with a key like "button" resolves
  * as JSON-backed data, not as an HTML element, and still fails attrs mutation
  * unless its resolved wrapper is actually _hson_elem-backed.
+ *
+ * Node-handle mutations edit the underlying HSON graph directly. They are for
+ * element/graph work, not JSON-state commits: they do not use LiveMap `set`,
+ * `setMany`, `replace`, `delete`, schema validation, or commit events.
  */
 export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMapNodeHandle {
   const handlePath = [...path];

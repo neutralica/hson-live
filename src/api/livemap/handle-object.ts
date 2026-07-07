@@ -5,13 +5,21 @@ import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
 import { format_live_path, must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
+
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
 
 /**
  * Object-scoped helpers for a projected LiveMap path.
  *
- * `setKey` uses normal set semantics for one child key. `setMany` performs a
- * shallow sibling-preserving set by changing only the provided child keys.
+ * Read helpers require the projected path to resolve to a JSON object. Mutation
+ * helpers preserve LiveMap commit semantics:
+ *
+ * - `setKey` and `setMany` write child keys through core `setMany`, so they can
+ *   create missing keys under an existing object.
+ * - `clear` and `renameKey` replace the object endpoint because they change the
+ *   object as a whole.
+ * - `deleteKey`, `deleteMany`, and `renameKey` treat missing source keys as
+ *   no-ops rather than strict path deletes.
  */
 export function make_livemap_object_api<TValue = JsonValue | undefined>(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi<TValue> {
   return {
@@ -71,6 +79,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
   };
 }
 
+/** Commit shape used when an object helper intentionally no-ops. */
 function emptyCommit() {
   return Object.freeze({
     changed: false,
@@ -90,6 +99,7 @@ function mustObjectValue(value: JsonValue | undefined, path: LivePath): Readonly
   return value;
 }
 
+/** Normalize and validate user-supplied object key lists. */
 function mustObjectKeyList(value: unknown, path: LivePath): readonly string[] {
   if (!Array.isArray(value)) {
     throw new Error(`LiveMap object keys are not an array at ${JSON.stringify(path)}`);
@@ -121,6 +131,7 @@ function objectOmit(value: JsonValue | undefined, path: LivePath, keys: readonly
   return next;
 }
 
+/** Build a whole-object replacement for rename semantics. */
 function objectRenameKey(value: JsonValue | undefined, path: LivePath, fromKey: string, toKey: string): JsonValue {
   const objectValue = mustObjectValue(value, path);
   if (!(fromKey in objectValue)) {

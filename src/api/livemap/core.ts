@@ -1,4 +1,4 @@
-// livemap-core.ts
+// core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx } from "./livemap.types.js";
@@ -28,9 +28,21 @@ type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
  * generation, feeds, links, batching, and later transport-compatible behavior.
  *
  * `at(path)` is the projected data handle. `node(path)` is the lower-level HSON
- * graph handle used to build and test the machinery underneath later public data
- * APIs. Keep projected JSON behavior in Core/editor/handles, and keep physical
- * node manipulation isolated to the node handle.
+ * graph handle for physical node inspection and mutation. Keep projected JSON
+ * behavior in Core/editor/handles, and keep physical node manipulation isolated
+ * to the node handle.
+ *
+ * Mutation contract:
+ * - `set(path, value)` requires the addressed path to resolve. Plain object
+ *   values expand into shallow child writes when the current endpoint is an
+ *   object, so unspecified siblings are preserved.
+ * - `setMany(path, values)` requires `path` to resolve to an object and writes
+ *   the supplied child keys under that object.
+ * - `replace(path?, value)` destructively replaces the root or endpoint.
+ * - `delete(path)` is strict and requires the addressed path to resolve.
+ *
+ * Schema validation previews the full candidate root before editor mutation, so
+ * schema/editor failures leave the live graph unchanged.
  */
 export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undefined> {
   const feedHub = make_livemap_feed_hub();
@@ -188,6 +200,13 @@ function feed_core_path(
   return feedHub.add(path, listener);
 }
 
+/**
+ * Build the transaction facade used by `core.batch(...)`.
+ *
+ * The transaction keeps a cloned JSON candidate so each later operation sees
+ * earlier staged writes for path resolution and object expansion. The live root
+ * is not mutated until the collected write ops pass schema and editor preflight.
+ */
 function make_batch_tx(
   root: HsonNode,
   writeOps: LiveMapCoreWriteOp[],
@@ -239,6 +258,7 @@ function must_batch_open(isOpen: () => boolean): void {
   throw new Error("LiveMap batch transaction is already closed");
 }
 
+/** Normalize overloaded root/endpoint replace calls into one write intent. */
 function replace_write_op_from_args(
   argCount: number,
   pathOrValue: unknown,
@@ -262,6 +282,7 @@ function replace_write_op_from_args(
 }
 
 
+/** Validate the current root before attaching a schema-bound map view. */
 function must_core_schema_root(schema: LiveMapSchema, root: HsonNode): void {
   must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
 }
@@ -299,16 +320,20 @@ function delete_json_path(root: JsonValue, path: LivePath): void {
   delete cursor[leaf];
 }
 
-function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath): void {
+function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath, headlineMode: "path" | "issue" = "path"): void {
   if (validation.ok) return;
 
-  throw new Error(format_schema_validation_error(validation, path));
+  throw new Error(format_schema_validation_error(validation, headlineMode === "issue" ? validation_headline_path(validation, path) : path));
 }
 
 function format_schema_validation_error(validation: LiveMapSchemaValidation, path: LivePath): string {
   const issueLines = validation.issues.map((issue) => `- ${issue.message}`);
 
   return [`LiveMap schema rejected value at ${JSON.stringify(path)}:`, ...issueLines].join("\n");
+}
+
+function validation_headline_path(validation: LiveMapSchemaValidation, fallbackPath: LivePath): LivePath {
+  return validation.issues[0]?.path ?? fallbackPath;
 }
 
 function clone_json_value(value: JsonValue | undefined): JsonValue {
@@ -376,6 +401,12 @@ function plain_object_from_set_many_values(values: LiveMapSetManyValues): JsonVa
 }
 
 
+/**
+ * Run the full mutation pipeline for normalized write intents.
+ *
+ * The order is deliberate: schema preflight, editor preflight on a cloned HSON
+ * root, live editor application, then feed emission from the committed graph.
+ */
 function commit_ops(
   root: HsonNode,
   schema: LiveMapSchema | undefined,
@@ -394,6 +425,13 @@ function commit_ops(
   return commit;
 }
 
+/**
+ * Normalize public `set` into internal write intents.
+ *
+ * Plain object values at an existing object endpoint become constructive child
+ * writes. Other JSON values, arrays, null, root values, and non-object current
+ * endpoints stay as direct endpoint `set` writes.
+ */
 function write_ops_from_set(path: LivePath, value: unknown, currentValue: JsonValue | undefined): readonly LiveMapCoreWriteOp[] {
   const jsonValue = must_json_value(value, path);
 
@@ -420,6 +458,7 @@ function write_ops_from_set(path: LivePath, value: unknown, currentValue: JsonVa
   ];
 }
 
+/** Normalize public `setMany` into child-path set writes. */
 function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues, currentValue: JsonValue | undefined): readonly LiveMapWriteOp[] {
   must_resolved_object_path("setMany", path, currentValue);
 
@@ -541,9 +580,27 @@ function must_core_schema_write_ops(
   /** Preview all writes against projected JSON, then validate the whole candidate root. */
   const candidate = apply_json_write_ops(clone_json_value(snap_live_path(root, [])), writeOps);
 
-  must_schema_validation(schema.validateRoot(candidate), write_op_path(writeOps[0]));
+  must_schema_validation(
+    schema.validateRoot(candidate),
+    write_op_path(writeOps[0]),
+    schema_headline_mode_for_write_ops(writeOps)
+  );
 }
 
+/**
+ * Choose the schema error headline path.
+ *
+ * Single endpoint operations report the operation path. Multi-op object writes
+ * report the first schema issue path so `setMany` and constructive object `set`
+ * point at the field that actually failed.
+ */
+function schema_headline_mode_for_write_ops(writeOps: readonly LiveMapCoreWriteOp[]): "path" | "issue" {
+  if (writeOps.some((op) => op.kind === "constructive-set")) return "issue";
+  if (writeOps.length > 1) return "issue";
+  return "path";
+}
+
+/** Apply staged write intents to a cloned JSON root for schema preview. */
 function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWriteOp[]): JsonValue {
   let candidate = root;
 
@@ -593,16 +650,19 @@ function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSet
   }
 }
 
+/** True for non-array JSON objects that can receive shallow child writes. */
 function is_json_object_value(value: JsonValue | undefined): value is LiveMapSetManyValues {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Enforce strict resolved-path semantics for endpoint operations. */
 function must_resolved_path(action: "delete" | "replace" | "set", path: LivePath, value: JsonValue | undefined): void {
   if (path.length === 0 || value !== undefined) return;
 
   throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
 }
 
+/** Enforce `setMany`'s existing-object endpoint requirement. */
 function must_resolved_object_path(action: "setMany", path: LivePath, value: JsonValue | undefined): void {
   if (value === undefined) {
     throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);

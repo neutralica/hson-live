@@ -38,11 +38,21 @@ export type LiveMapSchemaRule = Readonly<{
   literals?: readonly JsonValue[];
 }>;
 
+/**
+ * Runtime schema for LiveMap values.
+ *
+ * LiveMap validates the projected candidate root before applying a commit, so a
+ * failed schema check must leave the current root unchanged. Error headlines use
+ * the operation path for single endpoint operations and the first schema issue
+ * path for multi-op object writes such as `setMany`.
+ */
 export type LiveMapSchema<TValue = unknown> = Readonly<{
   root: LiveMapSchemaNode;
   rules: readonly LiveMapSchemaRule[];
   match: (path: LivePath) => LiveMapSchemaRule | undefined;
+  /** Validate a complete candidate root. This is the normal LiveMap commit path. */
   validateRoot: (value: JsonValue | undefined) => LiveMapSchemaValidation;
+  /** Validate one value against the schema node at `path`. */
   validateValue: (path: LivePath, value: JsonValue | undefined) => LiveMapSchemaValidation;
 }> & Readonly<{ readonly __value?: TValue }>;
 
@@ -105,6 +115,15 @@ type DeepPartialSchemaValue<TValue> =
 
 type Simplify<TValue> = { [Key in keyof TValue]: TValue[Key] } & {};
 
+/**
+ * Builder surface used by `define_livemap_schema`.
+ *
+ * `object(...)` validates declared keys while allowing extra keys.
+ * `exact(...)` validates declared keys and rejects extra keys.
+ * `partial(...)` makes the top-level declared keys optional.
+ * `deepPartial(...)` recursively makes declared object/array/tuple/record
+ * children optional.
+ */
 export type LiveMapSchemaBuilder = Readonly<{
   unknown: LiveMapSchemaToken<JsonValue>;
   string: LiveMapSchemaToken<string>;
@@ -196,6 +215,12 @@ const LIVEMAP_SCHEMA_RUNTIME = Object.freeze({
 
 export const LIVEMAP_SCHEMA = LIVEMAP_SCHEMA_RUNTIME as unknown as LiveMapSchemaBuilder;
 
+/**
+ * Define a typed LiveMap schema from the builder surface.
+ *
+ * The returned schema carries both runtime validation rules and an inferred
+ * TypeScript value type used by schema-bound LiveMap APIs.
+ */
 export function define_livemap_schema<const TInput>(makeShape: (schema: LiveMapSchemaBuilder) => TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
   return make_livemap_schema(makeShape(LIVEMAP_SCHEMA));
 }
