@@ -10,122 +10,15 @@
 // controls back to the LiveMap paths they represent.
 
 import type { JsonValue } from "../../core/types.js";
+import { bind_livetree_input_checked, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./bridge-bindings.js";
 import type { LiveMap, LivePath } from "./livemap.types.js";
+import { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapSchemaControlSpec, BridgePathParts, LiveMapSchemaControlNode, LiveAttrBridgeTarget } from "./bridge.types.js";
 
-type BridgePathParts = readonly string[];
-
-// Bridge result contracts
-export type LiveMapBridgeBinding = Readonly<{
-  dispose: () => void;
-}>;
-
-export type LiveMapBridgeBindingGroup = Readonly<{
-  dispose: () => void;
-  bindings: readonly LiveMapBridgeBinding[];
-}>;
-
-// Schema-control contracts
-export type LiveMapSchemaControlKind = "string" | "number" | "boolean" | "enum";
-
-export type LiveMapSchemaControlNode = Readonly<{
-  kind?: LiveMapSchemaControlKind;
-  label?: string;
-  description?: string;
-  min?: number;
-  max?: number;
-  step?: number;
-  choices?: readonly string[];
-}>;
-
-export type LiveMapSchemaControlSpec = Readonly<Record<string, LiveMapSchemaControlNode>>;
-
-// LiveTree target contracts
-
-export type LiveTextBridgeTarget = Readonly<{
-  text: Readonly<{
-    get: () => string;
-    set: (value: string) => unknown;
-    overwrite: (value: string) => unknown;
-  }>;
-}>;
-
-export type LiveContentBridgeTarget = Readonly<{
-  content: Readonly<{
-    markup: Readonly<{
-      innerHTML: string;
-    }>;
-  }>;
-}>;
-
-export type LiveCreateDivBridgeTarget = Readonly<{
-  create: Readonly<{
-    div: () => LiveSnapViewBridgeTarget;
-  }>;
-}>;
-
-export type LiveSnapViewBridgeTarget = LiveContentBridgeTarget &
-  LiveCreateDivBridgeTarget &
-  LiveTextBridgeTarget &
-  LiveAttrBridgeTarget;
-
-export type LiveAttrBridgeTarget = Readonly<{
-  attr: Readonly<{
-    get: (name: string) => string | undefined;
-    set: (name: string, value: string) => unknown;
-    drop: (name: string) => unknown;
-  }>;
-}>;
-
-export type LiveInputListenerResult = Readonly<{
-  off: () => void;
-  count: number;
-  ok: boolean;
-}>;
-
-export type LiveInputBridgeTarget = Readonly<{
-  form: Readonly<{
-    getValue: () => JsonValue | undefined;
-    setValue: (value: JsonValue, options?: { silent?: boolean }) => unknown;
-    getChecked?: () => boolean | undefined;
-    setChecked?: (value: boolean, options?: { silent?: boolean }) => unknown;
-  }>;
-  listen: Readonly<{
-    onInput: (listener: () => void) => LiveInputListenerResult;
-  }>;
-}>;
-
-export type LiveCreateControlBridgeTarget = Readonly<{
-  create: Readonly<{
-    div: () => LiveControlViewBridgeTarget;
-    tag: (tag: string) => LiveControlViewBridgeTarget;
-  }>;
-}>;
-
-export type LiveControlViewBridgeTarget = LiveContentBridgeTarget &
-  LiveCreateControlBridgeTarget &
-  LiveTextBridgeTarget &
-  LiveAttrBridgeTarget &
-  LiveInputBridgeTarget;
-
-// Preserve the current LiveMap primitive kind when possible. Form APIs surface
-// user input as display values, while LiveMap remains the state authority.
-function coerce_input_value(value: JsonValue | undefined, current: JsonValue | undefined): JsonValue {
-  if (typeof current === "number") {
-    const next = Number(value);
-    return Number.isFinite(next) ? next : value_to_text(value);
-  }
-
-  if (typeof current === "boolean") return value === true || value === "true";
-  if (current === null && value === "null") return null;
-  return value ?? "";
-}
-
-function value_to_text(value: JsonValue | undefined): string {
-  if (value === undefined || value === null) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
-}
+// PROPOSED FILE GROUP: bridge.ts
+//
+// Keep the public rendering entry points here. After extraction, this file can
+// import private renderer helpers from bridge.snap.ts, bridge.controls.ts, and
+// bridge.schema-controls.ts, then re-export the public types from bridge.types.ts.
 
 // Static rendering entry points
 
@@ -180,6 +73,12 @@ export function render_livemap_schema_controls_snap(
   };
 }
 
+// PROPOSED FILE GROUP: bridge.path.ts
+//
+// Shared path helpers used by snap views, generated controls, schema controls,
+// and schema lookup. Keep these centralized so dotted debug attrs and internal
+// LivePath conversion stay consistent.
+
 function snap_path_parts(path: LivePath): BridgePathParts {
   return path.map((part) => String(part));
 }
@@ -187,6 +86,15 @@ function snap_path_parts(path: LivePath): BridgePathParts {
 function bridge_path_attr(path: readonly string[]): string {
   return path.join(".");
 }
+
+function path_to_live_path(path: BridgePathParts): LivePath {
+  return path;
+}
+
+// PROPOSED FILE GROUP: bridge.snap.ts
+//
+// Static read-only snap rendering. Depends on bridge.types.ts, bridge.path.ts,
+// and bridge.value.ts.
 
 // Snap-view internals
 function render_snap_value(tree: LiveSnapViewBridgeTarget, value: JsonValue | undefined, path: readonly string[]): void {
@@ -241,6 +149,11 @@ function render_snap_array(tree: LiveSnapViewBridgeTarget, value: readonly JsonV
     render_snap_value(child, item, [...path, String(index)]);
   });
 }
+
+// PROPOSED FILE GROUP: bridge.controls.ts
+//
+// Schema-blind generated controls. Depends on bridge.types.ts, bridge.path.ts,
+// bridge.value.ts, and bridge.bindings.ts.
 
 // Generated-control internals
 function render_control_value(
@@ -309,6 +222,12 @@ function render_control_array(
     render_control_value(map, child, item, [...path, String(index)], bindings);
   });
 }
+
+// PROPOSED FILE GROUP: bridge.schema-controls.ts
+//
+// Schema-aware generated controls. Depends on bridge.types.ts, bridge.path.ts,
+// bridge.value.ts, bridge.controls.ts concepts, and bridge.bindings.ts. The
+// current schema shape is deliberately small and UI-facing.
 
 // Schema-generated-control internals
 function render_schema_control_value(
@@ -489,9 +408,11 @@ function render_control_primitive(
   bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
 }
 
-function path_to_live_path(path: BridgePathParts): LivePath {
-  return path;
-}
+
+// PROPOSED FILE GROUP: bridge.value.ts
+//
+// Shared primitive/value helpers used by renderers and bindings. These stay
+// separate from LiveMap mutation semantics.
 
 // Shared value helpers
 function is_json_object(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
@@ -504,162 +425,4 @@ function primitive_snap_kind(value: JsonValue | undefined): string {
   return typeof value;
 }
 
-// Subscribed primitive bindings
-//
-// Bindings sync an initial value, subscribe to later LiveMap changes, and return
-// explicit disposers. Form bindings also write user edits back into LiveMap.
 
-export function bind_livetree_text(map: LiveMap, path: LivePath, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
-  const sync = (value: JsonValue | undefined) => {
-    tree.text.set(value_to_text(value));
-  };
-
-  sync(map.snap(path));
-  const dispose = map.sub.path(path, sync);
-
-  return { dispose };
-}
-
-export function bind_livetree_attr(
-  map: LiveMap,
-  path: LivePath,
-  tree: LiveAttrBridgeTarget,
-  name: string,
-): LiveMapBridgeBinding {
-  const sync = (value: JsonValue | undefined) => {
-    if (value === false || value === null || value === undefined) {
-      tree.attr.drop(name);
-      return;
-    }
-
-    tree.attr.set(name, value_to_text(value));
-  };
-
-  sync(map.snap(path));
-  const dispose = map.sub.path(path, sync);
-
-  return { dispose };
-}
-
-export function bind_livetree_input_value(
-  tree: LiveInputBridgeTarget,
-  map: LiveMap,
-  path: LivePath,
-): LiveMapBridgeBinding {
-  let isSyncingFromMap = false;
-
-  const syncFromMap = (value: JsonValue | undefined) => {
-    isSyncingFromMap = true;
-    tree.form.setValue(value_to_text(value), { silent: true });
-    isSyncingFromMap = false;
-  };
-
-  const syncToMap = () => {
-    if (isSyncingFromMap) return;
-    map.set(path, coerce_input_value(tree.form.getValue(), map.snap(path)));
-  };
-
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
-
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
-}
-
-export function bind_livetree_input_checked(
-  tree: LiveInputBridgeTarget,
-  map: LiveMap,
-  path: LivePath,
-): LiveMapBridgeBinding {
-  if (tree.form.getChecked === undefined || tree.form.setChecked === undefined) {
-    return bind_livetree_input_value(tree, map, path);
-  }
-
-  let isSyncingFromMap = false;
-
-  const syncFromMap = (value: JsonValue | undefined) => {
-    isSyncingFromMap = true;
-    tree.form.setChecked?.(value === true, { silent: true });
-    isSyncingFromMap = false;
-  };
-
-  const syncToMap = () => {
-    if (isSyncingFromMap) return;
-    map.set(path, tree.form.getChecked?.() === true);
-  };
-
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
-
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
-}
-
-export function bind_livetree_schema_number_input(
-  tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
-  map: LiveMap,
-  path: LivePath,
-  schema: LiveMapSchemaControlNode | undefined,
-): LiveMapBridgeBinding {
-  let isSyncingFromMap = false;
-
-  const markValid = () => {
-    tree.attr.set("data-livemap-control-valid", "true");
-    tree.attr.drop("data-livemap-control-error");
-  };
-
-  const markInvalid = (message: string) => {
-    tree.attr.set("data-livemap-control-valid", "false");
-    tree.attr.set("data-livemap-control-error", message);
-  };
-
-  const syncFromMap = (value: JsonValue | undefined) => {
-    isSyncingFromMap = true;
-    tree.form.setValue(value_to_text(value), { silent: true });
-    isSyncingFromMap = false;
-  };
-
-  const syncToMap = () => {
-    if (isSyncingFromMap) return;
-
-    const next = Number(tree.form.getValue());
-    if (!Number.isFinite(next)) {
-      markInvalid("Expected finite number");
-      return;
-    }
-
-    if (schema?.min !== undefined && next < schema.min) {
-      markInvalid(`Expected number >= ${schema.min}`);
-      return;
-    }
-
-    if (schema?.max !== undefined && next > schema.max) {
-      markInvalid(`Expected number <= ${schema.max}`);
-      return;
-    }
-
-    markValid();
-    map.set(path, next);
-  };
-
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
-  const inputListener = tree.listen.onInput(syncToMap);
-
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
-}
