@@ -102,14 +102,19 @@ export function parse_html(input: string | Element): HsonNode {
         const safe = escape_text(bools);
         const ents = expand_entities(safe);
 
-        // CONFIRM: keep these if required for XML compliance on your edge.
-        // If not strictly required, gate them later too.
+        // Normalize the XML-hostile parts of HTML before the first XML parse.
+        // These are safe structural preflights, not speculative repairs:
+        // - quote unquoted attribute values: <div data-x=a:b> → <div data-x="a:b">
+        // - mangle illegal XML attribute names after values are quoted
+        // - expand void HTML tags: <input ...> → <input ... />
         const svgSafe = namespace_svg(ents);
-        const mangled = mangle_illegal_attrs(svgSafe);
-        // CHANGED: make quoted attribute values XML-safe before the first parse.
+        const quoted = quote_unquoted_attrs(svgSafe);
+        const mangled = mangle_illegal_attrs(quoted);
+        const voidSafe = expand_void_tags(mangled);
+        // Make quoted attribute values XML-safe before the first parse.
         // Firefox rejects bare `&` in quoted attrs such as url('a&b.png'), even
         // when Chrome's XML parser appears to tolerate it.
-        let xmlSrc = esc_attrs_quoted_angles(mangled);
+        let xmlSrc = esc_attrs_quoted_angles(voidSafe);
         const parser = new DOMParser();
         let parsed = parser.parseFromString(xmlSrc, "application/xml");
         let err = parsed.querySelector("parsererror");
@@ -220,7 +225,7 @@ export function parse_html(input: string | Element): HsonNode {
             const msg = errText();
 
             // 6) Multiple top-level nodes ("extra content"): wrap a root and retry.
-            if (/extra content|junk after document element|no root element found/i.test(msg)) {
+            if (/extra content|junk after document element|no root element found|Unexpected token:\s*</i.test(msg)) {
                 // keep a local candidate so we can apply *post-wrap* repairs to the wrapped source.
                 let wrapped = `<${ROOT_TAG}>\n${xmlSrc}\n</${ROOT_TAG}>`;
 

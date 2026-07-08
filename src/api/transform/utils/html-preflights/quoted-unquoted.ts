@@ -11,8 +11,8 @@
  *   processing instructions (`<?...?>`) are passed through unchanged.
  * - Quoted attribute values (`name="..."` / `name='...'`) are preserved verbatim.
  * - Unquoted values (`name=value`) become `name="value"`.
- * - Empty-before-terminator forms (`name=` followed by whitespace or `>`) become
- *   `name=""`.
+ * - Dangling assignment forms (`name=` followed by `>`, `/>`, or end-of-tag)
+ *   throw instead of being normalized into boolean or empty attributes.
  * - Boolean attributes with no `=` (e.g. `disabled`) are left as-is (they are
  *   handled separately by flag/boolean expansion if desired).
  *
@@ -87,6 +87,10 @@ export function quote_unquoted_attrs(src: string): string {
       while (t < tag.length && /\s/.test(tag[t])) { buf += tag[t++]; }
 
       const q = tag[t];
+      if (q === ">" || (q === "/" && tag[t + 1] === ">") || q === undefined) {
+        throw new Error(`Malformed attribute assignment: ${tag.slice(nameStart, t)} has no value`);
+      }
+
       if (q === '"' || q === "'") {
         // Quoted: copy verbatim until matching quote
         const qch = q; buf += qch; t++;
@@ -97,6 +101,9 @@ export function quote_unquoted_attrs(src: string): string {
         const vStart = t;
         while (t < tag.length && !/\s|>/.test(tag[t])) t++;
         const raw = tag.slice(vStart, t);
+        if (raw.length === 0) {
+          throw new Error(`Malformed attribute assignment: ${tag.slice(nameStart, t)} has no value`);
+        }
         // Important: DO NOT escape '&' here — ampSafe will handle it once later.
         // Also don't touch quotes here; an unquoted run cannot legally contain `"`.
         buf += `"${raw}"`;

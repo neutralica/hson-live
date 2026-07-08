@@ -60,8 +60,9 @@ export function expand_void_tags(src: string): string {
       // not a void tag → leave
       if (!VOID.has(tag)) return m;
 
-      // already self-closed → leave
-      if (/\s\/\s*$/.test(rest)) return m;
+      // already self-closed → leave. The attribute tail for `<br/>` is `/`,
+      // while `<br />` is ` /`, so do not require whitespace before the slash.
+      if (/\/\s*$/.test(rest)) return m;
 
       // if it already has an explicit closer somewhere, do not force self-close
       // (rare for true HTML voids, but keeps this transform conservative)
