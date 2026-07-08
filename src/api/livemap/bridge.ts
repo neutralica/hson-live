@@ -10,7 +10,7 @@
 // controls back to the LiveMap paths they represent.
 
 import type { JsonValue } from "../../core/types.js";
-import { bind_livetree_input_checked, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./bridge-bindings.js";
+import { bind_livetree_input_checked, bind_livetree_schema_enum_input, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./bridge-bindings.js";
 import type { LiveMap, LivePath } from "./livemap.types.js";
 import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapSchemaControlSpec, BridgePathParts, LiveMapSchemaControlNode, LiveAttrBridgeTarget } from "./bridge.types.js";
 
@@ -340,7 +340,7 @@ function render_schema_enum_control(
   }
 
   select.form.setValue(value_to_text(value), { silent: true });
-  bindings.push(bind_livetree_input_value(select, map, path_to_live_path(path)));
+  bindings.push(bind_livetree_schema_enum_input(select, map, path_to_live_path(path), schema));
 }
 
 function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
@@ -424,5 +424,3 @@ function primitive_snap_kind(value: JsonValue | undefined): string {
   if (value === null) return "null";
   return typeof value;
 }
-
-

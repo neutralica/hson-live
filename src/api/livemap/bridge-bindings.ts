@@ -186,10 +186,61 @@ export function bind_livetree_schema_number_input(
   };
 }
 
+export function bind_livetree_schema_enum_input(
+  tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
+  map: LiveMap,
+  path: LivePath,
+  schema: LiveMapSchemaControlNode | undefined
+): LiveMapBridgeBinding {
+  let isSyncingFromMap = false;
+
+  const markValid = () => {
+    tree.attr.set("data-livemap-control-valid", "true");
+    tree.attr.drop("data-livemap-control-error");
+  };
+
+  const markInvalid = (message: string) => {
+    tree.attr.set("data-livemap-control-valid", "false");
+    tree.attr.set("data-livemap-control-error", message);
+  };
+
+  const choices = schema?.choices ?? [];
+  const expected = choices.join(", ");
+
+  const syncFromMap = (value: JsonValue | undefined) => {
+    isSyncingFromMap = true;
+    tree.form.setValue(value_to_text(value), { silent: true });
+    isSyncingFromMap = false;
+  };
+
+  const syncToMap = () => {
+    if (isSyncingFromMap) return;
+
+    const next = value_to_text(tree.form.getValue());
+    if (!choices.includes(next)) {
+      markInvalid(`Expected one of: ${expected}`);
+      return;
+    }
+
+    markValid();
+    map.set(path, next);
+  };
+
+  syncFromMap(map.snap(path));
+  const disposePath = map.sub.path(path, syncFromMap);
+  const inputListener = tree.listen.onInput(syncToMap);
+
+  return {
+    dispose: () => {
+      inputListener.off();
+      disposePath();
+    },
+  };
+}
+
 export function value_to_text(value: JsonValue | undefined): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   return JSON.stringify(value);
 }
-
