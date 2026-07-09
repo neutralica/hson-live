@@ -42,7 +42,9 @@ function values_equal<TValue>(
   prev: TValue,
   options: LiveMapStoreSubscribeOptions<TValue> | undefined,
 ): boolean {
-  return options?.equal === undefined ? Object.is(next, prev) : options.equal(next, prev);
+  return options?.equal === undefined
+    ? Object.is(next, prev)
+    : options.equal(clone_json_value(next), clone_json_value(prev));
 }
 
 function json_values_equal<TValue>(
@@ -52,7 +54,7 @@ function json_values_equal<TValue>(
 ): boolean {
   return options?.equal === undefined
     ? json_signature(next) === json_signature(prev)
-    : options.equal(next, prev);
+    : options.equal(clone_json_value(next), clone_json_value(prev));
 }
 
 /**
@@ -84,9 +86,9 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(map: Live
       if (nextSignature === prevSignature) return;
 
       const old = prev;
-      prev = next;
+      prev = clone_json_value(next);
       prevSignature = nextSignature;
-      listener(next, old);
+      listener(clone_json_value(next), clone_json_value(old));
     });
   };
 
@@ -95,7 +97,7 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(map: Live
     listener: LiveMapStoreSelectedListener<TSelected, TValue>,
     options?: LiveMapStoreSubscribeOptions<TSelected>,
   ): LiveMapDisposer => {
-    let prev = selector(snapshot());
+    let prev = clone_json_value(selector(snapshot()));
 
     return map.feed([], () => {
       const state = snapshot();
@@ -103,8 +105,8 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(map: Live
       if (values_equal(next, prev, options)) return;
 
       const old = prev;
-      prev = next;
-      listener(next, old, state);
+      prev = clone_json_value(next);
+      listener(clone_json_value(next), clone_json_value(old), state);
     });
   };
 
@@ -121,8 +123,8 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(map: Live
       if (json_values_equal(next, prev, options)) return;
 
       const old = prev;
-      prev = next;
-      listener(next, old, event);
+      prev = clone_json_value(next);
+      listener(clone_json_value(next), clone_json_value(old), event);
     });
   };
 
