@@ -27,7 +27,7 @@ import type {
   LiveMapStoreSelectedListener,
   LiveMapStoreSubscribeOptions,
   LivePath,
-} from "./livemap.types.js";
+} from "../../types/livemap.types.js";
 
 function clone_json_value<TValue>(value: TValue): TValue {
   return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;

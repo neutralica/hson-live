@@ -1,6 +1,6 @@
 // livemap-path.ts
 
-import type { LivePath } from "./livemap.types.js";
+import type { LivePath } from "../../types/livemap.types.js";
 
 /**
  * Format a LivePath for error messages and debug output.

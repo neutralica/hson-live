@@ -1,7 +1,7 @@
 // handle-array.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapArrayWriteItem, LiveMapCore, LiveMapPathArrayApi, LivePath } from "./livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapArrayWriteItem, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./guard.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set">;

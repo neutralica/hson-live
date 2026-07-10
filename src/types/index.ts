@@ -7,5 +7,5 @@ export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";
 export type { SvgLiveTree } from "./svg.types.js";
-export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi } from "../api/livemap/livemap.types.js";
+export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi } from "./livemap.types.js";
 export type { LiveMapSchema, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind,InferLiveMapSchemaToken,LiveMapSchemaValue, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken, InferLiveMapSchema } from "../api/livemap/schema.js";

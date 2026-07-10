@@ -11,6 +11,14 @@ export { format_live_path, path_is_prefix } from "./api/livemap/path.js";
 export { link_livemap } from "./api/livemap/link.js";
 export { make_livemap_feed_hub, paths_overlap } from "./api/livemap/feed.js";
 export { make_livemap_proxy } from "./api/livemap/proxy.js";
+export {
+    bind_path,
+    bind_paths,
+    derive_from_paths,
+    make_microtask_scheduler,
+    stop_all,
+    subscribe_paths,
+} from "./api/livemap/livemap-helpers.js";
 export type { LiveMapPathHandle, LiveMapProxy,LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMap} from "./types/index.js";
 export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/schema.js";
 export  type { InferLiveMapSchema,LiveMapSchema,InferLiveMapSchemaToken,LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/schema.js";

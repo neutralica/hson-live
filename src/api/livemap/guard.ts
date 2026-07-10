@@ -1,7 +1,7 @@
 // guard.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "./livemap.types.js";
+import type { LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "../../types/livemap.types.js";
 
 export type LiveMapPathKind = "array" | "object";
 

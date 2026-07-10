@@ -1,7 +1,7 @@
 // proxy.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapPathHandle, LiveMapPathValue, LiveMapProxy, LivePath, LivePathPart } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapPathHandle, LiveMapPathValue, LiveMapProxy, LivePath, LivePathPart } from "../../types/livemap.types.js";
 
 
 const PROXY_METHODS = new Set<PropertyKey>(["$_"]);

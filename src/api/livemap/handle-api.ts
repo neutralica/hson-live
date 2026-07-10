@@ -1,7 +1,7 @@
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapPathHandle, LivePath } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
 import { must_json_value, must_live_path, must_set_many_values } from "./guard.js";
 import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";

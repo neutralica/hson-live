@@ -1,7 +1,7 @@
 // livemap-link.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapDisposer, LiveMapFeedEvent, LiveMapLinkOptions, LivePath } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapDisposer, LiveMapFeedEvent, LiveMapLinkOptions, LivePath } from "../../types/livemap.types.js";
 import { path_is_prefix } from "./path.js";
 
 /**

@@ -1,7 +1,7 @@
 // schema.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LivePath } from "./livemap.types.js";
+import type { LivePath } from "../../types/livemap.types.js";
 
 export type LiveMapSchemaKind =
   | "unknown"

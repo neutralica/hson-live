@@ -2,7 +2,7 @@
 
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "./livemap.types.js";
+import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "../../types/livemap.types.js";
 import { format_live_path, must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./guard.js";
 
 

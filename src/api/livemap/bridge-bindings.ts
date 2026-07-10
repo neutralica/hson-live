@@ -6,7 +6,7 @@ import type {
   LiveMapSchemaControlNode,
   LiveTextBridgeTarget
 } from "./bridge.types.js";
-import type { LiveMap, LivePath } from "./livemap.types.js";
+import type { LiveMap, LivePath } from "../../types/livemap.types.js";
 
 /* ***DO NOT IMPORT FROM bridge.ts - keep deps one-way*** */
 

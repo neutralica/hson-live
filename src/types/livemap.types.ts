@@ -1,7 +1,7 @@
 // livemap.types.ts
 
-import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapSchema, LiveMapSchemaValue } from "./schema.js";
+import type { HsonNode, JsonValue } from "../core/types.js";
+import type { LiveMapSchema, LiveMapSchemaValue } from "../api/livemap/schema.js";
 
 
 /**
