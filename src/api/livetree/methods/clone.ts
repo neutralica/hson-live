@@ -21,9 +21,15 @@ function clone_branch_inner(
   // shallow copy of the node object
   const dst: HsonNode = { ...src };
 
-  // deep clone containers 
+  // deep clone containers
   if (src.$_attrs) dst.$_attrs = { ...src.$_attrs };
-  if (src.$_meta)  dst.$_meta  = { ...src.$_meta };
+  if (src.$_meta) {
+    dst.$_meta = { ...src.$_meta };
+
+    // CHANGED: identity is not structural clone data. Remove the source quid
+    // before ensure_quid() runs so the clone is always reminted.
+    delete dst.$_meta[_DATA_QUID];
+  }
 
   // deep clone content
   if (src.$_content) {
@@ -35,15 +41,9 @@ function clone_branch_inner(
     });
   }
 
-  // mint a new quid for dst, and record mapping from src's quid (if any)
+  // Mint a new quid for dst after the copied source identity has been removed.
   const oldQ = get_quid(src);
   const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true });
-
-  // If you’re cloning, you never want the old quid hanging around in meta by accident.
-  // ensure_quid() should have overwritten it when persist=true, but when persist=false, scrub it.
-  if ((opts.persistQuidMeta ?? true) === false && dst.$_meta && _DATA_QUID in dst.$_meta) {
-    delete dst.$_meta[_DATA_QUID];
-  }
 
   if (oldQ) quidMap.set(oldQ, newQ);
 
