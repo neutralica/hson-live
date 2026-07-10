@@ -14,7 +14,7 @@ import type {
   LiveHostId,
   LiveHostSeq,
   LiveHostServerMessage,
-} from "./livehost.types.js";
+} from "../../types/livehost.types.js";
 
 let nextClientId = 0;
 let nextActionId = 0;

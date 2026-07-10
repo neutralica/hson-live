@@ -10,7 +10,7 @@ import type {
   LiveHostResult,
   LiveHostServerMessage,
   LiveHostActionPayloads,
-} from "./livehost.types.js";
+} from "../../types/livehost.types.js";
 import type { JsonValue, LivePath } from "../../types/index.js";
 
 function ok<T>(value: T): LiveHostResult<T> {

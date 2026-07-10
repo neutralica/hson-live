@@ -16,8 +16,9 @@ import type {
   LiveHostSessionId,
   LiveHostSocketLike,
   LiveHostValidator,
-} from "./livehost.types.js";
+} from "../../types/livehost.types.js";
 import { decode_livehost_message, encode_livehost_message } from "./livehost.protocol.js";
+import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 
 let livehost_session_inc = 0;
@@ -67,6 +68,7 @@ export function create_livehost<
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
   const map = hson.liveMap.fromJson(initialState) as unknown as LiveHost<TState, TActions>["map"];
   const sync = make_livehost_sync_manager(map as unknown as LiveMap<JsonValue | undefined>);
+  const resume = make_livehost_resume_log();
   const actions: Partial<LiveHostActions<TActions, TState>> = options.actions ?? {};
   let seq = 0;
 
@@ -137,8 +139,17 @@ export function create_livehost<
     const sessionId = resolve_session_id(options.sessionId);
     const disposers: Array<() => void> = [];
 
-    function send(message: LiveHostServerMessage<TState>): void {
+    function send_encoded(message: LiveHostServerMessage<TState>): void {
       socket.send(encode_livehost_message(message));
+    }
+
+    function send(message: LiveHostServerMessage<TState>): void {
+      if (message.type === "sync") resume.record_sync(message);
+      send_encoded(message);
+    }
+
+    function send_without_record(message: LiveHostServerMessage<TState>): void {
+      send_encoded(message);
     }
 
     const sessionResult = sync.add_session(sessionId, send);
@@ -155,7 +166,10 @@ export function create_livehost<
 
       const message = decoded.value;
       if (message.type === "hello") {
-        send({ type: "hello", sessionId, seq, snapshot: map.snap() });
+        send_without_record({ type: "hello", sessionId, seq, snapshot: map.snap() });
+        if (message.lastSeq !== undefined && resume.can_replay_after(message.lastSeq)) {
+          for (const replay of resume.replay_after(message.lastSeq)) send_without_record(replay);
+        }
         return;
       }
 

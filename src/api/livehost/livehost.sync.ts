@@ -7,7 +7,7 @@ import type {
   LiveHostSeq,
   LiveHostServerSyncMessage,
   LiveHostSessionId,
-} from "./livehost.types.js";
+} from "../../types/livehost.types.js";
 
 export type LiveHostSyncSend = (message: LiveHostServerSyncMessage) => void;
 

@@ -1,6 +1,6 @@
 // livehost.types.ts
 
-import type { JsonValue, LiveMap, LivePath, LiveMapOp } from "../../types/index.js";
+import type { JsonValue, LiveMap, LivePath, LiveMapOp } from "./index.js";
 
 export type LiveHostId = string;
 export type LiveHostSessionId = string;
