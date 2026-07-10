@@ -1,8 +1,5 @@
 // livehost.types.ts
 
-
-// livehost.types.ts
-
 import type { JsonValue, LiveMap, LivePath, LiveMapOp } from "../../types/index.js";
 
 export type LiveHostId = string;
@@ -12,6 +9,7 @@ export type LiveHostActionName = string;
 export type LiveHostSeq = number;
 
 export type LiveHostDisposer = () => void;
+export type LiveHostSchemaIssue = string;
 
 export type LiveHostResult<T> =
   | Readonly<{ ok: true; value: T }>
@@ -22,6 +20,30 @@ export type LiveHostError = Readonly<{
   code?: string;
   path?: LivePath;
   cause?: unknown;
+}>;
+
+export type LiveHostValidator<TValue> = (value: unknown) => value is TValue;
+
+export type LiveHostSchemaResult<TValue> =
+  | Readonly<{ ok: true; value: TValue }>
+  | Readonly<{ ok: false; issues: readonly LiveHostSchemaIssue[] }>;
+
+export type LiveHostSchemaDecoder<TValue> = (value: unknown) => LiveHostSchemaResult<TValue>;
+
+export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
+
+export type LiveHostActionSchema<TPayload extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
+  payload?: LiveHostValidator<TPayload> | LiveHostSchemaDecoder<TPayload>;
+}>;
+
+export type LiveHostSchema<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Readonly<{
+  state?: LiveHostValidator<TState> | LiveHostSchemaDecoder<TState>;
+  actions?: Readonly<{
+    [TName in keyof TActions & string]?: LiveHostActionSchema<TActions[TName]>;
+  }>;
 }>;
 
 export type LiveHostSocketLike = Readonly<{
@@ -37,12 +59,28 @@ export type LiveHostClientHelloMessage = Readonly<{
   lastSeq?: LiveHostSeq;
 }>;
 
-export type LiveHostClientActionMessage = Readonly<{
-  type: "action";
-  id: LiveHostActionId;
-  name: LiveHostActionName;
-  payload?: JsonValue;
-}>;
+export type LiveHostClientActionMessageFor<
+  TActions extends LiveHostActionPayloads,
+  TName extends keyof TActions & string,
+> = undefined extends TActions[TName]
+  ? Readonly<{
+    type: "action";
+    id: LiveHostActionId;
+    name: TName;
+    payload?: TActions[TName];
+  }>
+  : Readonly<{
+    type: "action";
+    id: LiveHostActionId;
+    name: TName;
+    payload: TActions[TName];
+  }>;
+
+export type LiveHostClientActionMessage<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = {
+  [TName in keyof TActions & string]: LiveHostClientActionMessageFor<TActions, TName>;
+}[keyof TActions & string];
 
 export type LiveHostClientSubscribeMessage = Readonly<{
   type: "subscribe";
@@ -54,23 +92,32 @@ export type LiveHostClientUnsubscribeMessage = Readonly<{
   path: LivePath;
 }>;
 
-export type LiveHostClientMessage =
+export type LiveHostClientMessage<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> =
   | LiveHostClientHelloMessage
-  | LiveHostClientActionMessage
+  | LiveHostClientActionMessage<TActions>
   | LiveHostClientSubscribeMessage
   | LiveHostClientUnsubscribeMessage;
 
-export type LiveHostServerHelloMessage = Readonly<{
+export type LiveHostServerHelloMessage<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   type: "hello";
   sessionId: LiveHostSessionId;
   seq: LiveHostSeq;
-  snapshot: JsonValue | undefined;
+  snapshot: TState;
 }>;
 
 export type LiveHostServerPatchMessage = Readonly<{
   type: "patch";
   seq: LiveHostSeq;
   ops: readonly LiveMapOp[];
+}>;
+
+export type LiveHostServerSyncMessage<TValue extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
+  type: "sync";
+  seq: LiveHostSeq;
+  path: LivePath;
+  value: TValue;
 }>;
 
 export type LiveHostServerAckMessage = Readonly<{
@@ -88,34 +135,85 @@ export type LiveHostServerErrorMessage = Readonly<{
   error: LiveHostError;
 }>;
 
-export type LiveHostServerMessage =
-  | LiveHostServerHelloMessage
+export type LiveHostServerMessage<TState extends JsonValue | undefined = JsonValue | undefined> =
+  | LiveHostServerHelloMessage<TState>
   | LiveHostServerPatchMessage
+  | LiveHostServerSyncMessage
   | LiveHostServerAckMessage
   | LiveHostServerErrorMessage;
 
-export type LiveHostActionContext = Readonly<{
-  map: LiveMap<JsonValue | undefined>;
+export type LiveHostActionContext<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
+  map: LiveMap<TState>;
   seq: LiveHostSeq;
 }>;
 
-export type LiveHostActionHandler = (
-  ctx: LiveHostActionContext,
-  payload: JsonValue | undefined,
-  message: LiveHostClientActionMessage,
+export type LiveHostActionHandler<
+  TPayload extends JsonValue | undefined = JsonValue | undefined,
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = (
+  ctx: LiveHostActionContext<TState>,
+  payload: TPayload,
+  message: LiveHostClientActionMessage<TActions>,
 ) => void | Promise<void>;
 
-export type LiveHostActions = Readonly<Record<LiveHostActionName, LiveHostActionHandler>>;
+export type LiveHostActions<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TState extends JsonValue | undefined = JsonValue | undefined,
+> = Readonly<{
+  [TName in keyof TActions & string]: LiveHostActionHandler<TActions[TName], TState, TActions>;
+}>;
 
-export type LiveHostOptions = Readonly<{
-  state?: JsonValue;
-  actions?: LiveHostActions;
+export type LiveHostOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Readonly<{
+  state?: TState;
+  actions?: Partial<LiveHostActions<TActions, TState>>;
+  schema?: LiveHostSchema<TState, TActions>;
   sessionId?: LiveHostSessionId | (() => LiveHostSessionId);
 }>;
 
-export type LiveHost = Readonly<{
-  map: LiveMap<JsonValue | undefined>;
+export type LiveHostClientActionResult = LiveHostServerAckMessage | LiveHostServerErrorMessage;
+
+export type LiveHostClientActionFn<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = <TName extends keyof TActions & string>(
+  name: TName,
+  ...args: undefined extends TActions[TName]
+    ? [payload?: TActions[TName]]
+    : [payload: TActions[TName]]
+) => Promise<LiveHostClientActionResult>;
+
+export type LiveHostClientOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+> = Readonly<{
+  socket: LiveHostSocketLike;
+  map?: LiveMap<TState>;
+  clientId?: LiveHostId;
+  actionId?: () => LiveHostActionId;
+}>;
+
+export type LiveHostClient<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Readonly<{
+  map: LiveMap<TState>;
   seq: LiveHostSeq;
-  dispatch_action: (message: LiveHostClientActionMessage) => Promise<LiveHostServerMessage>;
+  connect: () => LiveHostDisposer;
+  disconnect: () => void;
+  subscribe: (path: LivePath) => void;
+  unsubscribe: (path: LivePath) => void;
+  action: LiveHostClientActionFn<TActions>;
+}>;
+
+export type LiveHost<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Readonly<{
+  map: LiveMap<TState>;
+  seq: LiveHostSeq;
+  schema?: LiveHostSchema<TState, TActions>;
+  dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<TState>>;
   connect: (socket: LiveHostSocketLike) => LiveHostDisposer;
 }>;

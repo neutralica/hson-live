@@ -1,4 +1,3 @@
-
 // livehost/protocol.ts
 
 import type {
@@ -10,6 +9,7 @@ import type {
   LiveHostError,
   LiveHostResult,
   LiveHostServerMessage,
+  LiveHostActionPayloads,
 } from "./livehost.types.js";
 import type { JsonValue, LivePath } from "../../types/index.js";
 
@@ -58,7 +58,7 @@ function decode_hello_message(value: Readonly<Record<string, unknown>>): LiveHos
   });
 }
 
-function decode_action_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientActionMessage> {
+function decode_action_message<TActions extends LiveHostActionPayloads>(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientActionMessage<TActions>> {
   const id = optional_string(value.id);
   if (!id) return fail("LiveHost action message requires string id.");
 
@@ -70,12 +70,14 @@ function decode_action_message(value: Readonly<Record<string, unknown>>): LiveHo
     return fail("LiveHost action payload must be JSON-serializable.");
   }
 
-  return ok({
+  const message = {
     type: "action",
     id,
     name,
     ...(payload !== undefined ? { payload } : {}),
-  });
+  } as LiveHostClientActionMessage<TActions>;
+
+  return ok(message);
 }
 
 function decode_subscribe_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientSubscribeMessage> {
@@ -92,14 +94,14 @@ export function encode_livehost_message(message: LiveHostServerMessage): string 
   return JSON.stringify(message);
 }
 
-export function decode_livehost_message(message: string): LiveHostResult<LiveHostClientMessage> {
+export function decode_livehost_message<TActions extends LiveHostActionPayloads = LiveHostActionPayloads>(message: string): LiveHostResult<LiveHostClientMessage<TActions>> {
   try {
     const value = JSON.parse(message) as unknown;
     if (!is_record(value)) return fail("LiveHost message must be an object.");
 
     const type = value.type;
     if (type === "hello") return decode_hello_message(value);
-    if (type === "action") return decode_action_message(value);
+    if (type === "action") return decode_action_message<TActions>(value);
     if (type === "subscribe") return decode_subscribe_message(value);
     if (type === "unsubscribe") return decode_unsubscribe_message(value);
 
