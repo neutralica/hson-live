@@ -9,7 +9,7 @@ import { TreeSelector } from "../creation/tree-selector.js";
 import { search_nodes } from "./search.js";
 import { FindWithById } from "../../../types/livetree.types.js";
 import { SvgLiveTree } from "../../../types/svg.types.js";
-import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../quid/data-quid.quid.js";
+import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../quid/data-quid.js";
 import { wrap_in_tree } from "../creation/create-livetree.js";
 import { is_Node } from "../../../core/node-guards.js";
 

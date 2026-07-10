@@ -1,6 +1,6 @@
 // remove-self.ts
 
-import { drop_quid } from "../quid/data-quid.quid.js";
+import { drop_quid } from "../quid/data-quid.js";
 import { HsonNode } from "../../../core/types.js";
 import { _DATA_QUID } from "../../../core/constants.js";
 import { detach_node_deep } from "../utils/detach-node.js";

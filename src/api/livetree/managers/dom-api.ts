@@ -4,7 +4,7 @@ import { LiveTree } from "../livetree.js";
 import { ClosestFn, LiveTreeDom, ParentFn, DomRectApi, DomSize, LiveTreeDocument } from "../../../types/dom.types.js";
 import { _snip } from "../../transform/utils/sys-utils/snip.utils.js";
 import { LiveTreeSvgDom, SvgBox } from "../../../types/svg.types.js";
-import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "../quid/data-quid.quid.js";
+import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "../quid/data-quid.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../creation/tree-selector.js";
 import { create_livetree } from "../creation/create-livetree.js";

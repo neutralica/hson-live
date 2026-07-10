@@ -1,4 +1,4 @@
-// data-quid.quid.ts
+// data-quid.ts
 
 import { HsonNode } from '../../../core/types.js';
 import { _DATA_QUID} from '../../../core/constants.js';
@@ -6,9 +6,19 @@ import { get_el_for_node } from '../utils/node-map-helpers.js';
 
 
 
-/** node <-> quid maps (WeakMap allows GC) */
+/**
+ * LiveTree-global identity registry.
+ * NODE_TO_QUID is weak, but QUID_TO_NODE strongly retains registered nodes until drop_quid().
+ */
 const QUID_TO_NODE = new Map<string, HsonNode>();
 const NODE_TO_QUID = new WeakMap<HsonNode, string>();
+
+function assertQuidAvailable(q: string, n: HsonNode): void {
+  const registered = QUID_TO_NODE.get(q);
+  if (!registered || registered === n) return;
+
+  throw new Error(`Duplicate QUID \"${q}\" is already registered to another node.`);
+}
 
 /** short, sortable-ish id; crypto if available, else timestamp+counter */
 let _inc = 0;
@@ -66,6 +76,8 @@ export function ensure_quid(
   let q = get_quid(n);
   if (!q) q = mint_quid();
 
+  // CHANGED: persisted identity cannot silently steal another node's registry entry.
+  assertQuidAvailable(q, n);
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
 
@@ -82,8 +94,7 @@ export function ensure_quid(
  * O(1) lookup:
  * Given a QUID string, return the associated
  * HsonNode if known. Returns undefined if the
- * QUID is unregistered or the node was GC’d
- * in the WeakMap.
+ * QUID is unregistered.
  ***************************************/
 export function get_node_by_quid(q: string): HsonNode | undefined {
   return QUID_TO_NODE.get(q);
@@ -106,6 +117,9 @@ export function get_node_by_quid(q: string): HsonNode | undefined {
 export function reindex_quid(n: HsonNode): void {
   const q = get_quid(n);
   if (!q) return;
+
+  // CHANGED: reindexing may restore this node, but may not overwrite another owner.
+  assertQuidAvailable(q, n);
   NODE_TO_QUID.set(n, q);
   QUID_TO_NODE.set(q, n);
 }
@@ -137,8 +151,9 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
   const q = get_quid(n);
   if (!q) return;
 
-  // delete both directions
-  QUID_TO_NODE.delete(q);
+  // CHANGED: only remove the forward entry when this node still owns it.
+  // This prevents malformed duplicate metadata from deleting another node's binding.
+  if (QUID_TO_NODE.get(q) === n) QUID_TO_NODE.delete(q);
   NODE_TO_QUID.delete(n);
 
   // optional: remove from meta to avoid persistence
@@ -174,6 +189,7 @@ export function remint_quid(
 
   // write new quid + new indexes
   const q = mint_quid();
+  assertQuidAvailable(q, n);
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
 

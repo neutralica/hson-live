@@ -5,7 +5,7 @@
 
 import { HsonNode } from "../../../core/types.js";
 import { LiveTree } from "../livetree.js";
-import { ensure_quid } from "../quid/data-quid.quid.js";
+import { ensure_quid } from "../quid/data-quid.js";
 
 // CHANGE: canonical creation for a standalone branch (no parent roots).
 export function create_livetree(node: HsonNode): LiveTree {

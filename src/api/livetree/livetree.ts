@@ -1,6 +1,6 @@
 // livetree.ts
 
-import { ensure_quid, get_node_by_quid } from "./quid/data-quid.quid.js";
+import { ensure_quid, get_node_by_quid } from "./quid/data-quid.js";
 import { HsonNode } from "../../core/types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
 import { get_el_for_node } from "./utils/node-map-helpers.js";

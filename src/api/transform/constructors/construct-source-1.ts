@@ -11,7 +11,19 @@ import { parse_html } from "../parsers/parse-html.js";
 import { parse_json } from "../parsers/parse-json.js";
 import { construct_output_2 } from "./construct-output-2.js";
 import { SourceConstructor_1 } from "../../../types/constructor.types.js";
+
 import { is_svg_markup, node_from_svg } from "../utils/node-utils/node-from-svg.js";
+
+const DATA_QUID_ATTR = "data-_quid";
+
+function html_without_runtime_quids(element: Element): string {
+  const template = document.createElement("template");
+  template.innerHTML = element.innerHTML;
+  for (const descendant of Array.from(template.content.querySelectorAll("*"))) {
+    descendant.removeAttribute(DATA_QUID_ATTR);
+  }
+  return template.innerHTML;
+}
 
 /**
  * Per-call HTML parsing options for `construct_source_1.fromHtml()`.
@@ -67,7 +79,7 @@ export function construct_source_1(
       options: HtmlSourceOptions = { sanitize: true }
     ): OutputConstructor_2 {
       const raw: string =
-        typeof input === "string" ? input : input.innerHTML;
+        typeof input === "string" ? input : html_without_runtime_quids(input);
 
       const trimmed = raw.trimStart();
       let node: HsonNode;

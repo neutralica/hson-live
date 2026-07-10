@@ -8,7 +8,7 @@ import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "./create-livetree.js";
 import { link_node_to_el, get_node_for_el } from "../utils/node-map-helpers.js";
-import { _DATA_QUID, ensure_quid } from "../quid/data-quid.quid.js";
+import { _DATA_QUID, ensure_quid } from "../quid/data-quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { Primitive } from "../../../core/types.js";
 import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";

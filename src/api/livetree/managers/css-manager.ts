@@ -8,7 +8,7 @@ import { KeyframesManager, KeyframesInput } from "../../../types/keyframes.types
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
-import { _DATA_QUID } from "../quid/data-quid.quid.js";
+import { _DATA_QUID } from "../quid/data-quid.js";
 import { manage_property } from "./at-property-builder.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { manage_keyframes } from "./keyframes-manager.js";
