@@ -2,6 +2,7 @@
 
 import type { HsonNode, JsonValue } from "../core/types.js";
 import type { LiveMapSchema, LiveMapSchemaValue } from "../api/livemap/schema.js";
+import type { LiveMapQuid } from "../api/livemap/livemap-quid.js";
 
 
 /**
@@ -457,6 +458,7 @@ export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonl
 export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<TValue>>;
 
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
+  readonly quid: LiveMapQuid;
   path: () => LivePath;
   snap: () => TValue;
   /** Set this resolved handle path; plain objects expand into shallow child sets. */

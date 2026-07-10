@@ -5,6 +5,7 @@ import type { LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livem
 import { must_json_value, must_live_path, must_set_many_values } from "./guard.js";
 import { make_livemap_array_api } from "./handle-array.js";
 import { make_livemap_object_api } from "./handle-object.js";
+import { ensure_livemap_quid } from "./livemap-quid.js";
 import { path_is_prefix } from "./path.js";
 
 
@@ -50,6 +51,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
   const handlePath = must_live_path(path);
 
   const handle: LiveMapPathHandle<TValue> = {
+    get quid() { return ensure_livemap_quid(handle); },
     path: () => [...handlePath],
     snap: () => core.snap(handlePath) as TValue,
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),

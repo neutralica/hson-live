@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx } from "../../types/livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./editor.js";
 import { make_livemap_feed_hub } from "./feed.js";
@@ -18,6 +18,7 @@ type LiveMapConstructiveSetWriteOp = Readonly<{
 }>;
 
 type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
+
 
 
 /**
@@ -112,7 +113,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     withSchema: (schema) => schemaApi.use(schema),
 
     /** Create an ergonomic handle scoped to one projected path. */
-    at: ((path: LivePath) => make_livemap_path_handle(core, must_live_path(path))) as unknown as LiveMapCore<JsonValue | undefined>["at"],
+    at: ((path: LivePath) => get_path_handle(path)) as unknown as LiveMapCore<JsonValue | undefined>["at"],
 
     /** Create an ergonomic Proxy path-builder scoped to one projected path. */
     proxy: <const TPath extends LivePath = []>(path?: TPath) =>
@@ -182,6 +183,23 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     /** Subscribe to projected value changes. */
     sub: subApi,
   };
+
+  const pathHandleCache = new Map<string, LiveMapPathHandle>();
+
+  function path_handle_key(path: LivePath): string {
+    return JSON.stringify(path);
+  }
+
+  function get_path_handle(path: LivePath): LiveMapPathHandle {
+    const handlePath = must_live_path(path);
+    const key = path_handle_key(handlePath);
+    const existing = pathHandleCache.get(key);
+    if (existing) return existing;
+
+    const handle = make_livemap_path_handle(core, handlePath);
+    pathHandleCache.set(key, handle);
+    return handle;
+  }
 
   return core;
 }
