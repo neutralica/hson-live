@@ -19,7 +19,16 @@ export {
     stop_all,
     subscribe_paths,
 } from "./api/livemap/livemap-helpers.js";
-export type { LiveMapPathHandle, LiveMapProxy,LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMap} from "./types/index.js";
+export {
+    get_livemap_quid,
+    get_livemap_owner,
+    ensure_livemap_quid,
+    reindex_livemap_quid,
+    drop_livemap_quid,
+    remint_livemap_quid,
+    debug_livemap_quids
+} from "./api/livemap/livemap-quid.js";
+export type { LiveMapPathHandle, LiveMapProxy, LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMap } from "./types/index.js";
 export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/schema.js";
-export  type { InferLiveMapSchema,LiveMapSchema,InferLiveMapSchemaToken,LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/schema.js";
-export { ELEM_TAG,OBJ_TAG,ARR_TAG,ROOT_TAG,II_TAG,STR_TAG,VAL_TAG, ATTRS_KEY, META_KEY, TAG_KEY, CONTENT_KEY  } from "./core/constants.js";
+export type { InferLiveMapSchema, LiveMapSchema, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/schema.js";
+export { ELEM_TAG, OBJ_TAG, ARR_TAG, ROOT_TAG, II_TAG, STR_TAG, VAL_TAG, ATTRS_KEY, META_KEY, TAG_KEY, CONTENT_KEY } from "./core/constants.js";

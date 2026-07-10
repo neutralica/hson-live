@@ -1,19 +1,25 @@
 // data-quid.ts
 
 import { HsonNode } from '../../../core/types.js';
-import { _DATA_QUID} from '../../../core/constants.js';
+import { _DATA_QUID } from '../../../core/constants.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
 
 
 
 /**
  * LiveTree-global identity registry.
- * NODE_TO_QUID is weak, but QUID_TO_NODE strongly retains registered nodes until drop_quid().
+ *
+ * QUID ownership is an object-identity concern, not a DOM-mount concern.
+ * Detaching a branch from the DOM or from its parent graph must not release its
+ * claimed QUIDs; detached branches remain valid objects that may be grafted again.
+ *
+ * NODE_TO_QUID is weak, but QUID_TO_NODE strongly retains registered nodes until
+ * an explicit identity disposal/reset path calls `drop_quid()`.
  */
 const QUID_TO_NODE = new Map<string, HsonNode>();
 const NODE_TO_QUID = new WeakMap<HsonNode, string>();
 
-function assertQuidAvailable(q: string, n: HsonNode): void {
+function assert_quid_available(q: string, n: HsonNode): void {
   const registered = QUID_TO_NODE.get(q);
   if (!registered || registered === n) return;
 
@@ -57,10 +63,11 @@ export function get_quid(n: HsonNode): string | undefined {
  *
  * Behavior:
  * - Reuses existing QUID if present.
- * - Otherwise generates a new one via mk_quid().
- * - Indexes both directions:
+ * - Otherwise generates a new one via mint_quid().
+ * - Claims the QUID for this node and indexes both directions:
  *     QUID → node  (Map)
  *     node → QUID  (WeakMap)
+ * - Rejects any QUID that is already claimed by another node.
  * - If `persist` (default true), writes the QUID
  *   into n.$_meta["data-_quid"] so it survives
  *   serialization.
@@ -76,8 +83,8 @@ export function ensure_quid(
   let q = get_quid(n);
   if (!q) q = mint_quid();
 
-  // CHANGED: persisted identity cannot silently steal another node's registry entry.
-  assertQuidAvailable(q, n);
+  // Persisted identity cannot silently steal another node's registry entry.
+  assert_quid_available(q, n);
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
 
@@ -113,18 +120,21 @@ export function get_node_by_quid(q: string): HsonNode | undefined {
  *   - After replacement, call reindex_quid
  *     on the new node so QUID → node resolves
  *     correctly.
+ *
+ * This is not a detach/remove operation. Reindexing may restore this node's
+ * registry entry, but it must not overwrite another live owner.
  ***************************************/
 export function reindex_quid(n: HsonNode): void {
   const q = get_quid(n);
   if (!q) return;
 
-  // CHANGED: reindexing may restore this node, but may not overwrite another owner.
-  assertQuidAvailable(q, n);
+  // Reindexing may restore this node, but may not overwrite another owner.
+  assert_quid_available(q, n);
   NODE_TO_QUID.set(n, q);
   QUID_TO_NODE.set(q, n);
 }
 
-export { _DATA_QUID }; //???
+export { _DATA_QUID };
 
 /***************************************
  * drop_quid
@@ -142,16 +152,17 @@ export { _DATA_QUID }; //???
  *   `[data-_quid]` attribute if the node is
  *   currently mounted.
  *
- * Used when:
- *   - removing a subtree,
- *   - orphaning nodes,
- *   - resetting identity.
+ * Used when explicitly destroying or resetting identity ownership.
+ *
+ * Not used for normal detach/removeSelf flows. A detached branch still owns its
+ * HSON nodes and persisted QUIDs so it can remain valid while unmounted and may
+ * be grafted again later.
  ***************************************/
-export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAttr?: boolean }) {
+export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAttr?: boolean }): void {
   const q = get_quid(n);
   if (!q) return;
 
-  // CHANGED: only remove the forward entry when this node still owns it.
+  // Only remove the forward entry when this node still owns it.
   // This prevents malformed duplicate metadata from deleting another node's binding.
   if (QUID_TO_NODE.get(q) === n) QUID_TO_NODE.delete(q);
   NODE_TO_QUID.delete(n);
@@ -184,12 +195,12 @@ export function remint_quid(
   n: HsonNode,
   opts?: { persist?: boolean; scrubMeta?: boolean },
 ): string {
-  // drop old quid + old indexes
+  // Drop old identity ownership before claiming a new QUID for the same node.
   drop_quid(n, { scrubMeta: opts?.scrubMeta ?? true, stripDomAttr: false });
 
-  // write new quid + new indexes
+  // Write new identity metadata and indexes.
   const q = mint_quid();
-  assertQuidAvailable(q, n);
+  assert_quid_available(q, n);
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
 
