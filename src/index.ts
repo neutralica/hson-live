@@ -28,6 +28,7 @@ export {
     remint_livemap_quid,
     debug_livemap_quids
 } from "./api/livemap/livemap-quid.js";
+export { create_livehost_client } from "./api/livehost/livehost.client.js";
 export { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 export { decode_livehost_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
 export { create_livehost } from "./api/livehost/livehost.core.js";
