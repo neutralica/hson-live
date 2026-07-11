@@ -3,6 +3,7 @@
 import type { JsonValue, LiveMap, LivePath, LiveMapOp } from "./index.js";
 
 export type LiveHostId = string;
+export type LiveHostStoreId = string;
 export type LiveHostSessionId = string;
 export type LiveHostActionId = string;
 export type LiveHostActionName = string;
@@ -56,6 +57,7 @@ export type LiveHostSocketLike = Readonly<{
 export type LiveHostClientHelloMessage = Readonly<{
   type: "hello";
   clientId?: LiveHostId;
+  hostId?: LiveHostStoreId;
   lastSeq?: LiveHostSeq;
 }>;
 
@@ -216,4 +218,33 @@ export type LiveHost<
   schema?: LiveHostSchema<TState, TActions>;
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<TState>>;
   connect: (socket: LiveHostSocketLike) => LiveHostDisposer;
+}>;
+
+export type LiveHostStoreEntry<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Readonly<{
+  id: LiveHostStoreId;
+  host: LiveHost<TState, TActions>;
+}>;
+
+export type LiveHostStoreCreateOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostOptions<TState, TActions>;
+
+export type LiveHostStore = Readonly<{
+  has: (id: LiveHostStoreId) => boolean;
+  get: (id: LiveHostStoreId) => LiveHost | undefined;
+  create: <
+    TState extends JsonValue | undefined = JsonValue | undefined,
+    TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  >(id: LiveHostStoreId, options?: LiveHostStoreCreateOptions<TState, TActions>) => LiveHostResult<LiveHost<TState, TActions>>;
+  set: <
+    TState extends JsonValue | undefined = JsonValue | undefined,
+    TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  >(id: LiveHostStoreId, host: LiveHost<TState, TActions>) => LiveHostResult<LiveHost<TState, TActions>>;
+  delete: (id: LiveHostStoreId) => boolean;
+  list: () => readonly LiveHostStoreEntry[];
+  connect: (id: LiveHostStoreId, socket: LiveHostSocketLike) => LiveHostResult<LiveHostDisposer>;
 }>;

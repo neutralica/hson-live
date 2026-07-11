@@ -49,11 +49,13 @@ function optional_seq(value: unknown): number | undefined {
 
 function decode_hello_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientHelloMessage> {
   const clientId = optional_string(value.clientId);
+  const hostId = optional_string(value.hostId);
   const lastSeq = optional_seq(value.lastSeq);
 
   return ok({
     type: "hello",
     ...(clientId ? { clientId } : {}),
+    ...(hostId ? { hostId } : {}),
     ...(lastSeq !== undefined ? { lastSeq } : {}),
   });
 }

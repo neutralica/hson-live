@@ -11,6 +11,12 @@ import { graft } from "./api/livetree/creation/graft.js";
 import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
 import { make_livemap_core } from "./api/livemap/core.js";
 import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/schema.js";
+import { create_livehost } from "./api/livehost/livehost.core.js";
+import { create_livehost_client } from "./api/livehost/livehost.client.js";
+import { create_livehost_store } from "./api/livehost/livehost.store.js";
+import { decode_livehost_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
+import { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
+import { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 import type { LiveMap } from "./types/livemap.types.js";
 import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/schema.js";
 
@@ -146,6 +152,35 @@ export const hson = {
     fromNode(node: HsonNode): LiveMap {
       return make_livemap_core(node);
     },
+  },
+
+  /**
+   * Direct LiveHost construction API.
+   *
+   * LiveHost provides an authoritative LiveMap host, a mirrored client, and a
+   * small registry for routing named host instances over socket-like transports.
+   */
+  liveHost: {
+    /** Create an authoritative LiveHost instance. */
+    create: create_livehost,
+
+    /** Create a mirrored LiveHost client over a socket-like transport. */
+    client: create_livehost_client,
+
+    /** Create an in-memory registry of named LiveHost instances. */
+    registry: create_livehost_store,
+
+    /** Lower-level protocol helpers for custom adapters and tests. */
+    protocol: Object.freeze({
+      decode: decode_livehost_message,
+      encode: encode_livehost_message,
+    }),
+
+    /** Lower-level constructors kept behind a debug namespace for now. */
+    debug: Object.freeze({
+      resumeLog: make_livehost_resume_log,
+      syncManager: make_livehost_sync_manager,
+    }),
   },
 
   /**

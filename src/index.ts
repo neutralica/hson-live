@@ -28,12 +28,57 @@ export {
     remint_livemap_quid,
     debug_livemap_quids
 } from "./api/livemap/livemap-quid.js";
+export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
 export { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
 export { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 export { decode_livehost_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
 export { create_livehost } from "./api/livehost/livehost.core.js";
-export type { LiveMapPathHandle, LiveMapProxy, LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMap } from "./types/index.js";
+export type {
+    LiveMapPathHandle,
+    LiveMapProxy,
+    LivePath,
+    LivePathPart,
+    LiveMapEditResult,
+    LiveMapCommit,
+    LiveMapOp,
+    LiveMapFeedEvent,
+    LiveMapFeedListener,
+    LiveMapDisposer,
+    LiveMapCore,
+    LiveMapNodeHandle,
+    LiveMap,
+    LiveHost,
+    LiveHostActionContext,
+    LiveHostActionHandler,
+    LiveHostActionId,
+    LiveHostActionName,
+    LiveHostActionPayloads,
+    LiveHostActions,
+    LiveHostClient,
+    LiveHostClientActionFn,
+    LiveHostClientActionResult,
+    LiveHostClientHelloMessage,
+    LiveHostClientMessage,
+    LiveHostClientOptions,
+    LiveHostDisposer,
+    LiveHostError,
+    LiveHostId,
+    LiveHostOptions,
+    LiveHostResult,
+    LiveHostSchema,
+    LiveHostSchemaDecoder,
+    LiveHostSchemaIssue,
+    LiveHostSchemaResult,
+    LiveHostSeq,
+    LiveHostServerMessage,
+    LiveHostSocketLike,
+    LiveHostStore,
+    LiveHostStoreCreateOptions,
+    LiveHostStoreEntry,
+    LiveHostStoreId,
+    LiveHostValidator,
+} from "./types/index.js";
 export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/schema.js";
 export type { InferLiveMapSchema, LiveMapSchema, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/schema.js";
 export { ELEM_TAG, OBJ_TAG, ARR_TAG, ROOT_TAG, II_TAG, STR_TAG, VAL_TAG, ATTRS_KEY, META_KEY, TAG_KEY, CONTENT_KEY } from "./core/constants.js";
