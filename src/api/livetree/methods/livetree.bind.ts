@@ -1,6 +1,6 @@
 // livetree.bind.ts
 
-import type { JsonValue, LiveMap, LivePath } from "../../../types/index.js";
+import type { JsonValue, LivePath } from "../../../types/index.js";
 import type { LiveTree } from "../livetree.js";
 
 type LiveTreeBindable = Pick<LiveTree, "text" | "attr" | "css">;
@@ -174,7 +174,12 @@ type LiveMapPathSubscriber = Readonly<{
   path: (path: LivePath, listener: () => void) => LiveMapDisposer | void;
 }>;
 
-type LiveMapBindable<TValue extends JsonValue | undefined = JsonValue | undefined> = LiveMap<TValue> & Readonly<{
+type LiveMapReadablePath = Readonly<{
+  snap: () => JsonValue | undefined;
+}>;
+
+type LiveMapBindable = Readonly<{
+  at: (path: LivePath) => LiveMapReadablePath;
   sub: LiveMapPathSubscriber;
 }>;
 
