@@ -22,7 +22,7 @@ import { TreeEvents } from "../../types/events.types.js";
 import { make_tree_events } from "./managers/make-events.js";
 import { clone_branch_method } from "./methods/clone.js";
 import { ContentManager } from "./managers/content-manager.js";
-import { css_for_quids } from "./methods/css-for-quids.js";
+import { css_for_quids } from "./methods/livetree.css-quids.js";
 import { AttrHandle, FlagHandle } from "../../types/attrs.types.js";
 import { attr_handle, flag_handle } from "./managers/attr-handle.js";
 import { remove_node_children } from "./methods/remove-child.js";
@@ -32,6 +32,7 @@ import { make_svg_api, SvgApi } from "./managers/svg-api.js";
 import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
 import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
 import { CanvasApi } from "./managers/canvas/canvas.types.js";
+import { LiveTreeBindApi, make_livetree_bind_api } from "./methods/livetree.bind.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -119,7 +120,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private formApiInternal?: LiveFormApi<this>;
   /* canvas-specific namespace */
   private canvasApi?: CanvasApi<this>;
-
+  /* liveMap binding handle */
+  private bindApiInternal?: LiveTreeBindApi<this>;
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
    * or another `LiveTree`.
@@ -388,6 +390,10 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   }
 
 
+  public get bind(): LiveTreeBindApi<this> {
+  return this.bindApiInternal ??= make_livetree_bind_api(this);
+  }
+  
   /***************************************
    * Attribute helpers
    * 
