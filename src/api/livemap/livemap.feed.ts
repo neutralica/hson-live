@@ -2,7 +2,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
-import { path_is_prefix } from "./livemap.path.js";
+import { path_is_prefix, paths_overlap } from "./livemap.path.js";
 
 /**
  * Reads the current projected JSON value at a LiveMap path.
@@ -24,20 +24,6 @@ type FeedEntry = Readonly<{
   listener: LiveMapFeedListener;
 }>;
 
-/**
- * Return true when two projected paths can affect each other.
- *
- * The rule is intentionally symmetric:
- * - a parent feed hears child changes: `["user"]` hears `["user", "name"]`
- * - a child feed hears parent replacement: `["user", "name"]` hears `["user"]`
- * - any feed hears root replacement: `["user", "name"]` hears `[]`
- * - sibling paths do not overlap: `["user", "name"]` ignores `["user", "role"]`
- *
- * This is the core matching rule for LiveMap feeds.
- */
-export function paths_overlap(a: LivePath, b: LivePath): boolean {
-  return path_is_prefix(a, b) || path_is_prefix(b, a);
-}
 
 /**
  * Create an in-memory feed registry for one LiveMap core instance.

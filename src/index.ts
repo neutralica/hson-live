@@ -7,9 +7,9 @@ export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.j
 
 export { make_livemap_core } from "./api/livemap/livemap.core.js";
 export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
-export { format_live_path, path_is_prefix } from "./api/livemap/livemap.path.js";
+export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
 export { link_livemap } from "./api/livemap/livemap.link.js";
-export { make_livemap_feed_hub, paths_overlap } from "./api/livemap/livemap.feed.js";
+export { make_livemap_feed_hub } from "./api/livemap/livemap.feed.js";
 export { make_livemap_proxy } from "./api/livemap/livemap.proxy.js";
 export {
     bind_path,
