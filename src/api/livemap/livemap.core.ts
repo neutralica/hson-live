@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp } from "../../types/livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture } from "../../types/livemap.types.js";
 import type {
   LiveMapSchema,
   LiveMapSchemaResolution,
@@ -248,6 +248,13 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     sub: subApi,
     get rev() {
       return currentRev;
+    },
+    /** Capture the current projected root together with its committed revision. */
+    capture: (): LiveMapCapture<JsonValue | undefined> => {
+      return Object.freeze({
+        rev: currentRev,
+        value: snap_live_path(root, []),
+      });
     },
   };
 

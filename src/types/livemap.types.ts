@@ -245,6 +245,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   sub: LiveMapSubApi<TValue>;
   node: (path: LivePath) => LiveMapNodeHandle;
   readonly rev: number;
+  capture: () => LiveMapCapture<TValue>;
 }>;
 
 /**
@@ -617,4 +618,9 @@ export type LiveMapSpliceOp = Readonly<{
   inserted: readonly JsonValue[];
   prev: JsonValue;
   next: JsonValue;
+}>;
+
+export type LiveMapCapture<TValue = JsonValue | undefined> = Readonly<{
+  rev: number;
+  value: TValue;
 }>;
