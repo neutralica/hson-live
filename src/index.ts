@@ -79,6 +79,7 @@ export type {
     LiveHostStoreId,
     LiveHostValidator,
 } from "./types/index.js";
+export { LiveMapSchemaError } from "./api/livemap/livemap.error.js";
 export { snap_live_path } from "./api/livemap/livemap.editor.js";
 export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/livemap.schema.js";
 export type { InferLiveMapSchema, LiveMapSchema, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/livemap.schema.js";
