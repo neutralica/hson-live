@@ -57,7 +57,7 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
     deleteKey: (key: unknown) => {
       const objectKey = must_object_key(key, handlePath);
       const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      if (!(objectKey in objectValue)) return emptyCommit();
+      if (!(objectKey in objectValue)) {return core.batch(() => {});}
       return core.delete([...handlePath, objectKey]);
     },
     deleteMany: (keys: unknown) => {
@@ -73,19 +73,11 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(core: Li
       const fromObjectKey = must_object_key(fromKey, handlePath);
       const toObjectKey = must_object_key(toKey, handlePath);
       const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      if (!(fromObjectKey in objectValue)) return emptyCommit();
-      if (fromObjectKey === toObjectKey) return emptyCommit();
+      if (!(fromObjectKey in objectValue)) {return core.batch(() => {});}
+      if (fromObjectKey === toObjectKey) {return core.batch(() => {});}
       return core.replace(handlePath, objectRenameKey(objectValue, handlePath, fromObjectKey, toObjectKey));
     },
   };
-}
-
-/** Commit shape used when an object helper intentionally no-ops. */
-function emptyCommit() {
-  return Object.freeze({
-    changed: false,
-    ops: [],
-  });
 }
 
 function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {

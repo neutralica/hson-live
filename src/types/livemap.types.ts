@@ -311,6 +311,8 @@ export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | Live
  */
 export type LiveMapCommit = Readonly<{
   changed: boolean;
+  rev: number;
+  prevRev: number;
   ops: readonly LiveMapOp[];
 }>;
 

@@ -58,8 +58,23 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined;
-
+  /** Revision zero represents the initial graph before any changed commit. */
+  let currentrev = 0;
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
+  const commitOps = (
+    writeOps: readonly LiveMapCoreWriteOp[],
+  ): LiveMapCommit => {
+    return commit_ops(
+      root,
+      currentSchema,
+      feedHub,
+      () => currentrev,
+      (rev) => {
+        currentrev = rev;
+      },
+      writeOps,
+    );
+  };
 
   const getStoreApi = (): LiveMapStoreApi<JsonValue | undefined> => {
     return storeApi ??= make_livemap_store_api(core);
@@ -160,14 +175,26 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     /** Set a resolved projected path; plain objects expand into shallow child sets. */
     set: (path, value) => {
       const livePath = must_live_path(path);
-      return commit_ops(root, currentSchema, feedHub, write_ops_from_set(livePath, value, snap_live_path(root, livePath)));
+      return commitOps(
+        write_ops_from_set(
+          livePath,
+          value,
+          snap_live_path(root, livePath),
+        ),
+      );
     },
 
     /** Set multiple object properties while preserving unspecified siblings. */
     setMany: (path, values) => {
       const livePath = must_live_path(path);
       const jsonValues = must_set_many_values(values, livePath);
-      return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues, snap_live_path(root, livePath)));
+      return commitOps(
+        write_ops_from_set_many(
+          livePath,
+          jsonValues,
+          snap_live_path(root, livePath),
+        ),
+      );
     },
 
     /** Apply one semantic array splice and preserve it in the resulting commit. */
@@ -175,7 +202,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       const livePath = must_live_path(path);
       const currentValue = snap_live_path(root, livePath);
       const op = splice_write_op(livePath, currentValue, start, deleteCount, items);
-      return commit_ops(root, currentSchema, feedHub, [op]);
+      return commitOps([op]);
     },
 
     /**
@@ -188,16 +215,14 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     replace: function (pathOrValue: unknown, value?: unknown) {
       const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
       must_resolved_path("replace", op.path, snap_live_path(root, op.path));
-      return commit_ops(root, currentSchema, feedHub, [
-        op,
-      ]);
+      return commitOps([op]);
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
       must_resolved_path("delete", livePath, snap_live_path(root, livePath));
-      return commit_ops(root, currentSchema, feedHub, [
+      return commitOps([
         { kind: "delete", path: livePath },
       ]);
     },
@@ -213,8 +238,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       } finally {
         isOpen = false;
       }
-
-      return commit_ops(root, currentSchema, feedHub, writeOps);
+      return commitOps(writeOps);
     },
 
     /** Subscribe to commits whose op paths overlap the requested path. */
@@ -506,10 +530,13 @@ function plain_object_from_set_many_values(values: LiveMapSetManyValues): JsonVa
  * The order is deliberate: schema preflight, editor preflight on a cloned HSON
  * root, live editor application, then feed emission from the committed graph.
  */
+
 function commit_ops(
   root: HsonNode,
   schema: LiveMapSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
+  getRev: () => number,
+  setRev: (rev: number) => void,
   writeOps: readonly LiveMapCoreWriteOp[],
 ): LiveMapCommit {
   /**
@@ -519,8 +546,29 @@ function commit_ops(
    */
   must_core_schema_write_ops(schema, root, writeOps);
   must_editor_write_ops(root, writeOps);
-  const commit = apply_write_ops(root, writeOps);
-  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+
+  const applied = apply_write_ops(root, writeOps);
+  const prevRev = getRev();
+  const rev = applied.changed
+    ? prevRev + 1
+    : prevRev;
+
+  if (applied.changed) {
+    setRev(rev);
+  }
+
+  const commit: LiveMapCommit = Object.freeze({
+    changed: applied.changed,
+    prevRev,
+    rev,
+    ops: applied.ops,
+  });
+
+  feedHub.emit(
+    commit,
+    (feedPath) => snap_live_path(root, feedPath),
+  );
+
   return commit;
 }
 
@@ -574,7 +622,14 @@ function must_editor_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWri
   apply_write_ops(clone_live_root(root), writeOps);
 }
 
-function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]): LiveMapCommit {
+type LiveMapAppliedOps = Readonly<{
+  changed: boolean;
+  ops: readonly LiveMapOp[];
+}>;
+function apply_write_ops(
+  root: HsonNode,
+  writeOps: readonly LiveMapCoreWriteOp[],
+): LiveMapAppliedOps {
   /** Apply normalized pending intents in order and collect the changed public ops. */
   const ops: LiveMapOp[] = [];
 
