@@ -246,6 +246,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   node: (path: LivePath) => LiveMapNodeHandle;
   readonly rev: number;
   capture: () => LiveMapCapture<TValue>;
+  apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
 }>;
 
 /**
@@ -330,6 +331,7 @@ export type LiveMapFeedEvent = Readonly<{
   path: LivePath;
   value: JsonValue | undefined;
   ops: readonly LiveMapOp[];
+  commit: LiveMapCommit;
 }>;
 
 /** Listener called when a feed receives an overlapping operation. */
@@ -622,5 +624,10 @@ export type LiveMapSpliceOp = Readonly<{
 
 export type LiveMapCapture<TValue = JsonValue | undefined> = Readonly<{
   rev: number;
+  value: TValue;
+}>;
+
+export type LiveMapApply<TValue = JsonValue | undefined> = Readonly<{
+  prevRev: number;
   value: TValue;
 }>;

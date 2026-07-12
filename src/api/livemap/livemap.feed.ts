@@ -88,6 +88,7 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
         if (op === undefined) continue;
 
         const event: LiveMapFeedEvent = {
+          commit,
           op,
           ops,
           path: entry.path,

@@ -1,13 +1,8 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture } from "../../types/livemap.types.js";
-import type {
-  LiveMapSchema,
-  LiveMapSchemaResolution,
-  LiveMapSchemaValidation,
-  LiveMapSchemaValue,
-} from "./livemap.schema.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply } from "../../types/livemap.types.js";
+import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_node_handle } from "./livemap.node.js";
@@ -16,7 +11,9 @@ import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
-import { LiveMapSchemaError } from "./livemap.error.js";
+import {
+  LiveMapRevError, LiveMapSchemaError,
+} from "./livemap.error.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -256,6 +253,24 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
         value: snap_live_path(root, []),
       });
     },
+    /** Replace the root only when the caller's base revision is still current. */
+    apply: (input: LiveMapApply<JsonValue | undefined>) => {
+      must_expected_rev(
+        input.prevRev,
+        currentRev,
+      );
+
+      return commitOps([
+        {
+          kind: "replace",
+          path: [],
+          value: must_json_value(
+            input.value,
+            [],
+          ),
+        },
+      ]);
+    },
   };
 
   const pathHandleCache = new Map<string, LiveMapPathHandle>();
@@ -352,6 +367,27 @@ function make_batch_tx(
 function must_batch_open(isOpen: () => boolean): void {
   if (isOpen()) return;
   throw new Error("LiveMap batch transaction is already closed");
+}
+
+function must_expected_rev(
+  expectedRev: number,
+  actualRev: number,
+): void {
+  if (
+    !Number.isInteger(expectedRev)
+    || expectedRev < 0
+  ) {
+    throw new Error(
+      `LiveMap expected revision is not valid: ${String(expectedRev)}`,
+    );
+  }
+
+  if (expectedRev === actualRev) return;
+
+  throw new LiveMapRevError(
+    expectedRev,
+    actualRev,
+  );
 }
 
 /** Normalize overloaded root/endpoint replace calls into one write intent. */
