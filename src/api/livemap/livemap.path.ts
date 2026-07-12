@@ -1,6 +1,34 @@
 // livemap-path.ts
 
-import type { LivePath } from "../../types/livemap.types.js";
+import type { LivePath, LivePathPart } from "../../types/livemap.types.js";
+
+// CHANGED: shared pure helpers keep LivePath operations centralized.
+export function clone_live_path(path: LivePath): LivePath {
+  return [...path];
+}
+
+export function paths_equal(left: LivePath, right: LivePath): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((part, index) => part === right[index]);
+}
+
+export function append_live_path(path: LivePath, part: LivePathPart): LivePath {
+  return [...path, part];
+}
+
+export function parent_live_path(path: LivePath): LivePath | undefined {
+  if (path.length === 0) return undefined;
+  return path.slice(0, -1);
+}
+
+export function relative_live_path(prefix: LivePath, path: LivePath): LivePath | undefined {
+  if (!path_is_prefix(prefix, path)) return undefined;
+  return path.slice(prefix.length);
+}
+
+export function live_path_key(path: LivePath): string {
+  return JSON.stringify(path);
+}
 
 /**
  * Format a LivePath for error messages and debug output.

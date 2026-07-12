@@ -2,11 +2,11 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
-import { must_json_value, must_live_path, must_set_many_values } from "./guard.js";
-import { make_livemap_array_api } from "./handle-array.js";
-import { make_livemap_object_api } from "./handle-object.js";
-import { ensure_livemap_quid } from "./livemap-quid.js";
-import { path_is_prefix } from "./path.js";
+import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
+import { make_livemap_array_api } from "./livemap.handle-array.js";
+import { make_livemap_object_api } from "./livemap.handle-object.js";
+import { ensure_livemap_quid } from "./livemap.quid.js";
+import { path_is_prefix } from "./livemap.path.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch">;

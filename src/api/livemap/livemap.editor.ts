@@ -6,7 +6,7 @@ import { is_Node } from "../../core/node-guards.js";
 import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/livemap.types.js";
 import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
-import { format_live_path } from "./path.js";
+import { format_live_path } from "./livemap.path.js";
 
 /**
  * Parent resolution for a projected LiveMap path.

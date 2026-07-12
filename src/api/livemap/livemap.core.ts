@@ -2,14 +2,15 @@
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle } from "../../types/livemap.types.js";
-import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./schema.js";
-import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./editor.js";
-import { make_livemap_feed_hub } from "./feed.js";
-import { make_livemap_node_handle } from "./node.js";
-import { make_livemap_path_handle } from "./handle-api.js";
-import { make_livemap_proxy } from "./proxy.js";
-import { make_livemap_store_api } from "./store.js";
-import { format_live_path, is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./guard.js";
+import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
+import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
+import { make_livemap_feed_hub } from "./livemap.feed.js";
+import { make_livemap_node_handle } from "./livemap.node.js";
+import { make_livemap_path_handle } from "./livemap.handle.js";
+import { make_livemap_proxy } from "./livemap.proxy.js";
+import { make_livemap_store_api } from "./livemap.store.js";
+import { is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
+import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -186,13 +187,10 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
 
   const pathHandleCache = new Map<string, LiveMapPathHandle>();
 
-  function path_handle_key(path: LivePath): string {
-    return JSON.stringify(path);
-  }
 
   function get_path_handle(path: LivePath): LiveMapPathHandle {
     const handlePath = must_live_path(path);
-    const key = path_handle_key(handlePath);
+    const key = live_path_key(handlePath);
     const existing = pathHandleCache.get(key);
     if (existing) return existing;
 
@@ -483,7 +481,7 @@ function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues, c
   /** Build the child-path set ops used by sibling-preserving object sets. */
   return Object.entries(values).map(([key, value]) => ({
     kind: "set" as const,
-    path: [...path, key],
+    path: append_live_path(path, key),
     value,
   }));
 }
@@ -509,7 +507,7 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]
 
       ops.push({
         kind: "set",
-        path: [...op.path],
+        path: clone_live_path(op.path),
         prev: edit.prev,
         next: edit.next,
       });
@@ -523,7 +521,7 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]
 
       ops.push({
         kind: "replace",
-        path: [...op.path],
+        path: clone_live_path(op.path),
         prev: edit.prev,
         next: edit.next,
       });
@@ -536,7 +534,7 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]
 
     ops.push({
       kind: "delete",
-      path: [...op.path],
+      path: clone_live_path(op.path),
       prev: edit.prev,
       next: undefined,
     });
@@ -559,7 +557,7 @@ function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructive
     return [
       {
         kind: "set",
-        path: [...op.path],
+        path: clone_live_path(op.path),
         prev: edit.prev,
         next: edit.next,
       },
@@ -573,7 +571,7 @@ function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructive
   const ops: LiveMapOp[] = [];
 
   for (const [key, value] of entries) {
-    const childPath = [...op.path, key];
+    const childPath = append_live_path(op.path, key);
     const edit = set_live_path(root, childPath, value);
     if (!edit.changed) continue;
 
@@ -664,7 +662,7 @@ function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSet
   }
 
   for (const [key, value] of entries) {
-    set_json_path(root, [...op.path, key], clone_json_value(value));
+    set_json_path(root, append_live_path(op.path, key), clone_json_value(value));
   }
 }
 

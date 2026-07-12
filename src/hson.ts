@@ -9,8 +9,8 @@ import { LiveTree } from "./api/livetree/livetree.js";
 import { make_branch_from_node } from "./api/livetree/creation/create-branch.js";
 import { graft } from "./api/livetree/creation/graft.js";
 import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
-import { make_livemap_core } from "./api/livemap/core.js";
-import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/schema.js";
+import { make_livemap_core } from "./api/livemap/livemap.core.js";
+import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/livemap.schema.js";
 import { create_livehost } from "./api/livehost/livehost.core.js";
 import { create_livehost_client } from "./api/livehost/livehost.client.js";
 import { create_livehost_store } from "./api/livehost/livehost.store.js";
@@ -18,7 +18,7 @@ import { decode_livehost_message, encode_livehost_message } from "./api/livehost
 import { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 import { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 import type { LiveMap } from "./types/livemap.types.js";
-import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/schema.js";
+import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/livemap.schema.js";
 
 
 const SAFE_SOURCE = construct_source_1({ unsafe: false });

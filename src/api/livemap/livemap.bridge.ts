@@ -10,9 +10,9 @@
 // controls back to the LiveMap paths they represent.
 
 import type { JsonValue } from "../../core/types.js";
-import { bind_livetree_input_checked, bind_livetree_schema_enum_input, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./bridge-bindings.js";
+import { bind_livetree_input_checked, bind_livetree_schema_enum_input, bind_livetree_schema_number_input, bind_livetree_input_value, value_to_text } from "./livemap.bridge-bindings.js";
 import type { LiveMap, LivePath } from "../../types/livemap.types.js";
-import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapSchemaControlSpec, BridgePathParts, LiveMapSchemaControlNode, LiveAttrBridgeTarget } from "./bridge.types.js";
+import type { LiveTextBridgeTarget, LiveSnapViewBridgeTarget, LiveControlViewBridgeTarget, LiveMapBridgeBindingGroup, LiveMapBridgeBinding, LiveMapSchemaControlSpec, BridgePathParts, LiveMapSchemaControlNode, LiveAttrBridgeTarget } from "../../types/bridge.types.js";
 
 // PROPOSED FILE GROUP: bridge.ts
 //

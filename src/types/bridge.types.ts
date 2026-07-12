@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../core/types.js";
+import type { JsonValue } from "../core/types.js";
 
 // PROPOSED FILE GROUP: bridge.types.ts
 //

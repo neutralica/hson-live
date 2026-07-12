@@ -3,9 +3,9 @@
 import { ELEM_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import { HsonNode } from "../../core/types.js";
-import { resolve_wrapper_node } from "./editor.js";
+import { resolve_wrapper_node } from "./livemap.editor.js";
 import { LivePath, LiveMapNodeHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue } from "../../types/livemap.types.js";
-import { format_live_path } from "./path.js";
+import { format_live_path } from "./livemap.path.js";
 
 /** Remove only child nodes and preserve primitive content. */
 function removeChildNodes(parent: HsonNode): void {

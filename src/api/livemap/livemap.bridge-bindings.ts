@@ -1,14 +1,9 @@
-import type { JsonValue } from "../../core/types.js";
-import type {
-  LiveAttrBridgeTarget,
-  LiveInputBridgeTarget,
-  LiveMapBridgeBinding,
-  LiveMapSchemaControlNode,
-  LiveTextBridgeTarget
-} from "./bridge.types.js";
-import type { LiveMap, LivePath } from "../../types/livemap.types.js";
 
 /* ***DO NOT IMPORT FROM bridge.ts - keep deps one-way*** */
+
+import type { JsonValue } from "../../core/types.js";
+import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapSchemaControlNode } from "../../types/bridge.types.js";
+import type { LiveMap, LivePath } from "../../types/livemap.types.js";
 
 // bridge-bindings.ts
 //

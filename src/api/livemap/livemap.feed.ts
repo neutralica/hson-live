@@ -2,7 +2,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
-import { path_is_prefix } from "./path.js";
+import { path_is_prefix } from "./livemap.path.js";
 
 /**
  * Reads the current projected JSON value at a LiveMap path.

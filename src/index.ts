@@ -5,12 +5,12 @@ export { LiveTree } from "./api/livetree/livetree.js";
 export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
 
-export { make_livemap_core } from "./api/livemap/core.js";
-export { make_livemap_store_api } from "./api/livemap/store.js";
-export { format_live_path, path_is_prefix } from "./api/livemap/path.js";
-export { link_livemap } from "./api/livemap/link.js";
-export { make_livemap_feed_hub, paths_overlap } from "./api/livemap/feed.js";
-export { make_livemap_proxy } from "./api/livemap/proxy.js";
+export { make_livemap_core } from "./api/livemap/livemap.core.js";
+export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
+export { format_live_path, path_is_prefix } from "./api/livemap/livemap.path.js";
+export { link_livemap } from "./api/livemap/livemap.link.js";
+export { make_livemap_feed_hub, paths_overlap } from "./api/livemap/livemap.feed.js";
+export { make_livemap_proxy } from "./api/livemap/livemap.proxy.js";
 export {
     bind_path,
     bind_paths,
@@ -27,7 +27,7 @@ export {
     drop_livemap_quid,
     remint_livemap_quid,
     debug_livemap_quids
-} from "./api/livemap/livemap-quid.js";
+} from "./api/livemap/livemap.quid.js";
 export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
 export { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
@@ -79,6 +79,7 @@ export type {
     LiveHostStoreId,
     LiveHostValidator,
 } from "./types/index.js";
-export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/schema.js";
-export type { InferLiveMapSchema, LiveMapSchema, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/schema.js";
+export { snap_live_path } from "./api/livemap/livemap.editor.js";
+export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/livemap.schema.js";
+export type { InferLiveMapSchema, LiveMapSchema, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken } from "./api/livemap/livemap.schema.js";
 export { ELEM_TAG, OBJ_TAG, ARR_TAG, ROOT_TAG, II_TAG, STR_TAG, VAL_TAG, ATTRS_KEY, META_KEY, TAG_KEY, CONTENT_KEY } from "./core/constants.js";
