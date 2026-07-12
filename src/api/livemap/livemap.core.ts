@@ -246,6 +246,9 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
 
     /** Subscribe to projected value changes. */
     sub: subApi,
+    get rev() {
+      return currentRev;
+    },
   };
 
   const pathHandleCache = new Map<string, LiveMapPathHandle>();

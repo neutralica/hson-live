@@ -244,6 +244,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   sub: LiveMapSubApi<TValue>;
   node: (path: LivePath) => LiveMapNodeHandle;
+  readonly rev: number;
 }>;
 
 /**
