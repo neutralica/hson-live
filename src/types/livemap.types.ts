@@ -94,7 +94,7 @@ export type LiveMapReplaceWriteOp = Readonly<{
 }>;
 
 /** Internal mutation intent consumed by the Core commit pipeline. */
-export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapReplaceWriteOp;
+export type LiveMapWriteOp = LiveMapSetWriteOp | LiveMapDeleteWriteOp | LiveMapReplaceWriteOp | LiveMapSpliceWriteOp;
 
 export type LiveMapSortDirection = "asc" | "desc";
 
@@ -184,6 +184,7 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapBatchTx<TValue>;
+  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapBatchTx<TValue>;
   /** Delete the projected path. */
   delete: (path: LivePath) => LiveMapBatchTx<TValue>;
 }>;
@@ -234,6 +235,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
   ) => LiveMapCommit;
+  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCommit;
   /** Exact root replacement, or exact endpoint replacement at a projected path; `set([])` remains invalid. */
   replace: LiveMapReplaceFn<TValue>;
   delete: (path: LivePath) => LiveMapCommit;
@@ -298,7 +300,7 @@ export type LiveMapReplaceOp = Readonly<{
 }>;
 
 /** Normalized operation emitted by a LiveMap mutation. */
-export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp;
+export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | LiveMapSpliceOp;
 
 /**
  * Normalized mutation record returned by Core.
@@ -595,3 +597,21 @@ export type LiveMapSchemaIssueCode =
   | "INVALID_REFINEMENT"
   | "INVALID_SCHEMA"
   | "TUPLE_INDEX_OUT_OF_RANGE";
+
+export type LiveMapSpliceWriteOp = Readonly<{
+  kind: "splice";
+  path: LivePath;
+  start: number;
+  deleteCount: number;
+  items: readonly JsonValue[];
+}>;
+
+export type LiveMapSpliceOp = Readonly<{
+  kind: "splice";
+  path: LivePath;
+  start: number;
+  removed: readonly JsonValue[];
+  inserted: readonly JsonValue[];
+  prev: JsonValue;
+  next: JsonValue;
+}>;

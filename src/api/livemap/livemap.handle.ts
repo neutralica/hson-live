@@ -9,7 +9,7 @@ import { ensure_livemap_quid } from "./livemap.quid.js";
 import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
 
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice">;
 
 type LiveMapPathHandleInternals = Readonly<{
   core: LiveMapPathHandleCore;

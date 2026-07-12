@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle } from "../../types/livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp } from "../../types/livemap.types.js";
 import type {
   LiveMapSchema,
   LiveMapSchemaResolution,
@@ -14,8 +14,9 @@ import { make_livemap_node_handle } from "./livemap.node.js";
 import { make_livemap_path_handle } from "./livemap.handle.js";
 import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
-import { is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
+import { is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
+import { LiveMapSchemaError } from "./livemap.error.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -169,6 +170,14 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       return commit_ops(root, currentSchema, feedHub, write_ops_from_set_many(livePath, jsonValues, snap_live_path(root, livePath)));
     },
 
+    /** Apply one semantic array splice and preserve it in the resulting commit. */
+    splice: (path, start, deleteCount, ...items) => {
+      const livePath = must_live_path(path);
+      const currentValue = snap_live_path(root, livePath);
+      const op = splice_write_op(livePath, currentValue, start, deleteCount, items);
+      return commit_ops(root, currentSchema, feedHub, [op]);
+    },
+
     /**
      * Exact root or endpoint replacement.
      *
@@ -287,6 +296,13 @@ function make_batch_tx(
       pushWriteOps(write_ops_from_set_many(livePath, jsonValues, snap_json_path(candidate, livePath)));
       return tx;
     },
+    splice: (path, start, deleteCount, ...items) => {
+      must_batch_open(isOpen);
+      const livePath = must_live_path(path);
+      const op = splice_write_op(livePath, snap_json_path(candidate, livePath), start, deleteCount, items);
+      pushWriteOps([op]);
+      return tx;
+    },
     delete: (path) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
@@ -325,6 +341,31 @@ function replace_write_op_from_args(
     path: livePath,
     value: must_json_value(value, livePath),
   };
+}
+
+/** Normalize one public array splice into a transport-safe write intent. */
+function splice_write_op(path: LivePath, currentValue: JsonValue | undefined, start: number, deleteCount: number, items: readonly unknown[]): LiveMapSpliceWriteOp {
+  const arrayValue = must_core_array_value(currentValue, path);
+  const normalizedStart = normalize_splice_start(arrayValue.length, start, path);
+  const normalizedDeleteCount = normalize_splice_delete_count(arrayValue.length, normalizedStart, deleteCount, path);
+  const jsonItems = items.map((item, index) => must_json_value(item, append_live_path(path, normalizedStart + index)));
+  return Object.freeze({ kind: "splice", path: clone_live_path(path), start: normalizedStart, deleteCount: normalizedDeleteCount, items: Object.freeze(jsonItems) });
+}
+
+function must_core_array_value(value: JsonValue | undefined, path: LivePath): readonly JsonValue[] {
+  if (!Array.isArray(value)) throw path_kind_error(path, "array");
+  return value;
+}
+
+function normalize_splice_start(length: number, start: number, path: LivePath): number {
+  if (!Number.isInteger(start)) throw new Error(`LiveMap array splice start is not a valid index at ${JSON.stringify(path)}: ${String(start)}`);
+  if (start < 0) return Math.max(length + start, 0);
+  return Math.min(start, length);
+}
+
+function normalize_splice_delete_count(length: number, start: number, deleteCount: number, path: LivePath): number {
+  if (!Number.isInteger(deleteCount) || deleteCount < 0) throw new Error(`LiveMap array splice deleteCount is not valid at ${JSON.stringify(path)}: ${String(deleteCount)}`);
+  return Math.min(deleteCount, length - start);
 }
 
 
@@ -366,10 +407,22 @@ function delete_json_path(root: JsonValue, path: LivePath): void {
   delete cursor[leaf];
 }
 
-function must_schema_validation(validation: LiveMapSchemaValidation, path: LivePath, headlineMode: "path" | "issue" = "path"): void {
+function must_schema_validation(
+  validation: LiveMapSchemaValidation,
+  path: LivePath,
+  headlineMode: "path" | "issue" = "path",
+): void {
   if (validation.ok) return;
 
-  throw new Error(format_schema_validation_error(validation, headlineMode === "issue" ? validation_headline_path(validation, path) : path));
+  const headlinePath = headlineMode === "issue"
+    ? validation_headline_path(validation, path)
+    : path;
+
+  throw new LiveMapSchemaError(
+    format_schema_validation_error(validation, headlinePath),
+    headlinePath,
+    validation.issues,
+  );
 }
 
 function format_schema_validation_error(validation: LiveMapSchemaValidation, path: LivePath): string {
@@ -531,6 +584,17 @@ function apply_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]
       continue;
     }
 
+    if (op.kind === "splice") {
+      const currentValue = must_core_array_value(snap_live_path(root, op.path), op.path);
+      const next = [...currentValue];
+      const removed = next.splice(op.start, op.deleteCount, ...op.items.map(clone_json_value));
+      const edit = set_live_path(root, op.path, next);
+      if (!edit.changed) continue;
+      const spliceOp: LiveMapSpliceOp = Object.freeze({ kind: "splice", path: clone_live_path(op.path), start: op.start, removed: Object.freeze(removed.map(clone_json_value)), inserted: Object.freeze(op.items.map(clone_json_value)), prev: must_json_value(edit.prev, op.path), next: must_json_value(edit.next, op.path) });
+      ops.push(spliceOp);
+      continue;
+    }
+
     if (op.kind === "set") {
       const edit = set_live_path(root, op.path, op.value);
       if (!edit.changed) continue;
@@ -656,6 +720,11 @@ function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWri
       continue;
     }
 
+    if (op.kind === "splice") {
+      apply_json_splice_write_op(candidate, op);
+      continue;
+    }
+
     if (op.kind === "set") {
       set_json_path(candidate, op.path, clone_json_value(op.value));
       continue;
@@ -676,6 +745,13 @@ function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWri
   }
 
   return candidate;
+}
+
+function apply_json_splice_write_op(root: JsonValue, op: LiveMapSpliceWriteOp): void {
+  const currentValue = must_core_array_value(snap_json_path(root, op.path), op.path);
+  const next = [...currentValue];
+  next.splice(op.start, op.deleteCount, ...op.items.map(clone_json_value));
+  set_json_path(root, op.path, next);
 }
 
 function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSetWriteOp): void {

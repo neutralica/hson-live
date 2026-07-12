@@ -1,24 +1,18 @@
 // handle-array.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapArrayWriteItem, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./livemap.guard.js";
 
-type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set">;
+type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "splice">;
 
-/**
- * Array-scoped helpers for a projected LiveMap path.
- *
- * Read helpers require the projected path to resolve to a JSON array. Mutation
- * helpers build a complete next array and write it back through core `set`, so
- * they preserve the public LiveMap rule that the addressed array path must
- * already resolve.
- *
- * Helpers that accept negative indexes resolve them relative to the end of the
- * current array. Insert positions may point one slot past the end; read,
- * remove, replace, and move positions must resolve to an existing item.
- */
-export function make_livemap_array_api<TValue = JsonValue | undefined>(core: LiveMapArrayHandleCore, handlePath: LivePath): LiveMapPathArrayApi<TValue> {
+export function make_livemap_array_api<
+  TValue = JsonValue | undefined,
+>(
+  coreInput: LiveMapArrayHandleCore,
+  handlePath: LivePath,
+): LiveMapPathArrayApi<TValue> {
+  const core = coreInput as LiveMapArrayHandleCore;
   return {
     is: () => Array.isArray(core.snap(handlePath)),
     toArray: () => mustArrayValue(core.snap(handlePath), handlePath) as unknown as LiveMapArrayShape<TValue>,
@@ -61,22 +55,31 @@ export function make_livemap_array_api<TValue = JsonValue | undefined>(core: Liv
     },
     push: (value) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, arrayInsert(arrayValue, handlePath, arrayValue.length, must_json_value(value, [...handlePath, arrayValue.length])));
+      const index = arrayValue.length;
+      return core.splice(handlePath, index, 0, must_json_value(value, [...handlePath, index]));
     },
     pushMany: (values) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, [...arrayValue, ...mustJsonArrayValue(values, handlePath)]);
+      return core.splice(handlePath, arrayValue.length, 0, ...mustJsonArrayValue(values, handlePath));
     },
-    unshift: (value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, 0, must_json_value(value, [...handlePath, 0]))),
+    unshift: (value) => {
+      mustArrayValue(core.snap(handlePath), handlePath);
+      return core.splice(handlePath, 0, 0, must_json_value(value, [...handlePath, 0]));
+    },
     unshiftMany: (values) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, [...mustJsonArrayValue(values, handlePath), ...arrayValue]);
+      return core.splice(handlePath, 0, 0, ...mustJsonArrayValue(values, handlePath));
     },
     pop: () => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, arrayRemove(arrayValue, handlePath, arrayValue.length - 1));
+      const index = arrayIndex(arrayValue, handlePath, -1);
+      return core.splice(handlePath, index, 1);
     },
-    shift: () => core.set(handlePath, arrayRemove(core.snap(handlePath), handlePath, 0)),
+    shift: () => {
+      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const index = arrayIndex(arrayValue, handlePath, 0);
+      return core.splice(handlePath, index, 1);
+    },
     clear: () => {
       mustArrayValue(core.snap(handlePath), handlePath);
       return core.set(handlePath, []);
@@ -84,10 +87,27 @@ export function make_livemap_array_api<TValue = JsonValue | undefined>(core: Liv
     reverse: () => core.set(handlePath, mustArrayValue(core.snap(handlePath), handlePath).reverse()),
     sortNumbers: (direction) => core.set(handlePath, arraySortNumbers(core.snap(handlePath), handlePath, direction)),
     sortStrings: (direction) => core.set(handlePath, arraySortStrings(core.snap(handlePath), handlePath, direction)),
-   splice: (...args) => core.set(handlePath, arraySplice<TValue>(core.snap(handlePath), handlePath, args)),
-    insert: (index, value) => core.set(handlePath, arrayInsert(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
-    remove: (index) => core.set(handlePath, arrayRemove(core.snap(handlePath), handlePath, index)),
-    replace: (index, value) => core.set(handlePath, arrayReplace(core.snap(handlePath), handlePath, index, must_json_value(value, [...handlePath, index]))),
+    splice: (...args) => {
+      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const [start, deleteCount, ...items] = args;
+      const normalizedStart = normalizeHandleSpliceStart(arrayValue.length, arraySpliceStart(start, handlePath));
+      const normalizedDeleteCount = deleteCount === undefined ? arrayValue.length - normalizedStart : arraySpliceDeleteCount(deleteCount, handlePath);
+      return core.splice(handlePath, normalizedStart, normalizedDeleteCount, ...items.map((item, index) => must_json_value(item, [...handlePath, normalizedStart + index])));
+    },
+    insert: (index, value) => {
+      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const resolvedIndex = arrayInsertIndex(arrayValue, handlePath, index);
+      return core.splice(handlePath, resolvedIndex, 0, must_json_value(value, [...handlePath, resolvedIndex]));
+    },
+    remove: (index) => {
+      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      return core.splice(handlePath, arrayIndex(arrayValue, handlePath, index), 1);
+    },
+    replace: (index, value) => {
+      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const resolvedIndex = arrayIndex(arrayValue, handlePath, index);
+      return core.splice(handlePath, resolvedIndex, 1, must_json_value(value, [...handlePath, resolvedIndex]));
+    },
     move: (fromIndex, toIndex) => core.set(handlePath, arrayMove(core.snap(handlePath), handlePath, fromIndex, toIndex)),
     unique: () => core.set(handlePath, arrayUnique(core.snap(handlePath), handlePath)),
     removeValue: (value) => core.set(handlePath, arrayRemoveValue(core.snap(handlePath), handlePath, must_json_value(value, handlePath))),
@@ -143,6 +163,11 @@ function arraySpliceStart(start: number, path: LivePath): number {
   return start;
 }
 
+function normalizeHandleSpliceStart(length: number, start: number): number {
+  if (start < 0) return Math.max(length + start, 0);
+  return Math.min(start, length);
+}
+
 function arraySpliceDeleteCount(deleteCount: number, path: LivePath): number {
   if (!Number.isInteger(deleteCount) || deleteCount < 0) {
     throw new Error(`LiveMap array splice deleteCount is not valid at ${JSON.stringify(path)}: ${String(deleteCount)}`);
@@ -185,21 +210,6 @@ function arraySortStrings(value: JsonValue | undefined, path: LivePath, directio
     if (left === right) return 0;
     return multiplier * ((left as string) < (right as string) ? -1 : 1);
   });
-}
-
-function arraySplice<TValue>(value: JsonValue | undefined, path: LivePath, args: readonly [start: number] | readonly [start: number, deleteCount: number, ...items: LiveMapArrayWriteItem<TValue>[]]): JsonValue {
-  const next = mustArrayValue(value, path);
-  const [start, deleteCount, ...items] = args;
-  const spliceStart = arraySpliceStart(start, path);
-  const insertItems = items.map((item) => must_json_value(item, path));
-
-  if (deleteCount === undefined) {
-    next.splice(spliceStart);
-    return next;
-  }
-
-  next.splice(spliceStart, arraySpliceDeleteCount(deleteCount, path), ...insertItems);
-  return next;
 }
 
 function arrayUnique(value: JsonValue | undefined, path: LivePath): JsonValue {
@@ -246,24 +256,6 @@ function jsonValueEquals(left: JsonValue, right: JsonValue): boolean {
 
 function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function arrayInsert(value: JsonValue | undefined, path: LivePath, index: number, item: JsonValue): JsonValue {
-  const next = mustArrayValue(value, path);
-  next.splice(arrayInsertIndex(next, path, index), 0, item);
-  return next;
-}
-
-function arrayRemove(value: JsonValue | undefined, path: LivePath, index: number): JsonValue {
-  const next = mustArrayValue(value, path);
-  next.splice(arrayIndex(next, path, index), 1);
-  return next;
-}
-
-function arrayReplace(value: JsonValue | undefined, path: LivePath, index: number, item: JsonValue): JsonValue {
-  const next = mustArrayValue(value, path);
-  next.splice(arrayIndex(next, path, index), 1, item);
-  return next;
 }
 
 function arrayMove(value: JsonValue | undefined, path: LivePath, fromIndex: number, toIndex: number): JsonValue {
