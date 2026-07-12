@@ -1,7 +1,12 @@
 // livemap.types.ts
 
 import type { HsonNode, JsonValue } from "../core/types.js";
-import type { LiveMapSchema, LiveMapSchemaValue } from "../api/livemap/livemap.schema.js";
+import type {
+  LiveMapSchema,
+  LiveMapSchemaResolution,
+  LiveMapSchemaRule,
+  LiveMapSchemaValue,
+} from "../api/livemap/livemap.schema.js";
 import type { LiveMapQuid } from "../api/livemap/livemap.quid.js";
 
 
@@ -195,10 +200,24 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
  * A bare `LiveMapSchema` means `LiveMapSchema<unknown>`, so the resulting map is
  * correctly typed as `LiveMap<unknown>`.
  */
+/** Throwing inspection surface for the schema attached to a LiveMap Core. */
+export type LiveMapCoreSchemaMustApi = Readonly<{
+  resolve: (path: LivePath) => LiveMapSchemaResolution;
+}>;
+
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
-  (): LiveMapSchema | undefined;
   get: () => LiveMapSchema | undefined;
-  use: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
+  use: <TSchema extends LiveMapSchema>(
+    schema: TSchema,
+  ) => LiveMap<LiveMapSchemaValue<TSchema>>;
+  /** Return the public schema rule matching one concrete path, if attached. */
+  match: (path: LivePath) => LiveMapSchemaRule | undefined;
+  /** Resolve one concrete path through the attached schema, if present. */
+  resolve: (path: LivePath) => LiveMapSchemaResolution | undefined;
+  /** Return whether the attached schema resolves one concrete path. */
+  has: (path: LivePath) => boolean;
+  /** Throwing attached-schema inspection surface. */
+  must: LiveMapCoreSchemaMustApi;
 }>;
 
 export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
@@ -566,3 +585,13 @@ export type LiveMapNodeInsertApi = Readonly<{
 export type LiveMapNodeMoveApi = Readonly<{
   child: (fromIndex: number, toIndex: number) => LiveMapNodeHandle;
 }>;
+
+export type LiveMapSchemaIssueCode =
+  | "TYPE_MISMATCH"
+  | "MISSING_REQUIRED"
+  | "UNKNOWN_PATH"
+  | "UNKNOWN_KEY"
+  | "INVALID_LITERAL"
+  | "INVALID_REFINEMENT"
+  | "INVALID_SCHEMA"
+  | "TUPLE_INDEX_OUT_OF_RANGE";

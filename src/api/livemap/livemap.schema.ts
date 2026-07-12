@@ -1,7 +1,11 @@
 // schema.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LivePath } from "../../types/livemap.types.js";
+import type {
+  LiveMapSchemaIssueCode,
+  LivePath,
+} from "../../types/livemap.types.js";
+import { clone_live_path, parent_live_path } from "./livemap.path.js";
 
 export type LiveMapSchemaKind =
   | "unknown"
@@ -19,8 +23,11 @@ export type LiveMapSchemaKind =
   | "record";
 
 export type LiveMapSchemaIssue = Readonly<{
+  code: LiveMapSchemaIssueCode;
   path: LivePath;
   message: string;
+  expected?: string;
+  received?: string;
 }>;
 
 export type LiveMapSchemaValidation = Readonly<{
@@ -38,6 +45,20 @@ export type LiveMapSchemaRule = Readonly<{
   literals?: readonly JsonValue[];
 }>;
 
+/** Concrete schema resolution for one runtime LivePath. */
+export type LiveMapSchemaResolution = Readonly<{
+  path: LivePath;
+  rule: LiveMapSchemaRule;
+  key?: LivePath[number];
+  parentPath?: LivePath;
+  parentRule?: LiveMapSchemaRule;
+}>;
+
+/** Throwing schema-resolution convenience surface. */
+export type LiveMapSchemaMustApi = Readonly<{
+  resolve: (path: LivePath) => LiveMapSchemaResolution;
+}>;
+
 /**
  * Runtime schema for LiveMap values.
  *
@@ -50,6 +71,12 @@ export type LiveMapSchema<TValue = unknown> = Readonly<{
   root: LiveMapSchemaNode;
   rules: readonly LiveMapSchemaRule[];
   match: (path: LivePath) => LiveMapSchemaRule | undefined;
+  /** Resolve a concrete runtime path to its matching rule and parent context. */
+  resolve: (path: LivePath) => LiveMapSchemaResolution | undefined;
+  /** Return whether one concrete runtime path resolves against this schema. */
+  has: (path: LivePath) => boolean;
+  /** Throwing schema-resolution convenience surface. */
+  must: LiveMapSchemaMustApi;
   /** Validate a complete candidate root. This is the normal LiveMap commit path. */
   validateRoot: (value: JsonValue | undefined) => LiveMapSchemaValidation;
   /** Validate one value against the schema node at `path`. */
@@ -134,7 +161,7 @@ export type LiveMapSchemaBuilder = Readonly<{
   pick: <const TChoices extends readonly LiveMapSchemaChoice[]>(...choices: TChoices) => LiveMapSchemaToken<InferLiveMapSchemaChoice<TChoices[number]>>;
   tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
   lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput) => LiveMapSchemaToken<InferLiveMapSchemaInput<TInput>>;
-  refine: <TValue>(base: LiveMapSchemaInput<TValue>,label: string,validate: LiveMapSchemaRefinement<TValue & JsonValue>) => LiveMapSchemaToken<TValue>;
+  refine: <TValue>(base: LiveMapSchemaInput<TValue>, label: string, validate: LiveMapSchemaRefinement<TValue & JsonValue>) => LiveMapSchemaToken<TValue>;
   array: <TInput extends LiveMapSchemaInput>(item: TInput) => LiveMapSchemaToken<readonly InferLiveMapSchemaInput<TInput>[]>;
   tuple: <TItems extends readonly LiveMapSchemaInput[]>(...items: TItems) => LiveMapSchemaToken<InferLiveMapSchemaTuple<TItems>>;
   record: <TInput extends LiveMapSchemaInput>(value: TInput) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaInput<TInput>>>>;
@@ -242,10 +269,27 @@ export function make_livemap_schema<const TInput>(input: TInput): LiveMapSchema<
   const root = normalize_schema_input(input as LiveMapSchemaInput);
   const compiledRules = collect_schema_rules(root, [], []);
   const rules = Object.freeze(compiledRules.map(({ rule }) => rule));
+  const resolve = (
+    path: LivePath,
+  ): LiveMapSchemaResolution | undefined =>
+    resolve_schema_path(compiledRules, path);
+  const has = (path: LivePath): boolean => resolve(path) !== undefined;
+  const must = Object.freeze({
+    resolve: (path: LivePath): LiveMapSchemaResolution => {
+      const resolved = resolve(path);
+      if (resolved !== undefined) return resolved;
+      throw new Error(
+        `LiveMap schema has no rule for ${format_schema_path(path)}`,
+      );
+    },
+  });
   return Object.freeze({
     root,
     rules,
-    match: (path: LivePath) => match_schema_rule(compiledRules, path),
+    match: (path: LivePath) => resolve(path)?.rule,
+    resolve,
+    has,
+    must,
     validateRoot: (value: JsonValue | undefined) => validate_schema_node(root, [], value),
     validateValue: (path: LivePath, value: JsonValue | undefined) => validate_schema_value(root, path, value),
   }) as LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
@@ -467,6 +511,34 @@ function schema_rule_from_node(node: LiveMapSchemaNode, path: LivePath): LiveMap
   });
 }
 
+// CHANGED: expose one authoritative concrete-path resolver while keeping
+// private wildcard matcher paths out of the public schema surface.
+function resolve_schema_path(
+  rules: readonly CompiledLiveMapSchemaRule[],
+  path: LivePath,
+): LiveMapSchemaResolution | undefined {
+  const rule = match_schema_rule(rules, path);
+  if (rule === undefined) return undefined;
+  const resolvedPath = clone_live_path(path);
+  const parentPath = parent_live_path(path);
+  if (parentPath === undefined) {
+    return Object.freeze({
+      path: resolvedPath,
+      rule,
+    });
+  }
+  const parentRule = match_schema_rule(rules, parentPath);
+  return Object.freeze({
+    path: resolvedPath,
+    rule,
+    ...(path[path.length - 1] !== undefined
+      ? { key: path[path.length - 1] }
+      : {}),
+    parentPath: clone_live_path(parentPath),
+    ...(parentRule !== undefined ? { parentRule } : {}),
+  });
+}
+
 function match_schema_rule(
   rules: readonly CompiledLiveMapSchemaRule[],
   path: LivePath,
@@ -503,7 +575,11 @@ function schema_paths_match(
 function validate_schema_value(root: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
   const node = schema_node_at_path(root, path);
   if (node === undefined) {
-    return validation_issue(path, `LiveMap schema has no rule for ${format_schema_path(path)}`);
+    return validation_issue(
+      "UNKNOWN_PATH",
+      path,
+      `LiveMap schema has no rule for ${format_schema_path(path)}`,
+    );
   }
 
   return validate_schema_node(node, path, value);
@@ -541,7 +617,14 @@ function schema_node_at_path(node: LiveMapSchemaNode, path: LivePath): LiveMapSc
 
 function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
   if (value === undefined) {
-    return node.optional ? validation_ok() : expected_schema_value_issue(node, path, "undefined");
+    return node.optional
+      ? validation_ok()
+      : expected_schema_value_issue(
+        node,
+        path,
+        "undefined",
+        "MISSING_REQUIRED",
+      );
   }
 
   if (value === null) {
@@ -571,7 +654,12 @@ function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 function validate_literal_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (node.literals.some((literal) => json_values_equal(literal, value))) return validation_ok();
 
-  return expected_schema_value_issue(node, path, JSON.stringify(value));
+  return expected_schema_value_issue(
+    node,
+    path,
+    JSON.stringify(value),
+    "INVALID_LITERAL",
+  );
 }
 
 function closest_schema_validation(validations: readonly LiveMapSchemaValidation[]): LiveMapSchemaValidation | undefined {
@@ -600,13 +688,23 @@ function validate_pick_node(node: LiveMapSchemaNode, path: LivePath, value: Json
 }
 
 function validate_lazy_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
-  if (node.lazy === undefined) return validation_issue(path, `LiveMap schema lazy rule is not defined at ${format_schema_path(path)}`);
+  if (node.lazy === undefined) {
+    return validation_issue(
+      "INVALID_SCHEMA",
+      path,
+      `LiveMap schema lazy rule is not defined at ${format_schema_path(path)}`,
+    );
+  }
   return validate_schema_node(node.lazy(), path, value);
 }
 
 function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
   if (node.base === undefined || node.validate === undefined) {
-    return validation_issue(path, `LiveMap schema refinement is not defined at ${format_schema_path(path)}`);
+    return validation_issue(
+      "INVALID_SCHEMA",
+      path,
+      `LiveMap schema refinement is not defined at ${format_schema_path(path)}`,
+    );
   }
 
   const baseValidation = validate_schema_node(node.base, path, value);
@@ -614,7 +712,12 @@ function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 
   if (node.validate(value)) return validation_ok();
 
-  return expected_schema_value_issue(node, path, JSON.stringify(value));
+  return expected_schema_value_issue(
+    node,
+    path,
+    JSON.stringify(value),
+    "INVALID_REFINEMENT",
+  );
 }
 
 function validate_array_node(node: LiveMapSchemaNode, path: LivePath, value: JsonValue): LiveMapSchemaValidation {
@@ -641,7 +744,11 @@ function validate_tuple_node(node: LiveMapSchemaNode, path: LivePath, value: Jso
 
   if (value.length > items.length) {
     for (let index = items.length; index < value.length; index += 1) {
-      validations.push(validation_issue([...path, index], `LiveMap schema does not allow tuple index ${index} at ${format_schema_path([...path, index])}`));
+      validations.push(validation_issue(
+        "TUPLE_INDEX_OUT_OF_RANGE",
+        [...path, index],
+        `LiveMap schema does not allow tuple index ${index} at ${format_schema_path([...path, index])}`,
+      ));
     }
   }
 
@@ -662,7 +769,13 @@ function validate_object_node(node: LiveMapSchemaNode, path: LivePath, value: Js
 
   if (node.exact) {
     for (const key of Object.keys(value)) {
-      if (!(key in props)) validations.push(validation_issue([...path, key], `LiveMap schema does not allow key ${JSON.stringify(key)} at ${format_schema_path([...path, key])}`));
+      if (!(key in props)) {
+        validations.push(validation_issue(
+          "UNKNOWN_KEY",
+          [...path, key],
+          `LiveMap schema does not allow key ${JSON.stringify(key)} at ${format_schema_path([...path, key])}`,
+        ));
+      }
     }
   }
 
@@ -679,18 +792,54 @@ function validate_record_node(node: LiveMapSchemaNode, path: LivePath, value: Js
   return merge_validations(Object.entries(value).map(([key, item]) => validate_schema_node(node.record as LiveMapSchemaNode, [...path, key], item)));
 }
 
-function expected_schema_value_issue(node: LiveMapSchemaNode, path: LivePath, received: string): LiveMapSchemaValidation {
-  return validation_issue(path, `LiveMap schema expected ${schema_kind_label(node)} at ${format_schema_path(path)}, received ${received}`);
+function expected_schema_value_issue(
+  node: LiveMapSchemaNode,
+  path: LivePath,
+  received: string,
+  code: LiveMapSchemaIssueCode = "TYPE_MISMATCH",
+): LiveMapSchemaValidation {
+  const expected = schema_kind_label(node);
+  return validation_issue(
+    code,
+    path,
+    `LiveMap schema expected ${expected} at ${format_schema_path(path)}, received ${received}`,
+    {
+      expected,
+      received,
+    },
+  );
 }
 
 function validation_ok(): LiveMapSchemaValidation {
   return Object.freeze({ ok: true, issues: [] });
 }
 
-function validation_issue(path: LivePath, message: string): LiveMapSchemaValidation {
+type LiveMapSchemaIssueDetails = Readonly<{
+  expected?: string;
+  received?: string;
+}>;
+
+function validation_issue(
+  code: LiveMapSchemaIssueCode,
+  path: LivePath,
+  message: string,
+  details: LiveMapSchemaIssueDetails = {},
+): LiveMapSchemaValidation {
   return Object.freeze({
     ok: false,
-    issues: [Object.freeze({ path, message })],
+    issues: [
+      Object.freeze({
+        code,
+        path,
+        message,
+        ...(details.expected !== undefined
+          ? { expected: details.expected }
+          : {}),
+        ...(details.received !== undefined
+          ? { received: details.received }
+          : {}),
+      }),
+    ],
   });
 }
 

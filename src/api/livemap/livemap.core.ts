@@ -2,7 +2,12 @@
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { LiveMapCommit, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle } from "../../types/livemap.types.js";
-import type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
+import type {
+  LiveMapSchema,
+  LiveMapSchemaResolution,
+  LiveMapSchemaValidation,
+  LiveMapSchemaValue,
+} from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_node_handle } from "./livemap.node.js";
@@ -88,17 +93,42 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     path: subPath,
   });
 
-  const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.assign(
-    () => currentSchema,
-    {
-      get: () => currentSchema,
-      use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
-        must_core_schema_root(schema, root);
-        currentSchema = schema;
-        return core as unknown as LiveMapCore<LiveMapSchemaValue<TSchema>>;
-      },
+  const schemaApi: LiveMapCoreSchemaApi<JsonValue | undefined> = Object.freeze({
+    get: () => currentSchema,
+
+    use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
+      must_core_schema_root(schema, root);
+      currentSchema = schema;
+
+      return core as unknown as LiveMapCore<LiveMapSchemaValue<TSchema>>;
     },
-  );
+
+    // CHANGED: attached-schema inspection delegates to the schema's single
+    // authoritative matcher and resolver rather than reimplementing them.
+    match: (path: LivePath) => {
+      return currentSchema?.match(must_live_path(path));
+    },
+
+    resolve: (path: LivePath) => {
+      return currentSchema?.resolve(must_live_path(path));
+    },
+
+    has: (path: LivePath) => {
+      return currentSchema?.has(must_live_path(path)) ?? false;
+    },
+
+    must: Object.freeze({
+      resolve: (path: LivePath): LiveMapSchemaResolution => {
+        const schema = currentSchema;
+
+        if (schema === undefined) {
+          throw new Error("LiveMap has no schema attached");
+        }
+
+        return schema.must.resolve(must_live_path(path));
+      },
+    }),
+  });
 
   const core: LiveMapCore<JsonValue | undefined> = {
     /** Return the live root node owned by this map core. */
