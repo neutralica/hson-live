@@ -6,7 +6,7 @@ import { must_json_value, must_live_path, must_set_many_values } from "./livemap
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import { ensure_livemap_quid } from "./livemap.quid.js";
-import { path_is_prefix } from "./livemap.path.js";
+import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch">;
@@ -52,7 +52,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
 
   const handle: LiveMapPathHandle<TValue> = {
     get quid() { return ensure_livemap_quid(handle); },
-    path: () => [...handlePath],
+    path: () => clone_live_path(handlePath),
     snap: () => core.snap(handlePath) as TValue,
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
     replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
@@ -101,7 +101,14 @@ function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "r
     return;
   }
 
-  const parentPath = targetPath.slice(0, -1);
+  const parentPath = parent_live_path(targetPath);
+
+  if (parentPath === undefined) {
+    if (mode === "replace") internals.core.replace(targetPath, value);
+    else internals.core.set(targetPath, value);
+
+    return;
+  }
   const key = targetPath[targetPath.length - 1];
   const parentValue = internals.core.snap(parentPath);
 
