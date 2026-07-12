@@ -59,7 +59,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined;
   /** Revision zero represents the initial graph before any changed commit. */
-  let currentrev = 0;
+  let currentRev = 0;
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
   const commitOps = (
     writeOps: readonly LiveMapCoreWriteOp[],
@@ -68,9 +68,9 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       root,
       currentSchema,
       feedHub,
-      () => currentrev,
+      () => currentRev,
       (rev) => {
-        currentrev = rev;
+        currentRev = rev;
       },
       writeOps,
     );
