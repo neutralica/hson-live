@@ -2,6 +2,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "../../types/livemap.types.js";
+import { format_live_path } from "./livemap.path.js";
 
 export type LiveMapPathKind = "array" | "object";
 
@@ -69,11 +70,6 @@ export function path_kind_error(path: LivePath, kind: LiveMapPathKind): Error {
 /** Build the standard array-index resolution error. */
 export function array_index_error(path: LivePath, index: number): Error {
   return new Error(`LiveMap array index does not resolve: ${format_live_path(path)}[${index}]`);
-}
-
-/** Format a LivePath for user-facing LiveMap error messages. */
-export function format_live_path(path: LivePath): string {
-  return `[${path.map((part) => JSON.stringify(part)).join(", ")}]`;
 }
 
 function must_live_path_part(part: unknown, index: number): string | number {

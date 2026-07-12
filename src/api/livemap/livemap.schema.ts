@@ -190,8 +190,21 @@ type LiveMapSchemaDraft = Readonly<{
 }>;
 
 const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
-const ARRAY_INDEX_PATH_PART = "*";
-const RECORD_KEY_PATH_PART = "*";
+// CHANGED: public schema rules retain "*" paths, while private matcher paths
+// use distinct sentinels that cannot collide with a real property named "*".
+const PUBLIC_WILDCARD_PATH_PART = "*";
+const ARRAY_INDEX_MATCH_PART: unique symbol = Symbol("LiveMapArrayIndexMatchPart");
+const RECORD_KEY_MATCH_PART: unique symbol = Symbol("LiveMapRecordKeyMatchPart");
+
+type LiveMapSchemaMatchPathPart =
+  | LivePath[number]
+  | typeof ARRAY_INDEX_MATCH_PART
+  | typeof RECORD_KEY_MATCH_PART;
+type LiveMapSchemaMatchPath = readonly LiveMapSchemaMatchPathPart[];
+type CompiledLiveMapSchemaRule = Readonly<{
+  rule: LiveMapSchemaRule;
+  matchPath: LiveMapSchemaMatchPath;
+}>;
 
 const LIVEMAP_SCHEMA_RUNTIME = Object.freeze({
   unknown: make_schema_token<JsonValue>({ kind: "unknown" }),
@@ -227,12 +240,12 @@ export function define_livemap_schema<const TInput>(makeShape: (schema: LiveMapS
 
 export function make_livemap_schema<const TInput>(input: TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
   const root = normalize_schema_input(input as LiveMapSchemaInput);
-  const rules = collect_schema_rules(root, []);
-
+  const compiledRules = collect_schema_rules(root, [], []);
+  const rules = Object.freeze(compiledRules.map(({ rule }) => rule));
   return Object.freeze({
     root,
     rules,
-    match: (path: LivePath) => match_schema_rule(rules, path),
+    match: (path: LivePath) => match_schema_rule(compiledRules, path),
     validateRoot: (value: JsonValue | undefined) => validate_schema_node(root, [], value),
     validateValue: (path: LivePath, value: JsonValue | undefined) => validate_schema_value(root, path, value),
   }) as LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
@@ -394,31 +407,51 @@ function is_schema_token(value: LiveMapSchemaChoice): value is LiveMapSchemaToke
   return typeof value === "object" && value !== null && SCHEMA_DRAFT in value;
 }
 
-function collect_schema_rules(node: LiveMapSchemaNode, path: LivePath): readonly LiveMapSchemaRule[] {
-  const rules: LiveMapSchemaRule[] = [schema_rule_from_node(node, path)];
+function collect_schema_rules(
+  node: LiveMapSchemaNode,
+  path: LivePath,
+  matchPath: LiveMapSchemaMatchPath,
+): readonly CompiledLiveMapSchemaRule[] {
+  const rules: CompiledLiveMapSchemaRule[] = [
+    Object.freeze({
+      rule: schema_rule_from_node(node, path),
+      matchPath,
+    }),
+  ];
   if (node.kind === "lazy") return rules;
   if (node.kind === "refine") return rules;
-
   if (node.kind === "object" && node.props !== undefined) {
     for (const [key, child] of Object.entries(node.props)) {
-      rules.push(...collect_schema_rules(child, [...path, key]));
+      rules.push(...collect_schema_rules(
+        child,
+        [...path, key],
+        [...matchPath, key],
+      ));
     }
   }
-
   if (node.kind === "array" && node.item !== undefined) {
-    rules.push(...collect_schema_rules(node.item, [...path, ARRAY_INDEX_PATH_PART]));
+    rules.push(...collect_schema_rules(
+      node.item,
+      [...path, PUBLIC_WILDCARD_PATH_PART],
+      [...matchPath, ARRAY_INDEX_MATCH_PART],
+    ));
   }
-
   if (node.kind === "tuple" && node.items !== undefined) {
     node.items.forEach((item, index) => {
-      rules.push(...collect_schema_rules(item, [...path, index]));
+      rules.push(...collect_schema_rules(
+        item,
+        [...path, index],
+        [...matchPath, index],
+      ));
     });
   }
-
   if (node.kind === "record" && node.record !== undefined) {
-    rules.push(...collect_schema_rules(node.record, [...path, RECORD_KEY_PATH_PART]));
+    rules.push(...collect_schema_rules(
+      node.record,
+      [...path, PUBLIC_WILDCARD_PATH_PART],
+      [...matchPath, RECORD_KEY_MATCH_PART],
+    ));
   }
-
   return rules;
 }
 
@@ -434,21 +467,37 @@ function schema_rule_from_node(node: LiveMapSchemaNode, path: LivePath): LiveMap
   });
 }
 
-function match_schema_rule(rules: readonly LiveMapSchemaRule[], path: LivePath): LiveMapSchemaRule | undefined {
-  let bestRule: LiveMapSchemaRule | undefined;
-
-  for (const rule of rules) {
-    if (!schema_paths_match(rule.path, path)) continue;
-    if (bestRule === undefined || rule.path.length > bestRule.path.length) bestRule = rule;
+function match_schema_rule(
+  rules: readonly CompiledLiveMapSchemaRule[],
+  path: LivePath,
+): LiveMapSchemaRule | undefined {
+  let bestRule: CompiledLiveMapSchemaRule | undefined;
+  for (const compiledRule of rules) {
+    if (!schema_paths_match(compiledRule.matchPath, path)) continue;
+    if (
+      bestRule === undefined
+      || compiledRule.matchPath.length > bestRule.matchPath.length
+    ) {
+      bestRule = compiledRule;
+    }
   }
-
-  return bestRule;
+  return bestRule?.rule;
 }
 
-function schema_paths_match(pattern: LivePath, path: LivePath): boolean {
+function schema_paths_match(
+  pattern: LiveMapSchemaMatchPath,
+  path: LivePath,
+): boolean {
   if (pattern.length !== path.length) return false;
-
-  return pattern.every((part, index) => part === ARRAY_INDEX_PATH_PART || part === RECORD_KEY_PATH_PART || part === path[index]);
+  return pattern.every((part, index) => {
+    if (part === ARRAY_INDEX_MATCH_PART) {
+      return typeof path[index] === "number";
+    }
+    if (part === RECORD_KEY_MATCH_PART) {
+      return typeof path[index] === "string";
+    }
+    return part === path[index];
+  });
 }
 
 function validate_schema_value(root: LiveMapSchemaNode, path: LivePath, value: JsonValue | undefined): LiveMapSchemaValidation {
