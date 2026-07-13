@@ -13,6 +13,7 @@ import { is_plain_json_object_value, must_feed_listener, must_json_value, must_l
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
 import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { json_values_equal } from "./livemap-helpers.js";
+import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -276,15 +277,16 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     },
     /** Replay semantic ops only when their base revision and prior values match. */
     replay: (input: LiveMapReplay) => {
+      const replay = must_livemap_replay(input);
       must_expected_rev(
-        input.prevRev,
+        replay.prevRev,
         currentRev,
       );
 
       return commitOps(
         replay_write_ops(
           root,
-          input.ops,
+          replay.ops,
         ),
       );
     },
@@ -454,38 +456,6 @@ function replay_write_ops(
 
   return writeOps;
 }
-function replay_write_op(
-  op: LiveMapOp,
-): LiveMapWriteOp {
-  if (op.kind === "delete") {
-    return {
-      kind: "delete",
-      path: clone_live_path(op.path),
-    };
-  }
-
-  if (op.kind === "splice") {
-    return Object.freeze({
-      kind: "splice",
-      path: clone_live_path(op.path),
-      start: op.start,
-      deleteCount: op.removed.length,
-      items: Object.freeze(
-        op.inserted.map(clone_json_value),
-      ),
-    });
-  }
-
-  return {
-    kind: op.kind,
-    path: clone_live_path(op.path),
-    value: must_json_value(
-      op.next,
-      op.path,
-    ),
-  };
-}
-
 function must_replay_value(
   path: LivePath,
   expected: JsonValue | undefined,

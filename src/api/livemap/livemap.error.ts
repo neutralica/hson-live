@@ -66,3 +66,24 @@ export class LiveMapReplayError extends Error {
     this.actual = actual;
   }
 }
+
+export class LiveMapReplayInputError extends Error {
+  readonly code = "INVALID_REPLAY" as const;
+  readonly reason: string;
+  readonly opIndex: number | undefined;
+
+  constructor(
+    reason: string,
+    opIndex?: number,
+  ) {
+    super(
+      opIndex === undefined
+        ? `Invalid LiveMap replay: ${reason}`
+        : `Invalid LiveMap replay operation ${opIndex}: ${reason}`,
+    );
+
+    this.name = "LiveMapReplayInputError";
+    this.reason = reason;
+    this.opIndex = opIndex;
+  }
+}
