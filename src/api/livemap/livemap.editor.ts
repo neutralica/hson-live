@@ -7,6 +7,7 @@ import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/live
 import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
+import { json_values_equal } from "./livemap-helpers.js";
 
 /**
  * Parent resolution for a projected LiveMap path.
@@ -591,25 +592,4 @@ function overwrite_hson_node(target: HsonNode, source: HsonNode): void {
   target.$_attrs = { ...source.$_attrs };
   target.$_meta = { ...source.$_meta };
   target.$_content = source.$_content.map(clone_hson_content);
-}
-
-/**
- * Compare projected JSON values for change detection.
- *
- * This is intentionally simple for the first editor slice. Later, if object key
- * order or richer values become an issue, this should move to a shared stable
- * equality helper.
- */
-function json_values_equal(a: JsonValue | undefined, b: JsonValue | undefined): boolean {
-  return preview_json_value(a) === preview_json_value(b);
-}
-
-/**
- * Serialize projected JSON for internal comparison/debug output.
- *
- * `undefined` is not JSON, so it gets a distinct sentinel string.
- */
-function preview_json_value(value: JsonValue | undefined): string {
-  if (value === undefined) return "undefined";
-  return JSON.stringify(value);
 }

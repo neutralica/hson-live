@@ -247,6 +247,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   readonly rev: number;
   capture: () => LiveMapCapture<TValue>;
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
+  replay: (input: LiveMapReplay) => LiveMapCommit;
 }>;
 
 /**
@@ -630,4 +631,9 @@ export type LiveMapCapture<TValue = JsonValue | undefined> = Readonly<{
 export type LiveMapApply<TValue = JsonValue | undefined> = Readonly<{
   prevRev: number;
   value: TValue;
+}>;
+
+export type LiveMapReplay = Readonly<{
+  prevRev: number;
+  ops: readonly LiveMapOp[];
 }>;

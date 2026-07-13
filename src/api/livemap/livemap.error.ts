@@ -1,8 +1,12 @@
 // livemap.error.ts
 
 import type { LivePath } from "./livemap.index.js";
-import { clone_live_path } from "./livemap.path.js";
+import {
+  clone_live_path,
+  format_live_path,
+} from "./livemap.path.js";
 import type { LiveMapSchemaIssue } from "./livemap.schema.js";
+import type { JsonValue } from "../../core/types.js";
 
 export class LiveMapSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
@@ -38,5 +42,27 @@ export class LiveMapRevError extends Error {
     this.name = "LiveMapRevError";
     this.expectedRev = expectedRev;
     this.actualRev = actualRev;
+  }
+}
+
+export class LiveMapReplayError extends Error {
+  readonly code = "REPLAY_CONFLICT" as const;
+  readonly path: LivePath;
+  readonly expected: JsonValue | undefined;
+  readonly actual: JsonValue | undefined;
+
+  constructor(
+    path: LivePath,
+    expected: JsonValue | undefined,
+    actual: JsonValue | undefined,
+  ) {
+    super(
+      `LiveMap replay conflict at ${format_live_path(path)}: expected ${JSON.stringify(expected)}, actual ${JSON.stringify(actual)}`,
+    );
+
+    this.name = "LiveMapReplayError";
+    this.path = clone_live_path(path);
+    this.expected = expected;
+    this.actual = actual;
   }
 }
