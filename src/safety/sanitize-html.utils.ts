@@ -1,6 +1,14 @@
 // sanitize-html.utils.ts
 
-import DOMPurify from "dompurify";
+import createDOMPurify, {
+  type DOMPurify,
+  type UponSanitizeAttributeHookEvent,
+  type WindowLike,
+} from "dompurify";
+
+export type SanitizerLike = Pick<DOMPurify, "sanitize">;
+
+const SANITIZERS_BY_WINDOW = new WeakMap<Window, DOMPurify>();
 
 /***********************************************
  * ALLOWED_TAGS
@@ -145,8 +153,8 @@ export const ALLOWED_URI_REGEX: RegExp =
  * @returns     A Set of lowercased tag names found in
  *              the inertly parsed tree.
  ***********************************************/
-function discoverTags(html: string): Set<string> {
-  const tpl = document.createElement("template");
+function discoverTags(html: string, ownerDocument: Document): Set<string> {
+  const tpl = ownerDocument.createElement("template");
   tpl.innerHTML = html; // inert parse
   const seen = new Set<string>();
   const walk = (node: Node): void => {
@@ -185,8 +193,8 @@ function discoverTags(html: string): Set<string> {
  * @returns     A list of discovered, non-forbidden tag
  *              names suitable for DOMPurify’s ADD_TAGS.
  ***********************************************/
-function buildAddTags(html: string): string[] {
-  const disc = discoverTags(html);
+function buildAddTags(html: string, ownerDocument: Document): string[] {
+  const disc = discoverTags(html, ownerDocument);
   for (const t of Array.from(disc)) {
     if (FORBID_TAGS_HARD.has(t)) disc.delete(t);
   }
@@ -242,22 +250,28 @@ function buildAddTags(html: string): string[] {
  *              insertion via `mount_html_safe` or similar
  *              inert-parse pipelines.
  ***********************************************/
-export function sanitize_external(html: string): string {
-  const ADD_TAGS = buildAddTags(html);
-  DOMPurify.addHook("uponSanitizeAttribute", (node: unknown) => {
-    const el = node as unknown as Element;
-    const name: string = (node as any).attrName;
-    const value: string = (node as any).attrValue;
+/** Resolve one sanitizer whose DOM implementation is bound to exactly one window. */
+export function make_sanitizer(targetWindow: Window): SanitizerLike {
+  const cached = SANITIZERS_BY_WINDOW.get(targetWindow);
+  if (cached !== undefined) return cached;
+
+  const sanitizer = createDOMPurify(targetWindow as unknown as WindowLike);
+  sanitizer.addHook("uponSanitizeAttribute", (
+    el: Element,
+    event: UponSanitizeAttributeHookEvent,
+  ) => {
+    const name = event.attrName;
+    const value = event.attrValue;
 
     // Drop all inline styles explicitly (DOMPurify also blocks by FORBID_ATTR)
-    if (name === "style") { (node as any).keepAttr = false; return; }
+    if (name === "style") { event.keepAttr = false; return; }
 
     // Drop srcdoc
-    if (name === "srcdoc") { (node as any).keepAttr = false; return; }
+    if (name === "srcdoc") { event.keepAttr = false; return; }
 
     // Harden URL-bearing attributes against the allowed regex
     if (/^(href|src|xlink:href|poster)$/i.test(name)) {
-      if (!ALLOWED_URI_REGEX.test(value)) { (node as any).keepAttr = false; return; }
+      if (!ALLOWED_URI_REGEX.test(value)) { event.keepAttr = false; return; }
     }
 
     // srcset: drop whole attribute if any candidate is unsafe
@@ -265,7 +279,7 @@ export function sanitize_external(html: string): string {
       const parts = value.split(/\s*,\s*/);
       for (let i = 0; i < parts.length; i++) {
         const url = (parts[i].trim().split(/\s+/)[0] || "");
-        if (!ALLOWED_URI_REGEX.test(url)) { (node as any).keepAttr = false; return; }
+        if (!ALLOWED_URI_REGEX.test(url)) { event.keepAttr = false; return; }
       }
     }
 
@@ -278,7 +292,19 @@ export function sanitize_external(html: string): string {
     }
   });
 
-  return DOMPurify.sanitize(html, {
+  SANITIZERS_BY_WINDOW.set(targetWindow, sanitizer);
+  return sanitizer;
+}
+
+export function sanitize_external(html: string): string {
+  if (typeof window === "undefined") {
+    throw new Error("[hson-live] untrusted HTML sanitization requires a Window.");
+  }
+  const targetWindow = window;
+  const sanitizer = make_sanitizer(targetWindow);
+  const ADD_TAGS = buildAddTags(html, targetWindow.document);
+
+  return sanitizer.sanitize(html, {
     ALLOWED_TAGS: [...ALLOWED_TAGS],
     ALLOWED_ATTR: [...ALLOWED_ATTR],
     ADD_TAGS,
