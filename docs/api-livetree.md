@@ -1,10 +1,11 @@
 #### hson-live / hson.terminalgothic.com
 
-# LiveTree Method and Helper List
-Updated: 2026-06-29
+# LiveTree API
+Updated: 2026-07-13
 
-This is a quick inventory of the current public LiveTree-facing surface. For
-behavior notes, see `hson-livetree-api.md` and `css-manager-api.md`.
+This is the current public LiveTree-facing reference. For the architecture and
+behavioral model, see `hson-livetree.md`. For stylesheet details, see
+`api-css-manager.md`.
 
 ---
 
@@ -39,8 +40,9 @@ After `toHtml()`, `toJson()`, or `toHson()`:
 .parse()
 ```
 
-Current limitation: formatting options are exposed but not consistently honored
-by all serializers.
+Current limitation: formatting options are exposed but are not honored by the
+current serializers. Output is materialized when `toHtml()`, `toJson()`, or
+`toHson()` is selected, before these flags are attached.
 
 ### LiveTree Facade
 
@@ -57,6 +59,11 @@ hson.liveTree.create
 
 Use `queryDom`, not `queryDOM`.
 
+The `from*` facade unwraps `_hson_root` only when its sole child is an
+`_hson_elem`. JSON/object/array inputs may therefore return a LiveTree whose
+current node is `_hson_root`. `fromNode` retains the supplied node graph; it
+does not clone it.
+
 ---
 
 ## Core LiveTree
@@ -71,6 +78,7 @@ tree.empty()
 tree.removeChildren()
 tree.removeSelf()
 tree.cloneBranch()
+tree.bind
 ```
 
 ---
@@ -145,6 +153,17 @@ tree.find.byData(key, value)
 tree.find.byTag(tag)
 ```
 
+The search includes `tree` itself. String queries support hson-live's limited
+selector syntax, not arbitrary CSS selectors. `byClass` compares the complete
+stored class attribute rather than testing one whitespace-separated token.
+
+String queries accept one simple compound selector: a leading alphanumeric tag,
+`#id`, one or more `.class` parts, and `[attr="value"]`. They do not support
+combinators, selector lists, pseudo selectors, namespaces, or escaping. A bare
+`[attr]` is parsed but currently adds no presence constraint; use `byFlag()` or
+an object query instead. Multiple `.class` parts are joined and compared as one
+complete class string.
+
 Strict variants:
 
 ```ts
@@ -198,6 +217,8 @@ tree.findAll.byData(key, value)
 tree.findAll.byTag(tag)
 ```
 
+Array queries concatenate each query's matches without deduplication.
+
 Strict variants:
 
 ```ts
@@ -226,6 +247,12 @@ type HsonQuery = {
 };
 ```
 
+Tag matching is case-insensitive. Specified `attrs` and `meta` entries are
+conjunctive. A query attribute value of `true` tests presence; ordinary values
+use strict equality. `text` searches recursively collected primitive content:
+a string is a substring test and a `RegExp` is tested after resetting
+`lastIndex`.
+
 ---
 
 ## TreeSelector
@@ -243,6 +270,10 @@ selector.removeAt(ix)
 selector.removeAll()
 ```
 
+`removeAt(ix)` reports whether the selection contained that index, not whether
+the node was newly detached. `removeAll()` returns the number of selected
+handles it attempted to remove.
+
 Broadcast manager proxies:
 
 ```ts
@@ -251,6 +282,9 @@ selector.style
 selector.css
 selector.data
 ```
+
+Broadcasting applies to calls on these top-level manager proxies. Nested
+manager surfaces are not recursively broadcast.
 
 ---
 
@@ -346,6 +380,10 @@ tree.attr.set(name, value)
 tree.attr.setMany(map)
 tree.attr.drop(name)
 ```
+
+`attr.set(name, false)`, `attr.set(name, null)`, and
+`attr.set(name, undefined)` remove the attribute. `true` stores a present
+boolean attribute.
 
 Flags:
 
@@ -464,6 +502,46 @@ tree.css.anim.setPlayState(state)
 tree.css.anim.pause()
 tree.css.anim.resume()
 ```
+
+---
+
+## LiveMap Binding
+
+Bindings read the current LiveMap path immediately, subscribe to later path
+changes, and return a disposer function:
+
+```ts
+const dispose = tree.bind.text(map, ["profile", "name"]);
+dispose();
+```
+
+Complete surface:
+
+```ts
+tree.bind.path(map, path, (tree, value, previous) => {})
+tree.bind.paths(map, paths, (tree, values, previous) => {})
+
+tree.bind.text(map, path, (value, previous) => text)
+tree.bind.textPaths(map, paths, (values, previous) => text)
+
+tree.bind.attr(map, path, name, (value, previous) => attrValue)
+tree.bind.attrs(map, path, (value, previous) => attrs)
+tree.bind.attrsPaths(map, paths, (values, previous) => attrs)
+
+tree.bind.css(map, path, (value, previous) => cssMap)
+tree.bind.cssPaths(map, paths, (values, previous) => cssMap)
+```
+
+`path` is a `LivePath`, represented as an array of string/number path parts.
+The mapper is optional for `text` and `attr`. Default text conversion is
+`String(value ?? "")`; default attribute conversion passes the LiveMap value
+to the attribute helper. Attribute mapper values of `false`, `null`, or
+`undefined` remove the named attribute. CSS mapper entries with `null` or
+`undefined` remove the corresponding QUID-scoped declaration.
+
+Each callback receives the previous value(s), initially `undefined`. A
+multi-path binding subscribes to every listed path; its disposer removes all
+subscriptions.
 
 ---
 
@@ -639,8 +717,8 @@ tree.canvas.must.plot(fn, settings?, label?)
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs?: HsonAttrs;
-  $_meta?: HsonMeta;
+  $_attrs: HsonAttrs;
+  $_meta: HsonMeta;
 };
 ```
 

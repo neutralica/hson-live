@@ -8,6 +8,7 @@ import type {
   LiveHostActionPayloads,
   LiveHostActions,
   LiveHostClientActionMessage,
+  LiveHostConnection,
   LiveHostOptions,
   LiveHostSchemaDecoder,
   LiveHostSchemaResult,
@@ -17,7 +18,7 @@ import type {
   LiveHostSocketLike,
   LiveHostValidator,
 } from "../../types/livehost.types.js";
-import { decode_livehost_message, encode_livehost_message } from "./livehost.protocol.js";
+import { decode_livehost_message, encode_livehost_message, is_livehost_json_value } from "./livehost.protocol.js";
 import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 
@@ -77,11 +78,14 @@ export function create_livehost<
     return seq;
   }
 
-  function action_context(): LiveHostActionContext<TState> {
-    return { map, seq };
+  function action_context(emitEvent: LiveHostActionContext<TState>["emit_event"]): LiveHostActionContext<TState> {
+    return { map, seq, emit_event: emitEvent };
   }
 
-  async function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<TState>> {
+  async function dispatch_action_scoped(
+    message: LiveHostClientActionMessage<TActions>,
+    emitEvent: LiveHostActionContext<TState>["emit_event"],
+  ): Promise<LiveHostServerMessage<TState>> {
     const handler = actions[message.name];
     if (!handler) {
       return {
@@ -112,12 +116,16 @@ export function create_livehost<
     }
 
     try {
-      await handler(action_context(), payloadResult.value, message);
+      const result = await handler(action_context(emitEvent), payloadResult.value, message);
+      if (result !== undefined && !is_livehost_json_value(result)) {
+        throw new Error("LiveHost action result must be JSON-serializable.");
+      }
       return {
         type: "ack",
         id: message.id,
         ok: true,
         seq: next_seq(),
+        ...(result !== undefined ? { result } : {}),
       };
     } catch (cause) {
       return {
@@ -128,16 +136,20 @@ export function create_livehost<
         error: {
           message: cause instanceof Error ? cause.message : "LiveHost action failed.",
           code: "LIVEHOST_ACTION_FAILED",
-          cause,
         },
       };
     }
   }
 
-  function connect(socket: LiveHostSocketLike): () => void {
+  function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<TState>> {
+    return dispatch_action_scoped(message, () => false);
+  }
+
+  function connect(socket: LiveHostSocketLike): LiveHostConnection {
 
     const sessionId = resolve_session_id(options.sessionId);
     const disposers: Array<() => void> = [];
+    let active = true;
 
     function send_encoded(message: LiveHostServerMessage<TState>): void {
       socket.send(encode_livehost_message(message));
@@ -150,6 +162,12 @@ export function create_livehost<
 
     function send_without_record(message: LiveHostServerMessage<TState>): void {
       send_encoded(message);
+    }
+
+    function emit_connection_event(event: string, payload: JsonValue): boolean {
+      if (!active) return false;
+      send_without_record({ type: "event", event, payload });
+      return true;
     }
 
     const sessionResult = sync.add_session(sessionId, send);
@@ -174,7 +192,7 @@ export function create_livehost<
       }
 
       if (message.type === "action") {
-        const response = await dispatch_action(message);
+        const response = await dispatch_action_scoped(message, emit_connection_event);
         send(response);
         if (response.type === "ack") sync.sync_all(response.seq);
         return;
@@ -193,6 +211,7 @@ export function create_livehost<
     });
 
     const stopClose = socket.onClose(() => {
+      active = false;
       sync.remove_session(sessionId);
       while (disposers.length) disposers.pop()?.();
     });
@@ -200,10 +219,17 @@ export function create_livehost<
     if (stopMessage) disposers.push(stopMessage);
     if (stopClose) disposers.push(stopClose);
 
-    return () => {
+    const disconnect = () => {
+      active = false;
       sync.remove_session(sessionId);
       while (disposers.length) disposers.pop()?.();
     };
+
+    return Object.assign(disconnect, {
+      emit_event(event: string, payload: JsonValue): void {
+        emit_connection_event(event, payload);
+      },
+    });
   }
 
   return {

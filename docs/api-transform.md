@@ -2,6 +2,7 @@
 
 # hson-live
 ## Transform API
+Updated: 2026-07-13
 
 The transform API is exposed directly on `hson` through the public source
 constructors:
@@ -39,8 +40,8 @@ The current internal node fields are:
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs?: HsonAttrs;
-  $_meta?: HsonMeta;
+  $_attrs: HsonAttrs;
+  $_meta: HsonMeta;
 };
 ```
 
@@ -60,6 +61,7 @@ Parses external HTML through the safe HTML path.
 - Accepts a string or an existing `Element`.
 - If an `Element` is supplied, the current implementation snapshots its
   `innerHTML`.
+- Descendant `data-_quid` attributes are stripped during ingestion.
 - External SVG markup is rejected on this safe path.
 
 This is the default choice for user-authored or third-party HTML.
@@ -70,6 +72,8 @@ Parses trusted HTML through the unsafe/raw HTML path.
 
 - No sanitization is applied.
 - Accepts a string or an existing `Element`.
+- An `Element` input is also treated as an `innerHTML` snapshot, not as the
+  root element itself.
 - SVG markup is allowed on this path.
 
 Use only for developer-authored or otherwise trusted markup.
@@ -80,7 +84,8 @@ Parses JSON data into HSON nodes.
 
 - Accepts a JSON string or an already parsed JSON value.
 - Does not sanitize.
-- Preserves JSON object, array, primitive, and ordering semantics.
+- Preserves JSON values. Object keys are emitted in sorted canonical order by
+  the JSON serializer; source key order is not retained in serialized output.
 
 ### `hson.fromHson(input: string)`
 
@@ -178,10 +183,10 @@ type FrameOptions = {
 };
 ```
 
-Current limitation: these methods are part of the public chain, but current
-serializers do not consistently re-materialize output from those flags. Treat
-them as reserved/partial formatting controls unless a serializer explicitly
-documents support for a specific option.
+Current limitation: these methods are part of the public chain, but none of the
+current serializers honor them. Output is materialized when the `to*()` method
+is called, before these options are attached. Treat the formatting surface as
+reserved until that pipeline changes.
 
 ---
 
@@ -254,7 +259,14 @@ escape hatch.
 - Transform sources do not mutate the DOM.
 - LiveTree construction is explicit and separate.
 - HTML `.parse()` is intentionally not available.
-- VSN tag values remain in the `_-` namespace; internal node fields use the
+- VSN tag values remain in the `_hson_` namespace; internal node fields use the
   `$_` names.
+- `fromNode(...).toHson().parse()` returns the same graph reference; it is not a
+  clone operation.
+
+A separate `hson-transform.md` overview is not currently necessary. The
+pipeline is small, while `hson-syntax.md`, `hson-nodes.md`, `hson-json.md`, and
+`hson-html.md` already document the parsers' shared model and format-specific
+behavior. This file is the appropriate home for the callable transform chain.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

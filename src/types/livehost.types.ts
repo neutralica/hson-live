@@ -115,6 +115,12 @@ export type LiveHostServerPatchMessage = Readonly<{
   ops: readonly LiveMapOp[];
 }>;
 
+export type LiveHostServerEventMessage = Readonly<{
+  type: "event";
+  event: string;
+  payload: JsonValue;
+}>;
+
 export type LiveHostServerSyncMessage<TValue extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   type: "sync";
   seq: LiveHostSeq;
@@ -127,6 +133,7 @@ export type LiveHostServerAckMessage = Readonly<{
   id: LiveHostActionId;
   ok: true;
   seq: LiveHostSeq;
+  result?: JsonValue;
 }>;
 
 export type LiveHostServerErrorMessage = Readonly<{
@@ -139,6 +146,7 @@ export type LiveHostServerErrorMessage = Readonly<{
 
 export type LiveHostServerMessage<TState extends JsonValue | undefined = JsonValue | undefined> =
   | LiveHostServerHelloMessage<TState>
+  | LiveHostServerEventMessage
   | LiveHostServerPatchMessage
   | LiveHostServerSyncMessage
   | LiveHostServerAckMessage
@@ -147,6 +155,7 @@ export type LiveHostServerMessage<TState extends JsonValue | undefined = JsonVal
 export type LiveHostActionContext<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   map: LiveMap<TState>;
   seq: LiveHostSeq;
+  emit_event: (event: string, payload: JsonValue) => boolean;
 }>;
 
 export type LiveHostActionHandler<
@@ -157,7 +166,7 @@ export type LiveHostActionHandler<
   ctx: LiveHostActionContext<TState>,
   payload: TPayload,
   message: LiveHostClientActionMessage<TActions>,
-) => void | Promise<void>;
+) => JsonValue | void | Promise<JsonValue | void>;
 
 export type LiveHostActions<
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
@@ -177,6 +186,12 @@ export type LiveHostOptions<
 }>;
 
 export type LiveHostClientActionResult = LiveHostServerAckMessage | LiveHostServerErrorMessage;
+
+export type LiveHostEventListener = (message: LiveHostServerEventMessage) => void;
+
+export type LiveHostConnection = LiveHostDisposer & Readonly<{
+  emit_event: (event: string, payload: JsonValue) => void;
+}>;
 
 export type LiveHostClientActionFn<
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
@@ -206,6 +221,7 @@ export type LiveHostClient<
   disconnect: () => void;
   subscribe: (path: LivePath) => void;
   unsubscribe: (path: LivePath) => void;
+  on_event: (listener: LiveHostEventListener) => LiveHostDisposer;
   action: LiveHostClientActionFn<TActions>;
 }>;
 
@@ -217,7 +233,7 @@ export type LiveHost<
   seq: LiveHostSeq;
   schema?: LiveHostSchema<TState, TActions>;
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<TState>>;
-  connect: (socket: LiveHostSocketLike) => LiveHostDisposer;
+  connect: (socket: LiveHostSocketLike) => LiveHostConnection;
 }>;
 
 export type LiveHostStoreEntry<

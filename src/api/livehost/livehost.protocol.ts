@@ -9,6 +9,7 @@ import type {
   LiveHostError,
   LiveHostResult,
   LiveHostServerMessage,
+  LiveHostServerEventMessage,
   LiveHostActionPayloads,
 } from "../../types/livehost.types.js";
 import type { JsonValue, LivePath } from "../../types/index.js";
@@ -22,16 +23,25 @@ function fail(message: string, extra?: Omit<LiveHostError, "message">): LiveHost
 }
 
 function is_record(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
-function is_json_value(value: unknown): value is JsonValue {
+function has_exact_keys(value: Readonly<Record<string, unknown>>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+export function is_livehost_json_value(value: unknown): value is JsonValue {
   if (value === null) return true;
   const kind = typeof value;
-  if (kind === "string" || kind === "number" || kind === "boolean") return true;
-  if (Array.isArray(value)) return value.every(is_json_value);
+  if (kind === "string" || kind === "boolean") return true;
+  if (kind === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(is_livehost_json_value);
   if (!is_record(value)) return false;
-  return Object.values(value).every(is_json_value);
+  return Object.values(value).every(is_livehost_json_value);
 }
 
 function is_live_path(value: unknown): value is LivePath {
@@ -68,7 +78,7 @@ function decode_action_message<TActions extends LiveHostActionPayloads>(value: R
   if (!name) return fail("LiveHost action message requires string name.");
 
   const payload = value.payload;
-  if (payload !== undefined && !is_json_value(payload)) {
+  if (payload !== undefined && !is_livehost_json_value(payload)) {
     return fail("LiveHost action payload must be JSON-serializable.");
   }
 
@@ -93,7 +103,46 @@ function decode_unsubscribe_message(value: Readonly<Record<string, unknown>>): L
 }
 
 export function encode_livehost_message(message: LiveHostServerMessage): string {
+  if (message.type === "event") {
+    if (!message.event) throw new Error("LiveHost event message requires non-empty event.");
+    if (!is_livehost_json_value(message.payload)) {
+      throw new Error("LiveHost event payload must be JSON-serializable.");
+    }
+  }
   return JSON.stringify(message);
+}
+
+function decode_server_event_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostServerEventMessage> {
+  if (!has_exact_keys(value, ["type", "event", "payload"])) {
+    return fail("LiveHost event message requires exactly type, event, and payload.");
+  }
+  if (typeof value.event !== "string" || value.event.length === 0) {
+    return fail("LiveHost event message requires non-empty event.");
+  }
+  if (!Object.prototype.hasOwnProperty.call(value, "payload") || !is_livehost_json_value(value.payload)) {
+    return fail("LiveHost event payload must be JSON-serializable.");
+  }
+  return ok({ type: "event", event: value.event, payload: value.payload });
+}
+
+export function decode_livehost_server_message(message: string): LiveHostResult<LiveHostServerMessage> {
+  try {
+    const value = JSON.parse(message) as unknown;
+    if (!is_record(value)) return fail("LiveHost server message must be an object.");
+    if (value.type === "event") return decode_server_event_message(value);
+    if (
+      value.type === "hello"
+      || value.type === "patch"
+      || value.type === "sync"
+      || value.type === "ack"
+      || value.type === "error"
+    ) {
+      return ok(value as LiveHostServerMessage);
+    }
+    return fail("Unknown LiveHost server message type.");
+  } catch (cause) {
+    return fail("Invalid LiveHost server message JSON.", { cause });
+  }
 }
 
 export function decode_livehost_message<TActions extends LiveHostActionPayloads = LiveHostActionPayloads>(message: string): LiveHostResult<LiveHostClientMessage<TActions>> {

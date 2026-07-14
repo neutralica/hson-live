@@ -31,8 +31,12 @@ export {
 export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
 export { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
+export {
+    LiveHostDisconnectedError,
+    LiveHostDuplicateActionIdError,
+} from "./api/livehost/livehost.error.js";
 export { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
-export { decode_livehost_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
+export { decode_livehost_message, decode_livehost_server_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
 export { create_livehost } from "./api/livehost/livehost.core.js";
 export type {
     LiveMapPathHandle,
@@ -62,6 +66,8 @@ export type {
     LiveHostClientMessage,
     LiveHostClientOptions,
     LiveHostDisposer,
+    LiveHostConnection,
+    LiveHostEventListener,
     LiveHostError,
     LiveHostId,
     LiveHostOptions,
@@ -72,6 +78,7 @@ export type {
     LiveHostSchemaResult,
     LiveHostSeq,
     LiveHostServerMessage,
+    LiveHostServerEventMessage,
     LiveHostSocketLike,
     LiveHostStore,
     LiveHostStoreCreateOptions,

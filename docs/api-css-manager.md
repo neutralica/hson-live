@@ -1,7 +1,7 @@
 #### hson-live / hson.terminalgothic.com
 
 # LiveTree CSS APIs
-Updated: 2026-06-29
+Updated: 2026-07-13
 
 This document covers the current style and stylesheet APIs:
 
@@ -40,13 +40,22 @@ write to the backend.
 string | number | boolean | null | undefined | { value: string | number; unit?: string }
 ```
 
-Rules:
+Rules for an individual setter call:
 
 - `null` and `undefined` mean remove.
 - Strings are trimmed.
 - Numbers and booleans are stringified.
 - `{ value, unit }` renders as `${value}${unit ?? ""}`.
 - Empty strings remove properties in `CssManager` QUID rules and global rules.
+
+`setMany()` has one important difference: entries whose value is `null` or
+`undefined` are skipped, not removed. Use `remove(prop)` for an explicit bulk
+update deletion.
+
+The low-level exported `render_css_value()` treats `{ unit: "_" }` as unitless,
+but the shared public `StyleSetter` renderer currently emits the underscore
+literally. Do not use `_` as a public unit shorthand until those paths are
+unified; omit `unit` for a unitless value.
 
 ### Key Normalization
 
@@ -164,6 +173,11 @@ For multi-QUID handles, reads are consensus reads. If any selected QUID is
 missing the property, or selected QUIDs disagree, the read returns `undefined`.
 `getMany()` returns only properties that exist and agree across all selected
 QUIDs.
+
+QUID writes are checked with `CSS.supports()` when that browser API exists;
+unsupported declarations are warned and skipped. Inline-style and global-rule
+backends do not apply the same preflight filter, so this is not a uniform
+validation contract across all style surfaces.
 
 ---
 
@@ -306,8 +320,13 @@ Scheduling:
 - In browser-like runtimes with `requestAnimationFrame`, writes are batched.
 - Without a DOM render loop, writes flush immediately for deterministic tests.
 - `syncNow()` forces an immediate flush if state is dirty.
-- `snapshot()` / `renderCss()` provide rendered CSS text for inspection.
-- `debug_hardReset()` clears manager state and the managed style element.
+- `snapshot()` / `renderCss()` provide QUID rules plus `@property` and
+  keyframes text for inspection. They do not include global rules, even though
+  the managed DOM stylesheet does.
+- `debug_hardReset()` clears QUID rules, `@property`, keyframes, scheduling
+  state, and the managed style element. The current implementation does not
+  clear the separate `GlobalCss` singleton, so global rules can survive this
+  reset.
 
 Lower-level QUID methods include:
 
@@ -324,6 +343,9 @@ manager.animForQuids(quids)
 manager.releaseOwnedCssForQuid(quid)
 manager.setOwnedKeyframesForQuid(quid, input)
 ```
+
+`manager.clearAll()` clears only QUID-scoped rules. It does not clear global
+rules, `@property`, or keyframes.
 
 ---
 
@@ -361,6 +383,10 @@ css.get(ruleKey)
 css.renderAll()
 css.dispose()
 ```
+
+`scope(scopeName, atRule)` currently uses only `atRule`; `scopeName` is accepted
+but ignored. Prefer the named `media`, `supports`, and `layer` helpers when they
+fit the rule.
 
 Rule handles are `StyleSetter<void>` plus:
 
@@ -477,6 +503,11 @@ Keyframes render globally as `@keyframes`. Owned keyframes are associated with
 an owner id, usually a QUID, so teardown can release generated CSS for a node or
 subtree.
 
+A keyframe name has at most one effective owner. Claiming the same name for a
+new owner transfers ownership; calling durable `set()` or `setMany()` for that
+name removes generated ownership. Releasing an owner deletes the names still
+owned by it.
+
 ---
 
 ## Animations
@@ -516,6 +547,10 @@ resume()
 "name-only" | "clear-all"
 ```
 
+`duration` is required and must be non-empty for `begin(spec)` and
+`restart(spec)`. The name-only helpers set only the animation name and rely on
+other declarations for duration/timing.
+
 ---
 
 ## TreeSelector Broadcasts
@@ -529,8 +564,9 @@ selector.data.set("state", "disabled");
 selector.listen.onClick(handler);
 ```
 
-The proxy forwards method calls to each selected tree. Empty selections return
-no-op proxies.
+The proxy forwards top-level method calls to each selected tree. Empty
+selections return no-op proxies. Nested manager surfaces are not recursively
+broadcast.
 
 ---
 

@@ -1,6 +1,10 @@
 // livehost.client.ts
 
 import { hson } from "../../hson.js";
+import {
+  LiveHostDisconnectedError,
+  LiveHostDuplicateActionIdError,
+} from "./livehost.error.js";
 import type { JsonValue, LiveMap } from "../../types/index.js";
 import type {
   LiveHostActionId,
@@ -11,10 +15,12 @@ import type {
   LiveHostClientMessage,
   LiveHostClientOptions,
   LiveHostDisposer,
+  LiveHostEventListener,
   LiveHostId,
   LiveHostSeq,
   LiveHostServerMessage,
 } from "../../types/livehost.types.js";
+import { decode_livehost_server_message } from "./livehost.protocol.js";
 
 let nextClientId = 0;
 let nextActionId = 0;
@@ -30,17 +36,26 @@ function make_action_id(): LiveHostActionId {
 }
 
 function decode_server_message(message: string): LiveHostServerMessage | undefined {
-  try {
-    const value = JSON.parse(message) as unknown;
-    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
-    return value as LiveHostServerMessage;
-  } catch {
-    return undefined;
-  }
+  const decoded = decode_livehost_server_message(message);
+  return decoded.ok ? decoded.value : undefined;
 }
 
 function encode_client_message<TActions extends LiveHostActionPayloads>(message: LiveHostClientMessage<TActions>): string {
   return JSON.stringify(message);
+}
+
+type PendingAction = Readonly<{
+  resolve: (result: LiveHostClientActionResult) => void;
+  reject: (error: LiveHostDisconnectedError) => void;
+}>;
+
+function reject_pending_actions(
+  pendingActions: Map<LiveHostActionId, PendingAction>,
+  error: LiveHostDisconnectedError,
+): void {
+  const actions = [...pendingActions.values()];
+  pendingActions.clear();
+  for (const action of actions) action.reject(error);
 }
 
 export function create_livehost_client<
@@ -50,7 +65,8 @@ export function create_livehost_client<
   const clientId = options.clientId ?? make_client_id();
   const makeActionId = options.actionId ?? make_action_id;
   const map: LiveMap<TState> = options.map ?? hson.liveMap.fromJson({}) as unknown as LiveMap<TState>;
-  const pendingActions = new Map<LiveHostActionId, (result: LiveHostClientActionResult) => void>();
+  const pendingActions = new Map<LiveHostActionId, PendingAction>();
+  const eventListeners = new Set<LiveHostEventListener>();
   const disposers: LiveHostDisposer[] = [];
   let seq: LiveHostSeq = 0;
   let isConnected = false;
@@ -60,6 +76,10 @@ export function create_livehost_client<
   }
 
   function handle_server_message(message: LiveHostServerMessage): void {
+    if (message.type === "event") {
+      for (const listener of [...eventListeners]) listener(message);
+      return;
+    }
     if (message.type === "hello") {
       seq = message.seq;
       map.replace(message.snapshot as never);
@@ -81,11 +101,11 @@ export function create_livehost_client<
       seq = message.seq;
       if (!message.id) return;
 
-      const resolve = pendingActions.get(message.id);
-      if (!resolve) return;
+      const action = pendingActions.get(message.id);
+      if (!action) return;
 
       pendingActions.delete(message.id);
-      resolve(message);
+      action.resolve(message);
     }
   }
 
@@ -111,6 +131,7 @@ export function create_livehost_client<
   function disconnect(): void {
     isConnected = false;
     while (disposers.length) disposers.pop()?.();
+    reject_pending_actions(pendingActions, new LiveHostDisconnectedError());
   }
 
   function subscribe(path: readonly (string | number)[]): void {
@@ -121,13 +142,24 @@ export function create_livehost_client<
     send({ type: "unsubscribe", path: [...path] });
   }
 
+  function on_event(listener: LiveHostEventListener): LiveHostDisposer {
+    eventListeners.add(listener);
+    return () => {
+      eventListeners.delete(listener);
+    };
+  }
+
   function action<TName extends keyof TActions & string>(
     name: TName,
     ...args: undefined extends TActions[TName]
       ? [payload?: TActions[TName]]
       : [payload: TActions[TName]]
   ): Promise<LiveHostClientActionResult> {
+    if (!isConnected) return Promise.reject(new LiveHostDisconnectedError());
+
     const id = makeActionId();
+    if (pendingActions.has(id)) return Promise.reject(new LiveHostDuplicateActionIdError(id));
+
     const payload = args[0];
     const message = {
       type: "action",
@@ -136,8 +168,8 @@ export function create_livehost_client<
       ...(payload !== undefined ? { payload } : {}),
     } as LiveHostClientActionMessage<TActions>;
 
-    const result = new Promise<LiveHostClientActionResult>((resolve) => {
-      pendingActions.set(id, resolve);
+    const result = new Promise<LiveHostClientActionResult>((resolve, reject) => {
+      pendingActions.set(id, { resolve, reject });
     });
 
     send(message);
@@ -153,6 +185,7 @@ export function create_livehost_client<
     disconnect,
     subscribe,
     unsubscribe,
+    on_event,
     action,
   });
 }
