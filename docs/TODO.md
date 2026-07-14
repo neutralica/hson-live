@@ -2,6 +2,9 @@
 
 # 2DÜ
 
+## 14JUL2026
+• liveTree.fuse? method to append conventional DOM to LiveTree and preserve it 
+
 ## 30JUN2026
 • `liveTree.tag` !!!
 
