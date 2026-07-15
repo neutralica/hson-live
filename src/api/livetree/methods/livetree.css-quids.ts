@@ -8,6 +8,19 @@ import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manage
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
 import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
 
+function cache_surface_value<TValue>(
+  target: object,
+  key: string,
+  value: TValue,
+): TValue {
+  Object.defineProperty(target, key, {
+    configurable: true,
+    enumerable: true,
+    value,
+    writable: true,
+  });
+  return value;
+}
 
 // one canonical adapter builder for CssManager-backed setters.
 // This is the “make it impossible to forget applyPseudo” piece.
@@ -275,21 +288,21 @@ function mkSelectorStyleHandle<TReturn extends LiveTree | void>(
 ): StyleHandle<TReturn> {
   const setter = mkSelectorStyleSetter(ret, ids, patternRaw, scopeKey, ruleApi);
   const getterAdapters = mkSelectorStyleGetter(ret, ids, patternRaw, scopeKey);
-  const getter = make_style_getter(getterAdapters);
   const getMany = make_style_get_many(getterAdapters);
-  const vars = make_css_var_facade<TReturn>(
-    ret,
-    (name, value) => setter.set.var(name, value),
-    // CHANGED: `.var.value()` reads through the selector backend directly;
-    // it no longer depends on the removed public `get.var()` method.
-    (name) => getterAdapters.read(name),
-  );
 
   return {
     ...setter,
-    get: getter,
+    get get(): StyleGetter {
+      return cache_surface_value(this, "get", make_style_getter(getterAdapters));
+    },
     getMany,
-    var: vars,
+    get var() {
+      return cache_surface_value(this, "var", make_css_var_facade<TReturn>(
+        ret,
+        (name, value) => setter.set.var(name, value),
+        (name) => getterAdapters.read(name),
+      ));
+    },
   };
 }
 
@@ -406,28 +419,77 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
   });
 
   const getterAdapters = mkSelectorStyleGetter(ret, ids, "&", scopeKey);
-  const getter = make_style_getter(getterAdapters);
   const getMany = make_style_get_many(getterAdapters);
-  const vars = make_css_var_facade<TReturn>(
-    ret,
-    (name, value) => setter.set.var(name, value),
-    (name) => getterAdapters.read(name),
-  );
 
   return {
     ...setter,
-    get: getter,
+    get get(): StyleGetter {
+      return cache_surface_value(this, "get", make_style_getter(getterAdapters));
+    },
     getMany,
-    var: vars,
+    get var() {
+      return cache_surface_value(this, "var", make_css_var_facade<TReturn>(
+        ret,
+        (name, value) => setter.set.var(name, value),
+        (name) => getterAdapters.read(name),
+      ));
+    },
     atProperty: gcss.atProperty,
     keyframes: gcss.keyframes,
-    anim: CssManager.invoke().animForQuids(ids),
+    get anim() {
+      return cache_surface_value(this, "anim", CssManager.invoke().animForQuids(ids));
+    },
     devSnapshot: () => CssManager.invoke().snapshot(),
     selector: (pattern: string) => mkSelectorStyleHandle(ret, ids, pattern, scopeKey, ruleApi),
     media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("media", query)), ruleApi.media(query)),
     supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("supports", cond)), ruleApi.supports(cond)),
     layer: (layerName: string) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("layer", layerName)), ruleApi.layer(layerName)),
   };
+}
+
+function get_many_for_ids(mgr: CssManager, ids: readonly string[]): StyleGetMany {
+  const out: Record<string, string> = {};
+  const allKeys = new Set<string>();
+
+  for (const quid of ids) {
+    const found = mgr.getAllForQuid(quid);
+    if (!found) return {};
+    for (const key of Object.keys(found)) allKeys.add(key);
+  }
+
+  for (const key of allKeys) {
+    const value = read_consensus_for_ids(mgr, ids, key);
+    if (value !== undefined) out[key] = value;
+  }
+
+  return out;
+}
+
+function read_consensus_for_ids(
+  mgr: CssManager,
+  ids: readonly string[],
+  propCanon: string,
+): string | undefined {
+  let seen: string | undefined;
+
+  for (const quid of ids) {
+    const value = mgr.getForQuid(quid, propCanon);
+    if (value === undefined) return undefined;
+    if (seen === undefined) {
+      seen = value;
+      continue;
+    }
+    if (value !== seen) return undefined;
+  }
+
+  return seen;
+}
+
+function make_getter_for_ids(mgr: CssManager, ids: readonly string[]): StyleGetter {
+  return make_style_getter({
+    read: (propCanon) => read_consensus_for_ids(mgr, ids, propCanon),
+    readMany: () => get_many_for_ids(mgr, ids),
+  });
 }
 
 function scopedMethods<TReturn extends LiveTree | void>(
@@ -473,97 +535,6 @@ export function css_for_quids(
 ): CssHandleBase<any> {
   const mgr = CssManager.invoke();
 
-  const mkGetManyForIds = (ids: readonly string[]): (() => StyleGetMany) => {
-    return (): StyleGetMany => {
-      const out: Record<string, string> = {};
-      const allKeys = new Set<string>();
-
-      for (const quid of ids) {
-        const found = mgr.getAllForQuid(quid);
-        if (!found) return {};
-
-        for (const key of Object.keys(found)) {
-          allKeys.add(key);
-        }
-      }
-
-      for (const key of allKeys) {
-        let seen: string | undefined;
-        let agreed = true;
-
-        for (const quid of ids) {
-          const value = mgr.getForQuid(quid, key);
-          if (value === undefined) {
-            agreed = false;
-            break;
-          }
-          if (seen === undefined) {
-            seen = value;
-            continue;
-          }
-          if (seen !== value) {
-            agreed = false;
-            break;
-          }
-        }
-
-        if (agreed && seen !== undefined) {
-          out[key] = seen;
-        }
-      }
-
-      return out;
-    };
-  };
-
-  const readConsensusForIds = (ids: readonly string[]) => {
-    return (propCanon: string): string | undefined => {
-      let seen: string | undefined;
-
-      for (const quid of ids) {
-        const v = mgr.getForQuid(quid, propCanon);
-        if (v === undefined) return undefined;
-        if (seen === undefined) { seen = v; continue; }
-        if (v !== seen) return undefined;
-      }
-
-      return seen;
-    };
-  };
-
-  const mkGetterForIds = (ids: readonly string[]) => {
-    const readConsensus = readConsensusForIds(ids);
-
-    return make_style_getter({
-      read: (propCanon) => readConsensus(propCanon),
-
-      readMany: () => {
-        // CHANGED: enumerate the QUID-backed declaration model directly so
-        // css.getMany() returns the same consensus view as point reads.
-        const out: Record<string, string> = {};
-        const allKeys = new Set<string>();
-
-        for (const quid of ids) {
-          const found = mgr.getAllForQuid(quid);
-          if (!found) return {};
-
-          for (const key of Object.keys(found)) {
-            allKeys.add(key);
-          }
-        }
-
-        for (const key of allKeys) {
-          const value = readConsensus(key);
-          if (value !== undefined) {
-            out[key] = value;
-          }
-        }
-
-        return out;
-      },
-    });
-  };
-
   if (isLiveTree(a)) {
     const host: LiveTree = a;
     const ids = (b ?? []).map(q => q.trim()).filter(Boolean);
@@ -573,24 +544,24 @@ export function css_for_quids(
       mkCssQuidAdapter(host, mgr, ids), // single source of truth
     );
 
-    const getter = mkGetterForIds(ids);
-    const getMany = mkGetManyForIds(ids);
-    const readConsensus = readConsensusForIds(ids);
-    const vars = make_css_var_facade<LiveTree>(
-      host,
-      (name, value) => setter.set.var(name, value),
-      // CHANGED: `.var.value()` reads through the QUID consensus backend
-      // directly; it no longer depends on the removed public `get.var()` method.
-      readConsensus,
-    );
     return {
       ...setter,
-      get: getter,
-      getMany,
-      var: vars,
+      get get(): StyleGetter {
+        return cache_surface_value(this, "get", make_getter_for_ids(mgr, ids));
+      },
+      getMany: () => get_many_for_ids(mgr, ids),
+      get var() {
+        return cache_surface_value(this, "var", make_css_var_facade<LiveTree>(
+          host,
+          (name, value) => setter.set.var(name, value),
+          (name) => read_consensus_for_ids(mgr, ids, name),
+        ));
+      },
       atProperty: mgr.atProperty,
       keyframes: mgr.keyframes,
-      anim: mgr.animForQuids(ids),
+      get anim() {
+        return cache_surface_value(this, "anim", mgr.animForQuids(ids));
+      },
       devSnapshot: () => mgr.snapshot(),
       selector: (pattern: string) => mkSelectorStyleHandle<LiveTree>(host, ids, pattern),
       ...scopedMethods(host, ids),
@@ -606,25 +577,25 @@ export function css_for_quids(
     mkCssQuidAdapter(undefined, mgr, ids),
   );
 
-  const getter = mkGetterForIds(ids);
-  const getMany = mkGetManyForIds(ids);
-  const readConsensus = readConsensusForIds(ids);
-  const vars = make_css_var_facade<void>(
-    undefined,
-    (name, value) => setter.set.var(name, value),
-    // CHANGED: `.var.value()` reads through the QUID consensus backend
-    // directly; it no longer depends on the removed public `get.var()` method.
-    readConsensus,
-  );
   return {
     ...setter,
-    get: getter,
-    getMany,
-    var: vars,
+    get get(): StyleGetter {
+      return cache_surface_value(this, "get", make_getter_for_ids(mgr, ids));
+    },
+    getMany: () => get_many_for_ids(mgr, ids),
+    get var() {
+      return cache_surface_value(this, "var", make_css_var_facade<void>(
+        undefined,
+        (name, value) => setter.set.var(name, value),
+        (name) => read_consensus_for_ids(mgr, ids, name),
+      ));
+    },
     devSnapshot: () => mgr.snapshot(),
     atProperty: mgr.atProperty,
     keyframes: mgr.keyframes,
-    anim: mgr.animForQuids(ids),
+    get anim() {
+      return cache_surface_value(this, "anim", mgr.animForQuids(ids));
+    },
     selector: (pattern: string) => mkSelectorStyleHandle<void>(undefined, ids, pattern),
     ...scopedMethods(undefined, ids),
 

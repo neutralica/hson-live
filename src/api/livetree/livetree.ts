@@ -28,7 +28,7 @@ import { remove_node_children } from "./methods/remove-child.js";
 import { make_svg_tree_create } from "./methods/create/create-svg.js";
 import { make_html_tree_create } from "./methods/create/create-html.js";
 import { make_svg_api, SvgApi } from "./managers/svg-api.js";
-import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
+import { AppendableLiveBranch, LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.js";
 import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
 import { CanvasApi } from "./managers/canvas/canvas.types.js";
 import { LiveTreeBindApi, make_livetree_bind_api } from "./methods/livetree.bind.js";
@@ -61,25 +61,26 @@ import { guard_api_surface } from "./utils/guard-api-surface.js";
  * @see ensure_quid
  * @see get_el_for_node
  */
+class LiveTreeNodeRef implements NodeRef {
+  public constructor(
+    public readonly q: string,
+    private readonly referencedNode: HsonNode,
+  ) {}
+
+  public resolveNode(): HsonNode {
+    return this.referencedNode;
+  }
+
+  public resolveElement(): Element | undefined {
+    return get_el_for_node(this.referencedNode) ?? undefined;
+  }
+}
+
 function makeRef(node: HsonNode): NodeRef {
   assert_livetree_node_active(node, "create a LiveTree handle");
   /*  Ensure the node has a stable QUID and keeps NODE_ELEMENT_MAP happy. */
   const q = ensure_quid(node);
-
-  const ref: NodeRef = {
-    q,
-    resolveNode(): HsonNode { /* exposes the node itself */
-      // if we later introduce a global QUID→node map,
-      // this is where to switch to a lookup.
-      return node;
-    },
-
-    resolveElement(): Element | undefined { /* exposes the DOM Element . */
-      return get_el_for_node(node) ?? undefined;
-    },
-  };
-
-  return ref;
+  return new LiveTreeNodeRef(q, node);
 }
 
 /**
@@ -98,39 +99,41 @@ function makeRef(node: HsonNode): NodeRef {
  */
 export class LiveTree implements LiveTreeApi<LiveTree> {
   /* the HsonNode being referenced */
-  private nodeRef!: NodeRef;
+  declare private nodeRef: NodeRef;
   /* the root node or historic root node */
-  private hostRoot!: HsonNode;
+  declare private hostRoot: HsonNode;
   /* inline style editor */
-  private styleApiInternal: StyleHandle<this> | undefined = undefined;
+  declare private styleApiInternal?: StyleHandle<this>;
   /* dataset property manager */
-  private dataApiInternal?: DataApi<this>;
+  declare private dataApiInternal?: DataApi<this>;
   /* accessor api for a node's effective children (skips _VSNs) */
-  private contentManager: ContentManager | undefined = undefined;
+  declare private contentManager?: ContentManager;
   /* provides api for quid-scoped stylesheet editing */
-  private cssApiInternal: CssTreeHandle | undefined = undefined;
+  declare private cssApiInternal?: CssTreeHandle;
   /* tree-scoped event emitter (separate from DOM listeners) */
-  private eventsInternal?: TreeEvents;
+  declare private eventsInternal?: TreeEvents;
   /* convenience handle for the `id` _attr */
-  private idApi?: IdApi<this>;
+  declare private idApi?: IdApi<this>;
   /* convenience handle for the `class` _attr */
-  private classApi?: ClassApi<this>;
+  declare private classApi?: ClassApi<this>;
   /* attribute (_attr) API handle */
-  private _attr?: AttrHandle<this>;
+  declare private _attr?: AttrHandle<this>;
   /* "flag" (HTML boolean attributes) API handle */
-  private _flag?: FlagHandle<this>;
+  declare private _flag?: FlagHandle<this>;
   /* namespace for SvgLiveTree-specific operations */
-  private svgApi?: SvgApi<this>;
+  declare private svgApi?: SvgApi<this>;
   /* LiveTree DOM api */
-  private domApiInternal: LiveTreeDom | undefined = undefined;
+  declare private domApiInternal?: LiveTreeDom;
   /* text content API */
-  private textApiInternal?: LiveTextApi<this>;
+  declare private textApiInternal?: LiveTextApi<this>;
   /* form-specific API for inputs, form-value, etc */
-  private formApiInternal?: LiveFormApi<this>;
+  declare private formApiInternal?: LiveFormApi<this>;
   /* canvas-specific namespace */
-  private canvasApi?: CanvasApi<this>;
+  declare private canvasApi?: CanvasApi<this>;
   /* liveMap binding handle */
-  private bindApiInternal?: LiveTreeBindApi<this>;
+  declare private bindApiInternal?: LiveTreeBindApi<this>;
+  declare private findApiInternal?: FindWithById;
+  declare private findAllApiInternal?: FindMany;
   /**
    * Internal helper to assign `nodeRef` from either a raw `HsonNode`
    * or another `LiveTree`.
@@ -203,10 +206,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
 
   //  the underlying bound element can change during lifetime:
   private invalidate_dom_api(): void {
-    // existing
-    this.domApiInternal = undefined;
-    // css handle depends on the current nodeRef/quid context
-    this.cssApiInternal = undefined;
+    delete this.domApiInternal;
+    delete this.cssApiInternal;
   }
 
   /*  ---------- DOM adapter ---------- */
@@ -241,16 +242,26 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    ***************************************/
 
   /** Append another branch into this branch's content. */
-  public append = append_branch;
+  public append(branch: AppendableLiveBranch<this>, index?: number): this {
+    append_branch.call(this, branch, index);
+    return this;
+  }
 
   /** Remove all content from this branch. */
-  public empty = empty_contents;
+  public empty(): this {
+    empty_contents.call(this);
+    return this;
+  }
 
   /** Find the first matching descendant or helper query. */
-  public find: FindWithById = make_find_for(this);
+  public get find(): FindWithById {
+    return this.findApiInternal ??= make_find_for(this);
+  }
 
   /** Find all matching descendants or helper query results. */
-  public findAll: FindMany = make_find_all_for(this);
+  public get findAll(): FindMany {
+    return this.findAllApiInternal ??= make_find_all_for(this);
+  }
 
 
   /***************************************
