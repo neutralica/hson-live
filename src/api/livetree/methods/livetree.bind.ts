@@ -2,8 +2,9 @@
 
 import type { JsonValue, LivePath } from "../../../types/index.js";
 import type { LiveTree } from "../livetree.js";
+import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
 
-type LiveTreeBindable = Pick<LiveTree, "text" | "attr" | "css">;
+type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attr" | "css">;
 
 export type LiveTreeBindApi<TTree extends LiveTreeBindable> = Readonly<{
   path: <TValue extends JsonValue | undefined = JsonValue | undefined>(
@@ -135,7 +136,11 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue extends JsonValue 
   };
 
   sync();
-  return normalize_disposer(map.sub.path(path, sync));
+  return own_disposable_for_owner(
+    tree.quid,
+    normalize_disposer(map.sub.path(path, sync)),
+    "binding",
+  );
 }
 
 function bind_paths_for<TTree extends LiveTreeBindable>(
@@ -154,7 +159,7 @@ function bind_paths_for<TTree extends LiveTreeBindable>(
 
   sync();
   const disposers = paths.map((path) => normalize_disposer(map.sub.path(path, sync)));
-  return () => dispose_all(disposers);
+  return own_disposable_for_owner(tree.quid, () => dispose_all(disposers), "binding");
 }
 
 function bind_text_paths_for<TTree extends LiveTreeBindable>(

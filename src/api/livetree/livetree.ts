@@ -447,7 +447,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.assertActive("access events");
     if (!this.eventsInternal) {
       this.eventsInternal = guard_api_surface(
-        make_tree_events(),
+        make_tree_events(this.quid),
         () => this.assertActive("access events"),
         this,
       );

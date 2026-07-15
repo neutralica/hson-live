@@ -1,6 +1,6 @@
 // detach-node.ts
 
-import { _listeners_off_for_target, listeners_off_for_owner_quid } from "../managers/listener-builder.js";
+import { _listeners_off_for_target } from "../managers/listener-builder.js";
 import { HsonNode } from "../../../core/types.js";
 import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../managers/css-manager.js";
@@ -60,7 +60,6 @@ function detach_node_runtime(node: HsonNode): void {
   const quid = get_quid(node);
   if (typeof quid === "string" && quid.length) {
     CssManager.invoke().releaseOwnedCssForQuid(quid);
-    listeners_off_for_owner_quid(quid);
     disposables_off_for_owner(quid);
   }
   // 3) finally drop the map entry

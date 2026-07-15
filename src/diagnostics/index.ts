@@ -19,7 +19,11 @@ export { serialize_style as _serialize_style } from "../api/transform/utils/attr
 export { disposables_count_for_owner as _disposables_count_for_owner } from "../api/livetree/managers/lifecycle-registry.js";
 export {
   disposable_add_for_owner as _disposable_add_for_owner,
+  lifecycle_resource_counts_for_owner as _lifecycle_resource_counts_for_owner,
   TERMINAL_DISPOSABLE_DRAIN_LIMIT as _TERMINAL_DISPOSABLE_DRAIN_LIMIT,
+} from "../api/livetree/managers/lifecycle-registry.js";
+export type {
+  LifecycleResourceCounts as _LifecycleResourceCounts,
 } from "../api/livetree/managers/lifecycle-registry.js";
 export {
   collect_subtree_nodes as _collect_subtree_nodes,

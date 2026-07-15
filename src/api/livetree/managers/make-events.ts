@@ -1,8 +1,9 @@
 // make-events.ts
 
 import { TreeEventHandler, TreeEvents } from "../../../types/events.types.js";
+import { own_disposable_for_owner } from "./lifecycle-registry.js";
 
-export function make_tree_events(): TreeEvents {
+export function make_tree_events(ownerQuid: string): TreeEvents {
   const listeners = new Map<string, Set<TreeEventHandler>>();
 
   const on = (type: string, handler: TreeEventHandler) => {
@@ -13,10 +14,10 @@ export function make_tree_events(): TreeEvents {
     }
     set.add(handler);
 
-    return () => {
+    return own_disposable_for_owner(ownerQuid, () => {
       set!.delete(handler);
       if (set!.size === 0) listeners.delete(type);
-    };
+    }, "tree-event");
   };
 
   const once = (type: string, handler: TreeEventHandler) => {

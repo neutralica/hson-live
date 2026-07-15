@@ -4,6 +4,7 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapSchemaControlNode } from "../../types/bridge.types.js";
 import type { LiveMap, LivePath } from "../../types/livemap.types.js";
+import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
 
 // bridge-bindings.ts
 //
@@ -34,7 +35,7 @@ export function bind_livetree_text(map: LiveMap, path: LivePath, tree: LiveTextB
   sync(map.snap(path));
   const dispose = map.sub.path(path, sync);
 
-  return { dispose };
+  return owned_bridge_binding(tree, dispose);
 }
 
 export function bind_livetree_attr(
@@ -55,7 +56,7 @@ export function bind_livetree_attr(
   sync(map.snap(path));
   const dispose = map.sub.path(path, sync);
 
-  return { dispose };
+  return owned_bridge_binding(tree, dispose);
 }
 
 export function bind_livetree_input_value(
@@ -80,12 +81,10 @@ export function bind_livetree_input_value(
   const disposePath = map.sub.path(path, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
+  return owned_bridge_binding(tree, () => {
+    inputListener.off();
+    disposePath();
+  });
 }
 
 export function bind_livetree_input_checked(
@@ -114,12 +113,10 @@ export function bind_livetree_input_checked(
   const disposePath = map.sub.path(path, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
+  return owned_bridge_binding(tree, () => {
+    inputListener.off();
+    disposePath();
+  });
 }
 
 export function bind_livetree_schema_number_input(
@@ -173,12 +170,10 @@ export function bind_livetree_schema_number_input(
   const disposePath = map.sub.path(path, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
-  return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
-  };
+  return owned_bridge_binding(tree, () => {
+    inputListener.off();
+    disposePath();
+  });
 }
 
 export function bind_livetree_schema_enum_input(
@@ -225,11 +220,19 @@ export function bind_livetree_schema_enum_input(
   const disposePath = map.sub.path(path, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
+  return owned_bridge_binding(tree, () => {
+    inputListener.off();
+    disposePath();
+  });
+}
+
+function owned_bridge_binding(target: object, dispose: () => void): LiveMapBridgeBinding {
+  if (!("quid" in target) || typeof target.quid !== "string" || target.quid.length === 0) {
+    return { dispose };
+  }
+
   return {
-    dispose: () => {
-      inputListener.off();
-      disposePath();
-    },
+    dispose: own_disposable_for_owner(target.quid, dispose, "binding"),
   };
 }
 

@@ -1,6 +1,23 @@
 // lifecycle-registry.ts
 
 const OWNER_DISPOSABLE_REG = new Map<string, Set<() => void>>();
+const OWNER_DISPOSABLE_KIND_REG = new Map<string, Map<() => void, LifecycleResourceKind>>();
+
+export type LifecycleResourceKind =
+  | "binding"
+  | "listener"
+  | "tree-event"
+  | "resize-observer"
+  | "other";
+
+export type LifecycleResourceCounts = Readonly<{
+  total: number;
+  binding: number;
+  listener: number;
+  treeEvent: number;
+  resizeObserver: number;
+  other: number;
+}>;
 
 export const TERMINAL_DISPOSABLE_DRAIN_LIMIT = 64;
 
@@ -14,7 +31,32 @@ export function disposables_count_for_owner(ownerQuid: string): number {
   return OWNER_DISPOSABLE_REG.get(ownerQuid)?.size ?? 0;
 }
 
-export function disposable_add_for_owner(ownerQuid: string, off: () => void): void {
+export function lifecycle_resource_counts_for_owner(ownerQuid: string): LifecycleResourceCounts {
+  const kinds = OWNER_DISPOSABLE_KIND_REG.get(ownerQuid);
+  const count = (kind: LifecycleResourceKind): number => {
+    if (!kinds) return 0;
+    let total = 0;
+    for (const value of kinds.values()) {
+      if (value === kind) total += 1;
+    }
+    return total;
+  };
+
+  return Object.freeze({
+    total: disposables_count_for_owner(ownerQuid),
+    binding: count("binding"),
+    listener: count("listener"),
+    treeEvent: count("tree-event"),
+    resizeObserver: count("resize-observer"),
+    other: count("other"),
+  });
+}
+
+export function disposable_add_for_owner(
+  ownerQuid: string,
+  off: () => void,
+  kind: LifecycleResourceKind = "other",
+): void {
   let set = OWNER_DISPOSABLE_REG.get(ownerQuid);
 
   if (!set) {
@@ -23,6 +65,13 @@ export function disposable_add_for_owner(ownerQuid: string, off: () => void): vo
   }
 
   set.add(off);
+
+  let kinds = OWNER_DISPOSABLE_KIND_REG.get(ownerQuid);
+  if (!kinds) {
+    kinds = new Map();
+    OWNER_DISPOSABLE_KIND_REG.set(ownerQuid, kinds);
+  }
+  kinds.set(off, kind);
 }
 
 export function disposable_remove_for_owner(ownerQuid: string, off: () => void): void {
@@ -31,10 +80,34 @@ export function disposable_remove_for_owner(ownerQuid: string, off: () => void):
   if (!set) return;
 
   set.delete(off);
+  OWNER_DISPOSABLE_KIND_REG.get(ownerQuid)?.delete(off);
 
   if (set.size === 0) {
     OWNER_DISPOSABLE_REG.delete(ownerQuid);
+    OWNER_DISPOSABLE_KIND_REG.delete(ownerQuid);
   }
+}
+
+/**
+ * Register one idempotent resource disposer under a LiveTree owner.
+ * Manual disposal first unregisters ownership, then releases the resource.
+ */
+export function own_disposable_for_owner(
+  ownerQuid: string,
+  dispose: () => void,
+  kind: LifecycleResourceKind = "other",
+): () => void {
+  let active = true;
+
+  const off = (): void => {
+    if (!active) return;
+    active = false;
+    disposable_remove_for_owner(ownerQuid, off);
+    dispose();
+  };
+
+  disposable_add_for_owner(ownerQuid, off, kind);
+  return off;
 }
 
 export function disposables_off_for_owner(ownerQuid: string): void {
@@ -43,6 +116,7 @@ export function disposables_off_for_owner(ownerQuid: string): void {
   if (!set) return;
 
   OWNER_DISPOSABLE_REG.delete(ownerQuid);
+  OWNER_DISPOSABLE_KIND_REG.delete(ownerQuid);
 
   for (const off of set) {
     try {
@@ -81,7 +155,10 @@ export function disposables_drain_for_owners(
 
   const bounded = pendingCount() > 0;
   if (bounded) {
-    for (const owner of owners) OWNER_DISPOSABLE_REG.delete(owner);
+    for (const owner of owners) {
+      OWNER_DISPOSABLE_REG.delete(owner);
+      OWNER_DISPOSABLE_KIND_REG.delete(owner);
+    }
     console.warn(
       `[LiveTree.lifecycle] terminal disposable drain exceeded ${passLimit} passes; remaining callbacks were discarded`,
     );

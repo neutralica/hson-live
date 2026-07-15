@@ -146,7 +146,7 @@ export function make_canvas_api<TTree extends LiveTree>(
       disposable_remove_for_owner(tree.quid, off);
     };
 
-    disposable_add_for_owner(tree.quid, off);
+    disposable_add_for_owner(tree.quid, off, "resize-observer");
 
     return { off };
   };

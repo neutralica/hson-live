@@ -22,6 +22,14 @@ and make all retained handles throw `LiveTreeDisposedError`. Browser-owned
 `documentElement`, `head`, and `body` roots are protected by
 `LiveTreeProtectedRootError`; ordinary owned roots may be removed.
 
-The retained off-document projection keeps listeners, CSS, and existing LiveMap
-bindings functional through direct reattachment. LiveMap binding subscription
-ownership and remaining external resource producers are deferred to Patch 3.
+The retained off-document projection keeps listeners, CSS, TreeEvents, canvas
+watches, and LiveMap bindings functional through direct reattachment. LiveMap
+updates continue to mutate the detached HSON graph, so reattachment projects the
+latest state without rebinding.
+
+Continuing resources created for a LiveTree are owned by its QUID in the
+lifecycle registry. Terminal removal automatically releases LiveMap bindings,
+element/document/window listeners, TreeEvents subscriptions, and canvas resize
+watches before QUID destruction. Their manual `off()`/`dispose()` functions
+remain supported, are idempotent, and remove their lifecycle ownership so later
+terminal cleanup cannot run them twice.

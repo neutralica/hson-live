@@ -2,6 +2,7 @@
 
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
+import { own_disposable_for_owner } from "./lifecycle-registry.js";
 
 
 type QueuedListener = {
@@ -10,36 +11,20 @@ type QueuedListener = {
   type: string;
   handler: EventListener;
   cancelled: boolean;
-  ambientOwnerQuid?: string;
-  isAmbient?: boolean;
   offs: Array<() => void> | null; // filled after attach
 };
 
 const TARGET_LISTENER_REG = new WeakMap<EventTarget, Set<() => void>>();
-const OWNER_LISTENER_REG = new Map<string, Set<() => void>>();
 
-function owner_reg_add(ownerQuid: string, off: () => void): void {
-  let set = OWNER_LISTENER_REG.get(ownerQuid);
-  if (!set) {
-    set = new Set();
-    OWNER_LISTENER_REG.set(ownerQuid, set);
+class ListenerSubscription implements ListenerSub {
+  public count = 0;
+  public ok = false;
+
+  public constructor(private readonly release: () => void) {}
+
+  public off(): void {
+    this.release();
   }
-  set.add(off);
-}
-
-function owner_reg_remove(ownerQuid: string, off: () => void): void {
-  const set = OWNER_LISTENER_REG.get(ownerQuid);
-  if (!set) return;
-  set.delete(off);
-  if (set.size === 0) OWNER_LISTENER_REG.delete(ownerQuid);
-}
-
-export function listeners_off_for_owner_quid(ownerQuid: string): void {
-  const set = OWNER_LISTENER_REG.get(ownerQuid);
-  if (!set) return;
-
-  for (const off of set) off();
-  OWNER_LISTENER_REG.delete(ownerQuid);
 }
 
 /**
@@ -63,13 +48,31 @@ export function listeners_off_for_owner_quid(ownerQuid: string): void {
 function addWithOff(
   target: EventTarget,
   type: string,
-  handler: EventListenerOrEventListenerObject,
-  opts: AddEventListenerOptions
+  handler: EventListener,
+  opts: AddEventListenerOptions,
+  ownerQuid: string,
+  onOff: () => void,
 ): () => void {
-  target.addEventListener(type, handler, opts);
-  const off = () => target.removeEventListener(type, handler, opts);
+  let off: () => void = () => undefined;
+  const nativeHandler: EventListener = (event) => {
+    try {
+      handler(event);
+    } finally {
+      if (opts.once) off();
+    }
+  };
+
+  target.addEventListener(type, nativeHandler, opts);
   let set = TARGET_LISTENER_REG.get(target);
   if (!set) { set = new Set(); TARGET_LISTENER_REG.set(target, set); }
+
+  off = own_disposable_for_owner(ownerQuid, () => {
+    target.removeEventListener(type, nativeHandler, opts);
+    set?.delete(off);
+    if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
+    onOff();
+  }, "listener");
+
   set.add(off);
   return off;
 }
@@ -93,7 +96,7 @@ export function _listeners_off_for_target(target: EventTarget): void {
   if (!set) return;
 
   for (const off of [...set]) off();
-  set.clear();
+  TARGET_LISTENER_REG.delete(target);
 }
 
 export function _listeners_debug_hard_reset(): void {
@@ -104,8 +107,6 @@ export function _listeners_debug_hard_reset(): void {
   if (typeof window !== "undefined") {
     _listeners_off_for_target(window);
   }
-
-  OWNER_LISTENER_REG.clear();
 }
 
 /**
@@ -187,20 +188,9 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       if (_prevent && !opts.passive) ev.preventDefault(); // passive forbids preventDefault()
 
       handler(ev as ElemMap[K]);
-
-      // optional: belt-and-suspenders once — harmless if DOM once already removed it
-      if (opts.once) {
-        const tgt =
-          opts.target === "window" ? window :
-            opts.target === "document" ? document :
-              // same element resolved at attach time via resolveTarget(); this is for safety
-              (ev.currentTarget as EventTarget | null) ?? document;
-        tgt.removeEventListener(String(type), wrapped, { capture: !!opts.capture });
-      }
     };
 
     // queue this binding; attach() will call addEventListener with current opts
-    const isAmbient = opts.target === "window" || opts.target === "document";
     const job: QueuedListener = {
       id: nextId++,
       sub: null,
@@ -208,38 +198,27 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       handler: wrapped,
       cancelled: false,
       offs: null,
-      isAmbient,
-      ambientOwnerQuid: isAmbient ? tree.quid : undefined,
     };
 
     queue.push(job);
     schedule();
 
     //  return a per-call subscription handle
-    const sub: ListenerSub = {
-      off(): void {
-        // cancel if not yet attached
-        job.cancelled = true;
+    let sub: ListenerSubscription;
+    sub = new ListenerSubscription(() => {
+      // cancel if not yet attached
+      job.cancelled = true;
 
-        // detach immediately if already attached
-        if (job.offs) {
-          for (const f of job.offs) {
-            f();
+      // detach immediately if already attached
+      if (job.offs) {
+        for (const f of [...job.offs]) f();
+        job.offs = null;
+      }
 
-            if (opts.target === "window" || opts.target === "document") {
-              owner_reg_remove(tree.quid, f);
-            }
-          }
-          job.offs = null;
-        }
-
-        //  keep handle state honest
-        sub.count = 0;
-        sub.ok = false;
-      },
-      count: 0,   // updated after attach flush
-      ok: false,  //  nothing attached yet
-    };
+      //  keep handle state honest
+      sub.count = 0;
+      sub.ok = false;
+    });
     job.sub = sub;
     return sub;
   };
@@ -271,7 +250,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
         }
       }
       queue.length = 0;
-      return { off: () => void 0, count: 0, ok: false };
+      return new ListenerSubscription(() => undefined);
     }
 
     const aelo: AddEventListenerOptions = {
@@ -300,11 +279,18 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       const jobOffs: Array<() => void> = [];
 
       for (const tgt of targets) {
-        const off = addWithOff(tgt, job.type, job.handler, aelo);
+        let off: () => void = () => undefined;
+        off = addWithOff(tgt, job.type, job.handler, aelo, tree.quid, () => {
+          if (!job.offs) return;
+          const index = job.offs.indexOf(off);
+          if (index >= 0) job.offs.splice(index, 1);
+          if (job.offs.length === 0) job.offs = null;
+          if (job.sub) {
+            job.sub.count = job.offs?.length ?? 0;
+            job.sub.ok = (job.offs?.length ?? 0) > 0;
+          }
+        });
         jobOffs.push(off);
-        if (job.isAmbient && job.ambientOwnerQuid) {
-          owner_reg_add(job.ambientOwnerQuid, off);
-        }
       }
 
       job.offs = jobOffs;
@@ -314,30 +300,22 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
       }
       for (const f of jobOffs) offsAll.push(f);
     }
-    const handle: ListenerSub = {
-      off: () => {
-        for (const job of jobs) {
-          if (!job.offs) continue;
+    const handle = new ListenerSubscription(() => {
+      for (const job of jobs) {
+        if (!job.offs) continue;
 
-          for (const f of job.offs) {
-            f();
+        for (const f of [...job.offs]) f();
 
-            if (job.isAmbient && job.ambientOwnerQuid) {
-              owner_reg_remove(job.ambientOwnerQuid, f);
-            }
-          }
+        job.offs = null;
 
-          job.offs = null;
-
-          if (job.sub) {
-            job.sub.count = 0;
-            job.sub.ok = false;
-          }
+        if (job.sub) {
+          job.sub.count = 0;
+          job.sub.ok = false;
         }
-      },
-      count: offsAll.length,
-      ok: offsAll.length > 0,
-    };
+      }
+    });
+    handle.count = offsAll.length;
+    handle.ok = offsAll.length > 0;
 
     return handle;
   };
