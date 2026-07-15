@@ -18,6 +18,8 @@ export type LiveHostSyncSession = Readonly<{
 
 export type LiveHostSyncManager = Readonly<{
   add_session: (sessionId: LiveHostSessionId, send: LiveHostSyncSend) => LiveHostResult<void>;
+  attach_session: (sessionId: LiveHostSessionId, send: LiveHostSyncSend) => LiveHostResult<void>;
+  detach_session: (sessionId: LiveHostSessionId) => LiveHostResult<void>;
   remove_session: (sessionId: LiveHostSessionId) => void;
   subscribe: (sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq) => LiveHostResult<void>;
   unsubscribe: (sessionId: LiveHostSessionId, path: LivePath) => LiveHostResult<void>;
@@ -28,7 +30,7 @@ export type LiveHostSyncManager = Readonly<{
 
 type LiveHostSyncSessionState = {
   readonly sessionId: LiveHostSessionId;
-  readonly send: LiveHostSyncSend;
+  send: LiveHostSyncSend | undefined;
   readonly paths: Map<string, LivePath>;
 };
 
@@ -65,7 +67,7 @@ function send_sync<TState extends JsonValue | undefined>(
   path: LivePath,
   seq: LiveHostSeq,
 ): void {
-  session.send({
+  session.send?.({
     type: "sync",
     seq,
     path: clone_live_path(path),
@@ -96,6 +98,20 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
 
   function remove_session(sessionId: LiveHostSessionId): void {
     sessions.delete(sessionId);
+  }
+
+  function attach_session(sessionId: LiveHostSessionId, send: LiveHostSyncSend): LiveHostResult<void> {
+    const sessionResult = session_or_error(sessionId);
+    if (!sessionResult.ok) return sessionResult;
+    sessionResult.value.send = send;
+    return ok(undefined);
+  }
+
+  function detach_session(sessionId: LiveHostSessionId): LiveHostResult<void> {
+    const sessionResult = session_or_error(sessionId);
+    if (!sessionResult.ok) return sessionResult;
+    sessionResult.value.send = undefined;
+    return ok(undefined);
   }
 
   function session_or_error(sessionId: LiveHostSessionId): LiveHostResult<LiveHostSyncSessionState> {
@@ -151,6 +167,8 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
 
   return Object.freeze({
     add_session,
+    attach_session,
+    detach_session,
     remove_session,
     subscribe,
     unsubscribe,

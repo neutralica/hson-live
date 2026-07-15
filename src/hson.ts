@@ -17,6 +17,8 @@ import { create_livehost_store } from "./api/livehost/livehost.store.js";
 import { decode_livehost_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
 import { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 import { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
+import { make_livehost_canonical_stream } from "./api/livehost/livehost.history.js";
+import { make_livehost_recovery_planner } from "./api/livehost/livehost.recovery.js";
 import type { LiveMap } from "./types/livemap.types.js";
 import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/livemap.schema.js";
 
@@ -178,6 +180,8 @@ export const hson = {
 
     /** Lower-level constructors kept behind a debug namespace for now. */
     debug: Object.freeze({
+      canonicalStream: make_livehost_canonical_stream,
+      recoveryPlanner: make_livehost_recovery_planner,
       resumeLog: make_livehost_resume_log,
       syncManager: make_livehost_sync_manager,
     }),
