@@ -33,6 +33,7 @@ import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.j
 import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
 import { CanvasApi } from "./managers/canvas/canvas.types.js";
 import { LiveTreeBindApi, make_livetree_bind_api } from "./methods/livetree.bind.js";
+import { is_livetree_node_disposed } from "./livetree-state.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -302,6 +303,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /** Stable QUID for this branch. */
   public get quid(): string {
     return this.nodeRef.q;
+  }
+
+  /** Whether terminal lifecycle disposal has reached this node. */
+  public get isDisposed(): boolean {
+    const node = this.nodeRef.resolveNode();
+    return node ? is_livetree_node_disposed(node) : false;
   }
 
   /** Return the host root node for this branch. */

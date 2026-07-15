@@ -15,7 +15,10 @@ import { ListenerBuilder } from "./listen.types.js";
 import { FindWithById, HtmlCreateHelper } from "./livetree.types.js";
 import { HsonNode } from "../core/types.js";
 
-export interface LiveTreeIdentity extends LiveTreeNodeHost { }
+export interface LiveTreeIdentity extends LiveTreeNodeHost {
+    /** Whether terminal lifecycle disposal has reached this node. */
+    readonly isDisposed: boolean;
+}
 
 export interface AppendableLiveBranch<TSelf> extends LiveTreeNodeHost {
     /**

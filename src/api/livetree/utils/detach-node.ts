@@ -2,13 +2,11 @@
 
 import { _listeners_off_for_target, listeners_off_for_owner_quid } from "../managers/listener-builder.js";
 import { HsonNode } from "../../../core/types.js";
-import { is_Node } from "../../../core/node-guards.js";
 import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../managers/css-manager.js";
 import { disposables_off_for_owner } from "../managers/lifecycle-registry.js";
 import { get_quid } from "../quid/data-quid.js";
-
-type NodeWithKids = { $_content?: unknown[] };
+import { collect_subtree_nodes } from "./subtree-traversal.js";
 
 /**
  * Recursively detach an HSON node and its descendants from the live DOM.
@@ -41,14 +39,12 @@ type NodeWithKids = { $_content?: unknown[] };
  * @returns void.
  */
 export function detach_node_deep(node: HsonNode): void {
-  // 1) recurse first so children go away before parent
-  const kids = (node as NodeWithKids).$_content;
-  if (Array.isArray(kids) && kids.length) {
-    for (const child of kids) {
-      if (is_Node(child)) detach_node_deep(child);
-    }
+  for (const current of collect_subtree_nodes(node, "post")) {
+    detach_node_runtime(current);
   }
+}
 
+function detach_node_runtime(node: HsonNode): void {
   // 2) drop listeners and element for this node
   const el = get_el_for_node(node);
   if (el) {

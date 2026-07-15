@@ -3,6 +3,7 @@
 import { HsonNode } from '../../../core/types.js';
 import { _DATA_QUID } from '../../../core/constants.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
+import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 
 
 
@@ -159,12 +160,21 @@ export { _DATA_QUID };
  * be grafted again later.
  ***************************************/
 export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAttr?: boolean }): void {
-  const q = get_quid(n);
-  if (!q) return;
+  const metadataQuid = n.$_meta?.[_DATA_QUID];
+  const registryQuid = NODE_TO_QUID.get(n);
 
-  // Only remove the forward entry when this node still owns it.
+  // Only remove forward entries when this node still owns them.
   // This prevents malformed duplicate metadata from deleting another node's binding.
-  if (QUID_TO_NODE.get(q) === n) QUID_TO_NODE.delete(q);
+  if (metadataQuid && QUID_TO_NODE.get(metadataQuid) === n) {
+    QUID_TO_NODE.delete(metadataQuid);
+  }
+  if (
+    registryQuid
+    && registryQuid !== metadataQuid
+    && QUID_TO_NODE.get(registryQuid) === n
+  ) {
+    QUID_TO_NODE.delete(registryQuid);
+  }
   NODE_TO_QUID.delete(n);
 
   // optional: remove from meta to avoid persistence
@@ -177,6 +187,29 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
     const el = get_el_for_node(n as any); // avoid import loop by localizing this in one place if needed
     el?.removeAttribute(_DATA_QUID);
   }
+}
+
+/**
+ * Terminally destroy every QUID identity trace in an HSON subtree.
+ *
+ * Traversal is graph-derived and post-order. Registry ownership, persisted
+ * metadata, and mapped DOM attributes are removed for the root and every
+ * descendant without minting or reclaiming identity.
+ */
+export function destroy_subtree_quids(root: HsonNode): number {
+  let destroyed = 0;
+
+  for (const node of collect_subtree_nodes(root, "post")) {
+    const q = get_quid(node);
+    const hadMeta = _DATA_QUID in node.$_meta;
+    const hadDomAttr = get_el_for_node(node)?.hasAttribute(_DATA_QUID) ?? false;
+
+    drop_quid(node, { scrubMeta: true, stripDomAttr: true });
+
+    if (q || hadMeta || hadDomAttr) destroyed += 1;
+  }
+
+  return destroyed;
 }
 
 /***************************************

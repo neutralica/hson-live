@@ -17,3 +17,35 @@ export { parse_style_string as _parse_style_string } from "../api/transform/util
 export { parse_selector as _parse_selector } from "../api/livetree/utils/parse-selector.js";
 export { serialize_style as _serialize_style } from "../api/transform/utils/attrs-utils/serialize-style.js";
 export { disposables_count_for_owner as _disposables_count_for_owner } from "../api/livetree/managers/lifecycle-registry.js";
+export {
+  disposable_add_for_owner as _disposable_add_for_owner,
+  TERMINAL_DISPOSABLE_DRAIN_LIMIT as _TERMINAL_DISPOSABLE_DRAIN_LIMIT,
+} from "../api/livetree/managers/lifecycle-registry.js";
+export {
+  collect_subtree_nodes as _collect_subtree_nodes,
+} from "../api/livetree/utils/subtree-traversal.js";
+export {
+  destroy_subtree_quids as _destroy_subtree_quids,
+  ensure_quid as _ensure_livetree_quid,
+  get_node_by_quid as _get_livetree_node_by_quid,
+  get_quid as _get_livetree_quid,
+  has_quid as _has_livetree_quid,
+} from "../api/livetree/quid/data-quid.js";
+export {
+  dispose_node_deep as _dispose_node_deep,
+} from "../api/livetree/utils/dispose-node.js";
+export {
+  detach_node_deep as _detach_node_deep,
+} from "../api/livetree/utils/detach-node.js";
+export {
+  assert_livetree_node_active as _assert_livetree_node_active,
+  disposed_nodes_count_for_subtree as _disposed_nodes_count_for_subtree,
+  is_livetree_node_disposed as _is_livetree_node_disposed,
+} from "../api/livetree/livetree-state.js";
+export {
+  LIVETREE_DISPOSED_ERROR_CODE,
+  LiveTreeDisposedError,
+} from "../api/livetree/livetree.error.js";
+export {
+  hasElementForNode as _has_livetree_element_for_node,
+} from "../api/livetree/utils/node-map-helpers.js";

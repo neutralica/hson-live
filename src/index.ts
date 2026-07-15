@@ -2,6 +2,10 @@
 
 export * from "./hson.js";
 export { LiveTree } from "./api/livetree/livetree.js";
+export {
+    LIVETREE_DISPOSED_ERROR_CODE,
+    LiveTreeDisposedError,
+} from "./api/livetree/livetree.error.js";
 export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
 
