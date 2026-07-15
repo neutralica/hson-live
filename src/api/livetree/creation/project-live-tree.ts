@@ -5,7 +5,7 @@ import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { HsonNode } from "../../../core/types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../core/node-guards.js";
-import { link_node_to_el } from "../utils/node-map-helpers.js";
+import { get_el_for_node, link_node_to_el } from "../utils/node-map-helpers.js";
 import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import {
   _DATA_QUID,
@@ -102,6 +102,11 @@ export function project_livetree(
   }
 
   // REAL ELEMENT NODE --------------------------------------
+
+  // A reusable detach retains its physical projection, mappings, listeners,
+  // and runtime state. Reinsert that same element instead of rebuilding it.
+  const retainedElement = get_el_for_node(n);
+  if (retainedElement && !retainedElement.isConnected) return retainedElement;
 
   const tag = n.$_tag;
   const illegalDomTag = (badTag: string) =>

@@ -3,6 +3,7 @@
 export type { Primitive, BasicValue, JsonValue } from "./core.types.js";
 export type { HsonNode, HsonAttrs, HsonMeta } from "./node.types.js";
 export type { HsonQuery } from './livetree.types.js';
+export type { DetachedLiveContent, LiveTreeLifecycleResult } from './lifecycle.types.js';
 export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";

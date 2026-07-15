@@ -43,9 +43,15 @@ export {
   is_livetree_node_disposed as _is_livetree_node_disposed,
 } from "../api/livetree/livetree-state.js";
 export {
+  LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
   LIVETREE_DISPOSED_ERROR_CODE,
+  LIVETREE_PROTECTED_ROOT_ERROR_CODE,
+  LiveTreeAlreadyAttachedError,
   LiveTreeDisposedError,
+  LiveTreeProtectedRootError,
 } from "../api/livetree/livetree.error.js";
 export {
   hasElementForNode as _has_livetree_element_for_node,
+  link_node_to_el as _link_livetree_node_to_element,
+  unlinkNode as _unlink_livetree_node,
 } from "../api/livetree/utils/node-map-helpers.js";

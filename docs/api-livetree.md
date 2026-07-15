@@ -75,11 +75,49 @@ tree.hostRootNode()
 tree.adoptRoots(root)
 tree.append(branch, index?)
 tree.empty()
+tree.detachContents()
+tree.detach()
+tree.remove()
 tree.removeChildren()
 tree.removeSelf()
+tree.isDisposed
 tree.cloneBranch()
 tree.bind
 ```
+
+### Lifecycle
+
+- `empty()` terminally disposes every direct content subtree and all of its
+  descendants. The caller, its QUID, metadata, attributes, managers, DOM
+  mapping, listeners, and CSS remain active and the method is chainable.
+- `detachContents()` removes the exact ordered contents without destroying
+  identity or runtime state. It returns `DetachedLiveContent`, whose
+  `appendTo(target)` transfers that content once to a new active owner.
+- `detach()` unlinks and unmounts this branch while retaining its HSON graph,
+  QUIDs, metadata, mappings, listeners, CSS, disposables, and current bindings.
+  It returns `1` for a transition and `0` when already detached.
+- `remove()` unlinks and terminally disposes the complete subtree. It returns
+  `1` once and `0` on repeated calls. Every retained alias reports
+  `isDisposed === true`; meaningful APIs throw `LiveTreeDisposedError` with
+  code `LIVETREE_DISPOSED`.
+
+Detached DOM is retained as the same off-document projection. Reattachment
+therefore preserves attached element listeners and current runtime state rather
+than rebuilding an equivalent element. A branch has at most one parent;
+appending an attached branch throws `LiveTreeAlreadyAttachedError`. Browser-owned
+`documentElement`, `head`, and `body` roots throw `LiveTreeProtectedRootError`
+for `detach()` and `remove()`; ordinary application roots are removable. A
+`Document` is not an HSON element and therefore cannot currently be wrapped by
+LiveTree; any future document adapter is covered by the same protection policy.
+
+Reusable detach intentionally retains runtime registrations rather than
+suspending them. Observers, timers, and subscriptions that are not already
+lifecycle-owned may continue while the retained element is off-document.
+
+`removeSelf()` is a deprecated terminal alias for `remove()`. `removeChildren()`
+is deprecated but temporarily retains its specialized legacy behavior: it
+unwraps one semantic `_hson_elem`, skips VSNs, and removes only direct concrete
+element children. Use `empty()` or `detachContents()` for complete contents.
 
 ---
 

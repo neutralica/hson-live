@@ -14,6 +14,7 @@ import { TreeEvents } from "./events.types.js";
 import { ListenerBuilder } from "./listen.types.js";
 import { FindWithById, HtmlCreateHelper } from "./livetree.types.js";
 import { HsonNode } from "../core/types.js";
+import type { DetachedLiveContent, LiveTreeLifecycleResult } from "./lifecycle.types.js";
 
 export interface LiveTreeIdentity extends LiveTreeNodeHost {
     /** Whether terminal lifecycle disposal has reached this node. */
@@ -106,6 +107,15 @@ export interface LiveTreeContent<TSelf> {
      */
     empty(): TSelf;
 
+    /** Detach all ordered contents without destroying identity or runtime state. */
+    detachContents(): DetachedLiveContent;
+
+    /** Detach this branch from its graph/DOM owner while preserving identity. */
+    detach(): LiveTreeLifecycleResult;
+
+    /** Terminally remove and dispose this complete branch. */
+    remove(): LiveTreeLifecycleResult;
+
     /**
      * Remove this node's direct child nodes and return the number removed.
      *
@@ -114,6 +124,7 @@ export interface LiveTreeContent<TSelf> {
      *
      * @returns The number of direct node-children removed.
      */
+    /** @deprecated Specialized semantic-element removal; use empty or detachContents. */
     removeChildren(): number;
 
     /**
@@ -122,6 +133,7 @@ export interface LiveTreeContent<TSelf> {
        * @returns `1` when removed, or `0` if already detached.
        * @see remove_livetree
        */
+    /** @deprecated Alias for terminal `remove()`; use remove or detach explicitly. */
     removeSelf(): number;
  /**
    * Content manager for structured child access and mutation.

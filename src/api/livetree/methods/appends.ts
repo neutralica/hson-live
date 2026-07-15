@@ -1,6 +1,6 @@
 // appends.ts
 
-import { HsonNode } from "../../../core/types.js";
+import { HsonNode, NodeContent, Primitive } from "../../../core/types.js";
 import { ELEM_TAG } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";
@@ -12,6 +12,14 @@ import { TreeSelector } from "../creation/tree-selector.js";
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
 import { SvgTag } from "../../../types/livetree.types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
+import { get_node_by_quid, get_quid } from "../quid/data-quid.js";
+import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
+import { is_livetree_node_disposed } from "../livetree-state.js";
+import {
+  claim_node_parent,
+  parent_for_node,
+} from "../lifecycle/graph-ownership.js";
+import { LiveTreeAlreadyAttachedError, LiveTreeDisposedError } from "../livetree.error.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_hson_elem` container
@@ -48,6 +56,7 @@ function appendNodes(
   } else {
     containerNode = CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
     targetNode.$_content = [containerNode, ...targetNode.$_content];
+    claim_node_parent(containerNode, targetNode);
   }
 
   if (!containerNode.$_content) containerNode.$_content = [];
@@ -60,6 +69,7 @@ function appendNodes(
   } else {
     childContent.push(...nodesToAppend);
   }
+  for (const node of nodesToAppend) claim_node_parent(node, containerNode);
 
   // --- DOM SYNC --------------------------------------------------------
   const liveElement = get_el_for_node(targetNode);
@@ -118,9 +128,79 @@ export function append_branch<TTree extends AppendTreeLike>(
 
   const nodesToAppend: HsonNode[] = unwrap_root_elem(srcNode);
 
-  branch.adoptRoots(this.hostRootNode());
+  assert_appendable_nodes(targetNode, nodesToAppend, "append branch");
+
   appendNodes(targetNode, nodesToAppend, index);
+  branch.adoptRoots(this.hostRootNode());
   return this;
+}
+
+/** Append the exact ordered content captured by `detachContents()`. */
+export function append_detached_content<TTree extends AppendTreeLike>(
+  target: TTree,
+  content: NodeContent,
+): TTree {
+  const targetNode = target.node;
+  const nodes = content.filter((item): item is HsonNode => typeof item === "object" && item !== null);
+  assert_appendable_nodes(targetNode, nodes, "append detached contents");
+
+  const liveElement = get_el_for_node(targetNode);
+  const parentNs: "html" | "svg" =
+    liveElement?.namespaceURI === SVG_NS ? "svg" : "html";
+
+  targetNode.$_content.push(...content);
+  for (const node of nodes) claim_node_parent(node, targetNode);
+
+  if (liveElement) {
+    for (const item of content) {
+      liveElement.appendChild(project_livetree(item as HsonNode | Primitive, parentNs));
+    }
+  }
+  return target;
+}
+
+function assert_appendable_nodes(
+  target: HsonNode,
+  roots: readonly HsonNode[],
+  operation: string,
+): void {
+  const targetSubtree = new Set(collect_subtree_nodes(target, "pre"));
+  const localQuids = new Map<string, HsonNode>();
+
+  for (const root of roots) {
+    if (parent_for_node(root) || get_el_for_node(root)?.isConnected) {
+      throw new LiveTreeAlreadyAttachedError(operation);
+    }
+
+    const subtreeNodes = collect_subtree_nodes(root, "pre");
+    const subtreeSet = new Set(subtreeNodes);
+    for (const node of subtreeNodes) {
+      if (targetSubtree.has(node)) throw new LiveTreeAlreadyAttachedError(operation);
+      const parent = parent_for_node(node);
+      if ((node === root && parent) || (node !== root && parent && !subtreeSet.has(parent))) {
+        throw new LiveTreeAlreadyAttachedError(operation);
+      }
+      if (get_el_for_node(node)?.isConnected) {
+        throw new LiveTreeAlreadyAttachedError(operation);
+      }
+      if (is_livetree_node_disposed(node)) {
+        throw new LiveTreeDisposedError(operation, get_quid(node));
+      }
+
+      const quid = get_quid(node);
+      if (!quid) continue;
+      const localOwner = localQuids.get(quid);
+      if (localOwner && localOwner !== node) {
+        throw new Error(`Duplicate QUID "${quid}" occurs within the appended subtree.`);
+      }
+      localQuids.set(quid, node);
+
+      const registered = get_node_by_quid(quid);
+      if (registered && registered !== node) {
+        throw new Error(`Duplicate QUID "${quid}" is already registered to another node.`);
+      }
+    }
+  }
 }
 
 function is_svg_tag(tag: string): boolean {

@@ -184,7 +184,7 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
 
   // optional: strip DOM attribute if mounted
   if (opts?.stripDomAttr) {
-    const el = get_el_for_node(n as any); // avoid import loop by localizing this in one place if needed
+    const el = get_el_for_node(n);
     el?.removeAttribute(_DATA_QUID);
   }
 }

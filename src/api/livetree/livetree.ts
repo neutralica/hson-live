@@ -5,7 +5,6 @@ import { HsonNode } from "../../core/types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
 import { get_el_for_node } from "./utils/node-map-helpers.js";
 import { CssTreeHandle, StyleHandle } from "../../types/css.types.js";
-import { remove_livetree } from "./methods/remove-self.js";
 import { get_form_value, set_node_text_content, set_form_value, overwrite_node_text_content, insert_node_text_leaf, LiveTextApi, add_node_text_content, get_node_text_content, make_text_api, make_form_api } from "./managers/text-form-values.js";
 import { DataApi, make_data_api } from "./managers/data-manager.js";
 import { empty_contents } from "./methods/empty.js";
@@ -33,7 +32,15 @@ import { LiveFormApi, LiveTreeApi } from "../../types/livetree-internals.types.j
 import { make_canvas_api } from "./managers/canvas/make-canvas-api.js";
 import { CanvasApi } from "./managers/canvas/canvas.types.js";
 import { LiveTreeBindApi, make_livetree_bind_api } from "./methods/livetree.bind.js";
-import { is_livetree_node_disposed } from "./livetree-state.js";
+import { assert_livetree_node_active, is_livetree_node_disposed } from "./livetree-state.js";
+import { index_subtree_ownership } from "./lifecycle/graph-ownership.js";
+import {
+  detach_livetree,
+  detach_livetree_contents,
+  remove_livetree_terminal,
+} from "./lifecycle/public-lifecycle.js";
+import type { DetachedLiveContent, LiveTreeLifecycleResult } from "../../types/lifecycle.types.js";
+import { guard_api_surface } from "./utils/guard-api-surface.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -55,6 +62,7 @@ import { is_livetree_node_disposed } from "./livetree-state.js";
  * @see get_el_for_node
  */
 function makeRef(node: HsonNode): NodeRef {
+  assert_livetree_node_active(node, "create a LiveTree handle");
   /*  Ensure the node has a stable QUID and keeps NODE_ELEMENT_MAP happy. */
   const q = ensure_quid(node);
 
@@ -188,6 +196,9 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   constructor(input: HsonNode | LiveTree) {
     this.setRoot(input);
     this.setRef(input);
+    const node = this.nodeRef.resolveNode();
+    if (!node) throw new Error("LiveTree constructor: ref did not resolve");
+    index_subtree_ownership(node);
   }
 
   //  the underlying bound element can change during lifetime:
@@ -211,6 +222,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see NodeRef.resolveElement
    */
   private resolveDomElement(): Element | undefined {
+    this.assertActive("access DOM");
     const firstRef = this.nodeRef;
     if (!firstRef) return undefined;
     return firstRef.resolveElement();
@@ -251,7 +263,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
 
   /** DOM helper bound to this tree's mounted element. */
   public get dom(): LiveTreeDom {
-    return this.domApiInternal ??= make_dom_api(this, () => this.resolveDomElement());
+    this.assertActive("access DOM");
+    return this.domApiInternal ??= guard_api_surface(
+      make_dom_api(this, () => this.resolveDomElement()),
+      () => this.assertActive("access DOM"),
+      this,
+    );
   }
 
 
@@ -263,16 +280,34 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveTreeContent
    ***************************************/
 
-  /** Remove all child content from this branch and return the removal count. */
+  /** @deprecated Specialized semantic-element removal. Use empty() or detachContents(). */
   public removeChildren(): number {
+    this.assertActive("remove children");
     const parent = this.nodeRef.resolveNode();
     if (!parent) return 0;
     return remove_node_children(parent);
   }
 
-  /** Remove this branch from its parent and return the removal count. */
+  /** @deprecated Terminal alias for remove(). Use remove() or detach() explicitly. */
   public removeSelf(): number {
-    return remove_livetree.call(this);
+    return this.remove();
+  }
+
+  /** Identity-preserving removal of all ordered content. */
+  public detachContents(): DetachedLiveContent {
+    return detach_livetree_contents(this);
+  }
+
+  /** Identity-preserving removal of this branch from its current owner. */
+  public detach(): LiveTreeLifecycleResult {
+    return detach_livetree(this);
+  }
+
+  /** Terminally remove and dispose this complete branch. */
+  public remove(): LiveTreeLifecycleResult {
+    const node = this.nodeRef.resolveNode();
+    if (!node) return 0;
+    return remove_livetree_terminal(node);
   }
 
 
@@ -286,6 +321,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
 
   /** Create HTML or SVG children according to the current namespace scope. */
   public get create(): HtmlCreateHelper {
+    this.assertActive("create content");
     return (
       this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
     ) as unknown as HtmlCreateHelper;
@@ -302,6 +338,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
 
   /** Stable QUID for this branch. */
   public get quid(): string {
+    this.assertActive("access QUID");
     return this.nodeRef.q;
   }
 
@@ -313,16 +350,24 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
 
   /** Return the host root node for this branch. */
   public hostRootNode(): HsonNode {
+    this.assertActive("access host root");
     return this.hostRoot;
   }
 
   /** Content manager bound to this branch. */
   public get content(): ContentManager {
-    return (this.contentManager ??= new ContentManager(this));
+    this.assertActive("access content");
+    return (this.contentManager ??= guard_api_surface(
+      new ContentManager(this),
+      () => this.assertActive("access content"),
+      this,
+    ));
   }
 
   /** Adopt a new host-root context for this branch. */
   public adoptRoots(root: HsonNode): this {
+    this.assertActive("adopt roots");
+    assert_livetree_node_active(root, "adopt disposed root");
     this.hostRoot = root;
     return this;
   }
@@ -333,7 +378,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     if (!n) {
       throw new Error("LiveTree2.node: ref did not resolve");
     }
+    assert_livetree_node_active(n, "access node");
     return n;
+  }
+
+  private assertActive(operation: string): void {
+    const node = this.nodeRef.resolveNode();
+    if (node) assert_livetree_node_active(node, operation);
   }
 
   /***************************************
@@ -353,6 +404,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see StyleHandle
    */
   public get style(): StyleHandle<this> {
+    this.assertActive("access style");
     if (!this.styleApiInternal) {
       const mgr = new StyleManager<this>(this);
       this.styleApiInternal = {
@@ -361,6 +413,11 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
         getMany: mgr.getMany,
         var: mgr.var,
       };
+      this.styleApiInternal = guard_api_surface(
+        this.styleApiInternal,
+        () => this.assertActive("access style"),
+        this,
+      );
     }
     return this.styleApiInternal;
   }
@@ -370,8 +427,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see CssTreeHandle
    */
   public get css(): CssTreeHandle {
+    this.assertActive("access CSS");
     if (!this.cssApiInternal) {
-      this.cssApiInternal = css_for_quids(this, [this.quid]);
+      this.cssApiInternal = guard_api_surface(
+        css_for_quids(this, [this.quid]),
+        () => this.assertActive("access CSS"),
+        this,
+      );
     }
     return this.cssApiInternal;
   }
@@ -382,8 +444,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see TreeEvents
    */
   public get events(): TreeEvents {
+    this.assertActive("access events");
     if (!this.eventsInternal) {
-      this.eventsInternal = make_tree_events();
+      this.eventsInternal = guard_api_surface(
+        make_tree_events(),
+        () => this.assertActive("access events"),
+        this,
+      );
     }
     return this.eventsInternal;
   }
@@ -393,12 +460,22 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see ListenerBuilder
    */
   public get listen(): ListenerBuilder {
-    return build_listener(this);
+    this.assertActive("listen");
+    return guard_api_surface(
+      build_listener(this),
+      () => this.assertActive("listen"),
+      this,
+    );
   }
 
 
   public get bind(): LiveTreeBindApi<this> {
-  return this.bindApiInternal ??= make_livetree_bind_api(this);
+    this.assertActive("bind");
+    return this.bindApiInternal ??= guard_api_surface(
+      make_livetree_bind_api(this),
+      () => this.assertActive("bind"),
+      this,
+    );
   }
   
   /***************************************
@@ -416,7 +493,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see AttrHandle
    */
   public get attr(): AttrHandle<this> {
-    return (this._attr ??= attr_handle(this));
+    this.assertActive("access attributes");
+    return (this._attr ??= guard_api_surface(attr_handle(this), () => this.assertActive("access attributes"), this));
   }
 
   /** "Flags" (HTML boolean attributes) - has/get/clear 
@@ -424,7 +502,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see FlagHandle
   */
   public get flag(): FlagHandle<this> {
-    return (this._flag ??= flag_handle(this));
+    this.assertActive("access flags");
+    return (this._flag ??= guard_api_surface(flag_handle(this), () => this.assertActive("access flags"), this));
   }
 
 
@@ -442,7 +521,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see DataApi
    */
   public get data(): DataApi<this> {
-    return this.dataApiInternal ??= make_data_api(this);
+    this.assertActive("access data");
+    return this.dataApiInternal ??= guard_api_surface(make_data_api(this), () => this.assertActive("access data"), this);
   }
 
   /** ID - (get/set/clear)
@@ -450,7 +530,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see IdApi
    */
   public get id(): IdApi<this> {
-    return this.idApi ??= make_id_api(this);
+    this.assertActive("access id");
+    return this.idApi ??= guard_api_surface(make_id_api(this), () => this.assertActive("access id"), this);
   }
 
   /** Classlist - (get/has/add/set/remove/toggle/clear)
@@ -458,7 +539,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see ClassApi
   */
   public get classlist(): ClassApi<this> {
-    return this.classApi ??= make_class_api(this);
+    this.assertActive("access class list");
+    return this.classApi ??= guard_api_surface(make_class_api(this), () => this.assertActive("access class list"), this);
   }
 
 
@@ -481,7 +563,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveTextApi
    */
   public get text(): LiveTextApi<this> {
-    return this.textApiInternal ??= make_text_api(this);
+    this.assertActive("access text");
+    return this.textApiInternal ??= guard_api_surface(make_text_api(this), () => this.assertActive("access text"), this);
   }
 
 
@@ -492,7 +575,8 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveFormApi
    */
   public get form(): LiveFormApi<this> {
-    return this.formApiInternal ??= make_form_api(this);
+    this.assertActive("access form");
+    return this.formApiInternal ??= guard_api_surface(make_form_api(this), () => this.assertActive("access form"), this);
   }
 
 
@@ -503,9 +587,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see SvgApi
    ***************************************/
   public get svg(): SvgApi<this> {
+    this.assertActive("access SVG");
     if (!this.svgApi) {
-      this.svgApi = Object.freeze(
-        make_svg_api(this)
+      this.svgApi = guard_api_surface(
+        Object.freeze(make_svg_api(this)),
+        () => this.assertActive("access SVG"),
+        this,
       );
     }
     return this.svgApi;
@@ -523,7 +610,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see CanvasApi
    ***************************************/
   public get canvas(): CanvasApi<this> {
-    return this.canvasApi ??= Object.freeze(make_canvas_api(this));
+    this.assertActive("access canvas");
+    return this.canvasApi ??= guard_api_surface(
+      Object.freeze(make_canvas_api(this)),
+      () => this.assertActive("access canvas"),
+      this,
+    );
   }
 
   /***************************************
@@ -537,6 +629,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /** Clone this branch as a new unattached LiveTree branch. */
   /** Clone this branch as a new unattached branch of the same LiveTree subtype. */
   public cloneBranch(): this {
+    this.assertActive("clone branch");
     return clone_branch_method.call(this) as this;
   }
 

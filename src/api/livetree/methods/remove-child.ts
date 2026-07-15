@@ -9,6 +9,7 @@ import { detach_node_deep } from "../utils/detach-node.js";
 import { parse_selector } from "../utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
+import { release_node_parent } from "../lifecycle/graph-ownership.js";
 
 
 type ContentItem = HsonNode | Primitive;
@@ -63,6 +64,7 @@ export function remove_node_children(parent: HsonNode): number {
   );
 
   for (const n of toRemove) {
+    release_node_parent(n, container);
     // then funnel teardown
     detach_node_deep(n);
   }

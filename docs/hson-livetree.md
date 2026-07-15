@@ -152,10 +152,23 @@ assume every arbitrarily deep `selector.css.*` chain broadcasts.
 
 ## Mutation and synchronization
 
-`append`, `empty`, `removeChildren`, `removeSelf`, and `cloneBranch` are the
-core structural operations. In a mounted tree, mutation attempts to keep the
-managed DOM projection synchronized. Detached use remains valid and DOM reads
-return soft failure values unless an explicit `must` helper is used.
+`append`, `empty`, `detachContents`, `detach`, `remove`, and `cloneBranch` are
+the canonical structural operations. `empty` and `remove` are terminal for the
+content/subtree they target. `detachContents` and `detach` preserve identity and
+retain the same mapped DOM projection off-document for later reattachment.
+Appending an already attached branch is rejected; explicit detach/attach is the
+reparenting protocol.
+
+Terminal disposal recursively releases QUID registry ownership and persisted
+`data-_quid`, removes listeners and QUID-scoped CSS, drains registered
+disposables, drops node-element mappings, and marks every node disposed. Only
+`isDisposed` and repeated `remove()` are safe lifecycle surfaces afterward;
+meaningful reads and mutations throw the stable `LiveTreeDisposedError`.
+
+Browser-owned `documentElement`, `head`, and `body` roots are protected from
+detach and removal. Ordinary application roots are not. `removeSelf` is a
+deprecated alias for terminal `remove`; `removeChildren` remains a deprecated
+specialized semantic-element filter until its 3.0 deletion.
 
 Manager namespaces specialize common mutations:
 

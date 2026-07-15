@@ -1,7 +1,6 @@
 // create-core.ts
 
-import { ELEM_TAG, HSON_SYS_PREFIX, ROOT_TAG } from "../../../../core/constants.js";
-import { CREATE_NODE } from "../../../../core/factories.js";
+import { ELEM_TAG, HSON_SYS_PREFIX } from "../../../../core/constants.js";
 import { is_svg_context_tag } from "../../../../core/all-html-tags.js";
 import { parse_html } from "../../../transform/parsers/parse-html.js";
 import { TagName, HtmlTag, SvgTag, HtmlCreateHelper } from "../../../../types/livetree.types.js";
@@ -150,18 +149,11 @@ export function make_create_core(tree: LiveTree): CreateCore {
 
       const appended = unwrap_created_children_for_tag(root0, t, ns);
 
-      // append the intended children, not the temporary wrapper root
-      const tempRoot = CREATE_NODE({
-        $_tag: ROOT_TAG,
-        $_content: [
-          CREATE_NODE({
-            $_tag: ELEM_TAG,
-            $_content: appended,
-          }),
-        ],
-      });
-
-      const branch = create_livetree(tempRoot);
+      const node = appended[0];
+      if (!node || appended.length !== 1) {
+        throw new Error(`[LiveTree.create.${t}] expected exactly one created root`);
+      }
+      const branch = create_livetree(node);
 
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);

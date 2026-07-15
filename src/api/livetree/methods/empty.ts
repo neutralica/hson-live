@@ -1,9 +1,7 @@
 // empty.ts
 
-import { is_Node } from "../../../core/node-guards.js";
-import { detach_node_deep } from "../utils/detach-node.js";
-import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
+import { empty_livetree_contents } from "../lifecycle/public-lifecycle.js";
 
 /**
  * Remove *all* children of this LiveTree’s node, both in the HSON model
@@ -34,20 +32,5 @@ import { LiveTree } from "../livetree.js";
 type EmptyTreeLike = Pick<LiveTree, "node">;
 
 export function empty_contents<TTree extends EmptyTreeLike>(this: TTree): TTree {
-  const node = this.node;
-  const kids = node.$_content;
-
-  // 1) deep detach every child (listeners + DOM + map)
-  for (const child of kids) {
-    if (is_Node(child)) detach_node_deep(child);
-  }
-
-  // 2) set model content to empty
-  node.$_content = [];
-
-  // 3) ensure the element has no stray DOM children
-  const el = get_el_for_node(node);
-  if (el) while (el.firstChild) el.removeChild(el.firstChild);
-
-  return this;
+  return empty_livetree_contents(this);
 }

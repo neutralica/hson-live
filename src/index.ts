@@ -3,9 +3,14 @@
 export * from "./hson.js";
 export { LiveTree } from "./api/livetree/livetree.js";
 export {
+    LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
     LIVETREE_DISPOSED_ERROR_CODE,
+    LIVETREE_PROTECTED_ROOT_ERROR_CODE,
+    LiveTreeAlreadyAttachedError,
     LiveTreeDisposedError,
+    LiveTreeProtectedRootError,
 } from "./api/livetree/livetree.error.js";
+export type { DetachedLiveContent, LiveTreeLifecycleResult } from "./types/lifecycle.types.js";
 export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
 

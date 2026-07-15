@@ -48,9 +48,11 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
     const create = typeof ix === "number" ? host.create.at(ix) : host.create;
     const fn = create[tag];
 
-    return typeof source === "string"
+    const branch = typeof source === "string"
       ? fn(source)
       : fn();
+    branch.detach();
+    return branch;
   }
 
   // CHANGED: central per-call svg dispatch
@@ -60,9 +62,11 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
       const host = makeHtmlHost();
       const create = typeof ix === "number" ? host.create.at(ix) : host.create;
 
-      return typeof source === "string"
+      const branch = typeof source === "string"
         ? create.svg(source)
         : create.svg();
+      branch.detach();
+      return branch;
     }
 
     // svg child tags need svg namespace context
@@ -70,9 +74,11 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
     const create = typeof ix === "number" ? host.create.at(ix) : host.create;
     const fn = (create as SvgCreateHelper)[tag as Exclude<SvgTag, "svg">];
 
-    return typeof source === "string"
+    const branch = typeof source === "string"
       ? fn(source)
       : fn();
+    branch.detach();
+    return branch;
   }
 
   const helper: Partial<DetachedCreateHelper> & {
