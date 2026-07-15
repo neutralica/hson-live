@@ -6,6 +6,7 @@ import { is_Node } from "../../../core/node-guards.js";
 import { get_el_for_node, unlinkNode } from "./node-map-helpers.js";
 import { CssManager } from "../managers/css-manager.js";
 import { disposables_off_for_owner } from "../managers/lifecycle-registry.js";
+import { get_quid } from "../quid/data-quid.js";
 
 type NodeWithKids = { $_content?: unknown[] };
 
@@ -60,7 +61,7 @@ export function detach_node_deep(node: HsonNode): void {
   }
 
   // Clear runtime artifacts owned by this node QUID, but keep QUID ownership.
-  const quid = (node as any)?.$_meta?.["data-_quid"];
+  const quid = get_quid(node);
   if (typeof quid === "string" && quid.length) {
     CssManager.invoke().releaseOwnedCssForQuid(quid);
     listeners_off_for_owner_quid(quid);
