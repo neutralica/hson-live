@@ -11,6 +11,7 @@ import { serialize_style } from "../../transform/utils/attrs-utils/serialize-sty
 import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../transform/utils/html-utils/parse_html_attrs.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
+import { ensure_node_attrs, prune_empty_node_attrs } from "../../../core/node-storage.js";
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
   const lower = name.toLowerCase();
 
@@ -76,9 +77,6 @@ export function applyAttrToNode(
   name: string,
   value: AttrValue,
 ): void {
-  if (!node.$_attrs) node.$_attrs = {};
-  const attrs = node.$_attrs as HsonAttrs & { style?: CssMap };
-
   const key = svg_attr_key_from_node_tag(node, name);
   const el = get_el_for_node(node) as Element | undefined;
 
@@ -88,13 +86,15 @@ export function applyAttrToNode(
   // ---- remove / delete ----------------------------------------
   // `false` means remove (if you want literal "false", pass "false")
   if (v === null || v === false) {
+    const attrs = node.$_attrs;
     if (key === "style") {
-      delete attrs.style;
+      if (attrs) delete attrs.style;
       if (el) el.removeAttribute("style");
     } else {
-      delete (attrs as any)[key];
+      if (attrs) delete attrs[key];
       if (el) el.removeAttribute(key);
     }
+    prune_empty_node_attrs(node);
     return;
   }
 
@@ -102,10 +102,12 @@ export function applyAttrToNode(
   if (v === true) {
     if (key === "style") {
       // treat boolean style as "clear style"
-      delete attrs.style;
+      const attrs = node.$_attrs;
+      if (attrs) delete attrs.style;
       if (el) el.removeAttribute("style");
+      prune_empty_node_attrs(node);
     } else {
-      (attrs as any)[key] = key;
+      ensure_node_attrs(node)[key] = key;
       if (el) el.setAttribute(key, key);
     }
     return;
@@ -118,7 +120,13 @@ export function applyAttrToNode(
   if (key === "style") {
     // parse+store structured style map, mirror canonical text to DOM
     const cssObj = parse_style_string(s) as CssMap;
-    attrs.style = cssObj;
+    if (Object.keys(cssObj).length > 0) {
+      ensure_node_attrs(node).style = cssObj;
+    } else {
+      const attrs = node.$_attrs;
+      if (attrs) delete attrs.style;
+      prune_empty_node_attrs(node);
+    }
 
     const cssText = serialize_style(cssObj);
     if (el) {
@@ -126,7 +134,7 @@ export function applyAttrToNode(
       else el.removeAttribute("style");
     }
   } else {
-    (attrs as any)[key] = s;
+    ensure_node_attrs(node)[key] = s;
     if (el) el.setAttribute(key, s);
   }
 }

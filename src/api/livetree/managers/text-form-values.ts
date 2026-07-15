@@ -11,6 +11,7 @@ import { Primitive } from "../../../core/types.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";
 import { LiveFormApi } from "../../../types/livetree-internals.types.js";
+import { ensure_node_attrs } from "../../../core/node-storage.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -51,8 +52,6 @@ function ensureVsn(node: HsonNode): HsonNode {
   // create bucket; prefer `_hson_elem` as the generic container
   const bucket = CREATE_NODE({
     $_tag: ELEM_TAG,
-    $_attrs: {},         
-    $_meta: {},
     $_content: node.$_content, // move existing content under the bucket
   });
 
@@ -65,8 +64,7 @@ function ensureVsn(node: HsonNode): HsonNode {
 // }
 
 function ensure_attrs(node: HsonNode): AttrDict {
-  if (!node.$_attrs) node.$_attrs = {} as HsonAttrs;
-  return node.$_attrs as unknown as AttrDict;
+  return ensure_node_attrs(node) as unknown as AttrDict;
 }
 function resolve_form_control(el: Element): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null {
   if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {

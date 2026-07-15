@@ -6,6 +6,9 @@ import { HsonNode } from "../../core/types.js";
 import { resolve_wrapper_node } from "./livemap.editor.js";
 import { LivePath, LiveMapNodeHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue } from "../../types/livemap.types.js";
 import { format_live_path } from "./livemap.path.js";
+import { prune_empty_node_attrs } from "../../core/node-storage.js";
+
+const EMPTY_NODE_ATTRS: LiveMapNodeAttrs = Object.freeze({});
 
 /** Remove only child nodes and preserve primitive content. */
 function removeChildNodes(parent: HsonNode): void {
@@ -108,7 +111,10 @@ export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMa
     get: getNode,
     must: () => mustNode(),
     tag: () => getNode()?.$_tag,
-    attrs: () => copyAttrs(getNode()?.$_attrs),
+    attrs: () => {
+      const node = getNode();
+      return node === undefined ? undefined : copyAttrs(node.$_attrs);
+    },
     attr: (name) => getNode()?.$_attrs?.[name],
     setAttr: (name, value) => {
       setNodeAttr(mustAttrsNode(), name, value);
@@ -198,8 +204,8 @@ function canEditNodeAttrs(node: HsonNode): boolean {
   return node.$_content.some((child) => is_Node(child) && child.$_tag === ELEM_TAG);
 }
 
-function copyAttrs(attrs: HsonNode["$_attrs"] | undefined): LiveMapNodeAttrs | undefined {
-  if (attrs === undefined) return undefined;
+function copyAttrs(attrs: HsonNode["$_attrs"] | undefined): LiveMapNodeAttrs {
+  if (attrs === undefined) return EMPTY_NODE_ATTRS;
   return { ...attrs };
 }
 
@@ -229,11 +235,12 @@ function removeNodeAttr(node: HsonNode, name: string): void {
     return;
   }
 
-  node.$_attrs = {};
+  delete node.$_attrs;
+  prune_empty_node_attrs(node);
 }
 
 function clearNodeAttrs(node: HsonNode): void {
-  node.$_attrs = {};
+  delete node.$_attrs;
 }
 
 function copyChildNodes(node: HsonNode | undefined): readonly HsonNode[] {

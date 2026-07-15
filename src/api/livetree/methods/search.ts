@@ -112,10 +112,10 @@ export function matchText(node: HsonNode, query: HsonQuery): boolean {
  */
 export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
   if (!query.attrs) return true;
-  const na = node.$_attrs ?? {};
+  const na = node.$_attrs;
 
   for (const [k, qv] of Object.entries(query.attrs)) {
-    const nv = (na as any)[k];
+    const nv = na?.[k];
 
     if (qv instanceof RegExp) {
       if (typeof nv !== "string" || !qv.test(nv)) return false;
@@ -126,7 +126,7 @@ export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
       }
     } else if (qv === true) {
       // flag-style: just needs to exist
-      if (!(k in na)) return false;
+      if (na === undefined || !(k in na)) return false;
     } else {
       if (nv !== qv) return false;
     }
@@ -153,11 +153,11 @@ export function matchAttrs(node: HsonNode, query: HsonQuery): boolean {
  */
 export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
   if (!query.meta) return true;
-  const nm = node.$_meta ?? {};
+  const nm = node.$_meta;
   const qMeta = query.meta as Record<string, unknown>;
 
   for (const [k, qv] of Object.entries(qMeta)) {
-    const nv = (nm as any)[k];
+    const nv = nm?.[k];
     if (isRegExp(qv)) {
       if (typeof nv !== "string" || !qv.test(nv)) return false;
     } else if (nv !== qv) {

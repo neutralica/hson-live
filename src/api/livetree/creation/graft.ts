@@ -106,15 +106,17 @@ function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
   const quid = ensure_quid(node);
   set_attrs_safe(el, _DATA_QUID, quid);
 
-  const attrs = node.$_attrs ?? {};
+  const attrs = node.$_attrs;
 
   // clear stale attrs first
   for (const name of el.getAttributeNames()) {
     if (name === _DATA_QUID) continue;
-    if (!(name in attrs)) {
+    if (attrs === undefined || !(name in attrs)) {
       el.removeAttribute(name);
     }
   }
+
+  if (attrs === undefined) return;
 
   for (const [key, raw] of Object.entries(attrs)) {
     if (raw == null) {

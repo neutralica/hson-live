@@ -9,6 +9,7 @@ import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { LiveTree } from "../livetree.js";
 import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-setter.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";
+import { ensure_node_attrs, prune_empty_node_attrs } from "../../../core/node-storage.js";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 
@@ -154,21 +155,22 @@ function removeStyleFromNode(node: HsonNode, kebabName: string): void {
             : kebab_to_camel(kebabName);
 
     // 2) Update node model ($_attrs.style is CssObject now)
-    const attrs = (node as any).$_attrs as HsonAttrs | undefined;
+    const attrs = node.$_attrs;
     const styleObj = (attrs?.style as CssMap | undefined) ?? undefined;
 
     if (styleObj) {
         // drop from CssObject
-        delete (styleObj as any)[internalKey];
+        delete (styleObj as unknown as Record<string, unknown>)[internalKey];
 
         // if now empty, remove style entirely
         if (!Object.keys(styleObj).length) {
             if (attrs) {
-                delete (attrs as any).style;
+                delete attrs.style;
+                prune_empty_node_attrs(node);
             }
         } else {
             if (attrs) {
-                (attrs as any).style = styleObj;
+                attrs.style = styleObj;
             }
         }
     }
@@ -298,29 +300,24 @@ function ensureStyleObject(a: Record<string, unknown>): Record<string, string> {
  * @see ensureStyleObject
  */
 function applyStyleToNode(node: HsonNode, kebabName: string, value: string): void {
+    if (value === "") {
+        removeStyleFromNode(node, kebabName);
+        return;
+    }
+
     const el = get_el_for_node(node);
 
     // allow SVGElement too (and any Element with a style decl)
     if (el instanceof Element) {
-        if (value === "") {
-            (el as any).style.removeProperty(kebabName);
-        } else {
-            (el as any).style.setProperty(kebabName, value);
-        }
+        (el as any).style.setProperty(kebabName, value);
     }
 
-    // 2) mirror into node.$_attrs.style (object form) … unchanged
-    const attrs = (node.$_attrs ??= {}) as Record<string, unknown>;
+    // 2) mirror into node.$_attrs.style (object form)
+    const attrs = ensure_node_attrs(node) as Record<string, unknown>;
     const styleObj = ensureStyleObject(attrs);
     const internalKey = kebabName.startsWith("--") ? kebabName : kebab_to_camel(kebabName);
 
-    if (value === "") {
-        if (Object.prototype.hasOwnProperty.call(styleObj, internalKey)) {
-            delete styleObj[internalKey];
-        }
-    } else {
-        styleObj[internalKey] = value;
-    }
+    styleObj[internalKey] = value;
 }
 
 /* --------------------------------- MANAGER ---------------------------------- */
@@ -484,7 +481,8 @@ export class StyleManager<TTree extends LiveTree> {
         if (!node.$_attrs) return;
 
         const attrs = node.$_attrs as HsonAttrs;
-        delete (attrs as any).style;
+        delete attrs.style;
+        prune_empty_node_attrs(node);
 
         const el = get_el_for_node(node) as HTMLElement | undefined;
         if (el) el.removeAttribute("style");

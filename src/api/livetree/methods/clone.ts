@@ -4,6 +4,8 @@ import { HsonNode } from "../../../core/types.js";
 import { _DATA_QUID, ensure_quid, get_quid } from "../quid/data-quid.js";
 import { LiveTree } from "../livetree.js";
 import { make_branch_from_node } from "../creation/create-branch.js";
+import { has_own_entries, prune_empty_node_meta } from "../../../core/node-storage.js";
+import { CREATE_NODE } from "../../../core/factories.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -18,28 +20,26 @@ function clone_branch_inner(
   quidMap: QuidMap,
   opts: CloneOpts,
 ): HsonNode {
-  // shallow copy of the node object
-  const dst: HsonNode = { ...src };
+  const dst = CREATE_NODE({ $_tag: src.$_tag });
 
   // deep clone containers
-  if (src.$_attrs) dst.$_attrs = { ...src.$_attrs };
-  if (src.$_meta) {
+  if (has_own_entries(src.$_attrs)) dst.$_attrs = { ...src.$_attrs };
+  if (has_own_entries(src.$_meta)) {
     dst.$_meta = { ...src.$_meta };
 
     // CHANGED: identity is not structural clone data. Remove the source quid
     // before ensure_quid() runs so the clone is always reminted.
     delete dst.$_meta[_DATA_QUID];
+    prune_empty_node_meta(dst);
   }
 
   // deep clone content
-  if (src.$_content) {
-    dst.$_content = src.$_content.map((c) => {
-      if (typeof c === "object" && c !== null) {
-        return clone_branch_inner(c as HsonNode, quidMap, opts);
-      }
-      return c;
-    });
-  }
+  dst.$_content = src.$_content.map((c) => {
+    if (typeof c === "object" && c !== null) {
+      return clone_branch_inner(c as HsonNode, quidMap, opts);
+    }
+    return c;
+  });
 
   // Mint a new quid for dst after the copied source identity has been removed.
   const oldQ = get_quid(src);

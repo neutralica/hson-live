@@ -4,6 +4,7 @@ import { HsonNode } from '../../../core/types.js';
 import { _DATA_QUID } from '../../../core/constants.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
+import { ensure_node_meta, prune_empty_node_meta } from '../../../core/node-storage.js';
 
 
 
@@ -90,7 +91,7 @@ export function ensure_quid(
   NODE_TO_QUID.set(n, q);
 
   if (persist) {
-    (n.$_meta ??= {})[_DATA_QUID] = q;
+    ensure_node_meta(n)[_DATA_QUID] = q;
   }
 
   return q;
@@ -178,8 +179,9 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
   NODE_TO_QUID.delete(n);
 
   // optional: remove from meta to avoid persistence
-  if (opts?.scrubMeta && n.$_meta && _DATA_QUID in n.$_meta) {
-    delete n.$_meta[_DATA_QUID];
+  if (opts?.scrubMeta && n.$_meta) {
+    if (_DATA_QUID in n.$_meta) delete n.$_meta[_DATA_QUID];
+    prune_empty_node_meta(n);
   }
 
   // optional: strip DOM attribute if mounted
@@ -201,7 +203,7 @@ export function destroy_subtree_quids(root: HsonNode): number {
 
   for (const node of collect_subtree_nodes(root, "post")) {
     const q = get_quid(node);
-    const hadMeta = _DATA_QUID in node.$_meta;
+    const hadMeta = node.$_meta !== undefined && _DATA_QUID in node.$_meta;
     const hadDomAttr = get_el_for_node(node)?.hasAttribute(_DATA_QUID) ?? false;
 
     drop_quid(node, { scrubMeta: true, stripDomAttr: true });
@@ -238,7 +240,7 @@ export function remint_quid(
   NODE_TO_QUID.set(n, q);
 
   if (opts?.persist ?? true) {
-    (n.$_meta ??= {})[_DATA_QUID] = q;
+    ensure_node_meta(n)[_DATA_QUID] = q;
   }
   return q;
 }

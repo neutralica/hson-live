@@ -15,8 +15,8 @@ export type JsonValue =
 
 export interface HsonNode {
   $_tag: string;
-  $_meta: HsonMeta;
-  $_attrs: HsonAttrs;
+  $_meta?: HsonMeta;
+  $_attrs?: HsonAttrs;
   $_content: NodeContent;
 }
 

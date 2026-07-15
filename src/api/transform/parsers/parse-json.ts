@@ -204,7 +204,6 @@ export function nodeFromJson(
             return {
                 node: CREATE_NODE({
                     $_tag: STR_TAG,
-                    $_meta: {},
                     $_content: [srcJson] // "" included
                 })
             };
@@ -215,7 +214,6 @@ export function nodeFromJson(
             return {
                 node: CREATE_NODE({
                     $_tag: VAL_TAG,
-                    $_meta: {},
                     $_content: [srcJson] // null/number/boolean
                 })
             };
@@ -284,10 +282,10 @@ export function nodeFromJson(
             const children: HsonNode[] = (list as JsonValue[]).map((val, ix) => {
                 // string → _hson_str, number|boolean|null → _hson_val
                 if (is_string(val)) {
-                    return CREATE_NODE({ $_tag: STR_TAG, $_meta: {}, $_content: [val] });
+                    return CREATE_NODE({ $_tag: STR_TAG, $_content: [val] });
                 }
                 if (is_Primitive(val)) {
-                    return CREATE_NODE({ $_tag: VAL_TAG, $_meta: {}, $_content: [val as Primitive] });
+                    return CREATE_NODE({ $_tag: VAL_TAG, $_content: [val as Primitive] });
                 }
 
                 // object → element-object (allow $_attrs/$_meta; preserve them)
@@ -354,7 +352,7 @@ export function nodeFromJson(
                 );
             });
 
-            return { node: CREATE_NODE({ $_tag: ELEM_TAG, $_meta: {}, $_content: children }) };
+            return { node: CREATE_NODE({ $_tag: ELEM_TAG, $_content: children }) };
 
         }
 
@@ -373,7 +371,6 @@ export function nodeFromJson(
                 // strings (including "") → _hson_str(["..."])
                 child = CREATE_NODE({
                     $_tag: STR_TAG,
-                    $_meta: {},
                     $_content: [raw] // "" preserved
                 });
             } else if (
@@ -384,7 +381,6 @@ export function nodeFromJson(
                 // numbers/booleans/null → _hson_val([...])
                 child = CREATE_NODE({
                     $_tag: VAL_TAG,
-                    $_meta: {},
                     $_content: [raw]
                 });
             } else if (Array.isArray(raw)) {
@@ -401,11 +397,10 @@ export function nodeFromJson(
             const payload =
                 (child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG)
                     ? [child]                                    // passthrough single cluster
-                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_meta: {}, $_content: [child] })]; // wrap leaf in _hson_obj
+                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [child] })]; // wrap leaf in _hson_obj
 
             return CREATE_NODE({
                 $_tag: key,
-                $_meta: {},
                 $_content: payload
             });
         });
@@ -413,7 +408,6 @@ export function nodeFromJson(
         return {
             node: CREATE_NODE({
                 $_tag: OBJ_TAG,
-                $_meta: {},
                 $_content: propertyNodes
             })
         };

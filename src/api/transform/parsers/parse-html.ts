@@ -460,7 +460,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
             $_attrs: sortedAcc,
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
             $_content: [
-                CREATE_NODE({ $_tag: ELEM_TAG, $_meta: {}, $_content: [] })
+                CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] })
             ]
         });
     }
@@ -488,7 +488,6 @@ function convert(el: Element, parentTag?: string): HsonNode {
         $_content: [
             CREATE_NODE({
                 $_tag: ELEM_TAG,
-                $_meta: {},
                 $_content: childNodes
             })
         ]
@@ -569,7 +568,6 @@ function elementToNode(
             if (trimmed === '""') {
                 contents.push(CREATE_NODE({
                     $_tag: STR_TAG,
-                    $_meta: {},
                     $_content: [""],
                 }));
                 continue;

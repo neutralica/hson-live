@@ -196,16 +196,44 @@ function push(errs: string[], _cfg: DevCfg, s: string) {
   errs.push(s);
 }
 
-export function assertNewShapeQuick(n: any, where: string): void {
-  const stack: any[] = [n];
+function is_plain_record(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+export function assertNewShapeQuick(n: unknown, where: string): void {
+  const stack: unknown[] = [n];
 
   while (stack.length) {
     const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
+    if (!is_plain_record(node)) {
+      throw new Error(`[NEW-only] node must be a plain object in ${where}`);
+    }
 
-    const tag = node.$_tag as string | undefined;
-    const meta = node.$_meta as HsonMeta | undefined;
-    const attrs = node.$_attrs as HsonAttrs | undefined;
+    const tag = node.$_tag;
+    if (typeof tag !== "string") {
+      throw new Error(`[NEW-only] node has invalid $_tag in ${where}`);
+    }
+
+    if (!Array.isArray(node.$_content)) {
+      throw new Error(`[NEW-only] node <${tag}> must carry an array $_content in ${where}`);
+    }
+
+    const hasMeta = Object.hasOwn(node, "$_meta");
+    const hasAttrs = Object.hasOwn(node, "$_attrs");
+    const metaValue = node.$_meta;
+    const attrsValue = node.$_attrs;
+
+    if (hasMeta && !is_plain_record(metaValue)) {
+      throw new Error(`[NEW-only] $_meta must be a plain object when present in ${where} at <${tag}>`);
+    }
+    if (hasAttrs && !is_plain_record(attrsValue)) {
+      throw new Error(`[NEW-only] $_attrs must be a plain object when present in ${where} at <${tag}>`);
+    }
+
+    const meta = is_plain_record(metaValue) ? metaValue : undefined;
+    const attrs = is_plain_record(attrsValue) ? attrsValue : undefined;
 
     if (meta && ("attrs" in meta || "flags" in meta)) {
       throw new Error(`[NEW-only] old-shaped meta in ${where} at <${tag ?? "?"}>
@@ -213,27 +241,36 @@ export function assertNewShapeQuick(n: any, where: string): void {
     }
 
     if (meta) {
-      for (const k of Object.keys(meta)) {
+      for (const [k, value] of Object.entries(meta)) {
         if (!k.startsWith(_META_DATA_PREFIX)) {
           throw new Error(`[NEW-only] illegal meta key "${k}" in ${where} at <${tag}> (only "data-_*" allowed)`);
+        }
+        if (typeof value !== "string") {
+          throw new Error(`[NEW-only] metadata value for "${k}" must be a string in ${where} at <${tag}>`);
+        }
+      }
+    }
+
+    if (attrs) {
+      for (const [key, value] of Object.entries(attrs)) {
+        const validPrimitive = value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+        const validStyle = key === "style" && is_plain_record(value);
+        if (!validPrimitive && !validStyle) {
+          throw new Error(`[NEW-only] malformed attribute value for "${key}" in ${where} at <${tag}>`);
         }
       }
     }
 
     if (tag && isVSN(tag) && attrs && Object.keys(attrs).length) {
-      _throw_transform_err(` VSN <${tag}> with $_attrs :  ${where}`, "assertNewShapeQuick", n);
+      _throw_transform_err(` VSN <${tag}> with $_attrs :  ${where}`, "assertNewShapeQuick", JSON.stringify(n));
     }
 
-    const content = node.$_content as unknown[] | undefined;
-    if (Array.isArray(content)) {
-      if (tag === STR_TAG || tag === VAL_TAG) {
-        continue;
-      }
+    const content = node.$_content;
+    if (tag === STR_TAG || tag === VAL_TAG) continue;
 
-      for (const c of content) {
-        if (is_Node(c)) {
-          stack.push(c);
-        }
+    for (const child of content) {
+      if (typeof child === "object" && child !== null) {
+        stack.push(child);
       }
     }
   }
