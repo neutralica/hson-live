@@ -9,28 +9,35 @@ Each successful projected mutation produces a data-shaped commit. A commit recor
 
 LiveMap schemas combine TypeScript-inferred state structure with runtime validation. The same schema can guide TypeScript-facing APIs and validate live graph state before accepting mutations. If a proposed operation would violate expected value type, node kind, array behavior, required object structure, or document constraints, LiveMap can reject the operation before changing the authoritative graph.
 
-LiveMap also provides path handles, feeds, proxies, object and array helpers, snapshots, capture/apply/replay operations, and explicit bindings to LiveTree. These features allow the graph to drive local views, DOM projections, inspectors, editors, and eventually LiveHost replication through ordered commits and snapshots.
+LiveMap also provides path handles, feeds, proxies, object and array helpers, snapshots, capture/apply/replay operations, and explicit bindings to LiveTree. These features allow the graph to drive local views, DOM projections, inspectors, editors, and LiveHost replication through ordered commits and snapshots.
+
+LiveMap snapshots are local revisioned state captures. Hosted snapshot transport, recovery policy, and client coordination are LiveHost concerns.
  -->
 
 
 # LiveMap
-Updated: 2026-07-13
+Updated: 2026-07-17
 
-LiveMap is hson-live's mutable HSON graph as structured projected 
-state. It is designed to make the same graph useful in three different roles:
+LiveMap presents a mutable HSON graph as structured projected application state.
+It is designed to make the same graph useful in three roles:
 
-- as structured HSON storage;
-- as ordinary object/array/primitive application state; and
-- as a source of explicit, replayable changes for views and remote authority.
+- canonical structured HSON storage;
+- ordinary object, array, and primitive application state; and
+- a source of explicit, replayable changes for views and hosted authority.
 
-The current implementation already provides the local state core: projected
-paths, atomic mutations, commits, revisions, feeds, schema validation, path
-handles, proxies, array/object helpers, links, and capture/apply/replay. The
-larger design extends that core toward identity-aware reconciliation,
-deterministic lifecycle scopes, richer derived views, and LiveHost replication.
+The implemented local-state core includes projected paths, atomic mutations,
+commits, revisions, feeds, schema validation, path handles, proxies,
+array/object helpers, links, and capture/apply/replay.
 
-This document explains both layers without presenting planned behavior as
-current API. The complete implemented callable surface is in
+LiveHost now builds on those facilities with authoritative hosted state,
+ordered commits, snapshots, recovery, reconnect behavior, deduplication, and
+multi-client coordination. Further roadmap work includes identity-aware
+reconciliation, deterministic lifecycle scopes, richer derived views,
+persistence, authorization, and broader operational hardening.
+
+This document describes LiveMap's implemented semantics, architectural
+boundaries, and roadmap direction without presenting planned behavior as
+current API. The complete implemented callable surface is documented in
 `api-livemap.md`.
 
 ---
@@ -53,8 +60,7 @@ called today.
 
 ## One graph, two views
 
-Every LiveMap owns an `HsonNode` root. Its ordinary state API does not expose
-physical HSON wrapper paths. Instead, it projects the graph into JSON values:
+Every LiveMap owns a canonical HSON node graph with one retained root node.
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -67,7 +73,7 @@ map.snap(["user", "name"]);  // "Ada"
 map.root();                    // live HsonNode root
 ```
 
-The projected path `['user', 'name']` crosses whatever `_hson_obj`, property,
+The projected path `["user", "name"]` crosses whatever `_hson_obj`, property,
 and primitive VSN wrappers are required by the HSON graph. Callers do not need
 to encode those wrappers in a `LivePath`.
 
@@ -105,7 +111,7 @@ Paths are exact and unambiguous. They do not split dots, coerce strings to
 numbers, contain wildcards, or use raw HSON node positions.
 
 A path identifies a current location, not a persistent value identity. A
-cached handle for `['items', 2]` continues to address index 2 after a splice; it
+cached handle for `["items", 2]` continues to address index 2 after a splice; it
 does not follow the item that previously occupied that position.
 
 This distinction supports two different future references:
@@ -130,6 +136,10 @@ Implemented projected mutations pass through one coordinated pipeline:
 6. create one normalized commit;
 7. advance the revision when the commit changed state; and
 8. synchronously notify overlapping feeds from the committed graph.
+
+A batch is synchronous and local to one LiveMap. It does not remain open across
+`await`, coordinate several maps, or reserve a hosted revision while
+asynchronous work completes.
 
 Schema or editor failure occurs before the live graph is changed. Explicit
 `batch()` groups multiple synchronous writes into one preflight and one commit,
@@ -226,16 +236,24 @@ These operations form the implemented local foundation for LiveHost:
 - revision checks detect stale bases; and
 - replay conflict checks prevent applying an incompatible history.
 
-They do not by themselves provide a network protocol, persistence, retry,
-authorization, conflict merging, or multi-writer consensus.
+These LiveMap operations do not themselves define transport, persistence,
+retry policy, authorization, conflict merging, or multi-writer consensus.
+Those responsibilities belong outside LiveMap. LiveHost now implements the
+authoritative transport, recovery, retry, deduplication, and session-facing
+parts of that boundary, while persistence and authorization remain separate
+concerns.
+
+A revision is meaningful only within the history and authority domain that
+issued it. Revision 12 in one LiveMap or host session is not interchangeable
+with revision 12 in another.
 
 ---
 
 ## Feeds and subscription views
 
 Feeds subscribe to path overlap, not merely exact path equality. A change at
-`['user', 'name']` overlaps feeds at `[]`, `['user']`, and
-`['user', 'name']`, but not `['user', 'role']`.
+`["user", "name"]` overlaps feeds at `[]`, `["user"]`, and
+`["user", "name"]`, but not `["user", "role"]`.
 
 The event contains:
 
@@ -353,10 +371,14 @@ Implemented one-way links forward selected local changes from one LiveMap to
 another. They are intentionally narrow: no initial synchronization, no
 bidirectional loop protection, no transforms, and no conflict resolution.
 
-The intended distributed model is not peer-to-peer merging. LiveHost supplies a
-single authoritative revision order; clients mirror accepted host state.
-Actions and conditional proposals cross the authority boundary, while snapshots
-and ordered commits return from it.
+The implemented distributed model is authoritative rather than peer-to-peer.
+LiveHost establishes a single accepted revision order, and clients recover,
+mirror, and propose changes against that authority. Actions and conditional
+proposals cross the authority boundary, while snapshots and ordered commits
+return from it.
+
+LiveHost does not turn LiveMap into a CRDT or provide automatic divergent-history
+merging.
 
 This preserves a clean separation:
 
@@ -366,6 +388,19 @@ This preserves a clean separation:
 
 CRDT behavior, multi-master consensus, and automatic divergent-history merging
 are not goals of the initial architecture.
+
+---
+
+## Stored state and derived state
+
+LiveMap stores authoritative projected state and emits semantic changes to that
+state. Consumers may derive display values, filtered collections, validation
+messages, or presentation graphs from snapshots and feeds, but those derived
+values are not implicitly inserted back into the map.
+
+LiveMap does not currently provide a general computed-value dependency graph.
+Derived views remain explicit consumers of snapshots, feeds, schemas, or
+application-level selectors.
 
 ---
 
@@ -396,9 +431,6 @@ rather than falling back to the old path.
 The following current behaviors should not be mistaken for idealized
 guarantees:
 
-- `hson.liveMap.fromJson` is typed for `JsonValue`, but current transform
-  invariants reject top-level scalar roots; object and array roots are the
-  reliable construction forms.
 - Object-root `fromJson` construction is seeded through `replace()` and
   currently begins at revision 1, while other construction paths begin at 0.
 - `root()` and `node(path)` expose live physical graph mutation outside schema,
@@ -418,10 +450,15 @@ completed architecture.
 
 ---
 
-## Goals
+## Non-goals
 
-LiveMap's central purpose is narrow: provide a deterministic structured-state 
-projection over HSON, with explicit mutation and operational metadata to support 
-reliable views, validation, replay, and authoritative replication.
+LiveMap is not intended to provide:
+
+- transparent mutation through ordinary JavaScript assignment;
+- peer-to-peer conflict-free replication;
+- automatic persistence or authorization;
+- implicit deep reactivity over arbitrary objects;
+- automatic identity-preserving DOM reconciliation; or
+- unrestricted raw graph mutation with commit accounting.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0
