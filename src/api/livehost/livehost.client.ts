@@ -44,21 +44,25 @@ import {
 } from "./livehost.error.js";
 import { decode_livehost_server_message } from "./livehost.protocol.js";
 
-let nextClientId = 0;
-let nextActionId = 0;
+let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
 let nextRecoveryId = 0;
 let nextSessionRequestId = 0;
 let nextActionStatusId = 0;
 
+function make_reload_safe_id(prefix: string): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid !== undefined) return `${prefix}-${uuid}`;
+  nextFallbackIdentityId += 1;
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${nextFallbackIdentityId.toString(36)}`;
+}
+
 function make_client_id(): LiveHostId {
-  nextClientId += 1;
-  return `lhc-${nextClientId}`;
+  return make_reload_safe_id("lhc");
 }
 
 function make_action_id(): LiveHostActionId {
-  nextActionId += 1;
-  return `lha-${nextActionId}`;
+  return make_reload_safe_id("lha");
 }
 
 function make_action_attempt_id(): LiveHostActionId {

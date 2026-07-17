@@ -878,7 +878,16 @@ export type LiveHostClientOptions<
 > = Readonly<{
   socket: LiveHostSocketLike;
   map?: LiveMap<TState>;
+  /**
+   * Logical client identity used to scope retry-safe action requests.
+   * The default is reload-safe. Reuse an explicit value only when reconnecting
+   * the same logical client and preserving its outstanding request lineage.
+   */
   clientId?: LiveHostId;
+  /**
+   * Factory for fresh action request IDs. `action()` calls it once per new
+   * command; `retry_action()` retains the request ID in the supplied descriptor.
+   */
   actionId?: () => LiveHostActionId;
   actionAttemptId?: () => LiveHostActionId;
   actionStatusId?: () => LiveHostActionStatusId;

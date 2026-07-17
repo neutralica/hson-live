@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 import { hson } from "../src/index.ts";
 
@@ -72,6 +74,15 @@ function connect(host, clientId, options = {}) {
   const client = hson.liveHost.client({ socket: pair.client, clientId, ...options });
   client.connect();
   return { pair, client };
+}
+
+function separately_initialized_default_identity() {
+  const fixturePath = fileURLToPath(new URL("./fixtures/livehost-default-identity-runtime.mts", import.meta.url));
+  const output = execFileSync(process.execPath, ["--loader", "ts-node/esm", fixturePath], {
+    cwd: fileURLToPath(new URL("..", import.meta.url)),
+    encoding: "utf8",
+  });
+  return JSON.parse(output);
 }
 
 function fixture(options = {}) {
@@ -269,6 +280,23 @@ await check("independent IDs and browser clients execute independently", async (
   await Promise.all([idOne, idTwo]);
   assert.notEqual(idOne.request.requestId, idTwo.request.requestId);
   assert.equal(f.executions(), 4);
+});
+
+await check("separately initialized browser runtimes cannot collide with retained outcomes", async () => {
+  const oneIdentity = separately_initialized_default_identity();
+  const twoIdentity = separately_initialized_default_identity();
+  assert.notEqual(oneIdentity.clientId, twoIdentity.clientId);
+  assert.notEqual(oneIdentity.requestId, twoIdentity.requestId);
+
+  const f = fixture();
+  const one = connect(f.host, oneIdentity.clientId, { actionId: () => oneIdentity.requestId }).client;
+  const two = connect(f.host, twoIdentity.clientId, { actionId: () => twoIdentity.requestId }).client;
+  const first = await one.action("echo", 1);
+  const second = await two.action("echo", 1);
+  assert.equal(first.delivery, "executed");
+  assert.equal(second.delivery, "executed");
+  assert.equal(f.executions(), 2);
+  assert.equal(f.host.actionRequests.debug().cachedOutcomeResponseCount, 0);
 });
 
 await check("same identity is isolated by map incarnation", async () => {
