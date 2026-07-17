@@ -19,8 +19,11 @@ import { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 import { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 import { make_livehost_canonical_stream } from "./api/livehost/livehost.history.js";
 import { make_livehost_recovery_planner } from "./api/livehost/livehost.recovery.js";
-import type { LiveMap } from "./types/livemap.types.js";
+import type { LiveMap, LiveMapPathHandle } from "./types/livemap.types.js";
 import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/livemap.schema.js";
+import { project_keyed_collection } from "./api/liveproject/liveproject.keyed.js";
+import { create_live_inspector } from "./api/liveinspect/liveinspect.js";
+import type { LiveInspector, LiveInspectorOptions, LiveInspectorOwnedHsonOptions, LiveInspectorOwnedJsonOptions } from "./types/liveinspect.types.js";
 
 
 const SAFE_SOURCE = construct_source_1({ unsafe: false });
@@ -157,6 +160,48 @@ export const hson = {
   },
 
   /**
+   * Experimental one-way LiveMap -> LiveTree projection APIs.
+   *
+   * Patch 7A intentionally exposes only keyed collection projection. This is
+   * not a component system, template language, or universal data renderer.
+   */
+  liveProject: Object.freeze({
+    keyedCollection: project_keyed_collection,
+  }),
+
+  /** Experimental read-only structured-data inspection surface. */
+  inspect: Object.freeze({
+    create(options: LiveInspectorOptions): LiveInspector {
+      return create_live_inspector(options);
+    },
+
+    /** Create an inspector-owned LiveMap from a detached JSON-shaped value. */
+    fromJson(options: LiveInspectorOwnedJsonOptions): LiveInspector {
+      const { value, ...inspectorOptions } = options;
+      const ownedMap = is_inspector_root_collection(value)
+        ? make_livemap_core_from_json(value)
+        : make_livemap_core_from_json({ __hson_inspector_value__: value });
+      const source = is_inspector_root_collection(value)
+        ? ownedMap
+        : make_inspector_primitive_root(ownedMap.at(["__hson_inspector_value__"]));
+      return create_live_inspector(
+        { ...inspectorOptions, source },
+        { origin: "json" },
+      );
+    },
+
+    /** Create an inspector-owned LiveMap from canonical serialized HSON. */
+    fromHson(options: LiveInspectorOwnedHsonOptions): LiveInspector {
+      const { value, ...inspectorOptions } = options;
+      const output = UNSAFE_SOURCE.fromHson(value);
+      return create_live_inspector(
+        { ...inspectorOptions, source: make_livemap_core(output.toHson().parse()) },
+        { origin: "hson" },
+      );
+    },
+  }),
+
+  /**
    * Direct LiveHost construction API.
    *
    * LiveHost provides an authoritative LiveMap host, a mirrored client, and a
@@ -277,3 +322,17 @@ export const hson = {
     create: make_detached_livetree_create(),
   },
 };
+
+function is_inspector_root_collection(value: JsonValue): boolean {
+  return typeof value === "object" && value !== null;
+}
+
+/** Present the internal scalar wrapper property as the inspector's canonical root. */
+function make_inspector_primitive_root(source: LiveMapPathHandle): LiveMapPathHandle {
+  return new Proxy(source, {
+    get(target, property, receiver) {
+      if (property === "path") return () => Object.freeze([]);
+      return Reflect.get(target, property, receiver) as unknown;
+    },
+  });
+}

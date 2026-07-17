@@ -10,6 +10,22 @@ export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from
 export type { SvgLiveTree } from "./svg.types.js";
 export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi } from "./livemap.types.js";
 export type {
+  LiveKeyedProjection,
+  LiveKeyedProjectionOptions,
+  LiveProjectionChange,
+  LiveProjectionChangeKind,
+  LiveProjectionDiagnostics,
+  LiveProjectionItemContext,
+  LiveProjectionItemUpdate,
+  LiveProjectionKey,
+  LiveProjectionListener,
+  LiveProjectionMappingSummary,
+  LiveProjectionRender,
+  LiveProjectionRenderResult,
+  LiveProjectionSnapshot,
+  LiveProjectionStatus,
+} from "./liveproject.types.js";
+export type {
   LiveHost,
   LiveHostActionContext,
   LiveHostActionHandler,
@@ -151,3 +167,30 @@ export type {
   LiveHostWireValue,
 } from "./livehost.types.js";
 export type { LiveMapSchema, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken, InferLiveMapSchema } from "../api/livemap/livemap.schema.js";
+export type {
+  LiveInspector,
+  LiveInspectorArrayIdentity,
+  LiveInspectorArrayKeyContext,
+  LiveInspectorArrayKeyResolver,
+  LiveInspectorBranchRole,
+  LiveInspectorDiagnostics,
+  LiveInspectorHsonMode,
+  LiveInspectorListener,
+  LiveInspectorMappingSummary,
+  LiveInspectorOptions,
+  LiveInspectorOwnedHsonOptions,
+  LiveInspectorOwnedJsonOptions,
+  LiveInspectorReadHandle,
+  LiveInspectorRendererResult,
+  LiveInspectorRendererUpdate,
+  LiveInspectorRenderers,
+  LiveInspectorSelection,
+  LiveInspectorSemanticContext,
+  LiveInspectorSemanticRenderer,
+  LiveInspectorSerializationTarget,
+  LiveInspectorSnapshot,
+  LiveInspectorSource,
+  LiveInspectorSpecialization,
+  LiveInspectorStatus,
+  LiveInspectorValueKind,
+} from "./liveinspect.types.js";

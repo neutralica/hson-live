@@ -487,8 +487,12 @@ export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<T
 
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   readonly quid: LiveMapQuid;
+  /** Current revision of the owning LiveMap. */
+  readonly rev: number;
   path: () => LivePath;
   snap: () => TValue;
+  /** Create a child handle relative to this handle's projected path. */
+  at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   /** Set this resolved handle path; plain objects expand into shallow child sets. */
   set: (value: LiveMapSetValue<TValue>) => LiveMapCommit;
   /** Exact replacement at this handle path using replace-shaped commit ops. */

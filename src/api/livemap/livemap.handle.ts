@@ -9,7 +9,7 @@ import { ensure_livemap_quid } from "./livemap.quid.js";
 import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
 
 
-type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice">;
+type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
 
 type LiveMapPathHandleInternals = Readonly<{
   core: LiveMapPathHandleCore;
@@ -52,8 +52,10 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
 
   const handle: LiveMapPathHandle<TValue> = {
     get quid() { return ensure_livemap_quid(handle); },
+    get rev() { return core.rev; },
     path: () => clone_live_path(handlePath),
     snap: () => core.snap(handlePath) as TValue,
+    at: ((path: LivePath) => core.at([...handlePath, ...must_live_path(path)])) as unknown as LiveMapPathHandle<TValue>["at"],
     set: (value) => core.set(handlePath, must_json_value(value, handlePath)),
     replace: (value) => core.replace(handlePath, must_json_value(value, handlePath)),
     setMany: (values) => core.setMany(handlePath, must_set_many_values(values, handlePath)),
