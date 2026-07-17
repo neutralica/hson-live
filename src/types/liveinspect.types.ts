@@ -4,14 +4,22 @@ import type { LiveMap, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./li
 import type { LiveProjectionKey } from "./liveproject.types.js";
 import type { LiveInspectorError } from "../api/liveinspect/liveinspect.error.js";
 
-export type LiveInspectorSource = LiveMap | LiveMapPathHandle;
+export type LiveInspectorSource = LiveInspectorMapSource | LiveMapPathHandle;
 export type LiveInspectorStatus = "initializing" | "ready" | "replacing" | "failed" | "disposed";
 export type LiveInspectorValueKind = "object" | "array" | "string" | "number" | "boolean" | "null";
 export type LiveInspectorBranchRole = "root" | "object-property" | "array-item";
 export type LiveInspectorArrayIdentity = "application-key" | "positional";
 export type LiveInspectorHsonMode = "none" | "friendly" | "canonical";
 export type LiveInspectorSerializationTarget = "json" | "hson" | "html" | "canonical-node";
-
+export type LiveInspectorMapSource = Pick<
+  LiveMap<any>,
+  "root"
+  | "at"
+  | "snap"
+  | "feed"
+  | "schema"
+  | "node"
+>;
 export type LiveInspectorArrayKeyContext = Readonly<{
   arrayPath: LivePath;
   itemPath: LivePath;
@@ -140,6 +148,13 @@ export type LiveInspectorDiagnostics = Readonly<{
   eagerlyMaterializedBranches: number;
   lazilyMaterializedBranches: number;
   branchesMaterializedAfterExpansion: number;
+  materializationPasses: number;
+  rowsMaterialized: number;
+  batchAttachmentPasses: number;
+  rowsBatchAttached: number;
+  largestMaterialization: number;
+  materializationDurationMs: number;
+  observerNotifications: number;
   positionalArrayBranches: number;
   disposed: boolean;
   firstFailure: LiveInspectorError | undefined;

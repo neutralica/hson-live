@@ -6,12 +6,14 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import { LiveInspectorError, LIVE_INSPECTOR_UNSUPPORTED_SOURCE_ERROR_CODE } from "./liveinspect.error.js";
+import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
+import { LiveInspectorMapSource } from "../../types/liveinspect.types.js";
 
 export type LiveInspectorSourceOrigin = "livemap" | "handle" | "json" | "hson";
 
 export type NormalizedInspectorSource = Readonly<{
   handle: LiveMapPathHandle;
-  map: LiveMap | undefined;
+  map: LiveInspectorMapSource | undefined;
   origin: LiveInspectorSourceOrigin;
 }>;
 
@@ -51,11 +53,13 @@ export function make_singleton_collection_handle(
     get rev() { return source.rev; },
     path: () => source.path(),
     snap: () => {
+      record_livetree_materialization("sourceSnapReads");
       const value = source.snap();
       must_supported_json(value);
       return Object.freeze([value]);
     },
     at: ((path: LivePath) => {
+      record_livetree_materialization("sourceAtCalls");
       if (path.length !== 1 || path[0] !== 0) {
         throw new LiveInspectorError(
           LIVE_INSPECTOR_UNSUPPORTED_SOURCE_ERROR_CODE,
@@ -77,12 +81,14 @@ export function make_array_collection_handle(
     get rev() { return source.rev; },
     path: () => source.path(),
     snap: () => {
+      record_livetree_materialization("sourceSnapReads");
       const value = source.snap();
       if (!Array.isArray(value)) throw unsupported_shape("array", source.path());
       passValues = value;
       return value;
     },
     at: ((path: LivePath) => {
+      record_livetree_materialization("sourceAtCalls");
       const ordinal = path[0];
       if (path.length !== 1 || typeof ordinal !== "number") throw unsupported_shape("array-item ordinal", source.path());
       const values = passValues;
@@ -106,13 +112,16 @@ export function make_object_collection_handle(
     get rev() { return source.rev; },
     path: () => source.path(),
     snap: () => {
+      record_livetree_materialization("sourceSnapReads");
       const value = source.snap();
       if (!is_json_object(value)) throw unsupported_shape("object", source.path());
       passKeys = Object.keys(value);
       passValues = Object.values(value);
+      record_livetree_materialization("objectKeyEnumerations");
       return passValues;
     },
     at: ((path: LivePath) => {
+      record_livetree_materialization("sourceAtCalls");
       const ordinal = path[0];
       if (path.length !== 1 || typeof ordinal !== "number") {
         throw unsupported_shape("object-property ordinal", source.path());
@@ -122,6 +131,7 @@ export function make_object_collection_handle(
         if (!is_json_object(value)) throw unsupported_shape("object", source.path());
         passKeys = Object.keys(value);
         passValues = Object.values(value);
+        record_livetree_materialization("objectKeyEnumerations");
       }
       const keys = passKeys;
       const values = passValues;
@@ -188,9 +198,11 @@ export function is_json_object(value: unknown): value is Record<string, JsonValu
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function is_livemap(value: unknown): value is LiveMap {
+function is_livemap(value: unknown): value is LiveInspectorMapSource {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<LiveMap>;
+
+  const candidate = value as Partial<LiveInspectorMapSource>;
+
   return typeof candidate.root === "function"
     && typeof candidate.at === "function"
     && typeof candidate.snap === "function"

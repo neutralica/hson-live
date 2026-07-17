@@ -29,6 +29,7 @@ import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } f
 import { project_keyed_collection } from "../liveproject/liveproject.keyed.js";
 import { LiveProjectionError, LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE } from "../liveproject/liveproject.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
+import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import {
   LIVE_INSPECTOR_DISPOSED_ERROR_CODE,
   LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE,
@@ -91,6 +92,11 @@ type MutableCounts = {
   eagerlyMaterializedBranches: number;
   lazilyMaterializedBranches: number;
   branchesMaterializedAfterExpansion: number;
+  materializationPasses: number;
+  rowsMaterialized: number;
+  largestMaterialization: number;
+  materializationDurationMs: number;
+  observerNotifications: number;
 };
 
 type AuxiliaryRenderer = Readonly<{
@@ -137,7 +143,7 @@ class InspectorController {
   private suppressProjectionNotification = false;
   private initializing = true;
   private nextBranchId = 0;
-  private absorbedProjectionCounts = { created: 0, reused: 0, moved: 0, removed: 0 };
+  private absorbedProjectionCounts = { created: 0, reused: 0, moved: 0, removed: 0, batchPasses: 0, batchRows: 0 };
   private readonly counts: MutableCounts = {
     objectProjectors: 0,
     arrayProjectors: 0,
@@ -161,6 +167,11 @@ class InspectorController {
     eagerlyMaterializedBranches: 0,
     lazilyMaterializedBranches: 0,
     branchesMaterializedAfterExpansion: 0,
+    materializationPasses: 0,
+    rowsMaterialized: 0,
+    largestMaterialization: 0,
+    materializationDurationMs: 0,
+    observerNotifications: 0,
   };
 
   public constructor(options: LiveInspectorOptions, creation: InspectorCreationContext) {
@@ -210,6 +221,7 @@ class InspectorController {
       this.suppliedHost.append(this.inspectorRoot);
       this.installStyles();
       this.installDelegatedInteraction();
+      const rootStarted = materializationNow();
       this.rootProjection = this.registerProjector(project_keyed_collection<JsonValue>({
         source: make_singleton_collection_handle(this.sourceContext.handle, true),
         host: this.treeRegion,
@@ -222,6 +234,7 @@ class InspectorController {
           own: context.own,
         }),
       }));
+      this.recordMaterialization(this.rootProjection, rootStarted);
       this.rootProjectionOff = this.rootProjection.subscribe(() => this.onRootProjectionChange());
       own_disposable_for_owner(this.inspectorRoot.quid, () => this.dispose(), "other");
       this.currentStatus = "ready";
@@ -275,6 +288,7 @@ class InspectorController {
       own: (cleanup: () => void) => () => void;
     }>,
   ): LiveInspectorRendererResultForProjection {
+    const started = materializationNow();
     let branch: BranchController | undefined;
     try {
       branch = new BranchController(this, source, input.role, input.key, input.depth, input.parent);
@@ -294,6 +308,8 @@ class InspectorController {
     } catch (error) {
       branch?.dispose();
       throw error;
+    } finally {
+      record_livetree_materialization("inspectorBranchConstructionMs", materializationNow() - started);
     }
   }
 
@@ -301,7 +317,8 @@ class InspectorController {
     const value = branch.source.snap();
     if (is_json_object(value)) {
       this.counts.objectProjectors += 1;
-      return this.registerProjector(project_keyed_collection<JsonValue>({
+      const started = materializationNow();
+      const projector = this.registerProjector(project_keyed_collection<JsonValue>({
         source: make_object_collection_handle(branch.source),
         host: branch.childrenRegion,
         key: (_item, context) => {
@@ -319,11 +336,14 @@ class InspectorController {
           own: context.own,
         }),
       }));
+      this.recordMaterialization(projector, started);
+      return projector;
     }
     if (Array.isArray(value)) {
       this.counts.arrayProjectors += 1;
       branch.arrayIdentity = this.arrayIdentity(value, branch.source.path());
-      return this.registerProjector(project_keyed_collection<JsonValue>({
+      const started = materializationNow();
+      const projector = this.registerProjector(project_keyed_collection<JsonValue>({
         source: make_array_collection_handle(branch.source),
         host: branch.childrenRegion,
         key: (item, context) => this.arrayItemKey(item, branch, context.ordinal, context.path),
@@ -335,6 +355,8 @@ class InspectorController {
           own: context.own,
         }),
       }));
+      this.recordMaterialization(projector, started);
+      return projector;
     }
     throw new LiveInspectorError(
       LIVE_INSPECTOR_NON_STRUCTURAL_EXPANSION_ERROR_CODE,
@@ -362,6 +384,15 @@ class InspectorController {
     this.absorbedProjectionCounts.reused += diagnostics.recordsReused;
     this.absorbedProjectionCounts.moved += diagnostics.recordsMoved;
     this.absorbedProjectionCounts.removed += diagnostics.recordsRemoved;
+    this.absorbedProjectionCounts.batchPasses += diagnostics.batchAttachmentPasses;
+    this.absorbedProjectionCounts.batchRows += diagnostics.recordsBatchAttached;
+  }
+
+  private recordMaterialization(projector: LiveKeyedProjection<JsonValue>, started: number): void {
+    this.counts.materializationPasses += 1;
+    this.counts.rowsMaterialized += projector.itemCount;
+    this.counts.largestMaterialization = Math.max(this.counts.largestMaterialization, projector.itemCount);
+    this.counts.materializationDurationMs += materializationNow() - started;
   }
 
   public disposeProjector(projector: LiveKeyedProjection<JsonValue>): void {
@@ -518,6 +549,7 @@ class InspectorController {
   }> | undefined {
     const context = this.semanticContext(branch);
     for (const specialization of this.specializations) {
+      record_livetree_materialization("specializationMatchCalls");
       try {
         if (specialization.match(value, context)) {
           this.counts.specializedRendererMatches += 1;
@@ -534,6 +566,7 @@ class InspectorController {
       : branch.kind === "object"
       ? this.renderers.objectSummary
       : this.renderers.arraySummary;
+    if (renderer !== undefined) record_livetree_materialization("rendererHookInvocations");
     return renderer === undefined ? undefined : { name: `hook:${branch.kind}`, renderer, category: "hook" };
   }
 
@@ -549,6 +582,7 @@ class InspectorController {
   }
 
   private installDelegatedInteraction(): void {
+    record_livetree_materialization("inspectorRootListeners");
     this.inspectorRoot.listen.onClick((event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -572,6 +606,7 @@ class InspectorController {
       lineHeight: "1.45",
     });
     const rule = (selector: string, declarations: Record<string, string>) => {
+      record_livetree_materialization("inspectorCssRuleSets");
       this.inspectorRoot.css.selector(`& ${selector}`).setMany(declarations);
     };
     rule("[data-hson-inspect-line]", { display: "flex", alignItems: "baseline", gap: "0.5rem", minHeight: "1.5rem" });
@@ -912,6 +947,13 @@ class InspectorController {
       eagerlyMaterializedBranches: this.counts.eagerlyMaterializedBranches,
       lazilyMaterializedBranches: this.counts.lazilyMaterializedBranches,
       branchesMaterializedAfterExpansion: this.counts.branchesMaterializedAfterExpansion,
+      materializationPasses: this.counts.materializationPasses,
+      rowsMaterialized: this.counts.rowsMaterialized,
+      batchAttachmentPasses: projection.batchPasses,
+      rowsBatchAttached: projection.batchRows,
+      largestMaterialization: this.counts.largestMaterialization,
+      materializationDurationMs: this.counts.materializationDurationMs,
+      observerNotifications: this.counts.observerNotifications,
       positionalArrayBranches: branches.filter((branch) => branch.arrayIdentity === "positional").length,
       disposed: this.currentStatus === "disposed",
       firstFailure: this.firstFailure,
@@ -919,19 +961,23 @@ class InspectorController {
     });
   }
 
-  private sumProjectionDiagnostics(): Readonly<{ created: number; reused: number; moved: number; removed: number }> {
+  private sumProjectionDiagnostics(): Readonly<{ created: number; reused: number; moved: number; removed: number; batchPasses: number; batchRows: number }> {
     let created = this.absorbedProjectionCounts.created;
     let reused = this.absorbedProjectionCounts.reused;
     let moved = this.absorbedProjectionCounts.moved;
     let removed = this.absorbedProjectionCounts.removed;
+    let batchPasses = this.absorbedProjectionCounts.batchPasses;
+    let batchRows = this.absorbedProjectionCounts.batchRows;
     for (const projector of this.projectors) {
       const diagnostics = projector.diagnostics();
       created += diagnostics.recordsCreated;
       reused += diagnostics.recordsReused;
       moved += diagnostics.recordsMoved;
       removed += diagnostics.recordsRemoved;
+      batchPasses += diagnostics.batchAttachmentPasses;
+      batchRows += diagnostics.recordsBatchAttached;
     }
-    return { created, reused, moved, removed };
+    return { created, reused, moved, removed, batchPasses, batchRows };
   }
 
   private debugMappings(): readonly LiveInspectorMappingSummary[] {
@@ -978,6 +1024,7 @@ class InspectorController {
 
   private notify(): void {
     if (this.currentStatus === "disposed") return;
+    this.counts.observerNotifications += 1;
     const snapshot = this.snapshot();
     for (const listener of [...this.listeners]) {
       try { listener(snapshot); }
@@ -1398,6 +1445,10 @@ function hasProjectionCode(error: unknown, code: string): boolean {
     cursor = (cursor as Error & { cause?: unknown }).cause;
   }
   return false;
+}
+
+function materializationNow(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 function mustNonNegativeInteger(value: number, name: string): number {

@@ -79,9 +79,12 @@ function bound(value: number | undefined, fallback: number, name: string): numbe
 
 function default_schedule(delayMs: number, callback: () => void): LiveHostDisposer {
   const timer = setTimeout(callback, delayMs);
-  if (typeof timer === "object" && timer !== null && "unref" in timer && typeof timer.unref === "function") {
-    timer.unref();
-  }
+  const scheduled = timer as unknown as {
+    unref?: () => void;
+  };
+
+  scheduled.unref?.();
+
   return () => clearTimeout(timer);
 }
 

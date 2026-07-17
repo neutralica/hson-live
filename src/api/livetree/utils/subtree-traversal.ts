@@ -1,5 +1,6 @@
 import { is_Node } from "../../../core/node-guards.js";
 import type { HsonNode } from "../../../core/types.js";
+import { record_livetree_materialization } from "../debug/materialization-profile.js";
 
 export type SubtreeTraversalOrder = "pre" | "post";
 
@@ -26,5 +27,7 @@ export function collect_subtree_nodes(
   };
 
   visit(root);
+  record_livetree_materialization("subtreeTraversalPasses");
+  record_livetree_materialization("subtreeNodesTraversed", nodes.length);
   return nodes;
 }

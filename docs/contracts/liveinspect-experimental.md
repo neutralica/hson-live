@@ -20,6 +20,14 @@ Every value has one stable semantic row with a label, type, neutral preview, and
 
 `initialDepth` bounds eager materialization. A collapsed unvisited branch has no descendant projector. First expansion creates it through keyed projection. Later collapse hides rather than destroys materialized descendants, so expansion state and row identity remain local and stable. `expandAll` is guarded by `expandAllLimit`.
 
+## Materialization and scale
+
+Materialization is synchronous and incremental by semantic collection. Each newly visible collection is read once, its rows are constructed as detached `LiveTree` branches, and consecutive new rows are attached as one validated batch. Existing keyed records are reused and moved without rebuilding their view-QUID-bearing branches. No staged scheduler or virtualization policy is active, so a call that reveals a collection completes before returning and source replacement cannot interleave with that call. Failure before or during attachment leaves that collection's new forest detached and the previously committed view intact; there is no asynchronous work to cancel.
+
+Lazy depth remains the primary scale control: collapsed, unvisited descendants consume no projector, row tree, delegated listener, or scoped stylesheet. A materialized collection uses bounded DOM attachment operations and one inspector-root interaction listener and stylesheet, rather than one of each per row. Diagnostics expose materialization and batch counts plus elapsed materialization time; they are observational and are not published once per new row.
+
+The inspector intentionally does not promise unlimited rendering. In the hosted jsdom fixture, flat 1,000-row object and array collections exhibit approximately proportional operation counts and complete in hundreds of milliseconds on the development machine, but jsdom construction and disposal costs remain material. Browser behavior has not yet been characterized as a cross-browser performance contract. Prefer lazy depth for large nested graphs, application keys for movable arrays, and an application-specific view when a collection is large enough that synchronously constructing every visible accessible row would disrupt the UI. `expandAllLimit` remains a safety boundary, not virtualization.
+
 One branch can be selected. The details surface reports canonical path, semantic role and type, key/index, array identity mode, source revision, current path-handle QUID context, view QUID, child count, and effective schema information when the source is a `LiveMap` with a schema. Selection follows keyed movement and compatible source replacement. Removing a selected row selects its nearest surviving parent.
 
 The default tree uses `tree`/`treeitem`/`group` semantics, `aria-level`, `aria-expanded`, and `aria-selected`. Disclosure and selection use native buttons. Interaction is handled by one listener on the inspector root. Collapsing a subtree moves contained focus to its disclosure control.
@@ -67,3 +75,5 @@ const canonical = hson.inspect.fromHson({ value: serializedHson, host, hsonMode:
 - Unkeyed arrays provide positional continuity only.
 - Schema and canonical HSON-node inspection require a full `LiveMap`, not an isolated path handle.
 - This experimental surface has no clipboard contract, editing controls, custom elements, Shadow DOM, drag/drop, transport logic, or LiveHost action submission.
+- Materialization is synchronous and non-virtualized; very large visible collections can block the calling thread. There is no cancellation API because no work remains scheduled after a call returns.
+- Hosted jsdom timings are reproducible development evidence, not a browser latency guarantee. Browser-specific measurements are not yet part of CI.

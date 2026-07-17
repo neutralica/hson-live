@@ -12,6 +12,9 @@ export { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostic
 // dev exports 
 export { CREATE_NODE as _CREATE_NODE } from "../core/factories.js";
 export { _listeners_off_for_target, _listeners_debug_hard_reset } from "../api/livetree/managers/listener-builder.js";
+export { begin_livetree_materialization_profile } from "../api/livetree/debug/materialization-profile.js";
+export type { LiveTreeMaterializationProfile } from "../api/livetree/debug/materialization-profile.js";
+export { append_branches_atomic as _append_livetree_branches_atomic } from "../api/livetree/methods/appends.js";
 
 export { parse_style_string as _parse_style_string } from "../api/transform/utils/attrs-utils/parse-style.js";
 export { parse_selector as _parse_selector } from "../api/livetree/utils/parse-selector.js";

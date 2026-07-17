@@ -78,6 +78,9 @@ export type LiveProjectionDiagnostics = Readonly<{
   recordsMoved: number;
   recordsUpdated: number;
   recordsRemoved: number;
+  batchAttachmentPasses: number;
+  recordsBatchAttached: number;
+  largestAttachedBatch: number;
   fullReconciliations: number;
   targetedCommitApplications: number;
   ignoredOutOfScopeCommits: number;

@@ -1,12 +1,16 @@
 import { is_Node } from "../../../core/node-guards.js";
 import type { HsonNode } from "../../../core/types.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
+import { record_livetree_materialization } from "../debug/materialization-profile.js";
 
 const PARENT_FOR_NODE = new WeakMap<HsonNode, HsonNode>();
 
 /** Index parentage already expressed by an HSON subtree. */
 export function index_subtree_ownership(root: HsonNode): void {
-  for (const owner of collect_subtree_nodes(root, "pre")) {
+  const nodes = collect_subtree_nodes(root, "pre");
+  record_livetree_materialization("ownershipIndexPasses");
+  record_livetree_materialization("ownershipNodesIndexed", nodes.length);
+  for (const owner of nodes) {
     for (const child of owner.$_content ?? []) {
       if (!is_Node(child)) continue;
       const existing = PARENT_FOR_NODE.get(child);

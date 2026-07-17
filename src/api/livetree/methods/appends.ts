@@ -4,7 +4,7 @@ import { HsonNode, NodeContent, Primitive } from "../../../core/types.js";
 import { ELEM_TAG } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-elem.js";
-import { get_el_for_node } from "../utils/node-map-helpers.js";
+import { get_el_for_node, unlinkNode } from "../utils/node-map-helpers.js";
 import { project_livetree } from "../creation/project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { normalize_ix } from "../../transform/utils/json-utils/normalize-ix.js";
@@ -18,8 +18,16 @@ import { is_livetree_node_disposed } from "../livetree-state.js";
 import {
   claim_node_parent,
   parent_for_node,
+  release_node_parent,
 } from "../lifecycle/graph-ownership.js";
-import { LiveTreeAlreadyAttachedError, LiveTreeDisposedError } from "../livetree.error.js";
+import {
+  LIVETREE_BATCH_ATTACHMENT_ERROR_CODE,
+  LIVETREE_BATCH_VALIDATION_ERROR_CODE,
+  LiveTreeAlreadyAttachedError,
+  LiveTreeBatchError,
+  LiveTreeDisposedError,
+} from "../livetree.error.js";
+import { record_livetree_materialization } from "../debug/materialization-profile.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_hson_elem` container
@@ -69,6 +77,7 @@ function appendNodes(
   } else {
     childContent.push(...nodesToAppend);
   }
+  record_livetree_materialization("hsonHostInsertions", nodesToAppend.length);
   for (const node of nodesToAppend) claim_node_parent(node, containerNode);
 
   // --- DOM SYNC --------------------------------------------------------
@@ -85,12 +94,14 @@ const parentNs: "html" | "svg" =
       const dom = project_livetree(newNode, parentNs);
       const refNode = domChildren[insertIx] ?? null;
       liveElement.insertBefore(dom, refNode);
+      record_livetree_materialization("domAppendOperations");
       insertIx += 1;
     }
   } else {
     for (const newNode of nodesToAppend) {
       const dom = project_livetree(newNode, parentNs);
       liveElement.appendChild(dom);
+      record_livetree_materialization("domAppendOperations");
     }
   }
 }
@@ -112,11 +123,123 @@ const parentNs: "html" | "svg" =
  */
 type AppendTreeLike = Pick<LiveTree, "node" | "hostRootNode" | "adoptRoots">;
 
+/**
+ * Atomically attach an ordered forest of detached LiveTree branches.
+ *
+ * Validation scans the existing target once and every incoming subtree once.
+ * DOM projection is staged in one fragment before graph ownership changes.
+ * Either every branch is attached in order, or graph/DOM/mapping changes made
+ * by this operation are rolled back and every branch remains detached.
+ */
+export function append_branches_atomic<TTree extends AppendTreeLike>(
+  target: TTree,
+  branches: readonly AppendTreeLike[],
+  index?: number,
+): TTree {
+  if (branches.length === 0) return target;
+  const targetNode = target.node;
+  const branchRoots = branches.map((branch) => {
+    if (!can_append_branch_to_tree(target, branch)) {
+      throw new LiveTreeBatchError(
+        LIVETREE_BATCH_VALIDATION_ERROR_CODE,
+        "LiveTree batch contains a branch incompatible with the target namespace.",
+      );
+    }
+    return unwrap_root_elem(branch.node);
+  });
+  const roots = branchRoots.flat();
+
+  try {
+    assert_appendable_forest(targetNode, roots);
+  } catch (error) {
+    if (error instanceof LiveTreeBatchError) throw error;
+    throw new LiveTreeBatchError(
+      LIVETREE_BATCH_VALIDATION_ERROR_CODE,
+      "LiveTree batch validation failed; no branch was attached.",
+      error,
+    );
+  }
+
+  record_livetree_materialization("batchAttachmentPasses");
+  record_livetree_materialization("branchesBatchAttached", branches.length);
+  record_livetree_materialization("appendBranchCalls", branches.length);
+
+  const liveElement = get_el_for_node(targetNode);
+  const parentNs: "html" | "svg" = liveElement?.namespaceURI === SVG_NS ? "svg" : "html";
+  const incomingNodes = roots.flatMap((root) => [...collect_subtree_nodes(root, "pre")]);
+  const previouslyMapped = new Set(incomingNodes.filter((node) => get_el_for_node(node) !== undefined));
+  const domRoots: Node[] = [];
+  let fragment: DocumentFragment | undefined;
+
+  try {
+    if (liveElement !== undefined) {
+      fragment = liveElement.ownerDocument.createDocumentFragment();
+      for (const root of roots) {
+        const dom = project_livetree(root, parentNs);
+        fragment.appendChild(dom);
+      }
+      domRoots.push(...Array.from(fragment.childNodes));
+    }
+  } catch (error) {
+    rollback_new_projection(incomingNodes, previouslyMapped);
+    throw new LiveTreeBatchError(
+      LIVETREE_BATCH_ATTACHMENT_ERROR_CODE,
+      "LiveTree batch DOM projection failed; no branch was attached.",
+      error,
+    );
+  }
+
+  if (!targetNode.$_content) targetNode.$_content = [];
+  const priorContent = targetNode.$_content;
+  const firstChild = priorContent[0];
+  const existingContainer = firstChild && typeof firstChild === "object" && firstChild.$_tag === ELEM_TAG
+    ? firstChild
+    : undefined;
+  const containerNode = existingContainer ?? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] });
+  const childContent = containerNode.$_content ??= [];
+  const insertIx = typeof index === "number" ? normalize_ix(index, childContent.length) : childContent.length;
+  const hostRoot = target.hostRootNode();
+  let domInserted = false;
+
+  try {
+    if (liveElement !== undefined && fragment !== undefined) {
+      const ref = liveElement.childNodes[insertIx] ?? null;
+      liveElement.insertBefore(fragment, ref);
+      domInserted = true;
+      record_livetree_materialization("domAppendOperations");
+    }
+    if (existingContainer === undefined) {
+      targetNode.$_content = [containerNode, ...priorContent];
+      claim_node_parent(containerNode, targetNode);
+    }
+    childContent.splice(insertIx, 0, ...roots);
+    for (const root of roots) claim_node_parent(root, containerNode);
+    for (const branch of branches) branch.adoptRoots(hostRoot);
+    record_livetree_materialization("hsonHostInsertions", roots.length);
+    return target;
+  } catch (error) {
+    childContent.splice(insertIx, roots.length);
+    for (const root of roots) release_node_parent(root, containerNode);
+    if (existingContainer === undefined) {
+      targetNode.$_content = priorContent;
+      release_node_parent(containerNode, targetNode);
+    }
+    if (domInserted) for (const node of domRoots) node.parentNode?.removeChild(node);
+    rollback_new_projection(incomingNodes, previouslyMapped);
+    throw new LiveTreeBatchError(
+      LIVETREE_BATCH_ATTACHMENT_ERROR_CODE,
+      "LiveTree batch attachment failed and was rolled back.",
+      error,
+    );
+  }
+}
+
 export function append_branch<TTree extends AppendTreeLike>(
   this: TTree,
   branch: AppendTreeLike,
   index?: number,
 ): TTree {
+  record_livetree_materialization("appendBranchCalls");
   const targetNode = this.node;
   const srcNode = branch.node;
 
@@ -165,6 +288,7 @@ function assert_appendable_nodes(
   operation: string,
 ): void {
   const targetSubtree = new Set(collect_subtree_nodes(target, "pre"));
+  record_livetree_materialization("appendValidationTargetNodes", targetSubtree.size);
   const localQuids = new Map<string, HsonNode>();
 
   for (const root of roots) {
@@ -173,6 +297,7 @@ function assert_appendable_nodes(
     }
 
     const subtreeNodes = collect_subtree_nodes(root, "pre");
+    record_livetree_materialization("appendValidationBranchNodes", subtreeNodes.length);
     const subtreeSet = new Set(subtreeNodes);
     for (const node of subtreeNodes) {
       if (targetSubtree.has(node)) throw new LiveTreeAlreadyAttachedError(operation);
@@ -200,6 +325,53 @@ function assert_appendable_nodes(
         throw new Error(`Duplicate QUID "${quid}" is already registered to another node.`);
       }
     }
+  }
+}
+
+function assert_appendable_forest(target: HsonNode, roots: readonly HsonNode[]): void {
+  const targetSubtree = new Set(collect_subtree_nodes(target, "pre"));
+  record_livetree_materialization("appendValidationTargetNodes", targetSubtree.size);
+  const forestNodes = new Set<HsonNode>();
+  const localQuids = new Map<string, HsonNode>();
+
+  for (const root of roots) {
+    if (parent_for_node(root) || get_el_for_node(root)?.isConnected) {
+      throw new LiveTreeAlreadyAttachedError("append branch batch");
+    }
+    const subtreeNodes = collect_subtree_nodes(root, "pre");
+    record_livetree_materialization("appendValidationBranchNodes", subtreeNodes.length);
+    const subtreeSet = new Set(subtreeNodes);
+    for (const node of subtreeNodes) {
+      if (forestNodes.has(node) || targetSubtree.has(node)) {
+        throw new LiveTreeAlreadyAttachedError("append branch batch");
+      }
+      forestNodes.add(node);
+      const parent = parent_for_node(node);
+      if ((node === root && parent) || (node !== root && parent && !subtreeSet.has(parent))) {
+        throw new LiveTreeAlreadyAttachedError("append branch batch");
+      }
+      if (get_el_for_node(node)?.isConnected) throw new LiveTreeAlreadyAttachedError("append branch batch");
+      if (is_livetree_node_disposed(node)) throw new LiveTreeDisposedError("append branch batch", get_quid(node));
+      const quid = get_quid(node);
+      if (!quid) continue;
+      const localOwner = localQuids.get(quid);
+      if (localOwner !== undefined && localOwner !== node) {
+        throw new Error(`Duplicate QUID "${quid}" occurs within the appended batch.`);
+      }
+      localQuids.set(quid, node);
+      const registered = get_node_by_quid(quid);
+      if (registered !== undefined && registered !== node) {
+        throw new Error(`Duplicate QUID "${quid}" is already registered to another node.`);
+      }
+    }
+  }
+}
+
+function rollback_new_projection(nodes: readonly HsonNode[], previouslyMapped: ReadonlySet<HsonNode>): void {
+  for (const node of nodes) {
+    if (previouslyMapped.has(node)) continue;
+    get_el_for_node(node)?.remove();
+    unlinkNode(node);
   }
 }
 

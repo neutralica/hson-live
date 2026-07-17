@@ -1,5 +1,7 @@
 import type { JsonValue } from "../../core/types.js";
 import { LiveTree } from "../livetree/livetree.js";
+import { append_branches_atomic } from "../livetree/methods/appends.js";
+import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import { parent_for_node } from "../livetree/lifecycle/graph-ownership.js";
 import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
@@ -46,6 +48,9 @@ type MutableDiagnostics = {
   recordsMoved: number;
   recordsUpdated: number;
   recordsRemoved: number;
+  batchAttachmentPasses: number;
+  recordsBatchAttached: number;
+  largestAttachedBatch: number;
   fullReconciliations: number;
   targetedCommitApplications: number;
   ignoredOutOfScopeCommits: number;
@@ -118,6 +123,9 @@ class KeyedProjection<TItem extends JsonValue> {
     recordsMoved: 0,
     recordsUpdated: 0,
     recordsRemoved: 0,
+    batchAttachmentPasses: 0,
+    recordsBatchAttached: 0,
+    largestAttachedBatch: 0,
     fullReconciliations: 0,
     targetedCommitApplications: 0,
     ignoredOutOfScopeCommits: 0,
@@ -280,7 +288,9 @@ class KeyedProjection<TItem extends JsonValue> {
     commit: LiveMapCommit | undefined,
     countFull: boolean,
   ): void {
+    const readStarted = materialization_now();
     const desired = this.readCollection(nextSource);
+    record_livetree_materialization("projectionSourceReadMs", materialization_now() - readStarted);
     if (countFull) this.counts.fullReconciliations += 1;
 
     const oldByKey = this.recordsByKey;
@@ -288,6 +298,7 @@ class KeyedProjection<TItem extends JsonValue> {
     const nextRecords: ProjectionRecord<TItem>[] = [];
     const usedTrees = new Set(this.records.map((record) => record.tree.node));
 
+    const renderStarted = materialization_now();
     try {
       for (const item of desired) {
         const existing = oldByKey.get(item.key);
@@ -303,7 +314,10 @@ class KeyedProjection<TItem extends JsonValue> {
     } catch (error) {
       this.disposeRecords(staged);
       throw error;
+    } finally {
+      record_livetree_materialization("projectionRendererCreateMs", materialization_now() - renderStarted);
     }
+    const stagedSet = new Set(staged);
 
     this.currentStatus = "reconciling";
     const change: LiveProjectionChange = Object.freeze({
@@ -312,11 +326,12 @@ class KeyedProjection<TItem extends JsonValue> {
       ops: Object.freeze(commit === undefined ? [] : [...commit.ops]),
     });
 
+    const updateStarted = materialization_now();
     try {
       for (let ordinal = 0; ordinal < desired.length; ordinal += 1) {
         const item = desired[ordinal];
         const record = nextRecords[ordinal];
-        if (item === undefined || record === undefined || staged.includes(record)) continue;
+        if (item === undefined || record === undefined || stagedSet.has(record)) continue;
         if (!shouldUpdateSurvivor(commit, nextSource.path(), ordinal)) {
           this.counts.recordsReused += 1;
           continue;
@@ -327,8 +342,11 @@ class KeyedProjection<TItem extends JsonValue> {
     } catch (error) {
       this.disposeRecords(staged);
       throw error;
+    } finally {
+      record_livetree_materialization("projectionSurvivorUpdateMs", materialization_now() - updateStarted);
     }
 
+    const attachStarted = materialization_now();
     try {
       const retained = new Set(nextRecords);
       const removed = this.records.filter((record) => !retained.has(record));
@@ -339,6 +357,31 @@ class KeyedProjection<TItem extends JsonValue> {
         const record = nextRecords[ordinal];
         const item = desired[ordinal];
         if (record === undefined || item === undefined) continue;
+        if (stagedSet.has(record)) {
+          const batch: ProjectionRecord<TItem>[] = [];
+          let end = ordinal;
+          while (end < nextRecords.length) {
+            const candidate = nextRecords[end];
+            if (candidate === undefined || !stagedSet.has(candidate)) break;
+            batch.push(candidate);
+            end += 1;
+          }
+          append_branches_atomic(this.projectionHost, batch.map((entry) => entry.tree), ordinal);
+          currentOrder.splice(ordinal, 0, ...batch);
+          this.counts.batchAttachmentPasses += 1;
+          this.counts.recordsBatchAttached += batch.length;
+          this.counts.largestAttachedBatch = Math.max(this.counts.largestAttachedBatch, batch.length);
+          for (let offset = 0; offset < batch.length; offset += 1) {
+            const attached = batch[offset];
+            const attachedItem = desired[ordinal + offset];
+            if (attached === undefined || attachedItem === undefined) continue;
+            attached.path = attachedItem.path;
+            attached.ordinal = ordinal + offset;
+            attached.key = attachedItem.key;
+          }
+          ordinal = end - 1;
+          continue;
+        }
         const currentOrdinal = currentOrder.indexOf(record);
         if (currentOrdinal === -1) {
           this.projectionHost.append(record.tree, ordinal);
@@ -357,6 +400,8 @@ class KeyedProjection<TItem extends JsonValue> {
     } catch (error) {
       this.disposeRecords(staged);
       throw error;
+    } finally {
+      record_livetree_materialization("projectionAttachmentMs", materialization_now() - attachStarted);
     }
 
     this.records = nextRecords;
@@ -660,6 +705,10 @@ class KeyedProjection<TItem extends JsonValue> {
       `Live projection is disposed; cannot ${operation}.`,
     );
   }
+}
+
+function materialization_now(): number {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 function makeRendererOwner(): RendererOwner {

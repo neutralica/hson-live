@@ -44,6 +44,9 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
 
   // CHANGED: central per-call html dispatch
   function createDetachedHtmlTag(tag: HtmlTag, source?: string, ix?: number): LiveTree {
+    if (source === undefined) {
+      return create_livetree(CREATE_NODE({ $_tag: tag, $_content: [] }));
+    }
     const host = makeHtmlHost();
     const create = typeof ix === "number" ? host.create.at(ix) : host.create;
     const fn = create[tag];
@@ -57,6 +60,13 @@ export function make_detached_livetree_create(): DetachedCreateHelper {
 
   // CHANGED: central per-call svg dispatch
   function createDetachedSvgTag(tag: SvgTag, source?: string, ix?: number): SvgLiveTree {
+    if (source === undefined) {
+      return create_livetree(CREATE_NODE({
+        $_tag: tag,
+        $_content: [],
+        ...(tag === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}),
+      })) as unknown as SvgLiveTree;
+    }
     // svg root is created from an html host, just like normal tree.create.svg()
     if (tag === "svg") {
       const host = makeHtmlHost();

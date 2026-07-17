@@ -673,11 +673,7 @@ export class CssManager {
       return;
     }
     if (!css_supports_decl(p, v)) {
-      console.warn("CssManager.setForQuid: unsupported CSS decl skipped", {
-        quid: q,
-        prop: p,
-        value: v,
-      });
+      console.warn(`CssManager.setForQuid: unsupported CSS decl skipped (quid=${q}, prop=${p}, value=${JSON.stringify(v)})`);
       return; // do not store invalid decl
     }
 

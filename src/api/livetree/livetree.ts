@@ -41,6 +41,7 @@ import {
 } from "./lifecycle/public-lifecycle.js";
 import type { DetachedLiveContent, LiveTreeLifecycleResult } from "../../types/lifecycle.types.js";
 import { guard_api_surface } from "./utils/guard-api-surface.js";
+import { record_livetree_materialization } from "./debug/materialization-profile.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -197,6 +198,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    *                references from.
    */
   constructor(input: HsonNode | LiveTree) {
+    record_livetree_materialization("liveTreeInstances");
     this.setRoot(input);
     this.setRef(input);
     const node = this.nodeRef.resolveNode();

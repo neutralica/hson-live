@@ -14,6 +14,7 @@ import { make_tree_selector } from "../../creation/make-tree-selector.js";
 import { LiveTree } from "../../livetree.js";
 import { TreeSelector } from "../../creation/tree-selector.js";
 import { make_html_tree_create } from "./create-html.js";
+import { CREATE_NODE } from "../../../../core/factories.js";
 
 export type CreateNs = "html" | "svg";
 
@@ -126,45 +127,24 @@ export function make_create_core(tree: LiveTree): CreateCore {
     const created: LiveTree[] = [];
     let insertIx: number | undefined = index;
 
-    function unwrap_created_children_for_tag(root: HsonNode, tag: TagName, ns: CreateNs): HsonNode[] {
-      const base = unwrap_root_elem(root);
-
-      // for svg child-tag bootstrap wrappers like
-      // <svg xmlns="..."><g/></svg>, unwrap the temporary svg shell
-      if (ns === "svg" && tag !== "svg") {
-        if (base.length === 1 && base[0]?.$_tag === "svg") {
-          return extract_real_element_children(base[0]);
-        }
-      }
-
-      return base;
-    }
-
     for (const t of tags) {
       assert_valid_tag_name(t, "createForTags");
 
       const ns = inferCreateNs(tree, t);
-      const markup = build_markup_stub(t, ns);
-      const root0 = parse_trusted_markup_to_hson(markup);
-
-      const appended = unwrap_created_children_for_tag(root0, t, ns);
-
-      const node = appended[0];
-      if (!node || appended.length !== 1) {
-        throw new Error(`[LiveTree.create.${t}] expected exactly one created root`);
-      }
+      const node = CREATE_NODE({
+        $_tag: t,
+        $_content: [],
+        ...(ns === "svg" && t === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}),
+      });
       const branch = create_livetree(node);
 
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);
 
-      for (const child of appended) {
-        const childTree = create_livetree(child);
-        childTree.adoptRoots(tree.hostRootNode());
-        created.push(childTree);
-      }
+      branch.adoptRoots(tree.hostRootNode());
+      created.push(branch);
 
-      if (typeof insertIx === "number") insertIx += appended.length;
+      if (typeof insertIx === "number") insertIx += 1;
     }
 
     if (!Array.isArray(tagOrTags)) {

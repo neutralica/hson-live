@@ -5,6 +5,7 @@ import { _DATA_QUID } from '../../../core/constants.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 import { ensure_node_meta, prune_empty_node_meta } from '../../../core/node-storage.js';
+import { record_livetree_materialization } from '../debug/materialization-profile.js';
 
 
 
@@ -80,6 +81,7 @@ export function ensure_quid(
   n: HsonNode,
   opts?: { persist?: boolean },
 ): string {
+  record_livetree_materialization("quidEnsureCalls");
   const persist = opts?.persist ?? true; // default true
 
   let q = get_quid(n);
@@ -89,6 +91,7 @@ export function ensure_quid(
   assert_quid_available(q, n);
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
+  record_livetree_materialization("quidRegistryWrites", 2);
 
   if (persist) {
     ensure_node_meta(n)[_DATA_QUID] = q;
@@ -106,6 +109,7 @@ export function ensure_quid(
  * QUID is unregistered.
  ***************************************/
 export function get_node_by_quid(q: string): HsonNode | undefined {
+  record_livetree_materialization("quidLookups");
   return QUID_TO_NODE.get(q);
 }
 

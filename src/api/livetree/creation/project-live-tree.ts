@@ -17,6 +17,7 @@ import {
   STR_TAG,
   VAL_TAG,
 } from "../../../core/constants.js";
+import { record_livetree_materialization } from "../debug/materialization-profile.js";
 
 
 
@@ -60,8 +61,10 @@ export function project_livetree(
   node: HsonNode | Primitive,
   parentNs: "html" | "svg" = "html"
 ): Node {
+  record_livetree_materialization("domProjectionCalls");
   // Non-node primitives → plain text
   if (!is_Node(node)) {
+    record_livetree_materialization("domTextNodesCreated");
     return document.createTextNode(String(node ?? ""));
   }
 
@@ -69,6 +72,7 @@ export function project_livetree(
 
   // Primitive wrappers → text
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
+    record_livetree_materialization("domTextNodesCreated");
     const v = n.$_content?.[0];
     return document.createTextNode(String(v ?? ""));
   }
@@ -81,6 +85,7 @@ export function project_livetree(
     n.$_tag === ARR_TAG
   ) {
     const frag = document.createDocumentFragment();
+    record_livetree_materialization("domFragmentsCreated");
 
     if (n.$_tag === ARR_TAG) {
       // _hson_arr contains <_hson_ii> items; unwrap each item’s single child
@@ -128,6 +133,7 @@ export function project_livetree(
     ns === "svg"
       ? document.createElementNS(SVG_NS, tag)
       : document.createElement(tag);
+  record_livetree_materialization("domElementsCreated");
 
   // Belt-and-suspenders: guard against any factory emitting HSON DOM tags.
   if (el.tagName.toLowerCase().startsWith(HSON_SYS_PREFIX)) {
