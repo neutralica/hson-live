@@ -458,7 +458,7 @@ export function create_livehost_client<
         return;
       }
       if (is_recovery_message(decoded.value)) handle_recovery_message(decoded.value);
-    }) ?? (() => {});
+    }) ?? (() => { });
   }
 
   function handle_server_message(message: LiveHostServerMessage): void {
@@ -478,7 +478,13 @@ export function create_livehost_client<
     }
     if (message.type === "sync") {
       seq = message.seq;
-      map.set(message.path, message.value as never);
+
+      if (message.path.length === 0) {
+        map.replace(message.value as never);
+      } else {
+        map.set(message.path, message.value as never);
+      }
+
       return;
     }
     if (message.type === "patch") {
@@ -587,7 +593,7 @@ export function create_livehost_client<
   }
 
   function on_change(listener: LiveHostClientRecoveryChangeListener<TState>): LiveHostDisposer {
-    if (recoveryDisposed) return () => {};
+    if (recoveryDisposed) return () => { };
     recoveryListeners.add(listener);
     return () => recoveryListeners.delete(listener);
   }
