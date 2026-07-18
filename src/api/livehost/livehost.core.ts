@@ -154,13 +154,19 @@ export function create_livehost<
         ...(result !== undefined ? { result } : {}),
       });
     } catch (cause) {
+      const causeCode = typeof cause === "object"
+        && cause !== null
+        && "code" in cause
+        && typeof cause.code === "string"
+        ? cause.code
+        : "LIVEHOST_ACTION_FAILED";
       return Object.freeze({
         state: "failed",
         seq,
         completionRev: stream.headRev,
         error: Object.freeze({
           message: cause instanceof Error ? cause.message : "LiveHost action failed.",
-          code: "LIVEHOST_ACTION_FAILED",
+          code: causeCode,
         }),
       });
     }
@@ -242,9 +248,9 @@ export function create_livehost<
   }
 
   function inert_connection(): LiveHostConnection {
-    const disconnect = () => {};
+    const disconnect = () => { };
     return Object.assign(disconnect, {
-      emit_event(_event: string, _payload: JsonValue): void {},
+      emit_event(_event: string, _payload: JsonValue): void { },
     });
   }
 
@@ -399,51 +405,97 @@ export function create_livehost<
       origin: LiveHostActionOrigin,
     ): Promise<void> {
       if (!message.requestId || !message.clientId) {
-        const response = await dispatch_action_scoped(message, origin, emit_connection_event);
+        const response = await dispatch_action_scoped(
+          message,
+          origin,
+          emit_connection_event,
+        );
+
         send(response);
-        if (response.type === "ack") sync.sync_all(response.seq);
+
+        if (response.type === "ack") {
+          sync.sync_all(response.seq);
+        }
+
         return;
       }
+
       const validated = validate_action(message);
+
       if (!validated.ok) {
+        const code = validated.code === "LIVEHOST_ACTION_UNAVAILABLE"
+          ? "LIVEHOST_UNKNOWN_ACTION"
+          : "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
+
         send({
           type: "error",
           id: message.id,
           requestId: message.requestId,
-          ...(message.attemptId ? { attemptId: message.attemptId } : {}),
+          ...(message.attemptId !== undefined
+            ? { attemptId: message.attemptId }
+            : {}),
           ok: false,
           seq,
           completionRev: stream.headRev,
           delivery: "rejected",
-          error: { code: validated.code, message: validated.message },
+          error: {
+            code,
+            message: validated.message,
+          },
         });
+
         return;
       }
+
       const result = await actionRequests.execute({
         clientId: message.clientId,
         requestId: message.requestId,
         actionName: message.name,
         payload: validated.payload,
         retry: message.retry === true,
-        run: () => execute_validated_action(message, validated.handler, validated.payload, origin, emit_connection_event),
+        run: () => execute_validated_action(
+          message,
+          validated.handler,
+          validated.payload,
+          origin,
+          emit_connection_event,
+        ),
       });
+
       if (!result.ok) {
         send({
           type: "error",
           id: message.id,
           requestId: message.requestId,
-          ...(message.attemptId ? { attemptId: message.attemptId } : {}),
+          ...(message.attemptId !== undefined
+            ? { attemptId: message.attemptId }
+            : {}),
           ok: false,
           seq,
           completionRev: stream.headRev,
           delivery: "rejected",
-          error: { code: result.code, message: result.message },
+          error: {
+            code: result.code,
+            message: result.message,
+          },
         });
+
         return;
       }
-      const response = action_response(message.id, result.outcome, message.requestId, result.delivery, message.attemptId);
+
+      const response = action_response(
+        message.id,
+        result.outcome,
+        message.requestId,
+        result.delivery,
+        message.attemptId,
+      );
+
       send(response);
-      if (result.delivery === "executed" && response.type === "ack") sync.sync_all(response.seq);
+
+      if (result.delivery === "executed" && response.type === "ack") {
+        sync.sync_all(response.seq);
+      }
     }
 
     function handle_recover(message: LiveHostClientRecoverMessage): void {
@@ -467,7 +519,7 @@ export function create_livehost<
       let channelActive = true;
       let liveReady = false;
       const pendingLive: LiveHostCanonicalCommit[] = [];
-      let stopLive: LiveHostDisposer = () => {};
+      let stopLive: LiveHostDisposer = () => { };
       stopRecoveryChannel = () => {
         if (!channelActive) return;
         channelActive = false;
