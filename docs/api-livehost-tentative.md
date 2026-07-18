@@ -3,7 +3,7 @@
 # LiveHost API
 **Status: WIP / tentative API reference**
 
-Updated: 2026-07-13
+Updated: 2026-07-17
 
 This document describes the current implemented LiveHost surface. LiveHost is
 under active development: exported names and behaviors documented here exist
@@ -132,10 +132,15 @@ The returned host surface is:
 
 ```ts
 host.map
+host.stream
+host.recovery
+host.sessions
+host.actionRequests
 host.seq
 host.schema
 host.dispatch_action(message)
 host.connect(socket)
+host.dispose()
 ```
 
 The host object is not frozen. `map` is the authoritative LiveMap instance.
@@ -192,8 +197,18 @@ return a `JsonValue`, `void`, or a promise of either.
 type LiveHostActionContext<TState> = Readonly<{
   map: LiveMap<TState>;
   seq: number;
+  origin: LiveHostActionOrigin;
   emit_event(event: string, payload: JsonValue): boolean;
 }>;
+
+type LiveHostActionOrigin =
+  | Readonly<{
+      kind: "session";
+      sessionId: LiveHostSessionId;
+      epoch: LiveHostConnectionEpoch;
+      resumable: boolean;
+    }>
+  | Readonly<{ kind: "direct" }>;
 ```
 
 `ctx.seq` is the host sequence observed when the handler context is created. It
@@ -203,6 +218,23 @@ does not change inside that context when the action later succeeds.
 `host.connect`. It sends an event immediately and returns true while that
 connection is active. For direct `host.dispatch_action`, it always returns
 false.
+
+`ctx.origin` is frozen invocation-time authority. An action received through a
+LiveHost connection gets a `session` origin derived from the server-bound
+session record and attachment epoch. Lazy sessions report `resumable: false`;
+explicitly created and reattached sessions report `resumable: true`. Direct
+`host.dispatch_action` receives `{ kind: "direct" }`, even if its message
+contains a `clientId`.
+
+`ctx.origin.sessionId` is trusted host identity. `message.clientId` is supplied
+by the client for request correlation and action deduplication and is not an
+authority identity. No action-message field can override `ctx.origin`.
+
+For an async handler, the origin remains the immutable authority captured when
+the handler was invoked. If the socket later detaches or is fenced, the already
+started handler may continue and may still mutate the map. Its
+`ctx.emit_event(...)` then returns false because event delivery checks current
+connection authority. LiveHost does not cancel or roll back the handler.
 
 Action handlers are awaited. The implementation does not serialize concurrent
 async handlers; their map operations can interleave, and successful responses
@@ -383,6 +415,79 @@ connection.emit_event("notice", { text: "Ready" });
 The event is sent only while the connection is active. The public method returns
 void even though the internal action-context form returns a boolean. Events are
 not sequenced, retained, replayed, or broadcast to other sessions.
+
+### Session lifecycle observation
+
+`host.sessions` exposes diagnostics, lifecycle observation, and explicit
+session-manager disposal:
+
+```ts
+host.sessions.debug()
+host.sessions.on_change(listener)
+host.sessions.dispose()
+```
+
+`on_change` returns an idempotent disposer. Listeners are observational:
+listener exceptions are caught, do not interrupt a transition, and do not
+prevent later listeners from receiving the event. Listeners registered after
+manager disposal receive no replay and return an inert disposer.
+
+```ts
+type LiveHostSessionLifecycleEvent =
+  | Readonly<{
+      kind: "attached";
+      session: LiveHostSessionDiagnostic;
+      attachment: "created" | "reattached";
+    }>
+  | Readonly<{ kind: "detached"; session: LiveHostSessionDiagnostic }>
+  | Readonly<{ kind: "expired"; session: LiveHostSessionDiagnostic }>
+  | Readonly<{
+      kind: "revoked";
+      session: LiveHostSessionDiagnostic;
+      reason: "goodbye" | "host_disposed";
+    }>
+  | Readonly<{
+      kind: "fenced";
+      sessionId: LiveHostSessionId;
+      epoch: LiveHostConnectionEpoch;
+    }>;
+```
+
+Events are emitted after their represented transition. Each `session` value is
+a frozen diagnostic snapshot, and `host.sessions.debug()` called inside the
+listener agrees with it. Initial lazy and explicit creation emits
+`attached/created`. A resumable replacement first fences an old active
+attachment, emitting `fenced` with its old epoch, then establishes the new
+epoch and emits `attached/reattached`. Reattachment from a disconnected grace
+period has no live attachment to fence, so it emits `attached/reattached` after
+canceling expiry.
+
+Normal transport loss emits `detached`. A non-resumable session expires
+synchronously, so observers see `detached` immediately followed by `expired`.
+A resumable session stays disconnected until reattachment or grace expiry;
+grace expiry emits `expired`. Explicit goodbye emits `revoked/goodbye` and
+cancels expiry. Manager or host disposal emits `revoked/host_disposed` for each
+non-terminal live session and cancels its expiry timer. Rejected attachment
+attempts emit no lifecycle success event.
+
+### `host.dispose()`
+
+`host.dispose()` is idempotent host-wide teardown. It marks the host disposed
+before cleanup, makes existing connections inert, removes their LiveHost
+message/close listeners, stops recovery channels, revokes live sessions with
+`reason: "host_disposed"`, cancels session expiry and action-dedupe retention,
+and releases connection references. Attached sessions receive the terminal
+revocation without a shutdown-only `detached` event.
+
+Disposal preserves `host.map`, `host.stream`, and readable session diagnostics.
+It does not call `socket.close()`; the server or transport adapter continues to
+own physical socket closure. A later adapter-owned socket close is safe.
+
+After disposal, `host.dispatch_action(...)` returns a normal server error with
+code `LIVEHOST_HOST_DISPOSED`. `host.connect(socket)` installs no listeners,
+does not close the socket, and returns an inert idempotent connection disposer.
+`host.sessions.on_change(...)` is inert and has no replay. Repeated disposal
+does not repeat lifecycle events.
 
 ---
 
@@ -816,6 +921,10 @@ overwrites: an existing ID returns:
 
 `get` returns the live host reference or `undefined`. `delete` returns the Map
 deletion boolean. Deletion does not disconnect sessions or dispose the host.
+Registry ownership and host lifetime remain separate: applications that want
+both operations must call `host.dispose(); registry.delete(id)`. Deleting first
+also leaves an already-held host reference usable until it is explicitly
+disposed.
 
 `list` returns a new insertion-ordered array of frozen `{ id, host }` entries;
 the host objects themselves remain live references.

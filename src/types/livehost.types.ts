@@ -270,6 +270,17 @@ export type LiveHostSchemaDecoder<TValue> = (value: unknown) => LiveHostSchemaRe
 
 export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
 
+export type LiveHostActionOrigin =
+  | Readonly<{
+    kind: "session";
+    sessionId: LiveHostSessionId;
+    epoch: LiveHostConnectionEpoch;
+    resumable: boolean;
+  }>
+  | Readonly<{
+    kind: "direct";
+  }>;
+
 export type LiveHostActionSchema<TPayload extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   payload?: LiveHostValidator<TPayload> | LiveHostSchemaDecoder<TPayload>;
 }>;
@@ -591,6 +602,7 @@ export type LiveHostServerMessage<TState extends JsonValue | undefined = JsonVal
 export type LiveHostActionContext<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   map: LiveMap<TState>;
   seq: LiveHostSeq;
+  origin: LiveHostActionOrigin;
   emit_event: (event: string, payload: JsonValue) => boolean;
 }>;
 
@@ -708,8 +720,34 @@ export type LiveHostSessionDiagnostics = Readonly<{
   sessions: readonly LiveHostSessionDiagnostic[];
 }>;
 
+export type LiveHostSessionLifecycleEvent =
+  | Readonly<{
+    kind: "attached";
+    session: LiveHostSessionDiagnostic;
+    attachment: "created" | "reattached";
+  }>
+  | Readonly<{
+    kind: "detached";
+    session: LiveHostSessionDiagnostic;
+  }>
+  | Readonly<{
+    kind: "expired";
+    session: LiveHostSessionDiagnostic;
+  }>
+  | Readonly<{
+    kind: "revoked";
+    session: LiveHostSessionDiagnostic;
+    reason: "goodbye" | "host_disposed";
+  }>
+  | Readonly<{
+    kind: "fenced";
+    sessionId: LiveHostSessionId;
+    epoch: LiveHostConnectionEpoch;
+  }>;
+
 export type LiveHostSessionInspector = Readonly<{
   debug: () => LiveHostSessionDiagnostics;
+  on_change: (listener: (event: LiveHostSessionLifecycleEvent) => void) => LiveHostDisposer;
   dispose: LiveHostDisposer;
 }>;
 
@@ -927,6 +965,7 @@ export type LiveHost<
   schema?: LiveHostSchema<TState, TActions>;
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<TState>>;
   connect: (socket: LiveHostSocketLike) => LiveHostConnection;
+  dispose: LiveHostDisposer;
 }>;
 
 export type LiveHostStoreEntry<

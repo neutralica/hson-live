@@ -6,6 +6,7 @@ import type {
   LiveHost,
   LiveHostActionContext,
   LiveHostActionDelivery,
+  LiveHostActionOrigin,
   LiveHostActionPayloads,
   LiveHostActionTerminalOutcome,
   LiveHostActions,
@@ -33,6 +34,8 @@ import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
 
 let livehost_session_inc = 0;
+
+const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 
 function make_livehost_session_id(): LiveHostSessionId {
   livehost_session_inc += 1;
@@ -94,14 +97,19 @@ export function create_livehost<
     () => seq,
     options.actionDedupe,
   );
+  const connections = new Set<LiveHostDisposer>();
+  let disposed = false;
 
   function next_seq(): LiveHostSeq {
     seq += 1;
     return seq;
   }
 
-  function action_context(emitEvent: LiveHostActionContext<TState>["emit_event"]): LiveHostActionContext<TState> {
-    return { map, seq, emit_event: emitEvent };
+  function action_context(
+    origin: LiveHostActionOrigin,
+    emitEvent: LiveHostActionContext<TState>["emit_event"],
+  ): LiveHostActionContext<TState> {
+    return Object.freeze({ map, seq, origin, emit_event: emitEvent });
   }
 
   function validate_action(message: LiveHostClientActionMessage<TActions>):
@@ -123,10 +131,11 @@ export function create_livehost<
     message: LiveHostClientActionMessage<TActions>,
     handler: NonNullable<Partial<LiveHostActions<TActions, TState>>[keyof TActions & string]>,
     payload: JsonValue | undefined,
+    origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContext<TState>["emit_event"],
   ): Promise<LiveHostActionTerminalOutcome> {
     try {
-      const result = await handler(action_context(emitEvent), payload as never, message);
+      const result = await handler(action_context(origin, emitEvent), payload as never, message);
       if (result !== undefined && !is_livehost_json_value(result)) {
         return Object.freeze({
           state: "failed",
@@ -192,8 +201,22 @@ export function create_livehost<
 
   async function dispatch_action_scoped(
     message: LiveHostClientActionMessage<TActions>,
+    origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContext<TState>["emit_event"],
   ): Promise<LiveHostServerMessage<TState>> {
+    if (disposed) {
+      return {
+        type: "error",
+        id: message.id,
+        ok: false,
+        seq,
+        completionRev: stream.headRev,
+        error: {
+          message: "LiveHost is disposed.",
+          code: "LIVEHOST_HOST_DISPOSED",
+        },
+      };
+    }
     const validated = validate_action(message);
     if (!validated.ok) {
       return {
@@ -210,20 +233,29 @@ export function create_livehost<
     }
     return action_response(
       message.id,
-      await execute_validated_action(message, validated.handler, validated.payload, emitEvent),
+      await execute_validated_action(message, validated.handler, validated.payload, origin, emitEvent),
     );
   }
 
   function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<TState>> {
-    return dispatch_action_scoped(message, () => false);
+    return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false);
+  }
+
+  function inert_connection(): LiveHostConnection {
+    const disconnect = () => {};
+    return Object.assign(disconnect, {
+      emit_event(_event: string, _payload: JsonValue): void {},
+    });
   }
 
   function connect(socket: LiveHostSocketLike): LiveHostConnection {
+    if (disposed) return inert_connection();
     const disposers: LiveHostDisposer[] = [];
     let transportOpen = true;
     let fenced = false;
     let sessionId: LiveHostSessionId | undefined;
     let connectionEpoch: number | undefined;
+    let sessionResumable: boolean | undefined;
     let stopRecoveryChannel: LiveHostDisposer | undefined;
 
     function raw_send(message: LiveHostServerMessage<TState>): void {
@@ -285,6 +317,7 @@ export function create_livehost<
       }
       sessionId = created.value.sessionId;
       connectionEpoch = created.value.epoch;
+      sessionResumable = created.value.resumable;
       return true;
     }
 
@@ -324,6 +357,7 @@ export function create_livehost<
       }
       sessionId = created.value.sessionId;
       connectionEpoch = created.value.epoch;
+      sessionResumable = created.value.resumable;
       raw_send({ type: "session-created", id, sessionId, credential: created.value.credential, epoch: connectionEpoch });
     }
 
@@ -343,6 +377,7 @@ export function create_livehost<
       }
       sessionId = attached.value.sessionId;
       connectionEpoch = attached.value.epoch;
+      sessionResumable = attached.value.resumable;
       const rebound = sync.attach_session(sessionId, send);
       if (!rebound.ok) {
         reject_session(message.id, "LIVEHOST_SESSION_NOT_ATTACHED", rebound.error.message);
@@ -359,9 +394,12 @@ export function create_livehost<
       send_without_record({ type: "recovery-error", id, error: { code, message } });
     }
 
-    async function handle_deduped_action(message: LiveHostClientActionMessage<TActions>): Promise<void> {
+    async function handle_deduped_action(
+      message: LiveHostClientActionMessage<TActions>,
+      origin: LiveHostActionOrigin,
+    ): Promise<void> {
       if (!message.requestId || !message.clientId) {
-        const response = await dispatch_action_scoped(message, emit_connection_event);
+        const response = await dispatch_action_scoped(message, origin, emit_connection_event);
         send(response);
         if (response.type === "ack") sync.sync_all(response.seq);
         return;
@@ -387,7 +425,7 @@ export function create_livehost<
         actionName: message.name,
         payload: validated.payload,
         retry: message.retry === true,
-        run: () => execute_validated_action(message, validated.handler, validated.payload, emit_connection_event),
+        run: () => execute_validated_action(message, validated.handler, validated.payload, origin, emit_connection_event),
       });
       if (!result.ok) {
         send({
@@ -519,7 +557,13 @@ export function create_livehost<
       if (message.type === "action") {
         const capturedSessionId = sessionId;
         const capturedEpoch = connectionEpoch;
-        await handle_deduped_action(message);
+        const origin: LiveHostActionOrigin = Object.freeze({
+          kind: "session",
+          sessionId: capturedSessionId,
+          epoch: capturedEpoch,
+          resumable: sessionResumable === true,
+        });
+        await handle_deduped_action(message, origin);
         if (!sessions.is_active(capturedSessionId, capturedEpoch)) return;
         return;
       }
@@ -536,38 +580,55 @@ export function create_livehost<
 
     const stopMessage = socket.onMessage((raw) => { void handle_message(raw); });
 
-    function detach_transport(): void {
+    function detach_transport(hostShutdown = false): void {
       if (!transportOpen) return;
       transportOpen = false;
       dispose_recovery_channel();
-      if (sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
+      if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
         sync.detach_session(sessionId);
         sessions.detach(sessionId, connectionEpoch);
       }
       while (disposers.length) disposers.pop()?.();
+      connections.delete(shutdown_for_host);
     }
 
     const stopClose = socket.onClose(detach_transport);
     if (stopMessage) disposers.push(stopMessage);
     if (stopClose) disposers.push(stopClose);
 
+    function shutdown_for_host(): void {
+      detach_transport(true);
+    }
+
     const disconnect = () => detach_transport();
-    return Object.assign(disconnect, {
+    const connection = Object.assign(disconnect, {
       emit_event(event: string, payload: JsonValue): void {
         emit_connection_event(event, payload);
       },
     });
+    connections.add(shutdown_for_host);
+    return connection;
+  }
+
+  function dispose(): void {
+    if (disposed) return;
+    disposed = true;
+    for (const shutdown of [...connections]) shutdown();
+    connections.clear();
+    sessions.dispose();
+    actionRequests.dispose();
   }
 
   return {
     map,
     stream,
     recovery,
-    sessions: Object.freeze({ debug: sessions.debug, dispose: sessions.dispose }),
+    sessions: Object.freeze({ debug: sessions.debug, on_change: sessions.on_change, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
     get seq() { return seq; },
     schema: options.schema,
     dispatch_action,
     connect,
+    dispose,
   };
 }

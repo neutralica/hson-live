@@ -6,6 +6,7 @@ import type {
   LiveHostSessionDiagnostic,
   LiveHostSessionDiagnostics,
   LiveHostSessionId,
+  LiveHostSessionLifecycleEvent,
   LiveHostSessionOptions,
   LiveHostSessionRejectCode,
   LiveHostSessionState,
@@ -38,6 +39,7 @@ type SessionRecord = {
 type SessionSuccess = Readonly<{
   sessionId: LiveHostSessionId;
   epoch: LiveHostConnectionEpoch;
+  resumable: boolean;
   credential?: LiveHostSessionCredential;
 }>;
 
@@ -54,6 +56,7 @@ export type LiveHostSessionManager = Readonly<{
   goodbye: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => LiveHostResult<void>;
   is_active: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => boolean;
   debug: () => LiveHostSessionDiagnostics;
+  on_change: (listener: (event: LiveHostSessionLifecycleEvent) => void) => LiveHostDisposer;
   dispose: LiveHostDisposer;
 }>;
 
@@ -88,11 +91,33 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
   const makeCredential = options.credential ?? random_credential;
   const sessions = new Map<LiveHostSessionId, SessionRecord>();
   const credentials = new Map<LiveHostSessionCredential, SessionRecord>();
+  const listeners = new Set<(event: LiveHostSessionLifecycleEvent) => void>();
   const rejected = new Map<LiveHostSessionRejectCode, number>();
   let totalReattachments = 0;
   let totalFencing = 0;
   let totalExpiry = 0;
   let disposed = false;
+
+  function emit(event: LiveHostSessionLifecycleEvent): void {
+    for (const listener of [...listeners]) {
+      try {
+        listener(event);
+      } catch {
+        // Lifecycle observers are isolated from session authority transitions.
+      }
+    }
+  }
+
+  function on_change(listener: (event: LiveHostSessionLifecycleEvent) => void): LiveHostDisposer {
+    if (disposed) return () => {};
+    listeners.add(listener);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      listeners.delete(listener);
+    };
+  }
 
   function reject(code: LiveHostSessionRejectCode, message: string): LiveHostResult<never> {
     rejected.set(code, (rejected.get(code) ?? 0) + 1);
@@ -114,6 +139,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     record.expiryCount += 1;
     totalExpiry += 1;
     dispose_resources(record);
+    emit(Object.freeze({ kind: "expired", session: diagnostic(record) }));
   }
 
   function schedule_expiry(record: SessionRecord): void {
@@ -155,7 +181,8 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     };
     sessions.set(sessionId, record);
     if (credential) credentials.set(credential, record);
-    return ok({ sessionId, epoch: record.epoch, ...(credential ? { credential } : {}) });
+    emit(Object.freeze({ kind: "attached", session: diagnostic(record), attachment: "created" }));
+    return ok({ sessionId, epoch: record.epoch, resumable, ...(credential ? { credential } : {}) });
   }
 
   function reattach(credential: unknown, attachment: SessionAttachment): LiveHostResult<SessionSuccess> {
@@ -177,6 +204,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
       previous.fence(record.sessionId, previousEpoch);
       record.fencingCount += 1;
       totalFencing += 1;
+      emit(Object.freeze({ kind: "fenced", sessionId: record.sessionId, epoch: previousEpoch }));
     }
     record.stopExpiry?.();
     record.stopExpiry = undefined;
@@ -187,7 +215,8 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     record.state = "attached";
     record.reattachmentCount += 1;
     totalReattachments += 1;
-    return ok({ sessionId: record.sessionId, epoch: record.epoch });
+    emit(Object.freeze({ kind: "attached", session: diagnostic(record), attachment: "reattached" }));
+    return ok({ sessionId: record.sessionId, epoch: record.epoch, resumable: record.resumable });
   }
 
   function detach(sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch): boolean {
@@ -196,7 +225,9 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     record.attachment = undefined;
     record.state = "disconnected";
     if (record.resumable) schedule_expiry(record);
-    else expire(record);
+    else record.disconnectedAt = now();
+    emit(Object.freeze({ kind: "detached", session: diagnostic(record) }));
+    if (!record.resumable) expire(record);
     return true;
   }
 
@@ -215,6 +246,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     record.disconnectedAt = undefined;
     record.expiresAt = undefined;
     dispose_resources(record);
+    emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "goodbye" }));
     return ok(undefined);
   }
 
@@ -265,13 +297,16 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
       record.stopExpiry?.();
       record.stopExpiry = undefined;
       record.attachment = undefined;
-      if (record.state !== "expired") record.state = "revoked";
+      const revoke = record.state !== "expired" && record.state !== "revoked";
+      if (revoke) record.state = "revoked";
       record.disconnectedAt = undefined;
       record.expiresAt = undefined;
       dispose_resources(record);
+      if (revoke) emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "host_disposed" }));
     }
     credentials.clear();
+    listeners.clear();
   }
 
-  return Object.freeze({ create, reattach, detach, goodbye, is_active, debug, dispose });
+  return Object.freeze({ create, reattach, detach, goodbye, is_active, debug, on_change, dispose });
 }

@@ -28,6 +28,7 @@ export type {
 export type {
   LiveHost,
   LiveHostActionContext,
+  LiveHostActionOrigin,
   LiveHostActionHandler,
   LiveHostActionId,
   LiveHostActionRequestId,
@@ -152,6 +153,7 @@ export type {
   LiveHostSessionDiagnostic,
   LiveHostSessionDiagnostics,
   LiveHostSessionInspector,
+  LiveHostSessionLifecycleEvent,
   LiveHostSessionOptions,
   LiveHostSessionRejectCode,
   LiveHostSessionRequestId,
