@@ -73,6 +73,7 @@ function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
   return {
     logicalMapId,
     incarnationId,
+    mode: "data-object",
     prevRev,
     rev,
     ops: [{
@@ -96,6 +97,7 @@ await check("protocol accepts string HSON without parsing snapshot syntax", () =
       logicalMapId: "map",
       incarnationId: "inc",
       rev: 0,
+      mode: "data-object",
       hson: `<tag "unterminated>`,
     },
   }));
@@ -121,7 +123,7 @@ await check("protocol rejects legacy value snapshots and malformed HSON envelope
   }
 });
 
-await check("snapshot recovery installs one atomic replacement", async () => {
+await check("snapshot recovery installs one atomic in-place restoration", async () => {
   const host = hson.liveHost.create({ state: { value: 7 }, logicalMapId: "map-snapshot" });
   host.map.set(["value"], 8);
   const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
@@ -144,8 +146,8 @@ await check("snapshot recovery installs one atomic replacement", async () => {
   assert.equal(client.recovery.incarnationId, host.stream.incarnationId);
   assert.equal(client.recovery.lastAppliedRev, host.stream.headRev);
   assert.deepEqual(client.map.snap(), host.map.snap());
-  assert.notEqual(client.map, oldMap);
-  assert.deepEqual(oldMap.snap(), { value: 0 });
+  assert.equal(client.map, oldMap);
+  assert.deepEqual(oldMap.snap(), host.map.snap());
   assert.equal(client.map.schema.get(), schema);
   assert.equal(client.recovery.debug().snapshotInstalls, 1);
   assert.equal(observed.filter((change) => change.kind === "snapshot").length, 1);
@@ -200,7 +202,8 @@ await check("incarnation mismatch resets only after snapshot validation", async 
   assert.equal(result.strategy, "snapshot");
   assert.equal(result.incarnationChanged, true);
   assert.equal(client.recovery.incarnationId, "new-inc");
-  assert.deepEqual(old.snap(), { value: "old" });
+  assert.equal(client.map, old);
+  assert.deepEqual(old.snap(), { value: "new" });
   assert.deepEqual(client.map.snap(), { value: "new" });
 });
 
@@ -311,7 +314,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, hson: compact_hson({ value: 2 }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, mode: "data-object", hson: compact_hson({ value: 2 }) } });
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_INVALID_SNAPSHOT");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, 4);
@@ -327,7 +330,7 @@ await check("malformed snapshot HSON fails installation without advancing state"
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, hson: `<value "unterminated>` } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, mode: "data-object", hson: `<value "unterminated>` } });
   await assert.rejects(
     promise,
     (error) => error.code === "LIVEHOST_RECOVERY_INVALID_SNAPSHOT" && error.cause instanceof Error,
@@ -351,7 +354,7 @@ await check("valid HSON rejected by the active schema does not replace the mirro
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, hson: compact_hson({ value: "wrong" }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, mode: "data-object", hson: compact_hson({ value: "wrong" }) } });
   await assert.rejects(
     promise,
     (error) => error.code === "LIVEHOST_RECOVERY_INVALID_SNAPSHOT" && error.cause instanceof Error,
@@ -408,7 +411,7 @@ await check("disposal is idempotent and later messages cannot mutate", async () 
   client.recovery.dispose();
   client.recovery.dispose();
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_DISPOSED");
-  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "dispose-map", incarnationId: "inc", rev: 0, hson: compact_hson({ value: 9 }) } });
+  pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "dispose-map", incarnationId: "inc", rev: 0, mode: "data-object", hson: compact_hson({ value: 9 }) } });
   assert.deepEqual(client.map.snap(), {});
   assert.equal(client.recovery.status, "disposed");
 });

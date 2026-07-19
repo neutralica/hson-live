@@ -103,6 +103,7 @@ is `element`. Empty, text-only, mixed, or multiple-item document content is
 `fragment`. Classification uses canonical HSON structure, not projected JSON.
 
 Document maps expose detached canonical reads, capture, local atomic install,
+exact-revision restoration, canonical graph replay, shared commit observation,
 revision, and the explicitly unsafe debug escape hatch:
 
 ```ts
@@ -118,17 +119,46 @@ if (map.mode === "fragment") {
 map.root();
 const capture = map.capture();
 map.install(capture, { expectedRev: map.rev });
+map.restore(capture, { expectedRev: map.rev });
+map.replay(graphCommit);
+const stop = map.commits.observe((event) => {
+  if (event.kind === "commit") {
+    // event.origin is "authoritative" or "replay"
+  } else {
+    // snapshot installation metadata; never a replayable commit
+  }
+});
 map.debug.node([]);
 ```
 
 Document maps do not expose `snap`, Proxy/path handles, projected mutations,
-data schemas, feeds/subscriptions, `apply`, or `replay`. Those remain data-domain
-APIs and do not represent a lossless document snapshot.
+data schemas, projected feeds/subscriptions, or projected `apply`. Canonical
+graph `replay` is a document-domain operation and does not coerce graph commits
+into projected path/previous/next shapes.
 
-Persisted `data-_quid` identity is sparse. Ordinary elements may remain
+`commits.observe` is shared by projected and document maps. Each successful
+logical mutation emits exactly one event containing the exact canonical commit
+returned by the mutation. Rejected mutations and unchanged no-ops emit none.
+Replay emits `origin: "replay"`; ordinary mutations emit
+`origin: "authoritative"`. `restore` emits the separate snapshot event
+`{ kind: "snapshot", origin: "snapshot", revision }`, so observers cannot
+mistake state installation for an operation sequence. Existing projected
+`feed(path, listener)` behavior is unchanged.
+
+Document replay validates and plans every graph operation against detached
+candidates before one atomic root, identity-index, and revision swap. It
+preserves element versus fragment mode, applies the supplied revision exactly,
+and emits no second authoritative commit. `restore` performs the analogous
+atomic snapshot install without incrementing revision or publishing a commit.
+
+Persisted `data-_quid` identity is sparse. A present QUID is exactly 16
+characters from the lowercase Crockford-style alphabet
+`0123456789abcdefghjkmnpqrstvwxyz` and is stored in
+`_meta["data-_quid"]`. Ordinary elements may remain
 unquidded; construction, reads, capture, and installation preserve the identity
-state they receive and never mint identity. Present non-empty QUIDs are indexed
-per map, and duplicates are rejected. A future durable handle or binding may
+state they receive and never mint identity. Replay and restoration also
+preserve valid QUIDs exactly. Present QUIDs are indexed per map, and duplicates
+are rejected. A future durable handle or binding may
 explicitly promote a node as a committed graph mutation; no promotion API exists
 yet.
 

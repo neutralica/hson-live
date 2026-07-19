@@ -1,6 +1,6 @@
 // livehost/sync.ts
 
-import type { JsonValue, LiveMap, LivePath } from "../../types/index.js";
+import type { JsonValue, LiveMap, LiveMapAuthority, LivePath } from "../../types/index.js";
 import type {
   LiveHostError,
   LiveHostResult,
@@ -75,9 +75,7 @@ function send_sync<TState extends JsonValue | undefined>(
   });
 }
 
-export function make_livehost_sync_manager<TState extends JsonValue | undefined>(
-  map: LiveMap<TState>,
-): LiveHostSyncManager {
+export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncManager {
   const sessions = new Map<LiveHostSessionId, LiveHostSyncSessionState>();
 
   function add_session(sessionId: LiveHostSessionId, send: LiveHostSyncSend): LiveHostResult<void> {
@@ -127,6 +125,11 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
 
+    if (!is_projected_live_map(map)) {
+      return fail("Projected path subscriptions are unavailable for document authorities.", {
+        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+      });
+    }
     send_sync(map, sessionResult.value, path, seq);
     return ok(undefined);
   }
@@ -134,6 +137,11 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
   function subscribe(sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq): LiveHostResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
+    if (!is_projected_live_map(map)) {
+      return fail("Projected path subscriptions are unavailable for document authorities.", {
+        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+      });
+    }
 
     const stablePath = clone_live_path(path);
     sessionResult.value.paths.set(live_path_key(stablePath), stablePath);
@@ -145,12 +153,18 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
   function unsubscribe(sessionId: LiveHostSessionId, path: LivePath): LiveHostResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
+    if (!is_projected_live_map(map)) {
+      return fail("Projected path subscriptions are unavailable for document authorities.", {
+        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+      });
+    }
 
     sessionResult.value.paths.delete(live_path_key(path));
     return ok(undefined);
   }
 
   function sync_all(seq: LiveHostSeq): void {
+    if (!is_projected_live_map(map)) return;
     for (const session of sessions.values()) {
       for (const path of session.paths.values()) {
         send_sync(map, session, path, seq);
@@ -176,4 +190,10 @@ export function make_livehost_sync_manager<TState extends JsonValue | undefined>
     sync_all,
     debug_sessions,
   });
+}
+
+function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
+  return (map.mode === "data-object" || map.mode === "data-array")
+    && "at" in map
+    && typeof map.at === "function";
 }

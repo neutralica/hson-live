@@ -1,6 +1,20 @@
 // livehost.types.ts
 
-import type { JsonValue, LiveMap, LivePath, LiveMapOp } from "./index.js";
+import type {
+  ClassifiedLiveMap,
+  DataLiveMapMode,
+  DocumentLiveMap,
+  JsonValue,
+  LiveMap,
+  LiveMapDocumentAttributeValue,
+  LiveMapDocumentContent,
+  LiveMapDocumentTarget,
+  LiveMapGraphOp,
+  LiveMapAuthority,
+  LiveMapRootMode,
+  LivePath,
+  LiveMapOp,
+} from "./index.js";
 
 export type LiveHostId = string;
 export type LiveHostStoreId = string;
@@ -110,12 +124,14 @@ export type LiveHostCanonicalOp =
   | LiveHostCanonicalSetOp
   | LiveHostCanonicalDeleteOp
   | LiveHostCanonicalReplaceOp
-  | LiveHostCanonicalSpliceOp;
+  | LiveHostCanonicalSpliceOp
+  | LiveMapGraphOp;
 
 /** One immutable changed commit in an incarnation's authoritative stream. */
 export type LiveHostCanonicalCommit = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
+  mode: LiveMapRootMode;
   prevRev: number;
   rev: number;
   ops: readonly LiveHostCanonicalOp[];
@@ -132,6 +148,7 @@ export type LiveHostCanonicalStreamOptions = Readonly<{
   logicalMapId?: LiveHostLogicalMapId;
   incarnationId?: LiveHostIncarnationId;
   history?: LiveHostCanonicalHistoryOptions;
+  trace?: LiveTraceSink;
 }>;
 
 export type LiveHostCanonicalHistoryDiagnostics = Readonly<{
@@ -155,7 +172,10 @@ export type LiveHostCanonicalHistory = Readonly<{
   debug: () => LiveHostCanonicalHistoryDiagnostics;
 }>;
 
-export type LiveHostCanonicalStream = Readonly<{
+export type LiveHostCanonicalStream<
+  TMap extends LiveMapAuthority = ClassifiedLiveMap,
+> = Readonly<{
+  mode: TMap["mode"];
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   readonly headRev: number;
@@ -167,6 +187,7 @@ export type LiveHostSnapshotEnvelope = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   rev: number;
+  mode: LiveMapRootMode;
   hson: string;
 }>;
 
@@ -310,6 +331,11 @@ export type LiveHostError = Readonly<{
   cause?: unknown;
 }>;
 
+/** Stable errors for projected APIs requested against document authorities. */
+export type LiveHostModeErrorCode =
+  | "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED"
+  | "LIVEHOST_DOCUMENT_RECOVERY_REQUIRED";
+
 export type LiveHostValidator<TValue> = (value: unknown) => value is TValue;
 
 export type LiveHostSchemaResult<TValue> =
@@ -319,6 +345,53 @@ export type LiveHostSchemaResult<TValue> =
 export type LiveHostSchemaDecoder<TValue> = (value: unknown) => LiveHostSchemaResult<TValue>;
 
 export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
+
+export type LiveHostDocumentActionName =
+  | "document.attr.set"
+  | "document.attr.drop"
+  | "document.content.replace";
+
+export type LiveHostDocumentTargetPayload = LiveMapDocumentTarget;
+
+export type LiveHostDocumentActionPayloads = Readonly<{
+  "document.attr.set": {
+    target: LiveHostDocumentTargetPayload;
+    name: string;
+    value: LiveMapDocumentAttributeValue;
+  };
+  "document.attr.drop": {
+    target: LiveHostDocumentTargetPayload;
+    name: string;
+  };
+  "document.content.replace": {
+    target: LiveHostDocumentTargetPayload;
+    index: number;
+    replacement: LiveMapDocumentContent;
+  };
+}>;
+
+export type LiveHostDocumentActionRequest<
+  TName extends LiveHostDocumentActionName = LiveHostDocumentActionName,
+> = Readonly<{
+  requestId: LiveHostActionRequestId;
+  name: TName;
+  payload: LiveHostDocumentActionPayloads[TName];
+}>;
+
+export type LiveHostDocumentActionPromise<
+  TName extends LiveHostDocumentActionName = LiveHostDocumentActionName,
+> = Promise<LiveHostClientActionResult> & Readonly<{
+  request: LiveHostDocumentActionRequest<TName>;
+}>;
+
+export type LiveHostDocumentActionFn = <TName extends LiveHostDocumentActionName>(
+  name: TName,
+  payload: LiveHostDocumentActionPayloads[TName],
+) => LiveHostDocumentActionPromise<TName>;
+
+export type LiveHostDocumentRetryActionFn = <TName extends LiveHostDocumentActionName>(
+  request: LiveHostDocumentActionRequest<TName>,
+) => LiveHostDocumentActionPromise<TName>;
 
 export type LiveHostActionOrigin =
   | Readonly<{
@@ -673,37 +746,60 @@ export type LiveHostServerMessage<TState extends JsonValue | undefined = JsonVal
   | LiveHostServerSessionFencedMessage
   | LiveHostServerSessionEndedMessage;
 
-export type LiveHostActionContext<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
-  map: LiveMap<TState>;
+export type LiveHostActionContextForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = Readonly<{
+  map: TMap;
   seq: LiveHostSeq;
   origin: LiveHostActionOrigin;
   emit_event: (event: string, payload: JsonValue) => boolean;
 }>;
 
-export type LiveHostActionHandler<
-  TPayload extends JsonValue | undefined = JsonValue | undefined,
+export type LiveHostActionContext<
   TState extends JsonValue | undefined = JsonValue | undefined,
+> = LiveHostActionContextForMap<LiveMap<TState>>;
+
+export type LiveHostActionHandlerForMap<
+  TPayload extends JsonValue | undefined = JsonValue | undefined,
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 > = (
-  ctx: LiveHostActionContext<TState>,
+  ctx: LiveHostActionContextForMap<TMap>,
   payload: TPayload,
   message: LiveHostClientActionMessage<TActions>,
 ) => JsonValue | void | Promise<JsonValue | void>;
 
+export type LiveHostActionHandler<
+  TPayload extends JsonValue | undefined = JsonValue | undefined,
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostActionHandlerForMap<TPayload, LiveMap<TState>, TActions>;
+
+export type LiveHostActionsForMap<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = Readonly<{
+  [TName in keyof TActions & string]: LiveHostActionHandlerForMap<TActions[TName], TMap, TActions>;
+}>;
+
 export type LiveHostActions<
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
   TState extends JsonValue | undefined = JsonValue | undefined,
-> = Readonly<{
-  [TName in keyof TActions & string]: LiveHostActionHandler<TActions[TName], TState, TActions>;
-}>;
+> = LiveHostActionsForMap<TActions, LiveMap<TState>>;
 
-export type LiveHostOptions<
-  TState extends JsonValue | undefined = JsonValue | undefined,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+export type LiveHostMapValue<TMap extends LiveMapAuthority> =
+  TMap extends LiveMap<infer TValue extends JsonValue | undefined>
+  ? TValue
+  : TMap extends DocumentLiveMap
+  ? undefined
+  : JsonValue | undefined;
+
+type LiveHostSharedOptions<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads,
 > = Readonly<{
-  state?: TState;
-  actions?: Partial<LiveHostActions<TActions, TState>>;
-  schema?: LiveHostSchema<TState, TActions>;
+  actions?: Partial<LiveHostActionsForMap<TActions, TMap>>;
+  schema?: LiveHostSchema<LiveHostMapValue<TMap>, TActions>;
   sessionId?: LiveHostSessionId | (() => LiveHostSessionId);
   logicalMapId?: LiveHostLogicalMapId;
   incarnationId?: LiveHostIncarnationId;
@@ -711,14 +807,31 @@ export type LiveHostOptions<
   recovery?: LiveHostRecoveryOptions;
   sessions?: LiveHostSessionOptions;
   actionDedupe?: LiveHostActionDedupeOptions;
-  /**
-   * Optional host-local remote-action policy. Omission is implicit allow.
-   * The callback is evaluated after payload validation and before deduplication.
-   */
   authorizeAction?: LiveHostActionAuthorizer<TActions>;
-  /** Optional local observational tracing. Events are never transported or persisted. */
   trace?: LiveTraceSink;
 }>;
+
+export type ProjectedLiveHostOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostSharedOptions<LiveMap<TState>, TActions> & Readonly<{
+  state?: TState;
+  map?: never;
+}>;
+
+export type ExistingMapLiveHostOptions<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostSharedOptions<TMap, TActions> & Readonly<{
+  map: TMap;
+  state?: never;
+}>;
+
+/** Backward-compatible name for the projected-state constructor form. */
+export type LiveHostOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = ProjectedLiveHostOptions<TState, TActions>;
 
 export type LiveHostActionDedupeSchedule = (
   delayMs: number,
@@ -896,17 +1009,27 @@ export type LiveHostClientRecoveryFailure = Readonly<{
   cause?: unknown;
 }>;
 
-export type LiveHostClientRecoveryChange<TState extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
+export type LiveHostClientRecoveryChangeForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = Readonly<{
   kind: "commit" | "snapshot";
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   rev: number;
-  map: LiveMap<TState>;
+  map: TMap;
 }>;
 
 export type LiveHostClientRecoveryChangeListener<
   TState extends JsonValue | undefined = JsonValue | undefined,
 > = (change: LiveHostClientRecoveryChange<TState>) => void;
+
+export type LiveHostClientRecoveryChange<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+> = LiveHostClientRecoveryChangeForMap<LiveMap<TState>>;
+
+export type LiveHostClientRecoveryChangeListenerForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = (change: LiveHostClientRecoveryChangeForMap<TMap>) => void;
 
 export type LiveHostClientRecoveryResult = Readonly<{
   strategy: Exclude<LiveHostClientRecoveryStrategy, "reject">;
@@ -935,21 +1058,25 @@ export type LiveHostClientRecoveryDiagnostics = Readonly<{
   observerFailures: number;
 }>;
 
-export type LiveHostClientRecovery<
-  TState extends JsonValue | undefined = JsonValue | undefined,
+export type LiveHostClientRecoveryForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
   readonly status: LiveHostClientRecoveryStatus;
   readonly logicalMapId: LiveHostLogicalMapId | undefined;
   readonly incarnationId: LiveHostIncarnationId | undefined;
   readonly lastAppliedRev: number | undefined;
-  readonly map: LiveMap<TState>;
+  readonly map: TMap;
   readonly failure: LiveHostClientRecoveryFailure | undefined;
   readonly strategy: LiveHostClientRecoveryStrategy | undefined;
   recover: () => Promise<LiveHostClientRecoveryResult>;
-  on_change: (listener: LiveHostClientRecoveryChangeListener<TState>) => LiveHostDisposer;
+  on_change: (listener: LiveHostClientRecoveryChangeListenerForMap<TMap>) => LiveHostDisposer;
   dispose: LiveHostDisposer;
   debug: () => LiveHostClientRecoveryDiagnostics;
 }>;
+
+export type LiveHostClientRecovery<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+> = LiveHostClientRecoveryForMap<LiveMap<TState>>;
 
 export type LiveHostClientSessionStatus = "idle" | "creating" | "attaching" | "attached" | "detached" | "failed" | "ended" | "disposed";
 
@@ -992,11 +1119,11 @@ export type LiveHostClientSessionOptions = Readonly<{
   credential?: LiveHostSessionCredential;
 }>;
 
-export type LiveHostClientOptions<
-  TState extends JsonValue | undefined = JsonValue | undefined,
+export type LiveHostClientOptionsForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
   socket: LiveHostSocketLike;
-  map?: LiveMap<TState>;
+  map?: TMap;
   /**
    * Logical client identity used to scope retry-safe action requests.
    * The default is reload-safe. Reuse an explicit value only when reconnecting
@@ -1014,40 +1141,58 @@ export type LiveHostClientOptions<
   session?: LiveHostClientSessionOptions;
 }>;
 
-export type LiveHostClient<
+export type LiveHostClientOptions<
   TState extends JsonValue | undefined = JsonValue | undefined,
+> = LiveHostClientOptionsForMap<LiveMap<TState>>;
+
+export type LiveHostClientForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 > = Readonly<{
-  map: LiveMap<TState>;
+  map: TMap;
   clientId: LiveHostId;
-  recovery: LiveHostClientRecovery<TState>;
+  recovery: LiveHostClientRecoveryForMap<TMap>;
   session: LiveHostClientSession;
   seq: LiveHostSeq;
   connect: () => LiveHostDisposer;
   disconnect: () => void;
-  subscribe: (path: LivePath) => void;
-  unsubscribe: (path: LivePath) => void;
+  subscribe: LiveHostProjectedSubscription<TMap>;
+  unsubscribe: LiveHostProjectedSubscription<TMap>;
   on_event: (listener: LiveHostEventListener) => LiveHostDisposer;
-  action: LiveHostClientActionFn<TActions>;
-  retry_action: LiveHostClientRetryActionFn<TActions>;
+  action: LiveHostClientActionFn<TActions> & LiveHostDocumentActionFn;
+  retry_action: LiveHostClientRetryActionFn<TActions> & LiveHostDocumentRetryActionFn;
   action_status: (requestId: LiveHostActionRequestId) => Promise<LiveHostClientActionStatusResult>;
 }>;
 
-export type LiveHost<
+type LiveHostProjectedSubscription<TMap extends LiveMapAuthority> =
+  [TMap["mode"]] extends [DataLiveMapMode] ? (path: LivePath) => void : never;
+
+export type LiveHostClient<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostClientForMap<LiveMap<TState>, TActions>;
+
+export type LiveHostForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 > = Readonly<{
-  map: LiveMap<TState>;
-  stream: LiveHostCanonicalStream;
+  map: TMap;
+  stream: LiveHostCanonicalStream<TMap>;
   recovery: LiveHostRecoveryPlanner;
   sessions: LiveHostSessionInspector;
   actionRequests: LiveHostActionDedupeInspector;
   seq: LiveHostSeq;
-  schema?: LiveHostSchema<TState, TActions>;
-  dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<TState>>;
+  schema?: LiveHostSchema<LiveHostMapValue<TMap>, TActions>;
+  dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>>;
   connect: (socket: LiveHostSocketLike) => LiveHostConnection;
   dispose: LiveHostDisposer;
 }>;
+
+/** Compatibility surface for existing projected-state hosts. */
+export type LiveHost<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = LiveHostForMap<LiveMap<TState>, TActions>;
 
 export type LiveHostStoreEntry<
   TState extends JsonValue | undefined = JsonValue | undefined,

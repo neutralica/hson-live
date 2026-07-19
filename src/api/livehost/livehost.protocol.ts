@@ -33,7 +33,23 @@ import type {
   LiveHostSnapshotEnvelope,
   LiveHostWireValue,
 } from "../../types/livehost.types.js";
-import type { JsonValue, LivePath } from "../../types/index.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
+import { is_persisted_quid } from "../../core/persisted-quid.js";
+import type { CssMap } from "../../core/style.types.js";
+import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../core/types.js";
+import { classify_live_root_mode } from "../livemap/livemap.document.js";
+import { index_livemap_document_elements } from "../livemap/livemap.document.identity.js";
+import type {
+  DocumentLiveMapMode,
+  JsonValue,
+  LiveMapDocumentAttributeValue,
+  LiveMapDocumentContent,
+  LiveMapDocumentTarget,
+  LiveMapGraphOp,
+  LiveMapRootMode,
+  LivePath,
+} from "../../types/index.js";
 
 function ok<T>(value: T): LiveHostResult<T> {
   return { ok: true, value };
@@ -92,7 +108,7 @@ function decode_wire_value(value: unknown): LiveHostWireValue | undefined {
   return Object.freeze({ present: true, value: clone_json(value.value) });
 }
 
-function decode_canonical_op(value: unknown): LiveHostCanonicalOp | undefined {
+function decode_projected_canonical_op(value: unknown): LiveHostCanonicalOp | undefined {
   if (!is_record(value) || !is_live_path(value.path)) return undefined;
   const path = Object.freeze([...value.path]);
   const prev = decode_wire_value(value.prev);
@@ -126,30 +142,244 @@ function decode_canonical_op(value: unknown): LiveHostCanonicalOp | undefined {
   return undefined;
 }
 
+function decode_mode(value: unknown): LiveMapRootMode | undefined {
+  if (value === "data-object" || value === "data-array" || value === "element" || value === "fragment") {
+    return value;
+  }
+  return undefined;
+}
+
+function is_finite_primitive(value: unknown): value is Primitive {
+  return value === null || typeof value === "string" || typeof value === "boolean"
+    || (typeof value === "number" && Number.isFinite(value));
+}
+
+function decode_style_map(value: unknown): CssMap | undefined {
+  if (!is_record(value)) return undefined;
+  const decoded: Record<string, Primitive | CssMap | undefined> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item === undefined || is_finite_primitive(item)) decoded[key] = item;
+    else {
+      const nested = decode_style_map(item);
+      if (nested === undefined) return undefined;
+      decoded[key] = nested;
+    }
+  }
+  return Object.freeze(decoded);
+}
+
+function decode_hson_attrs(value: unknown): HsonAttrs | undefined {
+  if (!is_record(value)) return undefined;
+  const attrs: HsonAttrs = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (is_finite_primitive(item)) attrs[key] = item;
+    else if (key === "style") {
+      const style = decode_style_map(item);
+      if (style === undefined) return undefined;
+      attrs.style = style;
+    } else return undefined;
+  }
+  return Object.freeze(attrs);
+}
+
+function decode_hson_meta(value: unknown): HsonMeta | undefined {
+  if (!is_record(value)) return undefined;
+  const meta: Record<string, string> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (!key.startsWith("data-_") || typeof item !== "string") return undefined;
+    meta[key] = item;
+  }
+  return Object.freeze(meta);
+}
+
+function decode_hson_node(value: unknown): HsonNode | undefined {
+  if (!is_record(value)) return undefined;
+  const allowedKeys = ["$_tag", "$_content"];
+  if (Object.prototype.hasOwnProperty.call(value, "$_meta")) allowedKeys.push("$_meta");
+  if (Object.prototype.hasOwnProperty.call(value, "$_attrs")) allowedKeys.push("$_attrs");
+  if (!has_exact_keys(value, allowedKeys) || typeof value.$_tag !== "string" || !Array.isArray(value.$_content)) {
+    return undefined;
+  }
+
+  const meta = Object.prototype.hasOwnProperty.call(value, "$_meta")
+    ? decode_hson_meta(value.$_meta)
+    : undefined;
+  const attrs = Object.prototype.hasOwnProperty.call(value, "$_attrs")
+    ? decode_hson_attrs(value.$_attrs)
+    : undefined;
+  if ((Object.prototype.hasOwnProperty.call(value, "$_meta") && meta === undefined)
+    || (Object.prototype.hasOwnProperty.call(value, "$_attrs") && attrs === undefined)) return undefined;
+
+  const content: Array<HsonNode | Primitive> = [];
+  for (const item of value.$_content) {
+    if (is_finite_primitive(item)) content.push(item);
+    else {
+      const child = decode_hson_node(item);
+      if (child === undefined) return undefined;
+      content.push(child);
+    }
+  }
+  Object.freeze(content);
+  const node: HsonNode = {
+    $_tag: value.$_tag,
+    ...(meta === undefined ? {} : { $_meta: meta }),
+    ...(attrs === undefined ? {} : { $_attrs: attrs }),
+    $_content: content,
+  };
+  Object.freeze(node);
+  return node;
+}
+
+function validate_canonical_node(value: unknown): HsonNode | undefined {
+  const node = decode_hson_node(value);
+  if (node === undefined) return undefined;
+  try {
+    assert_invariants(node, "decode_livehost_graph_operation");
+    index_livemap_document_elements(node);
+    return node;
+  } catch {
+    return undefined;
+  }
+}
+
+function decode_document_target(value: unknown): LiveMapDocumentTarget | undefined {
+  if (!is_record(value)) return undefined;
+  if (value.kind === "path" && has_exact_keys(value, ["kind", "path"]) && Array.isArray(value.path)) {
+    if (!value.path.every((part) => typeof part === "number" && Number.isInteger(part) && part >= 0)) return undefined;
+    return Object.freeze({ kind: "path", path: Object.freeze([...value.path]) });
+  }
+  if (value.kind === "quid" && has_exact_keys(value, ["kind", "quid"]) && is_persisted_quid(value.quid)) {
+    return Object.freeze({ kind: "quid", quid: value.quid });
+  }
+  return undefined;
+}
+
+const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
+
+function decode_attribute_name(value: unknown): string | undefined {
+  return typeof value === "string" && HSON_ATTR_NAME.test(value) && !value.startsWith("data-_")
+    ? value
+    : undefined;
+}
+
+function decode_attribute_value(name: string, value: unknown): LiveMapDocumentAttributeValue | undefined {
+  if (is_finite_primitive(value)) return value;
+  return name === "style" ? decode_style_map(value) : undefined;
+}
+
+function decode_document_content(value: unknown): LiveMapDocumentContent | undefined {
+  if (is_finite_primitive(value)) return value;
+  const node = decode_hson_node(value);
+  if (node === undefined) return undefined;
+  try {
+    const validationRoot: HsonNode = node.$_tag === ELEM_TAG
+      ? {
+        $_tag: ROOT_TAG,
+        $_content: [{
+          $_tag: ELEM_TAG,
+          $_content: [{ $_tag: "div", $_content: [node] }],
+        }],
+      }
+      : node;
+    assert_invariants(validationRoot, "decode_livehost_graph_content");
+    index_livemap_document_elements(validationRoot);
+    return node;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Shared strict payload decoders used by graph commits and hosted document actions. */
+export function decode_livehost_document_target(value: unknown): LiveMapDocumentTarget | undefined {
+  return decode_document_target(value);
+}
+
+export function decode_livehost_document_attribute_name(value: unknown): string | undefined {
+  return decode_attribute_name(value);
+}
+
+export function decode_livehost_document_attribute_value(
+  name: string,
+  value: unknown,
+): LiveMapDocumentAttributeValue | undefined {
+  return decode_attribute_value(name, value);
+}
+
+export function decode_livehost_document_content(value: unknown): LiveMapDocumentContent | undefined {
+  return decode_document_content(value);
+}
+
+function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGraphOp | undefined {
+  if (!is_record(value) || value.domain !== "graph") return undefined;
+  if (value.op === "replace-root") {
+    if (!has_exact_keys(value, ["domain", "op", "mode", "root"]) || value.mode !== mode) return undefined;
+    const root = validate_canonical_node(value.root);
+    if (root === undefined) return undefined;
+    try {
+      if (classify_live_root_mode(root) !== mode) return undefined;
+    } catch {
+      return undefined;
+    }
+    return Object.freeze({ domain: "graph", op: "replace-root", mode, root });
+  }
+
+  const target = decode_document_target(value.target);
+  if (target === undefined) return undefined;
+  if (value.op === "set-attr") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "name", "value"])) return undefined;
+    const name = decode_attribute_name(value.name);
+    if (name === undefined) return undefined;
+    const attributeValue = decode_attribute_value(name, value.value);
+    if (attributeValue === undefined) return undefined;
+    return Object.freeze({ domain: "graph", op: "set-attr", target, name, value: attributeValue });
+  }
+  if (value.op === "remove-attr") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "name"])) return undefined;
+    const name = decode_attribute_name(value.name);
+    return name === undefined
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "remove-attr", target, name });
+  }
+  if (value.op === "replace-content") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement"])) return undefined;
+    const index = required_rev(value.index);
+    if (index === undefined) return undefined;
+    const replacement = decode_document_content(value.replacement);
+    return replacement === undefined
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement });
+  }
+  return undefined;
+}
+
 function decode_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
-  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "prevRev", "rev", "ops"])) return undefined;
+  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops"])) return undefined;
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
+  const mode = decode_mode(value.mode);
   const prevRev = required_rev(value.prevRev);
   const rev = required_rev(value.rev);
-  if (!logicalMapId || !incarnationId || prevRev === undefined || rev !== prevRev + 1) return undefined;
+  if (!logicalMapId || !incarnationId || mode === undefined || prevRev === undefined || rev !== prevRev + 1) return undefined;
   if (!Array.isArray(value.ops) || value.ops.length === 0) return undefined;
   const ops: LiveHostCanonicalOp[] = [];
   for (const item of value.ops) {
-    const op = decode_canonical_op(item);
+    const op = mode === "element" || mode === "fragment"
+      ? decode_graph_op(item, mode)
+      : decode_projected_canonical_op(item);
     if (!op) return undefined;
     ops.push(op);
   }
-  return Object.freeze({ logicalMapId, incarnationId, prevRev, rev, ops: Object.freeze(ops) });
+  return Object.freeze({ logicalMapId, incarnationId, mode, prevRev, rev, ops: Object.freeze(ops) });
 }
 
 function decode_snapshot(value: unknown): LiveHostSnapshotEnvelope | undefined {
-  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "hson"])) return undefined;
+  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "hson"])) return undefined;
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
   const rev = required_rev(value.rev);
-  if (!logicalMapId || !incarnationId || rev === undefined || typeof value.hson !== "string") return undefined;
-  return Object.freeze({ logicalMapId, incarnationId, rev, hson: value.hson });
+  const mode = decode_mode(value.mode);
+  if (!logicalMapId || !incarnationId || rev === undefined || mode === undefined || typeof value.hson !== "string") return undefined;
+  return Object.freeze({ logicalMapId, incarnationId, rev, mode, hson: value.hson });
 }
 
 function optional_string(value: unknown): string | undefined {

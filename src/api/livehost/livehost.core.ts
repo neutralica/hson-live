@@ -1,16 +1,17 @@
 // livehost/core.ts
 
 import { hson } from "../../hson.js";
-import type { JsonValue, LiveMap } from "../../types/index.js";
+import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAuthority } from "../../types/index.js";
 import type {
   LiveHost,
-  LiveHostActionContext,
+  LiveHostForMap,
+  LiveHostActionContextForMap,
   LiveHostActionAuthorizationContext,
   LiveHostActionDelivery,
   LiveHostActionOrigin,
   LiveHostActionPayloads,
   LiveHostActionTerminalOutcome,
-  LiveHostActions,
+  LiveHostActionsForMap,
   LiveHostClientActionMessage,
   LiveHostClientActionResult,
   LiveHostClientRecoverMessage,
@@ -19,6 +20,9 @@ import type {
   LiveHostConnection,
   LiveHostDisposer,
   LiveHostOptions,
+  ExistingMapLiveHostOptions,
+  ProjectedLiveHostOptions,
+  LiveHostMapValue,
   LiveHostSchemaDecoder,
   LiveHostSchemaResult,
   LiveHostSeq,
@@ -34,6 +38,7 @@ import { make_livehost_canonical_stream } from "./livehost.history.js";
 import { make_livehost_recovery_planner } from "./livehost.recovery.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
+import { resolve_livehost_document_action } from "./livehost.document-actions.js";
 import {
   create_live_trace_context,
   type LiveTraceContext,
@@ -115,20 +120,45 @@ function clone_action_payload(value: JsonValue | undefined, frozen: boolean): Js
 export function create_livehost<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: LiveHostOptions<TState, TActions> = {}): LiveHost<TState, TActions> {
+>(options?: ProjectedLiveHostOptions<TState, TActions>): LiveHost<TState, TActions>;
+export function create_livehost<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(options: ExistingMapLiveHostOptions<TMap, TActions>): LiveHostForMap<TMap, TActions>;
+export function create_livehost(
+  options: ProjectedLiveHostOptions | ExistingMapLiveHostOptions<LiveMapAuthority> = {},
+): LiveHostForMap<LiveMapAuthority> {
+  if ("map" in options && options.map !== undefined) {
+    if ("state" in options) {
+      throw new TypeError("LiveHost options state and map are mutually exclusive.");
+    }
+    return create_livehost_for_map(options.map, options);
+  }
   const stateResult = decode_with_schema(options.schema?.state, options.state ?? {});
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
-  const map = hson.liveMap.fromJson(initialState) as unknown as LiveHost<TState, TActions>["map"];
+  const map = hson.liveMap.fromJson(initialState);
+  const { state: _state, ...shared } = options;
+  return create_livehost_for_map(map, { ...shared, map });
+}
+
+function create_livehost_for_map<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(
+  map: TMap,
+  options: ExistingMapLiveHostOptions<TMap, TActions>,
+): LiveHostForMap<TMap, TActions> {
   const stream = make_livehost_canonical_stream(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
     ...(options.incarnationId !== undefined ? { incarnationId: options.incarnationId } : {}),
     ...(options.history !== undefined ? { history: options.history } : {}),
+    ...(options.trace !== undefined ? { trace: options.trace } : {}),
   });
-  const recovery = make_livehost_recovery_planner(map, stream, options.recovery);
-  const sync = make_livehost_sync_manager(map as unknown as LiveMap<JsonValue | undefined>);
+  const recovery = make_livehost_recovery_planner(map, stream, options.recovery, options.trace);
+  const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
   const resume = make_livehost_resume_log();
-  const actions: Partial<LiveHostActions<TActions, TState>> = options.actions ?? {};
+  const actions: Partial<LiveHostActionsForMap<TActions, TMap>> = options.actions ?? {};
   let seq = 0;
   const actionRequests = make_livehost_action_dedupe_store(
     () => stream.headRev,
@@ -145,8 +175,8 @@ export function create_livehost<
 
   function action_context(
     origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContext<TState>["emit_event"],
-  ): LiveHostActionContext<TState> {
+    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+  ): LiveHostActionContextForMap<TMap> {
     return Object.freeze({ map, seq, origin, emit_event: emitEvent });
   }
 
@@ -200,7 +230,8 @@ export function create_livehost<
         const commits = rev > previousRev
           ? stream.history.replay_after(previousRev, rev)
           : [];
-        const operationKinds = commits?.flatMap((commit) => commit.ops.map((operation) => operation.kind));
+        const operationKinds = commits?.flatMap((commit) => commit.ops.map((operation) =>
+          "domain" in operation ? operation.op : operation.kind));
         return {
           changed: rev !== previousRev,
           prevRev: previousRev,
@@ -218,18 +249,23 @@ export function create_livehost<
     trace?: LiveTraceContext,
     parentSpanId?: string,
   ):
-    | Readonly<{ ok: true; handler: NonNullable<Partial<LiveHostActions<TActions, TState>>[keyof TActions & string]>; payload: JsonValue | undefined }>
-    | Readonly<{ ok: false; code: "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID"; message: string }> {
+    | Readonly<{ ok: true; handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]>; payload: JsonValue | undefined }>
+    | Readonly<{ ok: false; code: "LIVEHOST_ACTION_UNKNOWN" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID"; message: string }> {
     const lookupSpan = trace?.beginSpan(
       "livehost",
       "action.lookup",
       parentSpanId,
       () => ({ action: message.name }),
     );
-    const handler = actions[message.name];
-    if (!handler) {
+    const documentAction = resolve_livehost_document_action(map, message.name, message.payload);
+    if (documentAction.kind === "unavailable") {
+      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_ACTION_UNAVAILABLE" }));
+      return { ok: false, code: "LIVEHOST_ACTION_UNAVAILABLE", message: documentAction.message };
+    }
+    const configuredHandler = actions[message.name];
+    if (documentAction.kind === "not-document-action" && !configuredHandler) {
       lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_UNKNOWN_ACTION" }));
-      return { ok: false, code: "LIVEHOST_ACTION_UNAVAILABLE", message: `Unknown LiveHost action: ${message.name}` };
+      return { ok: false, code: "LIVEHOST_ACTION_UNKNOWN", message: `Unknown LiveHost action: ${message.name}` };
     }
     lookupSpan?.success(() => ({ action: message.name }));
 
@@ -239,6 +275,21 @@ export function create_livehost<
       parentSpanId,
       () => ({ action: message.name, payloadPresent: message.payload !== undefined }),
     );
+    if (documentAction.kind === "invalid") {
+      validationSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_SCHEMA_INVALID_PAYLOAD", issueCount: 1 }));
+      return { ok: false, code: "LIVEHOST_ACTION_INVALID", message: documentAction.message };
+    }
+    if (documentAction.kind === "ready") {
+      const handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]> = () => {
+        documentAction.execute();
+      };
+      validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
+      return { ok: true, handler, payload: documentAction.payload };
+    }
+    const handler = configuredHandler;
+    if (!handler) {
+      throw new Error("LiveHost action resolution lost its configured handler.");
+    }
     const actionSchema = options.schema?.actions?.[message.name];
     let payloadResult: LiveHostSchemaResult<JsonValue | undefined>;
     try {
@@ -257,6 +308,14 @@ export function create_livehost<
     }
     validationSpan?.success(() => ({ action: message.name, schemaConfigured: actionSchema?.payload !== undefined }));
     return { ok: true, handler, payload: payloadResult.value };
+  }
+
+  function public_action_error_code(
+    code: "LIVEHOST_ACTION_UNKNOWN" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID",
+  ): "LIVEHOST_UNKNOWN_ACTION" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_SCHEMA_INVALID_PAYLOAD" {
+    if (code === "LIVEHOST_ACTION_UNKNOWN") return "LIVEHOST_UNKNOWN_ACTION";
+    if (code === "LIVEHOST_ACTION_UNAVAILABLE") return "LIVEHOST_ACTION_UNAVAILABLE";
+    return "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
   }
 
   type AuthorizationResult =
@@ -350,10 +409,10 @@ export function create_livehost<
 
   async function execute_validated_action(
     message: LiveHostClientActionMessage<TActions>,
-    handler: NonNullable<Partial<LiveHostActions<TActions, TState>>[keyof TActions & string]>,
+    handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]>,
     payload: JsonValue | undefined,
     origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContext<TState>["emit_event"],
+    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
     trace?: LiveTraceContext,
     parentSpanId?: string,
   ): Promise<LiveHostActionTerminalOutcome> {
@@ -442,9 +501,9 @@ export function create_livehost<
   async function dispatch_action_scoped(
     message: LiveHostClientActionMessage<TActions>,
     origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContext<TState>["emit_event"],
+    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
     trace?: LiveTraceContext,
-  ): Promise<LiveHostServerMessage<TState>> {
+  ): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
     const actionSpan = trace?.beginSpan(
       "livehost",
       "action.execute",
@@ -474,9 +533,7 @@ export function create_livehost<
       }
     })();
     if (!validated.ok) {
-      const code = validated.code === "LIVEHOST_ACTION_UNAVAILABLE"
-        ? "LIVEHOST_UNKNOWN_ACTION"
-        : "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
+      const code = public_action_error_code(validated.code);
       actionSpan?.failure(() => ({ action: message.name, errorCode: code }));
       return {
         type: "error",
@@ -544,7 +601,7 @@ export function create_livehost<
     return response;
   }
 
-  function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<TState>> {
+  function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
     const trace = make_action_trace(message, DIRECT_ACTION_ORIGIN);
     return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false, trace);
   }
@@ -566,7 +623,7 @@ export function create_livehost<
     let sessionResumable: boolean | undefined;
     let stopRecoveryChannel: LiveHostDisposer | undefined;
 
-    function raw_send(message: LiveHostServerMessage<TState>): void {
+    function raw_send(message: LiveHostServerMessage): void {
       if (transportOpen) socket.send(encode_livehost_message(message));
     }
 
@@ -578,11 +635,11 @@ export function create_livehost<
         && sessions.is_active(sessionId, connectionEpoch);
     }
 
-    function send_without_record(message: LiveHostServerMessage<TState>): void {
+    function send_without_record(message: LiveHostServerMessage): void {
       if (authoritative()) raw_send(message);
     }
 
-    function send(message: LiveHostServerMessage<TState>): void {
+    function send(message: LiveHostServerMessage): void {
       if (!authoritative()) return;
       if (message.type === "sync") resume.record_sync(message);
       raw_send(message);
@@ -750,9 +807,7 @@ export function create_livehost<
       })();
 
       if (!validated.ok) {
-        const code = validated.code === "LIVEHOST_ACTION_UNAVAILABLE"
-          ? "LIVEHOST_UNKNOWN_ACTION"
-          : "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
+        const code = public_action_error_code(validated.code);
 
         const response: LiveHostClientActionResult = {
           type: "error",
@@ -1012,6 +1067,17 @@ export function create_livehost<
         return;
       }
       if (message.type === "hello") {
+        if (!is_projected_live_map(map)) {
+          send_without_record({
+            type: "error",
+            seq,
+            error: {
+              code: "LIVEHOST_DOCUMENT_RECOVERY_REQUIRED",
+              message: "Document mirrors initialize through canonical recovery.",
+            },
+          });
+          return;
+        }
         send_without_record({ type: "hello", sessionId, seq, snapshot: map.snap() });
         if (message.lastSeq !== undefined && resume.can_replay_after(message.lastSeq)) {
           for (const replay of resume.replay_after(message.lastSeq)) send_without_record(replay);
@@ -1111,4 +1177,10 @@ export function create_livehost<
     connect,
     dispose,
   };
+}
+
+function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
+  return (map.mode === "data-object" || map.mode === "data-array")
+    && "snap" in map
+    && typeof map.snap === "function";
 }

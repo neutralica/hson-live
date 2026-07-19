@@ -15,6 +15,7 @@ import type {
   LiveMap,
   LiveMapCore,
   LiveMapRootMode,
+  LiveMapGraphCommit,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import {
@@ -23,8 +24,13 @@ import {
 } from "./livemap.document.identity.js";
 import {
   install_livemap_document_capture,
+  restore_livemap_document_capture,
   type LiveMapDocumentInstallController,
 } from "./livemap.document.install.js";
+import {
+  replay_livemap_document_commit,
+  type LiveMapDocumentReplayController,
+} from "./livemap.document.replay.js";
 import {
   make_livemap_document_mutation_api,
   type LiveMapDocumentMutationController,
@@ -115,7 +121,7 @@ export function assert_live_root_mode(
 export function facade_for_livemap_root(
   core: LiveMapCore,
   prepared: PreparedLiveMapRoot,
-  controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController,
+  controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
 ): ClassifiedLiveMap {
   if (prepared.mode === "data-object" || prepared.mode === "data-array") {
     return core as LiveMap;
@@ -130,7 +136,7 @@ export function facade_for_livemap_root(
 function make_document_livemap(
   core: LiveMapCore,
   mode: DocumentLiveMapMode,
-  controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController,
+  controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
 ): DocumentLiveMap {
   const mutationApi = make_livemap_document_mutation_api(controller);
   const content = Object.freeze(Object.assign(
@@ -153,6 +159,10 @@ function make_document_livemap(
     debug: core.debug,
     install: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>
       install_livemap_document_capture(controller, capture, options),
+    restore: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>
+      restore_livemap_document_capture(controller, capture, options),
+    replay: (commit: LiveMapGraphCommit) => replay_livemap_document_commit(controller, commit),
+    commits: controller.commits,
   };
 
   if (mode === "element") {

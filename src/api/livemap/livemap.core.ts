@@ -1,10 +1,11 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
+import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
 import { make_livemap_node_handle } from "./livemap.node.js";
 import { make_livemap_path_handle } from "./livemap.handle.js";
 import { make_livemap_proxy } from "./livemap.proxy.js";
@@ -14,9 +15,10 @@ import { append_live_path, clone_live_path, format_live_path, live_path_key } fr
 import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { json_values_equal } from "./livemap-helpers.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
-import { facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
+import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
+import type { LiveMapDocumentReplayController, PreparedDocumentReplay } from "./livemap.document.replay.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -68,7 +70,7 @@ function make_livemap_core_from_owned_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
 ): Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
-  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController;
+  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController;
 }> {
   const initialMode = prepared.mode;
   let owned = {
@@ -76,6 +78,7 @@ function make_livemap_core_from_owned_root(
     documentIdentity: prepared.documentIdentity,
   };
   const feedHub = make_livemap_feed_hub();
+  const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
@@ -85,6 +88,7 @@ function make_livemap_core_from_owned_root(
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
   const commitOps = (
     writeOps: readonly LiveMapCoreWriteOp[],
+    origin: "authoritative" | "replay" = "authoritative",
   ): LiveMapCommit => {
     return commit_ops(
       owned.root,
@@ -95,6 +99,8 @@ function make_livemap_core_from_owned_root(
         currentRev = rev;
       },
       writeOps,
+      commitObserverHub,
+      origin,
     );
   };
 
@@ -275,6 +281,8 @@ function make_livemap_core_from_owned_root(
     /** Subscribe to commits whose op paths overlap the requested path. */
     feed: (path, listener) => feed_core_path(feedHub, must_live_path(path), must_feed_listener(listener)),
 
+    commits: Object.freeze({ observe: commitObserverHub.observe }),
+
     /** Subscribe to projected value changes. */
     sub: subApi,
 
@@ -287,6 +295,26 @@ function make_livemap_core_from_owned_root(
         rev: currentRev,
         value: snap_live_path(owned.root, []),
       });
+    },
+    /** Restore projected state and revision without a commit, feed, or increment. */
+    restore: (capture: LiveMapCapture<JsonValue | undefined>): void => {
+      const normalized = must_projected_capture(capture);
+      const operation: LiveMapWriteOp = {
+        kind: "replace",
+        path: [],
+        value: normalized.value,
+      };
+      must_core_schema_write_ops(currentSchema, owned.root, [operation]);
+      must_editor_write_ops(owned.root, [operation]);
+      const candidate = clone_live_root(owned.root);
+      apply_write_ops(candidate, [operation]);
+      const observedMode = classify_live_root_mode(candidate);
+      if (observedMode !== initialMode) {
+        throw new Error(`LiveMap projected restore mode mismatch: expected ${initialMode}, observed ${observedMode}.`);
+      }
+      owned = { root: candidate, documentIdentity: undefined };
+      currentRev = normalized.rev;
+      commitObserverHub.emitSnapshot(normalized.rev);
     },
     /** Replace the root only when the caller's base revision is still current. */
     apply: (input: LiveMapApply<JsonValue | undefined>) => {
@@ -319,6 +347,7 @@ function make_livemap_core_from_owned_root(
           owned.root,
           replay.ops,
         ),
+        "replay",
       );
     },
 
@@ -343,7 +372,7 @@ function make_livemap_core_from_owned_root(
     return { core };
   }
 
-  const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController = {
+  const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController = {
     mode: initialMode,
     rev: () => currentRev,
     root: () => owned.root,
@@ -354,6 +383,7 @@ function make_livemap_core_from_owned_root(
       }
       return identity;
     },
+    commits: Object.freeze({ observe: commitObserverHub.observe }),
     apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       const prevRev = currentRev;
       if (canonical_graph_equal(owned.root, candidate.root)) {
@@ -383,7 +413,16 @@ function make_livemap_core_from_owned_root(
       // returned without entering the projected-data feed hub.
       owned = nextOwned;
       currentRev = rev;
+      commitObserverHub.emitCommit(commit, "authoritative");
       return commit;
+    },
+    restore: (candidate: PreparedDocumentInstall, revision: number): void => {
+      owned = {
+        root: candidate.root,
+        documentIdentity: candidate.identity,
+      };
+      currentRev = revision;
+      commitObserverHub.emitSnapshot(revision);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       const prevRev = currentRev;
@@ -400,7 +439,17 @@ function make_livemap_core_from_owned_root(
         documentIdentity: candidate.identity,
       };
       currentRev = rev;
+      commitObserverHub.emitCommit(commit, "authoritative");
       return commit;
+    },
+    applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
+      owned = {
+        root: candidate.root,
+        documentIdentity: candidate.identity,
+      };
+      currentRev = candidate.commit.rev;
+      commitObserverHub.emitCommit(candidate.commit, "replay");
+      return candidate.commit;
     },
   };
 
@@ -552,6 +601,30 @@ function replay_write_ops(
 
   return writeOps;
 }
+
+function must_projected_capture(input: unknown): Readonly<{ rev: number; value: JsonValue }> {
+  if (!is_plain_unknown_record(input)) {
+    throw new TypeError("LiveMap projected restore capture must be an object.");
+  }
+  const keys = Object.keys(input);
+  if (keys.length !== 2 || !keys.includes("rev") || !keys.includes("value")) {
+    throw new TypeError("LiveMap projected restore capture contains missing or unknown fields.");
+  }
+  if (typeof input.rev !== "number" || !Number.isInteger(input.rev) || input.rev < 0) {
+    throw new TypeError("LiveMap projected restore revision must be a non-negative integer.");
+  }
+  return Object.freeze({
+    rev: input.rev,
+    value: must_json_value(input.value, []),
+  });
+}
+
+function is_plain_unknown_record(input: unknown): input is Readonly<Record<string, unknown>> {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+  const prototype = Object.getPrototypeOf(input);
+  return prototype === Object.prototype || prototype === null;
+}
+
 function must_replay_value(
   path: LivePath,
   expected: JsonValue | undefined,
@@ -767,6 +840,8 @@ function commit_ops(
   getRev: () => number,
   setRev: (rev: number) => void,
   writeOps: readonly LiveMapCoreWriteOp[],
+  commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
+  origin: "authoritative" | "replay",
 ): LiveMapCommit {
   /**
    * Preflight against a cloned JSON view and cloned editor root before touching
@@ -797,6 +872,7 @@ function commit_ops(
     commit,
     (feedPath) => snap_live_path(root, feedPath),
   );
+  commitObserverHub.emitCommit(commit, origin);
 
   return commit;
 }

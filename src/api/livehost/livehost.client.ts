@@ -1,7 +1,15 @@
 // livehost/client.ts
 
 import { hson } from "../../hson.js";
-import type { JsonValue, LiveMap, LiveMapOp } from "../../types/index.js";
+import type {
+  ClassifiedLiveMap,
+  JsonValue,
+  LiveMap,
+  LiveMapAuthority,
+  LiveMapGraphCommit,
+  LiveMapGraphOp,
+  LiveMapOp,
+} from "../../types/index.js";
 import type {
   LiveHostActionId,
   LiveHostActionPayloads,
@@ -9,6 +17,7 @@ import type {
   LiveHostActionStatusId,
   LiveHostCanonicalCommit,
   LiveHostClient,
+  LiveHostClientForMap,
   LiveHostClientActionMessage,
   LiveHostClientActionPromise,
   LiveHostClientActionRequest,
@@ -16,8 +25,11 @@ import type {
   LiveHostClientActionStatusResult,
   LiveHostClientMessage,
   LiveHostClientOptions,
+  LiveHostClientOptionsForMap,
   LiveHostClientRecoveryChange,
+  LiveHostClientRecoveryChangeForMap,
   LiveHostClientRecoveryChangeListener,
+  LiveHostClientRecoveryChangeListenerForMap,
   LiveHostClientRecoveryDiagnostics,
   LiveHostClientRecoveryFailure,
   LiveHostClientRecoveryResult,
@@ -42,7 +54,7 @@ import {
   LiveHostDisconnectedError,
   LiveHostDuplicateActionIdError,
 } from "./livehost.error.js";
-import { decode_livehost_server_message } from "./livehost.protocol.js";
+import { decode_livehost_server_message, is_livehost_json_value } from "./livehost.protocol.js";
 
 let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
@@ -135,6 +147,7 @@ function reject_pending_action_statuses(
 
 function local_ops(commit: LiveHostCanonicalCommit): readonly LiveMapOp[] {
   return commit.ops.map((op): LiveMapOp => {
+    if ("domain" in op) throw new Error("Canonical graph operation cannot replay on a projected mirror.");
     const prev = op.prev.present ? op.prev.value : undefined;
     const next = op.next.present ? op.next.value : undefined;
     if (op.kind === "delete") return { kind: "delete", path: op.path, prev, next: undefined };
@@ -144,6 +157,22 @@ function local_ops(commit: LiveHostCanonicalCommit): readonly LiveMapOp[] {
     }
     if (next === undefined) throw new Error(`Canonical ${op.kind} next value is absent.`);
     return { kind: op.kind, path: op.path, prev, next };
+  });
+}
+
+function local_graph_commit(commit: LiveHostCanonicalCommit): LiveMapGraphCommit {
+  const operations: LiveMapGraphOp[] = [];
+  for (const operation of commit.ops) {
+    if (!("domain" in operation)) {
+      throw new Error("Canonical projected operation cannot replay on a document mirror.");
+    }
+    operations.push(operation);
+  }
+  return Object.freeze({
+    changed: true,
+    prevRev: commit.prevRev,
+    rev: commit.rev,
+    ops: Object.freeze(operations),
   });
 }
 
@@ -162,7 +191,14 @@ function clone_action_payload(value: JsonValue): JsonValue {
 export function create_livehost_client<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: LiveHostClientOptions<TState>): LiveHostClient<TState, TActions> {
+>(options: LiveHostClientOptions<TState>): LiveHostClient<TState, TActions>;
+export function create_livehost_client<
+  TMap extends ClassifiedLiveMap,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(options: LiveHostClientOptionsForMap<TMap> & Readonly<{ map: TMap }>): LiveHostClientForMap<TMap, TActions>;
+export function create_livehost_client<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(options: LiveHostClientOptionsForMap<LiveMapAuthority>): unknown {
   if (options.recovery?.cursor && !options.map) {
     throw new Error("LiveHost recovery cursor requires the exact corresponding mirror.");
   }
@@ -171,12 +207,12 @@ export function create_livehost_client<
   const makeActionId = options.actionId ?? make_action_id;
   const makeActionAttemptId = options.actionAttemptId ?? make_action_attempt_id;
   const makeActionStatusId = options.actionStatusId ?? make_action_status_id;
-  let map: LiveMap<TState> = options.map ?? hson.liveMap.fromJson({}) as unknown as LiveMap<TState>;
+  let map: ClassifiedLiveMap = classified_live_map(options.map);
   const pendingActions = new Map<LiveHostActionId, PendingAction[]>();
   const pendingActionAttemptsByRequest = new Map<LiveHostActionRequestId, LiveHostActionId[]>();
   const pendingActionStatuses = new Map<LiveHostActionStatusId, PendingActionStatus>();
   const eventListeners = new Set<LiveHostEventListener>();
-  const recoveryListeners = new Set<LiveHostClientRecoveryChangeListener<TState>>();
+  const recoveryListeners = new Set<LiveHostClientRecoveryChangeListenerForMap<ClassifiedLiveMap>>();
   const disposers: LiveHostDisposer[] = [];
   let seq: LiveHostSeq = 0;
   let isConnected = false;
@@ -232,7 +268,7 @@ export function create_livehost_client<
     pending?.reject(new LiveHostClientRecoveryError(code, message, cause));
   }
 
-  function notify(change: LiveHostClientRecoveryChange<TState>): void {
+  function notify(change: LiveHostClientRecoveryChangeForMap<ClassifiedLiveMap>): void {
     consumerNotifications += 1;
     try {
       for (const listener of [...recoveryListeners]) listener(change);
@@ -274,10 +310,19 @@ export function create_livehost_client<
       );
       return;
     }
+    if (commit.mode !== map.mode) {
+      fail_recovery(
+        "LIVEHOST_RECOVERY_MAP_MODE_MISMATCH",
+        `Canonical commit mode ${commit.mode} does not match mirror mode ${map.mode}.`,
+      );
+      return;
+    }
 
     const localRevBefore = map.rev;
     try {
-      const applied = map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
+      const applied = map.mode === "element" || map.mode === "fragment"
+        ? map.replay(local_graph_commit(commit))
+        : map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
       if (!applied.changed || map.rev !== localRevBefore + 1) {
         throw new Error("Canonical changed commit did not advance the client mirror exactly once.");
       }
@@ -309,14 +354,21 @@ export function create_livehost_client<
     }
     try {
       const node = hson.fromHson(snapshot.hson).toNode();
-      const value = hson.fromNode(node).toJson().value();
-      if (value === undefined) {
-        throw new Error("Recovery snapshot HSON did not project to a JsonValue.");
+      const staged = hson.liveMap.fromNode(node);
+      if (staged.mode !== snapshot.mode || staged.mode !== map.mode) {
+        throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
       }
-      const staged = hson.liveMap.fromJson(value);
-      const schema = map.schema.get();
-      if (schema) staged.schema.use(schema);
-      map = staged as unknown as LiveMap<TState>;
+      if (is_projected_live_map(map) && is_projected_live_map(staged)) {
+        const schema = map.schema.get();
+        const capture = staged.capture();
+        map.restore(Object.freeze({ rev: snapshot.rev, value: capture.value }));
+        if (schema) map.schema.use(schema);
+      } else if (is_document_live_map(map) && is_document_live_map(staged)) {
+        const capture = staged.capture();
+        map.restore(Object.freeze({ ...capture, rev: snapshot.rev }));
+      } else {
+        throw new Error("Recovery snapshot reconstructed an incompatible map mode.");
+      }
       incarnationId = snapshot.incarnationId;
       lastAppliedRev = snapshot.rev;
       snapshotInstalls += 1;
@@ -478,16 +530,22 @@ export function create_livehost_client<
     }
     if (message.type === "hello") {
       seq = message.seq;
-      map.replace(message.snapshot as never);
+      if (is_projected_live_map(map) && is_livehost_json_value(message.snapshot)) {
+        map.replace(message.snapshot);
+      }
       return;
     }
     if (message.type === "sync") {
       seq = message.seq;
 
-      if (message.path.length === 0) {
-        map.replace(message.value as never);
-      } else {
-        map.set(message.path, message.value as never);
+      if (is_projected_live_map(map)) {
+        if (message.path.length === 0) {
+          if (is_livehost_json_value(message.value)) map.replace(message.value);
+        } else if (message.value === undefined) {
+          map.delete(message.path);
+        } else {
+          map.set(message.path, message.value);
+        }
       }
 
       return;
@@ -597,7 +655,7 @@ export function create_livehost_client<
     recoveryListeners.clear();
   }
 
-  function on_change(listener: LiveHostClientRecoveryChangeListener<TState>): LiveHostDisposer {
+  function on_change(listener: LiveHostClientRecoveryChangeListenerForMap<ClassifiedLiveMap>): LiveHostDisposer {
     if (recoveryDisposed) return () => { };
     recoveryListeners.add(listener);
     return () => recoveryListeners.delete(listener);
@@ -811,4 +869,22 @@ export function create_livehost_client<
     retry_action,
     action_status,
   });
+}
+
+function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
+  return (map.mode === "data-object" || map.mode === "data-array")
+    && "replace" in map
+    && typeof map.replace === "function";
+}
+
+function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedLiveMap, { mode: "element" | "fragment" }> {
+  return (map.mode === "element" || map.mode === "fragment")
+    && "replay" in map
+    && typeof map.replay === "function";
+}
+
+function classified_live_map(map: LiveMapAuthority | undefined): ClassifiedLiveMap {
+  if (map === undefined) return hson.liveMap.fromJson({});
+  if (is_projected_live_map(map) || is_document_live_map(map)) return map;
+  throw new Error("LiveHost client map is not a classified LiveMap authority.");
 }

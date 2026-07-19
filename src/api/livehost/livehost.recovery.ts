@@ -1,7 +1,8 @@
 // livehost.recovery.ts
 
-import type { JsonValue, LiveMap } from "../../types/index.js";
+import type { JsonValue, LiveMapAuthority } from "../../types/index.js";
 import { hson } from "../../hson.js";
+import { is_Node } from "../../core/node-guards.js";
 import type {
   LiveHostCanonicalCommit,
   LiveHostCanonicalStream,
@@ -25,8 +26,10 @@ import type {
   LiveHostRecoverySnapshotPlan,
   LiveHostRecoverySnapshotReason,
   LiveHostSnapshotEnvelope,
+  LiveTraceSink,
 } from "../../types/livehost.types.js";
 import { LiveHostRecoveryError } from "./livehost.error.js";
+import { create_live_trace_context } from "./livehost.trace.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
 const DEFAULT_MAX_TAIL_BYTES = 1 * 1_024 * 1_024;
@@ -83,10 +86,11 @@ function runtime_error(
  * Create the host-side recovery planner for one canonical LiveMap stream.
  * The planner produces recovery material directly and has no transport role.
  */
-export function make_livehost_recovery_planner<TState extends JsonValue | undefined>(
-  map: LiveMap<TState>,
-  stream: LiveHostCanonicalStream,
+export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
+  map: TMap,
+  stream: LiveHostCanonicalStream<TMap>,
   options: LiveHostRecoveryOptions = {},
+  traceSink?: LiveTraceSink,
 ): LiveHostRecoveryPlanner {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
@@ -286,9 +290,6 @@ export function make_livehost_recovery_planner<TState extends JsonValue | undefi
           // by capture.rev/value or retained after the resulting cut.
           hooks.during_snapshot_capture?.();
           const capture = map.capture();
-          if (capture.value === undefined || !is_json_value(capture.value)) {
-            throw new Error("LiveHost recovery snapshot root is not JSON.");
-          }
           if (capture.rev !== stream.headRev) {
             throw new Error(
               `LiveHost recovery snapshot revision ${capture.rev} does not match stream head ${stream.headRev}.`,
@@ -296,19 +297,23 @@ export function make_livehost_recovery_planner<TState extends JsonValue | undefi
           }
 
           headRev = capture.rev;
-          const snapshotHson = hson
-            .fromJson(clone_json_value(capture.value))
-            .toHson()
-            .noBreak()
-            .serialize();
+          const snapshotHson = map.mode === "element" || map.mode === "fragment"
+            ? "root" in capture && is_Node(capture.root)
+              ? hson.fromNode(capture.root).toHson().noBreak().serialize()
+              : (() => { throw new Error("LiveHost document capture has no canonical root."); })()
+            : "value" in capture && capture.value !== undefined && is_json_value(capture.value)
+              ? hson.fromJson(clone_json_value(capture.value)).toHson().noBreak().serialize()
+              : (() => { throw new Error("LiveHost recovery snapshot root is not JSON."); })();
           snapshotBody = Object.freeze({
             logicalMapId: stream.logicalMapId,
             incarnationId: stream.incarnationId,
             rev: capture.rev,
+            mode: map.mode,
             hson: snapshotHson,
           });
           encoded_bytes(snapshotBody);
           establish_cut(headRev);
+          trace_recovery("snapshot", headRev);
         } catch (cause) {
           if (cause instanceof LiveHostRecoveryError) throw cause;
           throw runtime_error(
@@ -436,6 +441,7 @@ export function make_livehost_recovery_planner<TState extends JsonValue | undefi
     }
 
     if (outcome === "replay" && replayBody) {
+      trace_recovery("replay", headRev);
       replayPlanCount += 1;
       const replayPlan: LiveHostRecoveryReplayPlan = Object.freeze({
         ...base,
@@ -475,6 +481,22 @@ export function make_livehost_recovery_planner<TState extends JsonValue | undefi
       disposedAttemptCount,
       abortedAttemptCount,
       overflowCount,
+    });
+  }
+
+  function trace_recovery(phase: "snapshot" | "replay", revision: number): void {
+    if (map.mode !== "element" && map.mode !== "fragment") return;
+    if (traceSink === undefined) return;
+    const trace = create_live_trace_context(traceSink, `lht-recovery-${stream.logicalMapId}-${revision}`);
+    trace.emit({
+      subsystem: "livehost",
+      phase: "recovery.material",
+      status: "success",
+      details: () => ({
+        mapMode: map.mode,
+        revision,
+        recoveryPhase: phase,
+      }),
     });
   }
 

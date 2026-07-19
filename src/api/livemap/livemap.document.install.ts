@@ -27,6 +27,10 @@ export type LiveMapDocumentInstallController = Readonly<{
   rev: () => number;
   identity: () => LiveMapDocumentIdentityIndex;
   apply: (candidate: PreparedDocumentInstall) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
+  restore: (
+    candidate: PreparedDocumentInstall,
+    revision: number,
+  ) => void;
 }>;
 
 /** Validate a canonical capture with sparse persisted identity, then apply it. */
@@ -38,6 +42,17 @@ export function install_livemap_document_capture(
   assert_install_options(options, controller.rev());
   const candidate = prepare_document_install(capture, controller.mode);
   return controller.apply(candidate);
+}
+
+/** Restore a canonical capture and its revision without creating a local revision. */
+export function restore_livemap_document_capture(
+  controller: LiveMapDocumentInstallController,
+  capture: DocumentLiveMapCapture,
+  options?: DocumentLiveMapInstallOptions,
+): void {
+  assert_install_options(options, controller.rev());
+  const candidate = prepare_document_install(capture, controller.mode);
+  controller.restore(candidate, capture.rev);
 }
 
 function assert_install_options(
@@ -59,7 +74,7 @@ function assert_install_options(
   if (expectedRev !== actualRev) throw new LiveMapRevError(expectedRev, actualRev);
 }
 
-function prepare_document_install(
+export function prepare_document_install(
   capture: DocumentLiveMapCapture,
   targetMode: DocumentLiveMapMode,
 ): PreparedDocumentInstall {

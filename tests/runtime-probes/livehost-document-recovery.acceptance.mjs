@@ -1,0 +1,225 @@
+import assert from "node:assert/strict";
+import { hson } from "../../src/index.ts";
+
+let checks = 0;
+
+async function check(name, fn) {
+  await fn();
+  checks += 1;
+  process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+function socket_pair() {
+  const clientMessages = new Set();
+  const serverMessages = new Set();
+  const clientSent = [];
+  const serverSent = [];
+  const client = {
+    send(raw) {
+      clientSent.push(raw);
+      for (const listener of [...serverMessages]) listener(raw);
+    },
+    onMessage(listener) { clientMessages.add(listener); return () => clientMessages.delete(listener); },
+    onClose() { return () => {}; },
+  };
+  const server = {
+    send(raw) {
+      serverSent.push(raw);
+      for (const listener of [...clientMessages]) listener(raw);
+    },
+    onMessage(listener) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
+    onClose() { return () => {}; },
+  };
+  return { client, server, clientSent, serverSent };
+}
+
+function element(source) {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
+  return map;
+}
+
+function fragment(source) {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "fragment") throw new Error(`Expected fragment, observed ${map.mode}`);
+  return map;
+}
+
+function attach(host, map, cursor) {
+  const pair = socket_pair();
+  host.connect(pair.server);
+  const client = hson.liveHost.client({
+    socket: pair.client,
+    map,
+    recovery: {
+      logicalMapId: host.stream.logicalMapId,
+      ...(cursor === undefined ? {} : { cursor }),
+    },
+  });
+  client.connect();
+  return { client, pair };
+}
+
+const root = { kind: "path", path: [] };
+
+await check("state and existing-map constructor forms are mutually exclusive at runtime", async () => {
+  assert.throws(
+    () => hson.liveHost.create({ state: {}, map: element(`<main/>`) }),
+    /mutually exclusive/,
+  );
+});
+
+await check("existing element authority publishes detached graph history and replays to an element mirror", async () => {
+  const initial = `<main data-_quid="0000000000000001" <p data-_quid="0000000000000002" "old"/>/>`;
+  const authority = element(initial);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-replay" });
+  const sourceCommit = authority.element.attrs.set({ kind: "quid", quid: "0000000000000002" }, "title", "kept");
+  const retained = host.stream.history.replay_after(0, 1);
+  assert.equal(host.map, authority);
+  assert.equal(host.stream.mode, "element");
+  assert.equal(retained?.length, 1);
+  assert.notEqual(retained?.[0]?.ops, sourceCommit.ops);
+  assert.deepEqual(retained?.[0]?.ops, sourceCommit.ops);
+
+  const mirror = element(initial);
+  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  const result = await client.recovery.recover();
+  assert.equal(result.strategy, "replay");
+  assert.equal(client.map, mirror);
+  assert.equal(client.map.mode, "element");
+  assert.deepEqual(client.map.capture(), authority.capture());
+  assert.equal(client.map.element.byQuid("0000000000000002")?.$_attrs?.title, "kept");
+});
+
+await check("node-bearing fragment history is detached and incremental replay preserves QUID lookup", async () => {
+  const initial = `<section data-_quid="0000000000000003" "old"/> "tail"`;
+  const authority = fragment(initial);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-replay" });
+  const replacement = element(`<article data-_quid="0000000000000004" "new"/>`).element.node();
+  const sourceCommit = authority.fragment.content.replace(root, 0, replacement);
+  const retained = host.stream.history.replay_after(0, 1)?.[0];
+  const sourceOp = sourceCommit.ops[0];
+  const retainedOp = retained?.ops[0];
+  assert.equal(sourceOp?.op, "replace-content");
+  assert.equal(retainedOp?.op, "replace-content");
+  if (sourceOp?.op !== "replace-content" || retainedOp?.op !== "replace-content") throw new Error("Expected content replacement");
+  assert.notEqual(retainedOp.replacement, sourceOp.replacement);
+  assert.deepEqual(retainedOp.replacement, sourceOp.replacement);
+
+  const mirror = fragment(initial);
+  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  assert.equal((await client.recovery.recover()).strategy, "replay");
+  assert.equal(client.map.mode, "fragment");
+  assert.deepEqual(client.map.capture(), authority.capture());
+  assert.equal(client.map.fragment.byQuid("0000000000000004")?.$_tag, "article");
+});
+
+await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {
+  const authority = element(`<main data-_quid="0000000000000005" <p data-_quid="0000000000000006"/>/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-snapshot" });
+  authority.element.attrs.set(root, "class", "ready");
+  const mirror = element(`<aside data-_quid="0000000000000007"/>`);
+  const { client } = attach(host, mirror);
+  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal(client.map, mirror);
+  assert.equal(client.map.mode, "element");
+  assert.equal(client.map.rev, host.stream.headRev);
+  assert.deepEqual(client.map.capture(), authority.capture());
+  assert.equal(client.map.element.byQuid("0000000000000005")?.$_tag, "main");
+  assert.equal(client.map.element.byQuid("0000000000000006")?.$_tag, "p");
+});
+
+await check("fragment snapshot recovery reconstructs fragment mode without JSON projection", async () => {
+  const authority = fragment(`"lead" <section data-_quid="0000000000000008"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-snapshot" });
+  const mirror = fragment(`<div/> "old"`);
+  const { client, pair } = attach(host, mirror);
+  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal(client.map.mode, "fragment");
+  assert.deepEqual(client.map.capture(), authority.capture());
+  assert.equal(client.map.fragment.byQuid("0000000000000008")?.$_tag, "section");
+  const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
+  assert.equal(snapshot?.mode, "fragment");
+  assert.equal(typeof snapshot?.hson, "string");
+  assert.equal("value" in snapshot, false);
+});
+
+await check("document history gap falls back to a same-mode snapshot", async () => {
+  const initial = `<main data-_quid="0000000000000009"/>`;
+  const authority = element(initial);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-gap", history: { maxCommits: 1 } });
+  const mirror = element(initial);
+  authority.element.attrs.set(root, "class", "one");
+  authority.element.attrs.set(root, "title", "two");
+  const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
+  assert.equal((await client.recovery.recover()).strategy, "snapshot");
+  assert.equal(client.map.mode, "element");
+  assert.deepEqual(client.map.capture(), authority.capture());
+  assert.equal(client.map.element.byQuid("0000000000000009")?.$_attrs?.title, "two");
+});
+
+await check("projected subscription requests are rejected on document authorities without stream damage", async () => {
+  const authority = element(`<main/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-subscription-gate" });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  const before = host.stream.history.debug();
+  pair.client.send(JSON.stringify({ type: "subscribe", path: [] }));
+  await Promise.resolve();
+  const response = pair.serverSent.map(JSON.parse).at(-1);
+  assert.equal(response.type, "error");
+  assert.equal(response.error.code, "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED");
+  assert.equal(authority.rev, 0);
+  assert.equal(host.stream.headRev, 0);
+  assert.deepEqual(host.stream.history.debug(), before);
+});
+
+await check("legacy projected hello is classified as recovery-required for document authorities", async () => {
+  const host = hson.liveHost.create({ map: element(`<main/>`) });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  pair.client.send(JSON.stringify({ type: "hello" }));
+  await Promise.resolve();
+  const response = pair.serverSent.map(JSON.parse).at(-1);
+  assert.equal(response.type, "error");
+  assert.equal(response.error.code, "LIVEHOST_DOCUMENT_RECOVERY_REQUIRED");
+});
+
+await check("document tracing summarizes domain, origin, mode, revision, and recovery material without content", async () => {
+  const events = [];
+  const trace = { emit(event) { events.push(event); } };
+  const authority = element(`<main/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-trace", trace });
+  authority.element.attrs.set(root, "class", "ready");
+  host.recovery.plan({
+    logicalMapId: host.stream.logicalMapId,
+    incarnationId: host.stream.incarnationId,
+    lastAppliedRev: 0,
+  });
+  host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
+  const publication = events.find((event) => event.phase === "commit.publication");
+  assert.deepEqual(publication?.details, {
+    mapMode: "element",
+    revision: 1,
+    operationDomain: "graph",
+    operationCount: 1,
+    origin: "authoritative",
+  });
+  assert.deepEqual(
+    events.filter((event) => event.phase === "recovery.material").map((event) => event.details.recoveryPhase),
+    ["replay", "snapshot"],
+  );
+  assert.equal(JSON.stringify(events).includes("ready"), false);
+
+  const replayEvents = [];
+  const replayAuthority = element(`<main/>`);
+  hson.liveHost.create({ map: replayAuthority, trace: { emit(event) { replayEvents.push(event); } } });
+  const source = element(`<main/>`);
+  replayAuthority.replay(source.element.attrs.set(root, "title", "replayed"));
+  const replayPublication = replayEvents.find((event) => event.phase === "commit.publication");
+  assert.equal(replayPublication?.status, "skip");
+  assert.equal(replayPublication?.details.origin, "replay");
+  assert.equal(JSON.stringify(replayEvents).includes("replayed"), false);
+});
+
+process.stdout.write(`# ${checks} LiveHost document recovery checks passed\n`);

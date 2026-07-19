@@ -3,7 +3,7 @@
 # LiveHost API
 **Status: WIP / tentative API reference**
 
-Updated: 2026-07-17
+Updated: 2026-07-19
 
 This document describes the current implemented LiveHost surface. LiveHost is
 under active development: exported names and behaviors documented here exist
@@ -107,8 +107,12 @@ Signature:
 
 ```ts
 create_livehost<TState, TActions>(
-  options?: LiveHostOptions<TState, TActions>,
+  options?: ProjectedLiveHostOptions<TState, TActions>,
 ): LiveHost<TState, TActions>
+
+create_livehost<TMap extends LiveMapAuthority, TActions>(
+  options: ExistingMapLiveHostOptions<TMap, TActions>,
+): LiveHostForMap<TMap, TActions>
 ```
 
 Options:
@@ -129,6 +133,21 @@ type LiveHostOptions<TState, TActions> = Readonly<{
 also apply: object and array roots are reliable, object roots currently begin at
 map revision 0, and top-level scalar roots can fail HSON transform invariants.
 An explicit `null` state currently falls back to `{}`.
+
+The existing-map form accepts a projected `LiveMap`, `ElementLiveMap`, or
+`FragmentLiveMap` as the single authority:
+
+```ts
+const document = hson.liveMap.fromHson(
+  `<main data-_quid="0000000000000001"/>`,
+);
+const host = hson.liveHost.create({ map: document });
+```
+
+`state` and `map` are mutually exclusive. The returned `LiveHostForMap<TMap>`
+and its action context preserve the exact supplied map type. The original
+`LiveHost<TState, TActions>` name remains the projected-state compatibility
+surface.
 
 The returned host surface is:
 
@@ -162,6 +181,93 @@ successfully. It does not currently equal `host.map.rev`:
 
 Treat `seq` as the current action-response/synchronization sequence, not as a
 canonical LiveMap revision.
+
+### Canonical document publication and recovery
+
+Projected and document authorities publish into the same canonical stream,
+revision-ordered history, and recovery planner. Projected commits retain their
+wire-safe path/previous/next operation shapes. Document commits retain the
+existing graph operation discriminants and canonical-node semantics; LiveHost
+does not interpret graph mutations or maintain a projected shadow map.
+
+Graph-bearing history is deeply detached from the authoritative graph. A
+document client applies validated graph commits through the map's atomic replay
+boundary. Replay advances to the supplied stream revision without generating
+an authoritative commit or echoing the operation back into history.
+
+Recovery snapshots carry an explicit root `mode`. Projected snapshots preserve
+the existing projected-value behavior. Element and fragment snapshots encode
+the canonical root as HSON, reconstruct with `hson.liveMap.fromNode(node)`, and
+atomically restore the root, QUID index, and exact authoritative revision. A
+snapshot installation is not a commit and is never entered into history.
+
+The outer LiveHost transport remains JSON. Only canonical document snapshots
+and graph-bearing fields may use canonical HSON/node encoding inside that JSON
+envelope. LiveHost does not use raw HTML transport or full-HSON envelopes.
+
+Persisted QUIDs survive incremental replay and snapshot fallback exactly; valid
+identity is the 16-character lowercase Crockford-style form using
+`0123456789abcdefghjkmnpqrstvwxyz` in `_meta["data-_quid"]` on ordinary nodes.
+
+Projected path subscriptions are unchanged for projected authorities. A valid
+`subscribe` or `unsubscribe` request sent to a document authority is rejected
+with `LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED`; document synchronization
+currently occurs through canonical commit and recovery publication.
+The legacy projected `hello` bootstrap is likewise rejected for a document
+authority with `LIVEHOST_DOCUMENT_RECOVERY_REQUIRED` so a document cannot be
+silently reconstructed as projected JSON.
+
+### Built-in hosted document actions
+
+Element and fragment authorities register three reserved ordinary actions:
+
+```ts
+client.action("document.attr.set", {
+  target: { kind: "quid", quid: "0000000000000001" },
+  name: "title",
+  value: "Ready",
+});
+
+client.action("document.attr.drop", {
+  target: { kind: "path", path: [0] },
+  name: "title",
+});
+
+client.action("document.content.replace", {
+  target: { kind: "path", path: [] },
+  index: 0,
+  replacement: "replacement text",
+});
+```
+
+`document.attr.set` calls the existing shape-specific `attrs.set` API;
+`document.attr.drop` calls `attrs.drop`; and `document.content.replace` calls
+the existing slot-based `content.replace(target, index, replacement)` API.
+Targets use the existing canonical document target union: a persisted QUID or
+a numeric canonical document path.
+
+Payloads are strict JSON action payloads. Attribute values are canonical
+primitives, or the existing structured style value when the name is `style`.
+Content replacement accepts a canonical primitive or the same JSON-safe
+canonical node representation already validated for graph operations. It does
+not accept raw HTML or introduce an HSON text action transport.
+
+These built-ins use normal lookup, payload validation, session authorization,
+deduplication, handler execution, tracing, and acknowledgement behavior. A
+successful changed mutation advances the authoritative LiveMap once; shared
+commit observation performs history and publication automatically. The
+acknowledgement uses the existing `completionRev` and carries no
+document-specific commit envelope.
+
+The names remain recognized on `data-object` and `data-array` authorities but
+return `LIVEHOST_ACTION_UNAVAILABLE`, never `LIVEHOST_UNKNOWN_ACTION`. Invalid
+payloads use `LIVEHOST_SCHEMA_INVALID_PAYLOAD`; target and mutation conflicts
+retain the existing structured LiveMap document error codes. Rejected,
+unauthorized, unavailable, unchanged, joined, or cached requests do not create
+an extra commit.
+
+Insertion, removal, movement, `attrs.setMany`, and `attrs.dropMany` remain out
+of scope.
 
 ### Remote action authorization
 

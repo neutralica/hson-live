@@ -1,6 +1,14 @@
 // livehost.history.ts
 
-import type { JsonValue, LiveMap, LiveMapCommit, LiveMapOp, LivePath } from "../../types/index.js";
+import type {
+  LiveMapAuthority,
+  JsonValue,
+  LiveMapAnyOp,
+  LiveMapCommit,
+  LiveMapGraphOp,
+  LiveMapOp,
+  LivePath,
+} from "../../types/index.js";
 import type {
   LiveHostCanonicalCommit,
   LiveHostCanonicalCommitListener,
@@ -13,6 +21,10 @@ import type {
   LiveHostLogicalMapId,
   LiveHostWireValue,
 } from "../../types/livehost.types.js";
+import { create_live_trace_context } from "./livehost.trace.js";
+import { clone_node } from "../../core/clone-node.js";
+import { is_Node } from "../../core/node-guards.js";
+import { clone_live_root } from "../livemap/livemap.editor.js";
 
 const DEFAULT_MAX_COMMITS = 1_024;
 const DEFAULT_MAX_BYTES = 4 * 1_024 * 1_024;
@@ -157,8 +169,44 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
   throw new Error("LiveHost canonical commit operation kind is invalid.");
 }
 
-function canonical_commit(
-  commit: LiveMapCommit,
+function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
+  if (op.op === "replace-root") {
+    return Object.freeze({
+      domain: "graph",
+      op: "replace-root",
+      mode: op.mode,
+      root: clone_live_root(op.root),
+    });
+  }
+  const target = op.target.kind === "path"
+    ? Object.freeze({ kind: "path" as const, path: Object.freeze([...op.target.path]) })
+    : Object.freeze({ kind: "quid" as const, quid: op.target.quid });
+  if (op.op === "set-attr") {
+    return Object.freeze({
+      domain: "graph",
+      op: "set-attr",
+      target,
+      name: op.name,
+      value: clone_node(op.value),
+    });
+  }
+  if (op.op === "remove-attr") {
+    return Object.freeze({ domain: "graph", op: "remove-attr", target, name: op.name });
+  }
+  return Object.freeze({
+    domain: "graph",
+    op: "replace-content",
+    target,
+    index: op.index,
+    replacement: is_Node(op.replacement)
+      ? clone_live_root(op.replacement)
+      : op.replacement,
+  });
+}
+
+function canonical_commit<TMap extends LiveMapAuthority>(
+  map: TMap,
+  commit: LiveMapCommit<LiveMapAnyOp>,
   logicalMapId: LiveHostLogicalMapId,
   incarnationId: LiveHostIncarnationId,
   expectedPrevRev: number,
@@ -178,13 +226,25 @@ function canonical_commit(
   if (!Array.isArray(commit.ops) || commit.ops.length === 0) {
     throw new Error("LiveHost canonical changed commit must contain operations.");
   }
+  const documentMode = map.mode === "element" || map.mode === "fragment";
+  if (commit.ops.some((operation) => ("domain" in operation) !== documentMode)) {
+    throw new Error(`LiveHost canonical commit operation domain is incompatible with ${map.mode}.`);
+  }
+  if (documentMode && commit.ops.some((operation) =>
+    "domain" in operation
+    && operation.op === "replace-root"
+    && operation.mode !== map.mode)) {
+    throw new Error(`LiveHost canonical root replacement is incompatible with ${map.mode}.`);
+  }
 
   return Object.freeze({
     logicalMapId,
     incarnationId,
     prevRev: commit.prevRev,
     rev: commit.rev,
-    ops: Object.freeze(commit.ops.map(canonical_op)),
+    mode: map.mode,
+    ops: Object.freeze(commit.ops.map((operation) =>
+      "domain" in operation ? canonical_graph_op(operation) : canonical_op(operation))),
   });
 }
 
@@ -196,10 +256,10 @@ function encoded_bytes(commit: LiveHostCanonicalCommit): number {
  * Attach canonical commit history and ordered publication to one authoritative
  * LiveMap. This is stream machinery only; it does not add recovery behavior.
  */
-export function make_livehost_canonical_stream<TState extends JsonValue | undefined>(
-  map: LiveMap<TState>,
+export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
+  map: TMap,
   options: LiveHostCanonicalStreamOptions = {},
-): LiveHostCanonicalStream {
+): LiveHostCanonicalStream<TMap> {
   const logicalMapId = must_identity(options.logicalMapId ?? make_logical_map_id(), "logical map ID");
   const incarnationId = must_identity(options.incarnationId ?? make_incarnation_id(), "incarnation ID");
   const maxCommits = must_bound(options.history?.maxCommits, DEFAULT_MAX_COMMITS, "maxCommits");
@@ -250,12 +310,41 @@ export function make_livehost_canonical_stream<TState extends JsonValue | undefi
     }
   }
 
-  function ingest(commit: LiveMapCommit): void {
-    const canonical = canonical_commit(commit, logicalMapId, incarnationId, headRev);
+  function ingest(commit: LiveMapCommit<LiveMapAnyOp>, origin: "authoritative" | "replay"): void {
+    if (origin !== "authoritative") {
+      trace_commit(commit, origin, "skip");
+      return;
+    }
+    const canonical = canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
     append_history(canonical);
     headRev = canonical.rev;
     publicationQueue.push(canonical);
     drain_publication_queue();
+    trace_commit(commit, origin, "success");
+  }
+
+  function trace_commit(
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    origin: "authoritative" | "replay",
+    status: "success" | "skip",
+  ): void {
+    if (map.mode !== "element" && map.mode !== "fragment") return;
+    const sink = options.trace;
+    if (sink === undefined) return;
+    const trace = create_live_trace_context(sink, `lht-stream-${logicalMapId}-${commit.rev}`);
+    const first = commit.ops[0];
+    trace.emit({
+      subsystem: "livemap",
+      phase: "commit.publication",
+      status,
+      details: () => ({
+        mapMode: map.mode,
+        revision: commit.rev,
+        operationDomain: first !== undefined && "domain" in first ? "graph" : "data",
+        operationCount: commit.ops.length,
+        origin,
+      }),
+    });
   }
 
   function replay_after(fromRev: number, throughRev = headRev): readonly LiveHostCanonicalCommit[] | undefined {
@@ -307,7 +396,8 @@ export function make_livehost_canonical_stream<TState extends JsonValue | undefi
     debug,
   });
 
-  const stream: LiveHostCanonicalStream = Object.freeze({
+  const stream: LiveHostCanonicalStream<TMap> = Object.freeze({
+    mode: map.mode,
     logicalMapId,
     incarnationId,
     get headRev() {
@@ -323,10 +413,24 @@ export function make_livehost_canonical_stream<TState extends JsonValue | undefi
   });
 
   // Register before the host exposes its map so canonical ingestion is the
-  // first host-owned observer of every later projected mutation.
-  map.feed([], (event) => {
-    ingest(event.commit);
+  // first host-owned observer of every later authoritative mutation.
+  map.commits.observe((event) => {
+    if (event.kind === "commit") ingest(event.commit, event.origin);
+    else trace_snapshot(event.revision);
   });
+
+  function trace_snapshot(revision: number): void {
+    if (map.mode !== "element" && map.mode !== "fragment") return;
+    const sink = options.trace;
+    if (sink === undefined) return;
+    const trace = create_live_trace_context(sink, `lht-stream-${logicalMapId}-snapshot-${revision}`);
+    trace.emit({
+      subsystem: "livemap",
+      phase: "snapshot.installation",
+      status: "skip",
+      details: () => ({ mapMode: map.mode, revision, origin: "snapshot" }),
+    });
+  }
 
   return stream;
 }

@@ -259,10 +259,13 @@ export type LiveMapCore<
   /** Explicit synchronous transaction grouping for one commit. */
   batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
+  commits: LiveMapCommitObserverApi;
   sub: LiveMapSubApi<TValue>;
   debug: LiveMapDebugApi;
   readonly rev: number;
   capture: () => LiveMapCapture<TValue>;
+  /** Atomically restore projected state and its exact captured revision. */
+  restore: (capture: LiveMapCapture<TValue>) => void;
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
   replay: (input: LiveMapReplay) => LiveMapCommit;
 }>;
@@ -361,6 +364,15 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
     capture: DocumentLiveMapCapture,
     options?: DocumentLiveMapInstallOptions,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
+  /** Restore one same-mode canonical snapshot at its exact captured revision. */
+  restore: (
+    capture: DocumentLiveMapCapture,
+    options?: DocumentLiveMapInstallOptions,
+  ) => void;
+  /** Atomically replay one validated canonical graph commit. */
+  replay: (commit: LiveMapGraphCommit) => LiveMapGraphCommit;
+  /** Observe successful canonical graph commits without projected path coercion. */
+  commits: LiveMapCommitObserverApi;
   /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
   debug: LiveMapDebugApi;
 }>;
@@ -375,6 +387,16 @@ export type FragmentLiveMap = DocumentLiveMapShared<"fragment"> & Readonly<{
 
 /** Shape-specific document façade with detached reads and atomic capture install. */
 export type DocumentLiveMap = ElementLiveMap | FragmentLiveMap;
+
+/** Mode-neutral authority boundary shared by schema-narrowed data and document maps. */
+export type LiveMapAuthority = Readonly<{
+  readonly mode: LiveMapRootMode;
+  readonly rev: number;
+  root: () => HsonNode;
+  /** Mode-specific captures share an atomic authoritative revision. */
+  capture: () => Readonly<{ rev: number }>;
+  commits: LiveMapCommitObserverApi;
+}>;
 
 /** Result of HSON/node construction after canonical root classification. */
 export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
@@ -486,6 +508,30 @@ export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
 
 /** Existing commit envelope specialized to graph-domain operations. */
 export type LiveMapGraphCommit<TOp extends LiveMapGraphOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
+
+/** Why a canonical commit became visible on one LiveMap instance. */
+export type LiveMapCommitOrigin = "authoritative" | "replay";
+
+/** Shared commit observation event across projected and canonical graph modes. */
+export type LiveMapCommitObservation<TOp extends LiveMapAnyOp = LiveMapAnyOp> =
+  | Readonly<{
+    kind: "commit";
+    commit: LiveMapCommit<TOp>;
+    origin: "authoritative" | "replay";
+  }>
+  | Readonly<{
+    kind: "snapshot";
+    origin: "snapshot";
+    revision: number;
+  }>;
+
+export type LiveMapCommitObserver<TOp extends LiveMapAnyOp = LiveMapAnyOp> = (
+  observation: LiveMapCommitObservation<TOp>,
+) => void;
+
+export type LiveMapCommitObserverApi<TOp extends LiveMapAnyOp = LiveMapAnyOp> = Readonly<{
+  observe: (observer: LiveMapCommitObserver<TOp>) => LiveMapDisposer;
+}>;
 
 /**
  * Event delivered to a feed listener.

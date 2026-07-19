@@ -89,7 +89,8 @@ function project_snapshot_hson(source) {
   assert.equal(plan.outcome, "snapshot");
   assert.equal(plan.reason, "no_usable_revision");
   assert.equal(plan.body.rev, plan.headRev);
-  assert.deepEqual(Object.keys(plan.body).sort(), ["hson", "incarnationId", "logicalMapId", "rev"]);
+  assert.deepEqual(Object.keys(plan.body).sort(), ["hson", "incarnationId", "logicalMapId", "mode", "rev"]);
+  assert.equal(plan.body.mode, "data-object");
   assert.equal(plan.body.hson, `<value 2>`);
   assert.equal(plan.body.hson.includes("\n"), false);
   assert.equal("value" in plan.body, false);
