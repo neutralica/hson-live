@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { LiveHostClientSessionError, hson } from "../src/index.ts";
+import { LiveHostClientSessionError, hson } from "../../src/index.ts";
 
 let checks = 0;
 function check(name, fn) {

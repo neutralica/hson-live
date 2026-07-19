@@ -267,10 +267,10 @@ check("quoted names and escaped string content snapshot", () => {
 });
 
 check("noQuid filters only the exact persisted QUID key", () => {
-  const node = parse(`<tag data-_quid="q-1" data-_custom="keep" data-_index="7" "value"/>`);
+  const node = parse(`<tag data-_quid="0000000000000001" data-_custom="keep" data-_index="7" "value"/>`);
   const plain = readable(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
-  assert.match(plain, /@q-1/);
+  assert.match(plain, /@0000000000000001/);
   assert.doesNotMatch(filtered, /data-_quid/);
   assert.match(filtered, /data-_custom="keep"/);
   assert.match(filtered, /data-_index="7"/);
@@ -278,7 +278,7 @@ check("noQuid filters only the exact persisted QUID key", () => {
 });
 
 check("noBreak and noQuid compose in either order", () => {
-  const node = parse(`<p data-_quid="q-2" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p data-_quid="0000000000000002" "first" <em "middle"/> "last"/>`);
   const left = hson.fromNode(node).toHson().noBreak().noQuid().serialize();
   const right = hson.fromNode(node).toHson().noQuid().noBreak().serialize();
   assert.equal(left, right);
@@ -286,7 +286,7 @@ check("noBreak and noQuid compose in either order", () => {
 });
 
 check("withOptions composes with convenience methods", () => {
-  const node = parse(`<p data-_quid="q-3" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p data-_quid="0000000000000003" "first" <em "middle"/> "last"/>`);
   const expected = `<p "first" <em "middle"/> "last"/>`;
   assert.equal(
     hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize(),
@@ -303,7 +303,7 @@ check("withOptions composes with convenience methods", () => {
 });
 
 check("repeated options are idempotent", () => {
-  const node = parse(`<tag data-_quid="q-4" "value"/>`);
+  const node = parse(`<tag data-_quid="0000000000000004" "value"/>`);
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noBreak().noQuid().noQuid().serialize(),
     `<tag "value"/>`,
@@ -311,16 +311,16 @@ check("repeated options are idempotent", () => {
 });
 
 check("noQuid does not mutate or contaminate the source graph", () => {
-  const node = parse(`<tag data-_quid="q-5" data-_custom="keep" "value"/>`);
+  const node = parse(`<tag data-_quid="0000000000000005" data-_custom="keep" "value"/>`);
   const before = structuredClone(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(node, before);
   assert.doesNotMatch(filtered, /data-_quid/);
-  assert.match(readable(node), /@q-5/);
+  assert.match(readable(node), /@0000000000000005/);
 });
 
 check("noQuid does not register imported identity", () => {
-  const quid = "serializer-unregistered-quid";
+  const quid = "0000000000000006";
   const node = parse(`<tag data-_quid="${quid}" "value"/>`);
   assert.equal(get_node_by_quid(quid), undefined);
   hson.fromNode(node).toHson().noQuid().serialize();
@@ -328,7 +328,7 @@ check("noQuid does not register imported identity", () => {
 });
 
 check("parsed noQuid graph equals the graph with only QUID fields removed", () => {
-  const node = parse(`<p data-_quid="parent" data-_custom="keep" "first" <em data-_quid="child" "middle"/>/>`);
+  const node = parse(`<p data-_quid="0000000000000007" data-_custom="keep" "first" <em data-_quid="0000000000000008" "middle"/>/>`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
@@ -451,10 +451,10 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
   const node = elementWithAttrs({ count: 2, disabled: "disabled", enabled: true });
   onlyElement(node).$_meta = {
     "data-_custom": "keep",
-    "data-_quid": "drop-when-requested",
+    "data-_quid": "0000000000000009",
   };
   const builder = () => hson.fromNode(node).toHson();
-  const plain = `<tag @drop-when-requested count="2" enabled="true" disabled data-_custom="keep"/>`;
+  const plain = `<tag @0000000000000009 count="2" enabled="true" disabled data-_custom="keep"/>`;
   const filtered = `<tag count="2" enabled="true" disabled data-_custom="keep"/>`;
   assert.equal(builder().serialize(), plain);
   assert.equal(builder().noBreak().serialize(), plain);
@@ -467,11 +467,11 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
 });
 
 check("quoted ordinary attributes are unchanged for structured block content", () => {
-  const node = parse(`<p data-_quid="q-attrs" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p data-_quid="000000000000000a" "first" <em "middle"/> "last"/>`);
   onlyElement(node).$_attrs = { count: 2, disabled: "disabled" };
   assert.equal(
     readable(node),
-    `<p @q-attrs count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+    `<p @000000000000000a count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noQuid().serialize(),

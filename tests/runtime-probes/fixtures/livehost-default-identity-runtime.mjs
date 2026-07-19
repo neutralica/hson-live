@@ -1,4 +1,4 @@
-import { hson } from "../../src/index.ts";
+import { hson } from "../../../src/index.ts";
 
 const messageListeners = new Set();
 const closeListeners = new Set();

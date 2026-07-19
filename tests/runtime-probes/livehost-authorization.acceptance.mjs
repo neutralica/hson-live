@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
-import { create_live_trace_collector } from "../src/diagnostics/index.ts";
+import { hson } from "../../src/index.ts";
+import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
 
 let checks = 0;
 async function check(name, run) { await run(); process.stdout.write(`ok ${++checks} - ${name}\n`); }

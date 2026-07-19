@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
+import { hson } from "../../src/index.ts";
 import {
   create_live_trace_collector,
   create_live_trace_console_sink,
-} from "../src/diagnostics/index.ts";
-import { create_live_trace_context } from "../src/api/livehost/livehost.trace.ts";
+} from "../../src/diagnostics/index.ts";
+import { create_live_trace_context } from "../../src/api/livehost/livehost.trace.ts";
 
 let checks = 0;
 async function check(name, fn) {

@@ -1,0 +1,23 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "../src/**/*.ts",
+    "./**/*.mts",
+    "./**/*.ts"
+  ],
+  "exclude": [
+    "../dist",
+    "../node_modules",
+    "../src/_refactor/**/*",
+    "./runtime-probes/**/*"
+  ]
+}

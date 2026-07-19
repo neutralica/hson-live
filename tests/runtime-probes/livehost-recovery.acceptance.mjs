@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { LiveHostRecoveryError, hson } from "../src/index.ts";
+import { LiveHostRecoveryError, hson } from "../../src/index.ts";
 
 function request_for(host, lastAppliedRev = host.stream.headRev) {
   return {

@@ -5,8 +5,8 @@ import type {
   DocumentLiveMapCapture,
   ElementLiveMap,
   FragmentLiveMap,
-  HsonNode,
 } from "../src/index.ts";
+import type { HsonNode } from "../src/core/types.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -64,8 +64,8 @@ function invalid_capture(value: unknown): DocumentLiveMapCapture {
 }
 
 check("element install atomically replaces root, identity, revision, and returns one graph op", () => {
-  const source = element(`<main data-_quid="new-main" <p data-_quid="new-p" "new"/>/>`);
-  const target = element(`<aside data-_quid="old-aside" "old"/>`);
+  const source = element(`<main data-_quid="0000000000000007" <p data-_quid="0000000000000008" "new"/>/>`);
+  const target = element(`<aside data-_quid="0000000000000009" "old"/>`);
   const sourceCapture = source.capture();
   const beforeRev = target.rev;
   const commit = target.install(sourceCapture);
@@ -82,9 +82,9 @@ check("element install atomically replaces root, identity, revision, and returns
     root: sourceCapture.root,
   });
   assert.deepEqual(target.root(), sourceCapture.root);
-  assert.equal(target.element.byQuid("new-main")?.$_tag, "main");
-  assert.equal(target.element.byQuid("new-p")?.$_tag, "p");
-  assert.equal(target.element.byQuid("old-aside"), undefined);
+  assert.equal(target.element.byQuid("0000000000000007")?.$_tag, "main");
+  assert.equal(target.element.byQuid("0000000000000008")?.$_tag, "p");
+  assert.equal(target.element.byQuid("0000000000000009"), undefined);
   assert.notEqual(commit.ops[0]?.root, target.root());
 });
 
@@ -96,8 +96,8 @@ check("fragment install preserves canonical document varieties", () => {
       return map;
     })(),
     fragment(`"text only"`),
-    fragment(`<div data-_quid="a"/> <div data-_quid="b"/>`),
-    fragment(`"before" <section class="x" style="color: red" data-_quid="section" data-_custom="kept" <em data-_quid="em" "middle"/>/> "after"`),
+    fragment(`<div data-_quid="0000000000000003"/> <div data-_quid="0000000000000004"/>`),
+    fragment(`"before" <section class="x" style="color: red" data-_quid="0000000000000005" data-_custom="kept" <em data-_quid="0000000000000006" "middle"/>/> "after"`),
   ];
   for (const source of sources) {
     const target = fragment(`"target"`);
@@ -111,13 +111,13 @@ check("fragment install preserves canonical document varieties", () => {
 });
 
 check("mode mismatches and declaration mismatches roll back completely", () => {
-  const target = element(`<main data-_quid="target"/>`);
+  const target = element(`<main data-_quid="000000000000000a"/>`);
   const before = target.capture();
   const known = quids(before.root);
   assert.throws(() => target.install(fragment(`"text"`).capture()), /target mode element cannot install fragment/);
   assert_unchanged(target, before, known);
 
-  const elementCapture = element(`<button data-_quid="button"/>`).capture();
+  const elementCapture = element(`<button data-_quid="000000000000000b"/>`).capture();
   const falselyDeclared = { ...elementCapture, mode: "fragment" };
   assert.throws(
     () => target.install(invalid_capture(falselyDeclared)),
@@ -146,9 +146,9 @@ check("capture envelope fields are validated at runtime", () => {
 });
 
 check("expectedRev is target-local and rejects stale, future, and invalid values", () => {
-  const sourceCapture = element(`<main data-_quid="source"/>`).capture();
-  const target = element(`<aside data-_quid="target"/>`);
-  target.install(element(`<article data-_quid="intermediate"/>`).capture());
+  const sourceCapture = element(`<main data-_quid="000000000000000c"/>`).capture();
+  const target = element(`<aside data-_quid="000000000000000a"/>`);
+  target.install(element(`<article data-_quid="000000000000000d"/>`).capture());
   const initial = target.capture();
 
   for (const expectedRev of [target.rev - 1, target.rev + 1]) {
@@ -170,7 +170,7 @@ check("expectedRev is target-local and rejects stale, future, and invalid values
   }
 
   const sourceWithForeignRev = { ...sourceCapture, rev: 14 };
-  const freshTarget = element(`<aside data-_quid="fresh"/>`);
+  const freshTarget = element(`<aside data-_quid="000000000000000e"/>`);
   const commit = freshTarget.install(sourceWithForeignRev, { expectedRev: 0 });
   assert.equal(commit.prevRev, 0);
   assert.equal(commit.rev, 1);
@@ -179,16 +179,16 @@ check("expectedRev is target-local and rejects stale, future, and invalid values
 });
 
 check("install accepts sparse identity and rejects invalid present identity", () => {
-  const target = element(`<main data-_quid="target"/>`);
-  const base = element(`<section data-_quid="section" <p data-_quid="p"/>/>`).capture();
+  const target = element(`<main data-_quid="000000000000000a"/>`);
+  const base = element(`<section data-_quid="0000000000000005" <p data-_quid="0000000000000002"/>/>`).capture();
 
   const sparse = structuredClone(base);
   delete nodes(sparse.root).find((node) => node.$_tag === "p")?.$_meta?.["data-_quid"];
   const sparseCommit = target.install(sparse);
   assert.equal(sparseCommit.changed, true);
   assert.equal(target.rev, 1);
-  assert.equal(target.element.byQuid("target"), undefined);
-  assert.equal(target.element.byQuid("section")?.$_tag, "section");
+  assert.equal(target.element.byQuid("000000000000000a"), undefined);
+  assert.equal(target.element.byQuid("0000000000000005")?.$_tag, "section");
   assert.equal(nodes(target.capture().root).find((node) => node.$_tag === "p")?.$_meta?.["data-_quid"], undefined);
 
   const empty = structuredClone(base);
@@ -212,27 +212,27 @@ check("install accepts sparse identity and rejects invalid present identity", ()
 
 check("install and recapture preserve completely unquidded document graphs", () => {
   const source = element(`<main <p "one"/> <p "two"/>/>`);
-  const target = element(`<aside data-_quid="old"/>`);
+  const target = element(`<aside data-_quid="000000000000000f"/>`);
   const capture = source.capture();
   assert.deepEqual(quids(capture.root), []);
   const commit = target.install(capture);
   assert.deepEqual([commit.prevRev, commit.rev, target.rev], [0, 1, 1]);
   assert.deepEqual(quids(target.root()), []);
   assert.deepEqual(quids(target.capture().root), []);
-  assert.equal(target.element.byQuid("old"), undefined);
+  assert.equal(target.element.byQuid("000000000000000f"), undefined);
   assert.equal(target.element.byQuid("anything"), undefined);
 });
 
 check("installed ownership and graph commit payload are recursively detached", () => {
   const sourceNode = hson.fromHson(
-    `<main id="original" data-_quid="main" data-_custom="meta" <p data-_quid="p" "x"/>/>`,
+    `<main id="original" data-_quid="0000000000000001" data-_custom="meta" <p data-_quid="0000000000000002" "x"/>/>`,
   ).toNode();
   const main = nodes(sourceNode).find((node) => node.$_tag === "main");
   if (main !== undefined) main.$_attrs = { ...main.$_attrs, style: { color: "red" } };
   const source = hson.liveMap.fromNode(sourceNode);
   if (source.mode !== "element") throw new Error("Expected element source");
   const capture = source.capture();
-  const target = element(`<aside data-_quid="old"/>`);
+  const target = element(`<aside data-_quid="000000000000000f"/>`);
   const commit = target.install(capture);
   const installed = target.root();
 
@@ -241,20 +241,20 @@ check("installed ownership and graph commit payload are recursively detached", (
     captureMain.$_tag = "capture-mutated";
     captureMain.$_content.length = 0;
     captureMain.$_attrs = { id: "changed", style: { color: "blue" } };
-    captureMain.$_meta = { "data-_quid": "changed" };
+    captureMain.$_meta = { "data-_quid": "0000000000000011" };
   }
   const opRoot = commit.ops[0]?.root;
   if (opRoot !== undefined) {
     opRoot.$_content.length = 0;
-    opRoot.$_meta = { "data-_quid": "op-mutated" };
+    opRoot.$_meta = { "data-_quid": "0000000000000012" };
   }
   assert.deepEqual(target.root(), installed);
-  assert.equal(target.element.byQuid("main")?.$_tag, "main");
-  assert.equal(target.element.byQuid("p")?.$_tag, "p");
+  assert.equal(target.element.byQuid("0000000000000001")?.$_tag, "main");
+  assert.equal(target.element.byQuid("0000000000000002")?.$_tag, "p");
 });
 
 check("canonical identical install follows data replace no-op policy", () => {
-  const target = element(`<main data-_quid="main"/>`);
+  const target = element(`<main data-_quid="0000000000000001"/>`);
   const before = target.capture();
   const commit = target.install(before);
   assert.deepEqual(commit, { changed: false, prevRev: before.rev, rev: before.rev, ops: [] });
@@ -262,22 +262,22 @@ check("canonical identical install follows data replace no-op policy", () => {
 });
 
 check("valid install replaces a target damaged through unsafe debug access", () => {
-  const target = element(`<main data-_quid="old"/>`);
+  const target = element(`<main data-_quid="000000000000000f"/>`);
   const liveMeta = target.debug.node(["main"]).meta();
   if (liveMeta === undefined) throw new Error("Expected live metadata");
   liveMeta["data-_quid"] = "damaged";
-  assert.equal(target.element.byQuid("old")?.$_meta?.["data-_quid"], "damaged");
+  assert.equal(target.element.byQuid("000000000000000f")?.$_meta?.["data-_quid"], "damaged");
 
-  const sourceCapture = element(`<section data-_quid="new"/>`).capture();
+  const sourceCapture = element(`<section data-_quid="0000000000000010"/>`).capture();
   target.install(sourceCapture);
-  assert.equal(target.element.byQuid("old"), undefined);
-  assert.equal(target.element.byQuid("new")?.$_tag, "section");
+  assert.equal(target.element.byQuid("000000000000000f"), undefined);
+  assert.equal(target.element.byQuid("0000000000000010")?.$_tag, "section");
 });
 
 check("data façades do not expose document install at runtime", () => {
   assert.equal("install" in hson.liveMap.fromJson({}), false);
   assert.equal("install" in hson.liveMap.fromJson([]), false);
-  const document = element(`<main data-_quid="main"/>`);
+  const document = element(`<main data-_quid="0000000000000001"/>`);
   for (const key of ["set", "replace", "proxy", "apply", "replay", "applyGraph", "replayGraph", "installGraph"]) {
     assert.equal(key in document, false);
   }

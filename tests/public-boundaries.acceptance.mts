@@ -76,7 +76,7 @@ check("JSON value and HTML serialization finalizers expose no parse method", () 
 
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
   const node = hson.fromHson(
-    `<button id="primary" data-_quid="button-q" data-_custom="kept" "hello"/>`,
+    `<button id="primary" data-_quid="0000000000000001" data-_custom="kept" "hello"/>`,
   ).toNode();
   const map = hson.liveMap.fromNode(node);
 
@@ -102,9 +102,9 @@ check("LiveMap exposes detached root copies and debug-only live node access", ()
     copiedButton.$_attrs?.style?.[":hover"],
     ownedButton.$_attrs.style?.[":hover"],
   );
-  assert.equal(copiedButton.$_meta?.["data-_quid"], "button-q");
+  assert.equal(copiedButton.$_meta?.["data-_quid"], "0000000000000001");
   copiedButton.$_attrs = { ...copiedButton.$_attrs, id: "mutated" };
-  copiedButton.$_meta = { ...copiedButton.$_meta, "data-_quid": "changed" };
+  copiedButton.$_meta = { ...copiedButton.$_meta, "data-_quid": "0000000000000002" };
   assert.equal(replace_first_primitive(copiedButton, "changed"), true);
   copy.$_content.push({ $_tag: "detached", $_content: [] });
 
@@ -115,6 +115,7 @@ check("LiveMap exposes detached root copies and debug-only live node access", ()
 
 check("debug.node preserves unsafe live mutation and bypass behavior", () => {
   const map = hson.liveMap.fromNode(hson.fromJson({ a: { b: 1 } }).toNode());
+  if (map.mode !== "data-object") throw new Error(`expected data-object, observed ${map.mode}`);
   const feedEvents: unknown[] = [];
   const subEvents: unknown[] = [];
   const stopFeed = map.feed([], (event) => feedEvents.push(event));
@@ -135,8 +136,8 @@ check("debug.node preserves unsafe live mutation and bypass behavior", () => {
 });
 
 check("document install is present only on document runtime façades", () => {
-  const document = hson.liveMap.fromHson(`<main data-_quid="main"/>`);
-  assert.equal(document.mode, "element");
+  const document = hson.liveMap.fromHson(`<main data-_quid="0000000000000003"/>`);
+  if (document.mode !== "element") throw new Error(`expected element, observed ${document.mode}`);
   assert.equal("install" in document, true);
   assert.equal(typeof document.install, "function");
   assert.equal("install" in hson.liveMap.fromJson({}), false);

@@ -23,7 +23,11 @@ export interface HsonNode {
 
 export type NodeContent = (HsonNode | Primitive)[];
 
-export type HsonAttrs = { "style"?: CssMap } & Record<string, Primitive>;
+/** Ordinary attributes plus the one structured `style` attribute. */
+export interface HsonAttrs {
+  [key: string]: Primitive | CssMap | undefined;
+  style?: CssMap;
+}
 export type AttrValue = Primitive | undefined;
 export type AttrMap = Readonly<Record<string, AttrValue>>;
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
-import { decode_livehost_server_message, LiveHostClientRecoveryError, hson } from "../src/index.ts";
+import { decode_livehost_server_message, LiveHostClientRecoveryError, hson } from "../../src/index.ts";
 
 let checks = 0;
 

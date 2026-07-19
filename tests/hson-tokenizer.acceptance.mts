@@ -5,16 +5,19 @@ import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { encode_persisted_quid, is_persisted_quid } from "../src/core/persisted-quid.ts";
+import { is_Node } from "../src/core/node-guards.ts";
+import type { JsonValue } from "../src/core/types.ts";
+import type { Tokens } from "../src/api/transform/token.types.ts";
 
 let checks = 0;
 
-function check(name, fn) {
+function check(name: string, fn: () => void): void {
   fn();
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-function token_summary(tokens) {
+function token_summary(tokens: readonly Tokens[]) {
   return tokens.map((token) => {
     switch (token.kind) {
       case "OPEN":
@@ -303,7 +306,9 @@ for (const [multiline, compact] of equivalent_layouts) {
 check("unquoted HSON attribute inputs retain their existing string parse contract", () => {
   const root = parse_hson(`<tag count=2 enabled=true missing=null href=http://example.test/path disabled "content"/>`);
   const cluster = root.$_content[0];
+  assert.ok(is_Node(cluster));
   const tag = cluster.$_content[0];
+  assert.ok(is_Node(tag));
   assert.deepEqual(tag.$_attrs, {
     count: "2",
     enabled: "true",
@@ -324,7 +329,10 @@ check("CRLF and nested constructs retain absolute token starts", () => {
     { kind: "TEXT", pos: { line: 5, col: 4, index: 21 } },
     { kind: "CLOSE", pos: { line: 5, col: 5, index: 22 } },
   ]);
-  assert.equal(tokens[1].raw, `"a\\nb"`);
+  const text = tokens[1];
+  assert.equal(text?.kind, "TEXT");
+  if (text?.kind !== "TEXT") throw new Error("expected quoted TEXT token");
+  assert.equal(text.raw, `"a\\nb"`);
 });
 
 check("multiline attribute ranges use original CRLF indices", () => {
@@ -350,7 +358,7 @@ check("comments quoted tags and nested arrays share absolute positions", () => {
   ]);
 });
 
-const round_trip_payloads = [
+const round_trip_payloads: readonly JsonValue[] = [
   {},
   [],
   { a: 1, b: true, c: null, d: "text" },
