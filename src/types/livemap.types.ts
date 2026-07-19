@@ -291,6 +291,11 @@ export type DocumentLiveMapCapture<
   root: HsonNode;
 }>;
 
+/** Optimistic target-local revision guard for canonical document installation. */
+export type DocumentLiveMapInstallOptions = Readonly<{
+  expectedRev?: number;
+}>;
+
 /** Shared detached canonical reads for element and fragment capabilities. */
 export type DocumentLiveMapReadApi = Readonly<{
   /** Return a detached clone of the complete canonical root. */
@@ -312,6 +317,11 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   readonly rev: number;
   root: () => HsonNode;
   capture: () => DocumentLiveMapCapture<TMode>;
+  /** Atomically replace this document with a canonical same-mode capture. */
+  install: (
+    capture: DocumentLiveMapCapture,
+    options?: DocumentLiveMapInstallOptions,
+  ) => LiveMapGraphCommit;
   /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
   debug: LiveMapDebugApi;
 }>;
@@ -324,7 +334,7 @@ export type FragmentLiveMap = DocumentLiveMapShared<"fragment"> & Readonly<{
   fragment: DocumentLiveMapReadApi;
 }>;
 
-/** Shape-specific read-only façade for canonical HTML/document-shaped HSON. */
+/** Shape-specific document façade with detached reads and atomic capture install. */
 export type DocumentLiveMap = ElementLiveMap | FragmentLiveMap;
 
 /** Result of HSON/node construction after canonical root classification. */
@@ -374,7 +384,25 @@ export type LiveMapReplaceOp = Readonly<{
 }>;
 
 /** Normalized operation emitted by a LiveMap mutation. */
-export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | LiveMapSpliceOp;
+export type LiveMapDataOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | LiveMapSpliceOp;
+
+/** Complete canonical document-root replacement; deliberately not a data op. */
+export type LiveMapGraphReplaceRootOp = Readonly<{
+  domain: "graph";
+  op: "replace-root";
+  mode: DocumentLiveMapMode;
+  root: HsonNode;
+}>;
+
+/** First graph-domain operation family. Fine-grained graph ops are not yet public. */
+export type LiveMapGraphOp = LiveMapGraphReplaceRootOp;
+
+/** Select a LiveMap operation domain; bare use preserves the existing data domain. */
+export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =
+  TDomain extends "graph" ? LiveMapGraphOp : LiveMapDataOp;
+
+/** Full shared operation family used by the generic commit envelope. */
+export type LiveMapAnyOp = LiveMapOp<"data" | "graph">;
 
 /**
  * Normalized mutation record returned by Core.
@@ -383,12 +411,15 @@ export type LiveMapOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | Live
  * writes/deletes. Multi-op commits are used by `setMany(...)`, object-valued
  * `set(...)`, and explicit `batch(...)` calls.
  */
-export type LiveMapCommit = Readonly<{
+export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
   changed: boolean;
   rev: number;
   prevRev: number;
-  ops: readonly LiveMapOp[];
+  ops: readonly TOp[];
 }>;
+
+/** Existing commit envelope specialized to graph-domain operations. */
+export type LiveMapGraphCommit = LiveMapCommit<LiveMapGraphOp>;
 
 /**
  * Event delivered to a feed listener.
@@ -398,10 +429,10 @@ export type LiveMapCommit = Readonly<{
  * projected value at the subscriber's path after the commit has been applied.
  */
 export type LiveMapFeedEvent = Readonly<{
-  op: LiveMapOp;
+  op: LiveMapDataOp;
   path: LivePath;
   value: JsonValue | undefined;
-  ops: readonly LiveMapOp[];
+  ops: readonly LiveMapDataOp[];
   commit: LiveMapCommit;
 }>;
 
@@ -717,5 +748,5 @@ export type LiveMapApply<TValue = JsonValue | undefined> = Readonly<{
 
 export type LiveMapReplay = Readonly<{
   prevRev: number;
-  ops: readonly LiveMapOp[];
+  ops: readonly LiveMapDataOp[];
 }>;

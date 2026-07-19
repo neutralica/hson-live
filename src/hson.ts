@@ -47,25 +47,15 @@ const LIVE_MAP_SCHEMA_NAMESPACE: LiveMapSchemaNamespace = Object.assign(
 /**
  * Build a LiveMap from projected JSON.
  *
- * Object roots are seeded through an empty HSON object and then `replace(...)`d
- * so LiveMap construction uses the same editor path as later root replacement.
- * Non-object roots can be transformed directly because there is no object graph
- * to seed before replacement.
+ * Construction transforms the initial JSON value directly into the owned
+ * canonical graph. Initial state is not a mutation and therefore consumes no
+ * revision or commit.
  */
 function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
   const value = typeof input === "string" ? JSON.parse(input) as JsonValue : input;
 
-  if (!is_livemap_seed_object(value)) {
-    const out = UNSAFE_SOURCE.fromJson(value);
-    return must_data_livemap(make_classified_livemap(out.toNode()));
-  }
-
-  const out = UNSAFE_SOURCE.fromJson({});
-  const map = must_data_livemap(make_classified_livemap(out.toNode()));
-
-  map.replace(value);
-
-  return map;
+  const out = UNSAFE_SOURCE.fromJson(value);
+  return must_data_livemap(make_classified_livemap(out.toNode()));
 }
 
 function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
@@ -84,11 +74,6 @@ function trusted_document_node(input: string): HsonNode {
     ? input
     : `<_hson_root>${input}</_hson_root>`;
   return UNSAFE_SOURCE.fromHtml(source, { sanitize: false }).toNode();
-}
-
-/** True when LiveMap JSON construction should seed an object root via replace. */
-function is_livemap_seed_object(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
@@ -177,14 +162,14 @@ export const hson = {
       return make_classified_livemap(node);
     },
 
-    /** Parse trusted HTML without sanitization into a read-only document LiveMap. */
+    /** Parse trusted HTML without sanitization into a shape-specific document LiveMap. */
     fromTrustedHtml(input: string): DocumentLiveMap {
       const map = make_classified_livemap(trusted_document_node(input));
       if (map.mode === "element" || map.mode === "fragment") return map;
       throw new Error(`LiveMap trusted HTML construction produced unexpected root mode ${map.mode}.`);
     },
 
-    /** Sanitize and parse untrusted HTML into a read-only document LiveMap. */
+    /** Sanitize and parse untrusted HTML into a shape-specific document LiveMap. */
     fromUntrustedHtml(input: string): DocumentLiveMap {
       const out = SAFE_SOURCE.fromHtml(input, { sanitize: true });
       const map = make_classified_livemap(out.toNode());

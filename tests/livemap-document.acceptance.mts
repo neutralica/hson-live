@@ -187,7 +187,7 @@ check("fragment reads preserve repeated siblings and mixed content in order", ()
   assert.equal(map.rev, 0);
 });
 
-check("document identity preserves valid QUIDs and generates missing element QUIDs once", () => {
+check("document identity is sparse and preserves only explicitly persisted QUIDs", () => {
   const map = hson.liveMap.fromHson(
     `<main data-_quid="main-q" <p "one"/> <p data-_quid="kept-q" "two"/>/>`,
   );
@@ -198,16 +198,38 @@ check("document identity preserves valid QUIDs and generates missing element QUI
   const paragraphs = find_nodes(first, "p");
   assert.equal(main?.$_meta?.["data-_quid"], "main-q");
   assert.equal(paragraphs[1]?.$_meta?.["data-_quid"], "kept-q");
-  assert.equal(typeof paragraphs[0]?.$_meta?.["data-_quid"], "string");
-  assert.notEqual(paragraphs[0]?.$_meta?.["data-_quid"], "");
+  assert.equal(paragraphs[0]?.$_meta?.["data-_quid"], undefined);
   assert.deepEqual(second, first);
   assert.deepEqual(map.capture().root, first);
+  assert.equal(map.element.byQuid("main-q")?.$_tag, "main");
+  assert.equal(map.element.byQuid("kept-q")?.$_tag, "p");
+  assert.equal(map.element.byQuid("unknown"), undefined);
+  assert.equal(map.rev, 0);
+});
 
-  const generated = paragraphs[0]?.$_meta?.["data-_quid"];
-  assert.equal(generated === undefined ? undefined : map.element.byQuid(generated)?.$_tag, "p");
-  const lookup = generated === undefined ? undefined : map.element.byQuid(generated);
-  if (lookup !== undefined) lookup.$_tag = "mutated-lookup";
-  assert.equal(generated === undefined ? undefined : map.element.byQuid(generated)?.$_tag, "p");
+check("unquidded construction and every detached read preserve identity absence", () => {
+  const source = hson.fromHson(`<main <p "one"/> <p "two"/>/>`).toNode();
+  const sourceBefore = structuredClone(source);
+  const map = hson.liveMap.fromNode(source);
+  assert.equal(map.mode, "element");
+  const reads = [map.root(), map.capture().root, map.element.node(), ...map.element.content().filter(is_node)];
+  for (const root of reads) {
+    for (const node of find_nodes(root, "main").concat(find_nodes(root, "p"))) {
+      assert.equal(node.$_meta?.["data-_quid"], undefined);
+    }
+  }
+  assert.deepEqual(source, sourceBefore);
+  assert.equal(map.element.byQuid("anything"), undefined);
+  assert.equal(map.rev, 0);
+
+  const fragment = hson.liveMap.fromHson(`"before" <div <span "one"/>/> <div "two"/> "after"`);
+  assert.equal(fragment.mode, "fragment");
+  for (const read of [fragment.root(), fragment.capture().root, ...fragment.fragment.content().filter(is_node)]) {
+    for (const tag of ["div", "span"]) {
+      for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["data-_quid"], undefined);
+    }
+  }
+  assert.equal(fragment.rev, 0);
 });
 
 check("duplicate and empty persisted document QUIDs are rejected", () => {
@@ -218,6 +240,13 @@ check("duplicate and empty persisted document QUIDs are rejected", () => {
   assert.throws(
     () => hson.liveMap.fromHson(`<div data-_quid=""/>`),
     /invalid empty data-_quid/,
+  );
+  const malformed = hson.fromHson(`<div/>`).toNode();
+  const div = find_nodes(malformed, "div")[0];
+  if (div !== undefined) div.$_meta = { "data-_quid": 42 as unknown as string };
+  assert.throws(
+    () => hson.liveMap.fromNode(malformed),
+    /malformed canonical HSON root/,
   );
 });
 
@@ -233,13 +262,15 @@ check("document runtime façade omits projected data APIs", () => {
   }
 });
 
-check("data maps preserve their APIs, modes, and existing initial revision policy", () => {
+check("data maps preserve their APIs and all normal constructors begin at revision zero", () => {
   const objectMap = hson.liveMap.fromJson({ a: 1 });
   const arrayMap = hson.liveMap.fromJson([1, 2]);
   assert.equal(objectMap.mode, "data-object");
   assert.equal(arrayMap.mode, "data-array");
-  assert.equal(objectMap.rev, 1);
+  assert.equal(objectMap.rev, 0);
   assert.equal(arrayMap.rev, 0);
+  assert.equal(objectMap.capture().rev, 0);
+  assert.equal(arrayMap.capture().rev, 0);
   assert.deepEqual(objectMap.snap(), { a: 1 });
   assert.deepEqual(arrayMap.snap(), [1, 2]);
   for (const map of [objectMap, arrayMap]) {
@@ -248,6 +279,35 @@ check("data maps preserve their APIs, modes, and existing initial revision polic
     assert.equal(typeof map.apply, "function");
     assert.equal(typeof map.replay, "function");
   }
+
+  const classified = [
+    hson.liveMap.fromHson(`<user <name "Ada">>`),
+    hson.liveMap.fromHson(`«1,2»`),
+    hson.liveMap.fromNode(hson.fromJson({ a: 1 }).toNode()),
+    hson.liveMap.fromNode(hson.fromJson([1, 2]).toNode()),
+    hson.liveMap.fromHson(`<main "trusted"/>`),
+    hson.liveMap.fromHson(`"before" <em "mixed"/> "after"`),
+    hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] }),
+  ];
+  for (const map of classified) {
+    assert.equal(map.rev, 0, `expected ${map.mode} construction at revision zero`);
+    assert.equal(map.capture().rev, 0);
+  }
+});
+
+check("first changed operations advance from zero to one exactly once", () => {
+  const objectMap = hson.liveMap.fromJson({ value: 1 });
+  const objectCommit = objectMap.set(["value"], 2);
+  assert.deepEqual([objectCommit.prevRev, objectCommit.rev, objectMap.rev], [0, 1, 1]);
+
+  const arrayMap = hson.liveMap.fromJson([1]);
+  const arrayCommit = arrayMap.replace([1, 2]);
+  assert.deepEqual([arrayCommit.prevRev, arrayCommit.rev, arrayMap.rev], [0, 1, 1]);
+
+  const source = hson.liveMap.fromHson(`<main "new"/>`);
+  const target = hson.liveMap.fromHson(`<aside "old"/>`);
+  const documentCommit = target.install(source.capture());
+  assert.deepEqual([documentCommit.prevRev, documentCommit.rev, target.rev], [0, 1, 1]);
 });
 
 check("unsafe debug node mutation remains live and revision-bypassing", () => {

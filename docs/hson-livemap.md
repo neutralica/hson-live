@@ -92,9 +92,11 @@ graph. Only `debug.node(path)` exposes intentionally live graph access.
 Document roots are now classified separately as `element` or `fragment` and do
 not expose the projected data surface. Their `element` or `fragment` capability
 returns detached canonical nodes/content, and their revision-coupled capture is
-discriminated by `kind: "hson-document"` and `version: 1`. This first document
-foundation is read-only; graph commits, install, replay, subscriptions, and
-LiveTree projection remain future work.
+discriminated by `kind: "hson-document"` and `version: 1`. Document maps now
+support one graph transition: same-mode `install(capture)` atomically replaces
+the canonical root and persisted-QUID index and returns one graph-domain
+replace-root commit. Fine-grained graph mutation, graph replay, document
+subscriptions, and LiveTree projection remain future work.
 
 ---
 
@@ -233,6 +235,10 @@ changed commit: rev = prevRev + 1
 no-op commit:   rev = prevRev
 ```
 
+Normal construction establishes initial state at revision 0 without producing
+an instantiation commit. Revision therefore counts committed transitions on the
+current map instance rather than construction steps.
+
 On data maps, `capture()` returns the projected root and its revision. `apply()` performs a
 conditional root replacement only when its `prevRev` still matches the map.
 `replay()` conditionally re-applies normalized operation records and verifies
@@ -246,8 +252,14 @@ These operations form the implemented local foundation for LiveHost:
 - replay conflict checks prevent applying an incompatible history.
 
 Document maps instead return a detached canonical HSON capture preserving
-ordered content, attrs, metadata, and persisted element QUIDs. They do not yet
-provide graph apply or replay.
+ordered content, attrs, metadata, and persisted element QUIDs. Their local
+`install(capture, { expectedRev? })` transition validates and clones a same-mode
+capture with optional sparse persisted identity before atomically swapping root
+and QUID index. It advances the target's revision once and does not adopt the
+source `capture.rev`.
+The resulting commit contains one `{ domain: "graph", op: "replace-root" }`
+operation. Graph apply/replay and authoritative recovery installation do not
+exist yet.
 
 These LiveMap operations do not themselves define transport, persistence,
 retry policy, authorization, conflict merging, or multi-writer consensus.
@@ -433,10 +445,12 @@ The idealized system distinguishes:
   and
 - a host/session identifier, which belongs to replication lifecycle.
 
-Document-map ordinary elements now receive persisted, per-map `data-_quid`
-identity at construction. That identity is indexed separately from the `lmq`
-handle registry: existing valid QUIDs are preserved, missing identities are
-generated once, and duplicates within the map are rejected.
+Document-map persisted `data-_quid` identity is sparse and indexed separately
+from the `lmq` handle registry. Existing valid QUIDs are preserved, ordinary
+elements without QUIDs remain positional and unquidded, and duplicate present
+QUIDs are rejected. Construction, reads, capture, and installation never mint
+identity. A future durable-handle or binding operation may explicitly promote a
+node through a committed graph mutation.
 
 These identifiers must never be silently substituted for one another. A future
 identity-oriented reference should become absent when its node disappears,
@@ -449,8 +463,9 @@ rather than falling back to the old path.
 The following current behaviors should not be mistaken for idealized
 guarantees:
 
-- Object-root `fromJson` construction is seeded through `replace()` and
-  currently begins at revision 1, while other construction paths begin at 0.
+- Normal construction establishes initial state directly at revision 0 and
+  emits no commit. The first changed atomic transition advances 0 to 1;
+  unchanged operations consume no revision.
 - `debug.node(path)` exposes live physical graph mutation outside schema,
   commit, revision, feed, and subscription accounting. `root()` is detached.
 - Feed listener exceptions are not isolated. State and revision have already

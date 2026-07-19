@@ -8,7 +8,7 @@ export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";
 export type { SvgLiveTree } from "./svg.types.js";
-export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapReadApi, ElementLiveMapReadApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, ClassifiedLiveMap } from "./livemap.types.js";
+export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphCommit, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapInstallOptions, DocumentLiveMapReadApi, ElementLiveMapReadApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, ClassifiedLiveMap } from "./livemap.types.js";
 export type {
   LiveKeyedProjection,
   LiveKeyedProjectionOptions,

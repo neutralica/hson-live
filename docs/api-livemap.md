@@ -41,10 +41,8 @@ const safeDocument = hson.liveMap.fromUntrustedHtml(userHtml);
 Accepts a JSON string or `JsonValue` and returns `LiveMap`.
 
 - A JSON string is parsed with `JSON.parse`.
-- Object roots are currently created by seeding an empty object map and calling
-  root `replace`. Consequently, a newly constructed object-root map currently
-  has `rev === 1`.
-- Array roots are built directly and begin at revision 0.
+- Object and array roots are transformed directly into initial owned state.
+- Every normal constructor begins at revision 0 and emits no commit.
 - Although the TypeScript signature accepts every `JsonValue`, the current
   transform invariant rejects top-level string, number, boolean, and `null`
   roots. Use an object or array root until scalar-root construction is fixed.
@@ -53,8 +51,8 @@ Accepts a JSON string or `JsonValue` and returns `LiveMap`.
 
 Parses validated HSON text, clones the canonical graph, and classifies it as
 `data-object`, `data-array`, `element`, or `fragment`. Data roots return the
-existing mutable data LiveMap. Document roots return the read-only document
-façade described below. Construction begins at revision 0.
+existing mutable data LiveMap. Document roots return the shape-specific
+document façade described below. Construction begins at revision 0.
 
 ### `hson.liveMap.fromNode(node)`
 
@@ -104,8 +102,8 @@ An `_hson_elem` root cluster containing exactly one ordinary top-level element
 is `element`. Empty, text-only, mixed, or multiple-item document content is
 `fragment`. Classification uses canonical HSON structure, not projected JSON.
 
-Document maps expose only detached canonical reads, capture, revision, and the
-explicitly unsafe debug escape hatch:
+Document maps expose detached canonical reads, capture, local atomic install,
+revision, and the explicitly unsafe debug escape hatch:
 
 ```ts
 if (map.mode === "element") {
@@ -118,7 +116,8 @@ if (map.mode === "fragment") {
 }
 
 map.root();
-map.capture();
+const capture = map.capture();
+map.install(capture, { expectedRev: map.rev });
 map.debug.node([]);
 ```
 
@@ -126,10 +125,12 @@ Document maps do not expose `snap`, Proxy/path handles, projected mutations,
 data schemas, feeds/subscriptions, `apply`, or `replay`. Those remain data-domain
 APIs and do not represent a lossless document snapshot.
 
-Every ordinary element in a document map receives persisted `data-_quid`
-identity during construction. Existing non-empty QUIDs are preserved, missing
-ones are generated, and duplicates within one map are rejected. Reads do not
-mint or alter identity.
+Persisted `data-_quid` identity is sparse. Ordinary elements may remain
+unquidded; construction, reads, capture, and installation preserve the identity
+state they receive and never mint identity. Present non-empty QUIDs are indexed
+per map, and duplicates are rejected. A future durable handle or binding may
+explicitly promote a node as a committed graph mutation; no promotion API exists
+yet.
 
 ---
 
@@ -883,6 +884,11 @@ feed event. Direct `debug.node()` mutation is outside schema enforcement.
 
 ## Revision synchronization
 
+A revision counts committed state transitions applied to one LiveMap instance.
+Normal construction establishes initial state at revision 0 and emits no commit
+or feed event. The first changed atomic transition advances revision 0 to 1;
+unchanged operations consume no revision.
+
 ### Document `capture()`
 
 Document maps capture the complete canonical graph rather than projected JSON:
@@ -900,7 +906,53 @@ type DocumentLiveMapCapture = Readonly<{
 The root is recursively detached and preserves tags, ordered mixed content,
 attrs, structured style, metadata, QUIDs, text, empty content, and repeated
 siblings. Capture does not change the revision. Graph install and replay are not
-implemented yet.
+interchangeable: `install()` is implemented as a local state transition, while
+graph replay is not implemented.
+
+### Document `install(capture, options?)`
+
+```ts
+const commit = target.install(source.capture(), {
+  expectedRev: target.rev,
+});
+```
+
+Installation accepts a canonical `DocumentLiveMapCapture` with optional sparse
+persisted identity. It
+validates the envelope, clones and validates the canonical root, requires the
+declared/root/target modes to agree, and builds a replacement per-map QUID index
+before changing owned state. Missing QUIDs are valid absence; empty or duplicate
+present QUIDs are rejected. Installation never mints or remaps identity.
+
+The owned root and identity index are replaced atomically. A changed install
+increments the target revision exactly once and returns the existing commit
+envelope with one graph-domain operation:
+
+```ts
+{
+  domain: "graph",
+  op: "replace-root",
+  mode: "element" | "fragment",
+  root: detachedCanonicalRoot,
+}
+```
+
+`capture.rev` describes the source map and is not copied into the target. A
+future recovery install may restore an authoritative remote revision; this
+local `install()` does not. `expectedRev`, when present, guards the target's
+current revision and throws `LiveMapRevError` on mismatch. Invalid input,
+identity failure, and mode mismatch leave root, QUID lookup, revision, and
+commit state unchanged.
+
+Installing a canonically identical graph follows existing replacement no-op
+behavior: it returns `changed: false`, no operations, and consumes no revision.
+Document graph commits are not accepted by data `replay()` and are not yet
+published through a public document feed.
+
+The input capture, installed owned root, later captures, and returned operation
+root share no mutable references. `debug.node()` can still damage live graph or
+identity assumptions without a revision; a later valid install replaces both
+the damaged root and index rather than trusting either one.
 
 ### `capture()`
 
@@ -1162,8 +1214,8 @@ identified as methods on `hson.liveMap`.
 
 - Reliable `fromJson` roots are objects and arrays; top-level scalars currently
   fail transform invariants.
-- Object-root `fromJson` construction currently begins at revision 1; other
-  constructors normally begin at 0.
+- Normal object, array, HSON, node, trusted-HTML, and untrusted-HTML construction
+  establishes initial state at revision 0 without a commit.
 - Projected writes are strict about existing endpoints and parents.
 - Root set/delete and direct array-index delete are unsupported; use root
   replace and array splice/helpers.

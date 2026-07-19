@@ -7,6 +7,7 @@ import type {
   DataLiveMapMode,
   DocumentLiveMap,
   DocumentLiveMapCapture,
+  DocumentLiveMapInstallOptions,
   DocumentLiveMapMode,
   ElementLiveMap,
   FragmentLiveMap,
@@ -19,6 +20,10 @@ import {
   index_livemap_document_elements,
   type LiveMapDocumentIdentityIndex,
 } from "./livemap.document.identity.js";
+import {
+  install_livemap_document_capture,
+  type LiveMapDocumentInstallController,
+} from "./livemap.document.install.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -101,32 +106,32 @@ export function assert_live_root_mode(
   return observed;
 }
 
-/** Return the existing data surface or a read-only document façade by mode. */
+/** Return the existing data surface or the narrow document façade by mode. */
 export function facade_for_livemap_root(
   core: LiveMapCore,
   prepared: PreparedLiveMapRoot,
+  controller?: LiveMapDocumentInstallController,
 ): ClassifiedLiveMap {
   if (prepared.mode === "data-object" || prepared.mode === "data-array") {
     return core as LiveMap;
   }
 
-  const identity = prepared.documentIdentity;
-  if (identity === undefined) {
+  if (prepared.documentIdentity === undefined || controller === undefined) {
     throw new Error(`LiveMap document mode ${prepared.mode} was constructed without an identity index.`);
   }
-  return make_document_livemap(core, prepared.mode, identity);
+  return make_document_livemap(core, prepared.mode, controller);
 }
 
 function make_document_livemap(
   core: LiveMapCore,
   mode: DocumentLiveMapMode,
-  identity: LiveMapDocumentIdentityIndex,
+  controller: LiveMapDocumentInstallController,
 ): DocumentLiveMap {
   const readApi = Object.freeze({
     root: () => core.root(),
     content: () => detached_document_content(core.root()),
     byQuid: (quid: string) => {
-      const node = identity.get(quid);
+      const node = controller.identity().get(quid);
       return node === undefined ? undefined : clone_live_root(node);
     },
   });
@@ -134,6 +139,8 @@ function make_document_livemap(
   const shared = {
     root: () => core.root(),
     debug: core.debug,
+    install: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>
+      install_livemap_document_capture(controller, capture, options),
   };
 
   if (mode === "element") {

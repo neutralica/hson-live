@@ -56,6 +56,7 @@ export {
 } from "./api/liveproject/liveproject.error.js";
 export type { LiveProjectionErrorCode } from "./api/liveproject/liveproject.error.js";
 export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
+export { LiveMapDocumentInstallError } from "./api/livemap/livemap.error.js";
 export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
 export { link_livemap } from "./api/livemap/livemap.link.js";
 export { make_livemap_feed_hub } from "./api/livemap/livemap.feed.js";
@@ -100,6 +101,11 @@ export type {
     LiveMapEditResult,
     LiveMapCommit,
     LiveMapOp,
+    LiveMapAnyOp,
+    LiveMapDataOp,
+    LiveMapGraphOp,
+    LiveMapGraphReplaceRootOp,
+    LiveMapGraphCommit,
     LiveMapFeedEvent,
     LiveMapFeedListener,
     LiveMapDisposer,
@@ -110,6 +116,7 @@ export type {
     DataLiveMapMode,
     DocumentLiveMapMode,
     DocumentLiveMapCapture,
+    DocumentLiveMapInstallOptions,
     DocumentLiveMapReadApi,
     ElementLiveMapReadApi,
     ElementLiveMap,

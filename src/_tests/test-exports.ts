@@ -57,6 +57,12 @@ type DocumentLiveMapOmitsDataSet = Expect<
 type DocumentLiveMapOmitsDataProxy = Expect<
   Equal<"proxy" extends keyof DocumentLiveMapSurface ? true : false, false>
 >;
+type DocumentLiveMapExposesInstall = Expect<
+  Equal<"install" extends keyof DocumentLiveMapSurface ? true : false, true>
+>;
+type DataLiveMapOmitsInstall = Expect<
+  Equal<"install" extends keyof LiveMapSurface ? true : false, false>
+>;
 
 function read_node_from_any_source(source: AnySourceSurface): HsonNode {
   return source.toNode();
@@ -100,13 +106,23 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
 }
 
 function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
-  documentMap.capture();
+  const capture = documentMap.capture();
+  documentMap.install(capture);
+  documentMap.install(capture, { expectedRev: documentMap.rev });
   documentMap.debug.node([]);
 
   // @ts-expect-error Document maps do not expose projected JSON mutation.
   documentMap.set([], {});
   // @ts-expect-error Document maps do not expose the JSON Proxy.
   documentMap.proxy();
+  // @ts-expect-error Canonical nodes establish identity through construction, not install.
+  documentMap.install(documentMap.root());
+  // @ts-expect-error Graph replay is not part of the document façade.
+  documentMap.replayGraph(capture);
+  // @ts-expect-error Graph apply is not part of the document façade.
+  documentMap.applyGraph(capture);
+  // @ts-expect-error Data maps do not expose canonical document installation.
+  hson.liveMap.fromJson({}).install(capture);
   // @ts-expect-error Element is an instance capability, not a constructor namespace.
   hson.liveMap.element.fromTrustedHtml("<button>Save</button>");
   // @ts-expect-error Fragment is an instance capability, not a constructor namespace.

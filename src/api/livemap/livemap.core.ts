@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
@@ -15,6 +15,7 @@ import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./live
 import { json_values_equal } from "./livemap-helpers.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
 import { facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
+import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -51,21 +52,28 @@ type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
  */
 export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | undefined> {
   const prepared = prepare_livemap_root(input);
-  return make_livemap_core_from_owned_root(prepared.root, prepared.mode);
+  return make_livemap_core_from_owned_root(prepared).core;
 }
 
 /** Construct the public shape-specific façade after detached root ownership. */
 export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   const prepared = prepare_livemap_root(input);
-  const core = make_livemap_core_from_owned_root(prepared.root, prepared.mode);
-  return facade_for_livemap_root(core, prepared);
+  const built = make_livemap_core_from_owned_root(prepared);
+  return facade_for_livemap_root(built.core, prepared, built.document);
 }
 
 /** Build the shared Core around a root already cloned, validated, and indexed. */
 function make_livemap_core_from_owned_root(
-  root: HsonNode,
-  initialMode: LiveMapRootMode,
-): LiveMapCore<JsonValue | undefined> {
+  prepared: ReturnType<typeof prepare_livemap_root>,
+): Readonly<{
+  core: LiveMapCore<JsonValue | undefined>;
+  document?: LiveMapDocumentInstallController;
+}> {
+  const initialMode = prepared.mode;
+  let owned = {
+    root: prepared.root,
+    documentIdentity: prepared.documentIdentity,
+  };
   const feedHub = make_livemap_feed_hub();
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
@@ -78,7 +86,7 @@ function make_livemap_core_from_owned_root(
     writeOps: readonly LiveMapCoreWriteOp[],
   ): LiveMapCommit => {
     return commit_ops(
-      root,
+      owned.root,
       currentSchema,
       feedHub,
       () => currentRev,
@@ -126,7 +134,7 @@ function make_livemap_core_from_owned_root(
     get: () => currentSchema,
 
     use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
-      must_core_schema_root(schema, root);
+      must_core_schema_root(schema, owned.root);
       currentSchema = schema;
 
       return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
@@ -160,17 +168,17 @@ function make_livemap_core_from_owned_root(
   });
 
   const debugApi = Object.freeze({
-    node: (path: LivePath) => make_livemap_node_handle(root, must_live_path(path)),
+    node: (path: LivePath) => make_livemap_node_handle(owned.root, must_live_path(path)),
   });
 
   const core: LiveMapCore<JsonValue | undefined> = {
     /** Root capability selected during detached canonical construction. */
     mode: initialMode,
     /** Return a detached structural clone of the root owned by this map core. */
-    root: () => clone_live_root(root),
+    root: () => clone_live_root(owned.root),
 
     /** Read the current projected JSON value at a path, or the whole graph. */
-    snap: ((path: LivePath = []) => snap_live_path(root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
+    snap: ((path: LivePath = []) => snap_live_path(owned.root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
 
     /** Read and manage the schema currently attached to this Core, if present. */
     schema: schemaApi,
@@ -201,7 +209,7 @@ function make_livemap_core_from_owned_root(
         write_ops_from_set(
           livePath,
           value,
-          snap_live_path(root, livePath),
+          snap_live_path(owned.root, livePath),
         ),
       );
     },
@@ -214,7 +222,7 @@ function make_livemap_core_from_owned_root(
         write_ops_from_set_many(
           livePath,
           jsonValues,
-          snap_live_path(root, livePath),
+          snap_live_path(owned.root, livePath),
         ),
       );
     },
@@ -222,7 +230,7 @@ function make_livemap_core_from_owned_root(
     /** Apply one semantic array splice and preserve it in the resulting commit. */
     splice: (path, start, deleteCount, ...items) => {
       const livePath = must_live_path(path);
-      const currentValue = snap_live_path(root, livePath);
+      const currentValue = snap_live_path(owned.root, livePath);
       const op = splice_write_op(livePath, currentValue, start, deleteCount, items);
       return commitOps([op]);
     },
@@ -236,14 +244,14 @@ function make_livemap_core_from_owned_root(
      */
     replace: function (pathOrValue: unknown, value?: unknown) {
       const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
-      must_resolved_path("replace", op.path, snap_live_path(root, op.path));
+      must_resolved_path("replace", op.path, snap_live_path(owned.root, op.path));
       return commitOps([op]);
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
-      must_resolved_path("delete", livePath, snap_live_path(root, livePath));
+      must_resolved_path("delete", livePath, snap_live_path(owned.root, livePath));
       return commitOps([
         { kind: "delete", path: livePath },
       ]);
@@ -253,7 +261,7 @@ function make_livemap_core_from_owned_root(
     batch: (fn) => {
       const writeOps: LiveMapCoreWriteOp[] = [];
       let isOpen = true;
-      const tx = make_batch_tx(root, writeOps, () => isOpen);
+      const tx = make_batch_tx(owned.root, writeOps, () => isOpen);
 
       try {
         fn(tx);
@@ -276,7 +284,7 @@ function make_livemap_core_from_owned_root(
     capture: (): LiveMapCapture<JsonValue | undefined> => {
       return Object.freeze({
         rev: currentRev,
-        value: snap_live_path(root, []),
+        value: snap_live_path(owned.root, []),
       });
     },
     /** Replace the root only when the caller's base revision is still current. */
@@ -307,7 +315,7 @@ function make_livemap_core_from_owned_root(
 
       return commitOps(
         replay_write_ops(
-          root,
+          owned.root,
           replay.ops,
         ),
       );
@@ -330,7 +338,54 @@ function make_livemap_core_from_owned_root(
     return handle;
   }
 
-  return core;
+  if (initialMode !== "element" && initialMode !== "fragment") {
+    return { core };
+  }
+
+  const document: LiveMapDocumentInstallController = {
+    mode: initialMode,
+    rev: () => currentRev,
+    identity: () => {
+      const identity = owned.documentIdentity;
+      if (identity === undefined) {
+        throw new Error(`LiveMap document mode ${initialMode} has no identity index.`);
+      }
+      return identity;
+    },
+    apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit => {
+      const prevRev = currentRev;
+      if (canonical_graph_equal(owned.root, candidate.root)) {
+        return Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
+      }
+
+      const operation: LiveMapGraphReplaceRootOp = Object.freeze({
+        domain: "graph",
+        op: "replace-root",
+        mode: candidate.mode,
+        root: clone_live_root(candidate.root),
+      });
+      const nextOwned = {
+        root: candidate.root,
+        documentIdentity: candidate.identity,
+      };
+      const rev = prevRev + 1;
+      const commit: LiveMapGraphCommit = Object.freeze({
+        changed: true,
+        prevRev,
+        rev,
+        ops: Object.freeze([operation]),
+      });
+
+      // One closure-state swap makes root and persisted-identity lookup visible
+      // together. Document feeds/replay do not exist yet, so this commit is
+      // returned without entering the projected-data feed hub.
+      owned = nextOwned;
+      currentRev = rev;
+      return commit;
+    },
+  };
+
+  return { core, document };
 }
 
 /**
@@ -435,7 +490,7 @@ function must_expected_rev(
 
 function replay_write_ops(
   root: HsonNode,
-  ops: readonly LiveMapOp[],
+  ops: readonly LiveMapDataOp[],
 ): readonly LiveMapCoreWriteOp[] {
   let candidate = clone_json_value(
     snap_live_path(root, []),
@@ -779,14 +834,14 @@ function must_editor_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWri
 
 type LiveMapAppliedOps = Readonly<{
   changed: boolean;
-  ops: readonly LiveMapOp[];
+  ops: readonly LiveMapDataOp[];
 }>;
 function apply_write_ops(
   root: HsonNode,
   writeOps: readonly LiveMapCoreWriteOp[],
 ): LiveMapAppliedOps {
   /** Apply normalized pending intents in order and collect the changed public ops. */
-  const ops: LiveMapOp[] = [];
+  const ops: LiveMapDataOp[] = [];
 
   for (const op of writeOps) {
     if (op.kind === "constructive-set") {
@@ -850,7 +905,7 @@ function apply_write_ops(
   };
 }
 
-function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructiveSetWriteOp): readonly LiveMapOp[] {
+function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructiveSetWriteOp): readonly LiveMapDataOp[] {
   const entries = Object.entries(op.value);
   const currentValue = snap_live_path(root, op.path);
 
@@ -872,7 +927,7 @@ function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructive
     throw new Error(`LiveMap set path does not resolve: ${format_live_path(op.path)}`);
   }
 
-  const ops: LiveMapOp[] = [];
+  const ops: LiveMapDataOp[] = [];
 
   for (const [key, value] of entries) {
     const childPath = append_live_path(op.path, key);

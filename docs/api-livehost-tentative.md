@@ -125,7 +125,7 @@ type LiveHostOptions<TState, TActions> = Readonly<{
 `state` defaults to `{}`. The host constructs an internal LiveMap with
 `hson.liveMap.fromJson`. Consequently, current LiveMap construction boundaries
 also apply: object and array roots are reliable, object roots currently begin at
-map revision 1, and top-level scalar roots can fail HSON transform invariants.
+map revision 0, and top-level scalar roots can fail HSON transform invariants.
 An explicit `null` state currently falls back to `{}`.
 
 The returned host surface is:
@@ -152,8 +152,8 @@ getter.
 `host.seq` begins at 0 and increments once after each action handler completes
 successfully. It does not currently equal `host.map.rev`:
 
-- creating an object-root host normally gives the map revision 1 while host
-  sequence remains 0;
+- creating an object-root host gives the map revision 0 while host sequence
+  remains 0;
 - one action can create zero, one, or several LiveMap commits but advances host
   sequence once; and
 - failed or unknown actions do not advance host sequence.

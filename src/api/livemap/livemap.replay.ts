@@ -1,6 +1,6 @@
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveMapOp,
+  LiveMapDataOp,
   LiveMapReplay,
   LiveMapWriteOp,
   LivePath,
@@ -29,7 +29,7 @@ export function must_livemap_replay(input: unknown): LiveMapReplay {
 }
 
 /** Convert one validated public operation into an internal write intent. */
-export function replay_write_op(op: LiveMapOp): LiveMapWriteOp {
+export function replay_write_op(op: LiveMapDataOp): LiveMapWriteOp {
   if (op.kind === "delete") {
     return Object.freeze({
       kind: "delete",
@@ -68,7 +68,7 @@ export function replay_write_op(op: LiveMapOp): LiveMapWriteOp {
   });
 }
 
-function must_livemap_replay_op(value: unknown, opIndex: number): LiveMapOp {
+function must_livemap_replay_op(value: unknown, opIndex: number): LiveMapDataOp {
   if (!is_plain_object(value)) {
     throw new LiveMapReplayInputError("operation is not an object", opIndex);
   }

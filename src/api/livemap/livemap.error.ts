@@ -45,6 +45,17 @@ export class LiveMapRevError extends Error {
   }
 }
 
+export class LiveMapDocumentInstallError extends Error {
+  readonly code = "INVALID_DOCUMENT_INSTALL" as const;
+  readonly reason: string;
+
+  constructor(reason: string, options?: ErrorOptions) {
+    super(`Invalid LiveMap document install: ${reason}`, options);
+    this.name = "LiveMapDocumentInstallError";
+    this.reason = reason;
+  }
+}
+
 export class LiveMapReplayError extends Error {
   readonly code = "REPLAY_CONFLICT" as const;
   readonly path: LivePath;

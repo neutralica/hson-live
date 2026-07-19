@@ -134,4 +134,16 @@ check("debug.node preserves unsafe live mutation and bypass behavior", () => {
   stopSub();
 });
 
+check("document install is present only on document runtime façades", () => {
+  const document = hson.liveMap.fromHson(`<main data-_quid="main"/>`);
+  assert.equal(document.mode, "element");
+  assert.equal("install" in document, true);
+  assert.equal(typeof document.install, "function");
+  assert.equal("install" in hson.liveMap.fromJson({}), false);
+  assert.equal("install" in hson.liveMap.fromJson([]), false);
+  for (const name of ["applyGraph", "replayGraph", "installGraph"]) {
+    assert.equal(name in document, false);
+  }
+});
+
 process.stdout.write(`# ${checks} public boundary checks passed\n`);
