@@ -215,6 +215,27 @@ null values are likewise stringified and quoted without mutating the source
 graph. Presence flags are the distinct exact-equality form
 `{ disabled: "disabled" }` and serialize as bare `disabled`.
 
+### Persisted QUID declarations
+
+HSON has one identity-specific header declaration: `@quid`. It maps only to
+canonical `$_meta["data-_quid"]`; it is neither HTML `id`, a selector, nor a
+request to generate identity. Persisted QUIDs are random 80-bit identifiers:
+exactly 16 lowercase Base32 characters from
+`0123456789abcdefghjkmnpqrstvwxyz`. They are generated from 10 secure random
+bytes; there is no normalization, fallback format, quoted form, or `@@` form.
+
+```hson
+<panel @4k7m2v9d1r6x8qwc class="settings" "Content"/>
+```
+
+Parsing accepts one declaration anywhere in an opening header before inline
+content; serialization is canonical and writes it immediately after the tag.
+`@` after content, duplicate declarations, and a declaration combined with the
+legacy `data-_quid="..."` metadata spelling are errors. The legacy spelling
+remains readable only when its value is canonical, and serializes as `@quid`. Only ordinary
+elements may carry persisted identity, and duplicate values across a document
+remain a LiveMap graph-invariant error. HTML continues to use `data-_quid`.
+
 Options compose and are idempotent:
 
 ```ts

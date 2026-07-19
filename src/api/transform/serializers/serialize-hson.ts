@@ -14,6 +14,7 @@ import {
 } from "../../../core/constants.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { is_Node } from "../../../core/node-guards.js";
+import { is_persisted_quid } from "../../../core/persisted-quid.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
 import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js";
@@ -404,7 +405,12 @@ function emitStandardNode(
   const pad = indent(ctx, depth);
   const tag = serialize_hson_tag_name(node.$_tag);
   const meta = effectiveMeta(node.$_meta, ctx.options.noQuid);
-  const header = `<${tag}${emitAttrsAndMeta(node.$_attrs, meta)}`;
+  const quid = meta?.[_DATA_QUID];
+  if (quid !== undefined && !is_persisted_quid(quid)) {
+    _throw_transform_err(`serialize-hson: invalid data-_quid`, "serialize_hson");
+  }
+  const ordinaryMeta = meta && Object.fromEntries(Object.entries(meta).filter(([key]) => key !== _DATA_QUID));
+  const header = `<${tag}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs, ordinaryMeta)}`;
   const { children, closer, cluster } = standardContent(node);
 
   if (children.length === 0) return `${pad}${header}${closer}`;

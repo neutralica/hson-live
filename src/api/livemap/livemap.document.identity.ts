@@ -1,6 +1,7 @@
 import { _DATA_QUID } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
+import { is_persisted_quid } from "../../core/persisted-quid.js";
 
 /** Per-map persisted identity index for ordinary document elements. */
 export type LiveMapDocumentIdentityIndex = ReadonlyMap<string, HsonNode>;
@@ -31,7 +32,7 @@ export function index_livemap_document_elements(root: HsonNode): LiveMapDocument
 
     if (is_ordinary_element_node(node)) {
       const persisted = node.$_meta?.[_DATA_QUID];
-      if (persisted !== undefined && (typeof persisted !== "string" || persisted.length === 0)) {
+      if (persisted !== undefined && !is_persisted_quid(persisted)) {
         throw new LiveMapDocumentIdentityError(
           "MALFORMED_QUID",
           `LiveMap document element <${node.$_tag}> has an invalid ${persisted === "" ? "empty" : "malformed"} data-_quid.`,

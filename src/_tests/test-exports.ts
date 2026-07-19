@@ -8,6 +8,8 @@ import {
 } from "../diagnostics/index.js";
 import type {
   LiveHostOptions,
+  LiveHostActionAuthorizationContext,
+  LiveHostActionAuthorizer,
   LiveTraceCollector,
   LiveTraceEvent,
   LiveTraceSink,
@@ -82,6 +84,9 @@ type TraceEventIsReadonly = Expect<
 >;
 type LiveMapOmitsTrace = Expect<
   Equal<"trace" extends keyof LiveMapSurface ? true : false, false>
+>;
+type AuthorizationContextIsReadonly = Expect<
+  Equal<Readonly<LiveHostActionAuthorizationContext>, LiveHostActionAuthorizationContext>
 >;
 
 function read_node_from_any_source(source: AnySourceSurface): HsonNode {
@@ -170,6 +175,28 @@ function assert_trace_diagnostics_exports(): LiveTraceCollector {
   const options: LiveHostOptions = { trace: sink };
   void options;
   return collector;
+}
+
+function assert_livehost_authorization_types(): void {
+  type Actions = Readonly<{ set: Readonly<{ value: number }> }>;
+  const sync: LiveHostActionAuthorizer<Actions> = (context) => {
+    // @ts-expect-error Authorization context fields are readonly.
+    context.action = "set";
+    // @ts-expect-error The validated policy payload is readonly.
+    context.payload.value = 2;
+    return context.session.resumable;
+  };
+  const asyncPolicy: LiveHostActionAuthorizer<Actions> = async () => true;
+  const options: LiveHostOptions<Readonly<{ value: number }>, Actions> = {
+    state: { value: 0 },
+    authorizeAction: sync,
+  };
+  const asyncOptions: LiveHostOptions<Readonly<{ value: number }>, Actions> = {
+    state: { value: 0 },
+    authorizeAction: asyncPolicy,
+  };
+  void options;
+  void asyncOptions;
 }
 
 

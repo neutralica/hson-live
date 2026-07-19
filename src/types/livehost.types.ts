@@ -331,6 +331,30 @@ export type LiveHostActionOrigin =
     kind: "direct";
   }>;
 
+export type LiveHostActionAuthorizationSession = Readonly<{
+  sessionId: LiveHostSessionId;
+  epoch: LiveHostConnectionEpoch;
+  resumable: boolean;
+}>;
+
+export type LiveHostActionAuthorizationContext<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = {
+  [TName in keyof TActions & string]: Readonly<{
+    action: TName;
+    session: LiveHostActionAuthorizationSession;
+    payload: TActions[TName];
+    logicalMapId: LiveHostLogicalMapId;
+    incarnationId: LiveHostIncarnationId;
+  }>;
+}[keyof TActions & string];
+
+export type LiveHostActionAuthorizer<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = (
+  context: LiveHostActionAuthorizationContext<TActions>,
+) => boolean | Promise<boolean>;
+
 export type LiveHostActionSchema<TPayload extends JsonValue | undefined = JsonValue | undefined> = Readonly<{
   payload?: LiveHostValidator<TPayload> | LiveHostSchemaDecoder<TPayload>;
 }>;
@@ -687,6 +711,11 @@ export type LiveHostOptions<
   recovery?: LiveHostRecoveryOptions;
   sessions?: LiveHostSessionOptions;
   actionDedupe?: LiveHostActionDedupeOptions;
+  /**
+   * Optional host-local remote-action policy. Omission is implicit allow.
+   * The callback is evaluated after payload validation and before deduplication.
+   */
+  authorizeAction?: LiveHostActionAuthorizer<TActions>;
   /** Optional local observational tracing. Events are never transported or persisted. */
   trace?: LiveTraceSink;
 }>;

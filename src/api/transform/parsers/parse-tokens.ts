@@ -1,6 +1,6 @@
 // parse-tokens.ts
 
-import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX } from "../../../core/constants.js";
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX, _DATA_QUID } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../token.types.js";
 import { _DATA_INDEX } from "../../../core/constants.js";
@@ -13,6 +13,7 @@ import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_string } from "../../../core/value-guards.js";
 import { Primitive } from "../../../core/types.js";
+import { is_ordinary_element_node } from "../../../core/node-guards.js";
 
 
 
@@ -131,7 +132,16 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const open = tok as TokenOpen;
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
+        if (open.quid !== undefined) {
+            if (meta[_DATA_QUID] !== undefined) {
+                _throw_transform_err(`conflicting persisted QUID declarations on <${open.tag}>`, "parse_tokens");
+            }
+            meta[_DATA_QUID] = open.quid.value;
+        }
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
+        if (open.quid !== undefined && !is_ordinary_element_node(node)) {
+            _throw_transform_err(`persisted QUID declaration is not allowed on <${open.tag}>`, "parse_tokens");
+        }
 
         // VSNs carry no $_attrs
         const isVSN =

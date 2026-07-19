@@ -3,8 +3,8 @@
 import { TOKEN_KIND } from "./token.types.js";
 import type { ArraySymbol, CloseKind, RawAttr, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenText, TokenEmptyObj } from "./token.types.js";
 
-export const CREATE_OPEN_TOKEN = (tag: string, rawAttrs: RawAttr[], pos: Position): TokenOpen =>
-  ({ kind: TOKEN_KIND.OPEN, tag, rawAttrs, pos });
+export const CREATE_OPEN_TOKEN = (tag: string, rawAttrs: RawAttr[], pos: Position, quid?: TokenOpen["quid"]): TokenOpen =>
+  (quid ? { kind: TOKEN_KIND.OPEN, tag, rawAttrs, quid, pos } : { kind: TOKEN_KIND.OPEN, tag, rawAttrs, pos });
 
 export const CREATE_END_TOKEN = (close: CloseKind, pos: Position): TokenClose =>
   ({ kind: TOKEN_KIND.CLOSE, close, pos });

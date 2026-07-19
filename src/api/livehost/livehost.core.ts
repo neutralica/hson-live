@@ -5,6 +5,7 @@ import type { JsonValue, LiveMap } from "../../types/index.js";
 import type {
   LiveHost,
   LiveHostActionContext,
+  LiveHostActionAuthorizationContext,
   LiveHostActionDelivery,
   LiveHostActionOrigin,
   LiveHostActionPayloads,
@@ -93,6 +94,22 @@ function safe_error_code(cause: unknown, fallback: string): string {
     && typeof cause.code === "string"
     ? cause.code
     : fallback;
+}
+
+function clone_action_value(value: JsonValue, frozen: boolean): JsonValue {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    const clone: JsonValue[] = value.map((item) => clone_action_value(item, frozen));
+    if (frozen) Object.freeze(clone);
+    return clone;
+  }
+  const clone: Record<string, JsonValue> = {};
+  for (const key of Object.keys(value)) clone[key] = clone_action_value(value[key], frozen);
+  return frozen ? Object.freeze(clone) : clone;
+}
+
+function clone_action_payload(value: JsonValue | undefined, frozen: boolean): JsonValue | undefined {
+  return value === undefined ? undefined : clone_action_value(value, frozen);
 }
 
 export function create_livehost<
@@ -242,6 +259,95 @@ export function create_livehost<
     return { ok: true, handler, payload: payloadResult.value };
   }
 
+  type AuthorizationResult =
+    | Readonly<{ ok: true; payload: JsonValue | undefined }>
+    | Readonly<{
+      ok: false;
+      code: "LIVEHOST_ACTION_FORBIDDEN" | "LIVEHOST_ACTION_AUTHORIZATION_FAILED";
+      message: string;
+      cause?: unknown;
+    }>;
+
+  function authorize_validated_action(
+    message: LiveHostClientActionMessage<TActions>,
+    payload: JsonValue | undefined,
+    origin: Extract<LiveHostActionOrigin, { kind: "session" }>,
+    trace?: LiveTraceContext,
+    parentSpanId?: string,
+  ): AuthorizationResult | Promise<AuthorizationResult> {
+    const authorizer = options.authorizeAction;
+    if (authorizer === undefined) {
+      trace?.emit({
+        subsystem: "livehost",
+        phase: "action.authorization",
+        status: "skip",
+        ...(parentSpanId !== undefined ? { parentSpanId } : {}),
+        details: () => ({ action: message.name, reason: "implicit-allow" }),
+      });
+      return { ok: true, payload };
+    }
+
+    const authorizationSpan = trace?.beginSpan(
+      "livehost",
+      "action.authorization",
+      parentSpanId,
+      () => ({ action: message.name }),
+    );
+    const policyPayload = clone_action_payload(payload, true);
+    const handlerPayload = clone_action_payload(payload, false);
+    const context = Object.freeze({
+      action: message.name,
+      session: Object.freeze({
+        sessionId: origin.sessionId,
+        epoch: origin.epoch,
+        resumable: origin.resumable,
+      }),
+      payload: policyPayload,
+      logicalMapId: stream.logicalMapId,
+      incarnationId: stream.incarnationId,
+    }) as LiveHostActionAuthorizationContext<TActions>;
+
+    function finish(decision: boolean): AuthorizationResult {
+      if (!decision) {
+        authorizationSpan?.failure(() => ({
+          action: message.name,
+          outcome: "denied",
+          errorCode: "LIVEHOST_ACTION_FORBIDDEN",
+        }));
+        return {
+          ok: false,
+          code: "LIVEHOST_ACTION_FORBIDDEN",
+          message: "LiveHost action is not authorized.",
+        };
+      }
+      authorizationSpan?.success(() => ({ action: message.name, outcome: "allowed" }));
+      return { ok: true, payload: handlerPayload };
+    }
+
+    function failed(cause: unknown): AuthorizationResult {
+      authorizationSpan?.failure(() => ({
+        action: message.name,
+        outcome: "failed",
+        errorCode: "LIVEHOST_ACTION_AUTHORIZATION_FAILED",
+      }));
+      return {
+        ok: false,
+        code: "LIVEHOST_ACTION_AUTHORIZATION_FAILED",
+        message: "LiveHost action authorization failed.",
+        cause,
+      };
+    }
+
+    try {
+      const decision = authorizer(context);
+      return typeof decision === "boolean"
+        ? finish(decision)
+        : decision.then(finish, failed);
+    } catch (cause) {
+      return failed(cause);
+    }
+  }
+
   async function execute_validated_action(
     message: LiveHostClientActionMessage<TActions>,
     handler: NonNullable<Partial<LiveHostActions<TActions, TState>>[keyof TActions & string]>,
@@ -384,12 +490,38 @@ export function create_livehost<
         },
       };
     }
+    const authorization = origin.kind === "session"
+      ? authorize_validated_action(
+        message,
+        validated.payload,
+        origin,
+        trace,
+        actionSpan?.spanId,
+      )
+      : { ok: true as const, payload: validated.payload };
+    const authorized = authorization instanceof Promise
+      ? await authorization
+      : authorization;
+    if (!authorized.ok) {
+      actionSpan?.failure(() => ({ action: message.name, errorCode: authorized.code }));
+      return {
+        type: "error",
+        id: message.id,
+        ok: false,
+        seq,
+        completionRev: stream.headRev,
+        error: {
+          message: authorized.message,
+          code: authorized.code,
+        },
+      };
+    }
     const response = action_response(
       message.id,
       await execute_validated_action(
         message,
         validated.handler,
-        validated.payload,
+        authorized.payload,
         origin,
         emitEvent,
         trace,
@@ -572,7 +704,7 @@ export function create_livehost<
 
     async function handle_deduped_action(
       message: LiveHostClientActionMessage<TActions>,
-      origin: LiveHostActionOrigin,
+      origin: Extract<LiveHostActionOrigin, { kind: "session" }>,
       trace?: LiveTraceContext,
     ): Promise<void> {
       if (!message.requestId || !message.clientId) {
@@ -651,16 +783,55 @@ export function create_livehost<
         return;
       }
 
+      const authorization = authorize_validated_action(
+        message,
+        validated.payload,
+        origin,
+        trace,
+        actionSpan?.spanId,
+      );
+      const authorized = authorization instanceof Promise
+        ? await authorization
+        : authorization;
+      if (!authorized.ok) {
+        const response: LiveHostClientActionResult = {
+          type: "error",
+          id: message.id,
+          requestId: message.requestId,
+          ...(message.attemptId !== undefined
+            ? { attemptId: message.attemptId }
+            : {}),
+          ok: false,
+          seq,
+          completionRev: stream.headRev,
+          delivery: "rejected",
+          error: {
+            code: authorized.code,
+            message: authorized.message,
+          },
+        };
+        send(response);
+        trace?.emit({
+          subsystem: "transport",
+          phase: "response.dispatch",
+          status: "failure",
+          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          details: () => ({ action: message.name, responseType: response.type, errorCode: authorized.code }),
+        });
+        actionSpan?.failure(() => ({ action: message.name, errorCode: authorized.code }));
+        return;
+      }
+
       const result = await actionRequests.execute({
         clientId: message.clientId,
         requestId: message.requestId,
         actionName: message.name,
-        payload: validated.payload,
+        payload: authorized.payload,
         retry: message.retry === true,
         run: () => execute_validated_action(
           message,
           validated.handler,
-          validated.payload,
+          authorized.payload,
           origin,
           emit_connection_event,
           trace,

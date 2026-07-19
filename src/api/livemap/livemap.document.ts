@@ -1,6 +1,7 @@
 import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
   ClassifiedLiveMap,
@@ -140,6 +141,7 @@ function make_document_livemap(
     root: () => core.root(),
     content,
     byQuid: (quid: string) => {
+      if (!is_persisted_quid(quid)) return undefined;
       const node = controller.identity().get(quid);
       return node === undefined ? undefined : clone_live_root(node);
     },

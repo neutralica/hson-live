@@ -38,6 +38,15 @@ function onlyElement(node: HsonNode): HsonNode {
   return (node.$_content[0] as HsonNode).$_content[0] as HsonNode;
 }
 
+check("@quid parses into metadata and serializes immediately after the tag", () => {
+  const node = parse(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden "Content"/>`);
+  const panel = onlyElement(node);
+  assert.equal(panel.$_meta?.["data-_quid"], "4k7m2v9d1r6x8qwc");
+  assert.equal(compact(node), `<panel @4k7m2v9d1r6x8qwc class="settings" hidden "Content"/>`);
+  assert.equal(compact(parse(`<panel data-_quid="0000000000000000"/>`)), `<panel @0000000000000000/>`);
+  assert.throws(() => parse(`<panel @0000000000000000 data-_quid="0000000000000000"/>`), /conflicting persisted QUID/);
+});
+
 function clone_without_quids(node: HsonNode): HsonNode {
   const clone = structuredClone(node);
   const visit = (current: HsonNode): void => {
@@ -261,7 +270,7 @@ check("noQuid filters only the exact persisted QUID key", () => {
   const node = parse(`<tag data-_quid="q-1" data-_custom="keep" data-_index="7" "value"/>`);
   const plain = readable(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
-  assert.match(plain, /data-_quid="q-1"/);
+  assert.match(plain, /@q-1/);
   assert.doesNotMatch(filtered, /data-_quid/);
   assert.match(filtered, /data-_custom="keep"/);
   assert.match(filtered, /data-_index="7"/);
@@ -307,7 +316,7 @@ check("noQuid does not mutate or contaminate the source graph", () => {
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(node, before);
   assert.doesNotMatch(filtered, /data-_quid/);
-  assert.match(readable(node), /data-_quid="q-5"/);
+  assert.match(readable(node), /@q-5/);
 });
 
 check("noQuid does not register imported identity", () => {
@@ -445,7 +454,7 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
     "data-_quid": "drop-when-requested",
   };
   const builder = () => hson.fromNode(node).toHson();
-  const plain = `<tag count="2" enabled="true" disabled data-_custom="keep" data-_quid="drop-when-requested"/>`;
+  const plain = `<tag @drop-when-requested count="2" enabled="true" disabled data-_custom="keep"/>`;
   const filtered = `<tag count="2" enabled="true" disabled data-_custom="keep"/>`;
   assert.equal(builder().serialize(), plain);
   assert.equal(builder().noBreak().serialize(), plain);
@@ -462,7 +471,7 @@ check("quoted ordinary attributes are unchanged for structured block content", (
   onlyElement(node).$_attrs = { count: 2, disabled: "disabled" };
   assert.equal(
     readable(node),
-    `<p count="2" disabled data-_quid="q-attrs"\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+    `<p @q-attrs count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noQuid().serialize(),

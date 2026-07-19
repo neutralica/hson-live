@@ -10,6 +10,7 @@ import {
 import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
 import type { ArraySymbol, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import { is_persisted_quid } from "../../../core/persisted-quid.js";
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -106,12 +107,13 @@ class HsonScanner {
       : this.scanBareName("tag name");
 
     const attrs: RawAttr[] = [];
+    let quid: { value: string; start: Position; end: Position } | undefined;
     let openEmitted = false;
     let contentStarted = false;
 
     const emitOpen = (): void => {
       if (openEmitted) return;
-      this.tokens.push(CREATE_OPEN_TOKEN(tag, attrs, openPos));
+      this.tokens.push(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
       openEmitted = true;
     };
 
@@ -137,6 +139,20 @@ class HsonScanner {
       }
 
       const ch = this.peek();
+
+      if (ch === "@") {
+        const quidPos = this.position();
+        if (contentStarted) this.fail(`persisted QUID declaration is forbidden after content begins`, quidPos);
+        this.consumeExpected("@");
+        if (this.atEnd() || /\s/.test(this.peek()) || this.startsWith("/>") || this.peek() === ">") {
+          this.fail(`missing persisted QUID value after "@"`, quidPos);
+        }
+        const value = this.scanBareToken();
+        if (!is_persisted_quid(value)) this.fail(`invalid persisted QUID "${value}"`, quidPos);
+        if (quid !== undefined) this.fail(`duplicate persisted QUID declaration`, quidPos);
+        quid = { value, start: quidPos, end: this.previousPosition() };
+        continue;
+      }
 
       if (BARE_NAME_START.test(ch)) {
         const namePos = this.position();

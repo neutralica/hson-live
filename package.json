@@ -51,7 +51,8 @@
     "test:livehost-client-recovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-client-recovery.acceptance.mts",
     "test:livehost-session": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-session.acceptance.mts",
     "test:livehost-action-dedupe": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-action-dedupe.acceptance.mts",
-    "test:livehost-trace": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-trace.acceptance.mts"
+    "test:livehost-trace": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-trace.acceptance.mts",
+    "test:livehost-authorization": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-authorization.acceptance.mts"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

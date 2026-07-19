@@ -116,18 +116,31 @@ meaning, rate-limit work, version behavior, and return a safe result.
 
 Typed asynchronous action handlers and payload decoders are implemented. The
 current handler receives the authoritative LiveMap and can emit a
-connection-scoped event. Authorization context, cancellation, action
-deduplication, durable domain logging, and transactional rollback across an
-entire async handler are roadmap concerns.
+connection-scoped event. Remote actions now have an optional host-owned
+`authorizeAction(context)` checkpoint after payload validation and before
+deduplication or handler execution. Context contains the resolved action, safe
+session identity, stable map/incarnation identity, and a deeply frozen detached
+validated payload. The handler receives a separate detached payload.
+
+Policies may return a boolean or promise. False is
+`LIVEHOST_ACTION_FORBIDDEN`; throw/rejection is the distinct generic
+`LIVEHOST_ACTION_AUTHORIZATION_FAILED`. Fresh executions, joining attempts,
+and cached retries are reauthorized independently; decisions are never cached.
+Omission is implicit allow and is not access control. This is authorization,
+not authentication, roles, ACL persistence, subscription authorization, or
+action-enumeration concealment. It adds no wire fields. Hosted document actions
+have not landed, but will pass through this boundary.
 
 A narrow opt-in structured-tracing pilot is also implemented for the current
 action lifecycle. It observes accepted envelopes, session authority, lookup,
-payload validation, handler execution, revision boundaries, response dispatch,
-and subscription publication through a caller-supplied local sink. Events are
+payload validation, authorization, handler execution, revision boundaries,
+response dispatch, and subscription publication through a caller-supplied
+local sink. Configured policies have a real authorization span; omission emits
+an honest implicit-allow skip. Events are
 redacted, are never protocol data or replay history, and sink failures are
 semantically isolated. Bounded collector and explicit console adapters are
 exported from `hson-live/diagnostics`. This is diagnostics infrastructure, not
-the future authorization system or a distributed tracing platform.
+the authorization decision itself or a distributed tracing platform.
 
 Each accepted host-side processing attempt receives a dedicated host-generated
 trace ID. Client action attempt IDs and logical request IDs are not reused as

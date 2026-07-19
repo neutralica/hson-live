@@ -92,6 +92,8 @@ export type TokenOpen = {
   kind: typeof TOKEN_KIND.OPEN; 
   tag: string;
   rawAttrs: RawAttr[];
+  /** Header-only persisted identity declaration, normalized by the parser. */
+  quid?: { value: string; start: Position; end: Position };
   pos: Position;
 };
 

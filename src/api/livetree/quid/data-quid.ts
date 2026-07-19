@@ -6,6 +6,7 @@ import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 import { ensure_node_meta, prune_empty_node_meta } from '../../../core/node-storage.js';
 import { record_livetree_materialization } from '../debug/materialization-profile.js';
+import { encode_persisted_quid, is_persisted_quid } from '../../../core/persisted-quid.js';
 
 
 
@@ -29,15 +30,14 @@ function assert_quid_available(q: string, n: HsonNode): void {
   throw new Error(`Duplicate QUID \"${q}\" is already registered to another node.`);
 }
 
-/** short, sortable-ish id; crypto if available, else timestamp+counter */
-let _inc = 0;
-function mint_quid(): string {
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
-    const b = new Uint8Array(8);
-    crypto.getRandomValues(b);
-    return [...b].map(x => x.toString(16).padStart(2, "0")).join("");
+/** Generate one canonical 80-bit persisted QUID from secure random bytes. */
+export function mint_quid(): string {
+  if (!globalThis.crypto?.getRandomValues) {
+    throw new Error("secure QUID generation is unavailable");
   }
-  return `q-${Date.now().toString(36)}-${(_inc++).toString(36)}`;
+  const bytes = new Uint8Array(10);
+  globalThis.crypto.getRandomValues(bytes);
+  return encode_persisted_quid(bytes);
 }
 
 /***************************************
@@ -55,7 +55,10 @@ function mint_quid(): string {
  ***************************************/
 export function get_quid(n: HsonNode): string | undefined {
   const q = n.$_meta?.[_DATA_QUID];
-  if (typeof q === "string" && q) return q;
+  if (q !== undefined && !is_persisted_quid(q)) {
+    throw new Error(`Invalid persisted QUID "${String(q)}".`);
+  }
+  if (q !== undefined) return q;
   return NODE_TO_QUID.get(n);
 }
 

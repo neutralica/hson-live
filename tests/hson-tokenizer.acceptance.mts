@@ -4,6 +4,7 @@ import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
+import { encode_persisted_quid, is_persisted_quid } from "../src/core/persisted-quid.ts";
 
 let checks = 0;
 
@@ -37,6 +38,29 @@ function token_summary(tokens) {
     }
   });
 }
+
+check("header @quid is represented separately from ordinary attributes", () => {
+  const open = tokenize_hson(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden/>`)[0];
+  assert.equal(open.kind, "OPEN");
+  if (open.kind !== "OPEN") return;
+  assert.equal(open.quid?.value, "4k7m2v9d1r6x8qwc");
+  assert.deepEqual(open.rawAttrs.map((attr) => attr.name), ["class", "hidden"]);
+});
+
+check("@quid rejects missing, duplicate, and post-content declarations", () => {
+  assert.throws(() => tokenize_hson(`<panel @/>`), /missing persisted QUID/);
+  assert.throws(() => tokenize_hson(`<panel @4k7m2v9d1r6x8qwc @0000000000000000/>`), /duplicate persisted QUID/);
+  assert.throws(() => tokenize_hson(`<panel "text" @4k7m2v9d1r6x8qwc/>`), /forbidden after content/);
+});
+
+check("persisted QUIDs use the canonical 80-bit Base32 contract", () => {
+  assert.equal(encode_persisted_quid(new Uint8Array(10)), "0000000000000000");
+  assert.equal(encode_persisted_quid(new Uint8Array(10).fill(255)), "zzzzzzzzzzzzzzzz");
+  assert.equal(is_persisted_quid("4k7m2v9d1r6x8qwc"), true);
+  for (const value of ["", "4k7m2v9d1r6x8qw", "4k7m2v9d1r6x8qwcc", "4K7M2V9D1R6X8QWC", "4k7m2v9d1r6x8qwi", "4k7m2v9d1r6x8qw-"]) {
+    assert.equal(is_persisted_quid(value), false);
+  }
+});
 
 const legacy_cases = [
   {
@@ -103,13 +127,13 @@ const legacy_cases = [
   },
   {
     name: "quoted key attributes flags and metadata",
-    source: `<\`display name\` data-_quid="q-1" count=2 enabled=true missing=null disabled "Ada"/>`,
+    source: `<\`display name\` data-_quid="0000000000000001" count=2 enabled=true missing=null disabled "Ada"/>`,
     expected: [
       {
         kind: "OPEN",
         tag: "display name",
         attrs: [
-          { name: "data-_quid", value: { text: "q-1", quoted: true } },
+          { name: "data-_quid", value: { text: "0000000000000001", quoted: true } },
           { name: "count", value: { text: "2", quoted: false } },
           { name: "enabled", value: { text: "true", quoted: false } },
           { name: "missing", value: { text: "null", quoted: false } },

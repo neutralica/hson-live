@@ -119,6 +119,7 @@ type LiveHostOptions<TState, TActions> = Readonly<{
   actions?: Partial<LiveHostActions<TActions, TState>>;
   schema?: LiveHostSchema<TState, TActions>;
   sessionId?: string | (() => string);
+  authorizeAction?: LiveHostActionAuthorizer<TActions>;
   trace?: LiveTraceSink;
 }>;
 ```
@@ -162,6 +163,38 @@ successfully. It does not currently equal `host.map.rev`:
 Treat `seq` as the current action-response/synchronization sequence, not as a
 canonical LiveMap revision.
 
+### Remote action authorization
+
+`authorizeAction` is an optional host-local execution boundary:
+
+```ts
+const host = hson.liveHost.create<State, Actions>({
+  authorizeAction(context) {
+    return context.session.sessionId === trustedSessionId;
+  },
+  actions,
+});
+```
+
+It receives the resolved action name, safe session identity (`sessionId`,
+attachment epoch, and resumability), stable map/incarnation identity, and a
+deeply frozen detached copy of the validated payload. The handler receives a
+different detached payload. The callback returns `boolean | Promise<boolean>`:
+true allows, false returns `LIVEHOST_ACTION_FORBIDDEN`, and throw/rejection
+returns the generic `LIVEHOST_ACTION_AUTHORIZATION_FAILED` without exposing
+arbitrary policy text.
+
+Lookup and payload validation happen first; authorization happens before
+deduplication. Every fresh execution, joining attempt, and cached retry is
+evaluated independently. Decisions are never cached. Denial cannot cancel an
+existing execution or remove its cached result. Omission means **implicit
+allow** and is not access control.
+
+This is action authorization, not authentication. It does not authorize
+subscriptions, events, recovery, snapshots, replay, or local LiveMap calls. It
+adds no roles, ACL persistence, client claims, or protocol fields. Hosted
+document actions have not landed; future hosted actions will use this boundary.
+
 ### Opt-in structured tracing
 
 LiveHost accepts an optional synchronous trace sink:
@@ -201,9 +234,9 @@ trace ID even when deduplication returns a joined or cached outcome without a
 second handler execution. Sequence defines ordering; timestamps and durations
 are diagnostic only. The current remote-action pilot records the decoded action
 envelope, resolved session authority, action lookup, payload schema validation,
-handler execution, safe revision/commit counts, response dispatch, and
-subscription publication. The current implementation has no general action
-authorization hook, so it does not emit a fictional authorization stage.
+authorization, handler execution, safe revision/commit counts, response
+dispatch, and subscription publication. A configured policy emits a real span;
+omission emits one skip event with `reason: "implicit-allow"`.
 
 Details are explicit summaries such as action name, error code, revision range,
 operation count, delivery kind, and subscriber count. Payloads, results,

@@ -2,6 +2,7 @@ import { assert_invariants } from "../../core/assert-invariants.js";
 import { ELEM_TAG, ROOT_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type { CssMap } from "../../core/style.types.js";
 import type {
@@ -218,8 +219,8 @@ function normalize_target(input: unknown, operation: DocumentOperation): LiveMap
   }
 
   if (Object.keys(input).some((key) => key !== "kind" && key !== "quid")
-    || typeof input.quid !== "string" || input.quid.length === 0) {
-    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "QUID target must contain one non-empty string quid");
+    || !is_persisted_quid(input.quid)) {
+    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "QUID target must contain one canonical persisted QUID");
   }
   return Object.freeze({ kind: "quid", quid: input.quid });
 }
