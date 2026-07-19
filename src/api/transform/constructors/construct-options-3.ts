@@ -1,67 +1,75 @@
-// construct-options-3.ts
+import { $RENDER } from "../../../core/constants.js";
+import type {
+  FrameOptions,
+  FrameRender,
+  HsonOptionsConstructor_3,
+  OptionsConstructor_3,
+  PublicFrameOptions,
+  RenderConstructor_4,
+  RenderFormats,
+} from "../../../types/constructor.types.js";
+import { construct_render_4 } from "./construct-render-4.js";
 
-import { RenderFormats } from "../../../types/constructor.types.js";
-import { construct_render_4 } from "./construct-render-4.js"; 
-import { OptionsConstructor_3, FrameOptions, RenderConstructor_4 } from "../../../types/constructor.types.js";
-import { FrameRender } from "../../../types/constructor.types.js";
+type OptionFinalizer<K extends RenderFormats> =
+  OptionsConstructor_3<K> & RenderConstructor_4<K>;
 
-/**
- * Stage 3 : applying output options.
- *
- * These methods configure the final output's formatting.
- *
- * Each call:
- * - merges new flags into `frame.options`,
- * - then returns the final render object (stage 4),
- *   immediately ready for `serialize()` / `parse()` / `asBranch()`.
- *
- * This keeps the original behavior but is typed against the NEW
- * constructor interfaces used by `construct_output_2`.
- *
- * @param render - the render context from stage 2 (format already chosen).
- * @returns an object exposing the options surface (stage 3).
- */
+type HsonOptionFinalizer =
+  HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+
+function with_frame_options<K extends RenderFormats>(
+  render: FrameRender<K>,
+  options: FrameOptions,
+): FrameRender<K> {
+  return {
+    output: render.output,
+    frame: {
+      ...render.frame,
+      options: { ...render.frame.options, ...options },
+    },
+  };
+}
+
+/** Build the composable legacy JSON/HTML option surface. */
 export function construct_options_3<K extends RenderFormats>(
-  render: FrameRender<K>
-): OptionsConstructor_3<K> {
-  const { frame, output } = render;
+  render: FrameRender<K>,
+): OptionFinalizer<K> {
+  const finalize = (next: FrameRender<K>): OptionFinalizer<K> =>
+    construct_options_3(next);
 
   return {
-    /**
-     * Apply a custom set of formatting options.
-     *
-     * Convenience helpers like `.noBreak()` and `.spaced()` are shorthands
-     * for calling this with specific flags.
-     */
-    withOptions(opts: FrameOptions):  RenderConstructor_4<K> {
-      const updatedFrame: FrameRender<K>["frame"] = {
-        ...frame,
-        options: { ...frame.options, ...opts },
-      };
-      return construct_render_4({ frame: updatedFrame, output });
+    withOptions(opts: PublicFrameOptions<K>): OptionFinalizer<K> {
+      return finalize(with_frame_options(render, opts));
     },
 
-    /**
-     * Format the output on a single line with no line breaks.
-     */
-    noBreak():  RenderConstructor_4<K> {
-      const updatedFrame: FrameRender<K>["frame"] = {
-        ...frame,
-        options: { ...frame.options, noBreak: true },
-      };
-      return construct_render_4({ frame: updatedFrame, output });
+    noBreak(): OptionFinalizer<K> {
+      return finalize(with_frame_options(render, { noBreak: true }));
     },
 
-    /**
-     * Add human-readable spacing and indentation to the output.
-     */
-    spaced():  RenderConstructor_4<K> {
-      const updatedFrame: FrameRender<K>["frame"] = {
-        ...frame,
-        options: { ...frame.options, spaced: true },
-      };
-      return construct_render_4({ frame: updatedFrame, output });
+    ...construct_render_4(render),
+  };
+}
+
+/** Build the composable HSON option/finalizer surface. */
+export function construct_hson_options_3(
+  render: FrameRender<(typeof $RENDER)["HSON"]>,
+): HsonOptionFinalizer {
+  const finalize = (
+    next: FrameRender<(typeof $RENDER)["HSON"]>,
+  ): HsonOptionFinalizer => construct_hson_options_3(next);
+
+  return {
+    withOptions(opts: FrameOptions): HsonOptionFinalizer {
+      return finalize(with_frame_options(render, opts));
     },
 
+    noBreak(): HsonOptionFinalizer {
+      return finalize(with_frame_options(render, { noBreak: true }));
+    },
+
+    noQuid(): HsonOptionFinalizer {
+      return finalize(with_frame_options(render, { noQuid: true }));
+    },
+
+    ...construct_render_4(render),
   };
 }

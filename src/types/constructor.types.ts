@@ -74,13 +74,12 @@ export type FrameMode = (typeof $HSON_FRAME)[keyof typeof $HSON_FRAME];
  *  - input   → original caller input (string or Element)
  *  - node    → canonical HsonNode for this frame
  *
- *  - hson?   → cached HSON text (if materialized)
  *  - html?   → cached HTML text (if materialized)
  *  - json?   → cached JSON (value or string, depending on usage)
  *
  *  - mode?   → FrameMode describing origin
  *  - meta?   → pipeline metadata (debugging, provenance, etc.)
- *  - options?→ active FrameOptions (spacing, line length, linting, ...)
+ *  - options?→ active serialization options
  *
  * The frame flows through the stages; each stage may update it but
  * MUST leave it structurally coherent.
@@ -88,7 +87,6 @@ export type FrameMode = (typeof $HSON_FRAME)[keyof typeof $HSON_FRAME];
 export interface FrameConstructor {
   input: string | Element;
   node: HsonNode;
-  hson?: string;
   html?: string;
   json?: JsonValue | string;
   mode?: FrameMode;
@@ -330,7 +328,7 @@ export interface DomQuerySourceConstructor {
  ***************/
 export interface OutputConstructor_2 {
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
-  toHson(): OptionsConstructor_3<(typeof $RENDER)["HSON"]> & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  toHson(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
   /**
    * 🔥 HTML-style sanitization applied *after* source selection.
@@ -421,8 +419,7 @@ export interface DomQueryLiveTreeConstructor {
  * OptionsConstructor_3<K>
  *
  * Optional “step 3” configuration layer for the chosen format `K`.
- * All methods return the final RenderConstructor_4<K>, so callers
- * can chain or skip them as desired.
+ * Methods return the same option/finalizer surface so repeated options compose.
  *
  *  - withOptions(opts)
  *      Attach a partial FrameOptions object to the frame. This is the
@@ -431,32 +428,34 @@ export interface DomQueryLiveTreeConstructor {
  *  - noBreak()
  *      Shorthand for withOptions({ noBreak: true }).
  *
- *  - spaced()
- *      Shorthand for withOptions({ spaced: true }).
  ***************/
 export interface OptionsConstructor_3<K extends RenderFormats> {
-  withOptions(opts: Partial<FrameOptions>): RenderConstructor_4<K>;
-  noBreak(): RenderConstructor_4<K>;
-  spaced(): RenderConstructor_4<K>;
-  /* (linter deprecated) */
-  // linted(): RenderConstructor_4<K>;
+  withOptions(opts: PublicFrameOptions<K>): OptionsConstructor_3<K> & RenderConstructor_4<K>;
+  noBreak(): OptionsConstructor_3<K> & RenderConstructor_4<K>;
 }
 
 /**
- * Shared formatting preferences for serialization:
- *
- * - spaced     → pretty-printed, multi-line output
- * - lineLength → advisory max width for inline candidates
- * - linted     → request normalized output (serializer-dependent)
- * - noBreak    → force single-line output when possible
- *
- * Not all serializers honor every flag, but this is the common vocabulary.
+ * Active HSON serialization preferences. Readable output is the default;
+ * `noBreak` selects canonical compact layout and `noQuid` filters only the
+ * persisted `data-_quid` metadata key from HSON output.
  */
 export interface FrameOptions {
-  spaced?: boolean;
-  lineLength?: number;
-  linted?: boolean;
   noBreak?: boolean;
+  noQuid?: boolean;
+}
+
+/** JSON/HTML retain their existing noBreak option surface; HSON adds noQuid. */
+export type PublicFrameOptions<K extends RenderFormats> =
+  K extends (typeof $RENDER)["HSON"]
+    ? FrameOptions
+    : Pick<FrameOptions, "noBreak">;
+
+/** Composable HSON-only option/finalizer methods. */
+export interface HsonOptionsConstructor_3
+  extends OptionsConstructor_3<(typeof $RENDER)["HSON"]> {
+  withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  noBreak(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  noQuid(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
 }
 
 

@@ -30,19 +30,23 @@ These return the transform output builder:
 .toHson()
 ```
 
-After `toHtml()`, `toJson()`, or `toHson()`:
+After `toHson()`, readable HSON is the default and these HSON options compose:
 
 ```ts
-.spaced()
 .noBreak()
+.noQuid()
 .withOptions(options)
 .serialize()
 .parse()
 ```
 
-Current limitation: formatting options are exposed but are not honored by the
-current serializers. Output is materialized when `toHtml()`, `toJson()`, or
-`toHson()` is selected, before these flags are attached.
+`noBreak` produces canonical compact HSON. `noQuid` filters only persisted
+`data-_quid` from output; it does not mutate the graph, touch the identity
+registry, or remove array `data-_index` metadata. HSON serialization is delayed
+until `serialize()` so options selected after `toHson()` take effect. The former
+`spaced`, `linted`, and `lineLength` options are not part of this surface.
+
+JSON and HTML serialization behavior is unchanged.
 
 ### LiveTree Facade
 

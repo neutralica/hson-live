@@ -138,6 +138,8 @@ Chooses HSON output.
 
 - `serialize()` returns HSON text.
 - `parse()` returns the current `HsonNode` graph.
+- HSON text is produced lazily by `serialize()`, after HSON options have been
+  accumulated. The source graph is not cloned or mutated.
 
 ### `.sanitizeBEWARE()`
 
@@ -162,31 +164,51 @@ not recognize.
 
 ---
 
-## Optional Formatting Surface
+## HSON Serialization Options
 
-After `toHtml()`, `toJson()`, or `toHson()`, the API exposes:
+After `toHson()`, the API exposes a composable option/finalizer surface:
 
 ```ts
-.spaced()
 .noBreak()
+.noQuid()
 .withOptions(options)
+.serialize()
+.parse()
 ```
 
-These methods attach `FrameOptions`:
+The active HSON options are:
 
 ```ts
 type FrameOptions = {
-  spaced?: boolean;
-  lineLength?: number;
-  linted?: boolean;
   noBreak?: boolean;
+  noQuid?: boolean;
 };
 ```
 
-Current limitation: these methods are part of the public chain, but none of the
-current serializers honor them. Output is materialized when the `to*()` method
-is called, before these options are attached. Treat the formatting surface as
-reserved until that pipeline changes.
+Readable, two-space-indented HSON is the default. `noBreak` selects canonical
+compact HSON without cosmetic newlines or indentation while retaining
+conventional spaces between tag/header/content terms. `noQuid` omits only the
+persisted `data-_quid` metadata key. It does not remove `data-_index` or custom
+`data-_...` metadata, and it does not alter live identity registration.
+
+Ordinary HSON attributes have string-valued wire semantics in either layout.
+The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while
+canonical serialization emits `count="2"`. Programmatic number, boolean, and
+null values are likewise stringified and quoted without mutating the source
+graph. Presence flags are the distinct exact-equality form
+`{ disabled: "disabled" }` and serialize as bare `disabled`.
+
+Options compose and are idempotent:
+
+```ts
+hson.fromNode(node).toHson().noBreak().noQuid().serialize();
+hson.fromNode(node).toHson().noQuid().noBreak().serialize();
+hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize();
+```
+
+The former `spaced`, `linted`, and `lineLength` options have been removed.
+JSON and HTML serialization remain eager and otherwise unchanged by this HSON
+layout work.
 
 ---
 

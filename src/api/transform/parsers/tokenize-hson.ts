@@ -1,952 +1,627 @@
-// tokenize-hson.ts
-
 import { OBJ_TAG } from "../../../core/constants.js";
-import { CREATE_ARR_OPEN_TOKEN, CREATE_ARR_CLOSE_TOKEN, CREATE_EMPTY_OBJ_TOKEN, CREATE_END_TOKEN, CREATE_OPEN_TOKEN, CREATE_TEXT_TOKEN } from "../token-factories.js";
-import { CLOSE_KIND, ARR_SYMBOL, TOKEN_KIND } from "../token.types.js";
-import { Position, CloseKind, Tokens, RawAttr } from "../token.types.js";
-import { lex_text_piece } from "../utils/hson-utils/lex-text-piece.js";
-import { slice_balanced_arr } from "../utils/hson-utils/slice-balance.js";
-import { split_array_string } from "../utils/hson-utils/split-array-string.js";
-import { is_quote, scan_quoted_block, scan_tag_header_block } from "../utils/hson-utils/scan-quoted-block.js";
+import {
+  CREATE_ARR_CLOSE_TOKEN,
+  CREATE_ARR_OPEN_TOKEN,
+  CREATE_EMPTY_OBJ_TOKEN,
+  CREATE_END_TOKEN,
+  CREATE_OPEN_TOKEN,
+  CREATE_TEXT_TOKEN,
+} from "../token-factories.js";
+import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
+import type { ArraySymbol, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 
-/* debug log */
-const _VERBOSE = false;
-const boundLog = console.log.bind(console, '%c[hson tokenizer]', 'color: maroon; background: lightblue;');
-const _log = _VERBOSE ? boundLog : () => { };
+const MAX_NESTING = 75;
+const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const BARE_NAME_START = /[A-Za-z_:]/;
+const BARE_NAME_CHAR = /[A-Za-z0-9:._-]/;
 
 /**
- * Union type for items pushed on the tokenizer's context stack.
+ * Tokenize HSON with one absolute, newline-agnostic source cursor.
  *
- * Variants:
- * - `{ type: "CLUSTER"; close?: CloseKind; implicit?: boolean }`
- *   Represents a cluster context such as an object or element block, tracking:
- *   - `close`    - the close kind (e.g. object vs element semantics).
- *   - `implicit` - `true` when the cluster was implied by layout/markup
- *                  rather than an explicit delimiter.
- *
- * - `{ type: "IMPLICIT_OBJECT" }`
- *   Marks an implicit object scope introduced by syntaxes like:
- *     `< <prop val>>`
- *   which are later normalized into the explicit `_hson_obj` layer.
- *
- * The stack is used to enforce well-formed nesting and resolve close
- * delimiters back to their originating context.
- */
-type ContextStackItem =
-    | { type: 'CLUSTER'; close?: CloseKind; implicit?: boolean } /* replaces the old _hson_obj/_hson_elem sentinels */
-    | { type: 'IMPLICIT_OBJECT' };
-
-/**
- * Construct a `Position` object representing a concrete source location
- * within the original HSON text.
- *
- * The returned position is used by the tokenizer and parser to annotate
- * tokens and errors with:
- * - `line`  - 1-based line number.
- * - `col`   - 1-based column number on that line.
- * - `index` - 0-based absolute character offset in the full string.
- *
- * @param lineno - 1-based line number.
- * @param colno - 1-based column (character) index within the line.
- * @param posix - 0-based absolute character index in the whole input.
- * @returns A `Position` triple capturing all three coordinates.
- */
-const _pos = (lineno: number, colno: number, posix: number): Position => ({ line: lineno, col: colno, index: posix });
-
-/**
- * Decide whether a bare token in attribute position should be treated as
- * a *primitive value* rather than a flag-style attribute.
- *
- * Rules (after trimming):
- * - Empty string → `false` (not a primitive).
- * - `"true" | "false" | "null"` → primitive.
- * - Numeric-like forms matching:
- *     /^-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$/
- *   (integers, floats, scientific notation) → primitive.
- *
- * This is used when encountering an attribute-like token without an
- * explicit `=`. If it passes this check, the tokenizer treats it as
- * a bare value rather than as a boolean/flag attribute.
- *
- * @param string - Raw token text.
- * @returns `true` if the token represents a primitive literal, `false` otherwise.
- */
-function isPrimitiveLex(string: string): boolean {
-    const t = string.trim();
-    if (!t) return false;
-    if (t === 'true' || t === 'false' || t === 'null') return true;
-    // number-ish (int, float, sci). no +/- signs for attrs; fine to accept here
-    return /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t);
-}
-/**
- * Detects a line that is *only* a lone `<` (with optional trailing
- * whitespace), e.g.:
- *
- *   "<"
- *   "<   "
- *
- * This is used to distinguish incomplete or structural markers from
- * real tag headers, and helps avoid mis-parsing stray `<` characters
- * as valid opening tags.
- *
- * Matches only when:
- * - The line starts with `<`, optionally followed by spaces.
- * - No non-space characters appear after the `<`.
- */
-const LONE_OPEN_ANGLE_REGEX = /^<\s*$/;
-
-/**
- * Detects the beginning of an implicit object construct on a line, e.g.:
- *
- *   "< <prop val>>"
- *   "    <   <"
- *
- * Semantics:
- * - Line may start with arbitrary whitespace.
- * - Must contain `<` followed by optional whitespace and then another `<`.
- * - The second `<` must be followed by either whitespace or end-of-line.
- *
- * This pattern signals that an `_hson_obj` cluster is being opened implicitly,
- * and instructs the tokenizer to push an `IMPLICIT_OBJECT`/`CLUSTER`
- * context instead of treating the sequence as a normal tag name.
- */
-const IMPLICIT_OBJECT_START_REGEX = /^\s*<\s*<(\s|$)/; /* ensures second '<' is followed by space or EOL */
-
-let tokenFirst: boolean = true;
-
-/**
- * Tokenize a raw HSON source string into a flat `Tokens[]` stream suitable
- * for `parse_tokens`.
- *
- * Responsibilities:
- * - Splits the input into lines and tracks line/column/absolute offsets
- *   using `_pos(...)` so downstream errors can be reported with precise
- *   positions.
- * - Maintains a `contextStack` of `ContextStackItem` entries to track:
- *   - open tags,
- *   - cluster contexts (object/element semantics),
- *   - implicit object scopes.
- * - Enforces a recursion/depth limit (`maxDepth`) to prevent runaway
- *   expansion or infinite recursion from malicious or malformed input.
- *
- * Core behaviors:
- * - Uses `ensureQuotedLiteral` to validate quoted text segments and detect
- *   unterminated string literals early.
- * - Uses `isPrimitiveLex` to distinguish bare identifiers that should be
- *   treated as scalar values (e.g. `true`, `42`) from flag-style attributes.
- * - Accumulates tag attributes via `readAttrs`, which returns structured
- *   `RawAttr[]` and the updated scan position within the trimmed header.
- * - Manages per-line offset accounting via `_bump_line` and `_bump_array`
- *   so that multi-line constructs still have accurate absolute indices.
- *
- * Debugging:
- * - When `_VERBOSE` is enabled, logs detailed tokenization traces to the
- *   console via a pre-bound logger (`_log`).
- *
- * Errors:
- * - On structural or lexical violations (e.g. unterminated strings, depth
- *   overflow, impossible token transitions), throws via `_throw_transform_err`
- *   with contextual information about where the failure occurred.
- *
- * @param hson - Full HSON source string to be tokenized.
- * @param depth - Internal recursion depth guard (callers normally omit).
- * @returns An ordered array of `Tokens` representing the token stream for
- *   the parser.
- * @see parse_tokens
- * @see readAttrs
+ * Physical line boundaries are ordinary whitespace except inside a quoted
+ * string and after `//`. Nested tags, arrays, and anonymous objects recurse
+ * through this scanner without slicing or rebasing the source.
  */
 export function tokenize_hson(hson: string, depth = 0): Tokens[] {
-    const maxDepth = 75;
-    _log(`[token_from_hson called with depth=${depth}]`);
-    if (tokenFirst) {
-        if (_VERBOSE) {
-            console.groupCollapsed('---> tokenizing hson')
-            console.log('input hson string')
-            console.log(hson);
-            console.groupEnd();
-            tokenFirst = false;
-        }
-    }
-    if (depth >= maxDepth) {
-        _throw_transform_err(`stopping potentially infinite loop (depth >= ${maxDepth})`, 'tokenize_hson');
-    }
-
-    const finalTokens: Tokens[] = [];
-    const contextStack: ContextStackItem[] = [];
-    const splitLines = hson.split(/\r\n|\r|\n/);
-    let ix = 0;
-    // absolute start offset for each physical line in splitLines
-    const lineOffsets: number[] = [];
-    {
-        let acc = 0;
-        for (let i = 0; i < splitLines.length; i++) {
-            lineOffsets.push(acc);
-            acc += splitLines[i].length + 1; // assumes split on \n
-        }
-    }
-    _log(`[token_from_hson depth=${depth}]; total lines: ${splitLines.length}`);
-
-    function ensureQuotedLiteral(lit: string, where: string) {
-        const t = lit.trim();
-
-        // if it looks like a quoted literal, it must be JSON-style: "..."
-        if (t.startsWith("'") || t.startsWith("`")) {
-            _throw_transform_err(
-                `[${where}] unsupported quote delimiter (use double quotes only): ${lit}`,
-                "tokenize-hson"
-            );
-        }
-
-        const piece = lex_text_piece(lit);
-
-        // starts with " but not properly closed => hard error
-        if (t.startsWith('"') && !piece.quoted) {
-            _throw_transform_err(
-                `[${where}] unterminated quoted literal: ${lit}`,
-                "tokenize-hson"
-            );
-        }
-
-        return piece; // { text: full literal OR unquoted text, quoted flag }
-    }
-
-
-    /**
-     * Advance the tokenizer’s line/offset cursors by a single line.
-     *
-     * Side effects:
-     * - Increments the global `_offset` by `line.length + 1` to account for
-     *   the line content plus a newline.
-     * - Increments the current line index `ix` to point at the next line
-     *   in `splitLines`.
-     *
-     * This helper keeps all line-advance logic centralized so that position
-     * tracking remains consistent.
-     *
-     * @param line - The current line string being consumed.
-         */
-    function _bump_line(line: string) { _offset += line.length + 1; ix++; }
-
-    /**
- * Advance the tokenizer’s line/offset cursors by a fixed number of
- * subsequent lines starting at the current index.
- *
- * For each of the next `count` lines:
- * - Adds `line.length + 1` to the global `_offset`.
- * - Skips forward in `splitLines`.
- *
- * After the loop:
- * - Increments `ix` by `count`, effectively jumping ahead by that many
- *   logical lines in the tokenization process.
- *
- * Used when multi-line constructs can be skipped in bulk once they have
- * been structurally accounted for.
- *
- * @param count - How many following lines to advance over.
- */
-    function _bump_array(count: number) {
-        for (let n = 0; n < count; n++) {
-            const L = splitLines[ix + n] ?? '';
-            _offset += L.length + 1;
-        }
-        ix += count;
-    }
-
-    /**
- * Parse a slice of a tag header into structured `RawAttr[]` entries.
- *
- * Input window:
- * - Operates on the substring `trimLine[startIx:endIx]`, where:
- *   - `trimLine` is the tag header line with leading indentation removed.
- *   - `startIx` is the index of the first character after the tag name.
- *   - `endIx` is the index where the trailing closer (e.g. `>` or `/>`)
- *     begins.
- *
- * Behavior:
- * - Scans from `startIx` to `endIx`, skipping whitespace between tokens.
- * - For each attribute:
- *   - Reads a valid name matching `[A-Za-z_:][\\w:.-]*`.
- *   - If followed by `=`:
- *     - Parses a quoted value (`"..."` or `'...'`) with escape handling,
- *       or an unquoted value up to the next whitespace.
- *     - Records `value` as `{ text, quoted: boolean }`.
- *   - If *not* followed by `=`:
- *     - Uses `isPrimitiveLex(name)`:
- *       - If `true`, stops and returns early so the caller can treat this
- *         position as a primitive literal rather than an attribute name.
- *       - If `false`, records a *flag* attribute (no value).
- * - Produces `start`/`end` `Position` objects for each attribute using
- *   the line/column metadata provided (`lineNo`, `leadCol`, `_offset`).
- *
- * Return contract:
- * - `attrs`: the list of parsed `RawAttr` entries in left-to-right order.
- * - `endIx`: the index of the first unconsumed character in `trimLine`
- *   after attribute scanning, for the caller to continue scanning.
- *
- * @param trimLine - The trimmed header line containing the tag and attrs.
- * @param startIx - Index (in `$trimLine`) where attribute parsing begins.
- * @param endIx - Index (in `$trimLine`) where attribute parsing must stop.
- * @param lineNo - 1-based line number for position metadata.
- * @param leadCol - Column of the first non-space character in the line.
- * @returns An object with `{ attrs, endIx }` for downstream tokenization.
- */
-    function readAttrs(
-        source: string,
-        startIx: number,
-        endIx: number,
-        posAt: (ix: number) => Position
-    ): { attrs: RawAttr[]; endIx: number } {
-        const out: RawAttr[] = [];
-        let ix = startIx;
-        const end = endIx;
-
-        const skipWhitespace = (): void => {
-            while (ix < end && /\s/.test(source[ix])) ix++;
-        };
-
-        while (ix < end) {
-            skipWhitespace();
-            if (ix >= end) break;
-
-            // attr name must start with letter/_/:
-            if (!/[A-Za-z_:]/.test(source[ix])) {
-                const ch = source[ix];
-
-                // valid inline content starters
-                if (
-                    ch === "<" ||
-                    ch === '"' ||
-                    ch === "«" ||
-                    ch === "[" ||
-                    ch === "-" ||
-                    ch === "+" ||
-                    /\d/.test(ch)
-                ) {
-                    break;
-                }
-
-                _throw_transform_err(
-                    `unexpected token in tag header: "${ch}"`,
-                    "tokenize_hson.readAttrsFromSource"
-                );
-            }
-
-            const nameStart = ix;
-            ix++;
-            while (ix < end && /[\w:.\-]/.test(source[ix])) ix++;
-
-            const name = source.slice(nameStart, ix);
-            const startPos = posAt(nameStart);
-
-            skipWhitespace();
-
-            if (ix < end && source[ix] === "=") {
-                ix++;
-                skipWhitespace();
-                if (ix >= end) {
-                    _throw_transform_err(
-                        `missing attribute value for "${name}"`,
-                        "tokenize_hson.readAttrsFromSource"
-                    );
-                }
-                const valStartIx = ix;
-
-                if (source[ix] === "'") {
-                    _throw_transform_err(
-                        `unsupported single-quoted attribute value (use " only)`,
-                        "tokenize_hson.readAttrsFromSource"
-                    );
-                }
-
-                if (ix < end && source[ix] === '"') {
-                    ix++; // move past opening quote
-                    const innerStart = ix;
-
-                    let escaped = false;
-                    while (ix < end) {
-                        const ch = source[ix];
-
-                        if (escaped) {
-                            escaped = false;
-                            ix++;
-                            continue;
-                        }
-
-                        if (ch === "\\") {
-                            escaped = true;
-                            ix++;
-                            continue;
-                        }
-
-                        if (ch === '"') break;
-                        ix++;
-                    }
-
-                    const text = source.slice(innerStart, ix);
-
-                    if (ix < end && source[ix] === '"') {
-                        ix++; // consume closer
-                    } else {
-                        _throw_transform_err(
-                            `unterminated quoted attribute value for "${name}"`,
-                            "tokenize_hson.readAttrsFromSource"
-                        );
-                    }
-
-                    const endPos = posAt(Math.max(0, ix - 1));
-                    out.push({
-                        name,
-                        value: { text, quoted: true },
-                        start: startPos,
-                        end: endPos,
-                    });
-                } else {
-                    while (ix < end && !/\s/.test(source[ix])) ix++;
-
-                    const inner = source.slice(valStartIx, ix);
-                    const endPos = posAt(Math.max(0, ix - 1));
-                    if (!inner) {
-                        _throw_transform_err(
-                            `missing attribute value for "${name}"`,
-                            "tokenize_hson.readAttrsFromSource"
-                        );
-                    }
-
-                    if (inner.includes("=")) {
-                        _throw_transform_err(
-                            `malformed unquoted attribute value for "${name}": "${inner}"`,
-                            "tokenize_hson.readAttrsFromSource"
-                        );
-                    }
-                    out.push({
-                        name,
-                        value: { text: inner, quoted: false },
-                        start: startPos,
-                        end: endPos,
-                    });
-                }
-            } else {
-                if (isPrimitiveLex(name)) {
-                    return { attrs: out, endIx: nameStart };
-                }
-
-                const endPos = posAt(Math.max(nameStart, ix - 1));
-                out.push({ name, start: startPos, end: endPos });
-            }
-        }
-        return { attrs: out, endIx: ix };
-    }
-
-    let _offset = 0;
-    while (ix < splitLines.length) {
-        const currentIx = ix;
-        const currentLine = splitLines[ix];
-        const trimLine = currentLine.trim();
-        const getLine = (n: number) => splitLines[n] ?? '';
-
-        _log(`[token_from_hson depth=${depth} L=${currentIx + 1}/${splitLines.length}]: processing: "${trimLine}" (Original: "${currentLine}")`);
-
-        /* Step A */
-        /* skip empty/comment lines */
-        if (!trimLine || trimLine.startsWith('//')) {
-            _log(`[token_from_hson depth=${depth} L=${currentIx + 1}] skipping comment/empty`);
-            _bump_line(currentLine);
-            continue;
-        }
-
-        /* Step B: lone '<' implicit object trigger */
-        if (LONE_OPEN_ANGLE_REGEX.test(currentLine)) {
-            _log(`[tokenize_hson depth=${depth} L=${currentIx + 1}] lone '<' detected`);
-
-            contextStack.push({ type: 'IMPLICIT_OBJECT' });
-            contextStack.push({ type: 'CLUSTER', close: CLOSE_KIND.obj, implicit: true });
-
-            // emit a real OPEN for a synthetic _hson_obj
-            const lineNo = currentIx + 1;
-            const leadCol = currentLine.search(/\S|$/) + 1;
-            const posOpen = _pos(lineNo, leadCol, _offset + leadCol - 1);
-            finalTokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, /*rawAttrs*/[], posOpen));     // NEW
-
-            _bump_line(currentLine);
-            continue;
-        }
-
-        /* Step C */
-        /* handle empty arrays «» */
-        if (/^«\s*»\s*$/.test(trimLine) || /^\[\s*\]\s*$/.test(trimLine)) {
-            const arrayOpener = trimLine.startsWith('«') ? ARR_SYMBOL.guillemet : ARR_SYMBOL.bracket;
-            const col = currentLine.search(/\S|$/) + 1; /* first non-space, 1-based */
-            const p = _pos(currentIx + 1, col, _offset + col - 1);
-
-            _log(`[quick]: empty array detected (${arrayOpener})`);
-            finalTokens.push(CREATE_ARR_OPEN_TOKEN(arrayOpener, p));
-            finalTokens.push(CREATE_ARR_CLOSE_TOKEN(arrayOpener, p));
-
-            _bump_line(currentLine);
-            continue;
-        }
-
-        /* Step D */
-        /* handle _hson_arr delimiters */
-        if (trimLine.startsWith('«') || trimLine.startsWith('[')) {
-            const opener = trimLine.startsWith('«') ? '«' : '[';
-            const closer = opener === '«' ? '»' : ']';
-            const closerSymbol = opener === '«' ? ARR_SYMBOL.guillemet : ARR_SYMBOL.bracket;
-
-            _log(`[tokenize_hson]: processing array (${closerSymbol})`);
-
-            /* build a joined view from the current line onward */
-            const joinedFromHere = splitLines.slice(ix).join('\n');
-            const colInLine = currentLine.indexOf(opener) + 1;     /* 1-based col */
-            const startInJoined = currentLine.indexOf(opener) + 1; /* index after opener */
-
-            /* slice the balanced body (quote-aware, nested-pair aware) */
-            const { body, endIndex } = slice_balanced_arr(joinedFromHere, startInJoined, opener, closer);
-
-            /* compute how many lines were consumed up to the closer */
-            const consumedText = joinedFromHere.slice(0, endIndex + 1); /* includes closer */
-            const linesConsumed = consumedText.split('\n').length - 1;
-
-            const pOpen = _pos(currentIx + 1, colInLine, _offset + colInLine - 1);
-            const pClose = _pos(currentIx + 1 + linesConsumed, 1, _offset + consumedText.length);
-
-            finalTokens.push(CREATE_ARR_OPEN_TOKEN(closerSymbol, pOpen));
-
-            /* split the array body by top-level commas (quote/array/header aware) */
-            const items = split_array_string(body, ',');
-
-            for (const itemRaw of items) {
-                const item = itemRaw.trim();
-                if (!item) continue;
-
-                if (item.startsWith('<') || item.startsWith('«') || item.startsWith('[')) {
-                    finalTokens.push(...tokenize_hson(item, depth + 1));
-                } else {
-                    //  quote-aware, without endIx
-                    const piece = ensureQuotedLiteral(item, 'array');
-                    finalTokens.push(
-                        CREATE_TEXT_TOKEN(piece.text, piece.quoted ? true : undefined, pOpen)
-                    );
-                }
-            }
-
-
-            finalTokens.push(CREATE_ARR_CLOSE_TOKEN(closerSymbol, pClose));
-
-            /* advance main loop to the line containing the closer */
-            _bump_array(linesConsumed + 1);
-            continue;
-        }
-
-        /* step E  handle closers */
-        const closerMatch = currentLine.match(/^\s*(\/?>)\s*(?:\/\/.*)?$/);
-        if (closerMatch) {
-            const closerLex = closerMatch[1];
-            if (closerLex) {
-                const close = closerLex === '/>' ? CLOSE_KIND.elem : CLOSE_KIND.obj;
-                const col = currentLine.indexOf(closerLex) + 1;
-                const pos = _pos(currentIx + 1, col, _offset + col - 1);
-
-                // pop cluster and optionally emit END
-                const popped = contextStack.pop() as Extract<ContextStackItem, { type: 'CLUSTER' }>;
-                const isObjClose = (close === CLOSE_KIND.obj);
-
-                // Always emit CLOSE for normal clusters,
-                // and ALSO emit it when this is the implicit per-item object box.
-                if (!popped.implicit || isObjClose) {
-                    finalTokens.push(CREATE_END_TOKEN(close, pos));
-                } else {
-                    _log(`[step e] suppress END for implicit non-object cluster at L${currentIx + 1}`);
-                }
-
-                // pop IMPLICIT_OBJECT marker when we close the obj box.
-                const top = contextStack[contextStack.length - 1];
-                if (isObjClose && top && (top as any).type === 'IMPLICIT_OBJECT') {
-                    contextStack.pop();
-                }
-
-                // clean up implicit marker if present
-                const maybeImplicit = contextStack[contextStack.length - 1];
-                if (maybeImplicit && maybeImplicit.type === 'IMPLICIT_OBJECT' && close === CLOSE_KIND.obj) {
-                    contextStack.pop();
-                }
-
-                _bump_line(currentLine);
-                continue;
-            }
-        }
-
-        /* step F: open tags */
-        if (trimLine.startsWith('<')) {
-            // f.0 exact empty-object token "<>"
-            if (/^<>\s*$/.test(trimLine)) {
-                const lineNo = currentIx + 1;
-                const leadCol = currentLine.search(/\S|$/) + 1;
-                const colOpen = leadCol;
-                const posOpen = _pos(lineNo, colOpen, _offset + colOpen - 1);
-
-                finalTokens.push(CREATE_EMPTY_OBJ_TOKEN('<>', /*quoted*/ false, posOpen));
-                _bump_line(currentLine);
-                continue;
-            }
-
-            /* f.1 implicit object opener "< <...": accept preamble, no tokens, structure only */
-            if (IMPLICIT_OBJECT_START_REGEX.test(trimLine)) {
-                _log(`[step f depth=${depth} L=${currentIx + 1}] implicit object opener`);
-                contextStack.push({ type: 'IMPLICIT_OBJECT' });
-                contextStack.push({ type: 'CLUSTER' });
-
-                const secondIx = trimLine.indexOf('<', trimLine.indexOf('<') + 1);
-                const inner = secondIx >= 0 ? trimLine.substring(secondIx).trim() : '';
-                if (inner) {
-                    const innerTokens = tokenize_hson(inner, depth + 1);
-                    finalTokens.push(...innerTokens);
-                }
-                _bump_line(currentLine);
-                continue;
-            }
-
-            // scan logical tag header across lines if quoted attrs stay open
-            const leadIx0 = currentLine.search(/\S|$/); // 0-based
-            const leadCol = leadIx0 + 1;
-
-            const scanned = scan_tag_header_block(
-                splitLines,
-                currentIx,
-                leadIx0,
-                lineOffsets
-            );
-            const headerRaw = scanned.raw;
-            const closerLex = scanned.closer;
-            const endLine = scanned.endLine;
-            const endCol = scanned.endCol;
-            const posAt = scanned.posAt;
-
-            // only whitespace or //comment may follow the consumed header on its ending line
-            const tailAfterHeader = (splitLines[endLine] ?? "").slice(endCol - 1);
-
-            if (!closerLex) {
-                if (!/^\s*(?:\/\/.*)?$/.test(tailAfterHeader)) {
-                    _throw_transform_err(
-                        `unexpected trailing characters after tag header`,
-                        "tokenize_hson.stepF"
-                    );
-                }
-            }
-
-            /* f.2 read tag header minimally: name */
-            let ixHeader = 1; // after '<'
-            const headerLen = headerRaw.length;
-
-            while (ixHeader < headerLen && /\s/.test(headerRaw[ixHeader])) ixHeader++;
-            const isTagStart = (ch: string | undefined): boolean =>
-                ch !== undefined && /[A-Za-z_:]/.test(ch);
-
-            const isTagChar = (ch: string | undefined): boolean =>
-                ch !== undefined && /[A-Za-z0-9:._-]/.test(ch);
-            let tag = "";
-            let quotedTag = false;
-            const tagNameStartIx = ixHeader;
-
-            if (headerRaw[ixHeader] === "`") {
-                quotedTag = true;
-                const startIx = ixHeader;
-                ixHeader++;
-
-                let rawKey = "";
-                let escaped = false;
-                let closed = false;
-
-                while (ixHeader < headerLen) {
-                    const ch = headerRaw[ixHeader];
-
-                    if (escaped) {
-                        if (ch === "n") rawKey += "\n";
-                        else if (ch === "r") rawKey += "\r";
-                        else if (ch === "t") rawKey += "\t";
-                        else rawKey += ch;
-
-                        escaped = false;
-                        ixHeader++;
-                        continue;
-                    }
-
-                    if (ch === "\\") {
-                        escaped = true;
-                        ixHeader++;
-                        continue;
-                    }
-
-                    if (ch === "`") {
-                        closed = true;
-                        ixHeader++;
-                        break;
-                    }
-
-                    rawKey += ch;
-                    ixHeader++;
-                }
-
-                if (!closed) {
-                    _throw_transform_err(
-                        `[step f depth=${depth} L=${currentIx + 1}] unterminated quoted tag name in "${headerRaw}"`,
-                        "tokenize-hson"
-                    );
-                }
-
-                tag = rawKey;
-            } else {
-                if (!isTagStart(headerRaw[ixHeader])) {
-                    _throw_transform_err(
-                        `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
-                        "tokenize-hson"
-                    );
-                }
-
-                ixHeader++;
-                while (isTagChar(headerRaw[ixHeader])) ixHeader++;
-
-                tag = headerRaw.slice(tagNameStartIx, ixHeader);
-            }
-            if (!quotedTag && !tag) {
-                _throw_transform_err(
-                    `[step f depth=${depth} L=${currentIx + 1}] malformed tag in "${headerRaw}"`,
-                    'tokenize-hson'
-                );
-            }
-
-            const posOpen = _pos(
-                currentIx + 1,
-                leadCol,
-                lineOffsets[currentIx] + leadIx0
-            );
-
-            let rawAttrs: RawAttr[] = [];
-            let tailRaw = "";
-
-            const headerEndIx =
-                closerLex === "/>" ? headerRaw.length - 2 :
-                    closerLex === ">" ? headerRaw.length - 1 :
-                        headerRaw.length;
-
-            const parsedAttrs = readAttrs(
-                headerRaw,
-                ixHeader,
-                headerEndIx,
-                posAt
-            );
-
-            rawAttrs = parsedAttrs.attrs;
-
-            const preCloserTail = headerRaw.slice(parsedAttrs.endIx, headerEndIx).trim();
-            const postCloserTail = closerLex ? tailAfterHeader.trim() : "";
-
-            tailRaw = [preCloserTail, postCloserTail]
-                .filter((s) => s.length > 0)
-                .join(" ")
-                .trim();
-
-            /* emit open */
-            finalTokens.push(CREATE_OPEN_TOKEN(tag, rawAttrs, posOpen));
-
-            /* inline tail (if any) */
-            if (tailRaw) {
-                if (/^[^\s"'<>[\]«»]+\s*=/.test(tailRaw)) {
-                    _throw_transform_err(
-                        `[step f] malformed attribute assignment after content/attrs: "${tailRaw}"`,
-                        "tokenize_hson.stepF"
-                    );
-                }
-                if (tailRaw.startsWith('<')) {
-                    finalTokens.push(...tokenize_hson(tailRaw, depth + 1));
-                } else if (tailRaw.startsWith('«') || tailRaw.startsWith('[')) {
-                    const opener = tailRaw.startsWith('«') ? '«' : '[';
-                    const closer = opener === '«' ? '»' : ']';
-
-                    const joinedFromHere = splitLines.slice(currentIx).join('\n');
-
-                    // find opener position in the real remaining source, not just tailRaw
-                    const openerIxInCurrentLine = (splitLines[currentIx] ?? "").indexOf(opener, leadIx0);
-                    const openerIxInJoined = openerIxInCurrentLine;
-
-                    const { body, endIndex } = slice_balanced_arr(
-                        joinedFromHere,
-                        openerIxInJoined + 1,
-                        opener,
-                        closer,
-                    );
-
-                    const frag = `${opener}${body}${closer}`;
-
-                    finalTokens.push(...tokenize_hson(frag, depth + 1));
-
-                } else {
-                    const parts = split_array_string(tailRaw, ',');
-                    if (parts.length > 1) {
-                        _throw_transform_err(
-                            `[step f] multiple inline items not allowed after <${tag}>: "${tailRaw}"`,
-                            'tokenize-hson'
-                        );
-                    }
-
-                    const lit = parts[0].trim();
-                    const piece = ensureQuotedLiteral(lit, 'step f');
-
-                    finalTokens.push(
-                        CREATE_TEXT_TOKEN(piece.text, piece.quoted ? true : undefined, posOpen)
-                    );
-                }
-            }
-
-            /* close now or defer to step e */
-            if (closerLex) {
-                const closeStartIx =
-                    closerLex === "/>" ? headerRaw.length - 2 : headerRaw.length - 1;
-
-                const posClose = posAt(closeStartIx);
-                const closeKind = closerLex === "/>" ? CLOSE_KIND.elem : CLOSE_KIND.obj;
-
-                finalTokens.push(CREATE_END_TOKEN(closeKind, posClose));
-
-                // bump all consumed physical lines
-                for (let k = currentIx; k <= endLine; k++) {
-                    _bump_line(splitLines[k] ?? "");
-                }
-                continue;
-            } else {
-                contextStack.push({ type: 'CLUSTER' });
-
-                // bump all consumed physical lines
-                for (let k = currentIx; k <= endLine; k++) {
-                    _bump_line(splitLines[k] ?? "");
-                }
-                continue;
-            }
-        } // ---- end of step F ---=|
-
-
-        /* step G: standalone text/primitive lines */
-        {
-            // detect leading quote *before* any comment handling
-            const lead = currentLine.search(/\S|$/);
-            const ch = currentLine[lead];
-
-            if (is_quote(ch)) {
-                const pos = _pos(ix + 1, lead + 1, _offset + lead);
-                const { raw, endLine, endCol } = scan_quoted_block(splitLines, ix, lead);
-
-                // emit one TEXT token with quoted=true and the inner raw
-                finalTokens.push(CREATE_TEXT_TOKEN(raw, /*quoted*/ true, pos));
-
-                // allow whitespace or // comment only after the closer line
-                const tail = getLine(endLine).slice(endCol);
-                if (!/^\s*(?:\/\/.*)?$/.test(tail)) {
-                    _throw_transform_err('unexpected trailing characters after quoted text', 'tokenize_hson');
-                }
-
-                // advance past the consumed lines 
-                for (let k = ix; k <= endLine; k++) _bump_line(getLine(k));
-                continue;
-            }
-
-            // non-quoted
-            const m = currentLine.match(/^\s*(.+?)(?:\s*\/\/.*)?\s*$/);
-            const body = m ? m[1] : '';
-
-            // attributes are only legal inside tag headers.
-
-            if (/^[A-Za-z_:][A-Za-z0-9:._-]*\s*=/.test(body)) {
-                _throw_transform_err(
-                    `attribute assignment outside tag header: "${body}"`,
-                    "tokenize_hson.stepG"
-
-                );
-
-            }
-            if (/^[=.,;:!?]+$/.test(body)) {
-                _throw_transform_err(
-                    `unexpected punctuation content line: "${body}"`,
-                    "tokenize_hson.stepG"
-                );
-            }
-            // quick primitive check (true/false/null/number with optional exp)
-            const isPrim = /^(?:true|false|null|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)$/.test(body);
-
-            if (isPrim) {
-                const p = _pos(ix + 1, (currentLine.match(/^\s*/)?.[0].length ?? 0) + 1, _offset + (currentLine.match(/^\s*/)?.[0].length ?? 0));
-                finalTokens.push(CREATE_TEXT_TOKEN(body, /*quoted*/ undefined, p));
-                _bump_line(currentLine);
-                continue;
-            }
-            if (body.length > 0) {
-                _throw_transform_err(
-                    `unexpected bare token outside tag header: "${body}"`,
-                    "tokenize_hson.stepG"
-                );
-            }
-            // fall through: not a standalone text/primitive line; other steps (F, etc.) handle it
-        }
-
-        _bump_line(currentLine);
-        continue;
-
-    } // ---- end while loop ---=|
-
-
-    /* end-of-file stats */
-    _log(
-        `[tokenize_hson depth=${depth}] processed all lines\n` +
-        `  contextStack size: ${contextStack.length}\n` +
-        `  total tokens: ${finalTokens.length}`
+  if (depth < 0 || depth >= MAX_NESTING) {
+    _throw_transform_err(
+      `stopping potentially infinite loop (depth must be between 0 and ${MAX_NESTING - 1})`,
+      "tokenize_hson",
     );
+  }
 
-    /* final check — only at top level */
-    if (depth === 0 && contextStack.length > 0) {
-        const residual = contextStack.map((c) => {
-            if (c.type === 'CLUSTER') return `<cluster ${c.close ?? 'pending'}>`;
-            if (c.type === 'IMPLICIT_OBJECT') return '< < (implicit object)';
-            /* c.type === 'TAG' */
-            return '<tag?>';
-        }).join(', ');
-        _throw_transform_err(`final check failed: tokenizer finished with ${contextStack.length} unclosed items: ${residual}`, 'tokenize-hson');
-    }
-
-    if (_VERBOSE) {
-        logTokens(finalTokens);
-    }
-    /* return new tokens; no _hson_root wrapping here — parser will handle it */
-    return finalTokens as Tokens[];
+  return new HsonScanner(hson, depth).scan();
 }
 
+class HsonScanner {
+  private readonly tokens: Tokens[] = [];
+  private index = 0;
+  private line = 1;
+  private col = 1;
 
+  public constructor(
+    private readonly source: string,
+    private readonly initialDepth: number,
+  ) {}
 
+  public scan(): Tokens[] {
+    while (true) {
+      this.skipTrivia();
+      if (this.atEnd()) return this.tokens;
 
-function logTokens(tokens: Tokens[]): void {
-    if (_VERBOSE) {
-        console.groupCollapsed('returning tokens (summary)');
-        for (const t of tokens) {
-            switch (t.kind) {
-                case TOKEN_KIND.OPEN:
-                    console.log(`OPEN <${t.tag}> @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.CLOSE:
-                    console.log(`END ${t.close} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.ARR_OPEN:
-                    console.log(`ARR_OPEN ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.ARR_CLOSE:
-                    console.log(`ARR_CLOSE ${t.symbol} @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.TEXT:
-                    console.log(`TEXT "${t.raw}" @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-                case TOKEN_KIND.EMPTY_OBJ:
-                    console.log(`EMPTY_OBJ "${t}" @ L${t.pos.line}:C${t.pos.col}`);
-                    break;
-            }
+      const ch = this.peek();
+      if (ch === "<") {
+        this.scanAngle(this.initialDepth);
+      } else if (ch === "«" || ch === "[") {
+        this.scanArray(this.initialDepth);
+      } else if (ch === `"`) {
+        const pos = this.position();
+        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      } else if (ch === "'") {
+        this.fail(`unsupported quote delimiter (use double quotes only)`);
+      } else if (ch === "`") {
+        this.fail(`backticks are only valid for tag names`);
+      } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
+        this.fail(`unexpected structural closer "${ch}"`);
+      } else {
+        const pos = this.position();
+        const raw = this.scanBareToken();
+        if (!isPrimitiveLiteral(raw)) {
+          this.fail(`unexpected bare token outside tag header: "${raw}"`, pos);
         }
-        console.groupEnd();
+        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+      }
     }
+  }
+
+  /** Scan `<tag ...>`, `<>`, or an anonymous object `< <child ...> >`. */
+  private scanAngle(depth: number): void {
+    this.assertNesting(depth);
+    const openPos = this.position();
+    this.consumeExpected("<");
+
+    // Preserve the existing token distinction: only the adjacent spelling
+    // `<>` is EMPTY_OBJ. A layout-separated `< ... >` is an anonymous object.
+    if (this.peek() === ">") {
+      this.consumeExpected(">");
+      this.tokens.push(CREATE_EMPTY_OBJ_TOKEN("<>", undefined, openPos));
+      return;
+    }
+
+    this.skipTrivia();
+    if (this.atEnd()) this.fail(`unterminated angle construct`, openPos);
+
+    if (this.peek() === "<" || this.peek() === ">") {
+      this.scanAnonymousObject(openPos, depth + 1);
+      return;
+    }
+
+    if (this.startsWith("/>")) {
+      this.fail(`missing tag name before "/>"`, openPos);
+    }
+
+    const tag = this.peek() === "`"
+      ? this.scanQuotedTagName()
+      : this.scanBareName("tag name");
+
+    const attrs: RawAttr[] = [];
+    let openEmitted = false;
+    let contentStarted = false;
+
+    const emitOpen = (): void => {
+      if (openEmitted) return;
+      this.tokens.push(CREATE_OPEN_TOKEN(tag, attrs, openPos));
+      openEmitted = true;
+    };
+
+    while (true) {
+      this.skipTrivia();
+      if (this.atEnd()) this.fail(`unterminated tag <${tag}>`, openPos);
+
+      if (this.startsWith("/>")) {
+        emitOpen();
+        const closePos = this.position();
+        this.consumeExpected("/");
+        this.consumeExpected(">");
+        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.elem, closePos));
+        return;
+      }
+
+      if (this.peek() === ">") {
+        emitOpen();
+        const closePos = this.position();
+        this.consumeExpected(">");
+        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+        return;
+      }
+
+      const ch = this.peek();
+
+      if (BARE_NAME_START.test(ch)) {
+        const namePos = this.position();
+        const name = this.scanBareName("attribute or flag");
+        const nameEnd = this.previousPosition();
+
+        if (!contentStarted) {
+          this.skipTrivia();
+
+          if (this.peek() === "=") {
+            attrs.push(this.scanAttributeValue(name, namePos));
+            continue;
+          }
+
+          if (!isPrimitiveLiteral(name)) {
+            attrs.push({ name, start: namePos, end: nameEnd });
+            continue;
+          }
+        }
+
+        if (isPrimitiveLiteral(name)) {
+          contentStarted = true;
+          emitOpen();
+          this.tokens.push(CREATE_TEXT_TOKEN(name, undefined, namePos));
+          continue;
+        }
+
+        const suffix = this.nextNonTriviaIs("=") ? `; attributes are forbidden after content begins` : "";
+        this.fail(`unexpected bare token in <${tag}> content: "${name}"${suffix}`, namePos);
+      }
+
+      if (ch === "+" || ch === "-" || /\d/.test(ch)) {
+        const valuePos = this.position();
+        const raw = this.scanBareToken();
+        if (!isPrimitiveLiteral(raw)) {
+          this.fail(`invalid primitive content "${raw}"`, valuePos);
+        }
+        contentStarted = true;
+        emitOpen();
+        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, valuePos));
+        continue;
+      }
+
+      if (ch === `"`) {
+        const valuePos = this.position();
+        contentStarted = true;
+        emitOpen();
+        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, valuePos));
+        continue;
+      }
+
+      if (ch === "<") {
+        contentStarted = true;
+        emitOpen();
+        this.scanAngle(depth + 1);
+        continue;
+      }
+
+      if (ch === "«" || ch === "[") {
+        contentStarted = true;
+        emitOpen();
+        this.scanArray(depth + 1);
+        continue;
+      }
+
+      if (ch === "'") {
+        this.fail(`unsupported quote delimiter (use double quotes only)`);
+      }
+
+      if (ch === "`") {
+        this.fail(`backticks are only valid for tag names`);
+      }
+
+      if (contentStarted) {
+        const invalidPos = this.position();
+        const raw = this.scanBareToken();
+        const suffix = this.nextNonTriviaIs("=") ? `; attributes are forbidden after content begins` : "";
+        this.fail(`unexpected bare token in <${tag}> content: "${raw}"${suffix}`, invalidPos);
+      }
+
+      this.fail(`unexpected token "${ch}" in <${tag}> header`);
+    }
+  }
+
+  /** The first `<` is the object wrapper; the next `<` starts its first child. */
+  private scanAnonymousObject(openPos: Position, depth: number): void {
+    this.assertNesting(depth);
+    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos));
+
+    while (true) {
+      this.skipTrivia();
+      if (this.atEnd()) this.fail(`unterminated implicit object`, openPos);
+
+      if (this.peek() === ">") {
+        const closePos = this.position();
+        this.consumeExpected(">");
+        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+        return;
+      }
+
+      if (this.startsWith("/>")) {
+        this.fail(`implicit objects must close with ">", not "/>"`);
+      }
+
+      const ch = this.peek();
+      if (ch === "<") {
+        this.scanAngle(depth);
+      } else if (ch === "«" || ch === "[") {
+        this.scanArray(depth);
+      } else if (ch === `"`) {
+        const pos = this.position();
+        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      } else if (ch === "'") {
+        this.fail(`unsupported quote delimiter (use double quotes only)`);
+      } else {
+        const pos = this.position();
+        const raw = this.scanBareToken();
+        if (!isPrimitiveLiteral(raw)) {
+          this.fail(`unexpected bare token in implicit object: "${raw}"`, pos);
+        }
+        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+      }
+    }
+  }
+
+  private scanArray(depth: number): void {
+    this.assertNesting(depth);
+    const opener = this.peek();
+    const closer = opener === "«" ? "»" : "]";
+    const symbol: ArraySymbol = opener === "«" ? ARR_SYMBOL.guillemet : ARR_SYMBOL.bracket;
+    const openPos = this.position();
+    this.consumeExpected(opener);
+    this.tokens.push(CREATE_ARR_OPEN_TOKEN(symbol, openPos));
+
+    let expectItem = true;
+    while (true) {
+      this.skipTrivia();
+      if (this.atEnd()) this.fail(`unterminated ${opener}${closer} array`, openPos);
+
+      if (this.peek() === closer) {
+        const closePos = this.position();
+        this.consumeExpected(closer);
+        this.tokens.push(CREATE_ARR_CLOSE_TOKEN(symbol, closePos));
+        return;
+      }
+
+      if (this.peek() === (closer === "]" ? "»" : "]")) {
+        this.fail(`mismatched array closer "${this.peek()}"; expected "${closer}"`);
+      }
+
+      if (!expectItem) {
+        if (this.peek() !== ",") {
+          this.fail(`expected "," or "${closer}" after array item`);
+        }
+        this.consumeExpected(",");
+        expectItem = true;
+        continue;
+      }
+
+      if (this.peek() === ",") {
+        this.fail(`missing array item before comma`);
+      }
+
+      this.scanArrayItem(depth + 1);
+      expectItem = false;
+    }
+  }
+
+  private scanArrayItem(depth: number): void {
+    this.assertNesting(depth);
+    const ch = this.peek();
+
+    if (ch === "<") {
+      this.scanAngle(depth);
+      return;
+    }
+
+    if (ch === "«" || ch === "[") {
+      this.scanArray(depth);
+      return;
+    }
+
+    if (ch === `"`) {
+      const pos = this.position();
+      this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      return;
+    }
+
+    if (ch === "'") {
+      this.fail(`unsupported quote delimiter (use double quotes only)`);
+    }
+
+    if (ch === "`") {
+      this.fail(`backticks are only valid for tag names`);
+    }
+
+    const pos = this.position();
+    const raw = this.scanBareToken();
+    if (!isPrimitiveLiteral(raw)) {
+      this.fail(`unexpected bare array item: "${raw}"`, pos);
+    }
+    this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+  }
+
+  private scanAttributeValue(name: string, start: Position): RawAttr {
+    this.consumeExpected("=");
+    this.skipTrivia();
+    if (this.atEnd() || this.startsWith("/>") || this.peek() === ">") {
+      this.fail(`missing attribute value for "${name}"`, start);
+    }
+
+    if (this.peek() === "'") {
+      this.fail(`unsupported single-quoted attribute value (use double quotes only)`);
+    }
+
+    if (this.peek() === "`") {
+      this.fail(`backticks are only valid for tag names`);
+    }
+
+    if (this.peek() === `"`) {
+      const { text, end } = this.scanAttributeString(name);
+      return { name, value: { text, quoted: true }, start, end };
+    }
+
+    const valueStart = this.position();
+    let text = "";
+    let end = valueStart;
+
+    while (!this.atEnd()) {
+      const ch = this.peek();
+      if (this.startsWith("/>")) break;
+      if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
+        break;
+      }
+      end = this.position();
+      text += this.consume();
+    }
+
+    if (!text) this.fail(`missing attribute value for "${name}"`, start);
+    if (text.includes("=")) {
+      this.fail(`malformed unquoted attribute value for "${name}": "${text}"`, valueStart);
+    }
+
+    return { name, value: { text, quoted: false }, start, end };
+  }
+
+  /** Return a complete JSON-compatible literal, preserving current text semantics. */
+  private scanContentString(): string {
+    const start = this.position();
+    this.consumeExpected(`"`);
+    let raw = `"`;
+
+    while (!this.atEnd()) {
+      const ch = this.peek();
+
+      if (ch === `"`) {
+        this.consumeExpected(`"`);
+        return raw + `"`;
+      }
+
+      if (ch === "\\") {
+        this.consumeExpected("\\");
+        if (this.atEnd()) this.fail(`unterminated quoted string`, start);
+
+        if (this.isNewline()) {
+          raw += "\\\\";
+          this.consume();
+          raw += "\\n";
+        } else {
+          raw += "\\" + this.consume();
+        }
+        continue;
+      }
+
+      if (this.isNewline()) {
+        this.consume();
+        raw += "\\n";
+        continue;
+      }
+
+      if (ch === "\t") {
+        this.consume();
+        raw += "\\t";
+        continue;
+      }
+
+      raw += this.consume();
+    }
+
+    this.fail(`unterminated quoted string`, start);
+  }
+
+  /** Attribute tokens retain their inner source text rather than outer quotes. */
+  private scanAttributeString(name: string): { text: string; end: Position } {
+    const start = this.position();
+    this.consumeExpected(`"`);
+    let text = "";
+
+    while (!this.atEnd()) {
+      const ch = this.peek();
+      if (ch === `"`) {
+        const end = this.position();
+        this.consumeExpected(`"`);
+        return { text, end };
+      }
+
+      if (ch === "\\") {
+        text += this.consume();
+        if (this.atEnd()) this.fail(`unterminated quoted attribute value for "${name}"`, start);
+        text += this.consume();
+        continue;
+      }
+
+      text += this.consume();
+    }
+
+    this.fail(`unterminated quoted attribute value for "${name}"`, start);
+  }
+
+  private scanQuotedTagName(): string {
+    const start = this.position();
+    this.consumeExpected("`");
+    let tag = "";
+
+    while (!this.atEnd()) {
+      const ch = this.peek();
+      if (ch === "`") {
+        this.consumeExpected("`");
+        return tag;
+      }
+
+      if (this.isNewline()) {
+        this.fail(`unterminated quoted tag name`, start);
+      }
+
+      if (ch === "\\") {
+        this.consumeExpected("\\");
+        if (this.atEnd()) this.fail(`unterminated quoted tag name`, start);
+        const escaped = this.consume();
+        if (escaped === "n") tag += "\n";
+        else if (escaped === "r") tag += "\r";
+        else if (escaped === "t") tag += "\t";
+        else tag += escaped;
+        continue;
+      }
+
+      tag += this.consume();
+    }
+
+    this.fail(`unterminated quoted tag name`, start);
+  }
+
+  private scanBareName(where: string): string {
+    const start = this.position();
+    const first = this.peek();
+    if (!BARE_NAME_START.test(first)) {
+      this.fail(`malformed ${where}: expected a bare name or backtick-quoted name`, start);
+    }
+
+    let out = this.consume();
+    while (!this.atEnd() && BARE_NAME_CHAR.test(this.peek())) out += this.consume();
+    return out;
+  }
+
+  private scanBareToken(): string {
+    const start = this.position();
+    let out = "";
+
+    while (!this.atEnd()) {
+      const ch = this.peek();
+      if (
+        /\s/.test(ch) || ch === "<" || ch === ">" || ch === "/" ||
+        ch === "[" || ch === "]" || ch === "«" || ch === "»" ||
+        ch === "," || ch === `"` || ch === "'" || ch === "`" || ch === "="
+      ) {
+        break;
+      }
+      out += this.consume();
+    }
+
+    if (!out) this.fail(`unexpected token "${this.peek()}"`, start);
+    return out;
+  }
+
+  private skipTrivia(): void {
+    while (true) {
+      while (!this.atEnd() && /\s/.test(this.peek())) this.consume();
+      if (!this.startsWith("//")) return;
+
+      this.consumeExpected("/");
+      this.consumeExpected("/");
+      while (!this.atEnd() && !this.isNewline()) this.consume();
+      if (!this.atEnd()) this.consume();
+    }
+  }
+
+  private nextNonTriviaIs(expected: string): boolean {
+    let ix = this.index;
+    while (ix < this.source.length) {
+      const ch = this.source[ix];
+      if (/\s/.test(ch)) {
+        ix++;
+        continue;
+      }
+      if (this.source.startsWith("//", ix)) {
+        ix += 2;
+        while (ix < this.source.length && this.source[ix] !== "\n" && this.source[ix] !== "\r") ix++;
+        continue;
+      }
+      return this.source.startsWith(expected, ix);
+    }
+    return false;
+  }
+
+  private assertNesting(depth: number): void {
+    if (depth >= MAX_NESTING) {
+      this.fail(`stopping potentially infinite loop (depth >= ${MAX_NESTING})`);
+    }
+  }
+
+  private position(): Position {
+    return { line: this.line, col: this.col, index: this.index };
+  }
+
+  private previousPosition(): Position {
+    const index = Math.max(0, this.index - 1);
+    return { line: this.line, col: Math.max(1, this.col - 1), index };
+  }
+
+  private peek(offset = 0): string {
+    return this.source[this.index + offset] ?? "";
+  }
+
+  private startsWith(text: string): boolean {
+    return this.source.startsWith(text, this.index);
+  }
+
+  private atEnd(): boolean {
+    return this.index >= this.source.length;
+  }
+
+  private isNewline(): boolean {
+    const ch = this.peek();
+    return ch === "\n" || ch === "\r";
+  }
+
+  /** Consume one logical source character; CRLF advances one line but two indices. */
+  private consume(): string {
+    if (this.atEnd()) this.fail(`unexpected end of input`);
+    const ch = this.source[this.index];
+
+    if (ch === "\r") {
+      if (this.source[this.index + 1] === "\n") this.index += 2;
+      else this.index += 1;
+      this.line += 1;
+      this.col = 1;
+      return "\n";
+    }
+
+    this.index += 1;
+    if (ch === "\n") {
+      this.line += 1;
+      this.col = 1;
+      return "\n";
+    }
+
+    this.col += 1;
+    return ch;
+  }
+
+  private consumeExpected(expected: string): void {
+    if (this.peek() !== expected) {
+      this.fail(`expected "${expected}", got "${this.peek() || "eof"}"`);
+    }
+    this.consume();
+  }
+
+  private fail(message: string, pos = this.position()): never {
+    _throw_transform_err(
+      `${message} at ${pos.line}:${pos.col} (index ${pos.index})`,
+      "tokenize-hson",
+    );
+  }
+}
+
+function isPrimitiveLiteral(raw: string): boolean {
+  return raw === "true" || raw === "false" || raw === "null" || NUMBER_LITERAL.test(raw);
 }

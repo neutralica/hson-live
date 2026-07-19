@@ -5,6 +5,7 @@ import { $RENDER } from "../../../core/constants.js";
 import { make_string } from "../../../core/stringify.js";
 import { ParsedResult, RenderConstructor_4 } from "../../../types/constructor.types.js";
 import { FrameRender } from "../../../types/constructor.types.js";
+import { serialize_hson } from "../serializers/serialize-hson.js";
 
 /**
  * HSON pipeline, stage 4: finalize the selected output.
@@ -41,10 +42,10 @@ export function construct_render_4<K extends RenderFormats>(
     serialize(): string {
       switch (output) {
         case $RENDER.HSON: {
-          if (!frame.hson) {
-            throw new Error("serialize(): frame is missing HSON data");
-          }
-          return frame.hson;
+          return serialize_hson(frame.node, {
+            noBreak: frame.options?.noBreak ?? false,
+            noQuid: frame.options?.noQuid ?? false,
+          });
         }
 
         case $RENDER.JSON: {

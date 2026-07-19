@@ -5,11 +5,9 @@ import { OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
 import { FrameConstructor } from "../../../types/constructor.types.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
-import { serialize_hson } from "../serializers/serialize-hson.js";
 import { serialize_html } from "../serializers/serialize-html.js";
 import { serialize_json } from "../serializers/serialize-json.js";
-import { construct_options_3 } from "./construct-options-3.js";
-import { construct_render_4 } from "./construct-render-4.js";
+import { construct_hson_options_3, construct_options_3 } from "./construct-options-3.js";
 import { OptionsConstructor_3, RenderConstructor_4 } from "../../../types/constructor.types.js";
 import { FrameRender } from "../../../types/constructor.types.js";
 
@@ -37,23 +35,20 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
   function makeFinalizer<K extends RenderFormats>(
     context: FrameRender<K>
   ): OptionsConstructor_3<K> & RenderConstructor_4<K> {
-    return {
-      ...construct_options_3(context),
-      ...construct_render_4(context),
-    };
+    return construct_options_3(context);
   }
 
   function makeBuilder(currentFrame: FrameConstructor): OutputConstructor_2 {
     return {
       toHson() {
-        const hson = serialize_hson(currentFrame.node);
-
         const ctx: FrameRender<(typeof $RENDER)["HSON"]> = {
-          frame: { ...currentFrame, hson },
+          // HSON is intentionally lazy so options selected after `.toHson()`
+          // participate in the final serialization pass.
+          frame: currentFrame,
           output: $RENDER.HSON,
         };
 
-        return makeFinalizer(ctx);
+        return construct_hson_options_3(ctx);
       },
 
       toJson() {

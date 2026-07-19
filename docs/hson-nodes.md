@@ -20,13 +20,13 @@ The current public shape is:
 type HsonNode = {
   $_tag: string;
   $_content: (HsonNode | Primitive)[];
-  $_attrs: HsonAttrs;
-  $_meta: HsonMeta;
+  $_attrs?: HsonAttrs;
+  $_meta?: HsonMeta;
 };
 ```
 
-All four fields are required by the public type and node factories. Empty
-attribute and metadata maps are represented as `{}`; empty content is `[]`.
+`$_tag` and `$_content` are required. Empty optional attribute and metadata
+containers are omitted by the node factory; empty content is `[]`.
 
 - `$_tag` identifies an ordinary element/property node or a virtual structural
   node (VSN).
@@ -51,7 +51,9 @@ underscore names are not reserved by this rule.
 The transform root contains zero or one child. A present child must be exactly
 one of `_hson_obj`, `_hson_elem`, or `_hson_arr`. Some public facades unwrap a
 root/element pair for convenience, but JSON/object/array LiveTrees can retain
-the root wrapper.
+the root wrapper. A literal zero-child root satisfies the graph invariant but
+has no HSON wire form and therefore fails HSON serialization. A root containing
+an empty `_hson_obj` serializes as `<>`.
 
 ### `_hson_obj`
 
@@ -101,13 +103,28 @@ VSNs cannot have attributes. Source parsers may normalize attribute names and
 values according to their source format, so source attribute order and exact
 spelling are not graph invariants.
 
-Boolean presence is represented by a boolean value in `$_attrs`. Through the
-LiveTree attribute API, `true` means present and `false`, `null`, or
-`undefined` removes the attribute.
+HSON presence flags use the canonical string-equals-key representation, for
+example `{ disabled: "disabled" }`, and serialize as bare `disabled`. Through
+the LiveTree attribute API, boolean `true` requests presence while `false`,
+`null`, or `undefined` removes the attribute; that API operation should not be
+confused with the stored HSON flag spelling.
+
+The graph type continues to permit ordinary string, number, boolean, and null
+attribute values for programmatic compatibility; this is not a promise of typed
+wire attributes. HSON parsing stores ordinary attribute values as strings, and
+canonical HSON serialization quotes every non-flag ordinary value after
+`String(...)` conversion. Thus a graph-held `{ count: 2 }` serializes as
+`count="2"` and reparses as `{ count: "2" }`. Structured style values retain
+their separate existing CSS-string normalization behavior.
 
 Metadata is structural support, not semantic JSON/HTML content. QUID identity
 is stored as `$_meta["data-_quid"]`; array index metadata uses
 `$_meta["data-_index"]`.
+
+HSON `noQuid` output filters only persisted `data-_quid`. Array indexes are
+implicit in textual item order and rebuilt during parsing. Metadata attached
+directly to melted structural VSN nodes is not represented on the current HSON
+wire; this is a pre-existing limitation rather than a general metadata filter.
 
 ---
 

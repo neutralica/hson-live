@@ -90,10 +90,9 @@ An inline node may have attributes and one primitive value:
 <button id="save" disabled "Save"/>
 ```
 
-The parser accepts this combined form. Multiple inline items are not allowed;
-use multiline content instead. The current serializer expands
-attributes-plus-content to multiline form even when the parser accepted it
-inline.
+The parser accepts this combined form and multiple inline content nodes, such
+as `<p "first" <em "middle"/> "last"/>`. Canonical readable serialization
+keeps one primitive content node inline and expands complex mixed content.
 
 Internally, strings become `_hson_str`; non-string primitives become
 `_hson_val`. Those leaf VSNs normally melt into literal syntax when HSON is
@@ -109,9 +108,17 @@ Attributes appear after the tag name:
 <article id="post-042" class="entry featured"/>
 ```
 
-Attribute values may be double-quoted or unquoted. Quoted values use HSON/JSON
-string escapes; no HTML entity decoding occurs on this parser edge. `style` is
-parsed into the graph's structured style map.
+Ordinary HSON attributes use HTML-compatible string semantics. The parser
+accepts double-quoted and unquoted spellings, but both produce string-valued
+ordinary attributes. Quoted values use HSON/JSON string escapes; no HTML entity
+decoding occurs on this parser edge. `style` is parsed separately into the
+graph's structured style map.
+
+For example, permissive input `<tag count=2/>` parses as `{ count: "2" }` and
+canonical reserialization produces `<tag count="2"/>`. Canonical HSON always
+quotes ordinary valued attributes, including programmatic number, boolean, and
+null values after `String(...)` conversion. This differs from primitive content,
+which retains primitive typing.
 
 A bare attribute is a presence flag:
 
@@ -119,9 +126,11 @@ A bare attribute is a presence flag:
 <input disabled/>
 ```
 
-The current graph representation canonicalizes that as the string-valued
-entry `{ disabled: "disabled" }`, not as an unquoted JavaScript identifier.
-`disabled="disabled"` is normalized the same way.
+The canonical graph representation is the string-valued entry
+`{ disabled: "disabled" }`. Exact `value === key` equality distinguishes a
+flag; for example, programmatic `{ disabled: true }` serializes as the ordinary
+valued attribute `disabled="true"`, not as a flag. Input
+`disabled="disabled"` is normalized to the canonical flag representation.
 
 Names beginning `data-_` are routed to `$_meta`; other names go to `$_attrs`.
 Metadata is serialized in attribute position when the graph/output route
@@ -141,9 +150,9 @@ Child nodes and primitive leaves are ordered:
 />
 ```
 
-Lines whose first non-whitespace characters are `//` are ignored. A closer may
-also be followed by a `//` comment. Comments are not stored in the node graph
-and are not reserialized.
+`//` starts a comment wherever trivia is legal and consumes through the physical
+newline. Comments may appear between structural tokens, are not stored in the
+node graph, and are not reserialized.
 
 ---
 
@@ -167,7 +176,8 @@ arrays, named nodes, or anonymous objects. Commas separate top-level items.
 
 Internally, an array is `_hson_arr` with ordered `_hson_ii` children. Each item
 receives `data-_index`, but emitted order follows the physical child order, not
-a sort of that metadata.
+a sort of that metadata. `_hson_ii` wrappers and their indexes melt from HSON
+text; parsing rebuilds sequential `data-_index` values from physical array order.
 
 ---
 
@@ -214,6 +224,17 @@ Canonical HSON is not a preservation of authored layout. The serializer can
 change indentation, line breaks, array delimiters, key quoting, attribute
 spelling, and compact/expanded node form while preserving the represented
 graph semantics.
+
+Canonical readable HSON is the default and uses two-space indentation.
+`noBreak()` selects canonical compact HSON: it removes cosmetic line breaks and
+indentation but retains conventional spaces between a tag name, attributes,
+flags, and content. Both layouts are emitted structurally rather than by
+rewriting whitespace in an already serialized string.
+
+`noQuid()` removes only `data-_quid` from ordinary metadata-bearing nodes. It
+preserves custom `data-_...` metadata and never mutates the graph or identity
+registry. Metadata attached directly to melted `_hson_*` VSN nodes was already
+outside the current HSON wire representation and remains so.
 
 ---
 
