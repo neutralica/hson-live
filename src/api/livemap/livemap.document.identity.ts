@@ -5,6 +5,16 @@ import type { HsonNode } from "../../core/types.js";
 /** Per-map persisted identity index for ordinary document elements. */
 export type LiveMapDocumentIdentityIndex = ReadonlyMap<string, HsonNode>;
 
+export class LiveMapDocumentIdentityError extends Error {
+  readonly code: "MALFORMED_QUID" | "DUPLICATE_QUID";
+
+  constructor(code: LiveMapDocumentIdentityError["code"], message: string) {
+    super(message);
+    this.name = "LiveMapDocumentIdentityError";
+    this.code = code;
+  }
+}
+
 /**
  * Preserve and index valid persisted document QUIDs while permitting absence.
  *
@@ -21,14 +31,18 @@ export function index_livemap_document_elements(root: HsonNode): LiveMapDocument
 
     if (is_ordinary_element_node(node)) {
       const persisted = node.$_meta?.[_DATA_QUID];
-      if (persisted !== undefined && persisted.length === 0) {
-        throw new Error(`LiveMap document element <${node.$_tag}> has an invalid empty data-_quid.`);
+      if (persisted !== undefined && (typeof persisted !== "string" || persisted.length === 0)) {
+        throw new LiveMapDocumentIdentityError(
+          "MALFORMED_QUID",
+          `LiveMap document element <${node.$_tag}> has an invalid ${persisted === "" ? "empty" : "malformed"} data-_quid.`,
+        );
       }
 
       if (persisted !== undefined) {
         const duplicate = index.get(persisted);
         if (duplicate !== undefined && duplicate !== node) {
-          throw new Error(
+          throw new LiveMapDocumentIdentityError(
+            "DUPLICATE_QUID",
             `LiveMap document contains duplicate data-_quid "${persisted}" on <${duplicate.$_tag}> and <${node.$_tag}>.`,
           );
         }

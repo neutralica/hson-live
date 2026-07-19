@@ -6,7 +6,7 @@ export { compare_nodes as _compare_nodes } from "./compare-nodes.test.js";
 export { is_Node as _is_Node } from "../core/node-guards.js"
 export { _circuit_test  } from "./test-circuit.js";
 export { _format_test  } from "./test-format.js";
-export { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostics.types.js";
+export type { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostics.types.js";
 
 
 // dev exports 
@@ -14,6 +14,20 @@ export { CREATE_NODE as _CREATE_NODE } from "../core/factories.js";
 export { _listeners_off_for_target, _listeners_debug_hard_reset } from "../api/livetree/managers/listener-builder.js";
 export { begin_livetree_materialization_profile } from "../api/livetree/debug/materialization-profile.js";
 export type { LiveTreeMaterializationProfile } from "../api/livetree/debug/materialization-profile.js";
+export { create_live_trace_collector } from "../api/livehost/livehost.trace.collector.js";
+export { create_live_trace_console_sink } from "../api/livehost/livehost.trace.console.js";
+export type {
+  LiveTraceCollector,
+  LiveTraceCollectorOptions,
+  LiveTraceConsoleSinkOptions,
+  LiveTraceConsoleWriter,
+  LiveTraceDetails,
+  LiveTraceDetailValue,
+  LiveTraceEvent,
+  LiveTraceSink,
+  LiveTraceStatus,
+  LiveTraceSubsystem,
+} from "../types/livehost.types.js";
 export { append_branches_atomic as _append_livetree_branches_atomic } from "../api/livetree/methods/appends.js";
 
 export { parse_style_string as _parse_style_string } from "../api/transform/utils/attrs-utils/parse-style.js";

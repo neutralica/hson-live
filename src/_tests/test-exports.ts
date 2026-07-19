@@ -2,6 +2,16 @@
 
 import type { hson } from "../hson.js";
 import type { HsonNode, JsonValue } from "../core/types.js";
+import {
+  create_live_trace_collector,
+  create_live_trace_console_sink,
+} from "../diagnostics/index.js";
+import type {
+  LiveHostOptions,
+  LiveTraceCollector,
+  LiveTraceEvent,
+  LiveTraceSink,
+} from "../types/livehost.types.js";
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
@@ -63,6 +73,16 @@ type DocumentLiveMapExposesInstall = Expect<
 type DataLiveMapOmitsInstall = Expect<
   Equal<"install" extends keyof LiveMapSurface ? true : false, false>
 >;
+type TraceSinkHasOneMethod = Expect<Equal<keyof LiveTraceSink, "emit">>;
+type TraceConfigurationIsOptional = Expect<
+  Equal<undefined extends LiveHostOptions["trace"] ? true : false, true>
+>;
+type TraceEventIsReadonly = Expect<
+  Equal<Readonly<LiveTraceEvent>, LiveTraceEvent>
+>;
+type LiveMapOmitsTrace = Expect<
+  Equal<"trace" extends keyof LiveMapSurface ? true : false, false>
+>;
 
 function read_node_from_any_source(source: AnySourceSurface): HsonNode {
   return source.toNode();
@@ -92,14 +112,27 @@ function assert_terminal_and_debug_surface(
 }
 
 function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonNode {
+  const target = { kind: "path", path: [] } as const;
   if (map.mode === "element") {
     map.element.node();
     map.element.content();
+    map.element.attrs.set(target, "id", "main");
+    map.element.attrs.drop(target, "id");
+    map.element.content.replace(target, 0, "text");
+    // @ts-expect-error Attribute mutation belongs under the attrs namespace.
+    map.element.setAttr(target, "id", "main");
+    // @ts-expect-error Bulk attribute mutation is not part of this slice.
+    map.element.attrs.setMany(target, { id: "main" });
   } else if (map.mode === "fragment") {
     map.fragment.content();
+    map.fragment.attrs.set({ kind: "quid", quid: "known" }, "id", "value");
+    map.fragment.attrs.drop(target, "id");
+    map.fragment.content.replace(target, 0, "text");
   } else {
     map.snap();
     map.proxy();
+    // @ts-expect-error Data maps do not expose document capability namespaces.
+    map.element.attrs.set(target, "id", "main");
   }
 
   return map.root();
@@ -123,10 +156,20 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
   documentMap.applyGraph(capture);
   // @ts-expect-error Data maps do not expose canonical document installation.
   hson.liveMap.fromJson({}).install(capture);
+  // @ts-expect-error Data maps do not expose document attribute mutation.
+  hson.liveMap.fromJson({}).element.attrs.set({ kind: "path", path: [] }, "id", "x");
   // @ts-expect-error Element is an instance capability, not a constructor namespace.
   hson.liveMap.element.fromTrustedHtml("<button>Save</button>");
   // @ts-expect-error Fragment is an instance capability, not a constructor namespace.
   hson.liveMap.fragment.fromTrustedHtml("text");
+}
+
+function assert_trace_diagnostics_exports(): LiveTraceCollector {
+  const collector = create_live_trace_collector({ capacity: 8 });
+  const sink: LiveTraceSink = create_live_trace_console_sink({ write: () => undefined });
+  const options: LiveHostOptions = { trace: sink };
+  void options;
+  return collector;
 }
 
 

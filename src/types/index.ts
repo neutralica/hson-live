@@ -8,7 +8,7 @@ export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";
 export type { SvgLiveTree } from "./svg.types.js";
-export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphCommit, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapInstallOptions, DocumentLiveMapReadApi, ElementLiveMapReadApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, ClassifiedLiveMap } from "./livemap.types.js";
+export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphSetAttrOp, LiveMapGraphRemoveAttrOp, LiveMapGraphReplaceContentOp, LiveMapGraphCommit, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapInstallOptions, LiveMapDocumentPath, LiveMapDocumentTarget, LiveMapDocumentAttributeValue, LiveMapDocumentContent, DocumentLiveMapAttrsApi, DocumentLiveMapContentApi, DocumentLiveMapReadApi, ElementLiveMapReadApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, ClassifiedLiveMap } from "./livemap.types.js";
 export type {
   LiveKeyedProjection,
   LiveKeyedProjectionOptions,
@@ -122,6 +122,16 @@ export type {
   LiveHostIncarnationId,
   LiveHostLogicalMapId,
   LiveHostOptions,
+  LiveTraceCollector,
+  LiveTraceCollectorOptions,
+  LiveTraceConsoleSinkOptions,
+  LiveTraceConsoleWriter,
+  LiveTraceDetails,
+  LiveTraceDetailValue,
+  LiveTraceEvent,
+  LiveTraceSink,
+  LiveTraceStatus,
+  LiveTraceSubsystem,
   LiveHostResult,
   LiveHostSchema,
   LiveHostSchemaDecoder,

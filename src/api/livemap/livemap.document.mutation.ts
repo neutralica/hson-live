@@ -1,0 +1,361 @@
+import { assert_invariants } from "../../core/assert-invariants.js";
+import { ELEM_TAG, ROOT_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
+import { clone_node } from "../../core/clone-node.js";
+import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
+import type { CssMap } from "../../core/style.types.js";
+import type {
+  DocumentLiveMapAttrsApi,
+  DocumentLiveMapMode,
+  LiveMapDocumentAttributeValue,
+  LiveMapDocumentContent,
+  LiveMapDocumentTarget,
+  LiveMapGraphCommit,
+  LiveMapGraphOp,
+  LiveMapGraphRemoveAttrOp,
+  LiveMapGraphReplaceContentOp,
+  LiveMapGraphSetAttrOp,
+} from "../../types/livemap.types.js";
+import { LiveMapDocumentMutationError } from "./livemap.error.js";
+import { clone_live_root } from "./livemap.editor.js";
+import {
+  index_livemap_document_elements,
+  LiveMapDocumentIdentityError,
+  type LiveMapDocumentIdentityIndex,
+} from "./livemap.document.identity.js";
+import { classify_live_root_mode } from "./livemap.document.js";
+import { canonical_graph_equal } from "./livemap.document.install.js";
+
+type DocumentOperation = LiveMapDocumentMutationError["operation"];
+
+export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp> = Readonly<{
+  root: HsonNode;
+  identity: LiveMapDocumentIdentityIndex;
+  operation: TOp;
+}>;
+
+/** Internal state boundary implemented by the shared LiveMap Core. */
+export type LiveMapDocumentMutationController = Readonly<{
+  mode: DocumentLiveMapMode;
+  rev: () => number;
+  root: () => HsonNode;
+  identity: () => LiveMapDocumentIdentityIndex;
+  applyMutation: <TOp extends LiveMapGraphOp>(
+    candidate: PreparedDocumentMutation<TOp>,
+  ) => LiveMapGraphCommit<TOp>;
+}>;
+
+/** Build the three-operation document capability over one atomic Core controller. */
+export function make_livemap_document_mutation_api(
+  controller: LiveMapDocumentMutationController,
+): Readonly<{
+  attrs: DocumentLiveMapAttrsApi;
+  replaceContent: (
+    target: LiveMapDocumentTarget,
+    index: number,
+    replacement: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+}> {
+  const attrs: DocumentLiveMapAttrsApi = Object.freeze({
+    set: (target, name, value) => set_document_attr(controller, target, name, value),
+    drop: (target, name) => remove_document_attr(controller, target, name),
+  });
+  return Object.freeze({
+    attrs,
+    replaceContent: (target, index, replacement) =>
+      replace_document_content(controller, target, index, replacement),
+  });
+}
+
+function set_document_attr(
+  controller: LiveMapDocumentMutationController,
+  targetInput: LiveMapDocumentTarget,
+  nameInput: string,
+  valueInput: LiveMapDocumentAttributeValue,
+): LiveMapGraphCommit<LiveMapGraphSetAttrOp> {
+  const operationName = "set-attr";
+  const target = normalize_target(targetInput, operationName);
+  const name = normalize_attr_name(nameInput, operationName);
+  const value = normalize_attr_value(name, valueInput, operationName);
+  const root = clone_live_root(controller.root());
+  const endpoint = resolve_target(root, controller.mode, target, operationName);
+  const element = require_element(endpoint, operationName);
+  const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
+  if (name === "style" && is_style_map(value)) attrs.style = value;
+  else attrs[name] = value as Primitive;
+  element.$_attrs = attrs;
+
+  const operation: LiveMapGraphSetAttrOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    name,
+    value: clone_attr_value(value),
+  });
+  return finish_mutation(controller, root, operation, operationName);
+}
+
+function remove_document_attr(
+  controller: LiveMapDocumentMutationController,
+  targetInput: LiveMapDocumentTarget,
+  nameInput: string,
+): LiveMapGraphCommit<LiveMapGraphRemoveAttrOp> {
+  const operationName = "remove-attr";
+  const target = normalize_target(targetInput, operationName);
+  const name = normalize_attr_name(nameInput, operationName);
+  const root = clone_live_root(controller.root());
+  const endpoint = resolve_target(root, controller.mode, target, operationName);
+  const element = require_element(endpoint, operationName);
+  const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
+  delete attrs[name];
+  if (Object.keys(attrs).length === 0) delete element.$_attrs;
+  else element.$_attrs = attrs;
+
+  const operation: LiveMapGraphRemoveAttrOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    name,
+  });
+  return finish_mutation(controller, root, operation, operationName);
+}
+
+function replace_document_content(
+  controller: LiveMapDocumentMutationController,
+  targetInput: LiveMapDocumentTarget,
+  indexInput: number,
+  replacementInput: LiveMapDocumentContent,
+): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
+  const operationName = "replace-content";
+  const target = normalize_target(targetInput, operationName);
+  const index = normalize_content_index(indexInput, operationName);
+  const replacement = clone_content(replacementInput, operationName);
+  const root = clone_live_root(controller.root());
+  const endpoint = resolve_target(root, controller.mode, target, operationName);
+  if (!is_Node(endpoint)) {
+    throw mutation_error("DOCUMENT_TARGET_KIND", operationName, "target is a primitive and has no content slots");
+  }
+  if (index >= endpoint.$_content.length) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_CONTENT_INDEX",
+      operationName,
+      `content index ${index} is outside the existing ${endpoint.$_content.length} slot(s)`,
+    );
+  }
+  endpoint.$_content[index] = replacement;
+
+  const operation: LiveMapGraphReplaceContentOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    index,
+    replacement: clone_content(replacement, operationName),
+  });
+  return finish_mutation(controller, root, operation, operationName);
+}
+
+function finish_mutation<TOp extends LiveMapGraphOp>(
+  controller: LiveMapDocumentMutationController,
+  root: HsonNode,
+  operation: TOp,
+  operationName: DocumentOperation,
+): LiveMapGraphCommit<TOp> {
+  let identity: LiveMapDocumentIdentityIndex | undefined;
+  try {
+    identity = index_livemap_document_elements(root);
+  } catch (cause) {
+    if (cause instanceof LiveMapDocumentIdentityError) {
+      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, cause.message, cause);
+    }
+  }
+
+  try {
+    assert_invariants(root, `LiveMap.${operationName}`);
+  } catch (cause) {
+    throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operationName, "candidate graph violates canonical HSON invariants", cause);
+  }
+
+  const mode = classify_live_root_mode(root);
+  if (mode !== controller.mode) {
+    throw mutation_error(
+      "DOCUMENT_MODE_MISMATCH",
+      operationName,
+      `candidate classifies as ${mode}; this façade must remain ${controller.mode}`,
+    );
+  }
+
+  if (identity === undefined) {
+    try {
+      identity = index_livemap_document_elements(root);
+    } catch (cause) {
+      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
+    }
+  }
+
+  const prevRev = controller.rev();
+  if (canonical_graph_equal(controller.root(), root)) {
+    return Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
+  }
+  return controller.applyMutation({ root, identity, operation });
+}
+
+function normalize_target(input: unknown, operation: DocumentOperation): LiveMapDocumentTarget {
+  if (!is_plain_record(input) || (input.kind !== "path" && input.kind !== "quid")) {
+    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "target must discriminate kind as path or quid");
+  }
+
+  if (input.kind === "path") {
+    if (Object.keys(input).some((key) => key !== "kind" && key !== "path") || !Array.isArray(input.path)) {
+      throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "path target must contain only kind and path");
+    }
+    const path = input.path.map((segment) => {
+      if (typeof segment !== "number" || !Number.isInteger(segment) || segment < 0) {
+        throw mutation_error("INVALID_DOCUMENT_PATH", operation, "every document path segment must be a non-negative integer");
+      }
+      return segment;
+    });
+    return Object.freeze({ kind: "path", path: Object.freeze(path) });
+  }
+
+  if (Object.keys(input).some((key) => key !== "kind" && key !== "quid")
+    || typeof input.quid !== "string" || input.quid.length === 0) {
+    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "QUID target must contain one non-empty string quid");
+  }
+  return Object.freeze({ kind: "quid", quid: input.quid });
+}
+
+function resolve_target(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  target: LiveMapDocumentTarget,
+  operation: DocumentOperation,
+): HsonNode | Primitive {
+  if (target.kind === "quid") {
+    let endpoint: HsonNode | undefined;
+    try {
+      endpoint = index_livemap_document_elements(root).get(target.quid);
+    } catch (cause) {
+      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operation, "current persisted identity is invalid", cause);
+    }
+    if (endpoint === undefined) {
+      throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, `no element carries persisted QUID ${JSON.stringify(target.quid)}`);
+    }
+    return endpoint;
+  }
+
+  let endpoint: HsonNode | Primitive = document_path_base(root, mode, operation);
+  for (const segment of target.path) {
+    if (!is_Node(endpoint) || segment >= endpoint.$_content.length) {
+      throw mutation_error("DOCUMENT_PATH_OUT_OF_RANGE", operation, `document path cannot resolve content segment ${segment}`);
+    }
+    endpoint = endpoint.$_content[segment];
+  }
+  return endpoint;
+}
+
+function document_path_base(root: HsonNode, mode: DocumentLiveMapMode, operation: DocumentOperation): HsonNode {
+  const cluster = root.$_tag === ELEM_TAG
+    ? root
+    : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG
+      ? root.$_content[0]
+      : undefined;
+  if (cluster === undefined) {
+    throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, "owned document cluster is unavailable");
+  }
+  if (mode === "fragment") return cluster;
+  const element = cluster.$_content[0];
+  if (!is_ordinary_element_node(element)) {
+    throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, "owned top-level element is unavailable");
+  }
+  return element;
+}
+
+function require_element(endpoint: HsonNode | Primitive, operation: DocumentOperation): HsonNode {
+  if (!is_ordinary_element_node(endpoint)) {
+    throw mutation_error("DOCUMENT_TARGET_KIND", operation, "target must resolve to an ordinary document element");
+  }
+  return endpoint;
+}
+
+const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
+
+function normalize_attr_name(input: unknown, operation: DocumentOperation): string {
+  if (typeof input !== "string" || !HSON_ATTR_NAME.test(input)) {
+    throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_NAME", operation, "attribute name is not a canonical bare HSON name");
+  }
+  if (input.startsWith(_META_DATA_PREFIX)) {
+    throw mutation_error("PROTECTED_DOCUMENT_METADATA", operation, `${input} is persisted metadata, not an ordinary attribute`);
+  }
+  return input;
+}
+
+function normalize_attr_value(
+  name: string,
+  input: unknown,
+  operation: DocumentOperation,
+): LiveMapDocumentAttributeValue {
+  if (is_finite_primitive(input)) return input;
+  if (name === "style" && is_style_map(input)) return clone_node(input);
+  throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_VALUE", operation, "value must be a canonical primitive or structured style map");
+}
+
+function normalize_content_index(input: unknown, operation: DocumentOperation): number {
+  if (typeof input !== "number" || !Number.isInteger(input) || input < 0) {
+    throw mutation_error("INVALID_DOCUMENT_CONTENT_INDEX", operation, "content index must be a non-negative integer");
+  }
+  return input;
+}
+
+function clone_content(input: unknown, operation: DocumentOperation): LiveMapDocumentContent {
+  if (is_Node(input)) {
+    try {
+      return clone_live_root(input);
+    } catch (cause) {
+      throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement node cannot be cloned", cause);
+    }
+  }
+  if (is_finite_primitive(input)) return input;
+  throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement must be one canonical HSON node or primitive");
+}
+
+function clone_attr_value(value: LiveMapDocumentAttributeValue): LiveMapDocumentAttributeValue {
+  return is_style_map(value) ? clone_node(value) : value;
+}
+
+function is_finite_primitive(value: unknown): value is Primitive {
+  return value === null || typeof value === "string" || typeof value === "boolean"
+    || (typeof value === "number" && Number.isFinite(value));
+}
+
+function is_style_map(value: unknown): value is CssMap {
+  if (!is_plain_record(value)) return false;
+  const seen = new WeakSet<object>();
+  const stack: Record<string, unknown>[] = [value];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current === undefined) continue;
+    if (seen.has(current)) return false;
+    seen.add(current);
+    for (const item of Object.values(current)) {
+      if (item === undefined || is_finite_primitive(item)) continue;
+      if (!is_plain_record(item)) return false;
+      stack.push(item);
+    }
+  }
+  return true;
+}
+
+function is_plain_record(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function mutation_error(
+  code: LiveMapDocumentMutationError["code"],
+  operation: DocumentOperation,
+  reason: string,
+  cause?: unknown,
+): LiveMapDocumentMutationError {
+  return new LiveMapDocumentMutationError(code, operation, reason, cause === undefined ? undefined : { cause });
+}

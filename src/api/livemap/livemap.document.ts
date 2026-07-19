@@ -24,6 +24,10 @@ import {
   install_livemap_document_capture,
   type LiveMapDocumentInstallController,
 } from "./livemap.document.install.js";
+import {
+  make_livemap_document_mutation_api,
+  type LiveMapDocumentMutationController,
+} from "./livemap.document.mutation.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -110,7 +114,7 @@ export function assert_live_root_mode(
 export function facade_for_livemap_root(
   core: LiveMapCore,
   prepared: PreparedLiveMapRoot,
-  controller?: LiveMapDocumentInstallController,
+  controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController,
 ): ClassifiedLiveMap {
   if (prepared.mode === "data-object" || prepared.mode === "data-array") {
     return core as LiveMap;
@@ -125,15 +129,21 @@ export function facade_for_livemap_root(
 function make_document_livemap(
   core: LiveMapCore,
   mode: DocumentLiveMapMode,
-  controller: LiveMapDocumentInstallController,
+  controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController,
 ): DocumentLiveMap {
+  const mutationApi = make_livemap_document_mutation_api(controller);
+  const content = Object.freeze(Object.assign(
+    () => detached_document_content(core.root()),
+    { replace: mutationApi.replaceContent },
+  ));
   const readApi = Object.freeze({
     root: () => core.root(),
-    content: () => detached_document_content(core.root()),
+    content,
     byQuid: (quid: string) => {
       const node = controller.identity().get(quid);
       return node === undefined ? undefined : clone_live_root(node);
     },
+    attrs: mutationApi.attrs,
   });
 
   const shared = {

@@ -5,6 +5,7 @@ import type {
   DocumentLiveMapInstallOptions,
   DocumentLiveMapMode,
   LiveMapGraphCommit,
+  LiveMapGraphReplaceRootOp,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentInstallError, LiveMapRevError } from "./livemap.error.js";
@@ -25,7 +26,7 @@ export type LiveMapDocumentInstallController = Readonly<{
   mode: DocumentLiveMapMode;
   rev: () => number;
   identity: () => LiveMapDocumentIdentityIndex;
-  apply: (candidate: PreparedDocumentInstall) => LiveMapGraphCommit;
+  apply: (candidate: PreparedDocumentInstall) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
 }>;
 
 /** Validate a canonical capture with sparse persisted identity, then apply it. */
@@ -33,7 +34,7 @@ export function install_livemap_document_capture(
   controller: LiveMapDocumentInstallController,
   capture: DocumentLiveMapCapture,
   options?: DocumentLiveMapInstallOptions,
-): LiveMapGraphCommit {
+): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> {
   assert_install_options(options, controller.rev());
   const candidate = prepare_document_install(capture, controller.mode);
   return controller.apply(candidate);

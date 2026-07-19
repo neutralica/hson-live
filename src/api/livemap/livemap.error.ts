@@ -56,6 +56,39 @@ export class LiveMapDocumentInstallError extends Error {
   }
 }
 
+export type LiveMapDocumentMutationErrorCode =
+  | "INVALID_DOCUMENT_TARGET"
+  | "DOCUMENT_TARGET_NOT_FOUND"
+  | "DOCUMENT_TARGET_KIND"
+  | "INVALID_DOCUMENT_PATH"
+  | "DOCUMENT_PATH_OUT_OF_RANGE"
+  | "INVALID_DOCUMENT_ATTRIBUTE_NAME"
+  | "INVALID_DOCUMENT_ATTRIBUTE_VALUE"
+  | "PROTECTED_DOCUMENT_METADATA"
+  | "INVALID_DOCUMENT_CONTENT_INDEX"
+  | "INVALID_DOCUMENT_REPLACEMENT"
+  | "INVALID_DOCUMENT_IDENTITY"
+  | "DOCUMENT_MODE_MISMATCH";
+
+export class LiveMapDocumentMutationError extends Error {
+  readonly code: LiveMapDocumentMutationErrorCode;
+  readonly operation: "set-attr" | "remove-attr" | "replace-content";
+  readonly reason: string;
+
+  constructor(
+    code: LiveMapDocumentMutationErrorCode,
+    operation: LiveMapDocumentMutationError["operation"],
+    reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(`Invalid LiveMap document ${operation}: ${reason}`, options);
+    this.name = "LiveMapDocumentMutationError";
+    this.code = code;
+    this.operation = operation;
+    this.reason = reason;
+  }
+}
+
 export class LiveMapReplayError extends Error {
   readonly code = "REPLAY_CONFLICT" as const;
   readonly path: LivePath;

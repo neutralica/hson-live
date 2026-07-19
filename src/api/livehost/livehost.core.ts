@@ -11,6 +11,7 @@ import type {
   LiveHostActionTerminalOutcome,
   LiveHostActions,
   LiveHostClientActionMessage,
+  LiveHostClientActionResult,
   LiveHostClientRecoverMessage,
   LiveHostClientSessionAttachMessage,
   LiveHostCanonicalCommit,
@@ -32,14 +33,25 @@ import { make_livehost_canonical_stream } from "./livehost.history.js";
 import { make_livehost_recovery_planner } from "./livehost.recovery.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
+import {
+  create_live_trace_context,
+  type LiveTraceContext,
+  type LiveTraceSpan,
+} from "./livehost.trace.js";
 
 let livehost_session_inc = 0;
+let livehost_trace_inc = 0;
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 
 function make_livehost_session_id(): LiveHostSessionId {
   livehost_session_inc += 1;
   return `lhs-${Date.now().toString(36)}-${livehost_session_inc.toString(36)}`;
+}
+
+function make_livehost_trace_id(): string {
+  livehost_trace_inc += 1;
+  return `lht-${Date.now().toString(36)}-${livehost_trace_inc.toString(36)}`;
 }
 
 function resolve_session_id(option: LiveHostOptions["sessionId"]): LiveHostSessionId {
@@ -72,6 +84,15 @@ function decode_with_schema<TValue>(
 
 function schema_error_message(issues: readonly string[]): string {
   return issues.length ? issues.join("; ") : "Value failed LiveHost schema validation.";
+}
+
+function safe_error_code(cause: unknown, fallback: string): string {
+  return typeof cause === "object"
+    && cause !== null
+    && "code" in cause
+    && typeof cause.code === "string"
+    ? cause.code
+    : fallback;
 }
 
 export function create_livehost<
@@ -112,18 +133,112 @@ export function create_livehost<
     return Object.freeze({ map, seq, origin, emit_event: emitEvent });
   }
 
-  function validate_action(message: LiveHostClientActionMessage<TActions>):
+  function make_action_trace(
+    message: LiveHostClientActionMessage<TActions>,
+    origin: LiveHostActionOrigin,
+    envelopeAccepted = false,
+  ): LiveTraceContext | undefined {
+    const sink = options.trace;
+    if (sink === undefined) return undefined;
+    const trace = create_live_trace_context(sink, make_livehost_trace_id());
+    trace.emit({
+      subsystem: "livehost",
+      phase: "action.received",
+      status: "event",
+      details: () => ({ action: message.name, origin: origin.kind, retry: message.retry === true }),
+    });
+    if (envelopeAccepted) {
+      trace.emit({
+        subsystem: "transport",
+        phase: "action.envelope",
+        status: "success",
+        details: () => ({ action: message.name }),
+      });
+    }
+    trace.emit({
+      subsystem: "livehost",
+      phase: "session.resolve",
+      status: "success",
+      details: () => ({
+        origin: origin.kind,
+        ...(origin.kind === "session" ? { resumable: origin.resumable } : {}),
+      }),
+    });
+    return trace;
+  }
+
+  function trace_state_boundary(
+    trace: LiveTraceContext | undefined,
+    parentSpanId: string | undefined,
+    previousRev: number,
+  ): void {
+    if (trace === undefined) return;
+    trace.emit({
+      subsystem: "livemap",
+      phase: "state.transition",
+      status: "event",
+      ...(parentSpanId !== undefined ? { parentSpanId } : {}),
+      details: () => {
+        const rev = stream.headRev;
+        const commits = rev > previousRev
+          ? stream.history.replay_after(previousRev, rev)
+          : [];
+        const operationKinds = commits?.flatMap((commit) => commit.ops.map((operation) => operation.kind));
+        return {
+          changed: rev !== previousRev,
+          prevRev: previousRev,
+          rev,
+          historyAvailable: commits !== undefined,
+          ...(commits !== undefined ? { commitCount: commits.length } : {}),
+          ...(operationKinds !== undefined ? { operationCount: operationKinds.length, operationKinds } : {}),
+        };
+      },
+    });
+  }
+
+  function validate_action(
+    message: LiveHostClientActionMessage<TActions>,
+    trace?: LiveTraceContext,
+    parentSpanId?: string,
+  ):
     | Readonly<{ ok: true; handler: NonNullable<Partial<LiveHostActions<TActions, TState>>[keyof TActions & string]>; payload: JsonValue | undefined }>
     | Readonly<{ ok: false; code: "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID"; message: string }> {
+    const lookupSpan = trace?.beginSpan(
+      "livehost",
+      "action.lookup",
+      parentSpanId,
+      () => ({ action: message.name }),
+    );
     const handler = actions[message.name];
     if (!handler) {
+      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_UNKNOWN_ACTION" }));
       return { ok: false, code: "LIVEHOST_ACTION_UNAVAILABLE", message: `Unknown LiveHost action: ${message.name}` };
     }
+    lookupSpan?.success(() => ({ action: message.name }));
+
+    const validationSpan = trace?.beginSpan(
+      "livehost",
+      "payload.validation",
+      parentSpanId,
+      () => ({ action: message.name, payloadPresent: message.payload !== undefined }),
+    );
     const actionSchema = options.schema?.actions?.[message.name];
-    const payloadResult = decode_with_schema(actionSchema?.payload, message.payload);
+    let payloadResult: LiveHostSchemaResult<JsonValue | undefined>;
+    try {
+      payloadResult = decode_with_schema(actionSchema?.payload, message.payload);
+    } catch (cause) {
+      validationSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+      throw cause;
+    }
     if (!payloadResult.ok) {
+      validationSpan?.failure(() => ({
+        action: message.name,
+        errorCode: "LIVEHOST_SCHEMA_INVALID_PAYLOAD",
+        issueCount: payloadResult.issues.length,
+      }));
       return { ok: false, code: "LIVEHOST_ACTION_INVALID", message: schema_error_message(payloadResult.issues) };
     }
+    validationSpan?.success(() => ({ action: message.name, schemaConfigured: actionSchema?.payload !== undefined }));
     return { ok: true, handler, payload: payloadResult.value };
   }
 
@@ -133,10 +248,24 @@ export function create_livehost<
     payload: JsonValue | undefined,
     origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContext<TState>["emit_event"],
+    trace?: LiveTraceContext,
+    parentSpanId?: string,
   ): Promise<LiveHostActionTerminalOutcome> {
+    const previousRev = stream.headRev;
+    const handlerSpan = trace?.beginSpan(
+      "livehost",
+      "handler.execute",
+      parentSpanId,
+      () => ({ action: message.name, origin: origin.kind }),
+    );
     try {
       const result = await handler(action_context(origin, emitEvent), payload as never, message);
       if (result !== undefined && !is_livehost_json_value(result)) {
+        handlerSpan?.failure(() => ({
+          action: message.name,
+          errorCode: "LIVEHOST_ACTION_OUTCOME_NORMALIZATION_FAILED",
+        }));
+        trace_state_boundary(trace, parentSpanId, previousRev);
         return Object.freeze({
           state: "failed",
           seq,
@@ -147,6 +276,8 @@ export function create_livehost<
           }),
         });
       }
+      handlerSpan?.success(() => ({ action: message.name, resultPresent: result !== undefined }));
+      trace_state_boundary(trace, parentSpanId, previousRev);
       return Object.freeze({
         state: "succeeded",
         seq: next_seq(),
@@ -154,12 +285,9 @@ export function create_livehost<
         ...(result !== undefined ? { result } : {}),
       });
     } catch (cause) {
-      const causeCode = typeof cause === "object"
-        && cause !== null
-        && "code" in cause
-        && typeof cause.code === "string"
-        ? cause.code
-        : "LIVEHOST_ACTION_FAILED";
+      const causeCode = safe_error_code(cause, "LIVEHOST_ACTION_FAILED");
+      handlerSpan?.failure(() => ({ action: message.name, errorCode: causeCode }));
+      trace_state_boundary(trace, parentSpanId, previousRev);
       return Object.freeze({
         state: "failed",
         seq,
@@ -178,7 +306,7 @@ export function create_livehost<
     requestId?: string,
     delivery?: LiveHostActionDelivery,
     attemptId?: string,
-  ): LiveHostServerMessage<TState> {
+  ): LiveHostClientActionResult {
     if (outcome.state === "succeeded") {
       return {
         type: "ack",
@@ -209,8 +337,16 @@ export function create_livehost<
     message: LiveHostClientActionMessage<TActions>,
     origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContext<TState>["emit_event"],
+    trace?: LiveTraceContext,
   ): Promise<LiveHostServerMessage<TState>> {
+    const actionSpan = trace?.beginSpan(
+      "livehost",
+      "action.execute",
+      undefined,
+      () => ({ action: message.name, origin: origin.kind }),
+    );
     if (disposed) {
+      actionSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_HOST_DISPOSED" }));
       return {
         type: "error",
         id: message.id,
@@ -223,8 +359,19 @@ export function create_livehost<
         },
       };
     }
-    const validated = validate_action(message);
+    const validated = (() => {
+      try {
+        return validate_action(message, trace, actionSpan?.spanId);
+      } catch (cause) {
+        actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+        throw cause;
+      }
+    })();
     if (!validated.ok) {
+      const code = validated.code === "LIVEHOST_ACTION_UNAVAILABLE"
+        ? "LIVEHOST_UNKNOWN_ACTION"
+        : "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
+      actionSpan?.failure(() => ({ action: message.name, errorCode: code }));
       return {
         type: "error",
         id: message.id,
@@ -233,18 +380,41 @@ export function create_livehost<
         completionRev: stream.headRev,
         error: {
           message: validated.message,
-          code: validated.code === "LIVEHOST_ACTION_UNAVAILABLE" ? "LIVEHOST_UNKNOWN_ACTION" : "LIVEHOST_SCHEMA_INVALID_PAYLOAD",
+          code,
         },
       };
     }
-    return action_response(
+    const response = action_response(
       message.id,
-      await execute_validated_action(message, validated.handler, validated.payload, origin, emitEvent),
+      await execute_validated_action(
+        message,
+        validated.handler,
+        validated.payload,
+        origin,
+        emitEvent,
+        trace,
+        actionSpan?.spanId,
+      ),
     );
+    trace?.emit({
+      subsystem: "transport",
+      phase: "response.created",
+      status: response.type === "ack" ? "success" : "failure",
+      ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+      details: () => ({
+        action: message.name,
+        responseType: response.type,
+        ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+      }),
+    });
+    if (response.type === "ack") actionSpan?.success(() => ({ action: message.name, responseType: response.type }));
+    else actionSpan?.failure(() => ({ action: message.name, responseType: response.type, errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" }));
+    return response;
   }
 
   function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<TState>> {
-    return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false);
+    const trace = make_action_trace(message, DIRECT_ACTION_ORIGIN);
+    return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false, trace);
   }
 
   function inert_connection(): LiveHostConnection {
@@ -403,15 +573,27 @@ export function create_livehost<
     async function handle_deduped_action(
       message: LiveHostClientActionMessage<TActions>,
       origin: LiveHostActionOrigin,
+      trace?: LiveTraceContext,
     ): Promise<void> {
       if (!message.requestId || !message.clientId) {
         const response = await dispatch_action_scoped(
           message,
           origin,
           emit_connection_event,
+          trace,
         );
 
         send(response);
+        trace?.emit({
+          subsystem: "transport",
+          phase: "response.dispatch",
+          status: response.type === "ack" ? "success" : "failure",
+          details: () => ({
+            action: message.name,
+            responseType: response.type,
+            ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+          }),
+        });
 
         if (response.type === "ack") {
           sync.sync_all(response.seq);
@@ -420,14 +602,27 @@ export function create_livehost<
         return;
       }
 
-      const validated = validate_action(message);
+      const actionSpan = trace?.beginSpan(
+        "livehost",
+        "action.execute",
+        undefined,
+        () => ({ action: message.name, origin: origin.kind }),
+      );
+      const validated = (() => {
+        try {
+          return validate_action(message, trace, actionSpan?.spanId);
+        } catch (cause) {
+          actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+          throw cause;
+        }
+      })();
 
       if (!validated.ok) {
         const code = validated.code === "LIVEHOST_ACTION_UNAVAILABLE"
           ? "LIVEHOST_UNKNOWN_ACTION"
           : "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
 
-        send({
+        const response: LiveHostClientActionResult = {
           type: "error",
           id: message.id,
           requestId: message.requestId,
@@ -442,7 +637,16 @@ export function create_livehost<
             code,
             message: validated.message,
           },
+        };
+        send(response);
+        trace?.emit({
+          subsystem: "transport",
+          phase: "response.dispatch",
+          status: "failure",
+          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          details: () => ({ action: message.name, responseType: response.type, errorCode: code }),
         });
+        actionSpan?.failure(() => ({ action: message.name, errorCode: code }));
 
         return;
       }
@@ -459,11 +663,13 @@ export function create_livehost<
           validated.payload,
           origin,
           emit_connection_event,
+          trace,
+          actionSpan?.spanId,
         ),
       });
 
       if (!result.ok) {
-        send({
+        const response: LiveHostClientActionResult = {
           type: "error",
           id: message.id,
           requestId: message.requestId,
@@ -478,10 +684,27 @@ export function create_livehost<
             code: result.code,
             message: result.message,
           },
+        };
+        send(response);
+        trace?.emit({
+          subsystem: "transport",
+          phase: "response.dispatch",
+          status: "failure",
+          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          details: () => ({ action: message.name, responseType: response.type, errorCode: result.code }),
         });
+        actionSpan?.failure(() => ({ action: message.name, errorCode: result.code }));
 
         return;
       }
+
+      trace?.emit({
+        subsystem: "livehost",
+        phase: "action.dedupe",
+        status: result.delivery === "executed" ? "success" : "skip",
+        ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+        details: () => ({ action: message.name, delivery: result.delivery }),
+      });
 
       const response = action_response(
         message.id,
@@ -492,9 +715,42 @@ export function create_livehost<
       );
 
       send(response);
+      trace?.emit({
+        subsystem: "transport",
+        phase: "response.dispatch",
+        status: response.type === "ack" ? "success" : "failure",
+        ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+        details: () => ({
+          action: message.name,
+          responseType: response.type,
+          delivery: result.delivery,
+          ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+        }),
+      });
 
       if (result.delivery === "executed" && response.type === "ack") {
         sync.sync_all(response.seq);
+        trace?.emit({
+          subsystem: "livehost",
+          phase: "subscription.publication",
+          status: "success",
+          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          details: () => ({
+            sequence: response.seq,
+            subscriberCount: sync.debug_sessions().reduce((count, session) => count + session.paths.length, 0),
+          }),
+        });
+      }
+
+      if (response.type === "ack") {
+        actionSpan?.success(() => ({ action: message.name, responseType: response.type, delivery: result.delivery }));
+      } else {
+        actionSpan?.failure(() => ({
+          action: message.name,
+          responseType: response.type,
+          delivery: result.delivery,
+          errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED",
+        }));
       }
     }
 
@@ -615,7 +871,8 @@ export function create_livehost<
           epoch: capturedEpoch,
           resumable: sessionResumable === true,
         });
-        await handle_deduped_action(message, origin);
+        const trace = make_action_trace(message, origin, true);
+        await handle_deduped_action(message, origin, trace);
         if (!sessions.is_active(capturedSessionId, capturedEpoch)) return;
         return;
       }

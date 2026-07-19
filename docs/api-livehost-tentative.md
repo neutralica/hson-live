@@ -119,6 +119,7 @@ type LiveHostOptions<TState, TActions> = Readonly<{
   actions?: Partial<LiveHostActions<TActions, TState>>;
   schema?: LiveHostSchema<TState, TActions>;
   sessionId?: string | (() => string);
+  trace?: LiveTraceSink;
 }>;
 ```
 
@@ -160,6 +161,66 @@ successfully. It does not currently equal `host.map.rev`:
 
 Treat `seq` as the current action-response/synchronization sequence, not as a
 canonical LiveMap revision.
+
+### Opt-in structured tracing
+
+LiveHost accepts an optional synchronous trace sink:
+
+```ts
+import { hson } from "hson-live";
+import {
+  create_live_trace_collector,
+  create_live_trace_console_sink,
+} from "hson-live/diagnostics";
+
+const recent = create_live_trace_collector({ capacity: 200 });
+const host = hson.liveHost.create({
+  state: { count: 0 },
+  trace: recent,
+});
+
+recent.events();
+recent.clear();
+
+const verboseHost = hson.liveHost.create({
+  trace: create_live_trace_console_sink(),
+});
+```
+
+Tracing is disabled when `trace` is omitted. The disabled action path does not
+construct trace contexts or events. The collector retains at most `capacity`
+events and evicts the oldest first. The console sink is explicitly opt-in and
+may instead receive a deterministic `write(line)` callback.
+
+Each accepted host-side action processing attempt receives a dedicated,
+host-generated trace ID and sequence numbers starting at 1. The trace ID is
+not the client-supplied action `attemptId`, logical request ID, session ID, or
+any persisted graph identity. It contains no user data and is unique within
+the current runtime. A retry of one logical action therefore receives a new
+trace ID even when deduplication returns a joined or cached outcome without a
+second handler execution. Sequence defines ordering; timestamps and durations
+are diagnostic only. The current remote-action pilot records the decoded action
+envelope, resolved session authority, action lookup, payload schema validation,
+handler execution, safe revision/commit counts, response dispatch, and
+subscription publication. The current implementation has no general action
+authorization hook, so it does not emit a fictional authorization stage.
+
+Details are explicit summaries such as action name, error code, revision range,
+operation count, delivery kind, and subscriber count. Payloads, results,
+canonical roots, commits, credentials, session secrets, headers, arbitrary
+errors, and stack traces are not included.
+
+Tracing is observational and local. Events are not added to action, response,
+commit, recovery, or snapshot envelopes; they are not transmitted, persisted,
+or replayed. Sink, writer, clock, and detail-summary failures are silently
+isolated. The governing invariant is:
+
+> Tracing enabled and tracing disabled must produce identical state, revisions,
+> commits, results, errors, and transport behavior.
+
+This is a narrow diagnostics foundation, not a complete observability platform.
+Client projection, graph-operation, LiveTree, remote collection, sampling,
+metrics, and viewer work remain deferred.
 
 ---
 

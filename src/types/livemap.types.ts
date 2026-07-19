@@ -1,6 +1,7 @@
 // livemap.types.ts
 
-import type { HsonNode, JsonValue, NodeContent } from "../core/types.js";
+import type { HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
+import type { CssMap } from "../core/style.types.js";
 import type {
   LiveMapSchema,
   LiveMapSchemaResolution,
@@ -296,14 +297,52 @@ export type DocumentLiveMapInstallOptions = Readonly<{
   expectedRev?: number;
 }>;
 
+/** Numeric traversal through canonical document `$_content` arrays. */
+export type LiveMapDocumentPath = readonly number[];
+
+/** One unambiguous canonical-document addressing mode. */
+export type LiveMapDocumentTarget =
+  | Readonly<{ kind: "path"; path: LiveMapDocumentPath }>
+  | Readonly<{ kind: "quid"; quid: string }>;
+
+/** Existing canonical HSON attribute value model; style remains structured. */
+export type LiveMapDocumentAttributeValue = Primitive | CssMap;
+
+/** One legal candidate value for a canonical HSON `$_content` slot. */
+export type LiveMapDocumentContent = NodeContent[number];
+
+/** Single-attribute canonical mutation namespace. Bulk attribute APIs are intentionally absent. */
+export type DocumentLiveMapAttrsApi = Readonly<{
+  set: (
+    target: LiveMapDocumentTarget,
+    name: string,
+    value: LiveMapDocumentAttributeValue,
+  ) => LiveMapGraphCommit<LiveMapGraphSetAttrOp>;
+  drop: (
+    target: LiveMapDocumentTarget,
+    name: string,
+  ) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
+}>;
+
+/** Detached content reader plus exact existing-slot replacement. */
+export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{
+  replace: (
+    target: LiveMapDocumentTarget,
+    index: number,
+    replacement: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+}>;
+
 /** Shared detached canonical reads for element and fragment capabilities. */
 export type DocumentLiveMapReadApi = Readonly<{
   /** Return a detached clone of the complete canonical root. */
   root: () => HsonNode;
   /** Return detached top-level document content in canonical order. */
-  content: () => readonly NodeContent[number][];
+  content: DocumentLiveMapContentApi;
   /** Resolve persisted document identity to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
+  /** Canonical single-attribute mutation namespace. */
+  attrs: DocumentLiveMapAttrsApi;
 }>;
 
 /** Read capability available only on a single-element document map. */
@@ -321,7 +360,7 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   install: (
     capture: DocumentLiveMapCapture,
     options?: DocumentLiveMapInstallOptions,
-  ) => LiveMapGraphCommit;
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
   /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
   debug: LiveMapDebugApi;
 }>;
@@ -394,8 +433,35 @@ export type LiveMapGraphReplaceRootOp = Readonly<{
   root: HsonNode;
 }>;
 
-/** First graph-domain operation family. Fine-grained graph ops are not yet public. */
-export type LiveMapGraphOp = LiveMapGraphReplaceRootOp;
+export type LiveMapGraphSetAttrOp = Readonly<{
+  domain: "graph";
+  op: "set-attr";
+  target: LiveMapDocumentTarget;
+  name: string;
+  value: LiveMapDocumentAttributeValue;
+}>;
+
+export type LiveMapGraphRemoveAttrOp = Readonly<{
+  domain: "graph";
+  op: "remove-attr";
+  target: LiveMapDocumentTarget;
+  name: string;
+}>;
+
+export type LiveMapGraphReplaceContentOp = Readonly<{
+  domain: "graph";
+  op: "replace-content";
+  target: LiveMapDocumentTarget;
+  index: number;
+  replacement: LiveMapDocumentContent;
+}>;
+
+/** Canonical graph-domain operations; distinct from projected JSON writes. */
+export type LiveMapGraphOp =
+  | LiveMapGraphReplaceRootOp
+  | LiveMapGraphSetAttrOp
+  | LiveMapGraphRemoveAttrOp
+  | LiveMapGraphReplaceContentOp;
 
 /** Select a LiveMap operation domain; bare use preserves the existing data domain. */
 export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =
@@ -419,7 +485,7 @@ export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
 }>;
 
 /** Existing commit envelope specialized to graph-domain operations. */
-export type LiveMapGraphCommit = LiveMapCommit<LiveMapGraphOp>;
+export type LiveMapGraphCommit<TOp extends LiveMapGraphOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
 
 /**
  * Event delivered to a feed listener.

@@ -120,6 +120,21 @@ connection-scoped event. Authorization context, cancellation, action
 deduplication, durable domain logging, and transactional rollback across an
 entire async handler are roadmap concerns.
 
+A narrow opt-in structured-tracing pilot is also implemented for the current
+action lifecycle. It observes accepted envelopes, session authority, lookup,
+payload validation, handler execution, revision boundaries, response dispatch,
+and subscription publication through a caller-supplied local sink. Events are
+redacted, are never protocol data or replay history, and sink failures are
+semantically isolated. Bounded collector and explicit console adapters are
+exported from `hson-live/diagnostics`. This is diagnostics infrastructure, not
+the future authorization system or a distributed tracing platform.
+
+Each accepted host-side processing attempt receives a dedicated host-generated
+trace ID. Client action attempt IDs and logical request IDs are not reused as
+trace identity. A retry therefore creates a distinct local trace even when
+deduplication joins pending work or returns a cached result without running the
+handler again.
+
 Conditional low-level mutation proposals may also be useful, especially for
 generic editors or developer tools. Contract direction requires such a proposal
 to name the revision on which it was based and remain non-canonical until the

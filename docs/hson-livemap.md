@@ -93,10 +93,12 @@ Document roots are now classified separately as `element` or `fragment` and do
 not expose the projected data surface. Their `element` or `fragment` capability
 returns detached canonical nodes/content, and their revision-coupled capture is
 discriminated by `kind: "hson-document"` and `version: 1`. Document maps now
-support one graph transition: same-mode `install(capture)` atomically replaces
-the canonical root and persisted-QUID index and returns one graph-domain
-replace-root commit. Fine-grained graph mutation, graph replay, document
-subscriptions, and LiveTree projection remain future work.
+support same-mode `install(capture)` plus three local incremental canonical
+operations. The capability syntax follows LiveTree/LiveMap namespaces:
+`element.attrs.set(...)`, `element.attrs.drop(...)`, and
+`element.content.replace(...)`, with equivalent `fragment` capabilities. There
+are no `setAttrs`-style methods. Graph replay, document batching/subscriptions,
+and LiveTree projection remain future work.
 
 ---
 
@@ -260,6 +262,16 @@ source `capture.rev`.
 The resulting commit contains one `{ domain: "graph", op: "replace-root" }`
 operation. Graph apply/replay and authoritative recovery installation do not
 exist yet.
+
+Incremental document operations use a shared discriminated path-or-QUID target.
+Numeric document paths traverse physical canonical `$_content`; they are not
+projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only
+through the current map's sparse index. Attribute mutation is restricted to
+ordinary elements and cannot edit `data-_` metadata. Content replacement swaps
+one existing slot, clones caller input, validates the complete candidate graph
+and sparse identity, and atomically replaces owned root/index state. Its commit
+operations are `set-attr`, `remove-attr`, and `replace-content`, never
+`replace-root`.
 
 These LiveMap operations do not themselves define transport, persistence,
 retry policy, authorization, conflict merging, or multi-writer consensus.

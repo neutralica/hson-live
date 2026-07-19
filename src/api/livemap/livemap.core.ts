@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
@@ -16,6 +16,7 @@ import { json_values_equal } from "./livemap-helpers.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
 import { facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
+import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -67,7 +68,7 @@ function make_livemap_core_from_owned_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
 ): Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
-  document?: LiveMapDocumentInstallController;
+  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController;
 }> {
   const initialMode = prepared.mode;
   let owned = {
@@ -342,9 +343,10 @@ function make_livemap_core_from_owned_root(
     return { core };
   }
 
-  const document: LiveMapDocumentInstallController = {
+  const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController = {
     mode: initialMode,
     rev: () => currentRev,
+    root: () => owned.root,
     identity: () => {
       const identity = owned.documentIdentity;
       if (identity === undefined) {
@@ -352,7 +354,7 @@ function make_livemap_core_from_owned_root(
       }
       return identity;
     },
-    apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit => {
+    apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       const prevRev = currentRev;
       if (canonical_graph_equal(owned.root, candidate.root)) {
         return Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
@@ -369,7 +371,7 @@ function make_livemap_core_from_owned_root(
         documentIdentity: candidate.identity,
       };
       const rev = prevRev + 1;
-      const commit: LiveMapGraphCommit = Object.freeze({
+      const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = Object.freeze({
         changed: true,
         prevRev,
         rev,
@@ -380,6 +382,23 @@ function make_livemap_core_from_owned_root(
       // together. Document feeds/replay do not exist yet, so this commit is
       // returned without entering the projected-data feed hub.
       owned = nextOwned;
+      currentRev = rev;
+      return commit;
+    },
+    applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
+      const prevRev = currentRev;
+      const rev = prevRev + 1;
+      const commit: LiveMapGraphCommit<TOp> = Object.freeze({
+        changed: true,
+        prevRev,
+        rev,
+        ops: Object.freeze([candidate.operation]),
+      });
+
+      owned = {
+        root: candidate.root,
+        documentIdentity: candidate.identity,
+      };
       currentRev = rev;
       return commit;
     },

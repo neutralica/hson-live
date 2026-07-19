@@ -889,6 +889,95 @@ Normal construction establishes initial state at revision 0 and emits no commit
 or feed event. The first changed atomic transition advances revision 0 to 1;
 unchanged operations consume no revision.
 
+### Incremental document operations
+
+Element and fragment maps expose local canonical mutation through their
+shape-specific capability. Attribute verbs live under `attrs`; content verbs
+live under the callable `content` capability:
+
+```ts
+const target = { kind: "path", path: [] } as const;
+
+elementMap.element.attrs.set(target, "aria-label", "Save");
+elementMap.element.attrs.drop(target, "aria-label");
+elementMap.element.content.replace(target, 0, replacement);
+
+fragmentMap.fragment.attrs.set(
+  { kind: "quid", quid: "persisted-id" },
+  "hidden",
+  "hidden",
+);
+fragmentMap.fragment.content.replace(
+  { kind: "path", path: [] },
+  1,
+  replacement,
+);
+```
+
+There are deliberately no `setAttr`, `setAttrs`, `removeAttr`, or
+`replaceContent` methods. There is no bulk attribute operation in this slice.
+The existing detached read remains `capability.content()`; `content.replace()`
+adds the single-slot mutation without exposing owned content.
+
+All three operations share one exact target union:
+
+```ts
+type LiveMapDocumentTarget =
+  | Readonly<{ kind: "path"; path: readonly number[] }>
+  | Readonly<{ kind: "quid"; quid: string }>;
+```
+
+The discriminator is authoritative. Node objects, DOM nodes, detached reads,
+and objects containing competing `path` and `quid` fields are rejected.
+
+A document path traverses physical canonical `$_content`, not projected JSON,
+DOM children, CSS selectors, or LiveTree rendering. Every segment must be a
+finite non-negative integer and counts all physical slots, including HSON text
+and structural wrapper nodes. For an element map, `[]` identifies its one
+ordinary top-level element. For a fragment map, `[]` identifies the canonical
+`_hson_elem` fragment cluster. Paths may end at a node or primitive, but
+attribute mutation requires an ordinary-element endpoint and content mutation
+requires a node with the named existing slot.
+
+QUID targets resolve only through the map-local sparse persisted-identity
+index. Only an ordinary element already carrying a valid `data-_quid` can be
+resolved. Lookup never mints identity, does not consult the LiveTree or `lmq`
+registries, and cannot resolve a foreign map's identity.
+
+`attrs.set()` accepts the existing canonical primitive attribute values and a
+structured style map for `style`; structured input is cloned. Assigning a
+canonically identical value is a no-op. `attrs.drop()` removes one existing
+ordinary attribute; an absent attribute is a no-op. Names beginning `data-_`
+are persisted metadata rather than ordinary attributes and cannot be changed
+through this namespace, including `data-_quid`.
+
+`content.replace()` replaces exactly one existing physical `$_content` slot.
+It never inserts, deletes, splices, or replaces the root. A replacement may be
+one HSON node or a finite HSON primitive, but the completed candidate must pass
+the current canonical invariants and retain the map's element/fragment mode.
+The replacement is cloned before ownership. Canonically identical detached
+nodes and identical primitives are no-ops.
+
+Content replacement preflights the complete sparse identity result. Removed
+subtree identities disappear, incoming identities are indexed, unquidded nodes
+remain unquidded, and a QUID displaced by the same slot may be reused. Invalid,
+duplicate, or retained-colliding QUIDs reject atomically. Root, identity index,
+revision, and commit output change together only after validation succeeds.
+
+Changed standalone calls advance one local revision and return exactly one of:
+
+```ts
+{ domain: "graph", op: "set-attr", target, name, value }
+{ domain: "graph", op: "remove-attr", target, name }
+{ domain: "graph", op: "replace-content", target, index, replacement }
+```
+
+No-op calls return `changed: false` with no operations. Document batching,
+graph replay, graph feeds, hosted graph actions, authorization, and remote
+transport remain unimplemented. These operations exist only on element and
+fragment capability surfaces; data-object and data-array maps do not expose
+them.
+
 ### Document `capture()`
 
 Document maps capture the complete canonical graph rather than projected JSON:
@@ -947,7 +1036,9 @@ commit state unchanged.
 Installing a canonically identical graph follows existing replacement no-op
 behavior: it returns `changed: false`, no operations, and consumes no revision.
 Document graph commits are not accepted by data `replay()` and are not yet
-published through a public document feed.
+published through a public document feed. Incremental document operations use
+their own `set-attr`, `remove-attr`, and `replace-content` records; they never
+masquerade as `replace-root` installation.
 
 The input capture, installed owned root, later captures, and returned operation
 root share no mutable references. `debug.node()` can still damage live graph or
