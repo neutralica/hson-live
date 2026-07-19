@@ -1,9 +1,9 @@
 // construct-render-4.ts
 
-import { RenderFormats } from "../../../types/constructor.types.js";
+import { ParsedRenderFormats } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
 import { make_string } from "../../../core/stringify.js";
-import { ParsedResult, RenderConstructor_4 } from "../../../types/constructor.types.js";
+import { ParsedResult, RenderConstructor_4, SerializeConstructor_4 } from "../../../types/constructor.types.js";
 import { FrameRender } from "../../../types/constructor.types.js";
 import { serialize_hson } from "../serializers/serialize-hson.js";
 
@@ -16,16 +16,44 @@ import { serialize_hson } from "../serializers/serialize-hson.js";
  * - the materialized representation on the frame,
  * - and any formatting options applied in stage 3.
  *
- * This stage exposes only the final data operations:
+ * This stage exposes the final data operations:
  * - `serialize()` → string output in the chosen format
- * - `parse()` → structured output for JSON or HSON
+ * - `parse()` → structured JSON output (HTML retains its legacy throwing form)
+ *
+ * HSON uses a serialization-only finalizer. Canonical graph access is handled
+ * uniformly by the source constructor's `toNode()` terminal.
  *
  * LiveTree creation is not part of this final render stage.
  *
  * @param context - Render context containing the frame and chosen format.
  * @returns Stage-4 terminal render API.
  */
-export function construct_render_4<K extends RenderFormats>(
+function serialize_render(context: FrameRender<ParsedRenderFormats | (typeof $RENDER)["HSON"]>): string {
+  const { frame, output } = context;
+
+  switch (output) {
+    case $RENDER.HSON:
+      return serialize_hson(frame.node, {
+        noBreak: frame.options?.noBreak ?? false,
+        noQuid: frame.options?.noQuid ?? false,
+      });
+    case $RENDER.JSON:
+      if (frame.json == null) throw new Error("serialize(): frame is missing JSON data");
+      return typeof frame.json === "string" ? frame.json : make_string(frame.json);
+    case $RENDER.HTML:
+      if (frame.html == null) throw new Error("serialize(): frame is missing HTML data");
+      return typeof frame.html === "string" ? frame.html : make_string(frame.html);
+  }
+}
+
+/** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
+export function construct_hson_render_4(
+  context: FrameRender<(typeof $RENDER)["HSON"]>,
+): SerializeConstructor_4 {
+  return { serialize: () => serialize_render(context) };
+}
+
+export function construct_render_4<K extends ParsedRenderFormats>(
   context: FrameRender<K>
 ): RenderConstructor_4<K> {
   const { frame, output } = context;
@@ -40,35 +68,7 @@ export function construct_render_4<K extends RenderFormats>(
      * - After `.toHtml()` → HTML string.
      */
     serialize(): string {
-      switch (output) {
-        case $RENDER.HSON: {
-          return serialize_hson(frame.node, {
-            noBreak: frame.options?.noBreak ?? false,
-            noQuid: frame.options?.noQuid ?? false,
-          });
-        }
-
-        case $RENDER.JSON: {
-          if (frame.json == null) {
-            throw new Error("serialize(): frame is missing JSON data");
-          }
-          return typeof frame.json === "string"
-            ? frame.json
-            : make_string(frame.json);
-        }
-
-        case $RENDER.HTML: {
-          if (frame.html == null) {
-            throw new Error("serialize(): frame is missing HTML data");
-          }
-          return typeof frame.html === "string"
-            ? frame.html
-            : make_string(frame.html);
-        }
-
-        default:
-          throw new Error("serialize(): invalid output format");
-      }
+      return serialize_render(context);
     },
 
     /**
@@ -76,16 +76,10 @@ export function construct_render_4<K extends RenderFormats>(
      *
      * - After `.toJson()`:
      *     → parsed JSON value (object / array / primitive).
-     * - After `.toHson()`:
-     *     → the internal HsonNode tree (Nodes).
      * - After `.toHtml()`:
      *     → not supported to minimize XSS risk.
      *
-     * This is intentionally typed as `unknown`; callers should narrow
-     * based on which `toX()` they used:
-     *
-     *   const val = hson.fromJson(data).toJson().parse(); // val: unknown
-     *   if (Array.isArray(val)) { ... }
+     * JSON callers receive the existing `JsonValue` projection.
      */
     parse(): ParsedResult<K>  {
       switch (output) {
@@ -101,14 +95,6 @@ export function construct_render_4<K extends RenderFormats>(
 
           // Already a structured JSON value.
           return frame.json as ParsedResult<K> ;
-        }
-
-        case $RENDER.HSON: {
-          if (!frame.node) {
-            throw new Error("parse(): frame is missing HSON node data");
-          }
-          // The Node itself is the “parsed” representation.
-          return frame.node as ParsedResult<K> ;
         }
 
         case $RENDER.HTML: {

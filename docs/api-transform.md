@@ -17,12 +17,22 @@ hson.fromNode(node)
 
 There is no public `hson.transform` namespace in the current library.
 
-These constructors build a deterministic conversion pipeline:
+Every constructor normalizes to a canonical node graph and supports two kinds
+of terminal operation:
 
 1. Choose a source format.
-2. Choose an output format.
-3. Optionally attach formatting flags.
-4. Finalize with `serialize()` or `parse()`.
+2. Call `.toNode()` for the canonical `HsonNode`, or choose an output format.
+3. Optionally attach formatting flags to that output.
+4. Finalize an output with `serialize()` (or JSON's existing `parse()`).
+
+HSON text has a direct parsing path instead:
+
+```ts
+const node = hson.fromHson(source).toNode();
+```
+
+The former `.toHson().parse()` graph-access route has been removed. HSON input
+can still be canonically reserialized with `.toHson().serialize()`.
 
 Use this API when the goal is serialized HTML, JSON, HSON, or a structured JSON
 or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
@@ -92,7 +102,9 @@ Parses JSON data into HSON nodes.
 Parses HSON text into HSON nodes.
 
 - Does not sanitize.
-- Returns the same output-selection builder as the other transform sources.
+- `.toNode()` parses and directly returns the canonical `HsonNode`.
+- `.toJson()`, `.toHson()`, `.toHtml()`, and `.sanitizeBEWARE()` remain
+  available for conversion and canonical reserialization.
 
 ### `hson.fromNode(node: HsonNode)`
 
@@ -106,14 +118,19 @@ Starts the transform pipeline from an existing HSON node graph.
 
 ## Output Selection
 
-Every transform source returns an output builder with:
+All transform sources return a common normalized-source surface with:
 
 ```ts
+.toNode()
 .toHtml()
 .toJson()
 .toHson()
 .sanitizeBEWARE()
 ```
+
+`.toNode()` directly returns the normalized canonical graph. It does not
+serialize to HSON and parse that text again. For `fromNode(node)`, it returns
+the original graph reference.
 
 ### `.toHtml()`
 
@@ -137,7 +154,7 @@ shapes, except where a node shape is intentionally represented by the format.
 Chooses HSON output.
 
 - `serialize()` returns HSON text.
-- `parse()` returns the current `HsonNode` graph.
+- `parse()` is not exposed; use the source constructor's `.toNode()` terminal.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
 
@@ -224,11 +241,13 @@ Returns a string for the chosen output:
 
 ### `.parse()`
 
-Returns a structured value for data formats:
+Returns the existing structured JSON projection:
 
 - after `.toJson()` - `JsonValue`
-- after `.toHson()` - `HsonNode`
 - after `.toHtml()` - throws
+
+HSON output deliberately does not expose `parse()`. Every source constructor
+uses `.toNode()` for canonical graph access instead.
 
 HTML parse output is intentionally not exposed from this surface. Use
 `serialize()` and hand the resulting string to your chosen integration point.
@@ -283,8 +302,8 @@ escape hatch.
 - HTML `.parse()` is intentionally not available.
 - VSN tag values remain in the `_hson_` namespace; internal node fields use the
   `$_` names.
-- `fromNode(...).toHson().parse()` returns the same graph reference; it is not a
-  clone operation.
+- `fromNode(node).toNode()` returns the same graph reference; it is not a clone
+  operation.
 
 A separate `hson-transform.md` overview is not currently necessary. The
 pipeline is small, while `hson-syntax.md`, `hson-nodes.md`, `hson-json.md`, and

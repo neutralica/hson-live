@@ -2,7 +2,7 @@
 
 import { HsonNode } from "../../../core/types.js";
 import { FrameConstructor } from "../../../types/constructor.types.js";
-import { OutputConstructor_2 } from "../../../types/constructor.types.js";
+import { HsonSourceConstructor_2, OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { JsonValue } from "../../../core/types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
@@ -155,9 +155,11 @@ export function construct_source_1(
     },
 
     /**
-     * HSON text → HSON Node.
+     * HSON text → direct HSON Node constructor.
      *
-     * Parses HSON source text into a HsonNode tree.
+     * Retains the source until `.toNode()` (or a cross-format conversion)
+     * invokes the existing HSON parser. A successful parse is cached within
+     * this source frame.
      *
      * Security notes:
      * - HSON is treated as an internal/intermediate format.
@@ -165,20 +167,43 @@ export function construct_source_1(
      * - If your HSON ultimately encodes risky HTML, that must be handled
      *   at the HTML stage, not here.
      */
-    fromHson(input: string): OutputConstructor_2 {
-      const node: HsonNode = parse_hson(input);
+    fromHson(input: string): HsonSourceConstructor_2 {
+      let frame: FrameConstructor | undefined;
 
-      const frame: FrameConstructor = {
-        input,
-        node,
-        meta: {
-          origin: "hson-text",
-          unsafePipeline: pipelineOptions.unsafe,
-          sanitized: false,
-        },
+      const getFrame = (): FrameConstructor => {
+        if (frame) return frame;
+
+        frame = {
+          input,
+          node: parse_hson(input),
+          meta: {
+            origin: "hson-text",
+            unsafePipeline: pipelineOptions.unsafe,
+            sanitized: false,
+          },
+        };
+        return frame;
       };
 
-      return construct_output_2(frame);
+      const getOutput = (): OutputConstructor_2 => construct_output_2(getFrame());
+
+      return {
+        toNode(): HsonNode {
+          return getFrame().node;
+        },
+        toHson() {
+          return getOutput().toHson();
+        },
+        toJson() {
+          return getOutput().toJson();
+        },
+        toHtml() {
+          return getOutput().toHtml();
+        },
+        sanitizeBEWARE(): OutputConstructor_2 {
+          return getOutput().sanitizeBEWARE();
+        },
+      };
     },
 
     /**

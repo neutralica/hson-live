@@ -1,6 +1,6 @@
 // construct-output-2.ts
 
-import { RenderFormats } from "../../../types/constructor.types.js";
+import { ParsedRenderFormats } from "../../../types/constructor.types.js";
 import { OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
 import { FrameConstructor } from "../../../types/constructor.types.js";
@@ -22,8 +22,8 @@ import { FrameRender } from "../../../types/constructor.types.js";
  * - `sanitizeBEWARE()` for explicit HTML-style sanitization of node content
  *
  * Each `toX()` call stores the chosen representation on the frame and returns
- * the merged stage-3 / stage-4 surface used for formatting, `serialize()`,
- * and `parse()`.
+ * the merged stage-3 / stage-4 surface. HSON is serialization-only at that
+ * stage; canonical graph access is the source-level `toNode()` terminal.
  *
  * LiveTree construction is handled separately by the `hson.liveTree` facade.
  *
@@ -32,7 +32,7 @@ import { FrameRender } from "../../../types/constructor.types.js";
  */
  
 export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
-  function makeFinalizer<K extends RenderFormats>(
+  function makeFinalizer<K extends ParsedRenderFormats>(
     context: FrameRender<K>
   ): OptionsConstructor_3<K> & RenderConstructor_4<K> {
     return construct_options_3(context);
@@ -40,6 +40,10 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
 
   function makeBuilder(currentFrame: FrameConstructor): OutputConstructor_2 {
     return {
+      toNode() {
+        return currentFrame.node;
+      },
+
       toHson() {
         const ctx: FrameRender<(typeof $RENDER)["HSON"]> = {
           // HSON is intentionally lazy so options selected after `.toHson()`

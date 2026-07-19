@@ -308,7 +308,12 @@ export function create_livehost_client<
       return;
     }
     try {
-      const staged = hson.liveMap.fromJson(snapshot.value);
+      const node = hson.fromHson(snapshot.hson).toNode();
+      const value = hson.fromNode(node).toJson().parse();
+      if (value === undefined) {
+        throw new Error("Recovery snapshot HSON did not project to a JsonValue.");
+      }
+      const staged = hson.liveMap.fromJson(value);
       const schema = map.schema.get();
       if (schema) staged.schema.use(schema);
       map = staged as unknown as LiveMap<TState>;

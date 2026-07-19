@@ -169,6 +169,6 @@ export function is_html_element(x: unknown): x is HTMLElement {
   return typeof H === "function" && x instanceof H;
 }
 function snapshot_node_hson(n: HsonNode, max = 4000): string {
-  const s = make_string(hson.fromNode(n as any).toHson().parse());
+  const s = make_string(hson.fromNode(n as any).toNode());
   return s.length > max ? s.slice(0, max) + `…(+${s.length - max})` : s;
 }

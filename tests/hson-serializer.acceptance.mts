@@ -13,7 +13,7 @@ function check(name: string, fn: () => void): void {
 }
 
 function parse(source: string): HsonNode {
-  return hson.fromHson(source).toHson().parse();
+  return hson.fromHson(source).toNode();
 }
 
 function readable(node: HsonNode): string {
@@ -52,6 +52,92 @@ function clone_without_quids(node: HsonNode): HsonNode {
   visit(clone);
   return clone;
 }
+
+check("fromHson.toNode returns the canonical graph directly", () => {
+  const node = hson.fromHson(`<name "Phillip">`).toNode();
+  assert.deepEqual(node, {
+    $_tag: "_hson_root",
+    $_content: [{
+      $_tag: "_hson_obj",
+      $_content: [{
+        $_tag: "name",
+        $_content: [{
+          $_tag: "_hson_obj",
+          $_content: [{ $_tag: "_hson_str", $_content: ["Phillip"] }],
+        }],
+      }],
+    }],
+  });
+});
+
+check("HSON source supports direct nodes and HSON reserialization without parse", () => {
+  const source = hson.fromHson(`<name "Phillip">`);
+  assert.equal("toNode" in source, true);
+  assert.equal("toHson" in source, true);
+  const output = source.toHson();
+  assert.equal("parse" in output, false);
+  assert.equal(output.serialize(), `<name "Phillip">`);
+  assert.equal(source.toHson().noBreak().serialize(), `<name "Phillip">`);
+});
+
+check("normalized JSON and node sources expose direct canonical nodes", () => {
+  const jsonSource = hson.fromJson({ name: "Ada", active: true });
+  const jsonNode = jsonSource.toNode();
+  assert.deepEqual(hson.fromHson(jsonSource.toHson().serialize()).toNode(), jsonNode);
+
+  const nodeSource = hson.fromNode(jsonNode);
+  assert.equal(nodeSource.toNode(), jsonNode);
+});
+
+check("HSON-source readable and compact serialization remain available", () => {
+  const source = hson.fromHson(`<p "first" <em "middle"/> "last"/>`);
+  assert.equal(
+    source.toHson().serialize(),
+    `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+  );
+  assert.equal(
+    source.toHson().noBreak().serialize(),
+    `<p "first" <em "middle"/> "last"/>`,
+  );
+  assert.equal("parse" in source.toHson().withOptions({ noBreak: true }), false);
+});
+
+check("fromHson.toNode accepts equivalent multiline and compact HSON", () => {
+  const multiline = `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`;
+  const compactSource = `<p "first" <em "middle"/> "last"/>`;
+  assert.deepEqual(hson.fromHson(multiline).toNode(), hson.fromHson(compactSource).toNode());
+});
+
+check("fromHson.toNode preserves arrays and string-valued attributes", () => {
+  const arrayNode = hson.fromHson(`«1,[true,null]»`).toNode();
+  const array = arrayNode.$_content[0] as HsonNode;
+  const elementNode = hson.fromHson(`<tag count=2 disabled "value"/>`).toNode();
+  const tag = (elementNode.$_content[0] as HsonNode).$_content[0] as HsonNode;
+  assert.deepEqual(tag.$_attrs, { count: "2", disabled: "disabled" });
+  assert.equal(array.$_content.length, 2);
+});
+
+check("fromHson.toNode preserves malformed-input errors", () => {
+  const malformed = hson.fromHson(`<tag "value/>`);
+  assert.throws(
+    () => malformed.toNode(),
+    /unterminated quoted string at 1:6 \(index 5\)/,
+  );
+});
+
+check("bare Phillip remains invalid under the unchanged header grammar", () => {
+  assert.throws(
+    () => hson.fromHson(`<name Phillip>`).toNode(),
+    /OBJ002.*_hson_obj children must not have \$_attrs/s,
+  );
+});
+
+check("compact serializer output reparses through fromHson.toNode", () => {
+  const node = hson.fromHson(`<p id="x" "first" <em "middle"/> "last"/>`).toNode();
+  const source = hson.fromNode(node).toHson().noBreak().serialize();
+  const reparsed = hson.fromHson(source).toNode();
+  assert.deepEqual(reparsed, node);
+});
 
 check("HSON serialization is lazy after toHson", () => {
   const node = parse(`<tag "before"/>`);
@@ -436,7 +522,7 @@ check("representative 500-property document serializes and reparses in both layo
     `key-${index}`,
     { index, enabled: index % 2 === 0, values: [index, `value-${index}`, null] },
   ]));
-  const node = hson.fromJson(payload).toHson().parse();
+  const node = hson.fromJson(payload).toNode();
   assert.deepEqual(parse(readable(node)), node);
   assert.deepEqual(parse(compact(node)), node);
 });

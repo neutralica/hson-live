@@ -6,15 +6,17 @@ import type {
   OptionsConstructor_3,
   PublicFrameOptions,
   RenderConstructor_4,
+  ParsedRenderFormats,
   RenderFormats,
+  SerializeConstructor_4,
 } from "../../../types/constructor.types.js";
-import { construct_render_4 } from "./construct-render-4.js";
+import { construct_hson_render_4, construct_render_4 } from "./construct-render-4.js";
 
-type OptionFinalizer<K extends RenderFormats> =
+type OptionFinalizer<K extends ParsedRenderFormats> =
   OptionsConstructor_3<K> & RenderConstructor_4<K>;
 
 type HsonOptionFinalizer =
-  HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  HsonOptionsConstructor_3 & SerializeConstructor_4;
 
 function with_frame_options<K extends RenderFormats>(
   render: FrameRender<K>,
@@ -30,7 +32,7 @@ function with_frame_options<K extends RenderFormats>(
 }
 
 /** Build the composable legacy JSON/HTML option surface. */
-export function construct_options_3<K extends RenderFormats>(
+export function construct_options_3<K extends ParsedRenderFormats>(
   render: FrameRender<K>,
 ): OptionFinalizer<K> {
   const finalize = (next: FrameRender<K>): OptionFinalizer<K> =>
@@ -70,6 +72,6 @@ export function construct_hson_options_3(
       return finalize(with_frame_options(render, { noQuid: true }));
     },
 
-    ...construct_render_4(render),
+    ...construct_hson_render_4(render),
   };
 }

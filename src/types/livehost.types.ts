@@ -117,7 +117,7 @@ export type LiveHostSnapshotEnvelope = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   rev: number;
-  value: JsonValue;
+  hson: string;
 }>;
 
 export type LiveHostRecoveryRequest = Readonly<{

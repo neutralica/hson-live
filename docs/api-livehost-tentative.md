@@ -638,6 +638,34 @@ This has important current limits:
 
 Path sync is ordered commit envelopes + snapshot fallback + client-side apply/replay
 
+### Recovery snapshot transport
+
+The separate canonical recovery path sends snapshot bodies as compact HSON
+inside the outer JSON protocol message:
+
+```ts
+{
+  type: "recovery-snapshot",
+  id,
+  snapshot: {
+    logicalMapId,
+    incarnationId,
+    rev,
+    hson,
+  },
+}
+```
+
+The HSON represents the atomically captured projected JSON-compatible LiveMap
+value. The protocol decoder requires the exact snapshot fields and a string
+`hson`, but syntax validation occurs during staged client installation.
+Malformed HSON produces `LIVEHOST_RECOVERY_INVALID_SNAPSHOT`; a missing or
+non-string `hson` produces `LIVEHOST_RECOVERY_PROTOCOL_DECODE_FAILED`.
+
+This is not graph-native transport and does not preserve authoritative
+source-node QUID identity. Canonical replay commits retain their existing
+operation payloads. Legacy hello/sync snapshot values are unchanged.
+
 
 ---
 

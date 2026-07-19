@@ -158,14 +158,27 @@ canonical state revision.
 
 ## Snapshots, replay, and resume
 
-A snapshot is the complete projected state at a known authoritative revision:
+A recovery snapshot is complete projected state at a known authoritative
+revision. The current JSON message envelope carries compact HSON text:
 
 ```ts
-type SnapshotEnvelope<T> = Readonly<{
+type LiveHostSnapshotEnvelope = Readonly<{
+  logicalMapId: string;
+  incarnationId: string;
   rev: number;
-  value: T;
+  hson: string;
 }>;
 ```
+
+The host obtains a projected `JsonValue` from the atomic LiveMap capture and
+serializes it as canonical compact HSON. The client parses that HSON, projects
+it back to `JsonValue`, constructs and schema-validates a staged LiveMap, and
+only then replaces the active mirror. Malformed HSON is an invalid recovery
+snapshot. Commit and replay operation payloads remain in their existing format.
+
+This encoding does not make recovery graph-native: it transports projected
+JSON-compatible state and does not preserve the authoritative source graph's
+QUID identity.
 
 A reconnecting client can present its last confirmed revision. If the host
 still retains every later commit, it can replay them in order. If history is
@@ -263,9 +276,11 @@ Transport adapters may own framing, connection state, backpressure, and network
 errors. They must not redefine revision ordering, acceptance, replay, or
 authority.
 
-Only JSON-shaped protocol values cross the current boundary. A completed
-protocol also needs an explicit version strategy and strict runtime decoders
-for every client and server envelope.
+Protocol framing remains JSON-shaped. Recovery snapshot state is a compact HSON
+string inside that JSON envelope; its logical map identity, incarnation, and
+revision remain ordinary JSON fields. A completed protocol still needs an
+explicit version strategy and strict runtime decoders for every client and
+server envelope.
 
 ---
 
@@ -361,10 +376,11 @@ The host protocol must explicitly decide whether an identity is:
 - persisted across host restarts; or
 - visible on the wire.
 
-Current LiveHost synchronization sends paths and projected values only. It does
+Current LiveHost synchronization remains projected-state transport. Recovery
+snapshots use HSON as the textual encoding of a captured projected value, but do
 not preserve HSON graph identity across snapshot replacement. Identity-aware
 reconciliation is roadmap work and must be coordinated with LiveMap's eventual
-node-identity model.
+safe canonical-node snapshot/install boundary.
 
 ---
 

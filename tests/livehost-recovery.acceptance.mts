@@ -19,6 +19,11 @@ function expect_recovery_error(fn, code) {
   }
 }
 
+function project_snapshot_hson(source) {
+  const node = hson.fromHson(source).toNode();
+  return hson.fromNode(node).toJson().parse();
+}
+
 // Already-current recovery works even when the history ring is empty.
 {
   const host = hson.liveHost.create({
@@ -84,14 +89,39 @@ function expect_recovery_error(fn, code) {
   assert.equal(plan.outcome, "snapshot");
   assert.equal(plan.reason, "no_usable_revision");
   assert.equal(plan.body.rev, plan.headRev);
-  assert.deepEqual(plan.body.value, { value: 2 });
+  assert.deepEqual(Object.keys(plan.body).sort(), ["hson", "incarnationId", "logicalMapId", "rev"]);
+  assert.equal(plan.body.hson, `<value 2>`);
+  assert.equal(plan.body.hson.includes("\n"), false);
+  assert.equal("value" in plan.body, false);
+  assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
   assert.equal(Object.isFrozen(plan.body), true);
-  assert.equal(Object.isFrozen(plan.body.value), true);
 
   const completion = plan.complete();
   assert.equal(completion.caughtUp.throughRev, plan.body.rev);
   assert.deepEqual(completion.tail.map((commit) => commit.rev), [plan.body.rev + 1]);
-  assert.deepEqual(plan.body.value, { value: 2 });
+  assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
+}
+
+// Snapshot HSON covers the complete projected JsonValue domain while remaining
+// compact canonical text inside the recovery envelope.
+{
+  const state = {
+    nested: {
+      array: [1, true, false, null, `quote" slash\\ tab\t line\nnext`],
+      emptyObject: {},
+      emptyArray: [],
+      mixed: [{ name: "Ada", active: true }, [2, 3], null],
+    },
+    count: 42,
+  };
+  const host = hson.liveHost.create({ state });
+  const plan = host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
+  assert.equal(plan.outcome, "snapshot");
+  assert.equal(typeof plan.body.hson, "string");
+  assert.equal(plan.body.hson.includes("\n"), false);
+  assert.equal("value" in plan.body, false);
+  assert.deepEqual(project_snapshot_hson(plan.body.hson), state);
+  plan.dispose();
 }
 
 // Same logical map but a different incarnation resets through a snapshot.
@@ -132,7 +162,7 @@ function expect_recovery_error(fn, code) {
   assert.equal(plan.outcome, "snapshot");
   assert.equal(plan.reason, "history_unavailable");
   assert.equal(plan.body.rev, host.stream.headRev);
-  assert.deepEqual(plan.body.value, { value: 2 });
+  assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
   plan.dispose();
 }
 

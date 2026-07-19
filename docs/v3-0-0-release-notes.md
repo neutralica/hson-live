@@ -160,16 +160,20 @@ a canonical snapshot.
 
 ### Snapshots and resume
 
-Snapshot envelopes pair a canonical value with its revision:
+Recovery snapshot envelopes pair compact HSON for projected state with stream
+identity and revision:
 
 interface SnapshotEnvelope {
+  logicalMapId: string;
+  incarnationId: string;
   rev: number;
-  value: JsonValue;
+  hson: string;
 }
 
 Clients may reconnect using their last confirmed revision. The host
 replays retained commits where possible and falls back to a snapshot
-when necessary.
+when necessary. This remains projected-state recovery rather than
+identity-preserving graph transport; replay commit encoding is unchanged.
 
 ### Domain actions
 

@@ -21,14 +21,24 @@ hson.fromHson(input)
 hson.fromNode(node)
 ```
 
-These return the transform output builder:
+Every transform constructor returns a normalized-source surface with:
 
 ```ts
+.toNode()
 .sanitizeBEWARE()
 .toHtml()
 .toJson()
 .toHson()
 ```
+
+HSON text parses directly to the canonical graph:
+
+```ts
+const node = hson.fromHson(source).toNode();
+```
+
+The HSON-source surface no longer exposes `.toHson().parse()`, but it retains
+`.toHson().serialize()` and all other output projections.
 
 After `toHson()`, readable HSON is the default and these HSON options compose:
 
@@ -37,7 +47,6 @@ After `toHson()`, readable HSON is the default and these HSON options compose:
 .noQuid()
 .withOptions(options)
 .serialize()
-.parse()
 ```
 
 `noBreak` produces canonical compact HSON. `noQuid` filters only persisted

@@ -1,6 +1,7 @@
 // livehost.recovery.ts
 
 import type { JsonValue, LiveMap } from "../../types/index.js";
+import { hson } from "../../hson.js";
 import type {
   LiveHostCanonicalCommit,
   LiveHostCanonicalStream,
@@ -295,11 +296,16 @@ export function make_livehost_recovery_planner<TState extends JsonValue | undefi
           }
 
           headRev = capture.rev;
+          const snapshotHson = hson
+            .fromJson(clone_json_value(capture.value))
+            .toHson()
+            .noBreak()
+            .serialize();
           snapshotBody = Object.freeze({
             logicalMapId: stream.logicalMapId,
             incarnationId: stream.incarnationId,
             rev: capture.rev,
-            value: clone_json_value(capture.value),
+            hson: snapshotHson,
           });
           encoded_bytes(snapshotBody);
           establish_cut(headRev);

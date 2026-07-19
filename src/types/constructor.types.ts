@@ -35,19 +35,16 @@ export interface HtmlSourceOptions {
 /***************
  * ParsedResult<K>
  *
- * Maps a chosen output format `K` to the result type of `parse()`:
+ * Maps an output format that supports `parse()` to its result type:
  *
  *   - JSON → JsonValue
- *   - HSON → HsonNode
  *   - HTML → never   (HTML has no exposed AST in this API)
  *
  * Callers know which `toX()` they chose and must narrow accordingly.
  ***************/
-export type ParsedResult<K extends RenderFormats> =
+export type ParsedResult<K extends ParsedRenderFormats> =
   K extends (typeof $RENDER)["JSON"]
   ? JsonValue
-  : K extends (typeof $RENDER)["HSON"]
-  ? HsonNode
   /* HTML is always returned as as string */
   : never;
 
@@ -110,6 +107,11 @@ export interface FrameConstructor {
  ***************/
 export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
 
+/** Output formats whose finalizer retains the legacy `parse()` action. */
+export type ParsedRenderFormats =
+  | (typeof $RENDER)["JSON"]
+  | (typeof $RENDER)["HTML"];
+
 
 /******************************************************************************
  * LiveTree & DOM query surfaces
@@ -123,8 +125,9 @@ export type RenderFormats = (typeof $RENDER)[keyof typeof $RENDER];
 /***************
  * SourceConstructor_1
  *
- * Lowest-level “step 1” builder: given some input, produce a frame
- * and move to the *output selection* stage (OutputConstructor_2).
+ * Lowest-level “step 1” builder. Most inputs produce a normalized frame and
+ * move to `OutputConstructor_2`. Every normalized source also exposes the
+ * direct `.toNode()` terminal.
  *
  *  - fromHson(input)
  *      HSON string → Nodes.
@@ -155,11 +158,10 @@ export interface SourceConstructor_1 {
    * Accepts a raw HSON source string and parses it into the stage-1 frame
    * used by the transformer pipeline.
    *
-   * This stage does not create `LiveTree` instances. It only prepares the
-   * normalized node frame for later `toHtml()`, `toJson()`, `toHson()`,
-   * `serialize()`, or `parse()` calls.
+   * Call `.toNode()` to parse and return the canonical graph directly.
+   * Other output projections, including HSON reserialization, remain available.
    */
-  fromHson(input: string): OutputConstructor_2;
+  fromHson(input: string): HsonSourceConstructor_2;
   
    /**
    * JSON → normalized HSON frame.
@@ -304,7 +306,8 @@ export interface DomQuerySourceConstructor {
  *      Choose JSON output. parse() will yield a JsonValue.
  *
  *  - toHson()
- *      Choose HSON text output. parse() will yield a HsonNode.
+ *      Choose HSON text output. Its finalizer serializes only; use the
+ *      source-level toNode() terminal for the canonical graph.
  *
  *  - toHtml()
  *      Choose HTML output. parse() is currently `never`.
@@ -327,8 +330,10 @@ export interface DomQuerySourceConstructor {
  *      delete underscored tags and may return nothing.
  ***************/
 export interface OutputConstructor_2 {
+  /** Return the canonical normalized graph without serializing and reparsing. */
+  toNode(): HsonNode;
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & RenderConstructor_4<(typeof $RENDER)["JSON"]>;
-  toHson(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+  toHson(): HsonOptionsConstructor_3 & SerializeConstructor_4;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & RenderConstructor_4<(typeof $RENDER)["HTML"]>;
   /**
    * 🔥 HTML-style sanitization applied *after* source selection.
@@ -355,6 +360,14 @@ export interface OutputConstructor_2 {
    */
   sanitizeBEWARE(): OutputConstructor_2;
 }
+
+/**
+ * HSON text source surface.
+ *
+ * Parsing terminates directly with `toNode()`. All ordinary output projections
+ * are retained; the HSON serializer finalizer intentionally has no `parse()`.
+ */
+export interface HsonSourceConstructor_2 extends OutputConstructor_2 {}
 
 /**
  * Bundles:
@@ -429,7 +442,7 @@ export interface DomQueryLiveTreeConstructor {
  *      Shorthand for withOptions({ noBreak: true }).
  *
  ***************/
-export interface OptionsConstructor_3<K extends RenderFormats> {
+export interface OptionsConstructor_3<K extends ParsedRenderFormats> {
   withOptions(opts: PublicFrameOptions<K>): OptionsConstructor_3<K> & RenderConstructor_4<K>;
   noBreak(): OptionsConstructor_3<K> & RenderConstructor_4<K>;
 }
@@ -444,18 +457,15 @@ export interface FrameOptions {
   noQuid?: boolean;
 }
 
-/** JSON/HTML retain their existing noBreak option surface; HSON adds noQuid. */
-export type PublicFrameOptions<K extends RenderFormats> =
-  K extends (typeof $RENDER)["HSON"]
-    ? FrameOptions
-    : Pick<FrameOptions, "noBreak">;
+/** JSON/HTML retain their existing noBreak option surface. */
+export type PublicFrameOptions<K extends ParsedRenderFormats> =
+  Pick<FrameOptions, "noBreak">;
 
 /** Composable HSON-only option/finalizer methods. */
-export interface HsonOptionsConstructor_3
-  extends OptionsConstructor_3<(typeof $RENDER)["HSON"]> {
-  withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
-  noBreak(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
-  noQuid(): HsonOptionsConstructor_3 & RenderConstructor_4<(typeof $RENDER)["HSON"]>;
+export interface HsonOptionsConstructor_3 {
+  withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & SerializeConstructor_4;
+  noBreak(): HsonOptionsConstructor_3 & SerializeConstructor_4;
+  noQuid(): HsonOptionsConstructor_3 & SerializeConstructor_4;
 }
 
 
@@ -464,25 +474,28 @@ export interface HsonOptionsConstructor_3
  ******************************************************************************/
 
 /***************
- * RenderConstructor_4<K>
+ * SerializeConstructor_4 / RenderConstructor_4<K>
  *
  * Final “commit” surface for a chosen format `K`.
  *
  *  - serialize()
  *      Return a string representation in the selected format:
  *        JSON → JSON string
- *        HSON → HSON text
+ *        HSON → HSON text (through SerializeConstructor_4)
  *        HTML → HTML string
  *
  *  - parse()
  *      Return a structured representation of the rendered form:
  *        JSON → JsonValue
- *        HSON → HsonNode
  *        HTML → never
  *
  *      The caller is responsible for narrowing based on `toX()`.
  ***************/
-export interface RenderConstructor_4<K extends RenderFormats> {
+export interface SerializeConstructor_4 {
   serialize(): string;
+}
+
+export interface RenderConstructor_4<K extends ParsedRenderFormats>
+  extends SerializeConstructor_4 {
   parse(): ParsedResult<K>;
 }

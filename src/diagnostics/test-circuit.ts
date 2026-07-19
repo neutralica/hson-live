@@ -30,15 +30,15 @@ import { safe_parse, rotate_ring, step_ok, safe_emit, step_fail, clamp_int, fina
 export const SPIN: Record<Fmt, { emit: (n: HsonNode) => string; parse: (s: string) => HsonNode }> = {
   json: {
     emit: (n) => hson.fromNode(n as any).toJson().serialize(),
-    parse: (s) => hson.fromJson(s.trim()).toHson().parse() as any,
+    parse: (s) => hson.fromJson(s.trim()).toNode() as any,
   },
   html: {
     emit: (n) => hson.fromNode(n as any).toHtml().serialize(),
-    parse: (s) => hson.fromTrustedHtml(s).toHson().parse() as any,
+    parse: (s) => hson.fromTrustedHtml(s).toNode() as any,
   },
   hson: {
     emit: (n) => hson.fromNode(n as any).toHson().serialize(),
-    parse: (s) => hson.fromHson(s).toHson().parse() as any,
+    parse: (s) => hson.fromHson(s).toNode() as any,
   },
 } as const;
 
@@ -425,5 +425,3 @@ function resolve_entry(
   );
   return undefined;
 }
-
-

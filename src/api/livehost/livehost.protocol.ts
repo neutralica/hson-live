@@ -144,12 +144,12 @@ function decode_canonical_commit(value: unknown): LiveHostCanonicalCommit | unde
 }
 
 function decode_snapshot(value: unknown): LiveHostSnapshotEnvelope | undefined {
-  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "value"])) return undefined;
+  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "hson"])) return undefined;
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
   const rev = required_rev(value.rev);
-  if (!logicalMapId || !incarnationId || rev === undefined || !is_livehost_json_value(value.value)) return undefined;
-  return Object.freeze({ logicalMapId, incarnationId, rev, value: clone_json(value.value) });
+  if (!logicalMapId || !incarnationId || rev === undefined || typeof value.hson !== "string") return undefined;
+  return Object.freeze({ logicalMapId, incarnationId, rev, hson: value.hson });
 }
 
 function optional_string(value: unknown): string | undefined {

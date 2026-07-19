@@ -35,7 +35,7 @@ switch (mode) {
     }));
     break;
   case "parse":
-    retained = Array.from({ length: count }, () => hson.fromJson(fixture).toHson().parse());
+    retained = Array.from({ length: count }, () => hson.fromJson(fixture).toNode());
     break;
   default:
     throw new Error(`Unknown representation benchmark mode: ${mode}`);
