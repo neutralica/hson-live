@@ -21,7 +21,7 @@ function expect_recovery_error(fn, code) {
 
 function project_snapshot_hson(source) {
   const node = hson.fromHson(source).toNode();
-  return hson.fromNode(node).toJson().parse();
+  return hson.fromNode(node).toJson().value();
 }
 
 // Already-current recovery works even when the history ring is empty.

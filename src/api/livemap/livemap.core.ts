@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapRootMode } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
 import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
@@ -14,6 +14,7 @@ import { append_live_path, clone_live_path, format_live_path, live_path_key } fr
 import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { json_values_equal } from "./livemap-helpers.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
+import { facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -32,10 +33,9 @@ type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
  * JSON path terms. It is the layer that coordinates editor mutations, commit
  * generation, feeds, links, batching, and later transport-compatible behavior.
  *
- * `at(path)` is the projected data handle. `node(path)` is the lower-level HSON
- * graph handle for physical node inspection and mutation. Keep projected JSON
- * behavior in Core/editor/handles, and keep physical node manipulation isolated
- * to the node handle.
+ * `at(path)` is the projected data handle. `root()` returns a detached canonical
+ * clone. `debug.node(path)` is the explicitly unsafe live HSON graph handle for
+ * physical node inspection and mutation.
  *
  * Mutation contract:
  * - `set(path, value)` requires the addressed path to resolve. Plain object
@@ -49,7 +49,23 @@ type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
  * Schema validation previews the full candidate root before editor mutation, so
  * schema/editor failures leave the live graph unchanged.
  */
-export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undefined> {
+export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | undefined> {
+  const prepared = prepare_livemap_root(input);
+  return make_livemap_core_from_owned_root(prepared.root, prepared.mode);
+}
+
+/** Construct the public shape-specific façade after detached root ownership. */
+export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
+  const prepared = prepare_livemap_root(input);
+  const core = make_livemap_core_from_owned_root(prepared.root, prepared.mode);
+  return facade_for_livemap_root(core, prepared);
+}
+
+/** Build the shared Core around a root already cloned, validated, and indexed. */
+function make_livemap_core_from_owned_root(
+  root: HsonNode,
+  initialMode: LiveMapRootMode,
+): LiveMapCore<JsonValue | undefined> {
   const feedHub = make_livemap_feed_hub();
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
@@ -113,7 +129,7 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
       must_core_schema_root(schema, root);
       currentSchema = schema;
 
-      return core as unknown as LiveMapCore<LiveMapSchemaValue<TSchema>>;
+      return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
     },
 
     // CHANGED: attached-schema inspection delegates to the schema's single
@@ -143,9 +159,15 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
     }),
   });
 
+  const debugApi = Object.freeze({
+    node: (path: LivePath) => make_livemap_node_handle(root, must_live_path(path)),
+  });
+
   const core: LiveMapCore<JsonValue | undefined> = {
-    /** Return the live root node owned by this map core. */
-    root: () => root,
+    /** Root capability selected during detached canonical construction. */
+    mode: initialMode,
+    /** Return a detached structural clone of the root owned by this map core. */
+    root: () => clone_live_root(root),
 
     /** Read the current projected JSON value at a path, or the whole graph. */
     snap: ((path: LivePath = []) => snap_live_path(root, must_live_path(path))) as LiveMapCoreSnap<JsonValue | undefined>,
@@ -169,8 +191,8 @@ export function make_livemap_core(root: HsonNode): LiveMapCore<JsonValue | undef
         path ?? ([] as unknown as TPath),
       ),
 
-    /** Create a low-level HSON-node-facing handle scoped to one projected path. */
-    node: (path) => make_livemap_node_handle(root, must_live_path(path)),
+    /** Explicitly unsafe access to live HSON-node-facing handles. */
+    debug: debugApi,
 
     /** Set a resolved projected path; plain objects expand into shallow child sets. */
     set: (path, value) => {

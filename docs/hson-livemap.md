@@ -60,7 +60,8 @@ called today.
 
 ## One graph, two views
 
-Every LiveMap owns a canonical HSON node graph with one retained root node.
+Every LiveMap owns a detached canonical HSON node graph. Construction clones and
+validates caller-owned input before selecting a data or document façade.
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -70,23 +71,30 @@ const map = hson.liveMap.fromJson({
 
 map.snap();                    // complete projected JSON value
 map.snap(["user", "name"]);  // "Ada"
-map.root();                    // live HsonNode root
+map.root();                    // detached canonical HsonNode clone
+map.debug.node(["user"]);     // unsafe live graph handle
 ```
 
 The projected path `["user", "name"]` crosses whatever `_hson_obj`, property,
 and primitive VSN wrappers are required by the HSON graph. Callers do not need
 to encode those wrappers in a `LivePath`.
 
-This separation is fundamental:
+This separation is fundamental for data maps:
 
 - projected operations express state meaning;
 - HSON wrappers preserve structural representation; and
 - raw node operations remain available for deliberately physical graph work.
 
 The projected reader converts the current node payload into detached JSON
-values. Mutating a returned object or array does not mutate the map. In
-contrast, `root()` intentionally returns the live graph, and `node(path)` can
-mutate it directly; those are low-level escape hatches.
+values. `root()` likewise returns a detached structural clone of the canonical
+graph. Only `debug.node(path)` exposes intentionally live graph access.
+
+Document roots are now classified separately as `element` or `fragment` and do
+not expose the projected data surface. Their `element` or `fragment` capability
+returns detached canonical nodes/content, and their revision-coupled capture is
+discriminated by `kind: "hson-document"` and `version: 1`. This first document
+foundation is read-only; graph commits, install, replay, subscriptions, and
+LiveTree projection remain future work.
 
 ---
 
@@ -145,8 +153,9 @@ Schema or editor failure occurs before the live graph is changed. Explicit
 `batch()` groups multiple synchronous writes into one preflight and one commit,
 so a failing write prevents the entire batch from being applied.
 
-Raw operations through `root()` or `node(path)` do not use this pipeline. They
-do not validate schemas, advance revisions, create commits, or notify feeds.
+Raw operations through `debug.node(path)` do not use this pipeline. They do not
+validate schemas, advance revisions, create commits, or notify feeds. Mutating
+the detached graph returned by `root()` has no effect on the map.
 
 ---
 
@@ -224,7 +233,7 @@ changed commit: rev = prevRev + 1
 no-op commit:   rev = prevRev
 ```
 
-`capture()` returns the projected root and its revision. `apply()` performs a
+On data maps, `capture()` returns the projected root and its revision. `apply()` performs a
 conditional root replacement only when its `prevRev` still matches the map.
 `replay()` conditionally re-applies normalized operation records and verifies
 both their declared previous values and computed next values before mutation.
@@ -235,6 +244,10 @@ These operations form the implemented local foundation for LiveHost:
 - commits provide ordered semantic deltas;
 - revision checks detect stale bases; and
 - replay conflict checks prevent applying an incompatible history.
+
+Document maps instead return a detached canonical HSON capture preserving
+ordered content, attrs, metadata, and persisted element QUIDs. They do not yet
+provide graph apply or replay.
 
 These LiveMap operations do not themselves define transport, persistence,
 retry policy, authorization, conflict merging, or multi-writer consensus.
@@ -406,7 +419,7 @@ application-level selectors.
 
 ## Identity direction
 
-The current `LiveMapPathHandle.quid` identifies the handle object through an
+The current `LiveMapPathHandle.quid` identifies the data path-handle object through an
 experimental runtime registry. It is not stored in projected JSON, is not the
 QUID of the HSON value currently at that path, and does not turn the handle into
 an identity-following reference.
@@ -419,6 +432,11 @@ The idealized system distinguishes:
 - an application key, which identifies a domain item within a declared scope;
   and
 - a host/session identifier, which belongs to replication lifecycle.
+
+Document-map ordinary elements now receive persisted, per-map `data-_quid`
+identity at construction. That identity is indexed separately from the `lmq`
+handle registry: existing valid QUIDs are preserved, missing identities are
+generated once, and duplicates within the map are rejected.
 
 These identifiers must never be silently substituted for one another. A future
 identity-oriented reference should become absent when its node disappears,
@@ -433,8 +451,8 @@ guarantees:
 
 - Object-root `fromJson` construction is seeded through `replace()` and
   currently begins at revision 1, while other construction paths begin at 0.
-- `root()` and `node(path)` expose live physical graph mutation outside schema,
-  commit, revision, and feed accounting.
+- `debug.node(path)` exposes live physical graph mutation outside schema,
+  commit, revision, feed, and subscription accounting. `root()` is detached.
 - Feed listener exceptions are not isolated. State and revision have already
   committed when listeners run, and a thrown listener can escape the mutation
   call and interrupt delivery to later listeners.

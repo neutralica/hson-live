@@ -8,6 +8,7 @@ import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from 
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
 import { json_values_equal } from "./livemap-helpers.js";
+import { clone_node } from "../../core/clone-node.js";
 
 /**
  * Parent resolution for a projected LiveMap path.
@@ -22,12 +23,12 @@ type ResolvedParent = Readonly<{
 }>;
 
 /**
- * Clone a LiveMap HSON root for staged editor preflight.
+ * Clone a LiveMap HSON root for staged editor preflight or detached reads.
  *
  * Batch validation uses this to prove every editor operation can apply before
- * mutating the live graph. This is intentionally structural and local to the
- * LiveMap editor projection; it preserves attrs/meta/content without sharing
- * node object identity.
+ * mutating the live graph, and `LiveMap.root()` uses it for detached canonical
+ * snapshots. It preserves attrs/meta/content without sharing graph-owned
+ * object identity, including structured style values.
  */
 export function clone_live_root(root: HsonNode): HsonNode {
   return clone_hson_node(root);
@@ -323,9 +324,9 @@ function delete_object_property(parent: HsonNode, key: string): void {
 /**
  * Convert a HSON value node into projected JSON data.
  *
- * This intentionally understands LiveMap's JSON-facing projection, not every
- * possible HTML/document traversal case. Unknown/user element nodes fall back to
- * object projection for now because LiveMap v0.1 is focused on data-shaped HSON.
+ * This is the data-map JSON projection, not a canonical document snapshot.
+ * Unknown/user element nodes retain the historical object fallback for data
+ * compatibility, but document LiveMaps do not expose this lossy reader.
  */
 export function node_to_json_value(node: HsonNode): JsonValue {
   const transparentPayload = unwrap_transparent_object_payload(node);
@@ -577,8 +578,8 @@ function clone_hson_node(node: HsonNode): HsonNode {
     $_content: node.$_content.map(clone_hson_content),
   };
 
-  if (node.$_attrs !== undefined) partial.$_attrs = { ...node.$_attrs };
-  if (node.$_meta !== undefined) partial.$_meta = { ...node.$_meta };
+  if (node.$_attrs !== undefined) partial.$_attrs = clone_node(node.$_attrs);
+  if (node.$_meta !== undefined) partial.$_meta = clone_node(node.$_meta);
 
   return CREATE_NODE(partial);
 }

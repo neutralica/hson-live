@@ -23,7 +23,7 @@ of terminal operation:
 1. Choose a source format.
 2. Call `.toNode()` for the canonical `HsonNode`, or choose an output format.
 3. Optionally attach formatting flags to that output.
-4. Finalize an output with `serialize()` (or JSON's existing `parse()`).
+4. Finalize with `serialize()`, or JSON's in-memory `value()` terminal.
 
 HSON text has a direct parsing path instead:
 
@@ -31,8 +31,8 @@ HSON text has a direct parsing path instead:
 const node = hson.fromHson(source).toNode();
 ```
 
-The former `.toHson().parse()` graph-access route has been removed. HSON input
-can still be canonically reserialized with `.toHson().serialize()`.
+Canonical graph access always uses `.toNode()`. HSON input can still be
+canonically reserialized with `.toHson().serialize()`.
 
 Use this API when the goal is serialized HTML, JSON, HSON, or a structured JSON
 or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
@@ -137,14 +137,15 @@ the original graph reference.
 Chooses HTML output.
 
 - `serialize()` returns an HTML string.
-- `parse()` is intentionally unavailable and throws.
+- No in-memory HTML parse terminal is exposed.
 
 ### `.toJson()`
 
 Chooses JSON output.
 
 - `serialize()` returns a JSON string.
-- `parse()` returns a structured `JsonValue`.
+- `value()` returns a detached in-memory `JsonValue` projection directly,
+  without a textual serialization/parse round trip.
 
 JSON roundtrips serialize as plain JSON values, not raw internal HSON node
 shapes, except where a node shape is intentionally represented by the format.
@@ -154,7 +155,7 @@ shapes, except where a node shape is intentionally represented by the format.
 Chooses HSON output.
 
 - `serialize()` returns HSON text.
-- `parse()` is not exposed; use the source constructor's `.toNode()` terminal.
+- Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
 
@@ -190,7 +191,6 @@ After `toHson()`, the API exposes a composable option/finalizer surface:
 .noQuid()
 .withOptions(options)
 .serialize()
-.parse()
 ```
 
 The active HSON options are:
@@ -224,8 +224,8 @@ hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serial
 ```
 
 The former `spaced`, `linted`, and `lineLength` options have been removed.
-JSON and HTML serialization remain eager and otherwise unchanged by this HSON
-layout work.
+`.toJson()` materializes the in-memory projection once; `value()` returns that
+projection and `serialize()` stringifies it. HTML output behavior is unchanged.
 
 ---
 
@@ -239,18 +239,23 @@ Returns a string for the chosen output:
 - after `.toJson()` - JSON string
 - after `.toHson()` - HSON string
 
-### `.parse()`
+### `.value()`
 
-Returns the existing structured JSON projection:
+Returns the in-memory JSON projection:
 
 - after `.toJson()` - `JsonValue`
-- after `.toHtml()` - throws
 
-HSON output deliberately does not expose `parse()`. Every source constructor
-uses `.toNode()` for canonical graph access instead.
+The terminal vocabulary is deliberately explicit:
 
-HTML parse output is intentionally not exposed from this surface. Use
-`serialize()` and hand the resulting string to your chosen integration point.
+```ts
+source.toNode()                 // canonical HsonNode
+source.toJson().value()         // in-memory JsonValue
+source.toJson().serialize()     // JSON text
+source.toHson().serialize()     // HSON text
+source.toHtml().serialize()     // HTML text
+```
+
+Public output finalizers do not expose `parse()`.
 
 ---
 
@@ -299,7 +304,7 @@ escape hatch.
 - Transformations normalize through `HsonNode`.
 - Transform sources do not mutate the DOM.
 - LiveTree construction is explicit and separate.
-- HTML `.parse()` is intentionally not available.
+- Public output finalizers expose no `.parse()` terminal.
 - VSN tag values remain in the `_hson_` namespace; internal node fields use the
   `$_` names.
 - `fromNode(node).toNode()` returns the same graph reference; it is not a clone

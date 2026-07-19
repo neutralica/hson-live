@@ -1,14 +1,12 @@
 // construct-output-2.ts
 
-import { ParsedRenderFormats } from "../../../types/constructor.types.js";
 import { OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
 import { FrameConstructor } from "../../../types/constructor.types.js";
 import { parse_external_html } from "../parsers/parse-external-html.transform.js";
 import { serialize_html } from "../serializers/serialize-html.js";
-import { serialize_json } from "../serializers/serialize-json.js";
-import { construct_hson_options_3, construct_options_3 } from "./construct-options-3.js";
-import { OptionsConstructor_3, RenderConstructor_4 } from "../../../types/constructor.types.js";
+import { json_value_from_node } from "../serializers/serialize-json.js";
+import { construct_hson_options_3, construct_html_options_3, construct_json_options_3 } from "./construct-options-3.js";
 import { FrameRender } from "../../../types/constructor.types.js";
 
 /**
@@ -32,12 +30,6 @@ import { FrameRender } from "../../../types/constructor.types.js";
  */
  
 export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
-  function makeFinalizer<K extends ParsedRenderFormats>(
-    context: FrameRender<K>
-  ): OptionsConstructor_3<K> & RenderConstructor_4<K> {
-    return construct_options_3(context);
-  }
-
   function makeBuilder(currentFrame: FrameConstructor): OutputConstructor_2 {
     return {
       toNode() {
@@ -56,14 +48,14 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
       },
 
       toJson() {
-        const json = serialize_json(currentFrame.node);
+        const json = json_value_from_node(currentFrame.node);
 
         const ctx: FrameRender<(typeof $RENDER)["JSON"]> = {
           frame: { ...currentFrame, json },
           output: $RENDER.JSON,
         };
 
-        return makeFinalizer(ctx);
+        return construct_json_options_3(ctx);
       },
 
       toHtml() {
@@ -74,7 +66,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
           output: $RENDER.HTML,
         };
 
-        return makeFinalizer(ctx);
+        return construct_html_options_3(ctx);
       },
 
       sanitizeBEWARE(): OutputConstructor_2 {

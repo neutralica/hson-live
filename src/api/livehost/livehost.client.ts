@@ -309,7 +309,7 @@ export function create_livehost_client<
     }
     try {
       const node = hson.fromHson(snapshot.hson).toNode();
-      const value = hson.fromNode(node).toJson().parse();
+      const value = hson.fromNode(node).toJson().value();
       if (value === undefined) {
         throw new Error("Recovery snapshot HSON did not project to a JsonValue.");
       }

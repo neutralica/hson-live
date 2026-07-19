@@ -9,7 +9,7 @@ import { LiveTree } from "./api/livetree/livetree.js";
 import { make_branch_from_node } from "./api/livetree/creation/create-branch.js";
 import { graft } from "./api/livetree/creation/graft.js";
 import { make_detached_livetree_create } from "./api/livetree/creation/make-detached-livetree.js";
-import { make_livemap_core } from "./api/livemap/livemap.core.js";
+import { make_classified_livemap, make_livemap_core } from "./api/livemap/livemap.core.js";
 import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "./api/livemap/livemap.schema.js";
 import { create_livehost } from "./api/livehost/livehost.core.js";
 import { create_livehost_client } from "./api/livehost/livehost.client.js";
@@ -19,11 +19,12 @@ import { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 import { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
 import { make_livehost_canonical_stream } from "./api/livehost/livehost.history.js";
 import { make_livehost_recovery_planner } from "./api/livehost/livehost.recovery.js";
-import type { LiveMap, LiveMapPathHandle } from "./types/livemap.types.js";
+import type { ClassifiedLiveMap, DocumentLiveMap, LiveMap, LiveMapPathHandle } from "./types/livemap.types.js";
 import type { InferLiveMapSchemaInput, LiveMapSchema, LiveMapSchemaBuilder } from "./api/livemap/livemap.schema.js";
 import { project_keyed_collection } from "./api/liveproject/liveproject.keyed.js";
 import { create_live_inspector } from "./api/liveinspect/liveinspect.js";
 import type { LiveInspector, LiveInspectorOptions, LiveInspectorOwnedHsonOptions, LiveInspectorOwnedJsonOptions } from "./types/liveinspect.types.js";
+import { is_svg_markup } from "./api/transform/utils/node-utils/node-from-svg.js";
 
 
 const SAFE_SOURCE = construct_source_1({ unsafe: false });
@@ -56,15 +57,33 @@ function make_livemap_core_from_json(input: string | JsonValue): LiveMap {
 
   if (!is_livemap_seed_object(value)) {
     const out = UNSAFE_SOURCE.fromJson(value);
-    return make_livemap_core(out.toNode());
+    return must_data_livemap(make_classified_livemap(out.toNode()));
   }
 
   const out = UNSAFE_SOURCE.fromJson({});
-  const map = make_livemap_core(out.toNode());
+  const map = must_data_livemap(make_classified_livemap(out.toNode()));
 
   map.replace(value);
 
   return map;
+}
+
+function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
+  if (map.mode === "data-object" || map.mode === "data-array") return map;
+  throw new Error(`LiveMap JSON construction produced unexpected root mode ${map.mode}.`);
+}
+
+/**
+ * Parse one trusted document/fragment without changing the global HTML parser.
+ *
+ * The parser's canonical `_hson_root` wrapper is needed for top-level text and
+ * empty fragments. Standalone SVG retains the transform's existing SVG route.
+ */
+function trusted_document_node(input: string): HsonNode {
+  const source = is_svg_markup(input.trimStart())
+    ? input
+    : `<_hson_root>${input}</_hson_root>`;
+  return UNSAFE_SOURCE.fromHtml(source, { sanitize: false }).toNode();
 }
 
 /** True when LiveMap JSON construction should seed an object root via replace. */
@@ -147,15 +166,30 @@ export const hson = {
       return make_livemap_core_from_json(input);
     },
 
-    /** Create a mutable LiveMap from serialized HSON. */
-    fromHson(input: string): LiveMap {
+    /** Create a shape-specific LiveMap from serialized canonical HSON. */
+    fromHson(input: string): ClassifiedLiveMap {
       const out = UNSAFE_SOURCE.fromHson(input);
-      return make_livemap_core(out.toNode());
+      return make_classified_livemap(out.toNode());
     },
 
-    /** Create a mutable LiveMap over an existing HSON node graph. */
-    fromNode(node: HsonNode): LiveMap {
-      return make_livemap_core(node);
+    /** Create a shape-specific LiveMap from a detached clone of a canonical node. */
+    fromNode(node: HsonNode): ClassifiedLiveMap {
+      return make_classified_livemap(node);
+    },
+
+    /** Parse trusted HTML without sanitization into a read-only document LiveMap. */
+    fromTrustedHtml(input: string): DocumentLiveMap {
+      const map = make_classified_livemap(trusted_document_node(input));
+      if (map.mode === "element" || map.mode === "fragment") return map;
+      throw new Error(`LiveMap trusted HTML construction produced unexpected root mode ${map.mode}.`);
+    },
+
+    /** Sanitize and parse untrusted HTML into a read-only document LiveMap. */
+    fromUntrustedHtml(input: string): DocumentLiveMap {
+      const out = SAFE_SOURCE.fromHtml(input, { sanitize: true });
+      const map = make_classified_livemap(out.toNode());
+      if (map.mode === "element" || map.mode === "fragment") return map;
+      throw new Error(`LiveMap untrusted HTML construction produced unexpected root mode ${map.mode}.`);
     },
   },
 

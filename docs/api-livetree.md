@@ -37,8 +37,8 @@ HSON text parses directly to the canonical graph:
 const node = hson.fromHson(source).toNode();
 ```
 
-The HSON-source surface no longer exposes `.toHson().parse()`, but it retains
-`.toHson().serialize()` and all other output projections.
+The HSON-source surface retains `.toHson().serialize()` and all other output
+projections. Canonical graph access uses the source-level `.toNode()` terminal.
 
 After `toHson()`, readable HSON is the default and these HSON options compose:
 

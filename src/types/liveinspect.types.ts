@@ -18,7 +18,7 @@ export type LiveInspectorMapSource = Pick<
   | "snap"
   | "feed"
   | "schema"
-  | "node"
+  | "debug"
 >;
 export type LiveInspectorArrayKeyContext = Readonly<{
   arrayPath: LivePath;

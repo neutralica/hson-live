@@ -48,15 +48,20 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  * @throws If invariants fail or if `make_string` throws during stringify.
  */
 export function serialize_json($node: HsonNode): string {
-    const clone = collapse_redundant_roots(clone_node($node))
-    assert_invariants(clone, 'serialize_json')
-    const serializedJson = jsonFromNode(clone);
+    const serializedJson = json_value_from_node($node);
     try {
         const json = make_string(serializedJson);
         return json;
     } catch (e: any) {
         _throw_transform_err(`error during final JSON.stringify\n ${e.message}`, 'serialize-json');
     }
+}
+
+/** Project a canonical HSON graph directly to its in-memory JSON value. */
+export function json_value_from_node($node: HsonNode): JsonValue {
+    const clone = collapse_redundant_roots(clone_node($node))
+    assert_invariants(clone, 'serialize_json')
+    return jsonFromNode(clone);
 }
 
 function collapse_redundant_roots(node: HsonNode): HsonNode {

@@ -840,7 +840,7 @@ class InspectorController {
   }
 
   private canonicalNode(path: LivePath): HsonNode | undefined {
-    return this.currentSource().map?.node(path).get();
+    return this.currentSource().map?.debug.node(path).get();
   }
 
   private renderDetails(): void {

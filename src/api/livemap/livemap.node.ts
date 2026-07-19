@@ -99,6 +99,11 @@ function replaceChildNodeAt(parent: HsonNode, path: LivePath, index: number, chi
  * Node-handle mutations edit the underlying HSON graph directly. They are for
  * element/graph work, not JSON-state commits: they do not use LiveMap `set`,
  * `setMany`, `replace`, `delete`, schema validation, or commit events.
+ *
+ * This surface is exposed only through `map.debug.node(...)`. It mutates the
+ * owned HSON graph directly and bypasses projected writes, schema validation,
+ * commits, revisions, feeds, subscriptions, and ordinary LiveMap state
+ * guarantees. Avoid it in normal application state code.
  */
 export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMapNodeHandle {
   const handlePath = [...path];

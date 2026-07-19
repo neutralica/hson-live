@@ -1,6 +1,6 @@
 // node-guards.ts
 
-import { II_TAG, STR_TAG, VAL_TAG, _DATA_INDEX } from "./constants.js";
+import { HSON_SYS_PREFIX, II_TAG, STR_TAG, VAL_TAG, _DATA_INDEX } from "./constants.js";
 import type { HsonNode } from "./types.js";
 import { is_Primitive } from "./value-guards.js";
 
@@ -17,6 +17,11 @@ export function is_Node(bit: unknown): bit is HsonNode {
   }
 
   return true;
+}
+
+/** True for a user/document element rather than a structural HSON VSN node. */
+export function is_ordinary_element_node(bit: unknown): bit is HsonNode {
+  return is_Node(bit) && !bit.$_tag.startsWith(HSON_SYS_PREFIX);
 }
 
 export function is_Primitive_node(node: HsonNode): boolean {

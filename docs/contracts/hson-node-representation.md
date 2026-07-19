@@ -22,9 +22,10 @@ canonical construction and mutation prefer absence.
   semantic attribute entry for wire round trips; deleting the style through a
   mutation API removes that entry and then prunes `$_attrs` when otherwise empty.
 
-For public compatibility, `LiveMapNodeHandle.attrs()` returns one shared frozen
-empty read-only view when the resolved node has no stored attrs; a missing node
-still returns `undefined`. The view is not installed on the node.
+The unsafe handle exposed through `map.debug.node(path)` retains the existing
+`LiveMapNodeHandle.attrs()` behavior: it returns one shared frozen empty
+read-only view when the resolved node has no stored attrs; a missing node still
+returns `undefined`. The view is not installed on the node.
 
 The internal parser staging helpers `split_attrs_meta()` and
 `parse_html_attrs()` still use mutable empty accumulators while parsing. Those

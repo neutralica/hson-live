@@ -11,7 +11,7 @@ LiveMap schema attaches TypeScript-compatible structure to the projected graph. 
 LiveMap also provides feeds, store-style subscriptions, path handles, object and array helpers, proxies, capture/apply/replay operations, and binding primitives. Together these features allow the graph to behave as a reactive state substrate for local views, LiveTree DOM projection, debugging tools, and LiveHost replication.
  -->
 # LiveMap API
-Updated: 2026-07-13
+Updated: 2026-07-19
 
 This document is the reference for the current implemented LiveMap surface.
 LiveMap projects an HSON graph as mutable JSON-path state with explicit commits,
@@ -32,6 +32,8 @@ const fromJson = hson.liveMap.fromJson({ count: 0 });
 const fromJsonText = hson.liveMap.fromJson('{"count":0}');
 const fromHson = hson.liveMap.fromHson('<count 0>');
 const fromNode = hson.liveMap.fromNode(node);
+const trustedDocument = hson.liveMap.fromTrustedHtml("<main>Trusted</main>");
+const safeDocument = hson.liveMap.fromUntrustedHtml(userHtml);
 ```
 
 ### `hson.liveMap.fromJson(input)`
@@ -49,16 +51,34 @@ Accepts a JSON string or `JsonValue` and returns `LiveMap`.
 
 ### `hson.liveMap.fromHson(input)`
 
-Parses validated HSON text and creates a map over the resulting graph. The map
-begins at revision 0. LiveMap is primarily JSON-projection-oriented; HSON that
-does not describe compatible data-shaped structure can produce a projection
-that is less useful than its raw graph.
+Parses validated HSON text, clones the canonical graph, and classifies it as
+`data-object`, `data-array`, `element`, or `fragment`. Data roots return the
+existing mutable data LiveMap. Document roots return the read-only document
+façade described below. Construction begins at revision 0.
 
 ### `hson.liveMap.fromNode(node)`
 
-Creates a map over the supplied `HsonNode` object. It does not clone the graph.
-Projected mutations edit that graph in place, and external raw mutations of the
-same graph are visible to the map without producing commits or revisions.
+Deep-clones and validates the supplied canonical `HsonNode`, then returns the
+shape-specific façade selected by its canonical root structure. The map retains
+no mutable node, attrs, structured-style, metadata, or content-array reference
+from the caller. Valid persisted document QUIDs are preserved.
+
+### HTML document constructors
+
+```ts
+hson.liveMap.fromTrustedHtml(source)
+hson.liveMap.fromUntrustedHtml(source)
+```
+
+Both accept an HTML string and return `ElementLiveMap | FragmentLiveMap`.
+`fromTrustedHtml` uses the existing unsanitized trusted parser route.
+`fromUntrustedHtml` uses the existing DOMPurify-backed sanitizer route. Storage
+and capture are inert graph operations; later DOM materialization is a separate
+security boundary.
+
+There is no `liveMap.element` or `liveMap.fragment` constructor namespace.
+`element` and `fragment` are shape-specific capabilities on constructed map
+instances.
 
 The lower-level equivalent is exported from the package root:
 
@@ -66,8 +86,50 @@ The lower-level equivalent is exported from the package root:
 const map = make_livemap_core(rootNode);
 ```
 
-`make_livemap_core` assumes the root is compatible with the LiveMap projection;
-it does not parse or clone it.
+`make_livemap_core` remains a lower-level projected Core surface, but now also
+takes detached ownership by deep-cloning and validating its input. Prefer the
+classified `hson.liveMap` constructors for document roots.
+
+### Root modes and document façade
+
+```ts
+type LiveMapRootMode =
+  | "data-object"
+  | "data-array"
+  | "element"
+  | "fragment";
+```
+
+An `_hson_elem` root cluster containing exactly one ordinary top-level element
+is `element`. Empty, text-only, mixed, or multiple-item document content is
+`fragment`. Classification uses canonical HSON structure, not projected JSON.
+
+Document maps expose only detached canonical reads, capture, revision, and the
+explicitly unsafe debug escape hatch:
+
+```ts
+if (map.mode === "element") {
+  const element = map.element.node();
+  const content = map.element.content();
+}
+
+if (map.mode === "fragment") {
+  const content = map.fragment.content();
+}
+
+map.root();
+map.capture();
+map.debug.node([]);
+```
+
+Document maps do not expose `snap`, Proxy/path handles, projected mutations,
+data schemas, feeds/subscriptions, `apply`, or `replay`. Those remain data-domain
+APIs and do not represent a lossless document snapshot.
+
+Every ordinary element in a document map receives persisted `data-_quid`
+identity during construction. Existing non-empty QUIDs are preserved, missing
+ones are generated, and duplicates within one map are rejected. Reads do not
+mint or alter identity.
 
 ---
 
@@ -120,8 +182,13 @@ one projected path, or `undefined` when it does not resolve. Objects and arrays
 are reconstructed from the graph, so snapshot mutation does not mutate the
 LiveMap.
 
-`root()` returns the actual live HSON root, not a defensive copy. Mutating it
-bypasses schema validation, commit generation, revision accounting, and feeds.
+`root()` returns a detached structural clone of the complete canonical HSON
+root. It preserves tags, content, attrs, metadata, QUIDs, and primitive values
+without sharing node, content-array, attrs-object, or metadata-object identity
+with the graph owned by the map.
+
+Use `map.debug.node(path)` only when intentionally accessing the live owned
+graph.
 
 The package root also exports:
 
@@ -810,11 +877,30 @@ error.issues
 ```
 
 Failure occurs before live graph mutation, consumes no revision, and emits no
-feed event. Direct `root()` or `node()` mutation is outside schema enforcement.
+feed event. Direct `debug.node()` mutation is outside schema enforcement.
 
 ---
 
 ## Revision synchronization
+
+### Document `capture()`
+
+Document maps capture the complete canonical graph rather than projected JSON:
+
+```ts
+type DocumentLiveMapCapture = Readonly<{
+  kind: "hson-document";
+  version: 1;
+  mode: "element" | "fragment";
+  rev: number;
+  root: HsonNode;
+}>;
+```
+
+The root is recursively detached and preserves tags, ordered mixed content,
+attrs, structured style, metadata, QUIDs, text, empty content, and repeated
+siblings. Capture does not change the revision. Graph install and replay are not
+implemented yet.
 
 ### `capture()`
 
@@ -827,7 +913,10 @@ type LiveMapCapture<T> = Readonly<{
 }>;
 ```
 
-The projected value is detached from later map mutations.
+This projected data capture belongs to data-object and data-array maps. Its
+value is detached from later map mutations. It is not the document snapshot
+model and intentionally does not use the transform layer's `_hson_elem` JSON
+representation.
 
 ### `apply({ prevRev, value })`
 
@@ -918,8 +1007,13 @@ not initially synchronize state. Use it only within those current limits.
 ## Raw HSON node handle
 
 ```ts
-const node = map.node(path);
+const node = map.debug.node(path);
 ```
+
+This surface is exposed only through `map.debug.node(...)`. It mutates the
+owned HSON graph directly. It bypasses projected writes, schema validation,
+commits, revisions, feeds, subscriptions, and ordinary LiveMap state
+guarantees. It should be avoided in normal application state code.
 
 This surface addresses the HSON wrapper node at a projected path, not the
 ordinary projected JSON value:

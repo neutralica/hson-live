@@ -15,7 +15,7 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveMap,
+  LiveMapCore,
   LiveMapDisposer,
   LiveMapFeedEvent,
   LiveMapPathValue,
@@ -67,7 +67,9 @@ function json_values_equal<TValue>(
  * - `subscribePath` listens to one LivePath and compares cloned path snapshots
  *   by JSON signature unless a caller-provided equality function is supplied.
  */
-export function make_livemap_store_api<TValue = JsonValue | undefined>(map: LiveMap<TValue>): LiveMapStoreApi<TValue> {
+export function make_livemap_store_api<TValue = JsonValue | undefined>(
+  map: Pick<LiveMapCore<TValue>, "snap" | "feed" | "at">,
+): LiveMapStoreApi<TValue> {
   const snapshot = (): TValue => clone_json_value(map.snap());
 
   const subscribe = (listener: LiveMapStoreListener<TValue>): LiveMapDisposer => {

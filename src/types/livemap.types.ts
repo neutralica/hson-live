@@ -1,6 +1,6 @@
 // livemap.types.ts
 
-import type { HsonNode, JsonValue } from "../core/types.js";
+import type { HsonNode, JsonValue, NodeContent } from "../core/types.js";
 import type {
   LiveMapSchema,
   LiveMapSchemaResolution,
@@ -27,6 +27,11 @@ export type LivePathPart = string | number;
  * the physical wrapper/content path inside the HSON graph.
  */
 export type LivePath = readonly LivePathPart[];
+
+/** Canonical root shape owned by one LiveMap instance. */
+export type LiveMapRootMode = DataLiveMapMode | DocumentLiveMapMode;
+export type DataLiveMapMode = "data-object" | "data-array";
+export type DocumentLiveMapMode = "element" | "fragment";
 
 /**
  * Runtime Proxy surface for ergonomic projected-path access.
@@ -221,7 +226,18 @@ export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   must: LiveMapCoreSchemaMustApi;
 }>;
 
-export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
+/** Explicitly unsafe access to the live HSON graph owned by a LiveMap. */
+export type LiveMapDebugApi = Readonly<{
+  node: (path: LivePath) => LiveMapNodeHandle;
+}>;
+
+export type LiveMapCore<
+  TValue = JsonValue | undefined,
+  TMode extends LiveMapRootMode = LiveMapRootMode,
+> = Readonly<{
+  /** Canonical capability selected from the validated graph at construction. */
+  readonly mode: TMode;
+  /** Return a detached structural clone of the complete canonical root graph. */
   root: () => HsonNode;
   snap: LiveMapCoreSnap<TValue>;
   schema: LiveMapCoreSchemaApi<TValue>;
@@ -243,7 +259,7 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
   batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   sub: LiveMapSubApi<TValue>;
-  node: (path: LivePath) => LiveMapNodeHandle;
+  debug: LiveMapDebugApi;
   readonly rev: number;
   capture: () => LiveMapCapture<TValue>;
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
@@ -258,7 +274,61 @@ export type LiveMapCore<TValue = JsonValue | undefined> = Readonly<{
  * schema with `map.schema.use(schema)` or `map.withSchema(schema)`, the returned
  * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
  */
-export interface LiveMap<TValue = JsonValue | undefined> extends LiveMapCore<TValue> { }
+export type LiveMap<TValue = JsonValue | undefined> = Readonly<
+  Omit<LiveMapCore<TValue, LiveMapRootMode>, "mode"> & {
+    readonly mode: DataLiveMapMode;
+  }
+>;
+
+/** Detached, revision-coupled canonical capture for a document LiveMap. */
+export type DocumentLiveMapCapture<
+  TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
+> = Readonly<{
+  kind: "hson-document";
+  version: 1;
+  mode: TMode;
+  rev: number;
+  root: HsonNode;
+}>;
+
+/** Shared detached canonical reads for element and fragment capabilities. */
+export type DocumentLiveMapReadApi = Readonly<{
+  /** Return a detached clone of the complete canonical root. */
+  root: () => HsonNode;
+  /** Return detached top-level document content in canonical order. */
+  content: () => readonly NodeContent[number][];
+  /** Resolve persisted document identity to a detached element clone. */
+  byQuid: (quid: string) => HsonNode | undefined;
+}>;
+
+/** Read capability available only on a single-element document map. */
+export type ElementLiveMapReadApi = DocumentLiveMapReadApi & Readonly<{
+  /** Return a detached clone of the single top-level ordinary element. */
+  node: () => HsonNode;
+}>;
+
+type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
+  readonly mode: TMode;
+  readonly rev: number;
+  root: () => HsonNode;
+  capture: () => DocumentLiveMapCapture<TMode>;
+  /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
+  debug: LiveMapDebugApi;
+}>;
+
+export type ElementLiveMap = DocumentLiveMapShared<"element"> & Readonly<{
+  element: ElementLiveMapReadApi;
+}>;
+
+export type FragmentLiveMap = DocumentLiveMapShared<"fragment"> & Readonly<{
+  fragment: DocumentLiveMapReadApi;
+}>;
+
+/** Shape-specific read-only façade for canonical HTML/document-shaped HSON. */
+export type DocumentLiveMap = ElementLiveMap | FragmentLiveMap;
+
+/** Result of HSON/node construction after canonical root classification. */
+export type ClassifiedLiveMap = LiveMap | DocumentLiveMap;
 
 /**
  * Normalized set operation emitted by a LiveMap mutation.
@@ -404,6 +474,14 @@ export type LiveMapMappedLinkOptions = Readonly<{
 export type LiveMapNodeAttrs = NonNullable<HsonNode["$_attrs"]>;
 export type LiveMapNodeAttrValue = LiveMapNodeAttrs[string];
 
+/**
+ * Unsafe live canonical-node handle, exposed only through `map.debug.node(...)`.
+ *
+ * Mutations through this handle edit the owned HSON graph directly. They bypass
+ * projected writes, schema validation, commits, revisions, feeds,
+ * subscriptions, and ordinary LiveMap state guarantees. Avoid this surface in
+ * normal application state code.
+ */
 export type LiveMapNodeHandle = Readonly<{
   /** Return a defensive copy of the projected path this node handle points at. */
   path: () => LivePath;
