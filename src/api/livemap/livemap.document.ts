@@ -148,7 +148,7 @@ function make_document_livemap(
       move: mutationApi.moveContent,
     },
   ));
-  const readApi = Object.freeze({
+  const document = Object.freeze({
     root: () => core.root(),
     content,
     byQuid: (quid: string) => {
@@ -184,8 +184,8 @@ function make_document_livemap(
         rev: core.rev,
         root: core.root(),
       }),
+      document,
       element: Object.freeze({
-        ...readApi,
         node: () => detached_top_level_element(core.root()),
       }),
     });
@@ -205,7 +205,7 @@ function make_document_livemap(
       rev: core.rev,
       root: core.root(),
     }),
-    fragment: readApi,
+    document,
   });
   return fragmentMap;
 }

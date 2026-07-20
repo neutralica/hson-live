@@ -193,6 +193,14 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
   if (op.op === "remove-attr") {
     return Object.freeze({ domain: "graph", op: "remove-attr", target, name: op.name });
   }
+  if (op.op === "replace-attrs") {
+    return Object.freeze({
+      domain: "graph",
+      op: "replace-attrs",
+      target,
+      attrs: clone_node(op.attrs),
+    });
+  }
   if (op.op === "replace-content") {
     return Object.freeze({
       domain: "graph",

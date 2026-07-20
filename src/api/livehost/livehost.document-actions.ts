@@ -1,6 +1,6 @@
 import type {
   DocumentLiveMap,
-  DocumentLiveMapReadApi,
+  LiveMapDocumentApi,
   JsonValue,
   LiveMapAuthority,
 } from "../../types/index.js";
@@ -9,9 +9,11 @@ import type {
 } from "../../types/livehost.types.js";
 import {
   decode_livehost_document_attribute_name,
+  decode_livehost_document_attrs,
   decode_livehost_document_attribute_value,
   decode_livehost_document_content,
   decode_livehost_document_target,
+  is_livehost_json_value,
 } from "./livehost.protocol.js";
 
 export type LiveHostDocumentActionResolution =
@@ -23,6 +25,10 @@ export type LiveHostDocumentActionResolution =
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActionName>([
   "document.attrs.set",
   "document.attrs.drop",
+  "document.attrs.setMany",
+  "document.attrs.dropMany",
+  "document.attrs.clear",
+  "document.attrs.replace",
   "document.content.replace",
   "document.content.insert",
   "document.content.remove",
@@ -79,6 +85,44 @@ export function resolve_livehost_document_action(
       kind: "ready",
       payload,
       execute: () => { void api.attrs.drop(target, attributeName); },
+    });
+  }
+
+  if (name === "document.attrs.setMany" || name === "document.attrs.replace") {
+    if (!has_exact_keys(payload, ["target", "values"])) return invalid_fields(name);
+    const values = decode_livehost_document_attrs(payload.values);
+    if (values === undefined) {
+      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} values are invalid.` });
+    }
+    return Object.freeze({
+      kind: "ready",
+      payload: decoded_action_payload({ target, values }),
+      execute: () => {
+        if (name === "document.attrs.setMany") void api.attrs.setMany(target, values);
+        else void api.attrs.replace(target, values);
+      },
+    });
+  }
+
+  if (name === "document.attrs.dropMany") {
+    if (!has_exact_keys(payload, ["target", "names"])) return invalid_fields(name);
+    const names = decode_attribute_names(payload.names);
+    if (names === undefined) {
+      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} names are invalid.` });
+    }
+    return Object.freeze({
+      kind: "ready",
+      payload: decoded_action_payload({ target, names }),
+      execute: () => { void api.attrs.dropMany(target, names); },
+    });
+  }
+
+  if (name === "document.attrs.clear") {
+    if (!has_exact_keys(payload, ["target"])) return invalid_fields(name);
+    return Object.freeze({
+      kind: "ready",
+      payload: decoded_action_payload({ target }),
+      execute: () => { void api.attrs.clear(target); },
     });
   }
 
@@ -150,13 +194,28 @@ function non_negative_integer(value: JsonValue | undefined): number | undefined 
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
-function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
-  return (map.mode === "element" && "element" in map)
-    || (map.mode === "fragment" && "fragment" in map);
+function decode_attribute_names(value: JsonValue | undefined): readonly string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names: string[] = [];
+  for (const item of value) {
+    const name = decode_livehost_document_attribute_name(item);
+    if (name === undefined) return undefined;
+    names.push(name);
+  }
+  return Object.freeze(names);
 }
 
-function document_api(map: DocumentLiveMap): DocumentLiveMapReadApi {
-  return map.mode === "element" ? map.element : map.fragment;
+function decoded_action_payload(value: unknown): JsonValue {
+  if (is_livehost_json_value(value)) return value;
+  throw new Error("Decoded LiveHost document action payload is not canonical JSON.");
+}
+
+function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
+  return (map.mode === "element" || map.mode === "fragment") && "document" in map;
+}
+
+function document_api(map: DocumentLiveMap): LiveMapDocumentApi {
+  return map.document;
 }
 
 function is_record(value: unknown): value is Readonly<Record<string, JsonValue>> {

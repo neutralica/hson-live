@@ -151,7 +151,7 @@ check("element reads and captures are recursively detached", () => {
   const rootCopy = map.root();
   const capture = map.capture();
   const element = map.element.node();
-  const content = map.element.content();
+  const content = map.document.content();
 
   assert.equal(capture.kind, "hson-document");
   assert.equal(capture.version, 1);
@@ -173,7 +173,7 @@ check("fragment reads preserve repeated siblings and mixed content in order", ()
   );
   assert.equal(map.mode, "fragment");
   const baseline = map.root();
-  const content = map.fragment.content();
+  const content = map.document.content();
   assert.equal(content.length, 4);
   assert.deepEqual(content.map((item) => is_node(item) ? item.$_tag : item), [
     "_hson_str", "div", "div", "_hson_str",
@@ -201,9 +201,9 @@ check("document identity is sparse and preserves only explicitly persisted QUIDs
   assert.equal(paragraphs[0]?.$_meta?.["data-_quid"], undefined);
   assert.deepEqual(second, first);
   assert.deepEqual(map.capture().root, first);
-  assert.equal(map.element.byQuid("0000000000000001")?.$_tag, "main");
-  assert.equal(map.element.byQuid("0000000000000005")?.$_tag, "p");
-  assert.equal(map.element.byQuid("unknown"), undefined);
+  assert.equal(map.document.byQuid("0000000000000001")?.$_tag, "main");
+  assert.equal(map.document.byQuid("0000000000000005")?.$_tag, "p");
+  assert.equal(map.document.byQuid("unknown"), undefined);
   assert.equal(map.rev, 0);
 });
 
@@ -212,19 +212,19 @@ check("unquidded construction and every detached read preserve identity absence"
   const sourceBefore = structuredClone(source);
   const map = hson.liveMap.fromNode(source);
   assert.equal(map.mode, "element");
-  const reads = [map.root(), map.capture().root, map.element.node(), ...map.element.content().filter(is_node)];
+  const reads = [map.root(), map.capture().root, map.element.node(), ...map.document.content().filter(is_node)];
   for (const root of reads) {
     for (const node of find_nodes(root, "main").concat(find_nodes(root, "p"))) {
       assert.equal(node.$_meta?.["data-_quid"], undefined);
     }
   }
   assert.deepEqual(source, sourceBefore);
-  assert.equal(map.element.byQuid("anything"), undefined);
+  assert.equal(map.document.byQuid("anything"), undefined);
   assert.equal(map.rev, 0);
 
   const fragment = hson.liveMap.fromHson(`"before" <div <span "one"/>/> <div "two"/> "after"`);
   assert.equal(fragment.mode, "fragment");
-  for (const read of [fragment.root(), fragment.capture().root, ...fragment.fragment.content().filter(is_node)]) {
+  for (const read of [fragment.root(), fragment.capture().root, ...fragment.document.content().filter(is_node)]) {
     for (const tag of ["div", "span"]) {
       for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["data-_quid"], undefined);
     }
@@ -254,6 +254,7 @@ check("document runtime façade omits projected data APIs", () => {
   const element = hson.liveMap.fromHson(`<button "Save"/>`);
   const fragment = hson.liveMap.fromHson(`<button/> <button/>`);
   for (const map of [element, fragment]) {
+    if (!("document" in map)) throw new Error("expected document map");
     for (const key of ["snap", "proxy", "set", "setMany", "splice", "replace", "delete", "batch", "apply", "feed", "sub", "schema", "at"]) {
       assert.equal(key in map, false, `${key} should not be exposed by a document façade`);
     }
@@ -262,7 +263,13 @@ check("document runtime façade omits projected data APIs", () => {
     assert.equal(typeof map.commits.observe, "function");
     assert.equal("debug" in map, true);
     assert.equal(typeof map.debug.node, "function");
+    assert.equal(typeof map.document.attrs.set, "function");
+    assert.equal(typeof map.document.content, "function");
   }
+  if (element.mode !== "element" || fragment.mode !== "fragment") throw new Error("expected document modes");
+  assert.equal("attrs" in element.element, false);
+  assert.equal("content" in element.element, false);
+  assert.equal("fragment" in fragment, false);
 });
 
 check("data maps preserve their APIs and all normal constructors begin at revision zero", () => {

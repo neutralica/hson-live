@@ -75,6 +75,7 @@ export class LiveMapDocumentMutationError extends Error {
   readonly operation:
     | "set-attr"
     | "remove-attr"
+    | "replace-attrs"
     | "replace-content"
     | "insert-content"
     | "remove-content"

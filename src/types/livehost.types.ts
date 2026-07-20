@@ -7,6 +7,7 @@ import type {
   JsonValue,
   LiveMap,
   LiveMapDocumentAttributeValue,
+  LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentTarget,
   LiveMapGraphOp,
@@ -349,6 +350,10 @@ export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefin
 export type LiveHostDocumentActionName =
   | "document.attrs.set"
   | "document.attrs.drop"
+  | "document.attrs.setMany"
+  | "document.attrs.dropMany"
+  | "document.attrs.clear"
+  | "document.attrs.replace"
   | "document.content.replace"
   | "document.content.insert"
   | "document.content.remove"
@@ -365,6 +370,21 @@ export type LiveHostDocumentActionPayloads = Readonly<{
   "document.attrs.drop": {
     target: LiveHostDocumentTargetPayload;
     name: string;
+  };
+  "document.attrs.setMany": {
+    target: LiveHostDocumentTargetPayload;
+    values: LiveMapDocumentAttrs;
+  };
+  "document.attrs.dropMany": {
+    target: LiveHostDocumentTargetPayload;
+    names: readonly string[];
+  };
+  "document.attrs.clear": {
+    target: LiveHostDocumentTargetPayload;
+  };
+  "document.attrs.replace": {
+    target: LiveHostDocumentTargetPayload;
+    values: LiveMapDocumentAttrs;
   };
   "document.content.replace": {
     target: LiveHostDocumentTargetPayload;

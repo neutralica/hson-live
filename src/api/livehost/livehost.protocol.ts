@@ -39,11 +39,16 @@ import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { CssMap } from "../../core/style.types.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../core/types.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
+import {
+  decode_document_attrs,
+  is_public_document_attr_name,
+} from "../livemap/livemap.document.attrs.js";
 import { index_livemap_document_elements } from "../livemap/livemap.document.identity.js";
 import type {
   DocumentLiveMapMode,
   JsonValue,
   LiveMapDocumentAttributeValue,
+  LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentTarget,
   LiveMapGraphOp,
@@ -254,12 +259,8 @@ function decode_document_target(value: unknown): LiveMapDocumentTarget | undefin
   return undefined;
 }
 
-const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
-
 function decode_attribute_name(value: unknown): string | undefined {
-  return typeof value === "string" && HSON_ATTR_NAME.test(value) && !value.startsWith("data-_")
-    ? value
-    : undefined;
+  return is_public_document_attr_name(value) ? value : undefined;
 }
 
 function decode_attribute_value(name: string, value: unknown): LiveMapDocumentAttributeValue | undefined {
@@ -305,6 +306,10 @@ export function decode_livehost_document_attribute_value(
   return decode_attribute_value(name, value);
 }
 
+export function decode_livehost_document_attrs(value: unknown): LiveMapDocumentAttrs | undefined {
+  return decode_document_attrs(value);
+}
+
 export function decode_livehost_document_content(value: unknown): LiveMapDocumentContent | undefined {
   return decode_document_content(value);
 }
@@ -339,6 +344,13 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGrap
     return name === undefined
       ? undefined
       : Object.freeze({ domain: "graph", op: "remove-attr", target, name });
+  }
+  if (value.op === "replace-attrs") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "attrs"])) return undefined;
+    const attrs = decode_document_attrs(value.attrs);
+    return attrs === undefined
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs });
   }
   if (value.op === "replace-content") {
     if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement"])) return undefined;

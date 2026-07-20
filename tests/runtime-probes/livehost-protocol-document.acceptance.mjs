@@ -59,6 +59,12 @@ check("document commits decode graph operations without projected coercion", () 
     },
     {
       domain: "graph",
+      op: "replace-attrs",
+      target: { kind: "path", path: [] },
+      attrs: { count: 0, hidden: false, nullable: null, style: { color: "red" }, title: "next" },
+    },
+    {
+      domain: "graph",
       op: "replace-content",
       target: { kind: "path", path: [] },
       index: 0,
@@ -96,6 +102,26 @@ check("document commits decode graph operations without projected coercion", () 
   if (!valid.ok || valid.value.type !== "commit") throw new Error("Expected decoded commit");
   assert.equal(valid.value.commit.mode, "element");
   assert.equal(valid.value.commit.ops[0].domain, "graph");
+});
+
+check("document recovery transport carries replace-attrs as one canonical operation", () => {
+  const decoded = decode_livehost_server_message(JSON.stringify({
+    type: "recovery-commit",
+    id: "replace-attrs-recovery",
+    phase: "body",
+    commit: commit("fragment", [{
+      domain: "graph",
+      op: "replace-attrs",
+      target: { kind: "quid", quid: "0000000000000001" },
+      attrs: { hidden: false, style: { color: "red" }, title: "recovered" },
+    }]),
+  }));
+  assert.equal(decoded.ok, true);
+  if (!decoded.ok || decoded.value.type !== "recovery-commit") {
+    throw new Error("Expected decoded recovery commit");
+  }
+  assert.equal(decoded.value.commit.ops.length, 1);
+  assert.equal(decoded.value.commit.ops[0]?.op, "replace-attrs");
 });
 
 check("replace-root requires canonical same-mode HSON and persisted identity", () => {
@@ -139,6 +165,16 @@ check("malformed graph targets, attributes, content, and mixed operations are re
     { domain: "graph", op: "remove-attr", target: { kind: "path", path: [-1] }, name: "title" },
     { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "data-_quid", value: "0000000000000002" },
     { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "title", value: {} },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: [] },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "data-_quid": "0000000000000002" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "data-_index": "0" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "data-_custom": "x" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "": "x" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "bad name": "x" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { title: {} } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { style: { color: [] } } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: {}, extra: true },
     { domain: "graph", op: "replace-content", target: { kind: "path", path: [] }, index: 0, replacement: { $_tag: "p", $_content: [], extra: true } },
     { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: -1, content: "x" },
     { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0, content: { $_tag: "p", $_content: [], extra: true } },

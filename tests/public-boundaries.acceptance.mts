@@ -82,6 +82,9 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
   assert.equal(tree.flags.has("disabled"), true);
   assert.equal("attr" in tree, false);
   assert.equal("flag" in tree, false);
+  for (const name of ["dropMany", "clear", "replace", "keys", "must"]) {
+    assert.equal(name in tree.attrs, false);
+  }
 });
 
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
@@ -154,6 +157,12 @@ check("document install is present only on document runtime façades", () => {
   assert.equal("install" in hson.liveMap.fromJson([]), false);
   for (const name of ["applyGraph", "replayGraph", "installGraph"]) {
     assert.equal(name in document, false);
+  }
+  for (const name of ["setMany", "dropMany", "clear", "replace"]) {
+    assert.equal(typeof Reflect.get(document.document.attrs, name), "function");
+  }
+  for (const name of ["get", "has", "keys", "must"]) {
+    assert.equal(name in document.document.attrs, false);
   }
 });
 

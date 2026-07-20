@@ -109,11 +109,11 @@ revision, and the explicitly unsafe debug escape hatch:
 ```ts
 if (map.mode === "element") {
   const element = map.element.node();
-  const content = map.element.content();
+  const content = map.document.content();
 }
 
 if (map.mode === "fragment") {
-  const content = map.fragment.content();
+  const content = map.document.content();
 }
 
 map.root();
@@ -921,26 +921,30 @@ unchanged operations consume no revision.
 
 ### Incremental document operations
 
-Element and fragment maps expose local canonical mutation through their
-shape-specific capability. Attribute verbs live under `attrs`; content verbs
-live under the callable `content` capability:
+Element and fragment maps share the `document` operation façade. Attribute
+verbs live under `attrs`; content verbs live under the callable `content`
+capability:
 
 ```ts
 const target = { kind: "path", path: [] } as const;
 
-elementMap.element.attrs.set(target, "aria-label", "Save");
-elementMap.element.attrs.drop(target, "aria-label");
-elementMap.element.content.replace(target, 0, replacement);
-elementMap.element.content.insert(target, 1, content);
-elementMap.element.content.remove(target, 0);
-elementMap.element.content.move(target, 2, 0);
+elementMap.document.attrs.set(target, "aria-label", "Save");
+elementMap.document.attrs.setMany(target, { id: "save", hidden: false });
+elementMap.document.attrs.drop(target, "aria-label");
+elementMap.document.attrs.dropMany(target, ["id", "title"]);
+elementMap.document.attrs.clear(target);
+elementMap.document.attrs.replace(target, { role: "button", tabindex: 0 });
+elementMap.document.content.replace(target, 0, replacement);
+elementMap.document.content.insert(target, 1, content);
+elementMap.document.content.remove(target, 0);
+elementMap.document.content.move(target, 2, 0);
 
-fragmentMap.fragment.attrs.set(
+fragmentMap.document.attrs.set(
   { kind: "quid", quid: "persisted-id" },
   "hidden",
   "hidden",
 );
-fragmentMap.fragment.content.replace(
+fragmentMap.document.content.replace(
   { kind: "path", path: [] },
   1,
   replacement,
@@ -948,7 +952,7 @@ fragmentMap.fragment.content.replace(
 ```
 
 There are deliberately no `setAttr`, `setAttrs`, `removeAttr`, or
-`replaceContent` methods. There is no bulk attribute operation in this slice.
+`replaceContent` methods.
 The existing detached read remains `capability.content()`; the content methods
 mutate canonical physical slots without exposing owned content.
 
@@ -983,6 +987,23 @@ canonically identical value is a no-op. `attrs.drop()` removes one existing
 ordinary attribute; an absent attribute is a no-op. Names beginning `data-_`
 are persisted metadata rather than ordinary attributes and cannot be changed
 through this namespace, including `data-_quid`.
+
+All four bulk methods derive a complete final ordinary-attribute bag and apply
+it atomically through one `replace-attrs` operation. `attrs.setMany()` preserves
+current names not present in its values record and never treats a value as
+deletion. `attrs.dropMany()` accepts one readonly string array, ignores valid
+absent names and duplicates, and preserves every name not requested.
+`attrs.clear()` installs the empty ordinary bag. `attrs.replace()` makes the
+complete ordinary bag exactly equal to its values record, removing omitted
+names. Every name and value is validated before mutation; malformed or
+`data-_*` names reject the whole call. Canonical values are finite HSON
+primitives (`string`, `boolean`, `number`, or `null`) plus the existing
+structured style map. Empty or canonically equal results are no-ops.
+
+Bulk mutation never changes `$_meta`, persisted QUID lookup, tag, content, or
+document mode. An empty final bag compacts away `$_attrs`. A changed call emits
+one commit, revision transition, observation, history entry, and publication at
+most; failure emits none.
 
 `content.replace()` replaces exactly one existing physical `$_content` slot.
 It never inserts, deletes, splices, or replaces the root. A replacement may be
@@ -1022,6 +1043,7 @@ Changed standalone calls advance one local revision and return exactly one of:
 ```ts
 { domain: "graph", op: "set-attr", target, name, value }
 { domain: "graph", op: "remove-attr", target, name }
+{ domain: "graph", op: "replace-attrs", target, attrs }
 { domain: "graph", op: "replace-content", target, index, replacement }
 { domain: "graph", op: "insert-content", target, index, content }
 { domain: "graph", op: "remove-content", target, index }
@@ -1032,6 +1054,16 @@ No-op calls return `changed: false` with no operations. These operations exist
 only on element and fragment capability surfaces; data-object and data-array
 maps do not expose them. Canonical graph commits use the existing atomic replay
 path and shared commit observer; there is no document batching API.
+
+`replace-attrs` is the atomic final-state replacement of a target's
+complete public ordinary-attribute bag. Its readonly payload contains canonical
+primitive values and the existing structured style map, excludes system
+metadata (`data-_*` / `$_meta`), and is detached before application. Omitted
+ordinary attributes are removed, while an empty bag clears all ordinary
+attributes and compacts away `$_attrs`. Canonically equal bags are unchanged,
+including differences in key order. Public `setMany`, `dropMany`, `clear`, and
+`replace` use this operation exclusively. Existing public single-attribute
+`set` and `drop` methods continue to emit `set-attr` and `remove-attr`.
 
 ### Document `capture()`
 
@@ -1092,7 +1124,7 @@ Installing a canonically identical graph follows existing replacement no-op
 behavior: it returns `changed: false`, no operations, and consumes no revision.
 Document graph commits are not accepted by data `replay()` and are not yet
 published through a projected path feed. Incremental document operations use
-their own `set-attr`, `remove-attr`, `replace-content`, `insert-content`,
+their own `set-attr`, `remove-attr`, `replace-attrs`, `replace-content`, `insert-content`,
 `remove-content`, and `move-content` records; they never masquerade as
 `replace-root` installation.
 

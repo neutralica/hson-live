@@ -8,10 +8,27 @@ import type {
   LiveHostForMap,
   LiveHostClientForMap,
   LiveHostDocumentActionPayloads,
+  LiveMapDocumentAttrs,
+  LiveMapGraphReplaceAttrsOp,
   LiveMap,
   LiveTree,
   ProjectedLiveHostOptions,
 } from "../src/index.ts";
+
+const replacementAttrs: LiveMapDocumentAttrs = {
+  count: 0,
+  hidden: false,
+  nullable: null,
+  style: { color: "red" },
+  title: "next",
+};
+const replacementOperation: LiveMapGraphReplaceAttrsOp = {
+  domain: "graph",
+  op: "replace-attrs",
+  target: { kind: "path", path: [] },
+  attrs: replacementAttrs,
+};
+void replacementOperation;
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends (<T>() => T extends TRight ? 1 : 2)
@@ -69,6 +86,16 @@ if (elementCandidate.mode !== "element") throw new Error("Expected element map")
 const elementHost = create_livehost({ map: elementCandidate });
 type ElementMapIsExact = Assert<Equal<typeof elementHost.map, ElementLiveMap>>;
 const elementHostAlias: LiveHostForMap<ElementLiveMap> = elementHost;
+elementCandidate.document.attrs.setMany({ kind: "path", path: [] }, replacementAttrs);
+elementCandidate.document.attrs.dropMany({ kind: "path", path: [] }, ["title"]);
+elementCandidate.document.attrs.clear({ kind: "path", path: [] });
+elementCandidate.document.attrs.replace({ kind: "path", path: [] }, replacementAttrs);
+// @ts-expect-error document targets require an explicit path or QUID discriminant
+elementCandidate.document.attrs.clear({ path: [] });
+// @ts-expect-error dropMany accepts one readonly string array
+elementCandidate.document.attrs.dropMany({ kind: "path", path: [] }, "title");
+// @ts-expect-error undefined is not a canonical document attribute value
+elementCandidate.document.attrs.setMany({ kind: "path", path: [] }, { title: undefined });
 
 const fragmentCandidate = hson.liveMap.fromHson(`<main/> <aside/>`);
 if (fragmentCandidate.mode !== "fragment") throw new Error("Expected fragment map");
@@ -134,6 +161,23 @@ typedDocumentClient.action("document.attrs.drop", {
   target: { kind: "path", path: [] },
   name: "title",
 });
+typedDocumentClient.action("document.attrs.setMany", {
+  target: { kind: "path", path: [] },
+  values: replacementAttrs,
+});
+typedDocumentClient.action("document.attrs.dropMany", {
+  target: { kind: "path", path: [] },
+  names: ["title"],
+});
+typedDocumentClient.action("document.attrs.clear", {
+  target: { kind: "path", path: [] },
+});
+typedDocumentClient.action("document.attrs.replace", {
+  target: { kind: "path", path: [] },
+  values: replacementAttrs,
+});
+// @ts-expect-error hosted read actions are not implemented
+typedDocumentClient.action("document.attrs.get", { target: { kind: "path", path: [] }, name: "id" });
 // @ts-expect-error obsolete hosted action is not part of the public API
 typedDocumentClient.action("document.attr.set", { target: { kind: "path", path: [] }, name: "id", value: "main" });
 typedDocumentClient.action("document.content.replace", {
@@ -158,6 +202,10 @@ typedDocumentClient.action("document.content.move", {
 const builtins: LiveHostDocumentActionPayloads = {
   "document.attrs.set": { target: { kind: "path", path: [] }, name: "id", value: "main" },
   "document.attrs.drop": { target: { kind: "path", path: [] }, name: "id" },
+  "document.attrs.setMany": { target: { kind: "path", path: [] }, values: replacementAttrs },
+  "document.attrs.dropMany": { target: { kind: "path", path: [] }, names: ["id"] },
+  "document.attrs.clear": { target: { kind: "path", path: [] } },
+  "document.attrs.replace": { target: { kind: "path", path: [] }, values: replacementAttrs },
   "document.content.replace": { target: { kind: "path", path: [] }, index: 0, replacement: "text" },
   "document.content.insert": { target: { kind: "path", path: [] }, index: 0, content: "text" },
   "document.content.remove": { target: { kind: "path", path: [] }, index: 0 },

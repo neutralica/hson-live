@@ -9,6 +9,7 @@ import type {
   DocumentLiveMapAttrsApi,
   DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
+  LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentTarget,
   LiveMapGraphCommit,
@@ -16,6 +17,7 @@ import type {
   LiveMapGraphMoveContentOp,
   LiveMapGraphOp,
   LiveMapGraphRemoveAttrOp,
+  LiveMapGraphReplaceAttrsOp,
   LiveMapGraphRemoveContentOp,
   LiveMapGraphReplaceContentOp,
   LiveMapGraphSetAttrOp,
@@ -29,6 +31,10 @@ import {
 } from "./livemap.document.identity.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
+import {
+  decode_document_attrs,
+  is_public_document_attr_name,
+} from "./livemap.document.attrs.js";
 
 type DocumentOperation = LiveMapDocumentMutationError["operation"];
 
@@ -54,6 +60,11 @@ export function make_livemap_document_mutation_api(
   controller: LiveMapDocumentMutationController,
 ): Readonly<{
   attrs: DocumentLiveMapAttrsApi;
+  /** Internal atomic substrate shared by every public bulk attrs method. */
+  replaceAttrs: (
+    target: LiveMapDocumentTarget,
+    attrs: LiveMapDocumentAttrs,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
   replaceContent: (
     target: LiveMapDocumentTarget,
     index: number,
@@ -77,9 +88,14 @@ export function make_livemap_document_mutation_api(
   const attrs: DocumentLiveMapAttrsApi = Object.freeze({
     set: (target, name, value) => set_document_attr(controller, target, name, value),
     drop: (target, name) => remove_document_attr(controller, target, name),
+    setMany: (target, values) => set_many_document_attrs(controller, target, values),
+    dropMany: (target, names) => drop_many_document_attrs(controller, target, names),
+    clear: (target) => replace_document_attrs(controller, target, {}),
+    replace: (target, values) => replace_document_attrs(controller, target, values),
   });
   return Object.freeze({
     attrs,
+    replaceAttrs: (target, values) => replace_document_attrs(controller, target, values),
     replaceContent: (target, index, replacement) =>
       replace_document_content(controller, target, index, replacement),
     insertContent: (target, index, content) =>
@@ -89,6 +105,81 @@ export function make_livemap_document_mutation_api(
     moveContent: (target, from, to) =>
       move_document_content(controller, target, from, to),
   });
+}
+
+function set_many_document_attrs(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  valuesInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
+  const { target, attrs: current } = read_document_attrs(controller, targetInput);
+  const values = normalize_attrs_bag(valuesInput);
+  return replace_document_attrs(controller, target, { ...current, ...values });
+}
+
+function drop_many_document_attrs(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  namesInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
+  const { target, attrs: current } = read_document_attrs(controller, targetInput);
+  const names = normalize_attr_names(namesInput);
+  const next: Record<string, LiveMapDocumentAttributeValue> = { ...current };
+  for (const name of names) delete next[name];
+  return replace_document_attrs(controller, target, next);
+}
+
+function read_document_attrs(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+): Readonly<{ target: LiveMapDocumentTarget; attrs: LiveMapDocumentAttrs }> {
+  const operation = "replace-attrs";
+  const target = normalize_target(targetInput, operation);
+  const element = require_element(resolve_target(controller.root(), controller.mode, target, operation), operation);
+  const attrs = decode_document_attrs(element.$_attrs ?? {});
+  if (attrs === undefined) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_REPLACEMENT",
+      operation,
+      "current ordinary attributes are not a canonical attribute bag",
+    );
+  }
+  return Object.freeze({ target, attrs });
+}
+
+function normalize_attrs_bag(input: unknown): LiveMapDocumentAttrs {
+  const attrs = decode_document_attrs(input);
+  if (attrs !== undefined) return attrs;
+  throw mutation_error(
+    "INVALID_DOCUMENT_ATTRIBUTE_VALUE",
+    "replace-attrs",
+    "values must be a canonical ordinary-attribute bag with valid, unprotected names",
+  );
+}
+
+function normalize_attr_names(input: unknown): readonly string[] {
+  if (!Array.isArray(input)) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_ATTRIBUTE_NAME",
+      "replace-attrs",
+      "names must be an array of canonical ordinary-attribute names",
+    );
+  }
+  return Object.freeze(input.map((name) => normalize_attr_name(name, "replace-attrs")));
+}
+
+function replace_document_attrs(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  attrsInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
+  const candidate = prepare_replace_document_attrs(
+    controller.root(),
+    controller.mode,
+    targetInput,
+    attrsInput,
+  );
+  return finish_mutation(controller, candidate);
 }
 
 function set_document_attr(
@@ -161,6 +252,36 @@ function prepare_remove_document_attr(
     op: operationName,
     target,
     name,
+  });
+  return prepare_finished_mutation(mode, root, operation, operationName);
+}
+
+function prepare_replace_document_attrs(
+  inputRoot: HsonNode,
+  mode: DocumentLiveMapMode,
+  targetInput: unknown,
+  attrsInput: unknown,
+): PreparedDocumentMutation<LiveMapGraphReplaceAttrsOp> {
+  const operationName = "replace-attrs";
+  const target = normalize_target(targetInput, operationName);
+  const attrs = decode_document_attrs(attrsInput);
+  if (attrs === undefined) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_ATTRIBUTE_VALUE",
+      operationName,
+      "attrs must be a canonical ordinary-attribute bag with valid, unprotected names",
+    );
+  }
+  const root = clone_live_root(inputRoot);
+  const element = require_element(resolve_target(root, mode, target, operationName), operationName);
+  if (Object.keys(attrs).length === 0) delete element.$_attrs;
+  else element.$_attrs = clone_node(attrs);
+
+  const operation: LiveMapGraphReplaceAttrsOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    attrs: clone_node(attrs),
   });
   return prepare_finished_mutation(mode, root, operation, operationName);
 }
@@ -397,6 +518,10 @@ export function prepare_document_graph_operation(
     must_exact_keys(input, ["domain", "op", "target", "name"], input.op);
     return prepare_remove_document_attr(root, mode, input.target, input.name);
   }
+  if (input.op === "replace-attrs") {
+    must_exact_keys(input, ["domain", "op", "target", "attrs"], input.op);
+    return prepare_replace_document_attrs(root, mode, input.target, input.attrs);
+  }
   if (input.op === "replace-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "replacement"], input.op);
     return prepare_replace_document_content(root, mode, input.target, input.index, input.replacement);
@@ -524,14 +649,12 @@ function require_existing_content_index(
   );
 }
 
-const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
-
 function normalize_attr_name(input: unknown, operation: DocumentOperation): string {
-  if (typeof input !== "string" || !HSON_ATTR_NAME.test(input)) {
-    throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_NAME", operation, "attribute name is not a canonical bare HSON name");
+  if (typeof input === "string" && input.startsWith(_META_DATA_PREFIX)) {
+    throw mutation_error("PROTECTED_DOCUMENT_METADATA", operation, "system metadata cannot be mutated through ordinary attrs");
   }
-  if (input.startsWith(_META_DATA_PREFIX)) {
-    throw mutation_error("PROTECTED_DOCUMENT_METADATA", operation, `${input} is persisted metadata, not an ordinary attribute`);
+  if (!is_public_document_attr_name(input)) {
+    throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_NAME", operation, "attribute name is not a canonical bare HSON name");
   }
   return input;
 }

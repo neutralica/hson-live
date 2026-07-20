@@ -120,24 +120,34 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
   const target = { kind: "path", path: [] } as const;
   if (map.mode === "element") {
     map.element.node();
-    map.element.content();
-    map.element.attrs.set(target, "id", "main");
-    map.element.attrs.drop(target, "id");
-    map.element.content.replace(target, 0, "text");
+    map.document.content();
+    map.document.attrs.set(target, "id", "main");
+    map.document.attrs.drop(target, "id");
+    map.document.attrs.setMany(target, { id: "main", hidden: false });
+    map.document.attrs.dropMany(target, ["id", "hidden"]);
+    map.document.attrs.clear(target);
+    map.document.attrs.replace(target, { title: "main" });
+    map.document.content.replace(target, 0, "text");
     // @ts-expect-error Attribute mutation belongs under the attrs namespace.
     map.element.setAttr(target, "id", "main");
-    // @ts-expect-error Bulk attribute mutation is not part of this slice.
-    map.element.attrs.setMany(target, { id: "main" });
+    // @ts-expect-error Element inspection does not duplicate document operations.
+    map.element.attrs;
+    // @ts-expect-error Element inspection does not duplicate document operations.
+    map.element.content;
   } else if (map.mode === "fragment") {
-    map.fragment.content();
-    map.fragment.attrs.set({ kind: "quid", quid: "known" }, "id", "value");
-    map.fragment.attrs.drop(target, "id");
-    map.fragment.content.replace(target, 0, "text");
+    map.document.content();
+    map.document.attrs.set({ kind: "quid", quid: "known" }, "id", "value");
+    map.document.attrs.drop(target, "id");
+    map.document.content.replace(target, 0, "text");
+    // @ts-expect-error Fragment mode has no duplicate operation façade.
+    map.fragment;
   } else {
     map.snap();
     map.proxy();
     // @ts-expect-error Data maps do not expose document capability namespaces.
-    map.element.attrs.set(target, "id", "main");
+    map.document.attrs.set(target, "id", "main");
+    // @ts-expect-error Projected maps do not expose document operations.
+    map.document;
   }
 
   return map.root();
@@ -162,7 +172,7 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
   // @ts-expect-error Data maps do not expose canonical document installation.
   hson.liveMap.fromJson({}).install(capture);
   // @ts-expect-error Data maps do not expose document attribute mutation.
-  hson.liveMap.fromJson({}).element.attrs.set({ kind: "path", path: [] }, "id", "x");
+  hson.liveMap.fromJson({}).document.attrs.set({ kind: "path", path: [] }, "id", "x");
   // @ts-expect-error Element is an instance capability, not a constructor namespace.
   hson.liveMap.element.fromTrustedHtml("<button>Save</button>");
   // @ts-expect-error Fragment is an instance capability, not a constructor namespace.

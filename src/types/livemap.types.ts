@@ -311,10 +311,13 @@ export type LiveMapDocumentTarget =
 /** Existing canonical HSON attribute value model; style remains structured. */
 export type LiveMapDocumentAttributeValue = Primitive | CssMap;
 
+/** Detached canonical final-state bag for public ordinary document attributes. */
+export type LiveMapDocumentAttrs = Readonly<Record<string, LiveMapDocumentAttributeValue>>;
+
 /** One legal candidate value for a canonical HSON `$_content` slot. */
 export type LiveMapDocumentContent = NodeContent[number];
 
-/** Single-attribute canonical mutation namespace. Bulk attribute APIs are intentionally absent. */
+/** Canonical ordinary-attribute mutation namespace. */
 export type DocumentLiveMapAttrsApi = Readonly<{
   set: (
     target: LiveMapDocumentTarget,
@@ -325,6 +328,21 @@ export type DocumentLiveMapAttrsApi = Readonly<{
     target: LiveMapDocumentTarget,
     name: string,
   ) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
+  setMany: (
+    target: LiveMapDocumentTarget,
+    values: LiveMapDocumentAttrs,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+  dropMany: (
+    target: LiveMapDocumentTarget,
+    names: readonly string[],
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+  clear: (
+    target: LiveMapDocumentTarget,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+  replace: (
+    target: LiveMapDocumentTarget,
+    values: LiveMapDocumentAttrs,
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
 }>;
 
 /** Detached content reader plus atomic single-slot structural mutations. */
@@ -351,21 +369,15 @@ export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) &
 }>;
 
 /** Shared detached canonical reads for element and fragment capabilities. */
-export type DocumentLiveMapReadApi = Readonly<{
+export type LiveMapDocumentApi = Readonly<{
   /** Return a detached clone of the complete canonical root. */
   root: () => HsonNode;
   /** Return detached top-level document content in canonical order. */
   content: DocumentLiveMapContentApi;
   /** Resolve persisted document identity to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
-  /** Canonical single-attribute mutation namespace. */
+  /** Canonical ordinary-attribute mutation namespace. */
   attrs: DocumentLiveMapAttrsApi;
-}>;
-
-/** Read capability available only on a single-element document map. */
-export type ElementLiveMapReadApi = DocumentLiveMapReadApi & Readonly<{
-  /** Return a detached clone of the single top-level ordinary element. */
-  node: () => HsonNode;
 }>;
 
 type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
@@ -392,11 +404,13 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
 }>;
 
 export type ElementLiveMap = DocumentLiveMapShared<"element"> & Readonly<{
-  element: ElementLiveMapReadApi;
+  readonly document: LiveMapDocumentApi;
+  /** Return a detached clone of the single top-level ordinary element. */
+  element: Readonly<{ node: () => HsonNode }>;
 }>;
 
 export type FragmentLiveMap = DocumentLiveMapShared<"fragment"> & Readonly<{
-  fragment: DocumentLiveMapReadApi;
+  readonly document: LiveMapDocumentApi;
 }>;
 
 /** Shape-specific document façade with detached reads and atomic capture install. */
@@ -484,6 +498,14 @@ export type LiveMapGraphRemoveAttrOp = Readonly<{
   name: string;
 }>;
 
+/** Atomic final-state replacement of one element's complete ordinary attribute bag. */
+export type LiveMapGraphReplaceAttrsOp = Readonly<{
+  domain: "graph";
+  op: "replace-attrs";
+  target: LiveMapDocumentTarget;
+  attrs: LiveMapDocumentAttrs;
+}>;
+
 export type LiveMapGraphReplaceContentOp = Readonly<{
   domain: "graph";
   op: "replace-content";
@@ -520,6 +542,7 @@ export type LiveMapGraphOp =
   | LiveMapGraphReplaceRootOp
   | LiveMapGraphSetAttrOp
   | LiveMapGraphRemoveAttrOp
+  | LiveMapGraphReplaceAttrsOp
   | LiveMapGraphReplaceContentOp
   | LiveMapGraphInsertContentOp
   | LiveMapGraphRemoveContentOp

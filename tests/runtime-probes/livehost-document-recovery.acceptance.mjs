@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
+import { make_livehost_canonical_stream } from "../../src/api/livehost/livehost.history.ts";
 
 let checks = 0;
 
@@ -62,6 +63,49 @@ function attach(host, map, cursor) {
 
 const root = { kind: "path", path: [] };
 
+await check("replace-attrs canonical history is detached and published exactly once", async () => {
+  let observer;
+  const fakeAuthority = {
+    mode: "element",
+    rev: 0,
+    commits: {
+      observe(listener) {
+        observer = listener;
+        return () => {};
+      },
+    },
+  };
+  const stream = make_livehost_canonical_stream(fakeAuthority, {
+    logicalMapId: "replace-attrs-history",
+    incarnationId: "replace-attrs-incarnation",
+  });
+  const publications = [];
+  stream.on_commit((commit) => publications.push(commit));
+  const attrs = { style: { color: "red" }, title: "after" };
+  observer({
+    kind: "commit",
+    origin: "authoritative",
+    commit: {
+      changed: true,
+      prevRev: 0,
+      rev: 1,
+      ops: [{ domain: "graph", op: "replace-attrs", target: root, attrs }],
+    },
+  });
+  const retained = stream.history.replay_after(0, 1);
+  assert.equal(retained?.length, 1);
+  assert.equal(publications.length, 1);
+  assert.equal(stream.headRev, 1);
+  assert.equal(stream.history.debug().retainedCommitCount, 1);
+  const retainedOp = retained?.[0]?.ops[0];
+  assert.equal(retainedOp?.op, "replace-attrs");
+  if (retainedOp?.op !== "replace-attrs") throw new Error("Expected replace-attrs");
+  assert.notEqual(retainedOp.attrs, attrs);
+  attrs.title = "caller-mutated";
+  attrs.style.color = "blue";
+  assert.deepEqual(retainedOp.attrs, { style: { color: "red" }, title: "after" });
+});
+
 await check("state and existing-map constructor forms are mutually exclusive at runtime", async () => {
   assert.throws(
     () => hson.liveHost.create({ state: {}, map: element(`<main/>`) }),
@@ -73,7 +117,7 @@ await check("existing element authority publishes detached graph history and rep
   const initial = `<main data-_quid="0000000000000001" <p data-_quid="0000000000000002" "old"/>/>`;
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-replay" });
-  const sourceCommit = authority.element.attrs.set({ kind: "quid", quid: "0000000000000002" }, "title", "kept");
+  const sourceCommit = authority.document.attrs.set({ kind: "quid", quid: "0000000000000002" }, "title", "kept");
   const retained = host.stream.history.replay_after(0, 1);
   assert.equal(host.map, authority);
   assert.equal(host.stream.mode, "element");
@@ -88,7 +132,7 @@ await check("existing element authority publishes detached graph history and rep
   assert.equal(client.map, mirror);
   assert.equal(client.map.mode, "element");
   assert.deepEqual(client.map.capture(), authority.capture());
-  assert.equal(client.map.element.byQuid("0000000000000002")?.$_attrs?.title, "kept");
+  assert.equal(client.map.document.byQuid("0000000000000002")?.$_attrs?.title, "kept");
 });
 
 await check("node-bearing fragment history is detached and incremental replay preserves QUID lookup", async () => {
@@ -96,7 +140,7 @@ await check("node-bearing fragment history is detached and incremental replay pr
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-replay" });
   const replacement = element(`<article data-_quid="0000000000000004" "new"/>`).element.node();
-  const sourceCommit = authority.fragment.content.replace(root, 0, replacement);
+  const sourceCommit = authority.document.content.replace(root, 0, replacement);
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -111,7 +155,7 @@ await check("node-bearing fragment history is detached and incremental replay pr
   assert.equal((await client.recovery.recover()).strategy, "replay");
   assert.equal(client.map.mode, "fragment");
   assert.deepEqual(client.map.capture(), authority.capture());
-  assert.equal(client.map.fragment.byQuid("0000000000000004")?.$_tag, "article");
+  assert.equal(client.map.document.byQuid("0000000000000004")?.$_tag, "article");
 });
 
 await check("insert-content history detaches canonical nodes from source commits and live graph", async () => {
@@ -119,7 +163,7 @@ await check("insert-content history detaches canonical nodes from source commits
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-insert-history" });
   const content = element(`<b data-_quid="000000000000001h"/>`).element.node();
-  const sourceCommit = authority.fragment.content.insert(root, 1, content);
+  const sourceCommit = authority.document.content.insert(root, 1, content);
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -132,14 +176,14 @@ await check("insert-content history detaches canonical nodes from source commits
   assert.deepEqual(retainedOp.content, sourceOp.content);
   content.$_tag = "caller-mutated";
   sourceOp.content.$_tag = "commit-mutated";
-  assert.equal(authority.fragment.byQuid("000000000000001h")?.$_tag, "b");
+  assert.equal(authority.document.byQuid("000000000000001h")?.$_tag, "b");
   assert.equal(retainedOp.content.$_tag, "b");
 });
 
 await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {
   const authority = element(`<main data-_quid="0000000000000005" <p data-_quid="0000000000000006"/>/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-snapshot" });
-  authority.element.attrs.set(root, "class", "ready");
+  authority.document.attrs.set(root, "class", "ready");
   const mirror = element(`<aside data-_quid="0000000000000007"/>`);
   const { client } = attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
@@ -147,8 +191,8 @@ await check("element snapshot recovery restores exact revision, mode, and persis
   assert.equal(client.map.mode, "element");
   assert.equal(client.map.rev, host.stream.headRev);
   assert.deepEqual(client.map.capture(), authority.capture());
-  assert.equal(client.map.element.byQuid("0000000000000005")?.$_tag, "main");
-  assert.equal(client.map.element.byQuid("0000000000000006")?.$_tag, "p");
+  assert.equal(client.map.document.byQuid("0000000000000005")?.$_tag, "main");
+  assert.equal(client.map.document.byQuid("0000000000000006")?.$_tag, "p");
 });
 
 await check("fragment snapshot recovery reconstructs fragment mode without JSON projection", async () => {
@@ -159,7 +203,7 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map.mode, "fragment");
   assert.deepEqual(client.map.capture(), authority.capture());
-  assert.equal(client.map.fragment.byQuid("0000000000000008")?.$_tag, "section");
+  assert.equal(client.map.document.byQuid("0000000000000008")?.$_tag, "section");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal(snapshot?.mode, "fragment");
   assert.equal(typeof snapshot?.hson, "string");
@@ -171,13 +215,13 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-gap", history: { maxCommits: 1 } });
   const mirror = element(initial);
-  authority.element.attrs.set(root, "class", "one");
-  authority.element.attrs.set(root, "title", "two");
+  authority.document.attrs.set(root, "class", "one");
+  authority.document.attrs.set(root, "title", "two");
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map.mode, "element");
   assert.deepEqual(client.map.capture(), authority.capture());
-  assert.equal(client.map.element.byQuid("0000000000000009")?.$_attrs?.title, "two");
+  assert.equal(client.map.document.byQuid("0000000000000009")?.$_attrs?.title, "two");
 });
 
 await check("projected subscription requests are rejected on document authorities without stream damage", async () => {
@@ -212,7 +256,7 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   const trace = { emit(event) { events.push(event); } };
   const authority = element(`<main/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-trace", trace });
-  authority.element.attrs.set(root, "class", "ready");
+  authority.document.attrs.set(root, "class", "ready");
   host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: host.stream.incarnationId,
@@ -237,7 +281,7 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   const replayAuthority = element(`<main/>`);
   hson.liveHost.create({ map: replayAuthority, trace: { emit(event) { replayEvents.push(event); } } });
   const source = element(`<main/>`);
-  replayAuthority.replay(source.element.attrs.set(root, "title", "replayed"));
+  replayAuthority.replay(source.document.attrs.set(root, "title", "replayed"));
   const replayPublication = replayEvents.find((event) => event.phase === "commit.publication");
   assert.equal(replayPublication?.status, "skip");
   assert.equal(replayPublication?.details.origin, "replay");

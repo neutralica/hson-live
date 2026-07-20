@@ -219,7 +219,7 @@ silently reconstructed as projected JSON.
 
 ### Built-in hosted document actions
 
-Element and fragment authorities register six reserved ordinary actions:
+Element and fragment authorities register ten reserved ordinary actions:
 
 ```ts
 client.action("document.attrs.set", {
@@ -231,6 +231,25 @@ client.action("document.attrs.set", {
 client.action("document.attrs.drop", {
   target: { kind: "path", path: [0] },
   name: "title",
+});
+
+client.action("document.attrs.setMany", {
+  target: { kind: "path", path: [] },
+  values: { id: "main", hidden: false },
+});
+
+client.action("document.attrs.dropMany", {
+  target: { kind: "path", path: [] },
+  names: ["id", "title"],
+});
+
+client.action("document.attrs.clear", {
+  target: { kind: "path", path: [] },
+});
+
+client.action("document.attrs.replace", {
+  target: { kind: "path", path: [] },
+  values: { role: "main", tabindex: 0 },
 });
 
 client.action("document.content.replace", {
@@ -257,8 +276,11 @@ client.action("document.content.move", {
 });
 ```
 
-`document.attrs.set` calls the existing shape-specific `attrs.set` API;
-`document.attrs.drop` calls `attrs.drop`; and `document.content.replace` calls
+`document.attrs.set` calls `attrs.set`; `document.attrs.drop` calls
+`attrs.drop`; and the four bulk actions call their identically named
+`attrs.setMany`, `attrs.dropMany`, `attrs.clear`, and `attrs.replace` methods.
+Every bulk action produces at most one canonical `replace-attrs` operation.
+`document.content.replace` calls
 the existing slot-based `content.replace(target, index, replacement)` API.
 The structural actions call only `content.insert(target, index, content)`,
 `content.remove(target, index)`, and `content.move(target, from, to)`.
@@ -267,6 +289,11 @@ a numeric canonical document path.
 
 Payloads are strict JSON action payloads. Attribute values are canonical
 primitives, or the existing structured style value when the name is `style`.
+Bulk values records use that same canonical domain. `setMany` preserves
+unspecified ordinary attrs, `dropMany` ignores valid absent names, `clear`
+removes all ordinary attrs, and `replace` installs the exact supplied bag.
+System metadata and persisted QUIDs are always preserved. Empty or equal final
+bags acknowledge without a revision, history entry, or publication.
 Content replacement and insertion accept a canonical primitive or the same
 JSON-safe canonical node representation already validated for graph
 operations. They do not accept raw HTML or introduce an HSON text action

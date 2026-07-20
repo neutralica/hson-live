@@ -72,26 +72,33 @@ function mustNode(value: HsonNode | Primitive | undefined, message: string): Hso
 }
 
 function setAttrWithUnknownTarget(map: ElementLiveMap, target: unknown): unknown {
-  return Reflect.apply(map.element.attrs.set, map.element.attrs, [target, "id", "x"]);
+  return Reflect.apply(map.document.attrs.set, map.document.attrs, [target, "id", "x"]);
 }
 
 function replaceWithUnknown(map: ElementLiveMap, replacement: unknown): unknown {
-  return Reflect.apply(map.element.content.replace, map.element.content, [path(0), 0, replacement]);
+  return Reflect.apply(map.document.content.replace, map.document.content, [path(0), 0, replacement]);
 }
 
 function insertWithUnknown(map: ElementLiveMap, content: unknown): unknown {
-  return Reflect.apply(map.element.content.insert, map.element.content, [path(0), 0, content]);
+  return Reflect.apply(map.document.content.insert, map.document.content, [path(0), 0, content]);
 }
 
 check("document capabilities use attrs and content namespaces only", () => {
   const map = element(`<main/>`);
-  assert.equal(typeof map.element.attrs.set, "function");
-  assert.equal(typeof map.element.attrs.drop, "function");
-  assert.equal(typeof map.element.content, "function");
-  assert.equal(typeof map.element.content.replace, "function");
-  assert.equal(typeof map.element.content.insert, "function");
-  assert.equal(typeof map.element.content.remove, "function");
-  assert.equal(typeof map.element.content.move, "function");
+  assert.equal(typeof map.document.attrs.set, "function");
+  assert.equal(typeof map.document.attrs.drop, "function");
+  assert.equal(typeof map.document.attrs.setMany, "function");
+  assert.equal(typeof map.document.attrs.dropMany, "function");
+  assert.equal(typeof map.document.attrs.clear, "function");
+  assert.equal(typeof map.document.attrs.replace, "function");
+  assert.equal(typeof map.document.content, "function");
+  assert.equal(typeof map.document.content.replace, "function");
+  assert.equal(typeof map.document.content.insert, "function");
+  assert.equal(typeof map.document.content.remove, "function");
+  assert.equal(typeof map.document.content.move, "function");
+  assert.equal(typeof map.element.node, "function");
+  assert.equal("attrs" in map.element, false);
+  assert.equal("content" in map.element, false);
   for (const key of ["setAttr", "setAttrs", "removeAttr", "removeAttrs", "replaceContent"]) {
     assert.equal(key in map.element, false);
   }
@@ -99,44 +106,51 @@ check("document capabilities use attrs and content namespaces only", () => {
   const dataArray = hson.liveMap.fromJson([]);
   assert.equal("element" in dataObject, false);
   assert.equal("fragment" in dataArray, false);
+  assert.equal("document" in dataObject, false);
+  assert.equal("document" in dataArray, false);
+
+  const fragmentMap = fragment(`<main/> <aside/>`);
+  assert.equal(typeof fragmentMap.document.attrs.set, "function");
+  assert.equal(typeof fragmentMap.document.content, "function");
+  assert.equal("fragment" in fragmentMap, false);
 });
 
 check("path and QUID targets resolve the same ordinary elements", () => {
   const byPath = element(`<main data-_quid="0000000000000001" <p id="old" data-_quid="0000000000000002" "x"/>/>`);
   const byIdentity = element(`<main data-_quid="0000000000000001" <p id="old" data-_quid="0000000000000002" "x"/>/>`);
-  byPath.element.attrs.set(path(0, 0), "id", "new");
-  byIdentity.element.attrs.set(quid("0000000000000002"), "id", "new");
+  byPath.document.attrs.set(path(0, 0), "id", "new");
+  byIdentity.document.attrs.set(quid("0000000000000002"), "id", "new");
   assert.deepEqual(byPath.root(), byIdentity.root());
-  assert.equal(byIdentity.element.byQuid("0000000000000002")?.$_attrs?.id, "new");
+  assert.equal(byIdentity.document.byQuid("0000000000000002")?.$_attrs?.id, "new");
 
-  errorCode(() => byPath.element.attrs.set({ kind: "path", path: [-1] }, "id", "x"), "INVALID_DOCUMENT_PATH");
-  errorCode(() => byPath.element.attrs.set({ kind: "path", path: [1.5] }, "id", "x"), "INVALID_DOCUMENT_PATH");
-  errorCode(() => byPath.element.attrs.set({ kind: "path", path: [Number.POSITIVE_INFINITY] }, "id", "x"), "INVALID_DOCUMENT_PATH");
-  errorCode(() => byPath.element.attrs.set(path(9), "id", "x"), "DOCUMENT_PATH_OUT_OF_RANGE");
-  errorCode(() => byPath.element.attrs.set(quid("000000000000000d"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
-  errorCode(() => byPath.element.attrs.set({ kind: "quid", quid: "" }, "id", "x"), "INVALID_DOCUMENT_TARGET");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [-1] }, "id", "x"), "INVALID_DOCUMENT_PATH");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [1.5] }, "id", "x"), "INVALID_DOCUMENT_PATH");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [Number.POSITIVE_INFINITY] }, "id", "x"), "INVALID_DOCUMENT_PATH");
+  errorCode(() => byPath.document.attrs.set(path(9), "id", "x"), "DOCUMENT_PATH_OUT_OF_RANGE");
+  errorCode(() => byPath.document.attrs.set(quid("000000000000000d"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
+  errorCode(() => byPath.document.attrs.set({ kind: "quid", quid: "" }, "id", "x"), "INVALID_DOCUMENT_TARGET");
   errorCode(() => setAttrWithUnknownTarget(byPath, { kind: "path", path: [], quid: "p" }), "INVALID_DOCUMENT_TARGET");
-  errorCode(() => setAttrWithUnknownTarget(byPath, byPath.element.byQuid("0000000000000002")), "INVALID_DOCUMENT_TARGET");
+  errorCode(() => setAttrWithUnknownTarget(byPath, byPath.document.byQuid("0000000000000002")), "INVALID_DOCUMENT_TARGET");
 });
 
 check("attribute endpoints reject primitives, wrappers, unquidded and foreign identity", () => {
   const map = element(`<main "text" <span/>/>`);
-  errorCode(() => map.element.attrs.set(path(0, 0), "id", "x"), "DOCUMENT_TARGET_KIND");
-  errorCode(() => map.element.attrs.set(quid("000000000000000c"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
+  errorCode(() => map.document.attrs.set(path(0, 0), "id", "x"), "DOCUMENT_TARGET_KIND");
+  errorCode(() => map.document.attrs.set(quid("000000000000000c"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
   const other = element(`<aside data-_quid="000000000000000b"/>`);
-  assert.equal(other.element.byQuid("000000000000000b")?.$_tag, "aside");
-  errorCode(() => map.element.attrs.set(quid("000000000000000b"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
+  assert.equal(other.document.byQuid("000000000000000b")?.$_tag, "aside");
+  errorCode(() => map.document.attrs.set(quid("000000000000000b"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
 
   const frag = fragment(`<div/> <span/>`);
-  errorCode(() => frag.fragment.attrs.set(path(), "id", "x"), "DOCUMENT_TARGET_KIND");
-  frag.fragment.attrs.set(path(0), "id", "div-id");
-  assert.equal(mustNode(frag.fragment.content()[0], "expected first fragment element").$_attrs?.id, "div-id");
+  errorCode(() => frag.document.attrs.set(path(), "id", "x"), "DOCUMENT_TARGET_KIND");
+  frag.document.attrs.set(path(0), "id", "div-id");
+  assert.equal(mustNode(frag.document.content()[0], "expected first fragment element").$_attrs?.id, "div-id");
 });
 
 check("attrs.set creates and replaces one canonical attribute with no-op equality", () => {
   const map = element(`<main id="old" title="kept" style="color: red" data-_quid="0000000000000001" data-_custom="meta" "text"/>`);
   const beforeContent = map.element.node().$_content;
-  const first = map.element.attrs.set(path(), "id", "new");
+  const first = map.document.attrs.set(path(), "id", "new");
   assert.deepEqual(first, {
     changed: true,
     prevRev: 0,
@@ -149,10 +163,10 @@ check("attrs.set creates and replaces one canonical attribute with no-op equalit
   assert.deepEqual(node.$_content, beforeContent);
   assert.deepEqual(node.$_meta, { "data-_quid": "0000000000000001", "data-_custom": "meta" });
 
-  assert.deepEqual(map.element.attrs.set(path(), "id", "new"), {
+  assert.deepEqual(map.document.attrs.set(path(), "id", "new"), {
     changed: false, prevRev: 1, rev: 1, ops: [],
   });
-  const created = map.element.attrs.set(path(), "role", "main");
+  const created = map.document.attrs.set(path(), "role", "main");
   assert.equal(created.ops[0]?.op, "set-attr");
   assert.equal(map.element.node().$_attrs?.role, "main");
 });
@@ -160,7 +174,7 @@ check("attrs.set creates and replaces one canonical attribute with no-op equalit
 check("structured attribute input and commit payload are detached", () => {
   const map = element(`<main/>`);
   const style = { color: "red", _hover: { color: "blue" } };
-  const commit = map.element.attrs.set(path(), "style", style);
+  const commit = map.document.attrs.set(path(), "style", style);
   style.color = "changed";
   style._hover.color = "changed";
   const styleOp = commit.ops[0];
@@ -169,16 +183,16 @@ check("structured attribute input and commit payload are detached", () => {
   assert.deepEqual(map.element.node().$_attrs?.style, { color: "red", _hover: { color: "blue" } });
 
   const before = map.capture();
-  assertAtomic(map, before, () => map.element.attrs.set(path(), "bad name", "x"));
-  errorCode(() => map.element.attrs.set(path(), "count", { nope: true }), "INVALID_DOCUMENT_ATTRIBUTE_VALUE");
-  errorCode(() => map.element.attrs.set(path(), "count", Number.NaN), "INVALID_DOCUMENT_ATTRIBUTE_VALUE");
-  errorCode(() => map.element.attrs.set(path(), "data-_quid", "new"), "PROTECTED_DOCUMENT_METADATA");
-  errorCode(() => map.element.attrs.set(path(), "data-_custom", "new"), "PROTECTED_DOCUMENT_METADATA");
+  assertAtomic(map, before, () => map.document.attrs.set(path(), "bad name", "x"));
+  errorCode(() => map.document.attrs.set(path(), "count", { nope: true }), "INVALID_DOCUMENT_ATTRIBUTE_VALUE");
+  errorCode(() => map.document.attrs.set(path(), "count", Number.NaN), "INVALID_DOCUMENT_ATTRIBUTE_VALUE");
+  errorCode(() => map.document.attrs.set(path(), "data-_quid", "new"), "PROTECTED_DOCUMENT_METADATA");
+  errorCode(() => map.document.attrs.set(path(), "data-_custom", "new"), "PROTECTED_DOCUMENT_METADATA");
 });
 
 check("attrs.drop removes only existing ordinary attributes", () => {
   const map = element(`<main id="drop" title="keep" data-_quid="0000000000000001" "x"/>`);
-  const changed = map.element.attrs.drop(quid("0000000000000001"), "id");
+  const changed = map.document.attrs.drop(quid("0000000000000001"), "id");
   assert.deepEqual(changed, {
     changed: true,
     prevRev: 0,
@@ -186,12 +200,155 @@ check("attrs.drop removes only existing ordinary attributes", () => {
     ops: [{ domain: "graph", op: "remove-attr", target: quid("0000000000000001"), name: "id" }],
   });
   assert.deepEqual(map.element.node().$_attrs, { title: "keep" });
-  assert.equal(map.element.byQuid("0000000000000001")?.$_tag, "main");
-  assert.deepEqual(map.element.attrs.drop(path(), "absent"), {
+  assert.equal(map.document.byQuid("0000000000000001")?.$_tag, "main");
+  assert.deepEqual(map.document.attrs.drop(path(), "absent"), {
     changed: false, prevRev: 1, rev: 1, ops: [],
   });
-  errorCode(() => map.element.attrs.drop(path(), "bad name"), "INVALID_DOCUMENT_ATTRIBUTE_NAME");
-  errorCode(() => map.element.attrs.drop(path(), "data-_quid"), "PROTECTED_DOCUMENT_METADATA");
+  errorCode(() => map.document.attrs.drop(path(), "bad name"), "INVALID_DOCUMENT_ATTRIBUTE_NAME");
+  errorCode(() => map.document.attrs.drop(path(), "data-_quid"), "PROTECTED_DOCUMENT_METADATA");
+});
+
+check("attrs.setMany preserves unspecified attrs and emits one atomic replace-attrs", () => {
+  const map = element(`<main id="old" title="kept" data-_quid="0000000000000020"/>`);
+  const observations: unknown[] = [];
+  map.commits.observe((event) => observations.push(event));
+  assert.deepEqual(map.document.attrs.setMany(path(), {}), {
+    changed: false, prevRev: 0, rev: 0, ops: [],
+  });
+  const values = {
+    id: "new",
+    hidden: false,
+    count: 0,
+    nullable: null,
+    style: { color: "red", _hover: { color: "blue" } },
+  };
+  const commit = map.document.attrs.setMany(path(), values);
+  assert.equal(commit.changed, true);
+  assert.equal(commit.rev, 1);
+  assert.equal(commit.ops.length, 1);
+  assert.equal(commit.ops[0]?.op, "replace-attrs");
+  if (commit.ops[0]?.op !== "replace-attrs") throw new Error("expected replace-attrs");
+  assert.deepEqual(commit.ops[0].attrs, {
+    count: 0,
+    hidden: false,
+    id: "new",
+    nullable: null,
+    style: { _hover: { color: "blue" }, color: "red" },
+    title: "kept",
+  });
+  assert.equal(observations.length, 1);
+  assert.equal(map.document.byQuid("0000000000000020")?.$_meta?.["data-_quid"], "0000000000000020");
+  values.id = "caller-mutated";
+  values.style.color = "blue";
+  assert.equal(map.element.node().$_attrs?.id, "new");
+  assert.equal(map.element.node().$_attrs?.style?.color, "red");
+  assert.deepEqual(map.document.attrs.setMany(path(), {
+    id: "new", hidden: false, count: 0, nullable: null,
+    style: { _hover: { color: "blue" }, color: "red" },
+  }), { changed: false, prevRev: 1, rev: 1, ops: [] });
+});
+
+check("attrs.setMany rejects every invalid bag atomically without partial application", () => {
+  const invalid = [
+    { good: "x", "bad name": "last" },
+    { "bad name": "first", good: "x" },
+    { good: "x", bad: undefined },
+    { good: "x", "data-_custom": "protected" },
+    { good: "x", style: { color: [] } },
+  ];
+  for (const values of invalid) {
+    const map = element(`<main id="kept" data-_quid="0000000000000021"/>`);
+    const before = map.capture();
+    assertAtomic(map, before, () => Reflect.apply(map.document.attrs.setMany, map.document.attrs, [path(), values]));
+    assert.equal(map.document.byQuid("0000000000000021")?.$_attrs?.id, "kept");
+  }
+});
+
+check("attrs.dropMany validates all names, ignores absence and duplicates, and compacts", () => {
+  const map = element(`<main id="drop" title="keep" class="drop" data-_quid="0000000000000022"/>`);
+  assert.deepEqual(map.document.attrs.dropMany(path(), []), {
+    changed: false, prevRev: 0, rev: 0, ops: [],
+  });
+  assert.deepEqual(map.document.attrs.dropMany(path(), ["absent"]), {
+    changed: false, prevRev: 0, rev: 0, ops: [],
+  });
+  const commit = map.document.attrs.dropMany(quid("0000000000000022"), ["id", "absent", "class", "id"]);
+  assert.equal(commit.changed, true);
+  assert.equal(commit.rev, 1);
+  assert.equal(commit.ops.length, 1);
+  assert.equal(commit.ops[0]?.op, "replace-attrs");
+  assert.deepEqual(map.element.node().$_attrs, { title: "keep" });
+  const before = map.capture();
+  assertAtomic(map, before, () => Reflect.apply(
+    map.document.attrs.dropMany,
+    map.document.attrs,
+    [path(), ["title", "bad name"]],
+  ));
+  assertAtomic(map, before, () => Reflect.apply(
+    map.document.attrs.dropMany,
+    map.document.attrs,
+    [path(), ["title", "data-_quid"]],
+  ));
+  const cleared = map.document.attrs.dropMany(path(), ["title"]);
+  assert.equal(cleared.ops[0]?.op, "replace-attrs");
+  assert.equal(Object.prototype.hasOwnProperty.call(map.element.node(), "$_attrs"), false);
+});
+
+check("attrs.clear preserves metadata, identity, tag and content with compact no-op semantics", () => {
+  const map = element(`<main id="old" style="color: red" data-_quid="0000000000000023" data-_custom="kept" "text"/>`);
+  const beforeContent = map.element.node().$_content;
+  const commit = map.document.attrs.clear(path());
+  assert.equal(commit.changed, true);
+  assert.equal(commit.rev, 1);
+  assert.deepEqual(commit.ops, [{ domain: "graph", op: "replace-attrs", target: path(), attrs: {} }]);
+  const node = map.element.node();
+  assert.equal(node.$_tag, "main");
+  assert.deepEqual(node.$_content, beforeContent);
+  assert.deepEqual(node.$_meta, {
+    "data-_quid": "0000000000000023",
+    "data-_custom": "kept",
+  });
+  assert.equal(Object.prototype.hasOwnProperty.call(node, "$_attrs"), false);
+  assert.equal(map.document.byQuid("0000000000000023")?.$_tag, "main");
+  assert.deepEqual(map.document.attrs.clear(path()), {
+    changed: false, prevRev: 1, rev: 1, ops: [],
+  });
+});
+
+check("attrs.replace installs the exact canonical bag on fragment and nested targets", () => {
+  const map = fragment(`<section id="old" title="removed" data-_quid="0000000000000024"/> "tail"`);
+  const values = {
+    empty: "",
+    hidden: false,
+    count: 0,
+    nullable: null,
+    style: { color: "red" },
+  };
+  const commit = map.document.attrs.replace(quid("0000000000000024"), values);
+  assert.equal(commit.ops.length, 1);
+  assert.equal(commit.ops[0]?.op, "replace-attrs");
+  assert.deepEqual(map.document.byQuid("0000000000000024")?.$_attrs, {
+    count: 0, empty: "", hidden: false, nullable: null, style: { color: "red" },
+  });
+  values.style.color = "caller-mutated";
+  assert.equal(map.document.byQuid("0000000000000024")?.$_attrs?.style?.color, "red");
+  assert.deepEqual(map.document.attrs.replace(path(0), {
+    style: { color: "red" }, nullable: null, hidden: false, empty: "", count: 0,
+  }), { changed: false, prevRev: 1, rev: 1, ops: [] });
+  const before = map.capture();
+  assertAtomic(map, before, () => Reflect.apply(
+    map.document.attrs.replace,
+    map.document.attrs,
+    [path(0), { good: "x", "data-_index": "protected" }],
+  ));
+  assertAtomic(map, before, () => Reflect.apply(
+    map.document.attrs.replace,
+    map.document.attrs,
+    [path(0), { style: { color: [] } }],
+  ));
+  const cleared = map.document.attrs.replace(path(0), {});
+  assert.equal(cleared.ops[0]?.op, "replace-attrs");
+  assert.equal(Object.prototype.hasOwnProperty.call(map.document.content()[0], "$_attrs"), false);
 });
 
 check("content.replace changes exactly one existing physical content slot", () => {
@@ -199,7 +356,7 @@ check("content.replace changes exactly one existing physical content slot", () =
   const clusterBefore = mustNode(map.element.node().$_content[0], "expected element cluster before replacement");
   assert.equal(clusterBefore.$_content.length, 3);
   const replacement = ordinary(`<em data-_quid="0000000000000004" "middle"/>`);
-  const commit = map.element.content.replace(path(0), 1, replacement);
+  const commit = map.document.content.replace(path(0), 1, replacement);
   assert.equal(commit.changed, true);
   assert.equal(commit.prevRev, 0);
   assert.equal(commit.rev, 1);
@@ -217,35 +374,35 @@ check("content.replace changes exactly one existing physical content slot", () =
   assert.equal(mustNode(cluster.$_content[1], "expected replacement node").$_tag, "em");
   assert.equal(mustNode(cluster.$_content[2], "expected final text node").$_content[0], "three");
   assert.equal(map.element.node().$_meta?.["data-_quid"], "0000000000000001");
-  assert.equal(map.element.byQuid("0000000000000003"), undefined);
-  assert.equal(map.element.byQuid("0000000000000004")?.$_tag, "em");
+  assert.equal(map.document.byQuid("0000000000000003"), undefined);
+  assert.equal(map.document.byQuid("0000000000000004")?.$_tag, "em");
 
   replacement.$_tag = "caller-mutated";
   const replaceOp = commit.ops[0];
   if (replaceOp?.op !== "replace-content" || !is_Node(replaceOp.replacement)) throw new Error("expected replace-content node op");
   replaceOp.replacement.$_tag = "commit-mutated";
-  assert.equal(map.element.byQuid("0000000000000004")?.$_tag, "em");
+  assert.equal(map.document.byQuid("0000000000000004")?.$_tag, "em");
 });
 
 check("primitive slots replace canonically and identical replacements are no-ops", () => {
   const map = element(`<main "text"/>`);
-  const changed = map.element.content.replace(path(0, 0), 0, "next");
+  const changed = map.document.content.replace(path(0, 0), 0, "next");
   assert.deepEqual([changed.prevRev, changed.rev, map.rev], [0, 1, 1]);
   const outer = mustNode(map.element.node().$_content[0], "expected outer element cluster");
   const inner = mustNode(outer.$_content[0], "expected inner element cluster");
   assert.equal(inner.$_content[0], "next");
-  assert.deepEqual(map.element.content.replace(path(0, 0), 0, "next"), {
+  assert.deepEqual(map.document.content.replace(path(0, 0), 0, "next"), {
     changed: false, prevRev: 1, rev: 1, ops: [],
   });
 
   const clonedCurrent = structuredClone(inner);
-  assert.deepEqual(map.element.content.replace(path(0), 0, clonedCurrent), {
+  assert.deepEqual(map.document.content.replace(path(0), 0, clonedCurrent), {
     changed: false, prevRev: 1, rev: 1, ops: [],
   });
   for (const index of [-1, 0.5, Number.POSITIVE_INFINITY]) {
-    errorCode(() => map.element.content.replace(path(0), index, ordinary(`<b/>`)), "INVALID_DOCUMENT_CONTENT_INDEX");
+    errorCode(() => map.document.content.replace(path(0), index, ordinary(`<b/>`)), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
-  errorCode(() => map.element.content.replace(path(0), 9, ordinary(`<b/>`)), "INVALID_DOCUMENT_CONTENT_INDEX");
+  errorCode(() => map.document.content.replace(path(0), 9, ordinary(`<b/>`)), "INVALID_DOCUMENT_CONTENT_INDEX");
   errorCode(() => replaceWithUnknown(map, undefined), "INVALID_DOCUMENT_REPLACEMENT");
 });
 
@@ -254,30 +411,30 @@ check("content identity preflight handles removal, addition, collision, duplicat
   const before = map.capture();
 
   const colliding = ordinary(`<new data-_quid="0000000000000006"/>`);
-  assertAtomic(map, before, () => map.element.content.replace(path(0), 0, colliding));
-  errorCode(() => map.element.content.replace(path(0), 0, colliding), "INVALID_DOCUMENT_IDENTITY");
+  assertAtomic(map, before, () => map.document.content.replace(path(0), 0, colliding));
+  errorCode(() => map.document.content.replace(path(0), 0, colliding), "INVALID_DOCUMENT_IDENTITY");
 
   const duplicate = ordinary(`<section data-_quid="0000000000000007" <i data-_quid="0000000000000008"/> <b data-_quid="0000000000000008"/>/>`);
-  errorCode(() => map.element.content.replace(path(0), 0, duplicate), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.replace(path(0), 0, duplicate), "INVALID_DOCUMENT_IDENTITY");
   assert.deepEqual(map.capture(), before);
 
   const malformed = ordinary(`<section/>`);
   Reflect.set(malformed, "$_meta", { "data-_quid": 42 });
-  errorCode(() => map.element.content.replace(path(0), 0, malformed), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.replace(path(0), 0, malformed), "INVALID_DOCUMENT_IDENTITY");
   assert.deepEqual(map.capture(), before);
 
   const reuse = ordinary(`<new data-_quid="0000000000000005" <child/>/>`);
-  const changed = map.element.content.replace(path(0), 0, reuse);
+  const changed = map.document.content.replace(path(0), 0, reuse);
   assert.equal(changed.changed, true);
-  assert.equal(map.element.byQuid("0000000000000005")?.$_tag, "new");
-  assert.equal(map.element.byQuid("0000000000000006")?.$_tag, "keep");
+  assert.equal(map.document.byQuid("0000000000000005")?.$_tag, "new");
+  assert.equal(map.document.byQuid("0000000000000006")?.$_tag, "keep");
   assert.equal(nodes(map.root()).some((node) => node.$_tag === "child" && node.$_meta?.["data-_quid"] !== undefined), false);
 });
 
 check("content.insert supports beginning, middle, append, empty, primitive and canonical node slots", () => {
   const map = element(`<main data-_quid="0000000000000010" "b" "d"/>`);
   const target = path(0);
-  const beginning = map.element.content.insert(target, 0, "a");
+  const beginning = map.document.content.insert(target, 0, "a");
   assert.deepEqual(beginning, {
     changed: true,
     prevRev: 0,
@@ -285,12 +442,12 @@ check("content.insert supports beginning, middle, append, empty, primitive and c
     ops: [{ domain: "graph", op: "insert-content", target, index: 0, content: "a" }],
   });
   const inserted = ordinary(`<c data-_quid="0000000000000011"/>`);
-  const middle = map.element.content.insert(target, 2, inserted);
+  const middle = map.document.content.insert(target, 2, inserted);
   assert.equal(middle.ops[0]?.op, "insert-content");
   const clusterBeforeAppend = mustNode(map.element.node().$_content[0], "expected content cluster");
-  const appended = map.element.content.insert(target, clusterBeforeAppend.$_content.length, "e");
+  const appended = map.document.content.insert(target, clusterBeforeAppend.$_content.length, "e");
   assert.deepEqual([beginning.rev, middle.rev, appended.rev, map.rev], [1, 2, 3, 3]);
-  assert.equal(map.element.byQuid("0000000000000011")?.$_tag, "c");
+  assert.equal(map.document.byQuid("0000000000000011")?.$_tag, "c");
   const cluster = mustNode(map.element.node().$_content[0], "expected appended content cluster");
   assert.deepEqual(cluster.$_content.map((item) => is_Node(item) ? item.$_tag : item), ["_hson_str", "_hson_str", "c", "_hson_str", "_hson_str"]);
 
@@ -298,10 +455,10 @@ check("content.insert supports beginning, middle, append, empty, primitive and c
   const insertOp = middle.ops[0];
   if (insertOp?.op !== "insert-content" || !is_Node(insertOp.content)) throw new Error("expected node insert operation");
   insertOp.content.$_tag = "commit-mutated";
-  assert.equal(map.element.byQuid("0000000000000011")?.$_tag, "c");
+  assert.equal(map.document.byQuid("0000000000000011")?.$_tag, "c");
 
   const empty = element(`<main/>`);
-  const emptyCommit = empty.element.content.insert(path(0), 0, "only");
+  const emptyCommit = empty.document.content.insert(path(0), 0, "only");
   assert.equal(emptyCommit.changed, true);
   assert.equal(mustNode(empty.element.node().$_content[0], "expected empty cluster").$_content.length, 1);
 });
@@ -310,65 +467,65 @@ check("content.insert validates bounds, canonical identity and mode atomically",
   const map = element(`<main data-_quid="0000000000000012" <keep data-_quid="0000000000000013"/>/>`);
   const before = map.capture();
   for (const index of [-1, 0.5, Number.POSITIVE_INFINITY, 2]) {
-    errorCode(() => map.element.content.insert(path(0), index, "x"), "INVALID_DOCUMENT_CONTENT_INDEX");
+    errorCode(() => map.document.content.insert(path(0), index, "x"), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
   const duplicate = ordinary(`<new data-_quid="0000000000000013"/>`);
-  errorCode(() => map.element.content.insert(path(0), 1, duplicate), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.insert(path(0), 1, duplicate), "INVALID_DOCUMENT_IDENTITY");
   errorCode(() => insertWithUnknown(map, { $_tag: "bad" }), "INVALID_DOCUMENT_REPLACEMENT");
   assert.deepEqual(map.capture(), before);
 
   const fragmentRoot = fragment(`"left"`);
   const node = ordinary(`<aside data-_quid="0000000000000014"/>`);
-  fragmentRoot.fragment.content.insert(path(), 1, node);
-  assert.equal(fragmentRoot.fragment.byQuid("0000000000000014")?.$_tag, "aside");
+  fragmentRoot.document.content.insert(path(), 1, node);
+  assert.equal(fragmentRoot.document.byQuid("0000000000000014")?.$_tag, "aside");
 });
 
 check("content.remove supports every existing slot, QUID targets and mode-safe only-slot removal", () => {
   const map = element(`<main data-_quid="0000000000000015" "a" <b data-_quid="0000000000000016"/> "c"/>`);
   const target = path(0);
-  assert.deepEqual(map.element.content.remove(target, 0).ops, [
+  assert.deepEqual(map.document.content.remove(target, 0).ops, [
     { domain: "graph", op: "remove-content", target, index: 0 },
   ]);
-  assert.equal(map.element.content.remove(target, 1).changed, true);
-  assert.equal(map.element.content.remove(target, 0).changed, true);
-  assert.equal(map.element.byQuid("0000000000000016"), undefined);
+  assert.equal(map.document.content.remove(target, 1).changed, true);
+  assert.equal(map.document.content.remove(target, 0).changed, true);
+  assert.equal(map.document.byQuid("0000000000000016"), undefined);
   assert.equal(mustNode(map.element.node().$_content[0], "expected emptied cluster").$_content.length, 0);
 
   const fragmentOnly = fragment(`"only"`);
-  assert.equal(fragmentOnly.fragment.content.remove(path(), 0).changed, true);
+  assert.equal(fragmentOnly.document.content.remove(path(), 0).changed, true);
   assert.equal(fragmentOnly.mode, "fragment");
-  assert.equal(fragmentOnly.fragment.content().length, 0);
+  assert.equal(fragmentOnly.document.content().length, 0);
 
   const byQuid = element(`<main data-_quid="0000000000000017"/>`);
-  byQuid.element.content.insert(quid("0000000000000017"), 1, contentCluster(`<aside/>`));
-  assert.equal(byQuid.element.content.remove(quid("0000000000000017"), 1).changed, true);
+  byQuid.document.content.insert(quid("0000000000000017"), 1, contentCluster(`<aside/>`));
+  assert.equal(byQuid.document.content.remove(quid("0000000000000017"), 1).changed, true);
   for (const index of [-1, 0.5, 1, 9]) {
-    errorCode(() => fragmentOnly.fragment.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
+    errorCode(() => fragmentOnly.document.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
 });
 
 check("content.move uses final-position semantics and preserves QUID identity", () => {
   const forward = fragment(`<a/> <b data-_quid="0000000000000018"/> <c/> <d/>`);
-  const forwardCommit = forward.fragment.content.move(path(), 1, 3);
+  const forwardCommit = forward.document.content.move(path(), 1, 3);
   assert.deepEqual(forwardCommit, {
     changed: true,
     prevRev: 0,
     rev: 1,
     ops: [{ domain: "graph", op: "move-content", target: path(), from: 1, to: 3 }],
   });
-  assert.deepEqual(forward.fragment.content().map((item) => mustNode(item, "expected element").$_tag), ["a", "c", "d", "b"]);
-  assert.equal(forward.fragment.byQuid("0000000000000018")?.$_tag, "b");
+  assert.deepEqual(forward.document.content().map((item) => mustNode(item, "expected element").$_tag), ["a", "c", "d", "b"]);
+  assert.equal(forward.document.byQuid("0000000000000018")?.$_tag, "b");
 
   const backward = fragment(`<a/> <b/> <c/> <d data-_quid="0000000000000019"/>`);
-  backward.fragment.content.move(path(), 3, 1);
-  assert.deepEqual(backward.fragment.content().map((item) => mustNode(item, "expected element").$_tag), ["a", "d", "b", "c"]);
-  backward.fragment.content.move(path(), 0, 3);
-  backward.fragment.content.move(path(), 3, 0);
-  assert.equal(backward.fragment.byQuid("0000000000000019")?.$_tag, "d");
+  backward.document.content.move(path(), 3, 1);
+  assert.deepEqual(backward.document.content().map((item) => mustNode(item, "expected element").$_tag), ["a", "d", "b", "c"]);
+  backward.document.content.move(path(), 0, 3);
+  backward.document.content.move(path(), 3, 0);
+  assert.equal(backward.document.byQuid("0000000000000019")?.$_tag, "d");
 
   const byQuid = element(`<main data-_quid="000000000000001a"/>`);
-  byQuid.element.content.insert(quid("000000000000001a"), 1, contentCluster(`<aside "x"/>`));
-  assert.equal(byQuid.element.content.move(quid("000000000000001a"), 0, 1).changed, true);
+  byQuid.document.content.insert(quid("000000000000001a"), 1, contentCluster(`<aside "x"/>`));
+  assert.equal(byQuid.document.content.move(quid("000000000000001a"), 0, 1).changed, true);
 });
 
 check("same-position move is a complete no-op and invalid move indexes are atomic", () => {
@@ -376,26 +533,26 @@ check("same-position move is a complete no-op and invalid move indexes are atomi
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
   const before = map.capture();
-  assert.deepEqual(map.fragment.content.move(path(), 1, 1), {
+  assert.deepEqual(map.document.content.move(path(), 1, 1), {
     changed: false, prevRev: 0, rev: 0, ops: [],
   });
   assert.deepEqual(map.capture(), before);
   assert.equal(observations.length, 0);
   for (const [from, to] of [[-1, 0], [0, -1], [2, 0], [0, 2], [0.5, 1]]) {
-    errorCode(() => map.fragment.content.move(path(), from, to), "INVALID_DOCUMENT_CONTENT_INDEX");
+    errorCode(() => map.document.content.move(path(), from, to), "INVALID_DOCUMENT_CONTENT_INDEX");
     assert.deepEqual(map.capture(), before);
   }
 });
 
 check("fragment root replacement preserves mode and supports capture/install interoperability", () => {
   const map = fragment(`"before" <div data-_quid="0000000000000009" "one"/> "after"`);
-  const beforeCount = map.fragment.content().length;
+  const beforeCount = map.document.content().length;
   const replacement = ordinary(`<span data-_quid="000000000000000a" "middle"/>`);
-  const changed = map.fragment.content.replace(path(), 1, replacement);
+  const changed = map.document.content.replace(path(), 1, replacement);
   assert.equal(changed.changed, true);
-  assert.equal(map.fragment.content().length, beforeCount);
-  assert.equal(map.fragment.byQuid("0000000000000009"), undefined);
-  assert.equal(map.fragment.byQuid("000000000000000a")?.$_tag, "span");
+  assert.equal(map.document.content().length, beforeCount);
+  assert.equal(map.document.byQuid("0000000000000009"), undefined);
+  assert.equal(map.document.byQuid("000000000000000a")?.$_tag, "span");
 
   const capture = map.capture();
   const target = fragment(`"left" <b/> "right"`);
@@ -405,23 +562,23 @@ check("fragment root replacement preserves mode and supports capture/install int
 
   const textOnly = fragment(`"text"`);
   const prior = textOnly.capture();
-  errorCode(() => textOnly.fragment.content.replace(path(), 0, ordinary(`<main/>`)), "DOCUMENT_MODE_MISMATCH");
+  errorCode(() => textOnly.document.content.replace(path(), 0, ordinary(`<main/>`)), "DOCUMENT_MODE_MISMATCH");
   assert.deepEqual(textOnly.capture(), prior);
 });
 
 check("sequential changes advance once while failures and no-ops consume no revision", () => {
   const map = element(`<main id="a" "x"/>`);
   assert.equal(map.rev, 0);
-  assert.deepEqual(map.element.attrs.set(path(), "id", "b"), {
+  assert.deepEqual(map.document.attrs.set(path(), "id", "b"), {
     changed: true, prevRev: 0, rev: 1,
     ops: [{ domain: "graph", op: "set-attr", target: path(), name: "id", value: "b" }],
   });
-  assert.deepEqual(map.element.attrs.drop(path(), "id"), {
+  assert.deepEqual(map.document.attrs.drop(path(), "id"), {
     changed: true, prevRev: 1, rev: 2,
     ops: [{ domain: "graph", op: "remove-attr", target: path(), name: "id" }],
   });
-  assert.deepEqual(map.element.attrs.drop(path(), "id"), { changed: false, prevRev: 2, rev: 2, ops: [] });
-  errorCode(() => map.element.content.replace(path(), 99, "bad"), "INVALID_DOCUMENT_CONTENT_INDEX");
+  assert.deepEqual(map.document.attrs.drop(path(), "id"), { changed: false, prevRev: 2, rev: 2, ops: [] });
+  errorCode(() => map.document.content.replace(path(), 99, "bad"), "INVALID_DOCUMENT_CONTENT_INDEX");
   assert.equal(map.rev, 2);
 });
 

@@ -46,7 +46,7 @@ function quids(root: HsonNode): string[] {
 }
 
 function lookup(map: DocumentLiveMap, quid: string): HsonNode | undefined {
-  return map.mode === "element" ? map.element.byQuid(quid) : map.fragment.byQuid(quid);
+  return map.mode === "element" ? map.document.byQuid(quid) : map.document.byQuid(quid);
 }
 
 function assert_unchanged(
@@ -82,9 +82,9 @@ check("element install atomically replaces root, identity, revision, and returns
     root: sourceCapture.root,
   });
   assert.deepEqual(target.root(), sourceCapture.root);
-  assert.equal(target.element.byQuid("0000000000000007")?.$_tag, "main");
-  assert.equal(target.element.byQuid("0000000000000008")?.$_tag, "p");
-  assert.equal(target.element.byQuid("0000000000000009"), undefined);
+  assert.equal(target.document.byQuid("0000000000000007")?.$_tag, "main");
+  assert.equal(target.document.byQuid("0000000000000008")?.$_tag, "p");
+  assert.equal(target.document.byQuid("0000000000000009"), undefined);
   assert.notEqual(commit.ops[0]?.root, target.root());
 });
 
@@ -106,7 +106,7 @@ check("fragment install preserves canonical document varieties", () => {
     assert.equal(commit.changed, true);
     assert.deepEqual(target.capture().root, capture.root);
     assert.equal(target.capture().mode, capture.mode);
-    for (const quid of quids(capture.root)) assert.notEqual(target.fragment.byQuid(quid), undefined);
+    for (const quid of quids(capture.root)) assert.notEqual(target.document.byQuid(quid), undefined);
   }
 });
 
@@ -187,8 +187,8 @@ check("install accepts sparse identity and rejects invalid present identity", ()
   const sparseCommit = target.install(sparse);
   assert.equal(sparseCommit.changed, true);
   assert.equal(target.rev, 1);
-  assert.equal(target.element.byQuid("000000000000000a"), undefined);
-  assert.equal(target.element.byQuid("0000000000000005")?.$_tag, "section");
+  assert.equal(target.document.byQuid("000000000000000a"), undefined);
+  assert.equal(target.document.byQuid("0000000000000005")?.$_tag, "section");
   assert.equal(nodes(target.capture().root).find((node) => node.$_tag === "p")?.$_meta?.["data-_quid"], undefined);
 
   const empty = structuredClone(base);
@@ -219,8 +219,8 @@ check("install and recapture preserve completely unquidded document graphs", () 
   assert.deepEqual([commit.prevRev, commit.rev, target.rev], [0, 1, 1]);
   assert.deepEqual(quids(target.root()), []);
   assert.deepEqual(quids(target.capture().root), []);
-  assert.equal(target.element.byQuid("000000000000000f"), undefined);
-  assert.equal(target.element.byQuid("anything"), undefined);
+  assert.equal(target.document.byQuid("000000000000000f"), undefined);
+  assert.equal(target.document.byQuid("anything"), undefined);
 });
 
 check("installed ownership and graph commit payload are recursively detached", () => {
@@ -249,8 +249,8 @@ check("installed ownership and graph commit payload are recursively detached", (
     opRoot.$_meta = { "data-_quid": "0000000000000012" };
   }
   assert.deepEqual(target.root(), installed);
-  assert.equal(target.element.byQuid("0000000000000001")?.$_tag, "main");
-  assert.equal(target.element.byQuid("0000000000000002")?.$_tag, "p");
+  assert.equal(target.document.byQuid("0000000000000001")?.$_tag, "main");
+  assert.equal(target.document.byQuid("0000000000000002")?.$_tag, "p");
 });
 
 check("canonical identical install follows data replace no-op policy", () => {
@@ -266,12 +266,12 @@ check("valid install replaces a target damaged through unsafe debug access", () 
   const liveMeta = target.debug.node(["main"]).meta();
   if (liveMeta === undefined) throw new Error("Expected live metadata");
   liveMeta["data-_quid"] = "damaged";
-  assert.equal(target.element.byQuid("000000000000000f")?.$_meta?.["data-_quid"], "damaged");
+  assert.equal(target.document.byQuid("000000000000000f")?.$_meta?.["data-_quid"], "damaged");
 
   const sourceCapture = element(`<section data-_quid="0000000000000010"/>`).capture();
   target.install(sourceCapture);
-  assert.equal(target.element.byQuid("000000000000000f"), undefined);
-  assert.equal(target.element.byQuid("0000000000000010")?.$_tag, "section");
+  assert.equal(target.document.byQuid("000000000000000f"), undefined);
+  assert.equal(target.document.byQuid("0000000000000010")?.$_tag, "section");
 });
 
 check("data façades do not expose document install at runtime", () => {
