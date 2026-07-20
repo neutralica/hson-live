@@ -193,15 +193,39 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
   if (op.op === "remove-attr") {
     return Object.freeze({ domain: "graph", op: "remove-attr", target, name: op.name });
   }
-  return Object.freeze({
-    domain: "graph",
-    op: "replace-content",
-    target,
-    index: op.index,
-    replacement: is_Node(op.replacement)
-      ? clone_live_root(op.replacement)
-      : op.replacement,
-  });
+  if (op.op === "replace-content") {
+    return Object.freeze({
+      domain: "graph",
+      op: "replace-content",
+      target,
+      index: op.index,
+      replacement: is_Node(op.replacement)
+        ? clone_live_root(op.replacement)
+        : op.replacement,
+    });
+  }
+  if (op.op === "insert-content") {
+    return Object.freeze({
+      domain: "graph",
+      op: "insert-content",
+      target,
+      index: op.index,
+      content: is_Node(op.content) ? clone_live_root(op.content) : op.content,
+    });
+  }
+  if (op.op === "remove-content") {
+    return Object.freeze({ domain: "graph", op: "remove-content", target, index: op.index });
+  }
+  if (op.op === "move-content") {
+    return Object.freeze({
+      domain: "graph",
+      op: "move-content",
+      target,
+      from: op.from,
+      to: op.to,
+    });
+  }
+  throw new Error("LiveHost canonical graph operation discriminant is invalid.");
 }
 
 function canonical_commit<TMap extends LiveMapAuthority>(

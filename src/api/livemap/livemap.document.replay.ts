@@ -9,6 +9,7 @@ import type {
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapReplayInputError, LiveMapRevError } from "./livemap.error.js";
 import {
+  canonical_graph_equal,
   prepare_document_install,
   type PreparedDocumentInstall,
 } from "./livemap.document.install.js";
@@ -68,6 +69,9 @@ export function replay_livemap_document_commit(
     }
 
     const prepared = prepare_document_graph_operation(root, controller.mode, rawOperation);
+    if (canonical_graph_equal(root, prepared.root)) {
+      throw new LiveMapReplayInputError("changed graph commit contains an unchanged operation", index);
+    }
     root = prepared.root;
     identity = prepared.identity;
     operations.push(prepared.operation);

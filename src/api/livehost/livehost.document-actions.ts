@@ -24,6 +24,9 @@ const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActio
   "document.attr.set",
   "document.attr.drop",
   "document.content.replace",
+  "document.content.insert",
+  "document.content.remove",
+  "document.content.move",
 ]);
 
 /** Resolve one reserved built-in without mutating. Execution remains in the normal action pipeline. */
@@ -79,19 +82,55 @@ export function resolve_livehost_document_action(
     });
   }
 
-  if (!has_exact_keys(payload, ["target", "index", "replacement"])) return invalid_fields(name);
-  const index = payload.index;
-  if (typeof index !== "number" || !Number.isInteger(index) || index < 0) {
-    return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content index is invalid.` });
+  if (name === "document.content.replace") {
+    if (!has_exact_keys(payload, ["target", "index", "replacement"])) return invalid_fields(name);
+    const index = non_negative_integer(payload.index);
+    if (index === undefined) return invalid_index(name);
+    const replacement = decode_livehost_document_content(payload.replacement);
+    if (replacement === undefined) {
+      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} replacement is invalid.` });
+    }
+    return Object.freeze({
+      kind: "ready",
+      payload,
+      execute: () => { void api.content.replace(target, index, replacement); },
+    });
   }
-  const replacement = decode_livehost_document_content(payload.replacement);
-  if (replacement === undefined) {
-    return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} replacement is invalid.` });
+
+  if (name === "document.content.insert") {
+    if (!has_exact_keys(payload, ["target", "index", "content"])) return invalid_fields(name);
+    const index = non_negative_integer(payload.index);
+    if (index === undefined) return invalid_index(name);
+    const content = decode_livehost_document_content(payload.content);
+    if (content === undefined) {
+      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content is invalid.` });
+    }
+    return Object.freeze({
+      kind: "ready",
+      payload,
+      execute: () => { void api.content.insert(target, index, content); },
+    });
   }
+
+  if (name === "document.content.remove") {
+    if (!has_exact_keys(payload, ["target", "index"])) return invalid_fields(name);
+    const index = non_negative_integer(payload.index);
+    if (index === undefined) return invalid_index(name);
+    return Object.freeze({
+      kind: "ready",
+      payload,
+      execute: () => { void api.content.remove(target, index); },
+    });
+  }
+
+  if (!has_exact_keys(payload, ["target", "from", "to"])) return invalid_fields(name);
+  const from = non_negative_integer(payload.from);
+  const to = non_negative_integer(payload.to);
+  if (from === undefined || to === undefined) return invalid_index(name);
   return Object.freeze({
     kind: "ready",
     payload,
-    execute: () => { void api.content.replace(target, index, replacement); },
+    execute: () => { void api.content.move(target, from, to); },
   });
 }
 
@@ -101,6 +140,14 @@ function is_document_action_name(name: string): name is LiveHostDocumentActionNa
 
 function invalid_fields(name: LiveHostDocumentActionName): LiveHostDocumentActionResolution {
   return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} payload fields are malformed.` });
+}
+
+function invalid_index(name: LiveHostDocumentActionName): LiveHostDocumentActionResolution {
+  return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content index is invalid.` });
+}
+
+function non_negative_integer(value: JsonValue | undefined): number | undefined {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {

@@ -349,6 +349,30 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGrap
       ? undefined
       : Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement });
   }
+  if (value.op === "insert-content") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "index", "content"])) return undefined;
+    const index = required_rev(value.index);
+    if (index === undefined) return undefined;
+    const content = decode_document_content(value.content);
+    return content === undefined
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "insert-content", target, index, content });
+  }
+  if (value.op === "remove-content") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "index"])) return undefined;
+    const index = required_rev(value.index);
+    return index === undefined
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "remove-content", target, index });
+  }
+  if (value.op === "move-content") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "from", "to"])) return undefined;
+    const from = required_rev(value.from);
+    const to = required_rev(value.to);
+    return from === undefined || to === undefined || from === to
+      ? undefined
+      : Object.freeze({ domain: "graph", op: "move-content", target, from, to });
+  }
   return undefined;
 }
 

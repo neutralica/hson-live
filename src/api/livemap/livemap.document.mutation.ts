@@ -1,5 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, ROOT_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
+import { ELEM_TAG, ROOT_TAG, STR_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
@@ -12,8 +12,11 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentTarget,
   LiveMapGraphCommit,
+  LiveMapGraphInsertContentOp,
+  LiveMapGraphMoveContentOp,
   LiveMapGraphOp,
   LiveMapGraphRemoveAttrOp,
+  LiveMapGraphRemoveContentOp,
   LiveMapGraphReplaceContentOp,
   LiveMapGraphSetAttrOp,
 } from "../../types/livemap.types.js";
@@ -46,7 +49,7 @@ export type LiveMapDocumentMutationController = Readonly<{
   ) => LiveMapGraphCommit<TOp>;
 }>;
 
-/** Build the three-operation document capability over one atomic Core controller. */
+/** Build the document capability over one atomic Core controller. */
 export function make_livemap_document_mutation_api(
   controller: LiveMapDocumentMutationController,
 ): Readonly<{
@@ -56,6 +59,20 @@ export function make_livemap_document_mutation_api(
     index: number,
     replacement: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  insertContent: (
+    target: LiveMapDocumentTarget,
+    index: number,
+    content: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+  removeContent: (
+    target: LiveMapDocumentTarget,
+    index: number,
+  ) => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
+  moveContent: (
+    target: LiveMapDocumentTarget,
+    from: number,
+    to: number,
+  ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }> {
   const attrs: DocumentLiveMapAttrsApi = Object.freeze({
     set: (target, name, value) => set_document_attr(controller, target, name, value),
@@ -65,6 +82,12 @@ export function make_livemap_document_mutation_api(
     attrs,
     replaceContent: (target, index, replacement) =>
       replace_document_content(controller, target, index, replacement),
+    insertContent: (target, index, content) =>
+      insert_document_content(controller, target, index, content),
+    removeContent: (target, index) =>
+      remove_document_content(controller, target, index),
+    moveContent: (target, from, to) =>
+      move_document_content(controller, target, from, to),
   });
 }
 
@@ -164,10 +187,7 @@ function prepare_replace_document_content(
   const index = normalize_content_index(indexInput, operationName);
   const replacement = clone_content(replacementInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = resolve_target(root, mode, target, operationName);
-  if (!is_Node(endpoint)) {
-    throw mutation_error("DOCUMENT_TARGET_KIND", operationName, "target is a primitive and has no content slots");
-  }
+  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
   if (index >= endpoint.$_content.length) {
     throw mutation_error(
       "INVALID_DOCUMENT_CONTENT_INDEX",
@@ -183,6 +203,127 @@ function prepare_replace_document_content(
     target,
     index,
     replacement: clone_content(replacement, operationName),
+  });
+  return prepare_finished_mutation(mode, root, operation, operationName);
+}
+
+function insert_document_content(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  indexInput: unknown,
+  contentInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphInsertContentOp> {
+  const candidate = prepare_insert_document_content(
+    controller.root(), controller.mode, targetInput, indexInput, contentInput,
+  );
+  return finish_mutation(controller, candidate);
+}
+
+function prepare_insert_document_content(
+  inputRoot: HsonNode,
+  mode: DocumentLiveMapMode,
+  targetInput: unknown,
+  indexInput: unknown,
+  contentInput: unknown,
+): PreparedDocumentMutation<LiveMapGraphInsertContentOp> {
+  const operationName = "insert-content";
+  const target = normalize_target(targetInput, operationName);
+  const index = normalize_content_index(indexInput, operationName);
+  const content = clone_content(contentInput, operationName);
+  const root = clone_live_root(inputRoot);
+  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  if (index > endpoint.$_content.length) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_CONTENT_INDEX",
+      operationName,
+      `content index ${index} is outside the insertion range 0 through ${endpoint.$_content.length}`,
+    );
+  }
+  endpoint.$_content.splice(index, 0, insertion_content(endpoint, content));
+
+  const operation: LiveMapGraphInsertContentOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    index,
+    content: clone_content(content, operationName),
+  });
+  return prepare_finished_mutation(mode, root, operation, operationName);
+}
+
+function remove_document_content(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  indexInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphRemoveContentOp> {
+  const candidate = prepare_remove_document_content(controller.root(), controller.mode, targetInput, indexInput);
+  return finish_mutation(controller, candidate);
+}
+
+function prepare_remove_document_content(
+  inputRoot: HsonNode,
+  mode: DocumentLiveMapMode,
+  targetInput: unknown,
+  indexInput: unknown,
+): PreparedDocumentMutation<LiveMapGraphRemoveContentOp> {
+  const operationName = "remove-content";
+  const target = normalize_target(targetInput, operationName);
+  const index = normalize_content_index(indexInput, operationName);
+  const root = clone_live_root(inputRoot);
+  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  require_existing_content_index(endpoint, index, operationName);
+  endpoint.$_content.splice(index, 1);
+
+  const operation: LiveMapGraphRemoveContentOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    index,
+  });
+  return prepare_finished_mutation(mode, root, operation, operationName);
+}
+
+function move_document_content(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  fromInput: unknown,
+  toInput: unknown,
+): LiveMapGraphCommit<LiveMapGraphMoveContentOp> {
+  const candidate = prepare_move_document_content(
+    controller.root(), controller.mode, targetInput, fromInput, toInput,
+  );
+  return finish_mutation(controller, candidate);
+}
+
+function prepare_move_document_content(
+  inputRoot: HsonNode,
+  mode: DocumentLiveMapMode,
+  targetInput: unknown,
+  fromInput: unknown,
+  toInput: unknown,
+): PreparedDocumentMutation<LiveMapGraphMoveContentOp> {
+  const operationName = "move-content";
+  const target = normalize_target(targetInput, operationName);
+  const from = normalize_content_index(fromInput, operationName);
+  const to = normalize_content_index(toInput, operationName);
+  const root = clone_live_root(inputRoot);
+  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  require_existing_content_index(endpoint, from, operationName);
+  require_existing_content_index(endpoint, to, operationName);
+  if (from !== to) {
+    const moved = endpoint.$_content.splice(from, 1)[0];
+    if (moved === undefined) {
+      throw mutation_error("INVALID_DOCUMENT_CONTENT_INDEX", operationName, `content index ${from} is unavailable`);
+    }
+    endpoint.$_content.splice(to, 0, moved);
+  }
+
+  const operation: LiveMapGraphMoveContentOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target,
+    from,
+    to,
   });
   return prepare_finished_mutation(mode, root, operation, operationName);
 }
@@ -259,6 +400,18 @@ export function prepare_document_graph_operation(
   if (input.op === "replace-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "replacement"], input.op);
     return prepare_replace_document_content(root, mode, input.target, input.index, input.replacement);
+  }
+  if (input.op === "insert-content") {
+    must_exact_keys(input, ["domain", "op", "target", "index", "content"], input.op);
+    return prepare_insert_document_content(root, mode, input.target, input.index, input.content);
+  }
+  if (input.op === "remove-content") {
+    must_exact_keys(input, ["domain", "op", "target", "index"], input.op);
+    return prepare_remove_document_content(root, mode, input.target, input.index);
+  }
+  if (input.op === "move-content") {
+    must_exact_keys(input, ["domain", "op", "target", "from", "to"], input.op);
+    return prepare_move_document_content(root, mode, input.target, input.from, input.to);
   }
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", `unsupported graph operation ${JSON.stringify(input.op)}`);
 }
@@ -351,6 +504,26 @@ function require_element(endpoint: HsonNode | Primitive, operation: DocumentOper
   return endpoint;
 }
 
+function require_content_endpoint(endpoint: HsonNode | Primitive, operation: DocumentOperation): HsonNode {
+  if (!is_Node(endpoint)) {
+    throw mutation_error("DOCUMENT_TARGET_KIND", operation, "target is a primitive and has no content slots");
+  }
+  return endpoint;
+}
+
+function require_existing_content_index(
+  endpoint: HsonNode,
+  index: number,
+  operation: DocumentOperation,
+): void {
+  if (index < endpoint.$_content.length) return;
+  throw mutation_error(
+    "INVALID_DOCUMENT_CONTENT_INDEX",
+    operation,
+    `content index ${index} is outside the existing ${endpoint.$_content.length} slot(s)`,
+  );
+}
+
 const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
 
 function normalize_attr_name(input: unknown, operation: DocumentOperation): string {
@@ -390,6 +563,13 @@ function clone_content(input: unknown, operation: DocumentOperation): LiveMapDoc
   }
   if (is_finite_primitive(input)) return input;
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "replacement must be one canonical HSON node or primitive");
+}
+
+function insertion_content(endpoint: HsonNode, content: LiveMapDocumentContent): LiveMapDocumentContent {
+  if (endpoint.$_tag === ELEM_TAG && typeof content === "string") {
+    return { $_tag: STR_TAG, $_content: [content] };
+  }
+  return content;
 }
 
 function clone_attr_value(value: LiveMapDocumentAttributeValue): LiveMapDocumentAttributeValue {

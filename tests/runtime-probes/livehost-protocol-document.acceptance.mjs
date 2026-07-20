@@ -64,6 +64,33 @@ check("document commits decode graph operations without projected coercion", () 
       index: 0,
       replacement: { $_tag: "span", $_meta: { "data-_quid": "0000000000000002" }, $_content: [] },
     },
+    {
+      domain: "graph",
+      op: "insert-content",
+      target: { kind: "path", path: [] },
+      index: 1,
+      content: "text",
+    },
+    {
+      domain: "graph",
+      op: "insert-content",
+      target: { kind: "path", path: [] },
+      index: 2,
+      content: { $_tag: "aside", $_meta: { "data-_quid": "0000000000000003" }, $_content: [] },
+    },
+    {
+      domain: "graph",
+      op: "remove-content",
+      target: { kind: "path", path: [] },
+      index: 0,
+    },
+    {
+      domain: "graph",
+      op: "move-content",
+      target: { kind: "path", path: [] },
+      from: 0,
+      to: 1,
+    },
   ]));
   assert.equal(valid.ok, true);
   if (!valid.ok || valid.value.type !== "commit") throw new Error("Expected decoded commit");
@@ -113,6 +140,15 @@ check("malformed graph targets, attributes, content, and mixed operations are re
     { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "data-_quid", value: "0000000000000002" },
     { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "title", value: {} },
     { domain: "graph", op: "replace-content", target: { kind: "path", path: [] }, index: 0, replacement: { $_tag: "p", $_content: [], extra: true } },
+    { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: -1, content: "x" },
+    { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0, content: { $_tag: "p", $_content: [], extra: true } },
+    { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0 },
+    { domain: "graph", op: "remove-content", target: { kind: "path", path: [] }, index: 0, extra: true },
+    { domain: "graph", op: "remove-content", target: { kind: "path", path: [] } },
+    { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: -1, to: 0 },
+    { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: 0, to: 0 },
+    { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: 0 },
+    { domain: "graph", op: "move-content", target: { kind: "path", path: [] }, from: 0, to: 1, extra: true },
   ];
   for (const op of invalidOps) assert.equal(decode(commit("element", [op])).ok, false);
 

@@ -327,13 +327,27 @@ export type DocumentLiveMapAttrsApi = Readonly<{
   ) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
 }>;
 
-/** Detached content reader plus exact existing-slot replacement. */
+/** Detached content reader plus atomic single-slot structural mutations. */
 export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{
   replace: (
     target: LiveMapDocumentTarget,
     index: number,
     replacement: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  insert: (
+    target: LiveMapDocumentTarget,
+    index: number,
+    content: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+  remove: (
+    target: LiveMapDocumentTarget,
+    index: number,
+  ) => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
+  move: (
+    target: LiveMapDocumentTarget,
+    from: number,
+    to: number,
+  ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }>;
 
 /** Shared detached canonical reads for element and fragment capabilities. */
@@ -478,12 +492,38 @@ export type LiveMapGraphReplaceContentOp = Readonly<{
   replacement: LiveMapDocumentContent;
 }>;
 
+export type LiveMapGraphInsertContentOp = Readonly<{
+  domain: "graph";
+  op: "insert-content";
+  target: LiveMapDocumentTarget;
+  index: number;
+  content: LiveMapDocumentContent;
+}>;
+
+export type LiveMapGraphRemoveContentOp = Readonly<{
+  domain: "graph";
+  op: "remove-content";
+  target: LiveMapDocumentTarget;
+  index: number;
+}>;
+
+export type LiveMapGraphMoveContentOp = Readonly<{
+  domain: "graph";
+  op: "move-content";
+  target: LiveMapDocumentTarget;
+  from: number;
+  to: number;
+}>;
+
 /** Canonical graph-domain operations; distinct from projected JSON writes. */
 export type LiveMapGraphOp =
   | LiveMapGraphReplaceRootOp
   | LiveMapGraphSetAttrOp
   | LiveMapGraphRemoveAttrOp
-  | LiveMapGraphReplaceContentOp;
+  | LiveMapGraphReplaceContentOp
+  | LiveMapGraphInsertContentOp
+  | LiveMapGraphRemoveContentOp
+  | LiveMapGraphMoveContentOp;
 
 /** Select a LiveMap operation domain; bare use preserves the existing data domain. */
 export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =

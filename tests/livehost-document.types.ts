@@ -128,9 +128,26 @@ typedDocumentClient.action("document.content.replace", {
   index: 0,
   replacement: elementCandidate.element.node(),
 });
+typedDocumentClient.action("document.content.insert", {
+  target: { kind: "path", path: [] },
+  index: 0,
+  content: elementCandidate.element.node(),
+});
+typedDocumentClient.action("document.content.remove", {
+  target: { kind: "path", path: [] },
+  index: 0,
+});
+typedDocumentClient.action("document.content.move", {
+  target: { kind: "path", path: [] },
+  from: 0,
+  to: 1,
+});
 const builtins: LiveHostDocumentActionPayloads = {
   "document.attr.set": { target: { kind: "path", path: [] }, name: "id", value: "main" },
   "document.attr.drop": { target: { kind: "path", path: [] }, name: "id" },
   "document.content.replace": { target: { kind: "path", path: [] }, index: 0, replacement: "text" },
+  "document.content.insert": { target: { kind: "path", path: [] }, index: 0, content: "text" },
+  "document.content.remove": { target: { kind: "path", path: [] }, index: 0 },
+  "document.content.move": { target: { kind: "path", path: [] }, from: 0, to: 1 },
 };
 void builtins;

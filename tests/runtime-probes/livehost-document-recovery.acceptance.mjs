@@ -114,6 +114,28 @@ await check("node-bearing fragment history is detached and incremental replay pr
   assert.equal(client.map.fragment.byQuid("0000000000000004")?.$_tag, "article");
 });
 
+await check("insert-content history detaches canonical nodes from source commits and live graph", async () => {
+  const initial = `<a/> <c/>`;
+  const authority = fragment(initial);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "document-insert-history" });
+  const content = element(`<b data-_quid="000000000000001h"/>`).element.node();
+  const sourceCommit = authority.fragment.content.insert(root, 1, content);
+  const retained = host.stream.history.replay_after(0, 1)?.[0];
+  const sourceOp = sourceCommit.ops[0];
+  const retainedOp = retained?.ops[0];
+  assert.equal(sourceOp?.op, "insert-content");
+  assert.equal(retainedOp?.op, "insert-content");
+  if (sourceOp?.op !== "insert-content" || retainedOp?.op !== "insert-content") {
+    throw new Error("Expected content insertion");
+  }
+  assert.notEqual(retainedOp.content, sourceOp.content);
+  assert.deepEqual(retainedOp.content, sourceOp.content);
+  content.$_tag = "caller-mutated";
+  sourceOp.content.$_tag = "commit-mutated";
+  assert.equal(authority.fragment.byQuid("000000000000001h")?.$_tag, "b");
+  assert.equal(retainedOp.content.$_tag, "b");
+});
+
 await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {
   const authority = element(`<main data-_quid="0000000000000005" <p data-_quid="0000000000000006"/>/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-snapshot" });

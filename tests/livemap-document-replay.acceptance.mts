@@ -126,6 +126,54 @@ check("fragment graph replay preserves canonical snapshot and identity", () => {
   assert.equal(target.fragment.byQuid("0000000000000004")?.$_attrs?.title, "kept");
 });
 
+check("insert, remove and final-position move replay through the single graph planner", () => {
+  const initial = `<a/> <b/> <c data-_quid="000000000000001c"/>`;
+  const source = fragment(initial);
+  const target = fragment(initial);
+  const events: LiveMapCommitObservation[] = [];
+  target.commits.observe((event) => events.push(event));
+  const inserted = element(`<d data-_quid="000000000000001d"/>`).element.node();
+  const commits = [
+    source.fragment.content.insert(rootTarget, 1, inserted),
+    source.fragment.content.move(rootTarget, 1, 3),
+    source.fragment.content.remove(rootTarget, 1),
+  ];
+  assert.deepEqual(commits.map((commit) => commit.ops[0]?.op), [
+    "insert-content", "move-content", "remove-content",
+  ]);
+  for (const commit of commits) target.replay(commit);
+  assert.deepEqual(target.capture(), source.capture());
+  assert.equal(target.fragment.byQuid("000000000000001d")?.$_tag, "d");
+  assert.equal(target.fragment.byQuid("000000000000001c")?.$_tag, "c");
+  assert.equal(events.length, 3);
+  assert.ok(events.every((event) => event.kind === "commit" && event.origin === "replay"));
+});
+
+check("malformed structural graph operations reject atomically", () => {
+  const target = fragment(`<a/> <b/>`);
+  const before = target.capture();
+  const malformed = {
+    changed: true,
+    prevRev: 0,
+    rev: 1,
+    ops: [
+      { domain: "graph", op: "move-content", target: rootTarget, from: 0, to: 1 },
+      { domain: "graph", op: "remove-content", target: rootTarget, index: 0, extra: true },
+    ],
+  };
+  assert.throws(() => Reflect.apply(target.replay, target, [malformed]));
+  assert.deepEqual(target.capture(), before);
+
+  const falseChanged = {
+    changed: true,
+    prevRev: 0,
+    rev: 1,
+    ops: [{ domain: "graph", op: "move-content", target: rootTarget, from: 0, to: 0 }],
+  };
+  assert.throws(() => Reflect.apply(target.replay, target, [falseChanged]));
+  assert.deepEqual(target.capture(), before);
+});
+
 check("replace-root graph commit replays with canonical mode and QUID identity", () => {
   const sourceState = element(`<article data-_quid="0000000000000009"/>`);
   const source = element(`<main data-_quid="000000000000000a"/>`);

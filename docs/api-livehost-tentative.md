@@ -219,7 +219,7 @@ silently reconstructed as projected JSON.
 
 ### Built-in hosted document actions
 
-Element and fragment authorities register three reserved ordinary actions:
+Element and fragment authorities register six reserved ordinary actions:
 
 ```ts
 client.action("document.attr.set", {
@@ -238,19 +238,47 @@ client.action("document.content.replace", {
   index: 0,
   replacement: "replacement text",
 });
+
+client.action("document.content.insert", {
+  target: { kind: "path", path: [] },
+  index: 1,
+  content,
+});
+
+client.action("document.content.remove", {
+  target: { kind: "quid", quid: "0000000000000001" },
+  index: 0,
+});
+
+client.action("document.content.move", {
+  target: { kind: "path", path: [] },
+  from: 1,
+  to: 3,
+});
 ```
 
 `document.attr.set` calls the existing shape-specific `attrs.set` API;
 `document.attr.drop` calls `attrs.drop`; and `document.content.replace` calls
 the existing slot-based `content.replace(target, index, replacement)` API.
+The structural actions call only `content.insert(target, index, content)`,
+`content.remove(target, index)`, and `content.move(target, from, to)`.
 Targets use the existing canonical document target union: a persisted QUID or
 a numeric canonical document path.
 
 Payloads are strict JSON action payloads. Attribute values are canonical
 primitives, or the existing structured style value when the name is `style`.
-Content replacement accepts a canonical primitive or the same JSON-safe
-canonical node representation already validated for graph operations. It does
-not accept raw HTML or introduce an HSON text action transport.
+Content replacement and insertion accept a canonical primitive or the same
+JSON-safe canonical node representation already validated for graph
+operations. They do not accept raw HTML or introduce an HSON text action
+transport.
+
+Insertion accepts indexes from `0` through the current slot count, inclusive;
+the slot count appends. Removal accepts only an existing slot. Move accepts
+existing `from` and `to` indexes and uses final-position semantics: after the
+operation, the moved slot occupies `to`. A move from `1` to `3` transforms
+`[A, B, C, D]` into `[A, C, D, B]`. Equal move indexes acknowledge with the
+unchanged `completionRev` and create no commit, history entry, publication, or
+client replay.
 
 These built-ins use normal lookup, payload validation, session authorization,
 deduplication, handler execution, tracing, and acknowledgement behavior. A
@@ -266,8 +294,8 @@ retain the existing structured LiveMap document error codes. Rejected,
 unauthorized, unavailable, unchanged, joined, or cached requests do not create
 an extra commit.
 
-Insertion, removal, movement, `attrs.setMany`, and `attrs.dropMany` remain out
-of scope.
+Bulk attributes, multi-slot/range content operations, and arbitrary document
+batching remain out of scope.
 
 ### Remote action authorization
 

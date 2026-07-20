@@ -141,7 +141,12 @@ function make_document_livemap(
   const mutationApi = make_livemap_document_mutation_api(controller);
   const content = Object.freeze(Object.assign(
     () => detached_document_content(core.root()),
-    { replace: mutationApi.replaceContent },
+    {
+      replace: mutationApi.replaceContent,
+      insert: mutationApi.insertContent,
+      remove: mutationApi.removeContent,
+      move: mutationApi.moveContent,
+    },
   ));
   const readApi = Object.freeze({
     root: () => core.root(),

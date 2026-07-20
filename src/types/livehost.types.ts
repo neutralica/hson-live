@@ -349,7 +349,10 @@ export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefin
 export type LiveHostDocumentActionName =
   | "document.attr.set"
   | "document.attr.drop"
-  | "document.content.replace";
+  | "document.content.replace"
+  | "document.content.insert"
+  | "document.content.remove"
+  | "document.content.move";
 
 export type LiveHostDocumentTargetPayload = LiveMapDocumentTarget;
 
@@ -367,6 +370,20 @@ export type LiveHostDocumentActionPayloads = Readonly<{
     target: LiveHostDocumentTargetPayload;
     index: number;
     replacement: LiveMapDocumentContent;
+  };
+  "document.content.insert": {
+    target: LiveHostDocumentTargetPayload;
+    index: number;
+    content: LiveMapDocumentContent;
+  };
+  "document.content.remove": {
+    target: LiveHostDocumentTargetPayload;
+    index: number;
+  };
+  "document.content.move": {
+    target: LiveHostDocumentTargetPayload;
+    from: number;
+    to: number;
   };
 }>;
 

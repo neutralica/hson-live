@@ -931,6 +931,9 @@ const target = { kind: "path", path: [] } as const;
 elementMap.element.attrs.set(target, "aria-label", "Save");
 elementMap.element.attrs.drop(target, "aria-label");
 elementMap.element.content.replace(target, 0, replacement);
+elementMap.element.content.insert(target, 1, content);
+elementMap.element.content.remove(target, 0);
+elementMap.element.content.move(target, 2, 0);
 
 fragmentMap.fragment.attrs.set(
   { kind: "quid", quid: "persisted-id" },
@@ -946,10 +949,10 @@ fragmentMap.fragment.content.replace(
 
 There are deliberately no `setAttr`, `setAttrs`, `removeAttr`, or
 `replaceContent` methods. There is no bulk attribute operation in this slice.
-The existing detached read remains `capability.content()`; `content.replace()`
-adds the single-slot mutation without exposing owned content.
+The existing detached read remains `capability.content()`; the content methods
+mutate canonical physical slots without exposing owned content.
 
-All three operations share one exact target union:
+All document operations share one exact target union:
 
 ```ts
 type LiveMapDocumentTarget =
@@ -967,7 +970,7 @@ and structural wrapper nodes. For an element map, `[]` identifies its one
 ordinary top-level element. For a fragment map, `[]` identifies the canonical
 `_hson_elem` fragment cluster. Paths may end at a node or primitive, but
 attribute mutation requires an ordinary-element endpoint and content mutation
-requires a node with the named existing slot.
+requires a node endpoint.
 
 QUID targets resolve only through the map-local sparse persisted-identity
 index. Only an ordinary element already carrying a valid `data-_quid` can be
@@ -988,6 +991,26 @@ the current canonical invariants and retain the map's element/fragment mode.
 The replacement is cloned before ownership. Canonically identical detached
 nodes and identical primitives are no-ops.
 
+`content.insert(target, index, content)` inserts exactly one slot. `index` must
+be a non-negative integer from `0` through the current content length,
+inclusive; the length appends and `0` inserts into empty content. String input
+inserted into an `_hson_elem` cluster becomes its canonical `_hson_str` node.
+Other primitive or node inputs remain subject to the target's canonical HSON
+invariants. Input and operation payload nodes are detached from caller-owned
+state.
+
+`content.remove(target, index)` removes exactly one existing slot. Its valid
+range is `0` through `content.length - 1`; indexes are never clamped. The
+candidate must retain the map's element or fragment mode.
+
+`content.move(target, from, to)` moves exactly one existing slot atomically.
+Both indexes use the pre-move range `0` through `content.length - 1`, and `to`
+is the final position occupied by the moved item. Thus moving index `1` to `3`
+in `[A, B, C, D]` produces `[A, C, D, B]`, while moving `3` to `1` produces
+`[A, D, B, C]`. Move is one graph operation, not remove plus insert. Equal
+indexes are a complete no-op: no revision, observation, history, or
+publication.
+
 Content replacement preflights the complete sparse identity result. Removed
 subtree identities disappear, incoming identities are indexed, unquidded nodes
 remain unquidded, and a QUID displaced by the same slot may be reused. Invalid,
@@ -1000,13 +1023,15 @@ Changed standalone calls advance one local revision and return exactly one of:
 { domain: "graph", op: "set-attr", target, name, value }
 { domain: "graph", op: "remove-attr", target, name }
 { domain: "graph", op: "replace-content", target, index, replacement }
+{ domain: "graph", op: "insert-content", target, index, content }
+{ domain: "graph", op: "remove-content", target, index }
+{ domain: "graph", op: "move-content", target, from, to }
 ```
 
-No-op calls return `changed: false` with no operations. Document batching,
-graph replay, graph feeds, hosted graph actions, authorization, and remote
-transport remain unimplemented. These operations exist only on element and
-fragment capability surfaces; data-object and data-array maps do not expose
-them.
+No-op calls return `changed: false` with no operations. These operations exist
+only on element and fragment capability surfaces; data-object and data-array
+maps do not expose them. Canonical graph commits use the existing atomic replay
+path and shared commit observer; there is no document batching API.
 
 ### Document `capture()`
 
@@ -1025,8 +1050,8 @@ type DocumentLiveMapCapture = Readonly<{
 The root is recursively detached and preserves tags, ordered mixed content,
 attrs, structured style, metadata, QUIDs, text, empty content, and repeated
 siblings. Capture does not change the revision. Graph install and replay are not
-interchangeable: `install()` is implemented as a local state transition, while
-graph replay is not implemented.
+interchangeable: `install()` is a local state transition, while `replay()`
+applies one validated canonical graph commit at its supplied revision.
 
 ### Document `install(capture, options?)`
 
@@ -1066,9 +1091,10 @@ commit state unchanged.
 Installing a canonically identical graph follows existing replacement no-op
 behavior: it returns `changed: false`, no operations, and consumes no revision.
 Document graph commits are not accepted by data `replay()` and are not yet
-published through a public document feed. Incremental document operations use
-their own `set-attr`, `remove-attr`, and `replace-content` records; they never
-masquerade as `replace-root` installation.
+published through a projected path feed. Incremental document operations use
+their own `set-attr`, `remove-attr`, `replace-content`, `insert-content`,
+`remove-content`, and `move-content` records; they never masquerade as
+`replace-root` installation.
 
 The input capture, installed owned root, later captures, and returned operation
 root share no mutable references. `debug.node()` can still damage live graph or

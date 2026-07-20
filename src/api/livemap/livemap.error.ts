@@ -72,7 +72,13 @@ export type LiveMapDocumentMutationErrorCode =
 
 export class LiveMapDocumentMutationError extends Error {
   readonly code: LiveMapDocumentMutationErrorCode;
-  readonly operation: "set-attr" | "remove-attr" | "replace-content";
+  readonly operation:
+    | "set-attr"
+    | "remove-attr"
+    | "replace-content"
+    | "insert-content"
+    | "remove-content"
+    | "move-content";
   readonly reason: string;
 
   constructor(
