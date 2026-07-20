@@ -321,8 +321,8 @@ function decode_value(
         "Canonical snapshot graph exceeds the node-count limit.",
       );
     }
-    const attrs = decode_bag(tagged.attrs, "attrs", depth + 1, budget, limits);
-    const meta = decode_bag(tagged.meta, "meta", depth + 1, budget, limits);
+    const attrs = decode_bag(tagged.attrs, depth + 1, budget, limits);
+    const meta = decode_bag(tagged.meta, depth + 1, budget, limits);
     const content = tagged.content.map((item) => decode_value(item, depth + 1, budget, limits));
     const output: HsonNode = { $_tag: tagged.tag, $_content: content as HsonNode["$_content"] };
     if (attrs !== undefined) output.$_attrs = decode_attrs(attrs);
@@ -334,7 +334,6 @@ function decode_value(
 
 function decode_bag(
   input: unknown,
-  kind: "attrs" | "meta",
   depth: number,
   budget: Budget,
   limits: CodecLimits,
@@ -347,9 +346,7 @@ function decode_bag(
   }
   if (bag.presence !== "present") throw invalid_representation();
   require_exact_keys(bag, ["presence", "entries"]);
-  const decoded = decode_entries(bag.entries, depth + 1, budget, limits);
-  if (kind === "attrs") return decoded;
-  return decoded;
+  return decode_entries(bag.entries, depth + 1, budget, limits);
 }
 
 function decode_entries(

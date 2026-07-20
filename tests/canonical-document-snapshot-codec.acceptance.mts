@@ -124,6 +124,36 @@ function encoding_with_payload(value: JsonValue): CanonicalDocumentSnapshotEncod
   });
 }
 
+function is_record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function replace_persisted_quid(value: JsonValue, from: string, to: string): JsonValue {
+  const copy: JsonValue = structuredClone(value);
+  let replacements = 0;
+  const visit = (current: unknown): void => {
+    if (Array.isArray(current)) {
+      for (const item of current) visit(item);
+      return;
+    }
+    if (!is_record(current)) return;
+    const record = current;
+    const encodedValue = record.value;
+    if (record.key === "data-_quid"
+      && is_record(encodedValue)) {
+      const tagged = encodedValue;
+      if (tagged.type === "string" && tagged.value === from) {
+        tagged.value = to;
+        replacements += 1;
+      }
+    }
+    for (const item of Object.values(record)) visit(item);
+  };
+  visit(copy);
+  assert.equal(replacements, 1);
+  return copy;
+}
+
 check("element capture round-trips with detached nested identity and typed document data", () => {
   const capture = element_capture(node(
     "main",
@@ -376,6 +406,62 @@ check("syntax and explicit representation failures remain classified and sanitiz
     () => decode_canonical_document_snapshot(encoding_with_payload({ ...base, revision: -1 })),
     "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
   );
+});
+
+check("semantically valid noncanonical HSON is rejected after deterministic re-encoding", () => {
+  const documentText = "recognizable-codec-content";
+  const encoded = encode_canonical_document_snapshot(element_capture(node("div", [
+    node("_hson_elem", [node("_hson_str", [documentText])]),
+  ])));
+  const representation = decoded_payload_value(encoded);
+  const alteredPayload = hson.fromJson(representation).toHson().serialize();
+  assert.notEqual(alteredPayload, encoded.payload);
+  assert.deepEqual(hson.fromHson(alteredPayload).toJson().value(), representation);
+  const error = expect_codec_error(
+    () => decode_canonical_document_snapshot({ ...encoded, payload: alteredPayload }),
+    "CANONICAL_SNAPSHOT_ROUND_TRIP_MISMATCH",
+    documentText,
+  );
+  assert.equal(error.message.includes(alteredPayload), false);
+});
+
+check("decode rejects duplicate and malformed persisted QUIDs without exposing identity", () => {
+  const firstQuid = "0000000000000010";
+  const secondQuid = "0000000000000011";
+  const duplicateSource = encode_canonical_document_snapshot(fragment_capture([
+    node("div", [], undefined, { "data-_quid": firstQuid }),
+    node("span", [], undefined, { "data-_quid": secondQuid }),
+  ]));
+  const duplicateRepresentation = replace_persisted_quid(
+    decoded_payload_value(duplicateSource),
+    secondQuid,
+    firstQuid,
+  );
+  const duplicateEncoding = encoding_with_payload(duplicateRepresentation);
+  const duplicateError = expect_codec_error(
+    () => decode_canonical_document_snapshot(duplicateEncoding),
+    "CANONICAL_SNAPSHOT_IDENTITY_INVALID",
+    firstQuid,
+  );
+  assert.equal(duplicateError.message.includes(duplicateEncoding.payload), false);
+
+  const validQuid = "0000000000000012";
+  const malformedQuid = "malformed-persisted-quid";
+  const malformedSource = encode_canonical_document_snapshot(element_capture(
+    node("div", [], undefined, { "data-_quid": validQuid }),
+  ));
+  const malformedRepresentation = replace_persisted_quid(
+    decoded_payload_value(malformedSource),
+    validQuid,
+    malformedQuid,
+  );
+  const malformedEncoding = encoding_with_payload(malformedRepresentation);
+  const malformedError = expect_codec_error(
+    () => decode_canonical_document_snapshot(malformedEncoding),
+    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    malformedQuid,
+  );
+  assert.equal(malformedError.message.includes(malformedEncoding.payload), false);
 });
 
 check("UTF-8 payload bytes, depth, and node-count limits are enforced", () => {
