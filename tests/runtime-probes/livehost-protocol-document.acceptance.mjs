@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { decode_livehost_server_message, hson } from "../../src/index.ts";
+import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
 
 let checks = 0;
 
@@ -206,6 +206,69 @@ check("snapshot envelopes require one stable map mode", () => {
       snapshot: { ...base, mode },
     }));
     assert.equal(decoded.ok, true);
+  }
+});
+
+check("recovery capability advertisements are strict and normalized", () => {
+  const valid = decode_livehost_message(JSON.stringify({
+    type: "recover",
+    id: "recover-capabilities",
+    logicalMapId: "map",
+    snapshotCapabilities: { hson: true, viewStateVersions: [9, 1] },
+  }));
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.ok && valid.value.snapshotCapabilities, {
+    hson: true,
+    viewStateVersions: [1, 9],
+  });
+
+  const malformed = [
+    false,
+    { hson: false },
+    { hson: true, viewStateVersions: "1" },
+    { hson: true, viewStateVersions: [0] },
+    { hson: true, viewStateVersions: [1, 1] },
+    { hson: true, extra: true },
+  ];
+  for (const snapshotCapabilities of malformed) {
+    const decoded = decode_livehost_message(JSON.stringify({
+      type: "recover",
+      id: "recover-capabilities-invalid",
+      logicalMapId: "map",
+      snapshotCapabilities,
+    }));
+    assert.equal(decoded.ok, false);
+    assert.equal(decoded.ok ? undefined : decoded.error.code, "LIVEHOST_SNAPSHOT_CAPABILITIES_INVALID");
+  }
+});
+
+check("recovery plans carry bounded snapshot encoding acknowledgments", () => {
+  const common = {
+    type: "recovery-plan",
+    id: "plan",
+    sessionId: "session",
+    logicalMapId: "map",
+    incarnationId: "inc",
+    headRev: 0,
+    outcome: "current",
+  };
+  for (const snapshotEncoding of [
+    { format: "hson" },
+    { format: "view-state", formatVersion: 1 },
+    { format: "view-state", formatVersion: 99 },
+  ]) {
+    const decoded = decode_livehost_server_message(JSON.stringify({ ...common, snapshotEncoding }));
+    assert.equal(decoded.ok, true);
+  }
+  for (const snapshotEncoding of [
+    { format: "unknown" },
+    { format: "view-state" },
+    { format: "view-state", formatVersion: 0 },
+    { format: "hson", formatVersion: 1 },
+  ]) {
+    const decoded = decode_livehost_server_message(JSON.stringify({ ...common, snapshotEncoding }));
+    assert.equal(decoded.ok, false);
+    assert.equal(decoded.ok ? undefined : decoded.error.code, "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID");
   }
 });
 

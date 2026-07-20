@@ -4,14 +4,14 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue } from "../src/core/types.ts";
 import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../src/types/livemap.types.ts";
 import {
-  decode_canonical_document_snapshot,
-  encode_canonical_document_snapshot,
-  type CanonicalDocumentSnapshotEncoding,
-} from "../src/api/livemap/livemap.document.snapshot-codec.ts";
+  decode_view_state_snapshot,
+  encode_view_state_snapshot,
+  type ViewStateSnapshotEncoding,
+} from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import {
-  CanonicalDocumentSnapshotCodecError,
-  type CanonicalDocumentSnapshotCodecErrorCode,
-} from "../src/api/livemap/livemap.document.snapshot-codec.error.ts";
+  ViewStateSnapshotCodecError,
+  type ViewStateSnapshotCodecErrorCode,
+} from "../src/api/livemap/livemap.document.view-state-codec.error.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -76,9 +76,9 @@ function empty_fragment_capture(rev = 3): DocumentLiveMapCapture<"fragment"> {
 
 function round_trip<TMode extends DocumentLiveMapMode>(
   capture: DocumentLiveMapCapture<TMode>,
-): Readonly<{ encoded: CanonicalDocumentSnapshotEncoding; decoded: DocumentLiveMapCapture }> {
-  const encoded = encode_canonical_document_snapshot(capture);
-  const decoded = decode_canonical_document_snapshot(encoded);
+): Readonly<{ encoded: ViewStateSnapshotEncoding; decoded: DocumentLiveMapCapture }> {
+  const encoded = encode_view_state_snapshot(capture);
+  const decoded = decode_view_state_snapshot(encoded);
   assert.equal(decoded.mode, capture.mode);
   assert.equal(decoded.rev, capture.rev);
   assert.equal(canonical_hson_graph_equal(decoded.root, capture.root), true);
@@ -88,37 +88,37 @@ function round_trip<TMode extends DocumentLiveMapMode>(
 
 function expect_codec_error(
   fn: () => unknown,
-  code: CanonicalDocumentSnapshotCodecErrorCode,
+  code: ViewStateSnapshotCodecErrorCode,
   forbidden?: string,
-): CanonicalDocumentSnapshotCodecError {
+): ViewStateSnapshotCodecError {
   let observed: unknown;
   try {
     fn();
   } catch (error) {
     observed = error;
   }
-  assert.equal(observed instanceof CanonicalDocumentSnapshotCodecError, true);
-  if (!(observed instanceof CanonicalDocumentSnapshotCodecError)) throw new Error("Expected codec error.");
+  assert.equal(observed instanceof ViewStateSnapshotCodecError, true);
+  if (!(observed instanceof ViewStateSnapshotCodecError)) throw new Error("Expected codec error.");
   assert.equal(observed.code, code);
   if (forbidden !== undefined) assert.doesNotMatch(observed.message, new RegExp(forbidden));
   return observed;
 }
 
-function unsafe_encoding(value: unknown): CanonicalDocumentSnapshotEncoding {
-  return value as CanonicalDocumentSnapshotEncoding;
+function unsafe_encoding(value: unknown): ViewStateSnapshotEncoding {
+  return value as ViewStateSnapshotEncoding;
 }
 
 function compact_json_payload(value: JsonValue): string {
   return hson.fromJson(value).toHson().noBreak().serialize();
 }
 
-function decoded_payload_value(encoded: CanonicalDocumentSnapshotEncoding): JsonValue {
+function decoded_payload_value(encoded: ViewStateSnapshotEncoding): JsonValue {
   return hson.fromHson(encoded.payload).toJson().value();
 }
 
-function encoding_with_payload(value: JsonValue): CanonicalDocumentSnapshotEncoding {
+function encoding_with_payload(value: JsonValue): ViewStateSnapshotEncoding {
   return Object.freeze({
-    format: "canonical-hson",
+    format: "view-state",
     formatVersion: 1,
     payload: compact_json_payload(value),
   });
@@ -198,7 +198,7 @@ check("element capture round-trips with detached nested identity and typed docum
     { "data-_quid": "0000000000000001", "data-_custom": "root" },
   ));
   const { encoded, decoded } = round_trip(capture);
-  assert.equal(encoded.format, "canonical-hson");
+  assert.equal(encoded.format, "view-state");
   assert.equal(encoded.formatVersion, 1);
   assert.notEqual(decoded.root.$_content[0], capture.root.$_content[0]);
 
@@ -287,20 +287,20 @@ check("nested inline stylesheet structures fail canonical graph validation", () 
     style: { _hover: { color: "private-blue" } },
   }));
   expect_codec_error(
-    () => encode_canonical_document_snapshot(invalidCapture),
-    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    () => encode_view_state_snapshot(invalidCapture),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     "private-blue",
   );
 
-  const valid = encode_canonical_document_snapshot(element_capture(node("div", [], {
+  const valid = encode_view_state_snapshot(element_capture(node("div", [], {
     style: { color: "red" },
   })));
   const invalidEncoding = encoding_with_payload(
     replace_style_with_nested_rule(decoded_payload_value(valid)),
   );
   const error = expect_codec_error(
-    () => decode_canonical_document_snapshot(invalidEncoding),
-    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    () => decode_view_state_snapshot(invalidEncoding),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     "private-blue",
   );
   assert.equal(error.message.includes(invalidEncoding.payload), false);
@@ -331,14 +331,14 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
     node("span", [], undefined, { "data-_quid": "0000000000000005" }),
   ]);
   expect_codec_error(
-    () => encode_canonical_document_snapshot(duplicate),
-    "CANONICAL_SNAPSHOT_IDENTITY_INVALID",
+    () => encode_view_state_snapshot(duplicate),
+    "VIEW_STATE_SNAPSHOT_IDENTITY_INVALID",
     "0000000000000005",
   );
   const malformed = element_capture(node("div", [], undefined, { "data-_quid": "bad" }));
   expect_codec_error(
-    () => encode_canonical_document_snapshot(malformed),
-    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    () => encode_view_state_snapshot(malformed),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     "bad",
   );
 });
@@ -383,8 +383,8 @@ check("record insertion order does not affect deterministic payload text", () =>
   }), 11);
   assert.equal(canonical_hson_graph_equal(left.root, right.root), true);
   assert.equal(
-    encode_canonical_document_snapshot(left).payload,
-    encode_canonical_document_snapshot(right).payload,
+    encode_view_state_snapshot(left).payload,
+    encode_view_state_snapshot(right).payload,
   );
 });
 
@@ -395,12 +395,12 @@ check("ordered content and semantic capture differences remain distinguishable",
   const typed = element_capture(node("div", [], { value: 0 }), 12);
   const typedString = element_capture(node("div", [], { value: "0" }), 12);
   assert.equal(canonical_hson_graph_equal(first.root, reordered.root), false);
-  assert.notEqual(encode_canonical_document_snapshot(first).payload, encode_canonical_document_snapshot(reordered).payload);
-  assert.notEqual(encode_canonical_document_snapshot(first).payload, encode_canonical_document_snapshot(otherRevision).payload);
-  assert.notEqual(encode_canonical_document_snapshot(typed).payload, encode_canonical_document_snapshot(typedString).payload);
+  assert.notEqual(encode_view_state_snapshot(first).payload, encode_view_state_snapshot(reordered).payload);
+  assert.notEqual(encode_view_state_snapshot(first).payload, encode_view_state_snapshot(otherRevision).payload);
+  assert.notEqual(encode_view_state_snapshot(typed).payload, encode_view_state_snapshot(typedString).payload);
   assert.notEqual(
-    encode_canonical_document_snapshot(element_capture(node("div"), 12)).payload,
-    encode_canonical_document_snapshot(fragment_capture([node("div"), node("span")], 12)).payload,
+    encode_view_state_snapshot(element_capture(node("div"), 12)).payload,
+    encode_view_state_snapshot(fragment_capture([node("div"), node("span")], 12)).payload,
   );
 });
 
@@ -408,8 +408,8 @@ check("non-finite numbers are rejected with sanitized controlled errors", () => 
   for (const value of [Number.NaN, Infinity, -Infinity]) {
     const capture = element_capture(node("div", [], { value }));
     expect_codec_error(
-      () => encode_canonical_document_snapshot(capture),
-      "CANONICAL_SNAPSHOT_NON_FINITE_NUMBER",
+      () => encode_view_state_snapshot(capture),
+      "VIEW_STATE_SNAPSHOT_NON_FINITE_NUMBER",
       "Infinity|NaN",
     );
   }
@@ -417,54 +417,54 @@ check("non-finite numbers are rejected with sanitized controlled errors", () => 
 
 check("format and version reject before malformed payload parsing", () => {
   expect_codec_error(
-    () => decode_canonical_document_snapshot(unsafe_encoding({ format: "other", formatVersion: 1, payload: "secret <" })),
-    "CANONICAL_SNAPSHOT_FORMAT_UNKNOWN",
+    () => decode_view_state_snapshot(unsafe_encoding({ format: "other", formatVersion: 1, payload: "secret <" })),
+    "VIEW_STATE_SNAPSHOT_FORMAT_UNKNOWN",
     "secret",
   );
   expect_codec_error(
-    () => decode_canonical_document_snapshot(unsafe_encoding({ format: "canonical-hson", formatVersion: 2, payload: "secret <" })),
-    "CANONICAL_SNAPSHOT_VERSION_UNSUPPORTED",
+    () => decode_view_state_snapshot(unsafe_encoding({ format: "view-state", formatVersion: 2, payload: "secret <" })),
+    "VIEW_STATE_SNAPSHOT_VERSION_UNSUPPORTED",
     "secret",
   );
 });
 
 check("syntax and explicit representation failures remain classified and sanitized", () => {
   expect_codec_error(
-    () => decode_canonical_document_snapshot({ format: "canonical-hson", formatVersion: 1, payload: "secret <" }),
-    "CANONICAL_SNAPSHOT_SYNTAX_INVALID",
+    () => decode_view_state_snapshot({ format: "view-state", formatVersion: 1, payload: "secret <" }),
+    "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
     "secret",
   );
-  const valid = encode_canonical_document_snapshot(element_capture(node("div")));
+  const valid = encode_view_state_snapshot(element_capture(node("div")));
   const base = decoded_payload_value(valid);
   if (typeof base !== "object" || base === null || Array.isArray(base)) throw new Error("Expected payload record.");
 
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoding_with_payload({ ...base, unexpected: true })),
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
+    () => decode_view_state_snapshot(encoding_with_payload({ ...base, unexpected: true })),
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoding_with_payload({ ...base, root: { type: "unknown" } })),
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
+    () => decode_view_state_snapshot(encoding_with_payload({ ...base, root: { type: "unknown" } })),
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
   const missingRoot = { ...base };
   delete missingRoot.root;
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoding_with_payload(missingRoot)),
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
+    () => decode_view_state_snapshot(encoding_with_payload(missingRoot)),
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoding_with_payload({ ...base, mode: "data-object" })),
-    "CANONICAL_SNAPSHOT_MODE_MISMATCH",
+    () => decode_view_state_snapshot(encoding_with_payload({ ...base, mode: "data-object" })),
+    "VIEW_STATE_SNAPSHOT_MODE_MISMATCH",
   );
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoding_with_payload({ ...base, revision: -1 })),
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
+    () => decode_view_state_snapshot(encoding_with_payload({ ...base, revision: -1 })),
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
 });
 
 check("semantically valid noncanonical HSON is rejected after deterministic re-encoding", () => {
   const documentText = "recognizable-codec-content";
-  const encoded = encode_canonical_document_snapshot(element_capture(node("div", [
+  const encoded = encode_view_state_snapshot(element_capture(node("div", [
     node("_hson_elem", [node("_hson_str", [documentText])]),
   ])));
   const representation = decoded_payload_value(encoded);
@@ -472,8 +472,8 @@ check("semantically valid noncanonical HSON is rejected after deterministic re-e
   assert.notEqual(alteredPayload, encoded.payload);
   assert.deepEqual(hson.fromHson(alteredPayload).toJson().value(), representation);
   const error = expect_codec_error(
-    () => decode_canonical_document_snapshot({ ...encoded, payload: alteredPayload }),
-    "CANONICAL_SNAPSHOT_ROUND_TRIP_MISMATCH",
+    () => decode_view_state_snapshot({ ...encoded, payload: alteredPayload }),
+    "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
     documentText,
   );
   assert.equal(error.message.includes(alteredPayload), false);
@@ -482,7 +482,7 @@ check("semantically valid noncanonical HSON is rejected after deterministic re-e
 check("decode rejects duplicate and malformed persisted QUIDs without exposing identity", () => {
   const firstQuid = "0000000000000010";
   const secondQuid = "0000000000000011";
-  const duplicateSource = encode_canonical_document_snapshot(fragment_capture([
+  const duplicateSource = encode_view_state_snapshot(fragment_capture([
     node("div", [], undefined, { "data-_quid": firstQuid }),
     node("span", [], undefined, { "data-_quid": secondQuid }),
   ]));
@@ -493,15 +493,15 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
   );
   const duplicateEncoding = encoding_with_payload(duplicateRepresentation);
   const duplicateError = expect_codec_error(
-    () => decode_canonical_document_snapshot(duplicateEncoding),
-    "CANONICAL_SNAPSHOT_IDENTITY_INVALID",
+    () => decode_view_state_snapshot(duplicateEncoding),
+    "VIEW_STATE_SNAPSHOT_IDENTITY_INVALID",
     firstQuid,
   );
   assert.equal(duplicateError.message.includes(duplicateEncoding.payload), false);
 
   const validQuid = "0000000000000012";
   const malformedQuid = "malformed-persisted-quid";
-  const malformedSource = encode_canonical_document_snapshot(element_capture(
+  const malformedSource = encode_view_state_snapshot(element_capture(
     node("div", [], undefined, { "data-_quid": validQuid }),
   ));
   const malformedRepresentation = replace_persisted_quid(
@@ -511,8 +511,8 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
   );
   const malformedEncoding = encoding_with_payload(malformedRepresentation);
   const malformedError = expect_codec_error(
-    () => decode_canonical_document_snapshot(malformedEncoding),
-    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    () => decode_view_state_snapshot(malformedEncoding),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     malformedQuid,
   );
   assert.equal(malformedError.message.includes(malformedEncoding.payload), false);
@@ -520,35 +520,35 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
 
 check("UTF-8 payload bytes, depth, and node-count limits are enforced", () => {
   expect_codec_error(
-    () => decode_canonical_document_snapshot(
-      { format: "canonical-hson", formatVersion: 1, payload: "é" },
+    () => decode_view_state_snapshot(
+      { format: "view-state", formatVersion: 1, payload: "é" },
       { maxPayloadBytes: 1 },
     ),
-    "CANONICAL_SNAPSHOT_PAYLOAD_TOO_LARGE",
+    "VIEW_STATE_SNAPSHOT_PAYLOAD_TOO_LARGE",
   );
 
   const capture = element_capture(node("main", [node("_hson_elem", [node("span")])]));
   expect_codec_error(
-    () => encode_canonical_document_snapshot(capture, { maxDepth: 2 }),
-    "CANONICAL_SNAPSHOT_DEPTH_LIMIT",
+    () => encode_view_state_snapshot(capture, { maxDepth: 2 }),
+    "VIEW_STATE_SNAPSHOT_DEPTH_LIMIT",
   );
   expect_codec_error(
-    () => encode_canonical_document_snapshot(capture, { maxNodes: 2 }),
-    "CANONICAL_SNAPSHOT_NODE_LIMIT",
+    () => encode_view_state_snapshot(capture, { maxNodes: 2 }),
+    "VIEW_STATE_SNAPSHOT_NODE_LIMIT",
   );
   expect_codec_error(
-    () => encode_canonical_document_snapshot(capture, { maxPayloadBytes: 8 }),
-    "CANONICAL_SNAPSHOT_PAYLOAD_TOO_LARGE",
+    () => encode_view_state_snapshot(capture, { maxPayloadBytes: 8 }),
+    "VIEW_STATE_SNAPSHOT_PAYLOAD_TOO_LARGE",
   );
 
-  const encoded = encode_canonical_document_snapshot(capture);
+  const encoded = encode_view_state_snapshot(capture);
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoded, { maxDepth: 2 }),
-    "CANONICAL_SNAPSHOT_DEPTH_LIMIT",
+    () => decode_view_state_snapshot(encoded, { maxDepth: 2 }),
+    "VIEW_STATE_SNAPSHOT_DEPTH_LIMIT",
   );
   expect_codec_error(
-    () => decode_canonical_document_snapshot(encoded, { maxNodes: 2 }),
-    "CANONICAL_SNAPSHOT_NODE_LIMIT",
+    () => decode_view_state_snapshot(encoded, { maxNodes: 2 }),
+    "VIEW_STATE_SNAPSHOT_NODE_LIMIT",
   );
 });
 
@@ -573,7 +573,7 @@ check("encoding does not mutate source structure or insertion order", () => {
   const styleOrder = typeof style === "object" && style !== null ? Object.keys(style) : [];
   const contentOrder = [...element.$_content];
 
-  const decoded = decode_canonical_document_snapshot(encode_canonical_document_snapshot(capture));
+  const decoded = decode_view_state_snapshot(encode_view_state_snapshot(capture));
   assert.deepEqual(capture, before);
   assert.deepEqual(Object.keys(element.$_attrs ?? {}), attrsOrder);
   assert.deepEqual(Object.keys(element.$_meta ?? {}), metaOrder);
@@ -582,4 +582,4 @@ check("encoding does not mutate source structure or insertion order", () => {
   assert.notEqual(decoded.root, capture.root);
 });
 
-process.stdout.write(`# ${checks} canonical document snapshot codec checks passed\n`);
+process.stdout.write(`# ${checks} view-state snapshot codec checks passed\n`);

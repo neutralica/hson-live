@@ -12,11 +12,11 @@ import {
   LiveMapDocumentIdentityError,
 } from "./livemap.document.identity.js";
 import {
-  CanonicalDocumentSnapshotCodecError,
-  type CanonicalDocumentSnapshotCodecErrorCode,
-} from "./livemap.document.snapshot-codec.error.js";
+  ViewStateSnapshotCodecError,
+  type ViewStateSnapshotCodecErrorCode,
+} from "./livemap.document.view-state-codec.error.js";
 
-const FORMAT = "canonical-hson" as const;
+const FORMAT = "view-state" as const;
 const FORMAT_VERSION = 1 as const;
 const CAPTURE_KIND = "hson-document" as const;
 const CAPTURE_VERSION = 1 as const;
@@ -27,14 +27,14 @@ const DEFAULT_MAX_NODES = 100_000;
 const textEncoder = new TextEncoder();
 
 /** @internal */
-export type CanonicalDocumentSnapshotEncoding = Readonly<{
+export type ViewStateSnapshotEncoding = Readonly<{
   format: typeof FORMAT;
   formatVersion: typeof FORMAT_VERSION;
   payload: string;
 }>;
 
 /** @internal Internal limits; overrides exist for focused boundary testing only. */
-export type CanonicalDocumentSnapshotCodecOptions = Readonly<{
+export type ViewStateSnapshotCodecOptions = Readonly<{
   maxPayloadBytes?: number;
   maxDepth?: number;
   maxNodes?: number;
@@ -77,10 +77,10 @@ type Budget = {
 };
 
 /** @internal Encode one validated document capture as deterministic compact HSON data. */
-export function encode_canonical_document_snapshot(
+export function encode_view_state_snapshot(
   capture: DocumentLiveMapCapture,
-  options?: CanonicalDocumentSnapshotCodecOptions,
-): CanonicalDocumentSnapshotEncoding {
+  options?: ViewStateSnapshotCodecOptions,
+): ViewStateSnapshotEncoding {
   validate_capture_header(capture);
   const limits = codec_limits(options);
   validate_canonical_document(capture.root, capture.mode);
@@ -99,8 +99,8 @@ export function encode_canonical_document_snapshot(
     payload = serialize_hson(parse_json(codec_json_value(payloadValue)), { noBreak: true });
   } catch (cause) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot representation could not be serialized.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot representation could not be serialized.",
       cause,
     );
   }
@@ -109,9 +109,9 @@ export function encode_canonical_document_snapshot(
 }
 
 /** @internal Decode one canonical compact HSON payload into a detached document capture. */
-export function decode_canonical_document_snapshot(
-  encoded: CanonicalDocumentSnapshotEncoding,
-  options?: CanonicalDocumentSnapshotCodecOptions,
+export function decode_view_state_snapshot(
+  encoded: ViewStateSnapshotEncoding,
+  options?: ViewStateSnapshotCodecOptions,
 ): DocumentLiveMapCapture {
   validate_encoding_wrapper(encoded);
   const limits = codec_limits(options);
@@ -122,8 +122,8 @@ export function decode_canonical_document_snapshot(
     parsedNode = parse_hson(encoded.payload);
   } catch (cause) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_SYNTAX_INVALID",
-      "Canonical snapshot payload is not valid HSON.",
+      "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
+      "View-state snapshot payload is not valid HSON.",
       cause,
     );
   }
@@ -133,8 +133,8 @@ export function decode_canonical_document_snapshot(
     representation = json_value_from_node(parsedNode);
   } catch (cause) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot payload does not contain a valid codec representation.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot payload does not contain a valid codec representation.",
       cause,
     );
   }
@@ -149,11 +149,11 @@ export function decode_canonical_document_snapshot(
   });
   validate_canonical_document(capture.root, capture.mode);
 
-  const canonical = encode_canonical_document_snapshot(capture, limits);
+  const canonical = encode_view_state_snapshot(capture, limits);
   if (canonical.payload !== encoded.payload) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_ROUND_TRIP_MISMATCH",
-      "Canonical snapshot payload is not the deterministic version 1 representation.",
+      "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
+      "View-state snapshot payload is not the deterministic version 1 representation.",
     );
   }
   return capture;
@@ -170,8 +170,8 @@ function encode_value(
     budget.nodes += 1;
     if (budget.nodes > limits.maxNodes) {
       throw codec_error(
-        "CANONICAL_SNAPSHOT_NODE_LIMIT",
-        "Canonical snapshot graph exceeds the node-count limit.",
+        "VIEW_STATE_SNAPSHOT_NODE_LIMIT",
+        "View-state snapshot graph exceeds the node-count limit.",
       );
     }
     return {
@@ -186,8 +186,8 @@ function encode_value(
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
       throw codec_error(
-        "CANONICAL_SNAPSHOT_NON_FINITE_NUMBER",
-        "Canonical snapshot contains a non-finite number.",
+        "VIEW_STATE_SNAPSHOT_NON_FINITE_NUMBER",
+        "View-state snapshot contains a non-finite number.",
       );
     }
     return { type: "number", value };
@@ -201,8 +201,8 @@ function encode_value(
     return { type: "record", entries: encode_entries(value, depth + 1, budget, limits) };
   }
   throw codec_error(
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-    "Canonical snapshot contains an unsupported value.",
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+    "View-state snapshot contains an unsupported value.",
   );
 }
 
@@ -217,8 +217,8 @@ function encode_bag(
   if (!Object.hasOwn(owner, key)) return { presence: "absent" };
   if (!is_plain_record(value)) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_GRAPH_INVALID",
-      "Canonical snapshot graph contains an invalid field bag.",
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+      "View-state snapshot graph contains an invalid field bag.",
     );
   }
   assert_depth(depth, limits);
@@ -246,23 +246,23 @@ function decode_payload(value: JsonValue, limits: CodecLimits): Readonly<{
   const record = exact_record(value, ["captureKind", "captureVersion", "mode", "revision", "root"]);
   if (record.captureKind !== CAPTURE_KIND || record.captureVersion !== CAPTURE_VERSION) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot payload declares an unsupported capture representation.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot payload declares an unsupported capture representation.",
     );
   }
   const mode = decode_mode(record.mode);
   if (!Number.isInteger(record.revision) || typeof record.revision !== "number" || record.revision < 0) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot payload has an invalid revision.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot payload has an invalid revision.",
     );
   }
   const budget: Budget = { nodes: 0 };
   const root = decode_value(record.root, 1, budget, limits);
   if (!is_Node(root)) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot payload root is not a node.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot payload root is not a node.",
     );
   }
   return { mode, revision: record.revision, root };
@@ -291,8 +291,8 @@ function decode_value(
     if (typeof tagged.value !== "number") throw invalid_representation();
     if (!Number.isFinite(tagged.value)) {
       throw codec_error(
-        "CANONICAL_SNAPSHOT_NON_FINITE_NUMBER",
-        "Canonical snapshot contains a non-finite number.",
+        "VIEW_STATE_SNAPSHOT_NON_FINITE_NUMBER",
+        "View-state snapshot contains a non-finite number.",
       );
     }
     return tagged.value;
@@ -317,8 +317,8 @@ function decode_value(
     budget.nodes += 1;
     if (budget.nodes > limits.maxNodes) {
       throw codec_error(
-        "CANONICAL_SNAPSHOT_NODE_LIMIT",
-        "Canonical snapshot graph exceeds the node-count limit.",
+        "VIEW_STATE_SNAPSHOT_NODE_LIMIT",
+        "View-state snapshot graph exceeds the node-count limit.",
       );
     }
     const attrs = decode_bag(tagged.attrs, depth + 1, budget, limits);
@@ -401,26 +401,26 @@ function validate_capture_header(capture: DocumentLiveMapCapture): void {
     || capture.version !== CAPTURE_VERSION
     || !is_Node(capture.root)) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot capture has an invalid document representation.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot capture has an invalid document representation.",
     );
   }
   decode_mode(capture.mode);
   if (!Number.isInteger(capture.rev) || capture.rev < 0) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-      "Canonical snapshot capture has an invalid revision.",
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "View-state snapshot capture has an invalid revision.",
     );
   }
 }
 
 function validate_canonical_document(root: HsonNode, expectedMode: DocumentLiveMapMode): void {
   try {
-    assert_invariants(root, "canonical document snapshot codec");
+    assert_invariants(root, "view-state snapshot codec");
   } catch (cause) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_GRAPH_INVALID",
-      "Canonical snapshot graph is invalid.",
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+      "View-state snapshot graph is invalid.",
       cause,
     );
   }
@@ -430,38 +430,38 @@ function validate_canonical_document(root: HsonNode, expectedMode: DocumentLiveM
     mode = classify_live_root_mode(root);
   } catch (cause) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_GRAPH_INVALID",
-      "Canonical snapshot graph cannot be classified.",
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+      "View-state snapshot graph cannot be classified.",
       cause,
     );
   }
   if (mode !== expectedMode) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_MODE_MISMATCH",
-      "Canonical snapshot document mode does not match its graph.",
+      "VIEW_STATE_SNAPSHOT_MODE_MISMATCH",
+      "View-state snapshot document mode does not match its graph.",
     );
   }
   try {
     index_livemap_document_elements(root);
   } catch (cause) {
-    const code: CanonicalDocumentSnapshotCodecErrorCode = cause instanceof LiveMapDocumentIdentityError
-      ? "CANONICAL_SNAPSHOT_IDENTITY_INVALID"
-      : "CANONICAL_SNAPSHOT_GRAPH_INVALID";
-    throw codec_error(code, "Canonical snapshot document identity is invalid.", cause);
+    const code: ViewStateSnapshotCodecErrorCode = cause instanceof LiveMapDocumentIdentityError
+      ? "VIEW_STATE_SNAPSHOT_IDENTITY_INVALID"
+      : "VIEW_STATE_SNAPSHOT_GRAPH_INVALID";
+    throw codec_error(code, "View-state snapshot document identity is invalid.", cause);
   }
 }
 
-function validate_encoding_wrapper(encoded: CanonicalDocumentSnapshotEncoding): void {
+function validate_encoding_wrapper(encoded: ViewStateSnapshotEncoding): void {
   if (!is_plain_record(encoded) || encoded.format !== FORMAT) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_FORMAT_UNKNOWN",
-      "Canonical snapshot format is unknown.",
+      "VIEW_STATE_SNAPSHOT_FORMAT_UNKNOWN",
+      "View-state snapshot format is unknown.",
     );
   }
   if (encoded.formatVersion !== FORMAT_VERSION) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_VERSION_UNSUPPORTED",
-      "Canonical snapshot format version is unsupported.",
+      "VIEW_STATE_SNAPSHOT_VERSION_UNSUPPORTED",
+      "View-state snapshot format version is unsupported.",
     );
   }
   require_exact_keys(encoded, ["format", "formatVersion", "payload"]);
@@ -471,12 +471,12 @@ function validate_encoding_wrapper(encoded: CanonicalDocumentSnapshotEncoding): 
 function decode_mode(value: unknown): DocumentLiveMapMode {
   if (value === "element" || value === "fragment") return value;
   throw codec_error(
-    "CANONICAL_SNAPSHOT_MODE_MISMATCH",
-    "Canonical snapshot mode is not a supported document mode.",
+    "VIEW_STATE_SNAPSHOT_MODE_MISMATCH",
+    "View-state snapshot mode is not a supported document mode.",
   );
 }
 
-function codec_limits(options?: CanonicalDocumentSnapshotCodecOptions): CodecLimits {
+function codec_limits(options?: ViewStateSnapshotCodecOptions): CodecLimits {
   return {
     maxPayloadBytes: bounded_option(options?.maxPayloadBytes, DEFAULT_MAX_PAYLOAD_BYTES),
     maxDepth: bounded_option(options?.maxDepth, DEFAULT_MAX_DEPTH),
@@ -488,16 +488,16 @@ function bounded_option(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   if (Number.isInteger(value) && value >= 0) return value;
   throw codec_error(
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-    "Canonical snapshot codec limit is invalid.",
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+    "View-state snapshot codec limit is invalid.",
   );
 }
 
 function assert_payload_size(payload: string, limits: CodecLimits): void {
   if (textEncoder.encode(payload).byteLength > limits.maxPayloadBytes) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_PAYLOAD_TOO_LARGE",
-      "Canonical snapshot payload exceeds the UTF-8 byte limit.",
+      "VIEW_STATE_SNAPSHOT_PAYLOAD_TOO_LARGE",
+      "View-state snapshot payload exceeds the UTF-8 byte limit.",
     );
   }
 }
@@ -505,8 +505,8 @@ function assert_payload_size(payload: string, limits: CodecLimits): void {
 function assert_depth(depth: number, limits: CodecLimits): void {
   if (depth > limits.maxDepth) {
     throw codec_error(
-      "CANONICAL_SNAPSHOT_DEPTH_LIMIT",
-      "Canonical snapshot graph exceeds the depth limit.",
+      "VIEW_STATE_SNAPSHOT_DEPTH_LIMIT",
+      "View-state snapshot graph exceeds the depth limit.",
     );
   }
 }
@@ -558,17 +558,17 @@ function is_style_record(value: unknown, ancestors: WeakSet<object>): value is H
   return true;
 }
 
-function invalid_representation(): CanonicalDocumentSnapshotCodecError {
+function invalid_representation(): ViewStateSnapshotCodecError {
   return codec_error(
-    "CANONICAL_SNAPSHOT_REPRESENTATION_INVALID",
-    "Canonical snapshot payload has an invalid representation.",
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+    "View-state snapshot payload has an invalid representation.",
   );
 }
 
 function codec_error(
-  code: CanonicalDocumentSnapshotCodecErrorCode,
+  code: ViewStateSnapshotCodecErrorCode,
   message: string,
   cause?: unknown,
-): CanonicalDocumentSnapshotCodecError {
-  return new CanonicalDocumentSnapshotCodecError(code, message, cause);
+): ViewStateSnapshotCodecError {
+  return new ViewStateSnapshotCodecError(code, message, cause);
 }

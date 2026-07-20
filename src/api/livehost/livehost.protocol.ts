@@ -24,6 +24,8 @@ import type {
   LiveHostServerRecoveryCommitMessage,
   LiveHostServerRecoveryErrorMessage,
   LiveHostServerRecoveryPlanMessage,
+  LiveHostSnapshotCapabilities,
+  LiveHostSnapshotEncodingSelection,
   LiveHostServerSessionAttachedMessage,
   LiveHostServerSessionCreatedMessage,
   LiveHostServerSessionEndedMessage,
@@ -413,7 +415,7 @@ function decode_canonical_commit(value: unknown): LiveHostCanonicalCommit | unde
 
 function decode_snapshot(
   value: unknown,
-  allowCanonical: boolean,
+  allowViewState: boolean,
 ): LiveHostResult<LiveHostValidatedSnapshotEnvelope> {
   if (!is_record(value)) {
     return fail("Malformed LiveHost recovery snapshot envelope.", {
@@ -434,10 +436,10 @@ function decode_snapshot(
   const hasFormat = Object.prototype.hasOwnProperty.call(value, "format");
   const hasFormatVersion = Object.prototype.hasOwnProperty.call(value, "formatVersion");
   const hasPayload = Object.prototype.hasOwnProperty.call(value, "payload");
-  const hasCanonicalField = hasFormat || hasFormatVersion || hasPayload;
+  const hasVersionedField = hasFormat || hasFormatVersion || hasPayload;
 
   if (hasHson) {
-    if (hasCanonicalField
+    if (hasVersionedField
       || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "hson"])
       || typeof value.hson !== "string") {
       return fail("Malformed or ambiguous LiveHost recovery snapshot envelope.", {
@@ -447,28 +449,28 @@ function decode_snapshot(
     return ok(Object.freeze({ logicalMapId, incarnationId, rev, mode, hson: value.hson }));
   }
 
-  if (!allowCanonical || !hasCanonicalField) {
+  if (!allowViewState || !hasVersionedField) {
     return fail("Malformed LiveHost recovery snapshot envelope.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     });
   }
   if (!has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "format", "formatVersion", "payload"])) {
-    return fail("Malformed LiveHost canonical snapshot envelope.", {
+    return fail("Malformed LiveHost view-state snapshot envelope.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     });
   }
-  if (value.format !== "canonical-hson") {
-    return fail("LiveHost canonical snapshot format is unsupported.", {
+  if (value.format !== "view-state") {
+    return fail("LiveHost view-state snapshot format is unsupported.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     });
   }
   if (value.formatVersion !== 1) {
-    return fail("LiveHost canonical snapshot format version is unsupported.", {
+    return fail("LiveHost view-state snapshot format version is unsupported.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
     });
   }
   if (typeof value.payload !== "string") {
-    return fail("Malformed LiveHost canonical snapshot envelope.", {
+    return fail("Malformed LiveHost view-state snapshot envelope.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     });
   }
@@ -571,18 +573,54 @@ function decode_recover_message(value: Readonly<Record<string, unknown>>): LiveH
   if (!id || !logicalMapId) return fail("LiveHost recovery message requires non-empty id and logicalMapId.");
   const hasIncarnation = Object.prototype.hasOwnProperty.call(value, "incarnationId");
   const hasRevision = Object.prototype.hasOwnProperty.call(value, "lastAppliedRev");
+  const hasCapabilities = Object.prototype.hasOwnProperty.call(value, "snapshotCapabilities");
   if (hasIncarnation !== hasRevision) return fail("LiveHost recovery cursor requires both incarnationId and lastAppliedRev.");
+  const snapshotCapabilities = hasCapabilities
+    ? decode_snapshot_capabilities(value.snapshotCapabilities)
+    : undefined;
+  if (hasCapabilities && snapshotCapabilities === undefined) {
+    return fail("LiveHost snapshot capabilities are malformed.", {
+      code: "LIVEHOST_SNAPSHOT_CAPABILITIES_INVALID",
+    });
+  }
+  const baseKeys = ["type", "id", "logicalMapId", ...(hasCapabilities ? ["snapshotCapabilities"] : [])];
   if (!hasIncarnation) {
-    if (!has_exact_keys(value, ["type", "id", "logicalMapId"])) return fail("LiveHost recovery request has unknown fields.");
-    return ok({ type: "recover", id, logicalMapId });
+    if (!has_exact_keys(value, baseKeys)) return fail("LiveHost recovery request has unknown fields.");
+    return ok({ type: "recover", id, logicalMapId, ...(snapshotCapabilities ? { snapshotCapabilities } : {}) });
   }
   const incarnationId = required_string(value.incarnationId);
   const lastAppliedRev = required_rev(value.lastAppliedRev);
   if (!incarnationId || lastAppliedRev === undefined) return fail("LiveHost recovery cursor is invalid.");
-  if (!has_exact_keys(value, ["type", "id", "logicalMapId", "incarnationId", "lastAppliedRev"])) {
+  if (!has_exact_keys(value, [...baseKeys, "incarnationId", "lastAppliedRev"])) {
     return fail("LiveHost recovery request has unknown fields.");
   }
-  return ok({ type: "recover", id, logicalMapId, incarnationId, lastAppliedRev });
+  return ok({
+    type: "recover",
+    id,
+    logicalMapId,
+    incarnationId,
+    lastAppliedRev,
+    ...(snapshotCapabilities ? { snapshotCapabilities } : {}),
+  });
+}
+
+function decode_snapshot_capabilities(value: unknown): LiveHostSnapshotCapabilities | undefined {
+  if (!is_record(value)) return undefined;
+  const hasVersions = Object.prototype.hasOwnProperty.call(value, "viewStateVersions");
+  if (!has_exact_keys(value, hasVersions ? ["hson", "viewStateVersions"] : ["hson"]) || value.hson !== true) {
+    return undefined;
+  }
+  if (!hasVersions) return Object.freeze({ hson: true });
+  if (!Array.isArray(value.viewStateVersions)) return undefined;
+  const versions: number[] = [];
+  const seen = new Set<number>();
+  for (const version of value.viewStateVersions) {
+    if (typeof version !== "number" || !Number.isInteger(version) || version < 1 || seen.has(version)) return undefined;
+    seen.add(version);
+    versions.push(version);
+  }
+  versions.sort((left, right) => left - right);
+  return Object.freeze({ hson: true, viewStateVersions: Object.freeze(versions) });
 }
 
 function decode_session_create_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientSessionCreateMessage> {
@@ -629,9 +667,24 @@ function decode_server_event_message(value: Readonly<Record<string, unknown>>): 
   return ok({ type: "event", event: value.event, payload: value.payload });
 }
 
+function decode_snapshot_encoding(value: unknown): LiveHostSnapshotEncodingSelection | undefined {
+  if (!is_record(value)) return undefined;
+  if (value.format === "hson" && has_exact_keys(value, ["format"])) {
+    return Object.freeze({ format: "hson" });
+  }
+  const formatVersion = required_rev(value.formatVersion);
+  if (value.format === "view-state"
+    && formatVersion !== undefined
+    && formatVersion > 0
+    && has_exact_keys(value, ["format", "formatVersion"])) {
+    return Object.freeze({ format: "view-state", formatVersion });
+  }
+  return undefined;
+}
+
 function decode_recovery_server_message(
   value: Readonly<Record<string, unknown>>,
-  allowCanonicalSnapshots: boolean,
+  allowViewStateSnapshots: boolean,
 ): LiveHostResult<LiveHostDecodedServerMessage> {
   const id = required_string(value.id);
   if (!id) return fail("LiveHost recovery server message requires non-empty id.");
@@ -656,9 +709,9 @@ function decode_recovery_server_message(
         code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
       });
     }
-    const decoded = decode_snapshot(value.snapshot, allowCanonicalSnapshots);
+    const decoded = decode_snapshot(value.snapshot, allowViewStateSnapshots);
     if (!decoded.ok) {
-      return allowCanonicalSnapshots
+      return allowViewStateSnapshots
         ? decoded
         : fail("Malformed LiveHost recovery snapshot message.");
     }
@@ -685,13 +738,29 @@ function decode_recovery_server_message(
     const incarnationId = required_string(value.incarnationId);
     const headRev = required_rev(value.headRev);
     if (!sessionId || !logicalMapId || !incarnationId || headRev === undefined) return fail("Malformed LiveHost recovery plan metadata.");
-    const base = { type: "recovery-plan" as const, id, sessionId, logicalMapId, incarnationId, headRev };
+    const hasSnapshotEncoding = Object.prototype.hasOwnProperty.call(value, "snapshotEncoding");
+    const snapshotEncoding = hasSnapshotEncoding ? decode_snapshot_encoding(value.snapshotEncoding) : undefined;
+    if (hasSnapshotEncoding && snapshotEncoding === undefined) {
+      return fail("LiveHost snapshot encoding acknowledgment is malformed.", {
+        code: "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID",
+      });
+    }
+    const encodingKeys = hasSnapshotEncoding ? ["snapshotEncoding"] : [];
+    const base = {
+      type: "recovery-plan" as const,
+      id,
+      sessionId,
+      logicalMapId,
+      incarnationId,
+      headRev,
+      ...(snapshotEncoding ? { snapshotEncoding } : {}),
+    };
     let message: LiveHostServerRecoveryPlanMessage;
     if (value.outcome === "current" || value.outcome === "replay") {
-      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome"])) return fail("Malformed LiveHost recovery plan.");
+      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome", ...encodingKeys])) return fail("Malformed LiveHost recovery plan.");
       message = { ...base, outcome: value.outcome };
     } else if (value.outcome === "snapshot") {
-      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome", "reason"]) || (value.reason !== "no_usable_revision" && value.reason !== "incarnation_mismatch" && value.reason !== "history_unavailable")) return fail("Malformed LiveHost snapshot plan.");
+      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome", "reason", ...encodingKeys]) || (value.reason !== "no_usable_revision" && value.reason !== "incarnation_mismatch" && value.reason !== "history_unavailable")) return fail("Malformed LiveHost snapshot plan.");
       message = { ...base, outcome: "snapshot", reason: value.reason };
     } else if (value.outcome === "reject" && is_record(value.error)) {
       const error = value.error;
@@ -699,7 +768,7 @@ function decode_recovery_server_message(
       const messageText = required_string(error.message);
       const authoritativeRev = required_rev(error.authoritativeRev);
       const errorIncarnation = required_string(error.incarnationId);
-      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome", "error"]) || !has_exact_keys(error, ["code", "message", "authoritativeRev", "incarnationId"]) || (code !== "LIVEHOST_RECOVERY_INVALID_TARGET" && code !== "LIVEHOST_RECOVERY_INVALID_REQUEST" && code !== "REVISION_AHEAD_OF_AUTHORITY") || !messageText || authoritativeRev === undefined || !errorIncarnation) return fail("Malformed LiveHost recovery rejection.");
+      if (!has_exact_keys(value, ["type", "id", "sessionId", "logicalMapId", "incarnationId", "headRev", "outcome", "error", ...encodingKeys]) || !has_exact_keys(error, ["code", "message", "authoritativeRev", "incarnationId"]) || (code !== "LIVEHOST_RECOVERY_INVALID_TARGET" && code !== "LIVEHOST_RECOVERY_INVALID_REQUEST" && code !== "REVISION_AHEAD_OF_AUTHORITY") || !messageText || authoritativeRev === undefined || !errorIncarnation) return fail("Malformed LiveHost recovery rejection.");
       message = { ...base, outcome: "reject", error: { code, message: messageText, authoritativeRev, incarnationId: errorIncarnation } };
     } else return fail("Unknown LiveHost recovery plan outcome.");
     return ok(message);
@@ -798,14 +867,14 @@ function is_legacy_livehost_server_message(
 
 function decode_livehost_server_message_internal(
   message: string,
-  allowCanonicalSnapshots: boolean,
+  allowViewStateSnapshots: boolean,
 ): LiveHostResult<LiveHostDecodedServerMessage> {
   try {
     const value = JSON.parse(message) as unknown;
     if (!is_record(value)) return fail("LiveHost server message must be an object.");
     if (value.type === "event") return decode_server_event_message(value);
     if (value.type === "recovery-plan" || value.type === "recovery-commit" || value.type === "recovery-snapshot" || value.type === "recovery-caught-up" || value.type === "commit" || value.type === "recovery-error") {
-      return decode_recovery_server_message(value, allowCanonicalSnapshots);
+      return decode_recovery_server_message(value, allowViewStateSnapshots);
     }
     if (value.type === "session-created" || value.type === "session-attached" || value.type === "session-rejected" || value.type === "session-fenced" || value.type === "session-ended") {
       return decode_session_server_message(value);
@@ -838,7 +907,7 @@ export function decode_livehost_server_message(message: string): LiveHostResult<
   return ok(decoded.value);
 }
 
-/** @internal Client transport decoder with additive canonical snapshot acceptance. */
+/** @internal Client transport decoder with additive view-state snapshot acceptance. */
 export function decode_livehost_client_server_message(
   message: string,
 ): LiveHostResult<LiveHostDecodedServerMessage> {

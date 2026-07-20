@@ -47,6 +47,8 @@ import type {
   LiveHostSeq,
   LiveHostServerMessage,
   LiveHostServerRecoveryPlanMessage,
+  LiveHostSnapshotCapabilities,
+  LiveHostSnapshotEncodingSelection,
 } from "../../types/livehost.types.js";
 import {
   LiveHostClientRecoveryError,
@@ -68,6 +70,11 @@ let nextActionAttemptId = 0;
 let nextRecoveryId = 0;
 let nextSessionRequestId = 0;
 let nextActionStatusId = 0;
+
+const CLIENT_SNAPSHOT_CAPABILITIES: LiveHostSnapshotCapabilities = Object.freeze({
+  hson: true,
+  viewStateVersions: Object.freeze([1]),
+});
 
 function make_reload_safe_id(prefix: string): string {
   const uuid = globalThis.crypto?.randomUUID?.();
@@ -247,6 +254,7 @@ export function create_livehost_client<
   let activeRecoveryId: LiveHostRecoveryId | undefined;
   let stopRecoveryMessages: LiveHostDisposer | undefined;
   let recoveryPlan: LiveHostServerRecoveryPlanMessage | undefined;
+  let negotiatedSnapshotEncoding: LiveHostSnapshotEncodingSelection | undefined;
   let bodyCommitsApplied = 0;
   let snapshotInstalls = 0;
   let duplicateCommitsIgnored = 0;
@@ -335,6 +343,39 @@ export function create_livehost_client<
     return recoveryPlan;
   }
 
+  function validate_snapshot_encoding_acknowledgment(
+    selected: LiveHostSnapshotEncodingSelection | undefined,
+  ): boolean {
+    if (selected === undefined) {
+      fail_recovery(
+        "LIVEHOST_SNAPSHOT_NEGOTIATION_MISSING",
+        "LiveHost recovery plan omitted the snapshot encoding acknowledgment.",
+      );
+      return false;
+    }
+    if (selected.format === "view-state"
+      && !CLIENT_SNAPSHOT_CAPABILITIES.viewStateVersions?.includes(selected.formatVersion)) {
+      fail_recovery(
+        "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED",
+        "LiveHost selected an unsupported view-state snapshot version.",
+      );
+      return false;
+    }
+    if (negotiatedSnapshotEncoding !== undefined
+      && (negotiatedSnapshotEncoding.format !== selected.format
+        || (selected.format === "view-state"
+          && (negotiatedSnapshotEncoding.format !== "view-state"
+            || negotiatedSnapshotEncoding.formatVersion !== selected.formatVersion)))) {
+      fail_recovery(
+        "LIVEHOST_SNAPSHOT_NEGOTIATION_CHANGED",
+        "LiveHost changed the selected snapshot encoding during one connection.",
+      );
+      return false;
+    }
+    negotiatedSnapshotEncoding = selected;
+    return true;
+  }
+
   function apply_commit(commit: LiveHostCanonicalCommit, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
     const logicalMapId = options.recovery?.logicalMapId;
@@ -410,6 +451,14 @@ export function create_livehost_client<
       fail_recovery("LIVEHOST_RECOVERY_INVALID_SNAPSHOT", "Snapshot identity or revision does not match its recovery plan.");
       return;
     }
+    const snapshotFormat = "hson" in snapshot ? "hson" : "view-state";
+    if (negotiatedSnapshotEncoding?.format !== snapshotFormat) {
+      fail_recovery(
+        "LIVEHOST_SNAPSHOT_NEGOTIATION_MISMATCH",
+        "LiveHost recovery snapshot does not match the negotiated encoding.",
+      );
+      return;
+    }
     try {
       if (is_projected_live_map(map)) {
         if (!("hson" in snapshot)) {
@@ -462,6 +511,7 @@ export function create_livehost_client<
         fail_recovery("LIVEHOST_RECOVERY_STREAM_MISMATCH", "Recovery plan targets a different logical map.");
         return true;
       }
+      if (!validate_snapshot_encoding_acknowledgment(message.snapshotEncoding)) return true;
       recoveryPlan = message;
       recoveryStrategy = message.outcome;
       if (message.outcome === "reject") {
@@ -720,6 +770,7 @@ export function create_livehost_client<
   function disconnect(): void {
     if (!isConnected) return;
     isConnected = false;
+    negotiatedSnapshotEncoding = undefined;
     while (disposers.length) disposers.pop()?.();
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
@@ -782,6 +833,7 @@ export function create_livehost_client<
       id,
       logicalMapId: recoveryOptions.logicalMapId,
       ...(incarnationId !== undefined && lastAppliedRev !== undefined ? { incarnationId, lastAppliedRev } : {}),
+      snapshotCapabilities: CLIENT_SNAPSHOT_CAPABILITIES,
     });
     return promise;
   }

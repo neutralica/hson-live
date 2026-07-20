@@ -6,10 +6,10 @@ import type {
   LiveHostSnapshotEnvelope,
 } from "../../types/livehost.types.js";
 import {
-  decode_canonical_document_snapshot,
-  encode_canonical_document_snapshot,
-} from "../livemap/livemap.document.snapshot-codec.js";
-import { CanonicalDocumentSnapshotCodecError } from "../livemap/livemap.document.snapshot-codec.error.js";
+  decode_view_state_snapshot,
+  encode_view_state_snapshot,
+} from "../livemap/livemap.document.view-state-codec.js";
+import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 
 /** @internal Common outer recovery fields shared by both accepted snapshot bodies. */
 export type LiveHostSnapshotCommonFields = Pick<
@@ -17,28 +17,30 @@ export type LiveHostSnapshotCommonFields = Pick<
   "logicalMapId" | "incarnationId" | "rev" | "mode"
 >;
 
-/** @internal The established ordinary-HSON snapshot body and host emission shape. */
-export type LiveHostLegacySnapshotEnvelope = LiveHostSnapshotEnvelope;
+/** @internal The established ordinary-HSON snapshot body and compatibility shape. */
+export type LiveHostHsonSnapshotEnvelope = LiveHostSnapshotEnvelope;
 
-/** @internal Incoming-only canonical document snapshot body. */
-export type LiveHostCanonicalDocumentSnapshotEnvelope = LiveHostSnapshotCommonFields & Readonly<{
-  format: "canonical-hson";
+/** @internal Incoming exact document-state snapshot body. */
+export type LiveHostViewStateSnapshotEnvelope = LiveHostSnapshotCommonFields & Readonly<{
+  format: "view-state";
   formatVersion: 1;
   payload: string;
 }>;
 
 /** @internal Fully validated incoming snapshot representation. */
 export type LiveHostValidatedSnapshotEnvelope =
-  | LiveHostLegacySnapshotEnvelope
-  | LiveHostCanonicalDocumentSnapshotEnvelope;
+  | LiveHostHsonSnapshotEnvelope
+  | LiveHostViewStateSnapshotEnvelope;
 
-/** @internal Explicit host-side document snapshot wire selection. */
-export type LiveHostDocumentSnapshotEncoding = "legacy-hson" | "canonical-hson";
+/** @internal Closed host-side document snapshot wire selection. */
+export type LiveHostDocumentSnapshotEncoding =
+  | Readonly<{ format: "hson" }>
+  | Readonly<{ format: "view-state"; formatVersion: 1 }>;
 
 /** @internal Outbound document snapshot body selected from one capture. */
 export type LiveHostOutboundDocumentSnapshotEnvelope =
-  | LiveHostLegacySnapshotEnvelope
-  | LiveHostCanonicalDocumentSnapshotEnvelope;
+  | LiveHostHsonSnapshotEnvelope
+  | LiveHostViewStateSnapshotEnvelope;
 
 /** @internal Client-side decoded recovery message for either accepted document snapshot format. */
 export type LiveHostDecodedServerRecoverySnapshotMessage = Readonly<{
@@ -74,7 +76,7 @@ export class LiveHostDocumentSnapshotDecodeError extends Error {
   }
 }
 
-/** @internal Payload-safe host-side canonical snapshot construction failure. */
+/** @internal Payload-safe host-side view-state snapshot construction failure. */
 export class LiveHostDocumentSnapshotEncodeError extends Error {
   public constructor(
     public readonly code: LiveHostDocumentSnapshotEncodeErrorCode,
@@ -86,13 +88,37 @@ export class LiveHostDocumentSnapshotEncodeError extends Error {
   }
 }
 
+function is_view_state_encoding(value: unknown): value is Extract<
+  LiveHostDocumentSnapshotEncoding,
+  { format: "view-state" }
+> {
+  return typeof value === "object"
+    && value !== null
+    && "format" in value
+    && value.format === "view-state"
+    && "formatVersion" in value
+    && value.formatVersion === 1
+    && Object.keys(value).length === 2;
+}
+
+function is_hson_encoding(value: unknown): value is Extract<
+  LiveHostDocumentSnapshotEncoding,
+  { format: "hson" }
+> {
+  return typeof value === "object"
+    && value !== null
+    && "format" in value
+    && value.format === "hson"
+    && Object.keys(value).length === 1;
+}
+
 /** @internal Encode one detached capture without independently supplied mode or revision. */
 export function encode_livehost_document_snapshot(
   common: Pick<LiveHostSnapshotCommonFields, "logicalMapId" | "incarnationId">,
   capture: DocumentLiveMapCapture,
   encoding: LiveHostDocumentSnapshotEncoding,
 ): LiveHostOutboundDocumentSnapshotEnvelope {
-  if (encoding === "legacy-hson") {
+  if (is_hson_encoding(encoding)) {
     return Object.freeze({
       ...common,
       rev: capture.rev,
@@ -100,19 +126,25 @@ export function encode_livehost_document_snapshot(
       hson: hson.fromNode(capture.root).toHson().noBreak().serialize(),
     });
   }
+  if (!is_view_state_encoding(encoding)) {
+    throw new LiveHostDocumentSnapshotEncodeError(
+      "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED",
+      "LiveHost document snapshot encoding is unsupported.",
+    );
+  }
 
   try {
     return Object.freeze({
       ...common,
       rev: capture.rev,
       mode: capture.mode,
-      ...encode_canonical_document_snapshot(capture),
+      ...encode_view_state_snapshot(capture),
     });
   } catch (cause) {
-    if (cause instanceof CanonicalDocumentSnapshotCodecError) {
+    if (cause instanceof ViewStateSnapshotCodecError) {
       throw new LiveHostDocumentSnapshotEncodeError(
         "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED",
-        "Canonical LiveHost document snapshot could not be encoded.",
+        "LiveHost view-state snapshot could not be encoded.",
         cause,
       );
     }
@@ -128,26 +160,26 @@ export function decode_livehost_document_snapshot(
     const node = hson.fromHson(snapshot.hson).toNode();
     const staged = hson.liveMap.fromNode(node);
     if (staged.mode !== "element" && staged.mode !== "fragment") {
-      throw new Error("Legacy LiveHost document snapshot reconstructed a non-document root.");
+      throw new Error("LiveHost HSON document snapshot reconstructed a non-document root.");
     }
     if (staged.mode !== snapshot.mode) {
-      throw new Error("Legacy LiveHost document snapshot mode does not match its envelope.");
+      throw new Error("LiveHost HSON document snapshot mode does not match its envelope.");
     }
     return Object.freeze({ ...staged.capture(), rev: snapshot.rev });
   }
 
   let capture: DocumentLiveMapCapture;
   try {
-    capture = decode_canonical_document_snapshot({
+    capture = decode_view_state_snapshot({
       format: snapshot.format,
       formatVersion: snapshot.formatVersion,
       payload: snapshot.payload,
     });
   } catch (cause) {
-    if (cause instanceof CanonicalDocumentSnapshotCodecError) {
+    if (cause instanceof ViewStateSnapshotCodecError) {
       throw new LiveHostDocumentSnapshotDecodeError(
         "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED",
-        "Canonical LiveHost document snapshot could not be decoded.",
+        "LiveHost view-state snapshot could not be decoded.",
         cause,
       );
     }
@@ -157,13 +189,13 @@ export function decode_livehost_document_snapshot(
   if (capture.mode !== snapshot.mode) {
     throw new LiveHostDocumentSnapshotDecodeError(
       "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
-      "Canonical LiveHost snapshot mode does not match its envelope.",
+      "LiveHost view-state snapshot mode does not match its envelope.",
     );
   }
   if (capture.rev !== snapshot.rev) {
     throw new LiveHostDocumentSnapshotDecodeError(
       "LIVEHOST_RECOVERY_SNAPSHOT_REVISION_MISMATCH",
-      "Canonical LiveHost snapshot revision does not match its envelope.",
+      "LiveHost view-state snapshot revision does not match its envelope.",
     );
   }
   return capture;

@@ -1,7 +1,7 @@
 // livehost/core.ts
 
 import { hson } from "../../hson.js";
-import type { ClassifiedLiveMap, DocumentLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
+import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
 import type {
   LiveHost,
   LiveHostForMap,
@@ -29,6 +29,8 @@ import type {
   LiveHostServerMessage,
   LiveHostSessionId,
   LiveHostSocketLike,
+  LiveHostSnapshotCapabilities,
+  LiveHostSnapshotEncodingSelection,
   LiveHostValidator,
 } from "../../types/livehost.types.js";
 import { decode_livehost_message, encode_livehost_message, is_livehost_json_value } from "./livehost.protocol.js";
@@ -39,6 +41,7 @@ import {
   make_livehost_recovery_planner_internal,
 } from "./livehost.recovery.js";
 import type { LiveHostDocumentSnapshotEncoding } from "./livehost.document-snapshot.js";
+import { LiveHostRecoveryError } from "./livehost.error.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
 import { resolve_livehost_document_action } from "./livehost.document-actions.js";
@@ -53,6 +56,35 @@ let livehost_session_inc = 0;
 let livehost_trace_inc = 0;
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
+const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
+const VIEW_STATE_V1_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({
+  format: "view-state",
+  formatVersion: 1,
+});
+
+function select_snapshot_encoding(
+  capabilities: LiveHostSnapshotCapabilities | undefined,
+  documentMode: boolean,
+): LiveHostDocumentSnapshotEncoding {
+  return documentMode && capabilities?.viewStateVersions?.includes(1) === true
+    ? VIEW_STATE_V1_SNAPSHOT_ENCODING
+    : HSON_SNAPSHOT_ENCODING;
+}
+
+function snapshot_capability_signature(capabilities: LiveHostSnapshotCapabilities | undefined): string {
+  return capabilities === undefined
+    ? "absent"
+    : `hson:${capabilities.viewStateVersions?.join(",") ?? ""}`;
+}
+
+function snapshot_encoding_equal(
+  left: LiveHostSnapshotEncodingSelection,
+  right: LiveHostSnapshotEncodingSelection,
+): boolean {
+  return left.format === right.format
+    && (left.format !== "view-state"
+      || (right.format === "view-state" && left.formatVersion === right.formatVersion));
+}
 
 function make_livehost_session_id(): LiveHostSessionId {
   livehost_session_inc += 1;
@@ -145,27 +177,12 @@ export function create_livehost(
   return create_livehost_for_map(map, { ...shared, map });
 }
 
-/** @internal Construct a document host with one explicit snapshot wire encoding. */
-export function create_livehost_with_document_snapshot_encoding<
-  TMap extends DocumentLiveMap,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(
-  options: ExistingMapLiveHostOptions<TMap, TActions>,
-  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
-): LiveHostForMap<TMap, TActions> {
-  if (documentSnapshotEncoding !== "legacy-hson" && documentSnapshotEncoding !== "canonical-hson") {
-    throw new TypeError("LiveHost document snapshot encoding is unsupported.");
-  }
-  return create_livehost_for_map(options.map, options, documentSnapshotEncoding);
-}
-
 function create_livehost_for_map<
   TMap extends LiveMapAuthority,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 >(
   map: TMap,
   options: ExistingMapLiveHostOptions<TMap, TActions>,
-  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding = "legacy-hson",
 ): LiveHostForMap<TMap, TActions> {
   const streamRuntime = make_livehost_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
@@ -179,7 +196,6 @@ function create_livehost_for_map<
     stream,
     options.recovery ?? {},
     options.trace,
-    documentSnapshotEncoding,
   );
   const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
@@ -728,6 +744,8 @@ function create_livehost_for_map<
     let connectionEpoch: number | undefined;
     let sessionResumable: boolean | undefined;
     let stopRecoveryChannel: LiveHostDisposer | undefined;
+    let negotiatedSnapshotEncoding: LiveHostDocumentSnapshotEncoding | undefined;
+    let snapshotCapabilitySignature: string | undefined;
 
     function raw_send(message: LiveHostServerMessage): void {
       if (transportOpen) socket.send(encode_livehost_message(message));
@@ -755,6 +773,33 @@ function create_livehost_for_map<
       const stop = stopRecoveryChannel;
       stopRecoveryChannel = undefined;
       stop?.();
+    }
+
+    function negotiate_snapshot_encoding(message: LiveHostClientRecoverMessage): Readonly<{
+      encoding: LiveHostDocumentSnapshotEncoding;
+      acknowledgment?: LiveHostSnapshotEncodingSelection;
+    }> {
+      const signature = snapshot_capability_signature(message.snapshotCapabilities);
+      const selected = select_snapshot_encoding(
+        message.snapshotCapabilities,
+        map.mode === "element" || map.mode === "fragment",
+      );
+      if (negotiatedSnapshotEncoding === undefined) {
+        negotiatedSnapshotEncoding = selected;
+        snapshotCapabilitySignature = signature;
+      } else if (snapshotCapabilitySignature !== signature
+        || !snapshot_encoding_equal(negotiatedSnapshotEncoding, selected)) {
+        throw new LiveHostRecoveryError(
+          "LIVEHOST_RECOVERY_NEGOTIATION_FAILED",
+          "LiveHost snapshot capabilities cannot change during one connection.",
+        );
+      }
+      return Object.freeze({
+        encoding: negotiatedSnapshotEncoding,
+        ...(message.snapshotCapabilities !== undefined
+          ? { acknowledgment: negotiatedSnapshotEncoding }
+          : {}),
+      });
     }
 
     function fence_attachment(fencedSessionId: LiveHostSessionId, epoch: number): void {
@@ -1154,19 +1199,40 @@ function create_livehost_for_map<
       });
       let plan;
       try {
+        const negotiation = negotiate_snapshot_encoding(message);
         const request = {
           logicalMapId: message.logicalMapId,
           ...(message.incarnationId !== undefined ? { incarnationId: message.incarnationId } : {}),
           ...(message.lastAppliedRev !== undefined ? { lastAppliedRev: message.lastAppliedRev } : {}),
         };
-        plan = trace === undefined ? recovery.plan(request) : recovery.plan_traced(request, trace, { requestId: message.id });
+        plan = trace === undefined
+          ? recovery.plan_with_snapshot_encoding(request, negotiation.encoding)
+          : recovery.plan_traced_with_snapshot_encoding(
+            request,
+            negotiation.encoding,
+            trace,
+            { requestId: message.id },
+          );
+        const snapshotEncoding = negotiation.acknowledgment;
+        if (plan.outcome === "reject") {
+          send_without_record({
+            type: "recovery-plan",
+            id: message.id,
+            sessionId,
+            logicalMapId: stream.logicalMapId,
+            incarnationId: stream.incarnationId,
+            headRev: stream.headRev,
+            outcome: "reject",
+            error: plan.error,
+            ...(snapshotEncoding ? { snapshotEncoding } : {}),
+          });
+        }
       } catch (cause) {
         recovery_error(message.id, cause, trace, startedAt);
         return;
       }
       if (plan.outcome === "reject") {
         try {
-          send_without_record({ type: "recovery-plan", id: message.id, sessionId, logicalMapId: stream.logicalMapId, incarnationId: stream.incarnationId, headRev: stream.headRev, outcome: "reject", error: plan.error });
           trace?.emit({
             subsystem: "transport",
             phase: "recovery.transport",
@@ -1197,7 +1263,18 @@ function create_livehost_for_map<
         pendingLive.length = 0;
       };
       try {
-        const base = { type: "recovery-plan" as const, id: message.id, sessionId, logicalMapId: plan.logicalMapId, incarnationId: plan.incarnationId, headRev: plan.headRev };
+        const snapshotEncoding = message.snapshotCapabilities === undefined
+          ? undefined
+          : negotiatedSnapshotEncoding;
+        const base = {
+          type: "recovery-plan" as const,
+          id: message.id,
+          sessionId,
+          logicalMapId: plan.logicalMapId,
+          incarnationId: plan.incarnationId,
+          headRev: plan.headRev,
+          ...(snapshotEncoding ? { snapshotEncoding } : {}),
+        };
         if (plan.outcome === "snapshot") send_without_record({ ...base, outcome: "snapshot", reason: plan.reason });
         else send_without_record({ ...base, outcome: plan.outcome });
         const completion = plan.complete((item) => {
@@ -1362,6 +1439,8 @@ function create_livehost_for_map<
     function detach_transport(hostShutdown = false): void {
       if (!transportOpen) return;
       transportOpen = false;
+      negotiatedSnapshotEncoding = undefined;
+      snapshotCapabilitySignature = undefined;
       dispose_recovery_channel();
       if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
         sync.detach_session(sessionId);

@@ -347,7 +347,7 @@ await check("gap stops later application and preserves last valid state", async 
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "scripted", incarnationId: "inc", headRev: 0, outcome: "current" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "scripted", incarnationId: "inc", headRev: 0, outcome: "current", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-caught-up", id, caughtUp: { kind: "caught_up", logicalMapId: "scripted", incarnationId: "inc", throughRev: 0 } });
   await promise;
   pair.push_server({ type: "commit", id, commit: canonical_set("scripted", "inc", 1, 2, 1, 2) });
@@ -355,6 +355,39 @@ await check("gap stops later application and preserves last valid state", async 
   assert.equal(client.recovery.failure.code, "LIVEHOST_RECOVERY_COMMIT_GAP");
   assert.deepEqual(client.map.snap(), { value: 0 });
   assert.equal(client.recovery.lastAppliedRev, 0);
+});
+
+await check("client rejects unsupported snapshot negotiation acknowledgments", async () => {
+  for (const [label, snapshotEncoding, expectedCode] of [
+    ["unsupported-version", { format: "view-state", formatVersion: 2 }, "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED"],
+    ["unsupported-format", { format: "future-format" }, "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID"],
+    ["missing-acknowledgment", undefined, "LIVEHOST_SNAPSHOT_NEGOTIATION_MISSING"],
+  ]) {
+    const pair = socket_pair();
+    const mirror = hson.liveMap.fromJson({ value: 0 });
+    const client = hson.liveHost.client({
+      socket: pair.client,
+      map: mirror,
+      recovery: {
+        logicalMapId: label,
+        cursor: { incarnationId: "inc", lastAppliedRev: 0 },
+      },
+    });
+    client.connect();
+    const promise = client.recovery.recover();
+    const id = JSON.parse(pair.clientSent.at(-1)).id;
+    pair.push_server({
+      type: "recovery-plan",
+      id,
+      sessionId: "s",
+      logicalMapId: label,
+      incarnationId: "inc",
+      headRev: 0,
+      outcome: "current",
+      snapshotEncoding,
+    });
+    await assert.rejects(promise, (error) => error.code === expectedCode);
+  }
 });
 
 await check("replay conflict preserves cursor and supports a later snapshot attempt", async () => {
@@ -385,7 +418,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "bad-snapshot", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "bad-snapshot", incarnationId: "new", rev: 6, mode: "data-object", hson: compact_hson({ value: 2 }) } });
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_INVALID_SNAPSHOT");
   assert.equal(client.map, mirror);
@@ -403,7 +436,7 @@ await check("malformed snapshot HSON fails installation without advancing state"
   client.recovery.on_change(() => { notifications += 1; });
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "malformed-hson", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "malformed-hson", incarnationId: "new", rev: 5, mode: "data-object", hson: `<value "unterminated>` } });
   await assert.rejects(
     promise,
@@ -427,7 +460,7 @@ await check("valid HSON rejected by the active schema does not replace the mirro
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "schema-invalid", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "schema-invalid", incarnationId: "new", rev: 5, mode: "data-object", hson: compact_hson({ value: "wrong" }) } });
   await assert.rejects(
     promise,
@@ -447,7 +480,7 @@ await check("legacy value snapshot fails as a protocol envelope error", async ()
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "legacy-envelope", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "legacy-envelope", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "legacy-envelope", incarnationId: "new", rev: 5, value: { value: 2 } } });
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID");
   assert.equal(client.map, mirror);
@@ -481,7 +514,7 @@ await check("disposal is idempotent and later messages cannot mutate", async () 
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
-  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "dispose-map", incarnationId: "inc", headRev: 0, outcome: "snapshot", reason: "no_usable_revision" });
+  pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "dispose-map", incarnationId: "inc", headRev: 0, outcome: "snapshot", reason: "no_usable_revision", snapshotEncoding: { format: "hson" } });
   client.recovery.dispose();
   client.recovery.dispose();
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_DISPOSED");

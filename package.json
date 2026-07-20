@@ -46,7 +46,7 @@
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",
     "test:canonical-hson-equality": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-hson-equality.acceptance.mts",
-    "test:canonical-document-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-document-snapshot-codec.acceptance.mts",
+    "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",
     "test:public-boundaries": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/public-boundaries.acceptance.mts",
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
     "test:liveproject-document-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-attrs.acceptance.mts",

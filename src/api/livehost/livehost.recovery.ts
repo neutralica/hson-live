@@ -109,7 +109,21 @@ type TracedLiveHostRecoveryPlanner = LiveHostRecoveryPlanner & Readonly<{
     correlation?: Readonly<{ requestId?: string }>,
     hooks?: LiveHostRecoveryHooks,
   ) => LiveHostRecoveryPlan;
+  plan_with_snapshot_encoding: (
+    request: LiveHostRecoveryRequest,
+    encoding: LiveHostDocumentSnapshotEncoding,
+    hooks?: LiveHostRecoveryHooks,
+  ) => LiveHostRecoveryPlan;
+  plan_traced_with_snapshot_encoding: (
+    request: LiveHostRecoveryRequest,
+    encoding: LiveHostDocumentSnapshotEncoding,
+    trace: LiveTraceContext,
+    correlation?: Readonly<{ requestId?: string }>,
+    hooks?: LiveHostRecoveryHooks,
+  ) => LiveHostRecoveryPlan;
 }>;
+
+const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
 
 /**
  * The established public planner type remains legacy-only. Canonical envelopes
@@ -132,16 +146,15 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
   options: LiveHostRecoveryOptions = {},
   traceSink?: LiveTraceSink,
 ): TracedLiveHostRecoveryPlanner {
-  return make_livehost_recovery_planner_internal(map, stream, options, traceSink, "legacy-hson");
+  return make_livehost_recovery_planner_internal(map, stream, options, traceSink);
 }
 
-/** @internal Construct the real planner with one explicit document snapshot encoding. */
+/** @internal Construct the real planner with connection-selected snapshot planning support. */
 export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuthority>(
   map: TMap,
   stream: LiveHostCanonicalStream<TMap>,
   options: LiveHostRecoveryOptions,
   traceSink: LiveTraceSink | undefined,
-  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
 ): TracedLiveHostRecoveryPlanner {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
@@ -170,13 +183,13 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
   }
 
   function plan(request: LiveHostRecoveryRequest, hooks: LiveHostRecoveryHooks = {}): LiveHostRecoveryPlan {
-    if (traceSink === undefined) return plan_internal(request, hooks, undefined, undefined);
+    if (traceSink === undefined) return plan_internal(request, hooks, undefined, undefined, HSON_SNAPSHOT_ENCODING);
     traceAttemptCount += 1;
     const trace = create_live_trace_context(
       traceSink,
       `lht-recovery-${stream.logicalMapId}-${traceAttemptCount}`,
     );
-    return plan_internal(request, hooks, trace, undefined);
+    return plan_internal(request, hooks, trace, undefined, HSON_SNAPSHOT_ENCODING);
   }
 
   function plan_internal(
@@ -184,6 +197,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
     hooks: LiveHostRecoveryHooks,
     trace: LiveTraceContext | undefined,
     correlation: Readonly<{ requestId?: string }> | undefined,
+    documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
   ): LiveHostRecoveryPlan {
     if (request.logicalMapId !== stream.logicalMapId) {
       const rejected = reject(
@@ -658,7 +672,27 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
   return Object.freeze({
     plan,
-    plan_traced: (request, trace, correlation, hooks = {}) => plan_internal(request, hooks, trace, correlation),
+    plan_traced: (request, trace, correlation, hooks = {}) => plan_internal(
+      request,
+      hooks,
+      trace,
+      correlation,
+      HSON_SNAPSHOT_ENCODING,
+    ),
+    plan_with_snapshot_encoding: (request, encoding, hooks = {}) => plan_internal(
+      request,
+      hooks,
+      undefined,
+      undefined,
+      encoding,
+    ),
+    plan_traced_with_snapshot_encoding: (request, encoding, trace, correlation, hooks = {}) => plan_internal(
+      request,
+      hooks,
+      trace,
+      correlation,
+      encoding,
+    ),
     debug,
   });
 }

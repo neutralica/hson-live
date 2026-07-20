@@ -2,9 +2,8 @@ import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { make_livehost_canonical_stream } from "../../src/api/livehost/livehost.history.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
-import { encode_canonical_document_snapshot } from "../../src/api/livemap/livemap.document.snapshot-codec.ts";
-import { CanonicalDocumentSnapshotCodecError } from "../../src/api/livemap/livemap.document.snapshot-codec.error.ts";
-import { create_livehost_with_document_snapshot_encoding } from "../../src/api/livehost/livehost.core.ts";
+import { encode_view_state_snapshot } from "../../src/api/livemap/livemap.document.view-state-codec.ts";
+import { ViewStateSnapshotCodecError } from "../../src/api/livemap/livemap.document.view-state-codec.error.ts";
 import { LiveHostDocumentSnapshotEncodeError } from "../../src/api/livehost/livehost.document-snapshot.ts";
 
 let checks = 0;
@@ -61,7 +60,7 @@ function fragment(source) {
 
 function attach(host, map, cursor) {
   const pair = socket_pair();
-  host.connect(pair.server);
+  const disconnectHost = host.connect(pair.server);
   const client = hson.liveHost.client({
     socket: pair.client,
     map,
@@ -71,7 +70,20 @@ function attach(host, map, cursor) {
     },
   });
   client.connect();
-  return { client, pair };
+  return { client, pair, disconnectHost };
+}
+
+function raw_recovery(host, id, snapshotCapabilities, cursor) {
+  const pair = socket_pair();
+  const disconnectHost = host.connect(pair.server);
+  pair.client.send(JSON.stringify({
+    type: "recover",
+    id,
+    logicalMapId: host.stream.logicalMapId,
+    ...(cursor ?? {}),
+    ...(snapshotCapabilities === undefined ? {} : { snapshotCapabilities }),
+  }));
+  return { pair, disconnectHost, messages: pair.serverSent.map(JSON.parse) };
 }
 
 function find_node(node, tag) {
@@ -100,32 +112,22 @@ function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, head
   pair.server.send(JSON.stringify({
     type: "recovery-plan",
     id: request.id,
-    sessionId: "canonical-snapshot-session",
+    sessionId: "view-state-snapshot-session",
     logicalMapId,
     incarnationId,
     headRev,
     outcome: "snapshot",
     reason: "incarnation_mismatch",
+    snapshotEncoding: { format: "view-state", formatVersion: 1 },
   }));
   return { pair, client, promise, requestId: request.id };
-}
-
-function canonical_snapshot(logicalMapId, incarnationId, capture, outer = {}) {
-  return {
-    logicalMapId,
-    incarnationId,
-    rev: capture.rev,
-    mode: capture.mode,
-    ...encode_canonical_document_snapshot(capture),
-    ...outer,
-  };
 }
 
 let scriptedFailureId = 0;
 async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forbidden = []) {
   scriptedFailureId += 1;
-  const logicalMapId = snapshotBody.logicalMapId ?? `canonical-failure-${scriptedFailureId}`;
-  const incarnationId = snapshotBody.incarnationId ?? `canonical-failure-incarnation-${scriptedFailureId}`;
+  const logicalMapId = snapshotBody.logicalMapId ?? `view-state-failure-${scriptedFailureId}`;
+  const incarnationId = snapshotBody.incarnationId ?? `view-state-failure-incarnation-${scriptedFailureId}`;
   const headRev = snapshotBody.rev ?? 0;
   const mirror = element(`<aside data-_quid="0000000000000050"/>`);
   const before = mirror.capture();
@@ -311,34 +313,161 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   assert.equal(client.map.mode, "fragment");
   assert.deepEqual(client.map.capture(), authority.capture());
   assert.equal(client.map.document.byQuid("0000000000000008")?.$_tag, "section");
-  const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
+  const messages = pair.serverSent.map(JSON.parse);
+  const plan = messages.find((message) => message.type === "recovery-plan");
+  const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
   assert.equal(snapshot?.mode, "fragment");
-  assert.equal(typeof snapshot?.hson, "string");
-  assert.equal("format" in snapshot, false);
-  assert.equal("formatVersion" in snapshot, false);
-  assert.equal("payload" in snapshot, false);
+  assert.equal(snapshot?.format, "view-state");
+  assert.equal(snapshot?.formatVersion, 1);
+  assert.equal(typeof snapshot?.payload, "string");
+  assert.equal("hson" in snapshot, false);
   assert.equal("value" in snapshot, false);
 });
 
-await check("explicit internal legacy selection retains the established snapshot shape", async () => {
+await check("an old client without capabilities receives the established HSON snapshot shape", async () => {
   const authority = element(`<main/>`);
-  const host = create_livehost_with_document_snapshot_encoding(
-    { map: authority, logicalMapId: "explicit-legacy-snapshot" },
-    "legacy-hson",
-  );
-  const mirror = element(`<aside/>`);
-  const { client, pair } = attach(host, mirror);
-  await client.recovery.recover();
-  const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "old-client-hson-snapshot" });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  pair.client.send(JSON.stringify({
+    type: "recover",
+    id: "old-client-recovery",
+    logicalMapId: host.stream.logicalMapId,
+  }));
+  const messages = pair.serverSent.map(JSON.parse);
+  const plan = messages.find((message) => message.type === "recovery-plan");
+  const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+  assert.equal("snapshotEncoding" in plan, false);
   assert.equal(typeof snapshot.hson, "string");
   assert.equal("format" in snapshot, false);
   assert.equal("formatVersion" in snapshot, false);
   assert.equal("payload" in snapshot, false);
-  assert.equal(canonical_hson_graph_equal(client.map.capture().root, authority.capture().root), true);
+  const recovered = hson.liveMap.fromHson(snapshot.hson);
+  assert.equal(canonical_hson_graph_equal(recovered.capture().root, authority.capture().root), true);
 });
 
-await check("canonical element snapshot recovery preserves typed document state exactly", async () => {
-  const logicalMapId = "canonical-element-snapshot";
+await check("HSON-only and unsupported future view-state advertisements select HSON explicitly", async () => {
+  const authority = element(`<main data-_quid="0000000000000040"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "hson-capability-selection" });
+  for (const [id, capabilities] of [
+    ["hson-only", { hson: true }],
+    ["empty-view-state", { hson: true, viewStateVersions: [] }],
+    ["future-view-state", { hson: true, viewStateVersions: [99] }],
+  ]) {
+    const { messages, disconnectHost } = raw_recovery(host, id, capabilities);
+    const plan = messages.find((message) => message.type === "recovery-plan");
+    const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+    assert.deepEqual(plan.snapshotEncoding, { format: "hson" });
+    assert.equal(typeof snapshot.hson, "string");
+    assert.equal("format" in snapshot, false);
+    disconnectHost();
+  }
+});
+
+await check("snapshot capabilities cannot change during one connection", async () => {
+  const authority = element(`<main/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "immutable-snapshot-selection" });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  pair.client.send(JSON.stringify({
+    type: "recover",
+    id: "first-selection",
+    logicalMapId: host.stream.logicalMapId,
+    snapshotCapabilities: { hson: true },
+  }));
+  pair.client.send(JSON.stringify({
+    type: "recover",
+    id: "changed-selection",
+    logicalMapId: host.stream.logicalMapId,
+    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+  }));
+  const messages = pair.serverSent.map(JSON.parse);
+  assert.deepEqual(
+    messages.find((message) => message.type === "recovery-plan" && message.id === "first-selection")?.snapshotEncoding,
+    { format: "hson" },
+  );
+  const failure = messages.find((message) => message.type === "recovery-error" && message.id === "changed-selection");
+  assert.equal(failure.error.code, "LIVEHOST_RECOVERY_NEGOTIATION_FAILED");
+  assert.equal(messages.some((message) => message.type === "recovery-snapshot" && message.id === "changed-selection"), false);
+});
+
+await check("malformed snapshot capability advertisements reject without document disclosure", async () => {
+  const authority = element(`<main title="private-capability-document"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "malformed-capabilities" });
+  const malformed = [
+    true,
+    { hson: true, viewStateVersions: "1" },
+    { hson: true, viewStateVersions: [1.5] },
+    { hson: true, viewStateVersions: [-1] },
+    { hson: true, viewStateVersions: [1, 1] },
+    { hson: true, unexpected: true },
+  ];
+  for (const [index, snapshotCapabilities] of malformed.entries()) {
+    const { messages, disconnectHost } = raw_recovery(
+      host,
+      `malformed-capabilities-${index}`,
+      snapshotCapabilities,
+    );
+    const error = messages.find((message) => message.type === "error");
+    assert.equal(error.error.code, "LIVEHOST_SNAPSHOT_CAPABILITIES_INVALID");
+    assert.equal(JSON.stringify(error).includes("private-capability-document"), false);
+    disconnectHost();
+  }
+});
+
+await check("view-state negotiation is acknowledged for replay-only recovery", async () => {
+  const authority = element(`<main data-_quid="0000000000000049"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "view-state-replay-only" });
+  const mirror = element(`<main data-_quid="0000000000000049"/>`);
+  authority.document.attrs.set(root, "title", "replayed");
+  const { client, pair } = attach(host, mirror, {
+    incarnationId: host.stream.incarnationId,
+    lastAppliedRev: 0,
+  });
+  assert.equal((await client.recovery.recover()).strategy, "replay");
+  const messages = pair.serverSent.map(JSON.parse);
+  const plan = messages.find((message) => message.type === "recovery-plan");
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
+  assert.equal(messages.some((message) => message.type === "recovery-snapshot"), false);
+  assert.equal(messages.filter((message) => message.type === "recovery-commit").length, 1);
+  assert.equal(client.map.rev, authority.rev);
+});
+
+await check("snapshot negotiation is isolated across simultaneous connections and reconnect", async () => {
+  const authority = element(`<main data-_quid="000000000000004a" <span/>/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "snapshot-selection-isolation" });
+  const oldConnection = raw_recovery(host, "old-connection", undefined);
+  const modernMirror = element(`<aside/>`);
+  const modernConnection = attach(host, modernMirror);
+  await modernConnection.client.recovery.recover();
+
+  const oldPlan = oldConnection.messages.find((message) => message.type === "recovery-plan");
+  const oldSnapshot = oldConnection.messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+  const modernMessages = modernConnection.pair.serverSent.map(JSON.parse);
+  const modernPlan = modernMessages.find((message) => message.type === "recovery-plan");
+  const modernSnapshot = modernMessages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+  assert.equal("snapshotEncoding" in oldPlan, false);
+  assert.equal(typeof oldSnapshot.hson, "string");
+  assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
+  assert.equal(modernSnapshot.format, "view-state");
+  assert.equal(canonical_hson_graph_equal(modernConnection.client.map.capture().root, authority.capture().root), true);
+  const oldRecovered = hson.liveMap.fromHson(oldSnapshot.hson);
+  assert.equal(canonical_hson_graph_equal(oldRecovered.capture().root, authority.capture().root), true);
+
+  modernConnection.client.disconnect();
+  modernConnection.disconnectHost();
+  const reconnect = raw_recovery(host, "reconnected-without-capabilities", undefined);
+  const reconnectPlan = reconnect.messages.find((message) => message.type === "recovery-plan");
+  const reconnectSnapshot = reconnect.messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
+  assert.equal("snapshotEncoding" in reconnectPlan, false);
+  assert.equal(typeof reconnectSnapshot.hson, "string");
+  oldConnection.disconnectHost();
+  reconnect.disconnectHost();
+});
+
+await check("view-state element snapshot recovery preserves typed document state exactly", async () => {
+  const logicalMapId = "view-state-element-snapshot";
   const authority = element(`<main data-_quid="0000000000000041" <span data-_quid="0000000000000042"/>/>`);
   authority.document.attrs.replace(root, {
     count: 0,
@@ -348,16 +477,13 @@ await check("canonical element snapshot recovery preserves typed document state 
     style: { opacity: 0.5, width: { value: 2, unit: "px" } },
   });
   const capture = authority.capture();
-  const host = create_livehost_with_document_snapshot_encoding(
-    { map: authority, logicalMapId, incarnationId: "canonical-element-incarnation" },
-    "canonical-hson",
-  );
+  const host = hson.liveHost.create({ map: authority, logicalMapId, incarnationId: "view-state-element-incarnation" });
   const mirror = element(`<aside/>`);
   const { client, pair } = attach(host, mirror);
 
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
-  assert.equal(snapshot.format, "canonical-hson");
+  assert.equal(snapshot.format, "view-state");
   assert.equal(snapshot.formatVersion, 1);
   assert.equal(typeof snapshot.payload, "string");
   assert.equal("hson" in snapshot, false);
@@ -378,21 +504,18 @@ await check("canonical element snapshot recovery preserves typed document state 
   assert.equal(restored.$_meta["data-_quid"], "0000000000000041");
 });
 
-await check("canonical empty-fragment snapshot recovery preserves an otherwise unserializable root", async () => {
-  const logicalMapId = "canonical-empty-fragment";
+await check("view-state empty-fragment snapshot recovery preserves an otherwise unserializable root", async () => {
+  const logicalMapId = "view-state-empty-fragment";
   const authority = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
   assert.equal(authority.mode, "fragment");
   const capture = authority.capture();
-  const host = create_livehost_with_document_snapshot_encoding(
-    { map: authority, logicalMapId, incarnationId: "canonical-empty-fragment-incarnation" },
-    "canonical-hson",
-  );
+  const host = hson.liveHost.create({ map: authority, logicalMapId, incarnationId: "view-state-empty-fragment-incarnation" });
   const mirror = fragment(`"old"`);
   const { client, pair } = attach(host, mirror);
 
   await client.recovery.recover();
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
-  assert.equal(snapshot.format, "canonical-hson");
+  assert.equal(snapshot.format, "view-state");
   assert.equal("hson" in snapshot, false);
   assert.equal(client.map, mirror);
   assert.equal(client.map.mode, "fragment");
@@ -401,14 +524,11 @@ await check("canonical empty-fragment snapshot recovery preserves an otherwise u
   assert.equal(canonical_hson_graph_equal(client.map.capture().root, capture.root), true);
 });
 
-await check("canonical snapshot recovery applies the existing JSON replay tail afterward", async () => {
-  const logicalMapId = "canonical-snapshot-tail";
+await check("view-state snapshot recovery applies the existing JSON replay tail afterward", async () => {
+  const logicalMapId = "view-state-snapshot-tail";
   const authority = element(`<main data-_quid="0000000000000043"/>`);
   authority.document.attrs.set(root, "count", 1);
-  const host = create_livehost_with_document_snapshot_encoding(
-    { map: authority, logicalMapId, incarnationId: "canonical-snapshot-tail-incarnation" },
-    "canonical-hson",
-  );
+  const host = hson.liveHost.create({ map: authority, logicalMapId, incarnationId: "view-state-snapshot-tail-incarnation" });
   const mirror = element(`<aside/>`);
   const pair = socket_pair();
   host.connect(pair.server);
@@ -429,7 +549,7 @@ await check("canonical snapshot recovery applies the existing JSON replay tail a
   await client.recovery.recover();
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
   const tailMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-commit" && message.phase === "tail");
-  assert.equal(snapshotMessage.snapshot.format, "canonical-hson");
+  assert.equal(snapshotMessage.snapshot.format, "view-state");
   assert.equal("hson" in snapshotMessage.snapshot, false);
   assert.equal(tailMessage.commit.rev, host.stream.headRev);
   assert.equal(client.map.rev, host.stream.headRev);
@@ -441,11 +561,11 @@ await check("canonical snapshot recovery applies the existing JSON replay tail a
   assert.equal(client.recovery.debug().tailCommitsApplied, 1);
 });
 
-await check("canonical snapshot mode and revision mismatches fail before restore", async () => {
+await check("view-state snapshot mode and revision mismatches fail before restore", async () => {
   const source = element(`<main data-_quid="0000000000000044"/>`);
   source.document.attrs.set(root, "private-title", "mode-revision-secret");
   const capture = source.capture();
-  const encoded = encode_canonical_document_snapshot(capture);
+  const encoded = encode_view_state_snapshot(capture);
 
   await expect_scripted_snapshot_failure(
     { rev: capture.rev, mode: "fragment", ...encoded },
@@ -459,19 +579,19 @@ await check("canonical snapshot mode and revision mismatches fail before restore
   );
 });
 
-await check("canonical snapshot envelope discrimination rejects unsupported and ambiguous bodies", async () => {
+await check("view-state snapshot envelope discrimination rejects unsupported and ambiguous bodies", async () => {
   const source = element(`<main/>`);
   const capture = source.capture();
-  const encoded = encode_canonical_document_snapshot(capture);
+  const encoded = encode_view_state_snapshot(capture);
   const common = { rev: capture.rev, mode: capture.mode };
 
   await expect_scripted_snapshot_failure(
-    { ...common, format: "canonical-hson", formatVersion: 2, payload: encoded.payload },
+    { ...common, format: "view-state", formatVersion: 2, payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "unknown-canonical-format", formatVersion: 1, payload: encoded.payload },
+    { ...common, format: "unknown-view-state-format", formatVersion: 1, payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     [encoded.payload],
   );
@@ -485,57 +605,57 @@ await check("canonical snapshot envelope discrimination rejects unsupported and 
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "canonical-hson", formatVersion: 1 },
+    { ...common, format: "view-state", formatVersion: 1 },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "canonical-hson", payload: encoded.payload },
+    { ...common, format: "view-state", payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "canonical-hson", formatVersion: 1, payload: 42 },
+    { ...common, format: "view-state", formatVersion: 1, payload: 42 },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
 });
 
-await check("canonical codec failures are translated without payload disclosure", async () => {
-  const privatePayload = `private-canonical-payload <`;
+await check("view-state codec failures are translated without payload disclosure", async () => {
+  const privatePayload = `private-view-state-payload <`;
   const { client, error } = await expect_scripted_snapshot_failure(
     {
       rev: 0,
       mode: "element",
-      format: "canonical-hson",
+      format: "view-state",
       formatVersion: 1,
       payload: privatePayload,
     },
     "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED",
-    [privatePayload, "private-canonical-payload"],
+    [privatePayload, "private-view-state-payload"],
   );
-  assert.equal(error.cause instanceof CanonicalDocumentSnapshotCodecError, true);
-  assert.equal(error.cause.code, "CANONICAL_SNAPSHOT_SYNTAX_INVALID");
+  assert.equal(error.cause instanceof ViewStateSnapshotCodecError, true);
+  assert.equal(error.cause.code, "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID");
   assert.equal(client.recovery.failure.cause, error.cause);
 });
 
-await check("canonical host encoding failure sends neither snapshot nor fallback tail", async () => {
+await check("negotiated view-state encoding failure sends neither snapshot nor HSON fallback tail", async () => {
   const privateStyle = "private-invalid-inline-style";
   const events = [];
   const authority = element(`<main/>`);
-  const host = create_livehost_with_document_snapshot_encoding(
-    {
-      map: authority,
-      logicalMapId: "canonical-encode-failure",
-      trace: { emit(event) { events.push(event); } },
-    },
-    "canonical-hson",
-  );
+  const host = hson.liveHost.create({
+    map: authority,
+    logicalMapId: "view-state-encode-failure",
+    trace: { emit(event) { events.push(event); } },
+  });
   const ownedRoot = authority.debug.node([]).must();
   const ownedMain = find_node(ownedRoot, "main");
   ownedMain.$_attrs = { style: { _hover: { color: privateStyle } } };
 
   let planningError;
   assert.throws(
-    () => host.recovery.plan({ logicalMapId: host.stream.logicalMapId }),
+    () => host.recovery.plan_with_snapshot_encoding(
+      { logicalMapId: host.stream.logicalMapId },
+      { format: "view-state", formatVersion: 1 },
+    ),
     (error) => {
       planningError = error;
       return error.code === "LIVEHOST_RECOVERY_SNAPSHOT_FAILED";
@@ -543,7 +663,7 @@ await check("canonical host encoding failure sends neither snapshot nor fallback
   );
   assert.equal(planningError.cause instanceof LiveHostDocumentSnapshotEncodeError, true);
   assert.equal(planningError.cause.code, "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED");
-  assert.equal(planningError.cause.cause instanceof CanonicalDocumentSnapshotCodecError, true);
+  assert.equal(planningError.cause.cause instanceof ViewStateSnapshotCodecError, true);
   assert.equal(planningError.message.includes(privateStyle), false);
 
   const mirror = element(`<aside/>`);
@@ -561,13 +681,16 @@ await check("canonical host encoding failure sends neither snapshot nor fallback
   assert.equal(events.some((event) => event.phase === "recovery.complete" && event.status === "success"), false);
 });
 
-await check("unsupported internal snapshot encoding rejects before host construction", async () => {
+await check("unsupported internal snapshot encoding rejects before material construction", async () => {
+  const authority = element(`<main/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "invalid-internal-snapshot-encoding" });
   assert.throws(
-    () => create_livehost_with_document_snapshot_encoding(
-      { map: element(`<main/>`) },
-      "unsupported-snapshot-format",
+    () => host.recovery.plan_with_snapshot_encoding(
+      { logicalMapId: host.stream.logicalMapId },
+      { format: "future-snapshot-format" },
     ),
-    /snapshot encoding is unsupported/,
+    (error) => error.code === "LIVEHOST_RECOVERY_SNAPSHOT_FAILED"
+      && error.cause instanceof LiveHostDocumentSnapshotEncodeError,
   );
 });
 

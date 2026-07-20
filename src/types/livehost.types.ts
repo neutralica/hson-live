@@ -192,6 +192,15 @@ export type LiveHostSnapshotEnvelope = Readonly<{
   hson: string;
 }>;
 
+export type LiveHostSnapshotCapabilities = Readonly<{
+  hson: true;
+  viewStateVersions?: readonly number[];
+}>;
+
+export type LiveHostSnapshotEncodingSelection =
+  | Readonly<{ format: "hson" }>
+  | Readonly<{ format: "view-state"; formatVersion: number }>;
+
 export type LiveHostRecoveryRequest = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId?: LiveHostIncarnationId;
@@ -223,6 +232,7 @@ export type LiveHostRecoveryRuntimeErrorCode =
   | "LIVEHOST_RECOVERY_SNAPSHOT_FAILED"
   | "LIVEHOST_RECOVERY_REPLAY_FAILED"
   | "LIVEHOST_RECOVERY_OBSERVER_FAILED"
+  | "LIVEHOST_RECOVERY_NEGOTIATION_FAILED"
   | "LIVEHOST_RECOVERY_PLANNING_FAILED";
 
 export type LiveHostRecoveryRejection = Readonly<{
@@ -547,6 +557,7 @@ export type LiveHostClientRecoverMessage = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId?: LiveHostIncarnationId;
   lastAppliedRev?: number;
+  snapshotCapabilities?: LiveHostSnapshotCapabilities;
 }>;
 
 export type LiveHostClientSessionCreateMessage = Readonly<{
@@ -672,6 +683,7 @@ type LiveHostServerRecoveryPlanBase = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   headRev: number;
+  snapshotEncoding?: LiveHostSnapshotEncodingSelection;
 }>;
 
 export type LiveHostServerRecoveryPlanMessage =
