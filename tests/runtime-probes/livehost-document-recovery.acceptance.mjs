@@ -263,13 +263,22 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
     lastAppliedRev: 0,
   });
   host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
+  await Promise.resolve();
+  await Promise.resolve();
   const publication = events.find((event) => event.phase === "commit.publication");
   assert.deepEqual(publication?.details, {
+    logicalMapId: "document-trace",
+    incarnationId: host.stream.incarnationId,
     mapMode: "element",
+    prevRev: 0,
+    rev: 1,
     revision: 1,
     operationDomain: "graph",
     operationCount: 1,
+    operationKinds: ["set-attr"],
     origin: "authoritative",
+    listenerCount: 0,
+    outcome: "published",
   });
   assert.deepEqual(
     events.filter((event) => event.phase === "recovery.material").map((event) => event.details.recoveryPhase),
@@ -286,6 +295,34 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   assert.equal(replayPublication?.status, "skip");
   assert.equal(replayPublication?.details.origin, "replay");
   assert.equal(JSON.stringify(replayEvents).includes("replayed"), false);
+});
+
+await check("hosted document action carries action causation into commit publication without attrs", async () => {
+  const events = [];
+  const authority = element(`<main data-_quid="0000000000000031"/>`);
+  const host = hson.liveHost.create({
+    map: authority,
+    logicalMapId: "document-action-trace",
+    incarnationId: "document-action-incarnation",
+    trace: { emit(event) { events.push(event); } },
+  });
+  const mirror = element(`<main data-_quid="0000000000000031"/>`);
+  const client = await attach(host, mirror).client;
+  const result = await client.action("document.attrs.set", {
+    target: root,
+    name: "title",
+    value: "document-private-value",
+  });
+  assert.equal(result.type, "ack");
+  const rootEvent = events.find((event) => event.phase === "action.received");
+  const publication = events.find((event) => event.phase === "commit.publication" && event.details?.sourceAction === "document.attrs.set");
+  assert.equal(publication?.details.sourceTraceId, rootEvent?.traceId);
+  assert.equal(publication?.details.logicalMapId, "document-action-trace");
+  assert.equal(publication?.details.incarnationId, "document-action-incarnation");
+  assert.equal(publication?.details.mapMode, "element");
+  assert.equal(publication?.details.prevRev, 0);
+  assert.equal(publication?.details.rev, 1);
+  assert.equal(JSON.stringify(events).includes("document-private-value"), false);
 });
 
 process.stdout.write(`# ${checks} LiveHost document recovery checks passed\n`);

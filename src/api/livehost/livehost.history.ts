@@ -21,7 +21,7 @@ import type {
   LiveHostLogicalMapId,
   LiveHostWireValue,
 } from "../../types/livehost.types.js";
-import { create_live_trace_context } from "./livehost.trace.js";
+import { create_live_trace_context, type LiveHostCommitCausation } from "./livehost.trace.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import { clone_live_root } from "../livemap/livemap.editor.js";
@@ -292,18 +292,37 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
   map: TMap,
   options: LiveHostCanonicalStreamOptions = {},
 ): LiveHostCanonicalStream<TMap> {
+  return make_livehost_canonical_stream_runtime(map, options).stream;
+}
+
+/** Internal stream construction with explicit action-to-commit correlation. */
+export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAuthority>(
+  map: TMap,
+  options: LiveHostCanonicalStreamOptions = {},
+): Readonly<{
+  stream: LiveHostCanonicalStream<TMap>;
+  correlateCommit: (commit: LiveMapCommit<LiveMapAnyOp>, causation: LiveHostCommitCausation) => void;
+}> {
   const logicalMapId = must_identity(options.logicalMapId ?? make_logical_map_id(), "logical map ID");
   const incarnationId = must_identity(options.incarnationId ?? make_incarnation_id(), "incarnation ID");
   const maxCommits = must_bound(options.history?.maxCommits, DEFAULT_MAX_COMMITS, "maxCommits");
   const maxBytes = must_bound(options.history?.maxBytes, DEFAULT_MAX_BYTES, "maxBytes");
   const retained: RetainedCommit[] = [];
-  const publicationQueue: LiveHostCanonicalCommit[] = [];
+  const publicationQueue: Array<Readonly<{
+    canonical: LiveHostCanonicalCommit;
+    source: LiveMapCommit<LiveMapAnyOp>;
+  }>> = [];
   const listeners = new Set<LiveHostCanonicalCommitListener>();
   let retainedEncodedBytes = 0;
   let headRev = map.rev;
   let isPublishing = false;
   let publishedCommitCount = 0;
   let publicationErrorCount = 0;
+  const commitCausation = new WeakMap<LiveMapCommit<LiveMapAnyOp>, LiveHostCommitCausation>();
+  const pendingCommitTraces = new WeakMap<LiveMapCommit<LiveMapAnyOp>, Readonly<{
+    listenerCount: number;
+    publicationFailureCount: number;
+  }>>();
 
   function trim_history(): void {
     while (retained.length > maxCommits || retainedEncodedBytes > maxBytes) {
@@ -325,17 +344,24 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
 
     try {
       while (publicationQueue.length > 0) {
-        const commit = publicationQueue.shift();
-        if (!commit) continue;
+        const entry = publicationQueue.shift();
+        if (!entry) continue;
+        const { canonical: commit, source } = entry;
 
+        const listenerCount = listeners.size;
+        let publicationFailureCount = 0;
         for (const listener of [...listeners]) {
           try {
             listener(commit);
           } catch {
             publicationErrorCount += 1;
+            publicationFailureCount += 1;
           }
         }
         publishedCommitCount += 1;
+        if (options.trace !== undefined) {
+          pendingCommitTraces.set(source, Object.freeze({ listenerCount, publicationFailureCount }));
+        }
       }
     } finally {
       isPublishing = false;
@@ -350,9 +376,13 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
     const canonical = canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
     append_history(canonical);
     headRev = canonical.rev;
-    publicationQueue.push(canonical);
+    publicationQueue.push(Object.freeze({ canonical, source: commit }));
     drain_publication_queue();
-    trace_commit(commit, origin, "success");
+    if (options.trace !== undefined) {
+      // The second microtask lets a synchronously mutating async action record
+      // its state-transition boundary before the separate stream narrative.
+      queueMicrotask(() => queueMicrotask(() => trace_commit(commit, origin, "success")));
+    }
   }
 
   function trace_commit(
@@ -360,21 +390,60 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
     origin: "authoritative" | "replay",
     status: "success" | "skip",
   ): void {
-    if (map.mode !== "element" && map.mode !== "fragment") return;
     const sink = options.trace;
     if (sink === undefined) return;
     const trace = create_live_trace_context(sink, `lht-stream-${logicalMapId}-${commit.rev}`);
     const first = commit.ops[0];
+    const causation = commitCausation.get(commit);
+    const publication = pendingCommitTraces.get(commit);
+    const operationKinds = commit.ops.map((operation) =>
+      "domain" in operation ? operation.op : operation.kind);
+    const causalDetails = causation === undefined ? {} : {
+      sourceTraceId: causation.sourceTraceId,
+      ...(causation.requestId !== undefined ? { requestId: causation.requestId } : {}),
+      ...(causation.attemptId !== undefined ? { attemptId: causation.attemptId } : {}),
+      sourceAction: causation.sourceAction,
+    };
+    trace.emit({
+      subsystem: "livemap",
+      phase: "commit.creation",
+      status,
+      details: () => ({
+        logicalMapId,
+        incarnationId,
+        mapMode: map.mode,
+        origin,
+        prevRev: commit.prevRev,
+        rev: commit.rev,
+        operationCount: commit.ops.length,
+        operationKinds,
+        ...causalDetails,
+      }),
+    });
     trace.emit({
       subsystem: "livemap",
       phase: "commit.publication",
-      status,
+      status: publication !== undefined && publication.publicationFailureCount > 0 ? "failure" : status,
       details: () => ({
+        logicalMapId,
+        incarnationId,
         mapMode: map.mode,
+        prevRev: commit.prevRev,
+        rev: commit.rev,
         revision: commit.rev,
         operationDomain: first !== undefined && "domain" in first ? "graph" : "data",
         operationCount: commit.ops.length,
+        operationKinds,
         origin,
+        ...(publication !== undefined ? {
+          listenerCount: publication.listenerCount,
+          outcome: publication.publicationFailureCount > 0 ? "failed" : "published",
+          ...(publication.publicationFailureCount > 0 ? {
+            publicationFailureCount: publication.publicationFailureCount,
+            errorCode: "LIVEHOST_COMMIT_PUBLICATION_FAILED",
+          } : {}),
+        } : {}),
+        ...causalDetails,
       }),
     });
   }
@@ -464,5 +533,11 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
     });
   }
 
-  return stream;
+  return Object.freeze({
+    stream,
+    correlateCommit(commit, causation): void {
+      if (!commit.changed) return;
+      commitCausation.set(commit, causation);
+    },
+  });
 }

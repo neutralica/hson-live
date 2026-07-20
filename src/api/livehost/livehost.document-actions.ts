@@ -3,6 +3,7 @@ import type {
   LiveMapDocumentApi,
   JsonValue,
   LiveMapAuthority,
+  LiveMapGraphCommit,
 } from "../../types/index.js";
 import type {
   LiveHostDocumentActionName,
@@ -20,7 +21,7 @@ export type LiveHostDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
   | Readonly<{ kind: "unavailable"; message: string }>
   | Readonly<{ kind: "invalid"; message: string }>
-  | Readonly<{ kind: "ready"; payload: JsonValue; execute: () => void }>;
+  | Readonly<{ kind: "ready"; payload: JsonValue; execute: () => LiveMapGraphCommit }>;
 
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActionName>([
   "document.attrs.set",
@@ -71,7 +72,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => { void api.attrs.set(target, attributeName, value); },
+      execute: () => api.attrs.set(target, attributeName, value),
     });
   }
 
@@ -84,7 +85,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => { void api.attrs.drop(target, attributeName); },
+      execute: () => api.attrs.drop(target, attributeName),
     });
   }
 
@@ -98,8 +99,8 @@ export function resolve_livehost_document_action(
       kind: "ready",
       payload: decoded_action_payload({ target, values }),
       execute: () => {
-        if (name === "document.attrs.setMany") void api.attrs.setMany(target, values);
-        else void api.attrs.replace(target, values);
+        if (name === "document.attrs.setMany") return api.attrs.setMany(target, values);
+        return api.attrs.replace(target, values);
       },
     });
   }
@@ -113,7 +114,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload: decoded_action_payload({ target, names }),
-      execute: () => { void api.attrs.dropMany(target, names); },
+      execute: () => api.attrs.dropMany(target, names),
     });
   }
 
@@ -122,7 +123,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload: decoded_action_payload({ target }),
-      execute: () => { void api.attrs.clear(target); },
+      execute: () => api.attrs.clear(target),
     });
   }
 
@@ -137,7 +138,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => { void api.content.replace(target, index, replacement); },
+      execute: () => api.content.replace(target, index, replacement),
     });
   }
 
@@ -152,7 +153,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => { void api.content.insert(target, index, content); },
+      execute: () => api.content.insert(target, index, content),
     });
   }
 
@@ -163,7 +164,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => { void api.content.remove(target, index); },
+      execute: () => api.content.remove(target, index),
     });
   }
 
@@ -174,7 +175,7 @@ export function resolve_livehost_document_action(
   return Object.freeze({
     kind: "ready",
     payload,
-    execute: () => { void api.content.move(target, from, to); },
+    execute: () => api.content.move(target, from, to),
   });
 }
 

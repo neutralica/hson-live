@@ -405,6 +405,20 @@ authorization, handler execution, safe revision/commit counts, response
 dispatch, and subscription publication. A configured policy emits a real span;
 omission emits one skip event with `reason: "implicit-allow"`.
 
+Action-root summaries also carry the available logical request ID, attempt ID,
+logical map ID, incarnation ID, map mode, origin, and source action. These are
+local diagnostic fields only. A canonical commit keeps its separate local
+`lht-stream-*` trace narrative and carries `sourceTraceId` to identify the
+local action trace that caused it, together with the matching request, attempt,
+action, and revision summaries. Trace IDs are never added to protocol messages.
+
+Causation is operation-scoped and passed explicitly with each action mutation.
+It does not use a process-, host-, or map-global “current trace”, so overlapping
+async actions cannot exchange commit attribution. Unchanged actions remain
+visible through `state.transition` but do not manufacture a commit trace.
+Commit publication is summarized once per commit; listener failures produce an
+aggregate failure event rather than one event per listener.
+
 Details are explicit summaries such as action name, error code, revision range,
 operation count, delivery kind, and subscriber count. Payloads, results,
 canonical roots, commits, credentials, session secrets, headers, arbitrary

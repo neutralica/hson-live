@@ -1,7 +1,7 @@
 // livehost/core.ts
 
 import { hson } from "../../hson.js";
-import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAuthority } from "../../types/index.js";
+import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
 import type {
   LiveHost,
   LiveHostForMap,
@@ -34,13 +34,14 @@ import type {
 import { decode_livehost_message, encode_livehost_message, is_livehost_json_value } from "./livehost.protocol.js";
 import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
-import { make_livehost_canonical_stream } from "./livehost.history.js";
+import { make_livehost_canonical_stream_runtime } from "./livehost.history.js";
 import { make_livehost_recovery_planner } from "./livehost.recovery.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
 import { resolve_livehost_document_action } from "./livehost.document-actions.js";
 import {
   create_live_trace_context,
+  type LiveHostCommitCausation,
   type LiveTraceContext,
   type LiveTraceSpan,
 } from "./livehost.trace.js";
@@ -148,12 +149,13 @@ function create_livehost_for_map<
   map: TMap,
   options: ExistingMapLiveHostOptions<TMap, TActions>,
 ): LiveHostForMap<TMap, TActions> {
-  const stream = make_livehost_canonical_stream(map, {
+  const streamRuntime = make_livehost_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
     ...(options.incarnationId !== undefined ? { incarnationId: options.incarnationId } : {}),
     ...(options.history !== undefined ? { history: options.history } : {}),
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
   });
+  const stream = streamRuntime.stream;
   const recovery = make_livehost_recovery_planner(map, stream, options.recovery, options.trace);
   const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
@@ -176,8 +178,56 @@ function create_livehost_for_map<
   function action_context(
     origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+    causation?: LiveHostCommitCausation,
   ): LiveHostActionContextForMap<TMap> {
-    return Object.freeze({ map, seq, origin, emit_event: emitEvent });
+    return Object.freeze({
+      map: causation === undefined ? map : correlated_action_map(map, causation),
+      seq,
+      origin,
+      emit_event: emitEvent,
+    });
+  }
+
+  function correlated_action_map<TValue extends object>(value: TValue, causation: LiveHostCommitCausation): TValue {
+    const proxies = new WeakMap<object, object>();
+    const wrap = <TObject extends object>(target: TObject): TObject => {
+      const existing = proxies.get(target);
+      if (existing !== undefined) return existing as TObject;
+      const proxy = new Proxy(target, {
+        get(current, property) {
+          const member = Reflect.get(current, property, current) as unknown;
+          if (typeof member === "function") {
+            return (...args: unknown[]) => {
+              const result = Reflect.apply(member, current, args) as unknown;
+              correlate_action_commit(result, causation);
+              return result;
+            };
+          }
+          return typeof member === "object" && member !== null ? wrap(member) : member;
+        },
+      });
+      proxies.set(target, proxy);
+      return proxy;
+    };
+    return wrap(value);
+  }
+
+  function correlate_action_commit(value: unknown, causation: LiveHostCommitCausation): void {
+    if (!is_livemap_commit(value)) return;
+    streamRuntime.correlateCommit(value, causation);
+  }
+
+  function is_livemap_commit(value: unknown): value is LiveMapCommit<LiveMapAnyOp> {
+    return typeof value === "object"
+      && value !== null
+      && "changed" in value
+      && typeof value.changed === "boolean"
+      && "prevRev" in value
+      && typeof value.prevRev === "number"
+      && "rev" in value
+      && typeof value.rev === "number"
+      && "ops" in value
+      && Array.isArray(value.ops);
   }
 
   function make_action_trace(
@@ -192,7 +242,17 @@ function create_livehost_for_map<
       subsystem: "livehost",
       phase: "action.received",
       status: "event",
-      details: () => ({ action: message.name, origin: origin.kind, retry: message.retry === true }),
+      details: () => ({
+        action: message.name,
+        sourceAction: message.name,
+        origin: origin.kind,
+        retry: message.retry === true,
+        logicalMapId: stream.logicalMapId,
+        incarnationId: stream.incarnationId,
+        mapMode: map.mode,
+        ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
+        ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
+      }),
     });
     if (envelopeAccepted) {
       trace.emit({
@@ -212,6 +272,24 @@ function create_livehost_for_map<
       }),
     });
     return trace;
+  }
+
+  function action_causation(
+    message: LiveHostClientActionMessage<TActions>,
+    origin: LiveHostActionOrigin,
+    trace: LiveTraceContext | undefined,
+  ): LiveHostCommitCausation | undefined {
+    if (trace === undefined) return undefined;
+    return Object.freeze({
+      sourceTraceId: trace.traceId,
+      ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
+      ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
+      logicalMapId: stream.logicalMapId,
+      incarnationId: stream.incarnationId,
+      mapMode: map.mode,
+      origin: origin.kind,
+      sourceAction: message.name,
+    });
   }
 
   function trace_state_boundary(
@@ -234,7 +312,7 @@ function create_livehost_for_map<
           "domain" in operation ? operation.op : operation.kind));
         return {
           changed: rev !== previousRev,
-          prevRev: previousRev,
+          ...(rev !== previousRev ? { prevRev: previousRev } : {}),
           rev,
           historyAvailable: commits !== undefined,
           ...(commits !== undefined ? { commitCount: commits.length } : {}),
@@ -248,6 +326,7 @@ function create_livehost_for_map<
     message: LiveHostClientActionMessage<TActions>,
     trace?: LiveTraceContext,
     parentSpanId?: string,
+    causation?: LiveHostCommitCausation,
   ):
     | Readonly<{ ok: true; handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]>; payload: JsonValue | undefined }>
     | Readonly<{ ok: false; code: "LIVEHOST_ACTION_UNKNOWN" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID"; message: string }> {
@@ -281,7 +360,8 @@ function create_livehost_for_map<
     }
     if (documentAction.kind === "ready") {
       const handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]> = () => {
-        documentAction.execute();
+        const commit = documentAction.execute();
+        if (causation !== undefined) correlate_action_commit(commit, causation);
       };
       validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
       return { ok: true, handler, payload: documentAction.payload };
@@ -415,6 +495,7 @@ function create_livehost_for_map<
     emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
     trace?: LiveTraceContext,
     parentSpanId?: string,
+    causation?: LiveHostCommitCausation,
   ): Promise<LiveHostActionTerminalOutcome> {
     const previousRev = stream.headRev;
     const handlerSpan = trace?.beginSpan(
@@ -424,7 +505,7 @@ function create_livehost_for_map<
       () => ({ action: message.name, origin: origin.kind }),
     );
     try {
-      const result = await handler(action_context(origin, emitEvent), payload as never, message);
+      const result = await handler(action_context(origin, emitEvent, causation), payload as never, message);
       if (result !== undefined && !is_livehost_json_value(result)) {
         handlerSpan?.failure(() => ({
           action: message.name,
@@ -504,6 +585,7 @@ function create_livehost_for_map<
     emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
     trace?: LiveTraceContext,
   ): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
+    const causation = action_causation(message, origin, trace);
     const actionSpan = trace?.beginSpan(
       "livehost",
       "action.execute",
@@ -526,7 +608,7 @@ function create_livehost_for_map<
     }
     const validated = (() => {
       try {
-        return validate_action(message, trace, actionSpan?.spanId);
+        return validate_action(message, trace, actionSpan?.spanId, causation);
       } catch (cause) {
         actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
         throw cause;
@@ -797,9 +879,10 @@ function create_livehost_for_map<
         undefined,
         () => ({ action: message.name, origin: origin.kind }),
       );
+      const causation = action_causation(message, origin, trace);
       const validated = (() => {
         try {
-          return validate_action(message, trace, actionSpan?.spanId);
+          return validate_action(message, trace, actionSpan?.spanId, causation);
         } catch (cause) {
           actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
           throw cause;
@@ -812,7 +895,7 @@ function create_livehost_for_map<
         const response: LiveHostClientActionResult = {
           type: "error",
           id: message.id,
-          requestId: message.requestId,
+          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
           ...(message.attemptId !== undefined
             ? { attemptId: message.attemptId }
             : {}),
@@ -852,7 +935,7 @@ function create_livehost_for_map<
         const response: LiveHostClientActionResult = {
           type: "error",
           id: message.id,
-          requestId: message.requestId,
+          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
           ...(message.attemptId !== undefined
             ? { attemptId: message.attemptId }
             : {}),
@@ -883,6 +966,7 @@ function create_livehost_for_map<
         actionName: message.name,
         payload: authorized.payload,
         retry: message.retry === true,
+        ...(trace !== undefined ? { sourceTraceId: trace.traceId } : {}),
         run: () => execute_validated_action(
           message,
           validated.handler,
@@ -891,10 +975,26 @@ function create_livehost_for_map<
           emit_connection_event,
           trace,
           actionSpan?.spanId,
+          causation,
         ),
       });
 
       if (!result.ok) {
+        trace?.emit({
+          subsystem: "livehost",
+          phase: "action.dedupe",
+          status: "failure",
+          ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
+          details: () => ({
+            action: message.name,
+            sourceAction: message.name,
+            delivery: "rejected",
+            ...(trace !== undefined ? { sourceTraceId: trace.traceId } : {}),
+            ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
+            ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
+            errorCode: result.code,
+          }),
+        });
         const response: LiveHostClientActionResult = {
           type: "error",
           id: message.id,
@@ -929,7 +1029,14 @@ function create_livehost_for_map<
         phase: "action.dedupe",
         status: result.delivery === "executed" ? "success" : "skip",
         ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
-        details: () => ({ action: message.name, delivery: result.delivery }),
+        details: () => ({
+          action: message.name,
+          sourceAction: message.name,
+          delivery: result.delivery,
+          ...(result.sourceTraceId !== undefined ? { sourceTraceId: result.sourceTraceId } : {}),
+          ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
+          ...(message.attemptId !== undefined ? { attemptId: message.attemptId } : {}),
+        }),
       });
 
       const response = action_response(

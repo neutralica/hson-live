@@ -5,6 +5,19 @@ import type {
   LiveTraceStatus,
   LiveTraceSubsystem,
 } from "../../types/livehost.types.js";
+import type { LiveMapRootMode } from "../../types/livemap.types.js";
+
+/** Host-local, operation-scoped causation carried from an action to its commit. */
+export type LiveHostCommitCausation = Readonly<{
+  sourceTraceId: string;
+  requestId?: string;
+  attemptId?: string;
+  logicalMapId: string;
+  incarnationId: string;
+  mapMode: LiveMapRootMode;
+  origin: string;
+  sourceAction: string;
+}>;
 
 type LiveTraceDetailsFactory = () => LiveTraceDetails;
 

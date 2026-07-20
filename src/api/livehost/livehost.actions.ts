@@ -21,6 +21,7 @@ type PendingRecord = {
   readonly state: "pending";
   readonly key: string;
   readonly fingerprint: string;
+  readonly sourceTraceId?: string;
   readonly promise: Promise<LiveHostActionTerminalOutcome | undefined>;
   readonly resolve: (outcome: LiveHostActionTerminalOutcome | undefined) => void;
   waiterCount: number;
@@ -30,6 +31,7 @@ type TerminalRecord = {
   readonly state: "succeeded" | "failed";
   readonly key: string;
   readonly fingerprint: string;
+  readonly sourceTraceId?: string;
   readonly outcome: LiveHostActionTerminalOutcome;
   readonly encodedBytes: number;
   readonly completedAt: number;
@@ -44,6 +46,7 @@ export type LiveHostActionExecuteRequest = Readonly<{
   actionName: string;
   payload: JsonValue | undefined;
   retry: boolean;
+  sourceTraceId?: string;
   run: () => Promise<LiveHostActionTerminalOutcome>;
 }>;
 
@@ -52,6 +55,7 @@ export type LiveHostActionExecuteResult =
     ok: true;
     outcome: LiveHostActionTerminalOutcome;
     delivery: Exclude<LiveHostActionDelivery, "rejected">;
+    sourceTraceId?: string;
   }>
   | Readonly<{
     ok: false;
@@ -233,6 +237,7 @@ export function make_livehost_action_dedupe_store(
       state: outcome.state,
       key: pending.key,
       fingerprint: pending.fingerprint,
+      ...(pending.sourceTraceId !== undefined ? { sourceTraceId: pending.sourceTraceId } : {}),
       outcome,
       encodedBytes: encoded_bytes(outcome),
       completedAt,
@@ -268,10 +273,20 @@ export function make_livehost_action_dedupe_store(
         existing.waiterCount += 1;
         const outcome = await existing.promise;
         if (!outcome) return { ok: false, code: "LIVEHOST_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "LiveHost action dedupe store was disposed while the request was pending." };
-        return { ok: true, outcome, delivery: "joined" };
+        return {
+          ok: true,
+          outcome,
+          delivery: "joined",
+          ...(existing.sourceTraceId !== undefined ? { sourceTraceId: existing.sourceTraceId } : {}),
+        };
       }
       cachedOutcomeResponseCount += 1;
-      return { ok: true, outcome: existing.outcome, delivery: "cached" };
+      return {
+        ok: true,
+        outcome: existing.outcome,
+        delivery: "cached",
+        ...(existing.sourceTraceId !== undefined ? { sourceTraceId: existing.sourceTraceId } : {}),
+      };
     }
     if (tombstones.has(key)) {
       return { ok: false, code: "LIVEHOST_ACTION_REQUEST_EXPIRED", message: "LiveHost action request outcome has expired." };
@@ -286,6 +301,7 @@ export function make_livehost_action_dedupe_store(
       state: "pending",
       key,
       fingerprint: requestFingerprint,
+      ...(request.sourceTraceId !== undefined ? { sourceTraceId: request.sourceTraceId } : {}),
       promise,
       resolve: resolveOutcome,
       waiterCount: 1,
@@ -301,7 +317,12 @@ export function make_livehost_action_dedupe_store(
     })();
     const outcome = await promise;
     if (!outcome) return { ok: false, code: "LIVEHOST_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "LiveHost action dedupe store was disposed while the request was pending." };
-    return { ok: true, outcome, delivery: "executed" };
+    return {
+      ok: true,
+      outcome,
+      delivery: "executed",
+      ...(pending.sourceTraceId !== undefined ? { sourceTraceId: pending.sourceTraceId } : {}),
+    };
   }
 
   function status(clientId: LiveHostId, requestId: LiveHostActionRequestId): LiveHostActionStatusResult {

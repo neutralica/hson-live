@@ -101,7 +101,7 @@ await check("trace stage is ordered/redacted and omitted policy records implicit
   await connect(configured.host, "trace").client.action("set", { value: 11 });
   const events = trace.events(), begin = events.find((e) => e.phase === "action.authorization" && e.status === "begin"), success = events.find((e) => e.phase === "action.authorization" && e.status === "success"), handler = events.find((e) => e.phase === "handler.execute" && e.status === "begin");
   assert.ok(begin.sequence < success.sequence && success.sequence < handler.sequence);
-  const serialized = JSON.stringify(events); for (const unsafe of ["request-", "attempt-", '"payload"']) assert.equal(serialized.includes(unsafe), false);
+  const serialized = JSON.stringify(events); assert.equal(serialized.includes('"payload"'), false);
   assert.equal(events.some((event) => event.details && "session" in event.details), false);
   const skipped = create_live_trace_collector({ capacity: 64 }); const implicit = fixture({ trace: skipped }); await connect(implicit.host, "skip").client.action("set", { value: 12 });
   const auth = skipped.events().filter((e) => e.phase === "action.authorization"); assert.equal(auth.length, 1); assert.equal(auth[0].status, "skip"); assert.equal(auth[0].details.reason, "implicit-allow");
