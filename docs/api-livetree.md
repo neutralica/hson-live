@@ -425,23 +425,23 @@ type SetNodeFormOpts = {
 ## Attributes
 
 ```ts
-tree.attr.get(name)
-tree.attr.has(name)
-tree.attr.set(name, value)
-tree.attr.setMany(map)
-tree.attr.drop(name)
+tree.attrs.get(name)
+tree.attrs.has(name)
+tree.attrs.set(name, value)
+tree.attrs.setMany(map)
+tree.attrs.drop(name)
 ```
 
-`attr.set(name, false)`, `attr.set(name, null)`, and
-`attr.set(name, undefined)` remove the attribute. `true` stores a present
+`attrs.set(name, false)`, `attrs.set(name, null)`, and
+`attrs.set(name, undefined)` remove the attribute. `true` stores a present
 boolean attribute.
 
 Flags:
 
 ```ts
-tree.flag.has(name)
-tree.flag.set(...names)
-tree.flag.clear(...names)
+tree.flags.has(name)
+tree.flags.set(...names)
+tree.flags.clear(...names)
 ```
 
 Dataset:

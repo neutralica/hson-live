@@ -60,7 +60,7 @@ export type LiveSnapViewBridgeTarget = LiveContentBridgeTarget &
   LiveAttrBridgeTarget;
 
 export type LiveAttrBridgeTarget = Readonly<{
-  attr: Readonly<{
+  attrs: Readonly<{
     get: (name: string) => string | undefined;
     set: (name: string, value: string) => unknown;
     drop: (name: string) => unknown;

@@ -222,13 +222,13 @@ silently reconstructed as projected JSON.
 Element and fragment authorities register six reserved ordinary actions:
 
 ```ts
-client.action("document.attr.set", {
+client.action("document.attrs.set", {
   target: { kind: "quid", quid: "0000000000000001" },
   name: "title",
   value: "Ready",
 });
 
-client.action("document.attr.drop", {
+client.action("document.attrs.drop", {
   target: { kind: "path", path: [0] },
   name: "title",
 });
@@ -257,8 +257,8 @@ client.action("document.content.move", {
 });
 ```
 
-`document.attr.set` calls the existing shape-specific `attrs.set` API;
-`document.attr.drop` calls `attrs.drop`; and `document.content.replace` calls
+`document.attrs.set` calls the existing shape-specific `attrs.set` API;
+`document.attrs.drop` calls `attrs.drop`; and `document.content.replace` calls
 the existing slot-based `content.replace(target, index, replacement)` API.
 The structural actions call only `content.insert(target, index, content)`,
 `content.remove(target, index)`, and `content.move(target, from, to)`.

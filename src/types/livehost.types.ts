@@ -347,8 +347,8 @@ export type LiveHostSchemaDecoder<TValue> = (value: unknown) => LiveHostSchemaRe
 export type LiveHostActionPayloads = Readonly<Record<string, JsonValue | undefined>>;
 
 export type LiveHostDocumentActionName =
-  | "document.attr.set"
-  | "document.attr.drop"
+  | "document.attrs.set"
+  | "document.attrs.drop"
   | "document.content.replace"
   | "document.content.insert"
   | "document.content.remove"
@@ -357,12 +357,12 @@ export type LiveHostDocumentActionName =
 export type LiveHostDocumentTargetPayload = LiveMapDocumentTarget;
 
 export type LiveHostDocumentActionPayloads = Readonly<{
-  "document.attr.set": {
+  "document.attrs.set": {
     target: LiveHostDocumentTargetPayload;
     name: string;
     value: LiveMapDocumentAttributeValue;
   };
-  "document.attr.drop": {
+  "document.attrs.drop": {
     target: LiveHostDocumentTargetPayload;
     name: string;
   };

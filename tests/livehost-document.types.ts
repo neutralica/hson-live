@@ -9,6 +9,7 @@ import type {
   LiveHostClientForMap,
   LiveHostDocumentActionPayloads,
   LiveMap,
+  LiveTree,
   ProjectedLiveHostOptions,
 } from "../src/index.ts";
 
@@ -19,6 +20,16 @@ type Equal<TLeft, TRight> =
     : false
   : false;
 type Assert<TValue extends true> = TValue;
+
+declare const tree: LiveTree;
+tree.attrs.set("id", "main");
+tree.attrs.drop("id");
+tree.flags.set("hidden");
+tree.flags.clear("hidden");
+// @ts-expect-error obsolete namespace is not part of the public API
+tree.attr;
+// @ts-expect-error obsolete namespace is not part of the public API
+tree.flag;
 
 const projectedHost: LiveHost<{ count: number }> = create_livehost({ state: { count: 0 } });
 const projectedMap: LiveMap<{ count: number }> = projectedHost.map;
@@ -114,15 +125,17 @@ typedProjectedClient.action("custom", 1);
 
 declare const typedDocumentClient: LiveHostClientForMap<ElementLiveMap, CustomActions>;
 typedDocumentClient.action("custom", 1);
-typedDocumentClient.action("document.attr.set", {
+typedDocumentClient.action("document.attrs.set", {
   target: { kind: "quid", quid: "0000000000000001" },
   name: "title",
   value: "typed",
 });
-typedDocumentClient.action("document.attr.drop", {
+typedDocumentClient.action("document.attrs.drop", {
   target: { kind: "path", path: [] },
   name: "title",
 });
+// @ts-expect-error obsolete hosted action is not part of the public API
+typedDocumentClient.action("document.attr.set", { target: { kind: "path", path: [] }, name: "id", value: "main" });
 typedDocumentClient.action("document.content.replace", {
   target: { kind: "path", path: [] },
   index: 0,
@@ -143,8 +156,8 @@ typedDocumentClient.action("document.content.move", {
   to: 1,
 });
 const builtins: LiveHostDocumentActionPayloads = {
-  "document.attr.set": { target: { kind: "path", path: [] }, name: "id", value: "main" },
-  "document.attr.drop": { target: { kind: "path", path: [] }, name: "id" },
+  "document.attrs.set": { target: { kind: "path", path: [] }, name: "id", value: "main" },
+  "document.attrs.drop": { target: { kind: "path", path: [] }, name: "id" },
   "document.content.replace": { target: { kind: "path", path: [] }, index: 0, replacement: "text" },
   "document.content.insert": { target: { kind: "path", path: [] }, index: 0, content: "text" },
   "document.content.remove": { target: { kind: "path", path: [] }, index: 0 },

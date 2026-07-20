@@ -34,8 +34,8 @@ export type SvgLiveTree = Omit<
   | "classlist"
   | "style"
   | "css"
-  | "attr"
-  | "flag"
+  | "attrs"
+  | "flags"
   | "data"
   | "text"
   | "empty"
@@ -46,8 +46,8 @@ export type SvgLiveTree = Omit<
   classlist: ClassApi<SvgLiveTree>;
   style: StyleHandle<SvgLiveTree>;
   css: CssTreeHandle<SvgLiveTree>;
-  attr: AttrHandle<SvgLiveTree>;
-  flag: FlagHandle<SvgLiveTree>;
+  attrs: AttrHandle<SvgLiveTree>;
+  flags: FlagHandle<SvgLiveTree>;
   data: DataApi<SvgLiveTree>;
   text: LiveTextApi<SvgLiveTree>;
   empty: () => SvgLiveTree;

@@ -175,12 +175,12 @@ Manager namespaces specialize common mutations:
 - `content` exposes effective children and serialized markup;
 - `text` edits text/value leaves;
 - `form` synchronizes canonical value/checked/selected state;
-- `attr`, `flag`, `data`, `id`, and `classlist` edit attributes;
+- `attrs`, `flags`, `data`, `id`, and `classlist` edit attributes;
 - `style` edits serializable inline style; and
 - `css` edits QUID-scoped managed stylesheet state.
 
-For `attr.set`, `false`, `null`, and `undefined` remove the attribute, while
-`true` creates a present boolean attribute. The `flag` helper expresses that
+For `attrs.set`, `false`, `null`, and `undefined` remove the attribute, while
+`true` creates a present boolean attribute. The `flags` helper expresses that
 presence model directly.
 
 ---

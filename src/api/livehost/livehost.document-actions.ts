@@ -21,8 +21,8 @@ export type LiveHostDocumentActionResolution =
   | Readonly<{ kind: "ready"; payload: JsonValue; execute: () => void }>;
 
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActionName>([
-  "document.attr.set",
-  "document.attr.drop",
+  "document.attrs.set",
+  "document.attrs.drop",
   "document.content.replace",
   "document.content.insert",
   "document.content.remove",
@@ -52,7 +52,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} target is malformed.` });
   }
 
-  if (name === "document.attr.set") {
+  if (name === "document.attrs.set") {
     if (!has_exact_keys(payload, ["target", "name", "value"])) return invalid_fields(name);
     const attributeName = decode_livehost_document_attribute_name(payload.name);
     if (attributeName === undefined) {
@@ -69,7 +69,7 @@ export function resolve_livehost_document_action(
     });
   }
 
-  if (name === "document.attr.drop") {
+  if (name === "document.attrs.drop") {
     if (!has_exact_keys(payload, ["target", "name"])) return invalid_fields(name);
     const attributeName = decode_livehost_document_attribute_name(payload.name);
     if (attributeName === undefined) {

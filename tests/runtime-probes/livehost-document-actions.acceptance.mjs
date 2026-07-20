@@ -87,14 +87,14 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
 
 const rootPath = { kind: "path", path: [] };
 
-await check("document.attr.set uses a QUID target and flows through one authoritative commit and replay", async () => {
+await check("document.attrs.set uses a QUID target and flows through one authoritative commit and replay", async () => {
   const initial = `<main data-_quid="0000000000000001" <p data-_quid="0000000000000002"/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attr-set" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
     host,
     client,
-    action: "document.attr.set",
+    action: "document.attrs.set",
     payload: { target: { kind: "quid", quid: "0000000000000002" }, name: "title", value: "kept" },
     verify() {
       assert.equal(host.map.element.byQuid("0000000000000002")?.$_attrs?.title, "kept");
@@ -102,14 +102,14 @@ await check("document.attr.set uses a QUID target and flows through one authorit
   });
 });
 
-await check("document.attr.drop uses a fragment path target and flows through one authoritative commit and replay", async () => {
+await check("document.attrs.drop uses a fragment path target and flows through one authoritative commit and replay", async () => {
   const initial = `<section id="remove"/> "tail"`;
   const host = hson.liveHost.create({ map: fragment(initial), logicalMapId: "hosted-attr-drop" });
   const client = await connected_document_client(host, fragment(initial));
   await assert_single_hosted_commit({
     host,
     client,
-    action: "document.attr.drop",
+    action: "document.attrs.drop",
     payload: { target: { kind: "path", path: [0] }, name: "id" },
     verify() {
       assert.equal(host.map.fragment.content()[0].$_attrs, undefined);
@@ -194,12 +194,12 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
   const client = await connected_document_client(host, element(initial));
   const textCluster = element(`<p "new"/>`).element.node().$_content[0];
   const insertedCluster = element(`<i "inserted"/>`).element.node().$_content[0];
-  assert.equal((await client.action("document.attr.set", {
+  assert.equal((await client.action("document.attrs.set", {
     target: rootPath,
     name: "class",
     value: "path",
   })).type, "ack");
-  assert.equal((await client.action("document.attr.drop", {
+  assert.equal((await client.action("document.attrs.drop", {
     target: { kind: "quid", quid: "0000000000000009" },
     name: "id",
   })).type, "ack");
@@ -239,8 +239,8 @@ await check("all six names are recognized but unavailable for data-object and da
     const client = hson.liveHost.client({ socket: pair.client });
     client.connect();
     for (const [name, payload] of [
-      ["document.attr.set", { target: rootPath, name: "id", value: "x" }],
-      ["document.attr.drop", { target: rootPath, name: "id" }],
+      ["document.attrs.set", { target: rootPath, name: "id", value: "x" }],
+      ["document.attrs.drop", { target: rootPath, name: "id" }],
       ["document.content.replace", { target: rootPath, index: 0, replacement: "x" }],
       ["document.content.insert", { target: rootPath, index: 0, content: "x" }],
       ["document.content.remove", { target: rootPath, index: 0 }],
@@ -256,16 +256,28 @@ await check("all six names are recognized but unavailable for data-object and da
   }
 });
 
+await check("obsolete document.attr actions are unknown", async () => {
+  const host = hson.liveHost.create({ map: element(`<main/>`) });
+  const client = await connected_document_client(host, element(`<main/>`));
+  for (const [name, payload] of [
+    ["document.attr.set", { target: rootPath, name: "id", value: "x" }],
+    ["document.attr.drop", { target: rootPath, name: "id" }],
+  ]) {
+    const result = await client.action(name, payload);
+    assert.equal(result.error.code, "LIVEHOST_UNKNOWN_ACTION");
+  }
+});
+
 await check("payload and local document failures leave authority and history unchanged", async () => {
   const initial = `<main data-_quid="0000000000000005" <p/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-failures" });
   const client = await connected_document_client(host, element(initial));
   const invalid = [
-    ["document.attr.set", null, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
-    ["document.attr.set", { target: rootPath, name: "bad name", value: "x" }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
-    ["document.attr.set", { target: rootPath, name: "id", value: { structured: true } }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
-    ["document.attr.set", { target: { kind: "path", path: [99] }, name: "id", value: "x" }, "DOCUMENT_PATH_OUT_OF_RANGE"],
-    ["document.attr.drop", { target: { kind: "quid", quid: "0000000000000006" }, name: "id" }, "DOCUMENT_TARGET_NOT_FOUND"],
+    ["document.attrs.set", null, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
+    ["document.attrs.set", { target: rootPath, name: "bad name", value: "x" }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
+    ["document.attrs.set", { target: rootPath, name: "id", value: { structured: true } }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
+    ["document.attrs.set", { target: { kind: "path", path: [99] }, name: "id", value: "x" }, "DOCUMENT_PATH_OUT_OF_RANGE"],
+    ["document.attrs.drop", { target: { kind: "quid", quid: "0000000000000006" }, name: "id" }, "DOCUMENT_TARGET_NOT_FOUND"],
     ["document.content.replace", { target: rootPath, index: -1, replacement: "x" }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
     ["document.content.replace", { target: rootPath, index: 9, replacement: "x" }, "INVALID_DOCUMENT_CONTENT_INDEX"],
     ["document.content.replace", { target: rootPath, index: 0, replacement: "x" }, "INVALID_DOCUMENT_REPLACEMENT"],
@@ -295,12 +307,12 @@ await check("authorization denial occurs before the local document mutation", as
     map: element(initial),
     authorizeAction(context) {
       authorizations += 1;
-      assert.equal(context.action, "document.attr.set");
+      assert.equal(context.action, "document.attrs.set");
       return false;
     },
   });
   const client = await connected_document_client(host, element(initial));
-  const result = await client.action("document.attr.set", { target: rootPath, name: "id", value: "blocked" });
+  const result = await client.action("document.attrs.set", { target: rootPath, name: "id", value: "blocked" });
   assert.equal(result.error.code, "LIVEHOST_ACTION_FORBIDDEN");
   assert.equal(authorizations, 1);
   assert.equal(host.map.rev, 0);
@@ -313,7 +325,7 @@ await check("a duplicate retry returns the cached acknowledgement without a seco
   const client = await connected_document_client(host, element(initial));
   let commits = 0;
   host.stream.on_commit(() => { commits += 1; });
-  const first = client.action("document.attr.set", { target: rootPath, name: "id", value: "once" });
+  const first = client.action("document.attrs.set", { target: rootPath, name: "id", value: "once" });
   const executed = await first;
   const retried = await client.retry_action(first.request);
   assert.equal(executed.delivery, "executed");
@@ -384,7 +396,7 @@ await check("incremental recovery after a hosted action reconstructs an identica
   const initial = `<main data-_quid="0000000000000007"/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-recovery-replay" });
   const actor = await connected_document_client(host, element(initial));
-  await actor.action("document.attr.set", { target: { kind: "quid", quid: "0000000000000007" }, name: "class", value: "ready" });
+  await actor.action("document.attrs.set", { target: { kind: "quid", quid: "0000000000000007" }, name: "class", value: "ready" });
   actor.disconnect();
   const recovered = await connected_document_client(host, element(initial), {
     incarnationId: host.stream.incarnationId,
@@ -398,7 +410,7 @@ await check("snapshot fallback after a hosted action reconstructs an identical d
   const initial = `<main data-_quid="0000000000000008"/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-recovery-snapshot", history: { maxCommits: 0 } });
   const actor = await connected_document_client(host, element(initial));
-  await actor.action("document.attr.set", { target: rootPath, name: "title", value: "snapshot" });
+  await actor.action("document.attrs.set", { target: rootPath, name: "title", value: "snapshot" });
   actor.disconnect();
   const recovered = await connected_document_client(host, element(initial), {
     incarnationId: host.stream.incarnationId,

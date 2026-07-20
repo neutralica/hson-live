@@ -4,7 +4,7 @@ import type { JsonValue, LivePath } from "../../../types/index.js";
 import type { LiveTree } from "../livetree.js";
 import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
 
-type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attr" | "css">;
+type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
 
 export type LiveTreeBindApi<TTree extends LiveTreeBindable> = Readonly<{
   path: <TValue extends JsonValue | undefined = JsonValue | undefined>(
@@ -307,11 +307,11 @@ function apply_css(tree: LiveTreeBindable, values: CssValueMap): void {
 function apply_attrs(tree: LiveTreeBindable, values: AttrValueMap): void {
   Object.entries(values).forEach(([key, value]) => {
     if (value === null || value === undefined || value === false) {
-      tree.attr.drop(key);
+      tree.attrs.drop(key);
       return;
     }
 
-    tree.attr.set(key, value === true ? key : String(value));
+    tree.attrs.set(key, value === true ? key : String(value));
   });
 }
 

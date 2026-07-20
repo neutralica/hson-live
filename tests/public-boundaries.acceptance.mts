@@ -74,6 +74,16 @@ check("JSON value and HTML serialization finalizers expose no parse method", () 
   assert.equal("parse" in html, false);
 });
 
+check("LiveTree exposes attrs and flags without obsolete aliases", () => {
+  const tree = hson.liveTree.fromJson({});
+  tree.attrs.set("title", "Save");
+  tree.flags.set("disabled");
+  assert.equal(tree.attrs.get("title"), "Save");
+  assert.equal(tree.flags.has("disabled"), true);
+  assert.equal("attr" in tree, false);
+  assert.equal("flag" in tree, false);
+});
+
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
   const node = hson.fromHson(
     `<button id="primary" data-_quid="0000000000000001" data-_custom="kept" "hello"/>`,

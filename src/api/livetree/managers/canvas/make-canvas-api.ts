@@ -16,7 +16,7 @@ export function make_canvas_api<TTree extends LiveTree>(
   };
 
   const getNumberAttr = (name: string): number | undefined => {
-    const value = tree.attr.get(name);
+    const value = tree.attrs.get(name);
 
     if (typeof value === "number") {
       return value;
@@ -29,12 +29,12 @@ export function make_canvas_api<TTree extends LiveTree>(
   };
 
   const setNumberAttr = (name: string, value: number): TTree => {
-    tree.attr.set(name, String(value));
+    tree.attrs.set(name, String(value));
     return tree;
   };
 
   const clearAttr = (name: string): TTree => {
-    tree.attr.drop(name);
+    tree.attrs.drop(name);
     return tree;
   };
   const getBackingSize = (): CanvasSize => {
@@ -102,8 +102,8 @@ export function make_canvas_api<TTree extends LiveTree>(
     canvas.width = display.bitmapWidth;
     canvas.height = display.bitmapHeight;
 
-    tree.attr.set("width", String(display.bitmapWidth));
-    tree.attr.set("height", String(display.bitmapHeight));
+    tree.attrs.set("width", String(display.bitmapWidth));
+    tree.attrs.set("height", String(display.bitmapHeight));
 
     if (opts?.scaleContext !== false) {
       const ctx = canvas.getContext("2d");

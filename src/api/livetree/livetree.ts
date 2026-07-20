@@ -118,9 +118,9 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /* convenience handle for the `class` _attr */
   declare private classApi?: ClassApi<this>;
   /* attribute (_attr) API handle */
-  declare private _attr?: AttrHandle<this>;
+  declare private _attrs?: AttrHandle<this>;
   /* "flag" (HTML boolean attributes) API handle */
-  declare private _flag?: FlagHandle<this>;
+  declare private _flags?: FlagHandle<this>;
   /* namespace for SvgLiveTree-specific operations */
   declare private svgApi?: SvgApi<this>;
   /* LiveTree DOM api */
@@ -505,18 +505,18 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * 
    * @see AttrHandle
    */
-  public get attr(): AttrHandle<this> {
+  public get attrs(): AttrHandle<this> {
     this.assertActive("access attributes");
-    return (this._attr ??= guard_api_surface(attr_handle(this), () => this.assertActive("access attributes"), this));
+    return (this._attrs ??= guard_api_surface(attr_handle(this), () => this.assertActive("access attributes"), this));
   }
 
   /** "Flags" (HTML boolean attributes) - has/get/clear 
    * 
    * @see FlagHandle
   */
-  public get flag(): FlagHandle<this> {
+  public get flags(): FlagHandle<this> {
     this.assertActive("access flags");
-    return (this._flag ??= guard_api_surface(flag_handle(this), () => this.assertActive("access flags"), this));
+    return (this._flags ??= guard_api_surface(flag_handle(this), () => this.assertActive("access flags"), this));
   }
 
 

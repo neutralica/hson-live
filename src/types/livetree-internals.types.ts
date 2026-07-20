@@ -69,14 +69,14 @@ export interface LiveTreeNodeHost {
     hostRootNode(): HsonNode;
 }
 
-export interface LiveTreeAttrAccess<TSelf> {
+export interface LiveTreeAttrsAccess<TSelf> {
     /**
      * Attribute helper bound to this node.
      *
-     * Use `attr.get`, `attr.has`, `attr.set`, `attr.setMany`, and `attr.drop`
+     * Use `attrs.get`, `attrs.has`, `attrs.set`, `attrs.setMany`, and `attrs.drop`
      * to read and mutate HSON / DOM attributes through one consistent surface.
      */
-    readonly attr: AttrHandle<TSelf>;
+    readonly attrs: AttrHandle<TSelf>;
 }
 
 
@@ -218,14 +218,14 @@ export interface LiveTreeDomAccess {
 
 
 export interface LiveTreeAttrs<TSelf>
-    extends LiveTreeAttrAccess<TSelf> {
+    extends LiveTreeAttrsAccess<TSelf> {
     /**
      * Boolean-attribute helper bound to this node.
      *
      * Flags are represented as present-style attributes and provide a small
      * convenience surface for `has`, `set`, and `clear`.
      */
-    readonly flag: FlagHandle<TSelf>;
+    readonly flags: FlagHandle<TSelf>;
 
     /**
      * ID helper bound to this node’s `id` attribute.
@@ -412,13 +412,13 @@ export interface SvgLiveTreeApi<TSelf>
 export interface LiveTreeSvgHost<TSelf>
     extends
     LiveTreeNodeHost,
-    LiveTreeAttrAccess<TSelf>,
+    LiveTreeAttrsAccess<TSelf>,
     LiveTreeStyleAccess<TSelf> { };
 
 export interface LiveTreeCanvasHost<TSelf>
     extends
     LiveTreeNodeHost,
-    LiveTreeAttrAccess<TSelf> { };
+    LiveTreeAttrsAccess<TSelf> { };
 
 export type CanvasCreateHelper = HtmlCreateHelper;
 

@@ -200,18 +200,18 @@ class InspectorController {
     this.preflight(this.sourceContext.handle.snap(), this.sourceContext.handle.path());
 
     this.inspectorRoot = CREATE.section();
-    this.inspectorRoot.attr.setMany({
+    this.inspectorRoot.attrs.setMany({
       "data-hson-inspect-kind": "inspector",
       "aria-label": "Structured data inspector",
     });
     this.treeRegion = this.inspectorRoot.create.div();
-    this.treeRegion.attr.setMany({
+    this.treeRegion.attrs.setMany({
       "data-hson-inspect-region": "tree",
       role: "tree",
       "aria-label": "Structured data",
     });
     this.detailRegion = this.inspectorRoot.create.aside();
-    this.detailRegion.attr.setMany({
+    this.detailRegion.attrs.setMany({
       "data-hson-inspect-region": "details",
       "aria-label": "Selected value details",
       "aria-live": "polite",
@@ -875,7 +875,7 @@ class InspectorController {
         this.addDetailRow("Canonical VSN role", node.$_tag.startsWith("_hson_") ? node.$_tag : "element/tag");
       } else {
         const pre = this.detailRegion.create.pre();
-        pre.attr.set("data-hson-inspect-canonical", "true");
+        pre.attrs.set("data-hson-inspect-canonical", "true");
         pre.text.set(JSON.stringify(node, null, 2));
       }
     }
@@ -883,9 +883,9 @@ class InspectorController {
 
   private addDetailRow(label: string, value: string): void {
     const row = this.detailRegion.create.div();
-    row.attr.set("data-hson-inspect-detail-row", "true");
+    row.attrs.set("data-hson-inspect-detail-row", "true");
     const term = row.create.span();
-    term.attr.set("data-hson-inspect-detail-label", "true");
+    term.attrs.set("data-hson-inspect-detail-label", "true");
     term.text.set(label);
     const description = row.create.code();
     description.text.set(value);
@@ -1126,7 +1126,7 @@ class BranchController {
     this.arrayIdentity = Array.isArray(initialValue) ? this.inspector.arrayIdentity(initialValue, this.path) : undefined;
     this.tree = CREATE.div();
     this.id = this.inspector.registerBranch(this);
-    this.tree.attr.setMany({
+    this.tree.attrs.setMany({
       "data-hson-inspect-kind": this.kind,
       "data-hson-inspect-role": role,
       "data-hson-inspect-depth": String(depth),
@@ -1136,27 +1136,27 @@ class BranchController {
       "aria-selected": "false",
     });
     const line = this.tree.create.div();
-    line.attr.set("data-hson-inspect-line", "true");
+    line.attrs.set("data-hson-inspect-line", "true");
     this.disclosure = line.create.button();
-    this.disclosure.attr.setMany({
+    this.disclosure.attrs.setMany({
       type: "button",
       "data-hson-inspect-action": "toggle",
       "data-hson-inspect-branch": this.id,
       "aria-label": "Toggle branch",
     });
     this.selectionControl = line.create.button();
-    this.selectionControl.attr.setMany({
+    this.selectionControl.attrs.setMany({
       type: "button",
       "data-hson-inspect-action": "select",
       "data-hson-inspect-branch": this.id,
     });
     this.typeLabel = line.create.span();
-    this.typeLabel.attr.set("data-hson-inspect-type", "true");
+    this.typeLabel.attrs.set("data-hson-inspect-type", "true");
     this.previewHost = line.create.span();
-    this.previewHost.attr.set("data-hson-inspect-value", "true");
+    this.previewHost.attrs.set("data-hson-inspect-value", "true");
     this.defaultPreview = this.previewHost.create.span();
     this.childrenRegion = this.tree.create.div();
-    this.childrenRegion.attr.setMany({
+    this.childrenRegion.attrs.setMany({
       "data-hson-inspect-children": "true",
       role: "group",
     });
@@ -1207,26 +1207,26 @@ class BranchController {
   }
 
   private refreshPresentation(value: JsonValue): void {
-    this.tree.attr.set("data-hson-inspect-kind", this.kind);
-    this.tree.attr.set("aria-selected", String(this.inspector.isSelected(this)));
+    this.tree.attrs.set("data-hson-inspect-kind", this.kind);
+    this.tree.attrs.set("aria-selected", String(this.inspector.isSelected(this)));
     this.selectionControl.text.set(labelFor(this));
-    this.selectionControl.attr.set("aria-label", `Select ${labelFor(this)} at ${format_live_path(this.path)}`);
+    this.selectionControl.attrs.set("aria-label", `Select ${labelFor(this)} at ${format_live_path(this.path)}`);
     this.typeLabel.text.set(this.kind);
     if (this.isStructural) {
-      this.disclosure.flag.clear("hidden");
-      this.disclosure.attr.set("aria-expanded", String(this.expanded));
+      this.disclosure.flags.clear("hidden");
+      this.disclosure.attrs.set("aria-expanded", String(this.expanded));
       this.disclosure.text.set(this.expanded ? "▾" : "▸");
-      this.tree.attr.set("aria-expanded", String(this.expanded));
-      this.childrenRegion.flag[this.expanded ? "clear" : "set"]("hidden");
+      this.tree.attrs.set("aria-expanded", String(this.expanded));
+      this.childrenRegion.flags[this.expanded ? "clear" : "set"]("hidden");
       const childCount = Array.isArray(value) ? value.length : is_json_object(value) ? Object.keys(value).length : 0;
-      if (childCount === 0) this.tree.attr.set("data-hson-inspect-empty", this.kind);
-      else this.tree.attr.drop("data-hson-inspect-empty");
+      if (childCount === 0) this.tree.attrs.set("data-hson-inspect-empty", this.kind);
+      else this.tree.attrs.drop("data-hson-inspect-empty");
     } else {
-      this.disclosure.flag.set("hidden");
-      this.disclosure.attr.drop("aria-expanded");
-      this.tree.attr.drop("aria-expanded");
-      this.childrenRegion.flag.set("hidden");
-      this.tree.attr.drop("data-hson-inspect-empty");
+      this.disclosure.flags.set("hidden");
+      this.disclosure.attrs.drop("aria-expanded");
+      this.tree.attrs.drop("aria-expanded");
+      this.childrenRegion.flags.set("hidden");
+      this.tree.attrs.drop("data-hson-inspect-empty");
     }
     this.refreshAuxiliary(value);
   }
@@ -1235,7 +1235,7 @@ class BranchController {
     const selected = this.inspector.selectAuxiliaryRenderer(this, value);
     if (selected === undefined) {
       this.disposeAuxiliary();
-      this.defaultPreview.flag.clear("hidden");
+      this.defaultPreview.flags.clear("hidden");
       this.defaultPreview.text.set(previewValue(value, this.inspector.previewStringLimit()));
       return;
     }
@@ -1259,10 +1259,10 @@ class BranchController {
       if (normalized.dispose !== undefined) own_disposable_for_owner(normalized.tree.quid, normalized.dispose, "other");
       this.auxiliary = { name: selected.name, tree: normalized.tree, update: normalized.update };
       this.specializationName = selected.name;
-      this.defaultPreview.flag.set("hidden");
+      this.defaultPreview.flags.set("hidden");
     } catch (error) {
       this.inspector.recordAuxiliaryFailure(selected.category, selected.name, error);
-      this.defaultPreview.flag.clear("hidden");
+      this.defaultPreview.flags.clear("hidden");
       this.defaultPreview.text.set(previewValue(value, this.inspector.previewStringLimit()));
     }
   }
@@ -1281,10 +1281,10 @@ class BranchController {
       this.materialized = true;
     }
     this.expanded = true;
-    this.childrenRegion.flag.clear("hidden");
-    this.disclosure.attr.set("aria-expanded", "true");
+    this.childrenRegion.flags.clear("hidden");
+    this.disclosure.attrs.set("aria-expanded", "true");
     this.disclosure.text.set("▾");
-    this.tree.attr.set("aria-expanded", "true");
+    this.tree.attrs.set("aria-expanded", "true");
     if (countChange) {
       this.inspector.expansionChanged();
       this.inspector.branchMaterializedAfterExpansion(Math.max(0, this.inspector.branchCount() - before));
@@ -1302,10 +1302,10 @@ class BranchController {
     const active = typeof document === "undefined" ? null : document.activeElement;
     const childElement = this.childrenRegion.dom.el();
     this.expanded = false;
-    this.childrenRegion.flag.set("hidden");
-    this.disclosure.attr.set("aria-expanded", "false");
+    this.childrenRegion.flags.set("hidden");
+    this.disclosure.attrs.set("aria-expanded", "false");
     this.disclosure.text.set("▸");
-    this.tree.attr.set("aria-expanded", "false");
+    this.tree.attrs.set("aria-expanded", "false");
     this.inspector.expansionChanged();
     if (active instanceof Node && childElement?.contains(active)) this.disclosure.dom.htmlEl()?.focus();
   }
@@ -1321,7 +1321,7 @@ class BranchController {
 
   public setSelected(selected: boolean): void {
     if (this.disposed) return;
-    this.tree.attr.set("aria-selected", String(selected));
+    this.tree.attrs.set("aria-selected", String(selected));
   }
 
   public focusSelectionControl(): void {

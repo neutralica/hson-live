@@ -31,7 +31,7 @@ export function make_id_api<TTree extends LiveTree>(tree: TTree): IdApi<TTree> {
 export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TTree> {
   // read from attrs, not tree.classlist.get() (avoids self-recursion)
   const getRaw = (): string | undefined => {
-    const v = tree.attr.get("class");
+    const v = tree.attrs.get("class");
     return (typeof v === "string" && v.trim().length > 0) ? v : undefined;
   };
 
@@ -44,8 +44,8 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
   // centralize write semantics (empty => drop)
   const write = (names: Iterable<string>): TTree => {
     const next = Array.from(names).filter(Boolean).join(" ").trim();
-    if (!next) tree.attr.drop("class");
-    else tree.attr.set("class", next);
+    if (!next) tree.attrs.drop("class");
+    else tree.attrs.set("class", next);
     return tree;
   };
 
@@ -60,8 +60,8 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
         : (cls ?? "").trim();
 
       // write via attrs (no tree.classlist.*)
-      if (!next) tree.attr.drop("class");
-      else tree.attr.set("class", next);
+      if (!next) tree.attrs.drop("class");
+      else tree.attrs.set("class", next);
 
       return tree;
     },
@@ -91,7 +91,7 @@ export function make_class_api<TTree extends LiveTree>(tree: TTree): ClassApi<TT
 
     clear: () => {
       // drop via attrs
-      tree.attr.drop("class");
+      tree.attrs.drop("class");
       return tree;
     },
   };

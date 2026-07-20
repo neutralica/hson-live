@@ -98,21 +98,21 @@ function path_to_live_path(path: BridgePathParts): LivePath {
 
 // Snap-view internals
 function render_snap_value(tree: LiveSnapViewBridgeTarget, value: JsonValue | undefined, path: readonly string[]): void {
-  tree.attr.set("data-livemap-snap-path", bridge_path_attr(path));
+  tree.attrs.set("data-livemap-snap-path", bridge_path_attr(path));
 
   if (Array.isArray(value)) {
-    tree.attr.set("data-livemap-snap-kind", "array");
+    tree.attrs.set("data-livemap-snap-kind", "array");
     render_snap_array(tree, value, path);
     return;
   }
 
   if (is_json_object(value)) {
-    tree.attr.set("data-livemap-snap-kind", "object");
+    tree.attrs.set("data-livemap-snap-kind", "object");
     render_snap_object(tree, value, path);
     return;
   }
 
-  tree.attr.set("data-livemap-snap-kind", primitive_snap_kind(value));
+  tree.attrs.set("data-livemap-snap-kind", primitive_snap_kind(value));
   tree.text.set(value_to_text(value));
 }
 
@@ -123,14 +123,14 @@ function render_snap_object(
 ): void {
   for (const key of Object.keys(value)) {
     const row = tree.create.div();
-    row.attr.set("data-livemap-snap-key", key);
+    row.attrs.set("data-livemap-snap-key", key);
 
     const label = row.create.div();
-    label.attr.set("data-livemap-snap-role", "key");
+    label.attrs.set("data-livemap-snap-role", "key");
     label.text.set(key);
 
     const child = row.create.div();
-    child.attr.set("data-livemap-snap-role", "value");
+    child.attrs.set("data-livemap-snap-role", "value");
     render_snap_value(child, value[key], [...path, key]);
   }
 }
@@ -138,14 +138,14 @@ function render_snap_object(
 function render_snap_array(tree: LiveSnapViewBridgeTarget, value: readonly JsonValue[], path: readonly string[]): void {
   value.forEach((item, index) => {
     const row = tree.create.div();
-    row.attr.set("data-livemap-snap-index", String(index));
+    row.attrs.set("data-livemap-snap-index", String(index));
 
     const label = row.create.div();
-    label.attr.set("data-livemap-snap-role", "index");
+    label.attrs.set("data-livemap-snap-role", "index");
     label.text.set(String(index));
 
     const child = row.create.div();
-    child.attr.set("data-livemap-snap-role", "value");
+    child.attrs.set("data-livemap-snap-role", "value");
     render_snap_value(child, item, [...path, String(index)]);
   });
 }
@@ -163,21 +163,21 @@ function render_control_value(
   path: readonly string[],
   bindings: LiveMapBridgeBinding[],
 ): void {
-  tree.attr.set("data-livemap-control-path", bridge_path_attr(path));
+  tree.attrs.set("data-livemap-control-path", bridge_path_attr(path));
 
   if (Array.isArray(value)) {
-    tree.attr.set("data-livemap-control-kind", "array");
+    tree.attrs.set("data-livemap-control-kind", "array");
     render_control_array(map, tree, value, path, bindings);
     return;
   }
 
   if (is_json_object(value)) {
-    tree.attr.set("data-livemap-control-kind", "object");
+    tree.attrs.set("data-livemap-control-kind", "object");
     render_control_object(map, tree, value, path, bindings);
     return;
   }
 
-  tree.attr.set("data-livemap-control-kind", primitive_snap_kind(value));
+  tree.attrs.set("data-livemap-control-kind", primitive_snap_kind(value));
   render_control_primitive(map, tree, value, path, bindings);
 }
 
@@ -190,14 +190,14 @@ function render_control_object(
 ): void {
   for (const key of Object.keys(value)) {
     const row = tree.create.div();
-    row.attr.set("data-livemap-control-key", key);
+    row.attrs.set("data-livemap-control-key", key);
 
     const label = row.create.div();
-    label.attr.set("data-livemap-control-role", "key");
+    label.attrs.set("data-livemap-control-role", "key");
     label.text.set(key);
 
     const child = row.create.div();
-    child.attr.set("data-livemap-control-role", "value");
+    child.attrs.set("data-livemap-control-role", "value");
     render_control_value(map, child, value[key], [...path, key], bindings);
   }
 }
@@ -211,14 +211,14 @@ function render_control_array(
 ): void {
   value.forEach((item, index) => {
     const row = tree.create.div();
-    row.attr.set("data-livemap-control-index", String(index));
+    row.attrs.set("data-livemap-control-index", String(index));
 
     const label = row.create.div();
-    label.attr.set("data-livemap-control-role", "index");
+    label.attrs.set("data-livemap-control-role", "index");
     label.text.set(String(index));
 
     const child = row.create.div();
-    child.attr.set("data-livemap-control-role", "value");
+    child.attrs.set("data-livemap-control-role", "value");
     render_control_value(map, child, item, [...path, String(index)], bindings);
   });
 }
@@ -238,44 +238,44 @@ function render_schema_control_value(
   schema: LiveMapSchemaControlSpec,
   bindings: LiveMapBridgeBinding[],
 ): void {
-  tree.attr.set("data-livemap-control-path", bridge_path_attr(path));
+  tree.attrs.set("data-livemap-control-path", bridge_path_attr(path));
 
   if (Array.isArray(value)) {
-    tree.attr.set("data-livemap-control-kind", "array");
+    tree.attrs.set("data-livemap-control-kind", "array");
     value.forEach((item, index) => {
       const row = tree.create.div();
-      row.attr.set("data-livemap-control-index", String(index));
+      row.attrs.set("data-livemap-control-index", String(index));
 
       const label = row.create.div();
-      label.attr.set("data-livemap-control-role", "index");
+      label.attrs.set("data-livemap-control-role", "index");
       label.text.set(String(index));
 
       const child = row.create.div();
-      child.attr.set("data-livemap-control-role", "value");
+      child.attrs.set("data-livemap-control-role", "value");
       render_schema_control_value(map, child, item, [...path, String(index)], schema, bindings);
     });
     return;
   }
 
   if (is_json_object(value)) {
-    tree.attr.set("data-livemap-control-kind", "object");
+    tree.attrs.set("data-livemap-control-kind", "object");
     for (const key of Object.keys(value)) {
       const row = tree.create.div();
-      row.attr.set("data-livemap-control-key", key);
+      row.attrs.set("data-livemap-control-key", key);
 
       const label = row.create.div();
-      label.attr.set("data-livemap-control-role", "key");
+      label.attrs.set("data-livemap-control-role", "key");
       label.text.set(key);
 
       const child = row.create.div();
-      child.attr.set("data-livemap-control-role", "value");
+      child.attrs.set("data-livemap-control-role", "value");
       render_schema_control_value(map, child, value[key], [...path, key], schema, bindings);
     }
     return;
   }
 
   const node = schema_control_node_for_path(schema, path);
-  tree.attr.set("data-livemap-control-kind", schema_control_kind(value, node));
+  tree.attrs.set("data-livemap-control-kind", schema_control_kind(value, node));
   render_schema_control_primitive(map, tree, value, path, node, bindings);
 }
 
@@ -295,27 +295,27 @@ function render_schema_control_primitive(
   }
 
   const control = tree.create.tag("input");
-  control.attr.set("data-livemap-control-role", "input");
-  control.attr.set("data-livemap-control-path", bridge_path_attr(path));
-  control.attr.set("data-livemap-control-kind", schema_control_kind(value, schema));
+  control.attrs.set("data-livemap-control-role", "input");
+  control.attrs.set("data-livemap-control-path", bridge_path_attr(path));
+  control.attrs.set("data-livemap-control-kind", schema_control_kind(value, schema));
   apply_schema_control_meta(control, schema);
 
   const kind = schema_control_kind(value, schema);
 
   if (kind === "boolean" && control.form.setChecked !== undefined && control.form.getChecked !== undefined) {
-    control.attr.set("type", "checkbox");
+    control.attrs.set("type", "checkbox");
     bindings.push(bind_livetree_input_checked(control, map, path_to_live_path(path)));
     return;
   }
 
   if (kind === "number") {
-    control.attr.set("type", "number");
+    control.attrs.set("type", "number");
     apply_schema_number_attrs(control, schema);
     bindings.push(bind_livetree_schema_number_input(control, map, path_to_live_path(path), schema));
     return;
   }
 
-  control.attr.set("type", "text");
+  control.attrs.set("type", "text");
   bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
 }
 
@@ -328,14 +328,14 @@ function render_schema_enum_control(
   bindings: LiveMapBridgeBinding[],
 ): void {
   const select = tree.create.tag("select");
-  select.attr.set("data-livemap-control-role", "select");
-  select.attr.set("data-livemap-control-path", bridge_path_attr(path));
-  select.attr.set("data-livemap-control-kind", "enum");
+  select.attrs.set("data-livemap-control-role", "select");
+  select.attrs.set("data-livemap-control-path", bridge_path_attr(path));
+  select.attrs.set("data-livemap-control-kind", "enum");
   apply_schema_control_meta(select, schema);
 
   for (const choice of schema.choices ?? []) {
     const option = select.create.tag("option");
-    option.attr.set("value", choice);
+    option.attrs.set("value", choice);
     option.text.set(choice);
   }
 
@@ -346,13 +346,13 @@ function render_schema_enum_control(
 function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
   if (schema?.label !== undefined) {
     const label = tree.create.div();
-    label.attr.set("data-livemap-control-role", "label");
+    label.attrs.set("data-livemap-control-role", "label");
     label.text.set(schema.label);
   }
 
   if (schema?.description !== undefined) {
     const description = tree.create.div();
-    description.attr.set("data-livemap-control-role", "description");
+    description.attrs.set("data-livemap-control-role", "description");
     description.text.set(schema.description);
   }
 }
@@ -361,14 +361,14 @@ function apply_schema_control_meta(
   tree: LiveAttrBridgeTarget,
   schema: LiveMapSchemaControlNode | undefined,
 ): void {
-  if (schema?.label !== undefined) tree.attr.set("data-livemap-control-label", schema.label);
-  if (schema?.description !== undefined) tree.attr.set("data-livemap-control-description", schema.description);
+  if (schema?.label !== undefined) tree.attrs.set("data-livemap-control-label", schema.label);
+  if (schema?.description !== undefined) tree.attrs.set("data-livemap-control-description", schema.description);
 }
 
 function apply_schema_number_attrs(tree: LiveAttrBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
-  if (schema?.min !== undefined) tree.attr.set("min", String(schema.min));
-  if (schema?.max !== undefined) tree.attr.set("max", String(schema.max));
-  if (schema?.step !== undefined) tree.attr.set("step", String(schema.step));
+  if (schema?.min !== undefined) tree.attrs.set("min", String(schema.min));
+  if (schema?.max !== undefined) tree.attrs.set("max", String(schema.max));
+  if (schema?.step !== undefined) tree.attrs.set("step", String(schema.step));
 }
 
 function schema_control_kind(value: JsonValue | undefined, schema: LiveMapSchemaControlNode | undefined): string {
@@ -392,18 +392,18 @@ function render_control_primitive(
   bindings: LiveMapBridgeBinding[],
 ): void {
   const control = tree.create.tag("input");
-  control.attr.set("data-livemap-control-role", "input");
-  control.attr.set("data-livemap-control-path", bridge_path_attr(path));
-  control.attr.set("data-livemap-control-kind", primitive_snap_kind(value));
+  control.attrs.set("data-livemap-control-role", "input");
+  control.attrs.set("data-livemap-control-path", bridge_path_attr(path));
+  control.attrs.set("data-livemap-control-kind", primitive_snap_kind(value));
 
   if (typeof value === "boolean" && control.form.setChecked !== undefined && control.form.getChecked !== undefined) {
-    control.attr.set("type", "checkbox");
+    control.attrs.set("type", "checkbox");
     bindings.push(bind_livetree_input_checked(control, map, path_to_live_path(path)));
     return;
   }
 
-  if (typeof value === "number") control.attr.set("type", "number");
-  else control.attr.set("type", "text");
+  if (typeof value === "number") control.attrs.set("type", "number");
+  else control.attrs.set("type", "text");
 
   bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
 }

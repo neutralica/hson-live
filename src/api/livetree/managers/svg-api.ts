@@ -178,17 +178,17 @@ export function make_svg_api<TTree extends LiveTree>(tree: TTree): SvgApi<TTree>
         };
     };
     const getString = (name: string): string | undefined => {
-        const v = tree.attr.get(name);
+        const v = tree.attrs.get(name);
         return typeof v === "string" ? v : undefined;
     };
 
     const setAttr = (name: string, value: string): TTree => {
-        tree.attr.set(name, value);
+        tree.attrs.set(name, value);
         return tree;
     };
 
     const clearAttr = (name: string): TTree => {
-        tree.attr.drop(name);
+        tree.attrs.drop(name);
         return tree;
     };
     return {

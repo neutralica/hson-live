@@ -46,11 +46,11 @@ export function bind_livetree_attr(
 ): LiveMapBridgeBinding {
   const sync = (value: JsonValue | undefined) => {
     if (value === false || value === null || value === undefined) {
-      tree.attr.drop(name);
+      tree.attrs.drop(name);
       return;
     }
 
-    tree.attr.set(name, value_to_text(value));
+    tree.attrs.set(name, value_to_text(value));
   };
 
   sync(map.snap(path));
@@ -128,13 +128,13 @@ export function bind_livetree_schema_number_input(
   let isSyncingFromMap = false;
 
   const markValid = () => {
-    tree.attr.set("data-livemap-control-valid", "true");
-    tree.attr.drop("data-livemap-control-error");
+    tree.attrs.set("data-livemap-control-valid", "true");
+    tree.attrs.drop("data-livemap-control-error");
   };
 
   const markInvalid = (message: string) => {
-    tree.attr.set("data-livemap-control-valid", "false");
-    tree.attr.set("data-livemap-control-error", message);
+    tree.attrs.set("data-livemap-control-valid", "false");
+    tree.attrs.set("data-livemap-control-error", message);
   };
 
   const syncFromMap = (value: JsonValue | undefined) => {
@@ -185,13 +185,13 @@ export function bind_livetree_schema_enum_input(
   let isSyncingFromMap = false;
 
   const markValid = () => {
-    tree.attr.set("data-livemap-control-valid", "true");
-    tree.attr.drop("data-livemap-control-error");
+    tree.attrs.set("data-livemap-control-valid", "true");
+    tree.attrs.drop("data-livemap-control-error");
   };
 
   const markInvalid = (message: string) => {
-    tree.attr.set("data-livemap-control-valid", "false");
-    tree.attr.set("data-livemap-control-error", message);
+    tree.attrs.set("data-livemap-control-valid", "false");
+    tree.attrs.set("data-livemap-control-error", message);
   };
 
   const choices = schema?.choices ?? [];
