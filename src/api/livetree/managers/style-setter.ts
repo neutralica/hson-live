@@ -183,7 +183,7 @@ export type StyleSetterAdapters = Readonly<{
   applyPseudo?: (pseudo: CssPseudoKey, decls: CssMapBase) => void;
 
   applySelector?: (pattern: string, decls: CssMapBase) => void;
-  
+
 }>;
 
 /**
@@ -272,6 +272,12 @@ export function make_style_setter<TReturn>(
           if (!adapters.applySelector) throw new Error("Inline style does not support selector declarations.");
           continue;
         }
+
+        if (isPseudoDecls(v)) {
+          if (adapters.applyPseudo || adapters.applySelector) continue;
+          throw new Error("Inline style does not support nested declarations.");
+        }
+
         if (!isCssValue(v)) throw new Error("CSS declaration value is invalid.");
       }
       for (const [k, v] of Object.entries(map)) {

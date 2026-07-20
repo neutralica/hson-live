@@ -449,7 +449,7 @@ await check("legacy value snapshot fails as a protocol envelope error", async ()
   const id = JSON.parse(pair.clientSent.at(-1)).id;
   pair.push_server({ type: "recovery-plan", id, sessionId: "s", logicalMapId: "legacy-envelope", incarnationId: "new", headRev: 5, outcome: "snapshot", reason: "incarnation_mismatch" });
   pair.push_server({ type: "recovery-snapshot", id, snapshot: { logicalMapId: "legacy-envelope", incarnationId: "new", rev: 5, value: { value: 2 } } });
-  await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_PROTOCOL_DECODE_FAILED");
+  await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, 4);
 });

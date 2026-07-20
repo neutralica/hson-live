@@ -54,8 +54,14 @@ import {
   LiveHostDisconnectedError,
   LiveHostDuplicateActionIdError,
 } from "./livehost.error.js";
-import { decode_livehost_server_message, is_livehost_json_value } from "./livehost.protocol.js";
+import { decode_livehost_client_server_message, is_livehost_json_value } from "./livehost.protocol.js";
 import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
+import {
+  decode_livehost_document_snapshot,
+  LiveHostDocumentSnapshotDecodeError,
+  type LiveHostDecodedServerMessage,
+  type LiveHostValidatedSnapshotEnvelope,
+} from "./livehost.document-snapshot.js";
 
 let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
@@ -397,7 +403,7 @@ export function create_livehost_client<
     notify({ kind: "commit", logicalMapId, incarnationId: commit.incarnationId, rev: commit.rev, map });
   }
 
-  function install_snapshot(messageId: string, snapshot: Extract<LiveHostServerMessage, { type: "recovery-snapshot" }>["snapshot"]): void {
+  function install_snapshot(messageId: string, snapshot: LiveHostValidatedSnapshotEnvelope): void {
     const plan = require_plan(messageId);
     if (!plan || plan.outcome !== "snapshot") return;
     if (snapshot.logicalMapId !== plan.logicalMapId || snapshot.incarnationId !== plan.incarnationId || snapshot.rev !== plan.headRev) {
@@ -405,19 +411,31 @@ export function create_livehost_client<
       return;
     }
     try {
-      const node = hson.fromHson(snapshot.hson).toNode();
-      const staged = hson.liveMap.fromNode(node);
-      if (staged.mode !== snapshot.mode || staged.mode !== map.mode) {
-        throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
-      }
-      if (is_projected_live_map(map) && is_projected_live_map(staged)) {
+      if (is_projected_live_map(map)) {
+        if (!("hson" in snapshot)) {
+          throw new LiveHostDocumentSnapshotDecodeError(
+            "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
+            "Canonical document snapshot cannot restore a projected-data mirror.",
+          );
+        }
+        const node = hson.fromHson(snapshot.hson).toNode();
+        const staged = hson.liveMap.fromNode(node);
+        if (staged.mode !== snapshot.mode || staged.mode !== map.mode || !is_projected_live_map(staged)) {
+          throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
+        }
         const schema = map.schema.get();
         const capture = staged.capture();
         map.restore(Object.freeze({ rev: snapshot.rev, value: capture.value }));
         if (schema) map.schema.use(schema);
-      } else if (is_document_live_map(map) && is_document_live_map(staged)) {
-        const capture = staged.capture();
-        map.restore(Object.freeze({ ...capture, rev: snapshot.rev }));
+      } else if (is_document_live_map(map)) {
+        const capture = decode_livehost_document_snapshot(snapshot);
+        if (capture.mode !== map.mode) {
+          throw new LiveHostDocumentSnapshotDecodeError(
+            "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
+            "LiveHost document snapshot mode does not match the mirror mode.",
+          );
+        }
+        map.restore(capture);
       } else {
         throw new Error("Recovery snapshot reconstructed an incompatible map mode.");
       }
@@ -427,11 +445,15 @@ export function create_livehost_client<
       snapshotInstalls += 1;
       notify({ kind: "snapshot", logicalMapId: snapshot.logicalMapId, incarnationId: snapshot.incarnationId, rev: snapshot.rev, map });
     } catch (cause) {
+      if (cause instanceof LiveHostDocumentSnapshotDecodeError) {
+        fail_recovery(cause.code, cause.message, cause.cause);
+        return;
+      }
       fail_recovery("LIVEHOST_RECOVERY_INVALID_SNAPSHOT", "Snapshot replacement mirror could not be constructed.", cause);
     }
   }
 
-  function handle_recovery_message(message: LiveHostServerMessage): boolean {
+  function handle_recovery_message(message: LiveHostDecodedServerMessage): boolean {
     if (message.type !== "recovery-plan" && message.type !== "recovery-commit" && message.type !== "recovery-snapshot" && message.type !== "recovery-caught-up" && message.type !== "commit" && message.type !== "recovery-error") return false;
     if (message.id !== activeRecoveryId || recoveryStatus === "failed" || recoveryStatus === "disposed") return true;
 
@@ -529,7 +551,7 @@ export function create_livehost_client<
     return true;
   }
 
-  function is_recovery_message(message: LiveHostServerMessage): boolean {
+  function is_recovery_message(message: LiveHostDecodedServerMessage): boolean {
     return message.type === "recovery-plan"
       || message.type === "recovery-commit"
       || message.type === "recovery-snapshot"
@@ -539,7 +561,7 @@ export function create_livehost_client<
   }
 
   function is_session_message(
-    message: LiveHostServerMessage,
+    message: LiveHostDecodedServerMessage,
   ): message is Extract<LiveHostServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }> {
     return message.type === "session-created"
       || message.type === "session-attached"
@@ -597,10 +619,14 @@ export function create_livehost_client<
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
     stopRecoveryMessages = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_server_message(raw);
+      const decoded = decode_livehost_client_server_message(raw);
       if (!decoded.ok) {
         if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
-          fail_recovery("LIVEHOST_RECOVERY_PROTOCOL_DECODE_FAILED", decoded.error.message, decoded.error.cause);
+          fail_recovery(
+            decoded.error.code ?? "LIVEHOST_RECOVERY_PROTOCOL_DECODE_FAILED",
+            decoded.error.message,
+            decoded.error.cause,
+          );
         }
         return;
       }
@@ -608,7 +634,7 @@ export function create_livehost_client<
     }) ?? (() => { });
   }
 
-  function handle_server_message(message: LiveHostServerMessage): void {
+  function handle_server_message(message: LiveHostDecodedServerMessage): void {
     if (handle_recovery_message(message)) return;
     if (is_session_message(message)) {
       handle_session_message(message);
@@ -679,7 +705,7 @@ export function create_livehost_client<
     if (isConnected) return disconnect;
     isConnected = true;
     const stopMessage = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_server_message(raw);
+      const decoded = decode_livehost_client_server_message(raw);
       if (!decoded.ok || is_recovery_message(decoded.value)) return;
       handle_server_message(decoded.value);
     });

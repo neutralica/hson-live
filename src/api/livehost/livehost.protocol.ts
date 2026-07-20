@@ -24,13 +24,11 @@ import type {
   LiveHostServerRecoveryCommitMessage,
   LiveHostServerRecoveryErrorMessage,
   LiveHostServerRecoveryPlanMessage,
-  LiveHostServerRecoverySnapshotMessage,
   LiveHostServerSessionAttachedMessage,
   LiveHostServerSessionCreatedMessage,
   LiveHostServerSessionEndedMessage,
   LiveHostServerSessionFencedMessage,
   LiveHostServerSessionRejectedMessage,
-  LiveHostSnapshotEnvelope,
   LiveHostWireValue,
 } from "../../types/livehost.types.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
@@ -55,6 +53,11 @@ import type {
   LiveMapRootMode,
   LivePath,
 } from "../../types/index.js";
+import type {
+  LiveHostDecodedServerMessage,
+  LiveHostDecodedServerRecoverySnapshotMessage,
+  LiveHostValidatedSnapshotEnvelope,
+} from "./livehost.document-snapshot.js";
 
 function ok<T>(value: T): LiveHostResult<T> {
   return { ok: true, value };
@@ -408,14 +411,76 @@ function decode_canonical_commit(value: unknown): LiveHostCanonicalCommit | unde
   return Object.freeze({ logicalMapId, incarnationId, mode, prevRev, rev, ops: Object.freeze(ops) });
 }
 
-function decode_snapshot(value: unknown): LiveHostSnapshotEnvelope | undefined {
-  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "hson"])) return undefined;
+function decode_snapshot(
+  value: unknown,
+  allowCanonical: boolean,
+): LiveHostResult<LiveHostValidatedSnapshotEnvelope> {
+  if (!is_record(value)) {
+    return fail("Malformed LiveHost recovery snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
   const rev = required_rev(value.rev);
   const mode = decode_mode(value.mode);
-  if (!logicalMapId || !incarnationId || rev === undefined || mode === undefined || typeof value.hson !== "string") return undefined;
-  return Object.freeze({ logicalMapId, incarnationId, rev, mode, hson: value.hson });
+  if (!logicalMapId || !incarnationId || rev === undefined || mode === undefined) {
+    return fail("Malformed LiveHost recovery snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
+
+  const hasHson = Object.prototype.hasOwnProperty.call(value, "hson");
+  const hasFormat = Object.prototype.hasOwnProperty.call(value, "format");
+  const hasFormatVersion = Object.prototype.hasOwnProperty.call(value, "formatVersion");
+  const hasPayload = Object.prototype.hasOwnProperty.call(value, "payload");
+  const hasCanonicalField = hasFormat || hasFormatVersion || hasPayload;
+
+  if (hasHson) {
+    if (hasCanonicalField
+      || !has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "hson"])
+      || typeof value.hson !== "string") {
+      return fail("Malformed or ambiguous LiveHost recovery snapshot envelope.", {
+        code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+      });
+    }
+    return ok(Object.freeze({ logicalMapId, incarnationId, rev, mode, hson: value.hson }));
+  }
+
+  if (!allowCanonical || !hasCanonicalField) {
+    return fail("Malformed LiveHost recovery snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
+  if (!has_exact_keys(value, ["logicalMapId", "incarnationId", "rev", "mode", "format", "formatVersion", "payload"])) {
+    return fail("Malformed LiveHost canonical snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
+  if (value.format !== "canonical-hson") {
+    return fail("LiveHost canonical snapshot format is unsupported.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
+    });
+  }
+  if (value.formatVersion !== 1) {
+    return fail("LiveHost canonical snapshot format version is unsupported.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
+    });
+  }
+  if (typeof value.payload !== "string") {
+    return fail("Malformed LiveHost canonical snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
+  return ok(Object.freeze({
+    logicalMapId,
+    incarnationId,
+    rev,
+    mode,
+    format: value.format,
+    formatVersion: value.formatVersion,
+    payload: value.payload,
+  }));
 }
 
 function optional_string(value: unknown): string | undefined {
@@ -564,7 +629,10 @@ function decode_server_event_message(value: Readonly<Record<string, unknown>>): 
   return ok({ type: "event", event: value.event, payload: value.payload });
 }
 
-function decode_recovery_server_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostServerMessage> {
+function decode_recovery_server_message(
+  value: Readonly<Record<string, unknown>>,
+  allowCanonicalSnapshots: boolean,
+): LiveHostResult<LiveHostDecodedServerMessage> {
   const id = required_string(value.id);
   if (!id) return fail("LiveHost recovery server message requires non-empty id.");
 
@@ -583,9 +651,22 @@ function decode_recovery_server_message(value: Readonly<Record<string, unknown>>
     return ok(message);
   }
   if (value.type === "recovery-snapshot") {
-    const snapshot = decode_snapshot(value.snapshot);
-    if (!has_exact_keys(value, ["type", "id", "snapshot"]) || !snapshot) return fail("Malformed LiveHost recovery snapshot message.");
-    const message: LiveHostServerRecoverySnapshotMessage = { type: "recovery-snapshot", id, snapshot };
+    if (!has_exact_keys(value, ["type", "id", "snapshot"])) {
+      return fail("Malformed LiveHost recovery snapshot message.", {
+        code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+      });
+    }
+    const decoded = decode_snapshot(value.snapshot, allowCanonicalSnapshots);
+    if (!decoded.ok) {
+      return allowCanonicalSnapshots
+        ? decoded
+        : fail("Malformed LiveHost recovery snapshot message.");
+    }
+    const message: LiveHostDecodedServerRecoverySnapshotMessage = {
+      type: "recovery-snapshot",
+      id,
+      snapshot: decoded.value,
+    };
     return ok(message);
   }
   if (value.type === "recovery-caught-up") {
@@ -709,13 +790,22 @@ function decode_action_status_server_message(value: Readonly<Record<string, unkn
   return ok({ type: "action-status", id, requestId, state, outcome: { state, seq, completionRev, error: { message, ...(code ? { code } : {}) } } });
 }
 
-export function decode_livehost_server_message(message: string): LiveHostResult<LiveHostServerMessage> {
+function is_legacy_livehost_server_message(
+  message: LiveHostDecodedServerMessage,
+): message is LiveHostServerMessage {
+  return message.type !== "recovery-snapshot" || "hson" in message.snapshot;
+}
+
+function decode_livehost_server_message_internal(
+  message: string,
+  allowCanonicalSnapshots: boolean,
+): LiveHostResult<LiveHostDecodedServerMessage> {
   try {
     const value = JSON.parse(message) as unknown;
     if (!is_record(value)) return fail("LiveHost server message must be an object.");
     if (value.type === "event") return decode_server_event_message(value);
     if (value.type === "recovery-plan" || value.type === "recovery-commit" || value.type === "recovery-snapshot" || value.type === "recovery-caught-up" || value.type === "commit" || value.type === "recovery-error") {
-      return decode_recovery_server_message(value);
+      return decode_recovery_server_message(value, allowCanonicalSnapshots);
     }
     if (value.type === "session-created" || value.type === "session-attached" || value.type === "session-rejected" || value.type === "session-fenced" || value.type === "session-ended") {
       return decode_session_server_message(value);
@@ -734,6 +824,25 @@ export function decode_livehost_server_message(message: string): LiveHostResult<
   } catch (cause) {
     return fail("Invalid LiveHost server message JSON.", { cause });
   }
+}
+
+/** Decode the established public LiveHost server-message surface. */
+export function decode_livehost_server_message(message: string): LiveHostResult<LiveHostServerMessage> {
+  const decoded = decode_livehost_server_message_internal(message, false);
+  if (!decoded.ok) return decoded;
+  if (!is_legacy_livehost_server_message(decoded.value)) {
+    return fail("Malformed LiveHost recovery snapshot envelope.", {
+      code: "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
+    });
+  }
+  return ok(decoded.value);
+}
+
+/** @internal Client transport decoder with additive canonical snapshot acceptance. */
+export function decode_livehost_client_server_message(
+  message: string,
+): LiveHostResult<LiveHostDecodedServerMessage> {
+  return decode_livehost_server_message_internal(message, true);
 }
 
 export function decode_livehost_message<TActions extends LiveHostActionPayloads = LiveHostActionPayloads>(message: string): LiveHostResult<LiveHostClientMessage<TActions>> {
