@@ -35,6 +35,7 @@ import {
   make_livemap_document_mutation_api,
   type LiveMapDocumentMutationController,
 } from "./livemap.document.mutation.js";
+import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -139,6 +140,8 @@ function make_document_livemap(
   controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
 ): DocumentLiveMap {
   const mutationApi = make_livemap_document_mutation_api(controller);
+  const attrReads = make_livemap_document_attrs_read_api(controller);
+  const attrs = Object.freeze({ ...attrReads, ...mutationApi.attrs });
   const content = Object.freeze(Object.assign(
     () => detached_document_content(core.root()),
     {
@@ -156,7 +159,7 @@ function make_document_livemap(
       const node = controller.identity().get(quid);
       return node === undefined ? undefined : clone_live_root(node);
     },
-    attrs: mutationApi.attrs,
+    attrs,
   });
 
   const shared = {

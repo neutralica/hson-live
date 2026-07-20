@@ -1,15 +1,25 @@
 // attrs.types.ts
 
-import { LiveTree } from "../api/livetree/livetree.js";
-import { Primitive } from "../core/types.js";
-import { AttrMap, AttrValue } from "../core/types.js";
+import type {
+  LiveMapDocumentAttrs,
+  LiveMapDocumentAttributeValue,
+} from "./livemap.types.js";
+
+export type LiveTreeAttrsMustHandle = Readonly<{
+  get: (name: string) => LiveMapDocumentAttributeValue;
+}>;
 
 export type AttrHandle<TOwner> = Readonly<{
-  get: (name: string) => Primitive | undefined;
+  get: (name: string) => LiveMapDocumentAttributeValue | undefined;
+  must: LiveTreeAttrsMustHandle;
   has: (name: string) => boolean;
+  keys: () => readonly string[];
   drop: (name: string) => TOwner;
-  set: (name: string, value: AttrValue) => TOwner;
-  setMany: (map: AttrMap) => TOwner;
+  dropMany: (names: readonly string[]) => TOwner;
+  clear: () => TOwner;
+  replace: (values: LiveMapDocumentAttrs) => TOwner;
+  set: (name: string, value: LiveMapDocumentAttributeValue) => TOwner;
+  setMany: (values: LiveMapDocumentAttrs) => TOwner;
 }>;
 
 export type FlagHandle<TOwner> = Readonly<{

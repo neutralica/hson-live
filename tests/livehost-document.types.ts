@@ -9,6 +9,7 @@ import type {
   LiveHostClientForMap,
   LiveHostDocumentActionPayloads,
   LiveMapDocumentAttrs,
+  LiveMapDocumentAttributeValue,
   LiveMapGraphReplaceAttrsOp,
   LiveMap,
   LiveTree,
@@ -39,10 +40,34 @@ type Equal<TLeft, TRight> =
 type Assert<TValue extends true> = TValue;
 
 declare const tree: LiveTree;
+const treeAttr = tree.attrs.get("id");
+const requiredTreeAttr = tree.attrs.must.get("id");
+const treeHasAttr = tree.attrs.has("id");
+const treeAttrKeys = tree.attrs.keys();
+type TreeAttrIsCanonical = Assert<Equal<typeof treeAttr, LiveMapDocumentAttributeValue | undefined>>;
+type RequiredTreeAttrIsCanonical = Assert<Equal<typeof requiredTreeAttr, LiveMapDocumentAttributeValue>>;
+type TreeHasAttrIsBoolean = Assert<Equal<typeof treeHasAttr, boolean>>;
+type TreeAttrKeysAreReadonly = Assert<Equal<typeof treeAttrKeys, readonly string[]>>;
 tree.attrs.set("id", "main");
+tree.attrs.set("hidden", false);
+tree.attrs.set("nullable", null);
+tree.attrs.setMany(replacementAttrs);
 tree.attrs.drop("id");
+tree.attrs.dropMany(["id", "title"]);
+tree.attrs.clear();
+tree.attrs.replace(replacementAttrs);
 tree.flags.set("hidden");
 tree.flags.clear("hidden");
+// @ts-expect-error undefined is absence, not a canonical set value
+tree.attrs.set("id", undefined);
+// @ts-expect-error dropMany accepts one readonly string array
+tree.attrs.dropMany("id");
+// @ts-expect-error no bulk read helper exists
+tree.attrs.getMany(["id"]);
+// @ts-expect-error no entries helper exists
+tree.attrs.entries();
+// @ts-expect-error must exposes get only
+tree.attrs.must.has("id");
 // @ts-expect-error obsolete namespace is not part of the public API
 tree.attr;
 // @ts-expect-error obsolete namespace is not part of the public API
@@ -86,6 +111,15 @@ if (elementCandidate.mode !== "element") throw new Error("Expected element map")
 const elementHost = create_livehost({ map: elementCandidate });
 type ElementMapIsExact = Assert<Equal<typeof elementHost.map, ElementLiveMap>>;
 const elementHostAlias: LiveHostForMap<ElementLiveMap> = elementHost;
+const documentTarget = { kind: "path", path: [] } as const;
+const optionalAttr = elementCandidate.document.attrs.get(documentTarget, "title");
+const requiredAttr = elementCandidate.document.attrs.must.get(documentTarget, "title");
+const attrPresent = elementCandidate.document.attrs.has(documentTarget, "title");
+const attrKeys = elementCandidate.document.attrs.keys(documentTarget);
+type OptionalAttrIsCanonical = Assert<Equal<typeof optionalAttr, LiveMapDocumentAttributeValue | undefined>>;
+type RequiredAttrIsCanonical = Assert<Equal<typeof requiredAttr, LiveMapDocumentAttributeValue>>;
+type AttrPresentIsBoolean = Assert<Equal<typeof attrPresent, boolean>>;
+type AttrKeysAreReadonly = Assert<Equal<typeof attrKeys, readonly string[]>>;
 elementCandidate.document.attrs.setMany({ kind: "path", path: [] }, replacementAttrs);
 elementCandidate.document.attrs.dropMany({ kind: "path", path: [] }, ["title"]);
 elementCandidate.document.attrs.clear({ kind: "path", path: [] });
@@ -96,6 +130,16 @@ elementCandidate.document.attrs.clear({ path: [] });
 elementCandidate.document.attrs.dropMany({ kind: "path", path: [] }, "title");
 // @ts-expect-error undefined is not a canonical document attribute value
 elementCandidate.document.attrs.setMany({ kind: "path", path: [] }, { title: undefined });
+// @ts-expect-error document reads require an explicit document target
+elementCandidate.document.attrs.get([], "title");
+// @ts-expect-error document attribute names are strings
+elementCandidate.document.attrs.has(documentTarget, 1);
+// @ts-expect-error keys requires a target
+elementCandidate.document.attrs.keys();
+// @ts-expect-error no bulk read helper is exposed
+elementCandidate.document.attrs.getMany(documentTarget, ["title"]);
+// @ts-expect-error no entries reader is exposed
+elementCandidate.document.attrs.entries(documentTarget);
 
 const fragmentCandidate = hson.liveMap.fromHson(`<main/> <aside/>`);
 if (fragmentCandidate.mode !== "fragment") throw new Error("Expected fragment map");
@@ -178,6 +222,12 @@ typedDocumentClient.action("document.attrs.replace", {
 });
 // @ts-expect-error hosted read actions are not implemented
 typedDocumentClient.action("document.attrs.get", { target: { kind: "path", path: [] }, name: "id" });
+// @ts-expect-error hosted read actions are not implemented
+typedDocumentClient.action("document.attrs.has", { target: { kind: "path", path: [] }, name: "id" });
+// @ts-expect-error hosted read actions are not implemented
+typedDocumentClient.action("document.attrs.keys", { target: { kind: "path", path: [] } });
+// @ts-expect-error hosted read actions are not implemented
+typedDocumentClient.action("document.attrs.must.get", { target: { kind: "path", path: [] }, name: "id" });
 // @ts-expect-error obsolete hosted action is not part of the public API
 typedDocumentClient.action("document.attr.set", { target: { kind: "path", path: [] }, name: "id", value: "main" });
 typedDocumentClient.action("document.content.replace", {

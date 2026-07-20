@@ -121,6 +121,10 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
   if (map.mode === "element") {
     map.element.node();
     map.document.content();
+    map.document.attrs.get(target, "id");
+    map.document.attrs.must.get(target, "id");
+    map.document.attrs.has(target, "id");
+    map.document.attrs.keys(target);
     map.document.attrs.set(target, "id", "main");
     map.document.attrs.drop(target, "id");
     map.document.attrs.setMany(target, { id: "main", hidden: false });
@@ -136,6 +140,9 @@ function assert_classified_livemap_surface(map: ClassifiedLiveMapSurface): HsonN
     map.element.content;
   } else if (map.mode === "fragment") {
     map.document.content();
+    map.document.attrs.get(target, "id");
+    map.document.attrs.has(target, "id");
+    map.document.attrs.keys(target);
     map.document.attrs.set({ kind: "quid", quid: "known" }, "id", "value");
     map.document.attrs.drop(target, "id");
     map.document.content.replace(target, 0, "text");

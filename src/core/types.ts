@@ -5,6 +5,8 @@ import type { PersistedQuid } from "./persisted-quid.js";
 import type { CssMap } from "./style.types.js";
 
 export type Primitive = string | boolean | number | null;
+export type CanonicalPublicAttrValue = Primitive | CssMap;
+export type CanonicalPublicAttrs = Readonly<Record<string, CanonicalPublicAttrValue>>;
 export type BasicValue = boolean | number | null;
 
 export type JsonObj = { [key: string]: JsonValue };

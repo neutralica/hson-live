@@ -141,7 +141,7 @@ export function make_data_api<TTree extends LiveTree>(tree: TTree): DataApi<TTre
             const attrName = formatData(key);
             const value = getAttrImpl(tree, attrName);
 
-            return value;
+            return typeof value === "object" && value !== null ? undefined : value;
         },
 
         drop: (key) => {

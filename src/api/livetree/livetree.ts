@@ -501,13 +501,15 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveTreeAttrs
    ***************************************/
 
-  /** Attributes - get/set/setMany/has/drop
+  /** Canonical ordinary attributes.
    * 
    * @see AttrHandle
    */
   public get attrs(): AttrHandle<this> {
     this.assertActive("access attributes");
-    return (this._attrs ??= guard_api_surface(attr_handle(this), () => this.assertActive("access attributes"), this));
+    // Every attrs operation reaches the guarded `node`/`quid` accessors. Keeping
+    // the frozen handle intact also preserves the public frozen `must` façade.
+    return (this._attrs ??= attr_handle(this));
   }
 
   /** "Flags" (HTML boolean attributes) - has/get/clear 

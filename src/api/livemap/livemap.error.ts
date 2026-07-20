@@ -7,6 +7,7 @@ import {
 } from "./livemap.path.js";
 import type { LiveMapSchemaIssue } from "./livemap.schema.js";
 import type { JsonValue } from "../../core/types.js";
+import type { LiveMapDocumentTarget } from "../../types/livemap.types.js";
 
 export class LiveMapSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
@@ -64,6 +65,7 @@ export type LiveMapDocumentMutationErrorCode =
   | "DOCUMENT_PATH_OUT_OF_RANGE"
   | "INVALID_DOCUMENT_ATTRIBUTE_NAME"
   | "INVALID_DOCUMENT_ATTRIBUTE_VALUE"
+  | "DOCUMENT_ATTRIBUTE_NOT_FOUND"
   | "PROTECTED_DOCUMENT_METADATA"
   | "INVALID_DOCUMENT_CONTENT_INDEX"
   | "INVALID_DOCUMENT_REPLACEMENT"
@@ -76,6 +78,10 @@ export class LiveMapDocumentMutationError extends Error {
     | "set-attr"
     | "remove-attr"
     | "replace-attrs"
+    | "get-attr"
+    | "has-attr"
+    | "list-attrs"
+    | "must-get-attr"
     | "replace-content"
     | "insert-content"
     | "remove-content"
@@ -94,6 +100,30 @@ export class LiveMapDocumentMutationError extends Error {
     this.operation = operation;
     this.reason = reason;
   }
+}
+
+export class LiveMapDocumentAttributeNotFoundError extends LiveMapDocumentMutationError {
+  declare readonly code: "DOCUMENT_ATTRIBUTE_NOT_FOUND";
+  declare readonly operation: "must-get-attr";
+  readonly target: LiveMapDocumentTarget;
+  readonly attributeName: string;
+
+  constructor(target: LiveMapDocumentTarget, attributeName: string) {
+    super(
+      "DOCUMENT_ATTRIBUTE_NOT_FOUND",
+      "must-get-attr",
+      `ordinary attribute ${JSON.stringify(attributeName)} is absent`,
+    );
+    this.name = "LiveMapDocumentAttributeNotFoundError";
+    this.target = clone_document_target(target);
+    this.attributeName = attributeName;
+  }
+}
+
+function clone_document_target(target: LiveMapDocumentTarget): LiveMapDocumentTarget {
+  return target.kind === "path"
+    ? Object.freeze({ kind: "path", path: Object.freeze([...target.path]) })
+    : Object.freeze({ kind: "quid", quid: target.quid });
 }
 
 export class LiveMapReplayError extends Error {

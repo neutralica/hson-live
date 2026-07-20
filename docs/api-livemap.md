@@ -928,6 +928,10 @@ capability:
 ```ts
 const target = { kind: "path", path: [] } as const;
 
+elementMap.document.attrs.get(target, "aria-label");
+elementMap.document.attrs.must.get(target, "aria-label");
+elementMap.document.attrs.has(target, "aria-label");
+elementMap.document.attrs.keys(target);
 elementMap.document.attrs.set(target, "aria-label", "Save");
 elementMap.document.attrs.setMany(target, { id: "save", hidden: false });
 elementMap.document.attrs.drop(target, "aria-label");
@@ -973,8 +977,8 @@ finite non-negative integer and counts all physical slots, including HSON text
 and structural wrapper nodes. For an element map, `[]` identifies its one
 ordinary top-level element. For a fragment map, `[]` identifies the canonical
 `_hson_elem` fragment cluster. Paths may end at a node or primitive, but
-attribute mutation requires an ordinary-element endpoint and content mutation
-requires a node endpoint.
+attribute reads and mutation require an ordinary-element endpoint and content
+mutation requires a node endpoint.
 
 QUID targets resolve only through the map-local sparse persisted-identity
 index. Only an ordinary element already carrying a valid `data-_quid` can be
@@ -987,6 +991,24 @@ canonically identical value is a no-op. `attrs.drop()` removes one existing
 ordinary attribute; an absent attribute is a no-op. Names beginning `data-_`
 are persisted metadata rather than ordinary attributes and cannot be changed
 through this namespace, including `data-_quid`.
+
+The four attribute reads inspect canonical HSON state rather than a mounted
+DOM. `attrs.get()` returns the canonical value or `undefined` when the valid
+public name is absent; `attrs.has()` tests own-key presence; and `attrs.keys()`
+returns a fresh, frozen, lexically ordered list of public ordinary names.
+Consequently `false`, `0`, `null`, and the empty string are all present values.
+The structured `style` attribute is returned as its canonical `CssMap`, not as
+serialized CSS. Structured results from `attrs.get()` and
+`attrs.must.get()` are recursively detached and frozen, so callers cannot
+mutate authority state through a read.
+
+`attrs.must.get()` uses the same target resolution, protected-name policy, and
+canonical lookup as `attrs.get()`, but a valid absent name throws exported
+`LiveMapDocumentAttributeNotFoundError` with code
+`DOCUMENT_ATTRIBUTE_NOT_FOUND`. Attribute keys never include `$_meta`,
+persisted QUIDs, or system-owned `data-_` projection. Reads do not create
+`$_attrs`, construct graph operations, advance revisions, append history,
+publish, or notify subscribers.
 
 All four bulk methods derive a complete final ordinary-attribute bag and apply
 it atomically through one `replace-attrs` operation. `attrs.setMany()` preserves

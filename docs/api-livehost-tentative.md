@@ -307,6 +307,12 @@ operation, the moved slot occupies `to`. A move from `1` to `3` transforms
 unchanged `completionRev` and create no commit, history entry, publication, or
 client replay.
 
+Document attribute reads are deliberately local LiveMap capabilities. There
+are no hosted `document.attrs.get`, `document.attrs.has`,
+`document.attrs.keys`, or `document.attrs.must.get` actions; those names remain
+unknown actions. Read canonical document attributes directly through
+`map.document.attrs` on the authority that owns the map.
+
 These built-ins use normal lookup, payload validation, session authorization,
 deduplication, handler execution, tracing, and acknowledgement behavior. A
 successful changed mutation advances the authoritative LiveMap once; shared
@@ -321,8 +327,8 @@ retain the existing structured LiveMap document error codes. Rejected,
 unauthorized, unavailable, unchanged, joined, or cached requests do not create
 an extra commit.
 
-Bulk attributes, multi-slot/range content operations, and arbitrary document
-batching remain out of scope.
+Multi-slot/range content operations and arbitrary document batching remain out
+of scope.
 
 ### Remote action authorization
 

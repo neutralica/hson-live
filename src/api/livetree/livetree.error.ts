@@ -3,6 +3,42 @@ export const LIVETREE_ALREADY_ATTACHED_ERROR_CODE = "LIVETREE_ALREADY_ATTACHED" 
 export const LIVETREE_PROTECTED_ROOT_ERROR_CODE = "LIVETREE_PROTECTED_ROOT" as const;
 export const LIVETREE_BATCH_VALIDATION_ERROR_CODE = "LIVETREE_BATCH_VALIDATION_FAILED" as const;
 export const LIVETREE_BATCH_ATTACHMENT_ERROR_CODE = "LIVETREE_BATCH_ATTACHMENT_FAILED" as const;
+export const LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE = "LIVETREE_INVALID_ATTRIBUTE_NAME" as const;
+export const LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE = "LIVETREE_PROTECTED_ATTRIBUTE" as const;
+export const LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE = "LIVETREE_INVALID_ATTRIBUTE_VALUE" as const;
+export const LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE = "LIVETREE_ATTRIBUTE_NOT_FOUND" as const;
+
+export type LiveTreeAttributeErrorCode =
+  | typeof LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE
+  | typeof LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE
+  | typeof LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE
+  | typeof LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE;
+
+export class LiveTreeAttributeError extends Error {
+  readonly code: LiveTreeAttributeErrorCode;
+  readonly operation: string;
+  readonly reason: string;
+  readonly attributeName: string | undefined;
+  readonly quid: string;
+  readonly inputIndex: number | undefined;
+
+  constructor(
+    code: LiveTreeAttributeErrorCode,
+    operation: string,
+    quid: string,
+    reason: string,
+    options?: Readonly<{ attributeName?: string; inputIndex?: number }>,
+  ) {
+    super(`Invalid LiveTree attribute ${operation}: ${reason}`);
+    this.name = "LiveTreeAttributeError";
+    this.code = code;
+    this.operation = operation;
+    this.reason = reason;
+    this.quid = quid;
+    this.attributeName = options?.attributeName;
+    this.inputIndex = options?.inputIndex;
+  }
+}
 
 export class LiveTreeBatchError extends Error {
   public readonly cause: unknown;

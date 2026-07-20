@@ -1,236 +1,382 @@
-// attr-handle.ts
-
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
-import { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
-import { Primitive } from "../../../core/types.js";
-import { CssMap } from "../../../types/css.types.js";
-import { SvgTag } from "../../../types/livetree.types.js";
-import { AttrMap, AttrValue, HsonAttrs, HsonNode } from "../../../core/types.js";
-import { parse_style_string } from "../../transform/utils/attrs-utils/parse-style.js";
+import { _META_DATA_PREFIX } from "../../../core/constants.js";
+import { clone_node } from "../../../core/clone-node.js";
+import {
+  canonical_public_attrs_equal,
+  decode_public_attrs,
+  decode_public_attr_value,
+  is_public_attr_name,
+} from "../../../core/public-attrs.js";
+import type {
+  CanonicalPublicAttrs,
+  CanonicalPublicAttrValue,
+  HsonNode,
+} from "../../../core/types.js";
+import type { AttrHandle, FlagHandle } from "../../../types/attrs.types.js";
+import type { SvgTag } from "../../../types/livetree.types.js";
 import { serialize_style } from "../../transform/utils/attrs-utils/serialize-style.js";
-import { canonical_svg_attr_name, SVG_ATTR_CASE_MAP } from "../../transform/utils/html-utils/parse_html_attrs.js";
+import {
+  canonical_svg_attr_name,
+} from "../../transform/utils/html-utils/parse_html_attrs.js";
+import {
+  LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
+  LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
+  LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
+  LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
+  LiveTreeAttributeError,
+} from "../livetree.error.js";
+import type { LiveTree } from "../livetree.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
-import { LiveTree } from "../livetree.js";
-import { ensure_node_attrs, prune_empty_node_attrs } from "../../../core/node-storage.js";
+
+const FLAG_NAMES = new WeakMap<HsonNode, Set<string>>();
+
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
   const lower = name.toLowerCase();
-
-  return tree.svg.inScope()
-    ? canonical_svg_attr_name(name)
-    : lower;
+  return tree.svg.inScope() ? canonical_svg_attr_name(name) : lower;
 }
 
 function svg_attr_key_from_node_tag(node: HsonNode, name: string): string {
   const lower = name.toLowerCase();
-
-  return SVG_TAGS.includes(node.$_tag as SvgTag)
-    ? canonical_svg_attr_name(name)
-    : lower;
+  return SVG_TAGS.includes(node.$_tag as SvgTag) ? canonical_svg_attr_name(name) : lower;
 }
 
 export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTree> {
-  return Object.freeze({
-    get: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)),
-
-    has: (name) => getAttrImpl(tree, canonical_attr_key(tree, name)) !== undefined,
-
-    drop: (name): TTree => {
-      removeAttrImpl(tree, canonical_attr_key(tree, name));
-      return tree;
-    },
-
-    set: (name, value): TTree => {
-      setAttrsImpl(tree, canonical_attr_key(tree, name), value);
-      return tree;
-    },
-
-    setMany: (map): TTree => {
-      for (const [k, v] of Object.entries(map)) {
-        setAttrsImpl(tree, canonical_attr_key(tree, k), v);
+  const must = Object.freeze({
+    get: (name: string): CanonicalPublicAttrValue => {
+      const key = normalize_attr_name(tree, name, "must.get");
+      const value = read_canonical_attr(tree, key, "must.get");
+      if (value === undefined) {
+        throw new LiveTreeAttributeError(
+          LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
+          "must.get",
+          tree.quid,
+          `ordinary attribute ${JSON.stringify(key)} is absent`,
+          { attributeName: key },
+        );
       }
-      return tree;
+      return value;
+    },
+  });
+
+  return Object.freeze({
+    get: (name) => {
+      const key = normalize_attr_name(tree, name, "get");
+      return read_canonical_attr(tree, key, "get");
+    },
+    must,
+    has: (name) => {
+      const key = normalize_attr_name(tree, name, "has");
+      return has_ordinary_attr(tree.node, key);
+    },
+    keys: () => Object.freeze(read_ordinary_attr_keys(tree.node)),
+    set: (name, value) => {
+      const key = normalize_attr_name(tree, name, "set");
+      const decoded = normalize_attr_value(tree, key, value, "set");
+      const current = read_ordinary_attrs(tree, "set");
+      return apply_attrs_replacement(tree, current, normalize_attrs_result({ ...current, [key]: decoded }), [key]);
+    },
+    setMany: (values) => {
+      const additions = normalize_attrs_input(tree, values, "setMany");
+      const current = read_ordinary_attrs(tree, "setMany");
+      return apply_attrs_replacement(
+        tree,
+        current,
+        normalize_attrs_result({ ...current, ...additions }),
+        Object.keys(additions),
+      );
+    },
+    drop: (name) => {
+      const key = normalize_attr_name(tree, name, "drop");
+      const current = read_ordinary_attrs(tree, "drop");
+      const next: Record<string, CanonicalPublicAttrValue> = { ...current };
+      delete next[key];
+      return apply_attrs_replacement(tree, current, normalize_attrs_result(next), []);
+    },
+    dropMany: (names) => {
+      const normalized = normalize_drop_names(tree, names, "dropMany");
+      const current = read_ordinary_attrs(tree, "dropMany");
+      const next: Record<string, CanonicalPublicAttrValue> = { ...current };
+      for (const name of normalized) delete next[name];
+      return apply_attrs_replacement(tree, current, normalize_attrs_result(next), []);
+    },
+    clear: () => {
+      const current = read_ordinary_attrs(tree, "clear");
+      return apply_attrs_replacement(tree, current, Object.freeze({}), []);
+    },
+    replace: (values) => {
+      const next = normalize_attrs_input(tree, values, "replace");
+      const current = read_ordinary_attrs(tree, "replace");
+      return apply_attrs_replacement(tree, current, next, Object.keys(next));
     },
   });
 }
 
 export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {
   return Object.freeze({
-    has: (name) => attr_handle(tree).has(name),
-    set: (...names): TTree => setFlagsImpl(tree, ...names),
-    clear: (...names): TTree => clearFlagsImpl(tree, ...names),
+    has: (name) => {
+      const key = canonical_attr_key(tree, name);
+      const attrs = tree.node.$_attrs;
+      return attrs !== undefined && Object.prototype.hasOwnProperty.call(attrs, key);
+    },
+    set: (...names): TTree => {
+      for (const name of names) set_flag(tree, canonical_attr_key(tree, name));
+      return tree;
+    },
+    clear: (...names): TTree => {
+      for (const name of names) clear_flag(tree, canonical_attr_key(tree, name));
+      return tree;
+    },
   });
 }
 
-
-/* ---------------------------------------------
- * Core single-attr apply/read
- * ------------------------------------------- */
-
-/**
- * accepts Primitive (number supported) and preserves:
- * - null/false/undefined => remove
- * - true => boolean-present attr (key="key") except style clears
- * - string/number => set stringified
- */
-export function applyAttrToNode(
-  node: HsonNode,
-  name: string,
-  value: AttrValue,
-): void {
-  const key = svg_attr_key_from_node_tag(node, name);
-  const el = get_el_for_node(node) as Element | undefined;
-
-  // normalize undefined -> null (removal)
-  const v: Primitive = (value === undefined ? null : value);
-
-  // ---- remove / delete ----------------------------------------
-  // `false` means remove (if you want literal "false", pass "false")
-  if (v === null || v === false) {
-    const attrs = node.$_attrs;
-    if (key === "style") {
-      if (attrs) delete attrs.style;
-      if (el) el.removeAttribute("style");
-    } else {
-      if (attrs) delete attrs[key];
-      if (el) el.removeAttribute(key);
-    }
-    prune_empty_node_attrs(node);
-    return;
-  }
-
-  // ---- boolean-present attribute ------------------------------
-  if (v === true) {
-    if (key === "style") {
-      // treat boolean style as "clear style"
-      const attrs = node.$_attrs;
-      if (attrs) delete attrs.style;
-      if (el) el.removeAttribute("style");
-      prune_empty_node_attrs(node);
-    } else {
-      ensure_node_attrs(node)[key] = key;
-      if (el) el.setAttribute(key, key);
-    }
-    return;
-  }
-
-  // ---- normal value -------------------------------------------
-  // numbers become strings here
-  const s = String(v);
-
-  if (key === "style") {
-    // parse+store structured style map, mirror canonical text to DOM
-    const cssObj = parse_style_string(s) as CssMap;
-    if (Object.keys(cssObj).length > 0) {
-      ensure_node_attrs(node).style = cssObj;
-    } else {
-      const attrs = node.$_attrs;
-      if (attrs) delete attrs.style;
-      prune_empty_node_attrs(node);
-    }
-
-    const cssText = serialize_style(cssObj);
-    if (el) {
-      if (cssText) el.setAttribute("style", cssText);
-      else el.removeAttribute("style");
-    }
-  } else {
-    ensure_node_attrs(node)[key] = s;
-    if (el) el.setAttribute(key, s);
-  }
-}
-
-/**
- * Read a single attribute from the node (IR is source of truth).
- * - missing => undefined
- * - style object => serialized css text
- */
-export function readAttrFromNode(
-  node: HsonNode,
-  name: string,
-): Primitive | undefined {
-  const attrs = node.$_attrs;
-  if (!attrs) return undefined;
-
-  const key = svg_attr_key_from_node_tag(node, name);
-  const raw = (attrs as any)[key];
-
-  if (raw == null) return undefined;
-
-  if (key === "style" && typeof raw === "object") {
-    return serialize_style(raw as Record<string, string>);
-  }
-
-  return raw as Primitive;
-}
-
-/* ---------------------------------------------
- * LiveTree-facing helpers
- * ------------------------------------------- */
-
-/**
- * CHANGED: accepts Primitive map + numbers; undefined => remove
- *
- * Overloads kept for ergonomics.
- */
-export function setAttrsImpl<TTree extends LiveTree>(tree: TTree, name: string, value: AttrValue): TTree;
-export function setAttrsImpl<TTree extends LiveTree>(tree: TTree, map: AttrMap): TTree;
+/** Canonical single-value writer retained for existing internal managers. */
 export function setAttrsImpl<TTree extends LiveTree>(
   tree: TTree,
-  nameOrMap: string | AttrMap,
-  value?: AttrValue,
+  name: string,
+  value: CanonicalPublicAttrValue,
+): TTree;
+export function setAttrsImpl<TTree extends LiveTree>(tree: TTree, values: CanonicalPublicAttrs): TTree;
+export function setAttrsImpl<TTree extends LiveTree>(
+  tree: TTree,
+  nameOrValues: string | CanonicalPublicAttrs,
+  value?: CanonicalPublicAttrValue,
 ): TTree {
-  const node = tree.node;
-
-  if (typeof nameOrMap === "string") {
-    applyAttrToNode(node, nameOrMap, value);
-    return tree;
+  if (typeof nameOrValues === "string") {
+    return Reflect.apply(tree.attrs.set, tree.attrs, [nameOrValues, value]);
   }
-
-  for (const [k, v] of Object.entries(nameOrMap)) {
-    applyAttrToNode(node, k, v);
-  }
-  return tree;
+  return tree.attrs.setMany(nameOrValues);
 }
 
 export function removeAttrImpl<TTree extends LiveTree>(tree: TTree, name: string): TTree {
-  // removal uses undefined->null normalization inside apply
-  applyAttrToNode(tree.node, name, null);
-  return tree;
+  return tree.attrs.drop(name);
 }
 
-/**
- * Set boolean-present attrs. (style treated as clear, per applyAttrToNode)
- */
-export function setFlagsImpl<TTree extends LiveTree>(tree: TTree, ...names: string[]): TTree {
-  const node = tree.node;
-  for (const n of names) {
-    applyAttrToNode(node, n, true);
-  }
-  return tree;
+export function getAttrImpl(tree: LiveTree, name: string): CanonicalPublicAttrValue | undefined {
+  return tree.attrs.get(name);
 }
 
-/**
- * Clear boolean-present attrs (and any attr, really).
- */
-export function clearFlagsImpl<TTree extends LiveTree>(tree: TTree, ...names: string[]): TTree {
-  const node = tree.node;
-  for (const n of names) {
-    applyAttrToNode(node, n, null);
-  }
-  return tree;
+export function readAttrFromNode(
+  node: HsonNode,
+  name: string,
+): CanonicalPublicAttrValue | undefined {
+  const key = svg_attr_key_from_node_tag(node, name);
+  if (!has_ordinary_attr(node, key)) return undefined;
+  return decode_public_attr_value(key, node.$_attrs?.[key]);
 }
 
-export function getAttrImpl(tree: LiveTree, name: string): Primitive | undefined {
-  return readAttrFromNode(tree.node, name);
-}
-
-/**
- * Optional helper: "hasAttr" means “present” even for flags stored as key="key".
- */
 export function hasAttrImpl(tree: LiveTree, name: string): boolean {
-  // key-exists check avoids edge cases where value could be ""
-  const attrs = tree.node.$_attrs;
-  if (!attrs) return false;
-  const key = svg_attr_key_from_node_tag(tree.node, name);
-  return (attrs as any)[key] != null;
+  return tree.attrs.has(name);
+}
+
+function read_canonical_attr(
+  tree: LiveTree,
+  key: string,
+  operation: string,
+): CanonicalPublicAttrValue | undefined {
+  if (!has_ordinary_attr(tree.node, key)) return undefined;
+  const decoded = decode_public_attr_value(key, tree.node.$_attrs?.[key]);
+  if (decoded !== undefined) return decoded;
+  throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, key, "stored value is not canonical");
+}
+
+function has_ordinary_attr(node: HsonNode, key: string): boolean {
+  const attrs = node.$_attrs;
+  return attrs !== undefined
+    && !flag_names_for_node(node).has(key)
+    && Object.prototype.hasOwnProperty.call(attrs, key);
+}
+
+function read_ordinary_attr_keys(node: HsonNode): string[] {
+  const flags = flag_names_for_node(node);
+  return Object.keys(node.$_attrs ?? {})
+    .filter((name) => is_public_attr_name(name) && !flags.has(name))
+    .sort();
+}
+
+function read_ordinary_attrs(tree: LiveTree, operation: string): CanonicalPublicAttrs {
+  const input: Record<string, unknown> = {};
+  for (const name of read_ordinary_attr_keys(tree.node)) input[name] = tree.node.$_attrs?.[name];
+  const attrs = decode_public_attrs(input);
+  if (attrs !== undefined) return attrs;
+  throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, undefined, "stored ordinary attrs are not canonical");
+}
+
+function normalize_attr_name(tree: LiveTree, input: unknown, operation: string): string {
+  if (typeof input !== "string") {
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, undefined, "name must be a string");
+  }
+  const key = canonical_attr_key(tree, input);
+  if (key.startsWith(_META_DATA_PREFIX)) {
+    throw attr_error(tree, LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, operation, key, "system metadata is protected");
+  }
+  if (!is_public_attr_name(key)) {
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, key, "name is not a canonical bare HSON name");
+  }
+  return key;
+}
+
+function normalize_attr_value(
+  tree: LiveTree,
+  name: string,
+  input: unknown,
+  operation: string,
+): CanonicalPublicAttrValue {
+  const value = decode_public_attr_value(name, input);
+  if (value !== undefined) return value;
+  throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, name, "value is not canonical");
+}
+
+function normalize_attrs_input(tree: LiveTree, input: unknown, operation: string): CanonicalPublicAttrs {
+  if (!is_plain_record(input)) {
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, undefined, "values must be an ordinary-attribute bag");
+  }
+  const normalized: Record<string, CanonicalPublicAttrValue> = {};
+  const entries = Object.entries(input);
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry === undefined) continue;
+    const [inputName, inputValue] = entry;
+    try {
+      const name = normalize_attr_name(tree, inputName, operation);
+      normalized[name] = normalize_attr_value(tree, name, inputValue, operation);
+    } catch (cause) {
+      if (cause instanceof LiveTreeAttributeError) {
+        throw new LiveTreeAttributeError(cause.code, operation, cause.quid, cause.reason, {
+          attributeName: cause.attributeName,
+          inputIndex: index,
+        });
+      }
+      throw cause;
+    }
+  }
+  return normalize_attrs_result(normalized);
+}
+
+function normalize_attrs_result(input: Readonly<Record<string, CanonicalPublicAttrValue>>): CanonicalPublicAttrs {
+  const attrs = decode_public_attrs(input);
+  if (attrs === undefined) throw new Error("LiveTree attrs planner produced an invalid canonical bag");
+  return attrs;
+}
+
+function normalize_drop_names(tree: LiveTree, input: unknown, operation: string): readonly string[] {
+  if (!Array.isArray(input)) {
+    throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, undefined, "names must be an array");
+  }
+  return Object.freeze(input.map((name, index) => {
+    try {
+      return normalize_attr_name(tree, name, operation);
+    } catch (cause) {
+      if (cause instanceof LiveTreeAttributeError) {
+        throw new LiveTreeAttributeError(cause.code, operation, cause.quid, cause.reason, {
+          attributeName: cause.attributeName,
+          inputIndex: index,
+        });
+      }
+      throw cause;
+    }
+  }));
+}
+
+function apply_attrs_replacement<TTree extends LiveTree>(
+  tree: TTree,
+  current: CanonicalPublicAttrs,
+  next: CanonicalPublicAttrs,
+  overriddenFlags: readonly string[],
+): TTree {
+  if (canonical_public_attrs_equal(current, next) && overriddenFlags.every((name) => !flag_names_for_node(tree.node).has(name))) {
+    return tree;
+  }
+
+  const node = tree.node;
+  const flags = new Set(flag_names_for_node(node));
+  for (const name of overriddenFlags) flags.delete(name);
+  const combined: Record<string, CanonicalPublicAttrValue> = { ...next };
+  for (const name of [...flags].sort()) {
+    const value = node.$_attrs?.[name];
+    if (value !== undefined) combined[name] = value;
+  }
+  const ordered = normalize_attrs_result(combined);
+  if (Object.keys(ordered).length === 0) delete node.$_attrs;
+  else node.$_attrs = clone_node(ordered);
+  FLAG_NAMES.set(node, flags);
+  project_attrs_replacement(node, current, next);
+  return tree;
+}
+
+function project_attrs_replacement(
+  node: HsonNode,
+  current: CanonicalPublicAttrs,
+  next: CanonicalPublicAttrs,
+): void {
+  const element = get_el_for_node(node);
+  if (element === undefined) return;
+  for (const name of Object.keys(current)) {
+    if (!Object.prototype.hasOwnProperty.call(next, name)) element.removeAttribute(name);
+  }
+  for (const [name, value] of Object.entries(next)) project_attr_value(element, name, value);
+}
+
+function project_attr_value(element: Element, name: string, value: CanonicalPublicAttrValue): void {
+  if (name === "style" && typeof value === "object" && value !== null) {
+    const cssText = serialize_style(value);
+    if (cssText === "") element.removeAttribute(name);
+    else element.setAttribute(name, cssText);
+    return;
+  }
+  if (value === false || value === null) {
+    element.removeAttribute(name);
+    return;
+  }
+  element.setAttribute(name, value === true ? "" : String(value));
+}
+
+function flag_names_for_node(node: HsonNode): Set<string> {
+  const existing = FLAG_NAMES.get(node);
+  if (existing !== undefined) return existing;
+  const inferred = new Set<string>();
+  for (const [name, value] of Object.entries(node.$_attrs ?? {})) {
+    if (value === name) inferred.add(name);
+  }
+  FLAG_NAMES.set(node, inferred);
+  return inferred;
+}
+
+function set_flag(tree: LiveTree, name: string): void {
+  if (name === "style") {
+    const attrs = tree.node.$_attrs;
+    if (attrs !== undefined) delete attrs.style;
+    get_el_for_node(tree.node)?.removeAttribute("style");
+    return;
+  }
+  const node = tree.node;
+  const attrs = node.$_attrs ??= {};
+  attrs[name] = name;
+  flag_names_for_node(node).add(name);
+  get_el_for_node(node)?.setAttribute(name, name);
+}
+
+function clear_flag(tree: LiveTree, name: string): void {
+  const node = tree.node;
+  if (node.$_attrs !== undefined) {
+    delete node.$_attrs[name];
+    if (Object.keys(node.$_attrs).length === 0) delete node.$_attrs;
+  }
+  flag_names_for_node(node).delete(name);
+  get_el_for_node(node)?.removeAttribute(name);
+}
+
+function attr_error(
+  tree: LiveTree,
+  code: ConstructorParameters<typeof LiveTreeAttributeError>[0],
+  operation: string,
+  attributeName: string | undefined,
+  reason: string,
+): LiveTreeAttributeError {
+  return new LiveTreeAttributeError(code, operation, tree.quid, reason, { attributeName });
+}
+
+function is_plain_record(value: unknown): value is Readonly<Record<string, unknown>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

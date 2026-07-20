@@ -1,69 +1,138 @@
 import { _META_DATA_PREFIX } from "../../core/constants.js";
-import type { Primitive } from "../../core/types.js";
-import type { CssMap } from "../../core/style.types.js";
+import {
+  decode_public_attrs,
+  decode_public_attr_value,
+  is_public_attr_name,
+} from "../../core/public-attrs.js";
 import type {
+  DocumentLiveMapAttrsReadApi,
+  DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
+  LiveMapDocumentTarget,
 } from "../../types/livemap.types.js";
+import type { HsonNode } from "../../core/types.js";
+import {
+  LiveMapDocumentAttributeNotFoundError,
+  LiveMapDocumentMutationError,
+} from "./livemap.error.js";
+import {
+  normalize_document_target,
+  require_document_attr_element,
+  resolve_document_target,
+  type LiveMapDocumentOperation,
+} from "./livemap.document.target.js";
 
-const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
-
-export function is_public_document_attr_name(value: unknown): value is string {
-  return typeof value === "string"
-    && HSON_ATTR_NAME.test(value)
-    && !value.startsWith(_META_DATA_PREFIX);
-}
+export const is_public_document_attr_name = is_public_attr_name;
 
 export function decode_document_attr_value(
   name: string,
   value: unknown,
 ): LiveMapDocumentAttributeValue | undefined {
-  if (is_finite_primitive(value)) return value;
-  return name === "style" ? canonical_style_map(value, new WeakSet<object>()) : undefined;
+  return decode_public_attr_value(name, value);
 }
 
 /** Validate, detach, freeze, and deterministically order a complete attrs bag. */
 export function decode_document_attrs(value: unknown): LiveMapDocumentAttrs | undefined {
-  if (!is_plain_record(value)) return undefined;
-  const attrs: Record<string, LiveMapDocumentAttributeValue> = {};
-  for (const name of Object.keys(value).sort()) {
-    if (!is_public_document_attr_name(name)) return undefined;
-    const decoded = decode_document_attr_value(name, value[name]);
-    if (decoded === undefined) return undefined;
-    attrs[name] = decoded;
+  return decode_public_attrs(value);
+}
+
+export type LiveMapDocumentAttrsReadController = Readonly<{
+  mode: DocumentLiveMapMode;
+  root: () => HsonNode;
+}>;
+
+/** Build canonical graph-facing reads without entering the mutation planner. */
+export function make_livemap_document_attrs_read_api(
+  controller: LiveMapDocumentAttrsReadController,
+): DocumentLiveMapAttrsReadApi {
+  const get = (
+    targetInput: LiveMapDocumentTarget,
+    nameInput: string,
+  ): LiveMapDocumentAttributeValue | undefined => {
+    const operation = "get-attr";
+    const { element } = resolve_attr_query(controller, targetInput, operation);
+    const name = normalize_read_attr_name(nameInput, operation);
+    return read_detached_attr(element, name, operation);
+  };
+  const must = Object.freeze({
+    get: (
+      targetInput: LiveMapDocumentTarget,
+      nameInput: string,
+    ): LiveMapDocumentAttributeValue => {
+      const operation = "must-get-attr";
+      const { target, element } = resolve_attr_query(controller, targetInput, operation);
+      const name = normalize_read_attr_name(nameInput, operation);
+      const value = read_detached_attr(element, name, operation);
+      if (value === undefined) throw new LiveMapDocumentAttributeNotFoundError(target, name);
+      return value;
+    },
+  });
+  return Object.freeze({
+    get,
+    has: (targetInput, nameInput) => {
+      const operation = "has-attr";
+      const { element } = resolve_attr_query(controller, targetInput, operation);
+      const name = normalize_read_attr_name(nameInput, operation);
+      return element.$_attrs !== undefined
+        && Object.prototype.hasOwnProperty.call(element.$_attrs, name);
+    },
+    keys: (targetInput) => {
+      const operation = "list-attrs";
+      const { element } = resolve_attr_query(controller, targetInput, operation);
+      return Object.freeze(
+        Object.keys(element.$_attrs ?? {})
+          .filter(is_public_document_attr_name)
+          .sort(),
+      );
+    },
+    must,
+  });
+}
+
+function resolve_attr_query(
+  controller: LiveMapDocumentAttrsReadController,
+  targetInput: unknown,
+  operation: LiveMapDocumentOperation,
+): Readonly<{ target: LiveMapDocumentTarget; element: HsonNode }> {
+  const target = normalize_document_target(targetInput, operation);
+  const endpoint = resolve_document_target(controller.root(), controller.mode, target, operation);
+  return Object.freeze({
+    target,
+    element: require_document_attr_element(endpoint, operation),
+  });
+}
+
+function normalize_read_attr_name(input: unknown, operation: LiveMapDocumentOperation): string {
+  if (typeof input === "string" && input.startsWith(_META_DATA_PREFIX)) {
+    throw new LiveMapDocumentMutationError(
+      "PROTECTED_DOCUMENT_METADATA",
+      operation,
+      "system metadata cannot be read through ordinary attrs",
+    );
   }
-  return Object.freeze(attrs);
-}
-
-function canonical_style_map(value: unknown, ancestors: WeakSet<object>): CssMap | undefined {
-  if (!is_plain_record(value)) return undefined;
-  if (ancestors.has(value)) return undefined;
-  ancestors.add(value);
-  const style: Record<string, Primitive | CssMap> = {};
-  for (const key of Object.keys(value).sort()) {
-    const item = value[key];
-    if (is_finite_primitive(item)) {
-      style[key] = item;
-      continue;
-    }
-    const nested = canonical_style_map(item, ancestors);
-    if (nested === undefined) {
-      ancestors.delete(value);
-      return undefined;
-    }
-    style[key] = nested;
+  if (!is_public_document_attr_name(input)) {
+    throw new LiveMapDocumentMutationError(
+      "INVALID_DOCUMENT_ATTRIBUTE_NAME",
+      operation,
+      "attribute name is not a canonical bare HSON name",
+    );
   }
-  ancestors.delete(value);
-  return Object.freeze(style);
+  return input;
 }
 
-function is_finite_primitive(value: unknown): value is Primitive {
-  return value === null || typeof value === "string" || typeof value === "boolean"
-    || (typeof value === "number" && Number.isFinite(value));
-}
-
-function is_plain_record(value: unknown): value is Readonly<Record<string, unknown>> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+function read_detached_attr(
+  element: HsonNode,
+  name: string,
+  operation: LiveMapDocumentOperation,
+): LiveMapDocumentAttributeValue | undefined {
+  const attrs = element.$_attrs;
+  if (attrs === undefined || !Object.prototype.hasOwnProperty.call(attrs, name)) return undefined;
+  const value = decode_document_attr_value(name, attrs[name]);
+  if (value !== undefined) return value;
+  throw new LiveMapDocumentMutationError(
+    "INVALID_DOCUMENT_ATTRIBUTE_VALUE",
+    operation,
+    `stored ordinary attribute ${JSON.stringify(name)} is not canonical`,
+  );
 }

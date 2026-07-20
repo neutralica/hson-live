@@ -179,9 +179,11 @@ Manager namespaces specialize common mutations:
 - `style` edits serializable inline style; and
 - `css` edits QUID-scoped managed stylesheet state.
 
-For `attrs.set`, `false`, `null`, and `undefined` remove the attribute, while
-`true` creates a present boolean attribute. The `flags` helper expresses that
-presence model directly.
+LiveTree `attrs` retains canonical graph values: `false`, `null`, zero, and the
+empty string are stored and remain present. `undefined` is rejected by
+`attrs.set`; explicit removal uses `attrs.drop`, `attrs.dropMany`, or
+`attrs.clear`. The separate `flags` helper continues to express HTML presence
+semantics without entering the ordinary attrs read/key surface.
 
 ---
 

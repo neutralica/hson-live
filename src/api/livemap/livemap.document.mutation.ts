@@ -1,12 +1,11 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, ROOT_TAG, STR_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
+import { ELEM_TAG, STR_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
-import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { is_persisted_quid } from "../../core/persisted-quid.js";
+import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type { CssMap } from "../../core/style.types.js";
 import type {
-  DocumentLiveMapAttrsApi,
+  DocumentLiveMapAttrsMutationApi,
   DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -35,6 +34,11 @@ import {
   decode_document_attrs,
   is_public_document_attr_name,
 } from "./livemap.document.attrs.js";
+import {
+  normalize_document_target,
+  require_document_attr_element,
+  resolve_document_target,
+} from "./livemap.document.target.js";
 
 type DocumentOperation = LiveMapDocumentMutationError["operation"];
 
@@ -59,7 +63,7 @@ export type LiveMapDocumentMutationController = Readonly<{
 export function make_livemap_document_mutation_api(
   controller: LiveMapDocumentMutationController,
 ): Readonly<{
-  attrs: DocumentLiveMapAttrsApi;
+  attrs: DocumentLiveMapAttrsMutationApi;
   /** Internal atomic substrate shared by every public bulk attrs method. */
   replaceAttrs: (
     target: LiveMapDocumentTarget,
@@ -85,7 +89,7 @@ export function make_livemap_document_mutation_api(
     to: number,
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }> {
-  const attrs: DocumentLiveMapAttrsApi = Object.freeze({
+  const attrs: DocumentLiveMapAttrsMutationApi = Object.freeze({
     set: (target, name, value) => set_document_attr(controller, target, name, value),
     drop: (target, name) => remove_document_attr(controller, target, name),
     setMany: (target, values) => set_many_document_attrs(controller, target, values),
@@ -134,8 +138,11 @@ function read_document_attrs(
   targetInput: unknown,
 ): Readonly<{ target: LiveMapDocumentTarget; attrs: LiveMapDocumentAttrs }> {
   const operation = "replace-attrs";
-  const target = normalize_target(targetInput, operation);
-  const element = require_element(resolve_target(controller.root(), controller.mode, target, operation), operation);
+  const target = normalize_document_target(targetInput, operation);
+  const element = require_document_attr_element(
+    resolve_document_target(controller.root(), controller.mode, target, operation),
+    operation,
+  );
   const attrs = decode_document_attrs(element.$_attrs ?? {});
   if (attrs === undefined) {
     throw mutation_error(
@@ -200,12 +207,12 @@ function prepare_set_document_attr(
   valueInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphSetAttrOp> {
   const operationName = "set-attr";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const name = normalize_attr_name(nameInput, operationName);
   const value = normalize_attr_value(name, valueInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = resolve_target(root, mode, target, operationName);
-  const element = require_element(endpoint, operationName);
+  const endpoint = resolve_document_target(root, mode, target, operationName);
+  const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   if (is_style_map(value)) attrs.style = value;
   else attrs[name] = value;
@@ -237,11 +244,11 @@ function prepare_remove_document_attr(
   nameInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphRemoveAttrOp> {
   const operationName = "remove-attr";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const name = normalize_attr_name(nameInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = resolve_target(root, mode, target, operationName);
-  const element = require_element(endpoint, operationName);
+  const endpoint = resolve_document_target(root, mode, target, operationName);
+  const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   delete attrs[name];
   if (Object.keys(attrs).length === 0) delete element.$_attrs;
@@ -263,7 +270,7 @@ function prepare_replace_document_attrs(
   attrsInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphReplaceAttrsOp> {
   const operationName = "replace-attrs";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const attrs = decode_document_attrs(attrsInput);
   if (attrs === undefined) {
     throw mutation_error(
@@ -273,7 +280,10 @@ function prepare_replace_document_attrs(
     );
   }
   const root = clone_live_root(inputRoot);
-  const element = require_element(resolve_target(root, mode, target, operationName), operationName);
+  const element = require_document_attr_element(
+    resolve_document_target(root, mode, target, operationName),
+    operationName,
+  );
   if (Object.keys(attrs).length === 0) delete element.$_attrs;
   else element.$_attrs = clone_node(attrs);
 
@@ -304,11 +314,11 @@ function prepare_replace_document_content(
   replacementInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
   const operationName = "replace-content";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const replacement = clone_content(replacementInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
   if (index >= endpoint.$_content.length) {
     throw mutation_error(
       "INVALID_DOCUMENT_CONTENT_INDEX",
@@ -348,11 +358,11 @@ function prepare_insert_document_content(
   contentInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphInsertContentOp> {
   const operationName = "insert-content";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const content = clone_content(contentInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
   if (index > endpoint.$_content.length) {
     throw mutation_error(
       "INVALID_DOCUMENT_CONTENT_INDEX",
@@ -388,10 +398,10 @@ function prepare_remove_document_content(
   indexInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphRemoveContentOp> {
   const operationName = "remove-content";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
   require_existing_content_index(endpoint, index, operationName);
   endpoint.$_content.splice(index, 1);
 
@@ -424,11 +434,11 @@ function prepare_move_document_content(
   toInput: unknown,
 ): PreparedDocumentMutation<LiveMapGraphMoveContentOp> {
   const operationName = "move-content";
-  const target = normalize_target(targetInput, operationName);
+  const target = normalize_document_target(targetInput, operationName);
   const from = normalize_content_index(fromInput, operationName);
   const to = normalize_content_index(toInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_target(root, mode, target, operationName), operationName);
+  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
   require_existing_content_index(endpoint, from, operationName);
   require_existing_content_index(endpoint, to, operationName);
   if (from !== to) {
@@ -551,83 +561,6 @@ function must_exact_keys(
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", operation, "graph operation contains missing or unknown fields");
 }
 
-function normalize_target(input: unknown, operation: DocumentOperation): LiveMapDocumentTarget {
-  if (!is_plain_record(input) || (input.kind !== "path" && input.kind !== "quid")) {
-    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "target must discriminate kind as path or quid");
-  }
-
-  if (input.kind === "path") {
-    if (Object.keys(input).some((key) => key !== "kind" && key !== "path") || !Array.isArray(input.path)) {
-      throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "path target must contain only kind and path");
-    }
-    const path = input.path.map((segment) => {
-      if (typeof segment !== "number" || !Number.isInteger(segment) || segment < 0) {
-        throw mutation_error("INVALID_DOCUMENT_PATH", operation, "every document path segment must be a non-negative integer");
-      }
-      return segment;
-    });
-    return Object.freeze({ kind: "path", path: Object.freeze(path) });
-  }
-
-  if (Object.keys(input).some((key) => key !== "kind" && key !== "quid")
-    || !is_persisted_quid(input.quid)) {
-    throw mutation_error("INVALID_DOCUMENT_TARGET", operation, "QUID target must contain one canonical persisted QUID");
-  }
-  return Object.freeze({ kind: "quid", quid: input.quid });
-}
-
-function resolve_target(
-  root: HsonNode,
-  mode: DocumentLiveMapMode,
-  target: LiveMapDocumentTarget,
-  operation: DocumentOperation,
-): HsonNode | Primitive {
-  if (target.kind === "quid") {
-    let endpoint: HsonNode | undefined;
-    try {
-      endpoint = index_livemap_document_elements(root).get(target.quid);
-    } catch (cause) {
-      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operation, "current persisted identity is invalid", cause);
-    }
-    if (endpoint === undefined) {
-      throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, `no element carries persisted QUID ${JSON.stringify(target.quid)}`);
-    }
-    return endpoint;
-  }
-
-  let endpoint: HsonNode | Primitive = document_path_base(root, mode, operation);
-  for (const segment of target.path) {
-    if (!is_Node(endpoint) || segment >= endpoint.$_content.length) {
-      throw mutation_error("DOCUMENT_PATH_OUT_OF_RANGE", operation, `document path cannot resolve content segment ${segment}`);
-    }
-    endpoint = endpoint.$_content[segment];
-  }
-  return endpoint;
-}
-
-function document_path_base(root: HsonNode, mode: DocumentLiveMapMode, operation: DocumentOperation): HsonNode {
-  const cluster = root.$_tag === ELEM_TAG
-    ? root
-    : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG
-      ? root.$_content[0]
-      : undefined;
-  if (cluster === undefined) {
-    throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, "owned document cluster is unavailable");
-  }
-  if (mode === "fragment") return cluster;
-  const element = cluster.$_content[0];
-  if (!is_ordinary_element_node(element)) {
-    throw mutation_error("DOCUMENT_TARGET_NOT_FOUND", operation, "owned top-level element is unavailable");
-  }
-  return element;
-}
-
-function require_element(endpoint: HsonNode | Primitive, operation: DocumentOperation): HsonNode {
-  if (!is_ordinary_element_node(endpoint)) {
-    throw mutation_error("DOCUMENT_TARGET_KIND", operation, "target must resolve to an ordinary document element");
-  }
-  return endpoint;
-}
 
 function require_content_endpoint(endpoint: HsonNode | Primitive, operation: DocumentOperation): HsonNode {
   if (!is_Node(endpoint)) {

@@ -73,7 +73,7 @@ export interface LiveTreeAttrsAccess<TSelf> {
     /**
      * Attribute helper bound to this node.
      *
-     * Use `attrs.get`, `attrs.has`, `attrs.set`, `attrs.setMany`, and `attrs.drop`
+     * Use the canonical read, explicit drop, and atomic final-bag mutation family
      * to read and mutate HSON / DOM attributes through one consistent surface.
      */
     readonly attrs: AttrHandle<TSelf>;

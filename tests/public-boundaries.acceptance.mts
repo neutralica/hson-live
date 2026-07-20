@@ -80,11 +80,19 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
   tree.flags.set("disabled");
   assert.equal(tree.attrs.get("title"), "Save");
   assert.equal(tree.flags.has("disabled"), true);
+  for (const name of ["get", "has", "keys", "set", "setMany", "drop", "dropMany", "clear", "replace"]) {
+    assert.equal(typeof Reflect.get(tree.attrs, name), "function");
+  }
+  assert.equal(typeof tree.attrs.must.get, "function");
+  assert.equal(tree.attrs, tree.attrs);
+  assert.equal(tree.attrs.must, tree.attrs.must);
+  assert.equal(Object.isFrozen(tree.attrs.must), true);
   assert.equal("attr" in tree, false);
   assert.equal("flag" in tree, false);
-  for (const name of ["dropMany", "clear", "replace", "keys", "must"]) {
+  for (const name of ["remove", "delete", "unset", "getMany", "entries", "values", "all", "read"]) {
     assert.equal(name in tree.attrs, false);
   }
+  assert.equal("has" in tree.attrs.must, false);
 });
 
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
@@ -158,10 +166,13 @@ check("document install is present only on document runtime façades", () => {
   for (const name of ["applyGraph", "replayGraph", "installGraph"]) {
     assert.equal(name in document, false);
   }
-  for (const name of ["setMany", "dropMany", "clear", "replace"]) {
+  for (const name of ["get", "has", "keys", "setMany", "dropMany", "clear", "replace"]) {
     assert.equal(typeof Reflect.get(document.document.attrs, name), "function");
   }
-  for (const name of ["get", "has", "keys", "must"]) {
+  assert.equal(typeof document.document.attrs.must.get, "function");
+  assert.equal(document.document.attrs.must, document.document.attrs.must);
+  assert.equal(Object.isFrozen(document.document.attrs.must), true);
+  for (const name of ["getMany", "values", "entries", "all"]) {
     assert.equal(name in document.document.attrs, false);
   }
 });

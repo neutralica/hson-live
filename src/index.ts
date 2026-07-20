@@ -8,11 +8,17 @@ export {
     LIVETREE_PROTECTED_ROOT_ERROR_CODE,
     LIVETREE_BATCH_ATTACHMENT_ERROR_CODE,
     LIVETREE_BATCH_VALIDATION_ERROR_CODE,
+    LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
+    LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
+    LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
+    LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
+    LiveTreeAttributeError,
     LiveTreeBatchError,
     LiveTreeAlreadyAttachedError,
     LiveTreeDisposedError,
     LiveTreeProtectedRootError,
 } from "./api/livetree/livetree.error.js";
+export type { LiveTreeAttributeErrorCode } from "./api/livetree/livetree.error.js";
 export type { DetachedLiveContent, LiveTreeLifecycleResult } from "./types/lifecycle.types.js";
 export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
@@ -56,7 +62,11 @@ export {
 } from "./api/liveproject/liveproject.error.js";
 export type { LiveProjectionErrorCode } from "./api/liveproject/liveproject.error.js";
 export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
-export { LiveMapDocumentInstallError, LiveMapDocumentMutationError } from "./api/livemap/livemap.error.js";
+export {
+    LiveMapDocumentAttributeNotFoundError,
+    LiveMapDocumentInstallError,
+    LiveMapDocumentMutationError,
+} from "./api/livemap/livemap.error.js";
 export type { LiveMapDocumentMutationErrorCode } from "./api/livemap/livemap.error.js";
 export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
 export { link_livemap } from "./api/livemap/livemap.link.js";
@@ -130,6 +140,9 @@ export type {
     LiveMapDocumentAttributeValue,
     LiveMapDocumentAttrs,
     LiveMapDocumentContent,
+    DocumentLiveMapAttrsMustApi,
+    DocumentLiveMapAttrsReadApi,
+    DocumentLiveMapAttrsMutationApi,
     DocumentLiveMapAttrsApi,
     DocumentLiveMapContentApi,
     LiveMapDocumentApi,

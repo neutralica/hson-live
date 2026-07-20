@@ -1,7 +1,6 @@
 // livemap.types.ts
 
-import type { HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
-import type { CssMap } from "../core/style.types.js";
+import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type {
   LiveMapSchema,
   LiveMapSchemaResolution,
@@ -309,16 +308,37 @@ export type LiveMapDocumentTarget =
   | Readonly<{ kind: "quid"; quid: string }>;
 
 /** Existing canonical HSON attribute value model; style remains structured. */
-export type LiveMapDocumentAttributeValue = Primitive | CssMap;
+export type LiveMapDocumentAttributeValue = CanonicalPublicAttrValue;
 
 /** Detached canonical final-state bag for public ordinary document attributes. */
-export type LiveMapDocumentAttrs = Readonly<Record<string, LiveMapDocumentAttributeValue>>;
+export type LiveMapDocumentAttrs = CanonicalPublicAttrs;
 
 /** One legal candidate value for a canonical HSON `$_content` slot. */
 export type LiveMapDocumentContent = NodeContent[number];
 
-/** Canonical ordinary-attribute mutation namespace. */
-export type DocumentLiveMapAttrsApi = Readonly<{
+export type DocumentLiveMapAttrsMustApi = Readonly<{
+  get: (
+    target: LiveMapDocumentTarget,
+    name: string,
+  ) => LiveMapDocumentAttributeValue;
+}>;
+
+export type DocumentLiveMapAttrsReadApi = Readonly<{
+  get: (
+    target: LiveMapDocumentTarget,
+    name: string,
+  ) => LiveMapDocumentAttributeValue | undefined;
+  has: (
+    target: LiveMapDocumentTarget,
+    name: string,
+  ) => boolean;
+  keys: (
+    target: LiveMapDocumentTarget,
+  ) => readonly string[];
+  must: DocumentLiveMapAttrsMustApi;
+}>;
+
+export type DocumentLiveMapAttrsMutationApi = Readonly<{
   set: (
     target: LiveMapDocumentTarget,
     name: string,
@@ -344,6 +364,9 @@ export type DocumentLiveMapAttrsApi = Readonly<{
     values: LiveMapDocumentAttrs,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
 }>;
+
+/** Canonical ordinary-attribute read and mutation namespace. */
+export type DocumentLiveMapAttrsApi = DocumentLiveMapAttrsReadApi & DocumentLiveMapAttrsMutationApi;
 
 /** Detached content reader plus atomic single-slot structural mutations. */
 export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{

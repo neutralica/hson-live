@@ -104,10 +104,10 @@ values according to their source format, so source attribute order and exact
 spelling are not graph invariants.
 
 HSON presence flags use the canonical string-equals-key representation, for
-example `{ disabled: "disabled" }`, and serialize as bare `disabled`. Through
-the LiveTree attribute API, boolean `true` requests presence while `false`,
-`null`, or `undefined` removes the attribute; that API operation should not be
-confused with the stored HSON flag spelling.
+example `{ disabled: "disabled" }`, and serialize as bare `disabled`. LiveTree
+keeps those flags in its separate `flags` namespace. Ordinary `attrs.set`
+stores canonical boolean and null values; deletion is explicit through
+`attrs.drop`, and `undefined` is rejected.
 
 The graph type continues to permit ordinary string, number, boolean, and null
 attribute values for programmatic compatibility; this is not a promise of typed

@@ -347,6 +347,9 @@ await check("obsolete document.attr actions are unknown", async () => {
     ["document.attrs.removeMany", { target: rootPath, names: [] }],
     ["document.attrs.replaceAll", { target: rootPath, values: {} }],
     ["document.attrs.get", { target: rootPath, name: "id" }],
+    ["document.attrs.has", { target: rootPath, name: "id" }],
+    ["document.attrs.keys", { target: rootPath }],
+    ["document.attrs.must.get", { target: rootPath, name: "id" }],
   ]) {
     const result = await client.action(name, payload);
     assert.equal(result.error.code, "LIVEHOST_UNKNOWN_ACTION");

@@ -426,15 +426,43 @@ type SetNodeFormOpts = {
 
 ```ts
 tree.attrs.get(name)
+tree.attrs.must.get(name)
 tree.attrs.has(name)
+tree.attrs.keys()
 tree.attrs.set(name, value)
-tree.attrs.setMany(map)
+tree.attrs.setMany(values)
 tree.attrs.drop(name)
+tree.attrs.dropMany(names)
+tree.attrs.clear()
+tree.attrs.replace(values)
 ```
 
-`attrs.set(name, false)`, `attrs.set(name, null)`, and
-`attrs.set(name, undefined)` remove the attribute. `true` stores a present
-boolean attribute.
+LiveTree ordinary attributes use the same canonical graph value domain as
+Document LiveMap: finite HSON primitives (`string`, `boolean`, `number`, and
+`null`) plus canonical structured `CssMap` for `style`. `attrs.get()` returns
+`undefined` only for absence. The values `false`, `0`, `null`, and `""` remain
+present and are returned without truthiness coercion. `attrs.must.get()` throws
+the structured `LiveTreeAttributeError` code `LIVETREE_ATTRIBUTE_NOT_FOUND`
+when a valid public name is absent.
+
+Structured reads are recursively detached and frozen. `attrs.keys()` returns a
+fresh frozen list in lexical order and excludes flags, `$_meta`, persisted QUID
+identity, and every system-owned `data-_` projection. Ordinary attrs reject
+malformed and protected names.
+
+`attrs.set()` never deletes: `false` and `null` are canonical stored values,
+while `undefined` is rejected. Use `attrs.drop()` for explicit single-name
+deletion. `setMany()` overlays a complete validated input onto existing
+ordinary attrs; `dropMany()` ignores valid absent and duplicate names;
+`clear()` removes all ordinary attrs; and `replace()` installs the exact
+supplied ordinary bag. Bulk calls validate and derive one canonical final bag
+before changing graph or DOM state, and canonical equality is a no-op.
+
+The HSON graph owns value distinctions. DOM attributes are only a projection:
+strings and finite numbers use deterministic text, `true` projects as a present
+empty attribute, `false` and `null` have no textual DOM attribute, and
+structured style uses the established style serializer. This textual overlap
+does not erase the distinct canonical values returned by `attrs.get()`.
 
 Flags:
 
@@ -443,6 +471,9 @@ tree.flags.has(name)
 tree.flags.set(...names)
 tree.flags.clear(...names)
 ```
+
+Flags retain their separate presence semantics. Ordinary bulk replacement
+preserves flags, persisted QUID identity, protected metadata, tag, and content.
 
 Dataset:
 
@@ -586,9 +617,10 @@ tree.bind.cssPaths(map, paths, (values, previous) => cssMap)
 `path` is a `LivePath`, represented as an array of string/number path parts.
 The mapper is optional for `text` and `attr`. Default text conversion is
 `String(value ?? "")`; default attribute conversion passes the LiveMap value
-to the attribute helper. Attribute mapper values of `false`, `null`, or
-`undefined` remove the named attribute. CSS mapper entries with `null` or
-`undefined` remove the corresponding QUID-scoped declaration.
+to the binding adapter. Attribute bindings explicitly route mapper values of
+`false`, `null`, or `undefined` through `attrs.drop()` before canonical
+`attrs.set()` is called. CSS mapper entries with `null` or `undefined` remove
+the corresponding QUID-scoped declaration.
 
 Each callback receives the previous value(s), initially `undefined`. A
 multi-path binding subscribes to every listed path; its disposer removes all
