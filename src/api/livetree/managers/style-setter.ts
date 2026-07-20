@@ -1,40 +1,15 @@
 // style-setter.ts
 
 import { CssKey, CssMap, CssMapBase, CssPseudoKey, CssValue, CssVarFacade, CssVarName, SetSurface } from "../../../types/css.types.js";
+import { is_css_declaration_value, is_typed_css_value, render_css_declaration_value } from "../../../core/inline-style.js";
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { normalize_css_var_name } from "./style-getter.js";
 
 
 // type guard for structured CssValue object
-const isStructuredCssValue = (
-  v: unknown,
-): v is Readonly<{ value: string | number; unit?: string }> => {
-  if (!v || typeof v !== "object") return false;
-
-  const obj = v as Record<string, unknown>;
-
-  // must have "value"
-  if (!("value" in obj)) return false;
-
-  const val = obj["value"];
-  if (typeof val !== "string" && typeof val !== "number") return false;
-
-  // unit optional but if present must be string
-  if ("unit" in obj && obj["unit"] !== undefined && typeof obj["unit"] !== "string") {
-    return false;
-  }
-
-  return true;
-};
-
 const isCssValue = (v: unknown): v is CssValue => {
-  if (v === null || v === undefined) return true;
-
-  const t = typeof v;
-  if (t === "string" || t === "number" || t === "boolean") return true;
-
-  return isStructuredCssValue(v);
+  return is_css_declaration_value(v);
 };
 
 const _PSEUDO_KEYS: ReadonlySet<string> = new Set([
@@ -71,7 +46,7 @@ export function css_supports_decl(propCanon: string, value: string): boolean {
 const isCssValueObject = (v: unknown): v is Readonly<{ value: string | number; unit?: string }> => {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return ("value" in o) && (typeof o.value === "string" || typeof o.value === "number");
+  return is_typed_css_value(o);
 };
 
 // pseudo blocks must be “plain object maps” (and not the `{value,unit}` CssValue object)
@@ -289,6 +264,17 @@ export function make_style_setter<TReturn>(
     setProp,
     setMany(map: CssMap): TReturn {
       for (const [k, v] of Object.entries(map)) {
+        if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
+          if (!adapters.applyPseudo) throw new Error("Inline style does not support pseudo declarations.");
+          continue;
+        }
+        if (k.trim().startsWith("&") && isPseudoDecls(v)) {
+          if (!adapters.applySelector) throw new Error("Inline style does not support selector declarations.");
+          continue;
+        }
+        if (!isCssValue(v)) throw new Error("CSS declaration value is invalid.");
+      }
+      for (const [k, v] of Object.entries(map)) {
         // pseudo blocks routed to adapter hook (CssManager only)
         if (_PSEUDO_KEYS.has(k) && isPseudoDecls(v)) {
           const pseudo = k as CssPseudoKey;
@@ -304,9 +290,7 @@ export function make_style_setter<TReturn>(
           if (adapters.applySelector) adapters.applySelector(k, v);
           continue;
         }
-        // narrow to CssValue before calling setProp
         if (!isCssValue(v)) continue;
-
         if (v !== undefined && v !== null) {
           const prop = k.startsWith("--")
             ? normalize_css_var_name(k) ?? "--invalid-css-var-name"
@@ -348,32 +332,7 @@ export function make_style_setter<TReturn>(
  * - tests can target one normalization surface rather than multiple call-sites.
  */
 function renderCssValue(v: CssValue): string | null {
-  if (v == null) return null;
-
-  if (typeof v === "string") {
-    const s = v.trim();
-    return s === "" ? "" : s;
-  }
-
-  if (typeof v === "number") return String(v);
-  if (typeof v === "boolean") return v ? "true" : "false";
-  if (typeof v === "object") {
-    const obj = v as { value?: unknown; unit?: unknown };
-
-    if ("value" in obj) {
-      const raw = obj.value;
-      const unit = typeof obj.unit === "string" ? obj.unit : "";
-      const val =
-        typeof raw === "string" ? raw.trim() :
-          typeof raw === "number" ? String(raw) :
-            raw == null ? "" :
-              String(raw);
-
-      return `${val}${unit}`.trim();
-    }
-
-    //  fallback so weird objects don't stringify to "[object Object]"
-    return String(v);
-  }
-  return String(v);
+  const rendered = render_css_declaration_value(v);
+  if (rendered !== undefined) return rendered;
+  throw new Error("CSS declaration value is invalid.");
 }

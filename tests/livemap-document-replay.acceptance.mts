@@ -166,7 +166,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
     hidden: false,
     count: 0,
     nullable: null,
-    style: { color: "red", _hover: { color: "blue" } },
+    style: { color: "red", width: { value: 2, unit: "px" } },
   };
   const events: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => events.push(event));
@@ -182,7 +182,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
     empty: "",
     hidden: false,
     nullable: null,
-    style: { _hover: { color: "blue" }, color: "red" },
+    style: { width: { unit: "px", value: 2 }, color: "red" },
     title: "after",
   });
   assert.equal(map.document.byQuid("0000000000000020")?.$_tag, "main");

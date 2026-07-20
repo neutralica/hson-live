@@ -154,6 +154,36 @@ function replace_persisted_quid(value: JsonValue, from: string, to: string): Jso
   return copy;
 }
 
+function replace_style_with_nested_rule(value: JsonValue): JsonValue {
+  const copy: JsonValue = structuredClone(value);
+  let replacements = 0;
+  const visit = (current: unknown): void => {
+    if (Array.isArray(current)) {
+      for (const item of current) visit(item);
+      return;
+    }
+    if (!is_record(current)) return;
+    if (current.key === "style" && is_record(current.value) && current.value.type === "record") {
+      current.value = {
+        type: "record",
+        entries: [{
+          key: "_hover",
+          value: {
+            type: "record",
+            entries: [{ key: "color", value: { type: "string", value: "private-blue" } }],
+          },
+        }],
+      };
+      replacements += 1;
+      return;
+    }
+    for (const item of Object.values(current)) visit(item);
+  };
+  visit(copy);
+  assert.equal(replacements, 1);
+  return copy;
+}
+
 check("element capture round-trips with detached nested identity and typed document data", () => {
   const capture = element_capture(node(
     "main",
@@ -239,17 +269,41 @@ check("supported metadata string values retain type-like spellings exactly", () 
   });
 });
 
-check("structured style records retain nested typed values", () => {
+check("structured style records retain typed declaration leaves", () => {
   const capture = element_capture(node("div", [], {
     style: {
       color: "red",
       opacity: 0,
       enabled: false,
       fallback: null,
-      _hover: { color: "blue", opacity: 1 },
+      width: { value: 2, unit: "px" },
     },
   }));
   round_trip(capture);
+});
+
+check("nested inline stylesheet structures fail canonical graph validation", () => {
+  const invalidCapture = element_capture(node("div", [], {
+    style: { _hover: { color: "private-blue" } },
+  }));
+  expect_codec_error(
+    () => encode_canonical_document_snapshot(invalidCapture),
+    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    "private-blue",
+  );
+
+  const valid = encode_canonical_document_snapshot(element_capture(node("div", [], {
+    style: { color: "red" },
+  })));
+  const invalidEncoding = encoding_with_payload(
+    replace_style_with_nested_rule(decoded_payload_value(valid)),
+  );
+  const error = expect_codec_error(
+    () => decode_canonical_document_snapshot(invalidEncoding),
+    "CANONICAL_SNAPSHOT_GRAPH_INVALID",
+    "private-blue",
+  );
+  assert.equal(error.message.includes(invalidEncoding.payload), false);
 });
 
 check("metadata on canonical wrappers survives without melting", () => {
@@ -314,13 +368,13 @@ check("record insertion order does not affect deterministic payload text", () =>
   const left = element_capture(node("div", [], {
     z: "last",
     a: 0,
-    style: { zIndex: 1, color: "red", _hover: { opacity: 0, color: "blue" } },
+    style: { zIndex: 1, color: "red", width: { value: 2, unit: "px" } },
   }, {
     "data-_z": "last",
     "data-_a": "first",
   }), 11);
   const right = element_capture(node("div", [], {
-    style: { _hover: { color: "blue", opacity: 0 }, color: "red", zIndex: 1 },
+    style: { width: { unit: "px", value: 2 }, color: "red", zIndex: 1 },
     a: 0,
     z: "last",
   }, {

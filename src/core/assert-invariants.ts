@@ -14,6 +14,7 @@ import {
   _META_DATA_PREFIX,
 } from "./constants.js";
 import { _throw_transform_err } from "./errors.js";
+import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
 import { is_ordinary_element_node } from "./node-guards.js";
 import { is_persisted_quid } from "./persisted-quid.js";
@@ -261,7 +262,7 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     if (attrs) {
       for (const [key, value] of Object.entries(attrs)) {
         const validPrimitive = value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-        const validStyle = key === "style" && is_plain_record(value);
+        const validStyle = key === "style" && is_valid_inline_style(value);
         if (!validPrimitive && !validStyle) {
           throw new Error(`[NEW-only] malformed attribute value for "${key}" in ${where} at <${tag}>`);
         }

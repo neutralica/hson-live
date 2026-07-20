@@ -74,8 +74,7 @@ function mount(node: HsonNode): AttributeProjection {
   const quid = node.$_meta?.["data-_quid"];
   if (quid !== undefined) projected.values.set("data-_quid", quid);
   for (const [name, value] of Object.entries(node.$_attrs ?? {})) {
-    if (value === false || value === null) continue;
-    projected.values.set(name, value === true ? "" : String(value));
+    projected.values.set(name, String(value));
   }
   link_node_to_el(node, projected as unknown as Element);
   return projected;
@@ -112,11 +111,11 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
   assert.equal(binding.tree.attrs.get("count"), 0);
   assert.equal(rootDom.getAttribute("count"), "0");
   assert.equal(sectionNode.$_attrs?.hidden, false);
-  assert.equal(sectionDom.getAttribute("hidden"), null);
+  assert.equal(sectionDom.getAttribute("hidden"), "false");
   assert.deepEqual(spanNode.$_attrs, { empty: "", enabled: true, nullable: null });
   assert.equal(spanDom.getAttribute("empty"), "");
-  assert.equal(spanDom.getAttribute("enabled"), "");
-  assert.equal(spanDom.getAttribute("nullable"), null);
+  assert.equal(spanDom.getAttribute("enabled"), "true");
+  assert.equal(spanDom.getAttribute("nullable"), "null");
   assert.equal(binding.sourceRevision, map.rev);
   assert.equal(binding.diagnostics().projectionTransactions, 3);
   const spanTree = create_livetree(spanNode).adoptRoots(binding.tree.hostRootNode());

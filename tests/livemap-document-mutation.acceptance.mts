@@ -173,14 +173,14 @@ check("attrs.set creates and replaces one canonical attribute with no-op equalit
 
 check("structured attribute input and commit payload are detached", () => {
   const map = element(`<main/>`);
-  const style = { color: "red", _hover: { color: "blue" } };
+  const style = { color: "red", width: { value: 2, unit: "px" } };
   const commit = map.document.attrs.set(path(), "style", style);
   style.color = "changed";
-  style._hover.color = "changed";
+  style.width.value = 3;
   const styleOp = commit.ops[0];
   if (styleOp?.op !== "set-attr" || typeof styleOp.value !== "object" || styleOp.value === null) throw new Error("expected structured set-attr op");
   Reflect.set(styleOp.value, "color", "commit-change");
-  assert.deepEqual(map.element.node().$_attrs?.style, { color: "red", _hover: { color: "blue" } });
+  assert.deepEqual(map.element.node().$_attrs?.style, { color: "red", width: { value: 2, unit: "px" } });
 
   const before = map.capture();
   assertAtomic(map, before, () => map.document.attrs.set(path(), "bad name", "x"));
@@ -220,7 +220,7 @@ check("attrs.setMany preserves unspecified attrs and emits one atomic replace-at
     hidden: false,
     count: 0,
     nullable: null,
-    style: { color: "red", _hover: { color: "blue" } },
+    style: { color: "red", width: { value: 2, unit: "px" } },
   };
   const commit = map.document.attrs.setMany(path(), values);
   assert.equal(commit.changed, true);
@@ -233,7 +233,7 @@ check("attrs.setMany preserves unspecified attrs and emits one atomic replace-at
     hidden: false,
     id: "new",
     nullable: null,
-    style: { _hover: { color: "blue" }, color: "red" },
+    style: { width: { unit: "px", value: 2 }, color: "red" },
     title: "kept",
   });
   assert.equal(observations.length, 1);
@@ -244,7 +244,7 @@ check("attrs.setMany preserves unspecified attrs and emits one atomic replace-at
   assert.equal(map.element.node().$_attrs?.style?.color, "red");
   assert.deepEqual(map.document.attrs.setMany(path(), {
     id: "new", hidden: false, count: 0, nullable: null,
-    style: { _hover: { color: "blue" }, color: "red" },
+    style: { width: { unit: "px", value: 2 }, color: "red" },
   }), { changed: false, prevRev: 1, rev: 1, ops: [] });
 });
 
@@ -255,6 +255,7 @@ check("attrs.setMany rejects every invalid bag atomically without partial applic
     { good: "x", bad: undefined },
     { good: "x", "data-_custom": "protected" },
     { good: "x", style: { color: [] } },
+    { good: "x", style: { _hover: { color: "blue" } } },
   ];
   for (const values of invalid) {
     const map = element(`<main id="kept" data-_quid="0000000000000021"/>`);

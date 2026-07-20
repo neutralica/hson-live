@@ -486,15 +486,43 @@ check("structured style serialization remains normalized and string-valued", () 
       $_tag: "_hson_elem",
       $_content: [{
         $_tag: "tag",
-        $_attrs: { style: { marginTop: 2, color: "red" } },
+        $_attrs: { style: { width: { value: 2, unit: "px" }, marginTop: 2, color: "red" } },
         $_content: [],
       }],
     }],
   };
   const wire = readable(node);
-  assert.equal(wire, `<tag style="color: red; margin-top: 2"/>`);
+  assert.equal(wire, `<tag style="color: red; margin-top: 2; width: 2px"/>`);
   const reparsedTag = (parse(wire).$_content[0] as HsonNode).$_content[0] as HsonNode;
-  assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2" });
+  assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2", width: "2px" });
+});
+
+check("ordinary HTML serialization uses textual primitives and typed inline CSS leaves", () => {
+  const node = elementWithAttrs({
+    disabled: "disabled",
+    empty: "",
+    enabled: true,
+    missing: null,
+    visible: false,
+    zero: 0,
+    style: { width: { value: 1.25, unit: "rem" } },
+  });
+  assert.equal(
+    hson.fromNode(node).toHtml().serialize(),
+    `<tag disabled empty="" enabled="true" missing="null" style="width: 1.25rem" visible="false" zero="0"></tag>`,
+  );
+});
+
+check("nested inline stylesheet structures fail before HSON or HTML emission", () => {
+  const malformed = elementWithAttrs({ style: { _hover: { color: "blue" } } });
+  for (const serialize of [
+    () => readable(malformed),
+    () => hson.fromNode(malformed).toHtml().serialize(),
+  ]) {
+    assert.throws(serialize, (cause) => cause instanceof Error
+      && /malformed attribute value/.test(cause.message)
+      && !cause.message.includes("[object Object]"));
+  }
 });
 
 check("metadata on melted VSNs remains outside the HSON wire", () => {

@@ -713,11 +713,11 @@ function validate_dom_attrs(
     const styleText = name === "style" && typeof value === "object" && value !== null
       ? serialize_style(value)
       : undefined;
-    const expected = value === false || value === null || styleText === ""
+    const expected = styleText === ""
       ? null
       : styleText !== undefined
         ? styleText
-        : value === true ? "" : String(value);
+        : String(value);
     if (expected !== null) expectedNames.add(name);
     if (element.getAttribute(name) !== expected) {
       throw new DocumentLiveTreeBindingError(

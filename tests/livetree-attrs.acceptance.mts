@@ -70,7 +70,7 @@ check("canonical reads preserve primitives and detach structured style", () => {
     positive: 9,
     zero: 0,
     nullable: null,
-    style: { color: "red", _hover: { color: "blue" } },
+    style: { color: "red", width: { value: 2, unit: "px" } },
   });
   assert.equal(value.attrs.get("empty"), "");
   assert.equal(value.attrs.get("enabled"), true);
@@ -86,12 +86,12 @@ check("canonical reads preserve primitives and detach structured style", () => {
 
   const style = value.attrs.get("style");
   const styleAgain = value.attrs.get("style");
-  assert.deepEqual(style, { _hover: { color: "blue" }, color: "red" });
+  assert.deepEqual(style, { color: "red", width: { value: 2, unit: "px" } });
   assert.notEqual(style, styleAgain);
   assert.equal(Object.isFrozen(style), true);
-  assert.equal(typeof style === "object" && style !== null && Object.isFrozen(style._hover), true);
+  assert.equal(typeof style === "object" && style !== null && Object.isFrozen(style.width), true);
   assert.equal(Reflect.set(style as object, "color", "purple"), false);
-  assert.deepEqual(value.attrs.get("style"), { _hover: { color: "blue" }, color: "red" });
+  assert.deepEqual(value.attrs.get("style"), { color: "red", width: { value: 2, unit: "px" } });
 });
 
 check("keys is lexical, fresh, frozen, and excludes flags and metadata", () => {
@@ -131,7 +131,7 @@ check("set stores false, null, zero, and empty string while undefined is rejecte
   assert.equal(value.attrs.set("title", false), value);
   assert.equal(value.attrs.get("title"), false);
   assert.equal(value.attrs.has("title"), true);
-  assert.equal(element.getAttribute("title"), null);
+  assert.equal(element.getAttribute("title"), "false");
   value.attrs.set("nullable", null);
   value.attrs.set("zero", 0);
   value.attrs.set("empty", "");
@@ -139,10 +139,10 @@ check("set stores false, null, zero, and empty string while undefined is rejecte
   assert.equal(value.attrs.get("nullable"), null);
   assert.equal(value.attrs.get("zero"), 0);
   assert.equal(value.attrs.get("empty"), "");
-  assert.equal(element.getAttribute("nullable"), null);
+  assert.equal(element.getAttribute("nullable"), "null");
   assert.equal(element.getAttribute("zero"), "0");
   assert.equal(element.getAttribute("empty"), "");
-  assert.equal(element.getAttribute("enabled"), "");
+  assert.equal(element.getAttribute("enabled"), "true");
 
   const unchangedIdentity = value.node.$_attrs;
   value.attrs.set("zero", 0);
@@ -164,12 +164,59 @@ check("set validates names, style, and protected metadata before graph or DOM mu
   for (const [name, attrValue, code] of [
     ["bad name", "x", LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE],
     ["data-_quid", "x", LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE],
-    ["style", { color: [] }, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE],
+    ["style", { _hover: { color: "blue" } }, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE],
     ["count", Number.NaN, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE],
   ] as const) {
     const before = snapshot(value, element);
     errorCode(() => Reflect.apply(value.attrs.set, value.attrs, [name, attrValue]), code);
     assert.deepEqual(snapshot(value, element), before);
+  }
+});
+
+check("inline style accepts typed leaves and rejects stylesheet maps atomically", () => {
+  const value = tree(`<main id="before"/>`);
+  const element = mount(value);
+  value.attrs.set("style", { width: { value: 2, unit: "px" }, opacity: 0.5 });
+  assert.deepEqual(value.attrs.get("style"), { opacity: 0.5, width: { value: 2, unit: "px" } });
+  assert.equal(element.getAttribute("style"), "opacity: 0.5; width: 2px");
+
+  for (const style of [
+    { _hover: { color: "blue" } },
+    { __before: { content: '"x"' } },
+    { "& .child": { color: "blue" } },
+  ]) {
+    const before = snapshot(value, element);
+    errorCode(
+      () => Reflect.apply(value.attrs.setMany, value.attrs, [{ title: "must-not-apply", style }]),
+      LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
+      "setMany",
+    );
+    assert.deepEqual(snapshot(value, element), before);
+  }
+});
+
+check("inline style manager shares typed leaf rendering and rejects nested rules before writes", () => {
+  const priorElement = Reflect.get(globalThis, "Element");
+  Reflect.set(globalThis, "Element", class {});
+  try {
+    const value = tree();
+    value.style.setProp("width", { value: 2, unit: "px" });
+    assert.deepEqual(value.attrs.get("style"), { width: "2px" });
+    const before = JSON.stringify(value.node);
+    for (const map of [
+      { color: "must-not-apply", _hover: { color: "blue" } },
+      { color: "must-not-apply", __before: { content: '"x"' } },
+      { color: "must-not-apply", "& .child": { color: "blue" } },
+    ]) {
+      assert.throws(
+        () => Reflect.apply(value.style.setMany, value.style, [map]),
+        /Inline style does not support (pseudo|selector) declarations/,
+      );
+      assert.equal(JSON.stringify(value.node), before);
+    }
+  } finally {
+    if (priorElement === undefined) Reflect.deleteProperty(globalThis, "Element");
+    else Reflect.set(globalThis, "Element", priorElement);
   }
 });
 
@@ -180,7 +227,7 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
   assert.deepEqual(value.attrs.keys(), ["count", "hidden", "id", "style", "title"]);
   assert.equal(value.attrs.get("title"), "kept");
   assert.equal(value.attrs.get("hidden"), false);
-  assert.equal(element.getAttribute("hidden"), null);
+  assert.equal(element.getAttribute("hidden"), "false");
   assert.equal(element.getAttribute("style"), "color: red");
 
   const attrsIdentity = value.node.$_attrs;
@@ -298,8 +345,14 @@ check("attrs and flags remain separate when one name changes ownership", () => {
   value.attrs.set("hidden", false);
   assert.equal(value.attrs.has("hidden"), true);
   assert.equal(value.attrs.get("hidden"), false);
+  const element = mount(value);
+  value.attrs.set("disabled", true);
+  assert.equal(value.attrs.get("disabled"), true);
+  assert.equal(value.flags.has("disabled"), false);
+  assert.equal(element.getAttribute("disabled"), "true");
   value.flags.clear("hidden");
-  assert.equal(value.attrs.has("hidden"), false);
+  assert.equal(value.attrs.has("hidden"), true);
+  assert.equal(value.attrs.get("hidden"), false);
 });
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);

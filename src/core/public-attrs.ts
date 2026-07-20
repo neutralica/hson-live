@@ -1,4 +1,5 @@
 import { _META_DATA_PREFIX } from "./constants.js";
+import { canonical_inline_style } from "./inline-style.js";
 import type { CssMap } from "./style.types.js";
 import type {
   CanonicalPublicAttrs,
@@ -19,7 +20,7 @@ export function decode_public_attr_value(
   value: unknown,
 ): CanonicalPublicAttrValue | undefined {
   if (is_finite_primitive(value)) return value;
-  return name === "style" ? canonical_style_map(value, new WeakSet<object>()) : undefined;
+  return name === "style" ? canonical_inline_style(value) : undefined;
 }
 
 /** Validate, detach, freeze, and deterministically order a complete attrs bag. */
@@ -69,28 +70,6 @@ function canonical_attr_value_equal(
       || !canonical_attr_value_equal(leftValue, rightValue)) return false;
   }
   return true;
-}
-
-function canonical_style_map(value: unknown, ancestors: WeakSet<object>): CssMap | undefined {
-  if (!is_plain_record(value)) return undefined;
-  if (ancestors.has(value)) return undefined;
-  ancestors.add(value);
-  const style: Record<string, Primitive | CssMap> = {};
-  for (const key of Object.keys(value).sort()) {
-    const item = value[key];
-    if (is_finite_primitive(item)) {
-      style[key] = item;
-      continue;
-    }
-    const nested = canonical_style_map(item, ancestors);
-    if (nested === undefined) {
-      ancestors.delete(value);
-      return undefined;
-    }
-    style[key] = nested;
-  }
-  ancestors.delete(value);
-  return Object.freeze(style);
 }
 
 function is_finite_primitive(value: unknown): value is Primitive {

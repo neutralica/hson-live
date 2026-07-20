@@ -61,7 +61,7 @@ check("get preserves every canonical value distinction and detaches structured s
     positive: 7,
     zero: 0,
     nullable: null,
-    style: { color: "red", _hover: { color: "blue" } },
+    style: { color: "red", width: { value: 2, unit: "px" } },
   });
   assertNoReadEffects(map, () => {
     assert.equal(map.document.attrs.get(path(), "empty"), "");
@@ -75,13 +75,13 @@ check("get preserves every canonical value distinction and detaches structured s
 
     const style = map.document.attrs.get(path(), "style");
     const styleAgain = map.document.attrs.get(path(), "style");
-    assert.deepEqual(style, { _hover: { color: "blue" }, color: "red" });
+    assert.deepEqual(style, { color: "red", width: { value: 2, unit: "px" } });
     assert.notEqual(style, styleAgain);
     assert.equal(Object.isFrozen(style), true);
-    assert.equal(typeof style === "object" && style !== null && Object.isFrozen(style._hover), true);
+    assert.equal(typeof style === "object" && style !== null && Object.isFrozen(style.width), true);
     assert.equal(Reflect.set(style as object, "color", "purple"), false);
     assert.deepEqual(map.document.attrs.get(path(), "style"), {
-      _hover: { color: "blue" },
+      width: { value: 2, unit: "px" },
       color: "red",
     });
   });
@@ -120,12 +120,12 @@ check("keys is lexical, public-only, fresh, and does not create absent storage",
 check("must.get shares canonical reads and reports only valid absence as not found", () => {
   const target = path();
   const map = element(`<main id="present"/>`);
-  map.document.attrs.set(target, "style", { color: "red", _hover: { color: "blue" } });
+  map.document.attrs.set(target, "style", { color: "red", width: { value: 2, unit: "px" } });
   assert.equal(map.document.attrs.must, map.document.attrs.must);
   assert.equal(Object.isFrozen(map.document.attrs.must), true);
   assert.equal(map.document.attrs.must.get(target, "id"), "present");
   const style = map.document.attrs.must.get(target, "style");
-  assert.deepEqual(style, { _hover: { color: "blue" }, color: "red" });
+  assert.deepEqual(style, { color: "red", width: { value: 2, unit: "px" } });
   assert.equal(Object.isFrozen(style), true);
   assert.notEqual(style, map.document.attrs.get(target, "style"));
 

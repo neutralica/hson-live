@@ -1,6 +1,7 @@
 // serialize-style.ts
 
 import type { CssMap } from "../../../../core/style.types.js";
+import { render_css_declaration_value } from "../../../../core/inline-style.js";
 import { camel_to_kebab } from "./camel_to_kebab.js";
 
 type StyleFormat = "inline" | "multiline";
@@ -36,10 +37,7 @@ interface StyleSerializeOptions {
  * - Skips empty values after trimming.
  * - Strips any trailing semicolons from values to avoid `;;` output.
  *
- * Caveats:
- * - Does not validate property names or values.
- * - Coerces values via `String(...)`, so non-string values are serialized by
- *   their string representation.
+ * Nested rule maps are not inline declarations and are rejected.
  *
  * @param style - Style object mapping property names to values (or undefined).
  * @returns A CSS declaration list string, or `""` when there is nothing to emit.
@@ -50,10 +48,12 @@ export function serialize_style(style: CssMap | undefined): string {
   // CHANGE: normalize entries BEFORE sorting/serializing
   const entries: Array<[string, string]> = [];
   for (const [prop, raw] of Object.entries(style)) {
-    if (raw == null) continue;                       // CHANGE: skip null/undefined
-    let v = String(raw).trim();                      // CHANGE: trim values
-    if (!v) continue;                                // CHANGE: skip empty values
-    if (v.endsWith(";")) v = v.replace(/;+$/g, "");  // CHANGE: strip any trailing semicolons
+    const rendered = render_css_declaration_value(raw);
+    if (rendered === null) continue;
+    if (rendered === undefined) throw new Error("Inline style contains an invalid declaration value.");
+    let v = rendered;
+    if (!v) continue;
+    if (v.endsWith(";")) v = v.replace(/;+$/g, "");
     const isCustomProp = prop.startsWith("--");
     const outKey =
       isCustomProp ? prop :

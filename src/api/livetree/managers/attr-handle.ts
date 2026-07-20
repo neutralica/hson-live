@@ -161,11 +161,7 @@ export function apply_projected_attrs_replacement(
 
 export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {
   return Object.freeze({
-    has: (name) => {
-      const key = canonical_attr_key(tree, name);
-      const attrs = tree.node.$_attrs;
-      return attrs !== undefined && Object.prototype.hasOwnProperty.call(attrs, key);
-    },
+    has: (name) => flag_names_for_node(tree.node).has(canonical_attr_key(tree, name)),
     set: (...names): TTree => {
       for (const name of names) set_flag(tree, canonical_attr_key(tree, name));
       return tree;
@@ -371,11 +367,7 @@ function project_attr_value(element: Element, name: string, value: CanonicalPubl
     else element.setAttribute(name, cssText);
     return;
   }
-  if (value === false || value === null) {
-    element.removeAttribute(name);
-    return;
-  }
-  element.setAttribute(name, value === true ? "" : String(value));
+  element.setAttribute(name, String(value));
 }
 
 function flag_names_for_node(node: HsonNode): Set<string> {
@@ -405,6 +397,7 @@ function set_flag(tree: LiveTree, name: string): void {
 
 function clear_flag(tree: LiveTree, name: string): void {
   const node = tree.node;
+  if (!flag_names_for_node(node).has(name)) return;
   if (node.$_attrs !== undefined) {
     delete node.$_attrs[name];
     if (Object.keys(node.$_attrs).length === 0) delete node.$_attrs;

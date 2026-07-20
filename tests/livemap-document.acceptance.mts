@@ -113,7 +113,7 @@ check("fromNode takes detached ownership of the complete canonical graph", () =>
   if (sourceMain !== undefined) {
     sourceMain.$_attrs = {
       ...sourceMain.$_attrs,
-      style: { color: "red", ":hover": { color: "blue" } },
+      style: { color: "red", width: { value: 2, unit: "px" } },
     };
   }
   const sourceBefore = structuredClone(source);

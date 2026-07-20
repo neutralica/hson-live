@@ -3,7 +3,6 @@ import { ELEM_TAG, STR_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
-import type { CssMap } from "../../core/style.types.js";
 import type {
   DocumentLiveMapAttrsMutationApi,
   DocumentLiveMapMode,
@@ -31,6 +30,7 @@ import {
 import { classify_live_root_mode } from "./livemap.document.js";
 import { canonical_graph_equal } from "./livemap.document.install.js";
 import {
+  decode_document_attr_value,
   decode_document_attrs,
   is_public_document_attr_name,
 } from "./livemap.document.attrs.js";
@@ -214,7 +214,7 @@ function prepare_set_document_attr(
   const endpoint = resolve_document_target(root, mode, target, operationName);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
-  if (is_style_map(value)) attrs.style = value;
+  if (name === "style" && typeof value === "object" && value !== null) attrs.style = value;
   else attrs[name] = value;
   element.$_attrs = attrs;
 
@@ -597,8 +597,8 @@ function normalize_attr_value(
   input: unknown,
   operation: DocumentOperation,
 ): LiveMapDocumentAttributeValue {
-  if (is_finite_primitive(input)) return input;
-  if (name === "style" && is_style_map(input)) return clone_node(input);
+  const decoded = decode_document_attr_value(name, input);
+  if (decoded !== undefined) return decoded;
   throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_VALUE", operation, "value must be a canonical primitive or structured style map");
 }
 
@@ -629,30 +629,12 @@ function insertion_content(endpoint: HsonNode, content: LiveMapDocumentContent):
 }
 
 function clone_attr_value(value: LiveMapDocumentAttributeValue): LiveMapDocumentAttributeValue {
-  return is_style_map(value) ? clone_node(value) : value;
+  return typeof value === "object" && value !== null ? clone_node(value) : value;
 }
 
 function is_finite_primitive(value: unknown): value is Primitive {
   return value === null || typeof value === "string" || typeof value === "boolean"
     || (typeof value === "number" && Number.isFinite(value));
-}
-
-function is_style_map(value: unknown): value is CssMap {
-  if (!is_plain_record(value)) return false;
-  const seen = new WeakSet<object>();
-  const stack: Record<string, unknown>[] = [value];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    if (current === undefined) continue;
-    if (seen.has(current)) return false;
-    seen.add(current);
-    for (const item of Object.values(current)) {
-      if (item === undefined || is_finite_primitive(item)) continue;
-      if (!is_plain_record(item)) return false;
-      stack.push(item);
-    }
-  }
-  return true;
 }
 
 function is_plain_record(value: unknown): value is Record<string, unknown> {
