@@ -7,6 +7,7 @@ import type {
 } from "../../types/livehost.types.js";
 import {
   decode_canonical_document_snapshot,
+  encode_canonical_document_snapshot,
 } from "../livemap/livemap.document.snapshot-codec.js";
 import { CanonicalDocumentSnapshotCodecError } from "../livemap/livemap.document.snapshot-codec.error.js";
 
@@ -31,7 +32,15 @@ export type LiveHostValidatedSnapshotEnvelope =
   | LiveHostLegacySnapshotEnvelope
   | LiveHostCanonicalDocumentSnapshotEnvelope;
 
-/** @internal Client-side decoded recovery message; host emission remains legacy-only. */
+/** @internal Explicit host-side document snapshot wire selection. */
+export type LiveHostDocumentSnapshotEncoding = "legacy-hson" | "canonical-hson";
+
+/** @internal Outbound document snapshot body selected from one capture. */
+export type LiveHostOutboundDocumentSnapshotEnvelope =
+  | LiveHostLegacySnapshotEnvelope
+  | LiveHostCanonicalDocumentSnapshotEnvelope;
+
+/** @internal Client-side decoded recovery message for either accepted document snapshot format. */
 export type LiveHostDecodedServerRecoverySnapshotMessage = Readonly<{
   type: "recovery-snapshot";
   id: string;
@@ -49,6 +58,10 @@ export type LiveHostDocumentSnapshotDecodeErrorCode =
   | "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH"
   | "LIVEHOST_RECOVERY_SNAPSHOT_REVISION_MISMATCH";
 
+/** @internal */
+export type LiveHostDocumentSnapshotEncodeErrorCode =
+  "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED";
+
 /** @internal Payload-safe document snapshot failure owned by the LiveHost boundary. */
 export class LiveHostDocumentSnapshotDecodeError extends Error {
   public constructor(
@@ -58,6 +71,52 @@ export class LiveHostDocumentSnapshotDecodeError extends Error {
   ) {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "LiveHostDocumentSnapshotDecodeError";
+  }
+}
+
+/** @internal Payload-safe host-side canonical snapshot construction failure. */
+export class LiveHostDocumentSnapshotEncodeError extends Error {
+  public constructor(
+    public readonly code: LiveHostDocumentSnapshotEncodeErrorCode,
+    message: string,
+    public override readonly cause?: unknown,
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.name = "LiveHostDocumentSnapshotEncodeError";
+  }
+}
+
+/** @internal Encode one detached capture without independently supplied mode or revision. */
+export function encode_livehost_document_snapshot(
+  common: Pick<LiveHostSnapshotCommonFields, "logicalMapId" | "incarnationId">,
+  capture: DocumentLiveMapCapture,
+  encoding: LiveHostDocumentSnapshotEncoding,
+): LiveHostOutboundDocumentSnapshotEnvelope {
+  if (encoding === "legacy-hson") {
+    return Object.freeze({
+      ...common,
+      rev: capture.rev,
+      mode: capture.mode,
+      hson: hson.fromNode(capture.root).toHson().noBreak().serialize(),
+    });
+  }
+
+  try {
+    return Object.freeze({
+      ...common,
+      rev: capture.rev,
+      mode: capture.mode,
+      ...encode_canonical_document_snapshot(capture),
+    });
+  } catch (cause) {
+    if (cause instanceof CanonicalDocumentSnapshotCodecError) {
+      throw new LiveHostDocumentSnapshotEncodeError(
+        "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED",
+        "Canonical LiveHost document snapshot could not be encoded.",
+        cause,
+      );
+    }
+    throw cause;
   }
 }
 

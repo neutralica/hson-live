@@ -1,6 +1,6 @@
 // livehost.recovery.ts
 
-import type { JsonValue, LiveMapAuthority } from "../../types/index.js";
+import type { DocumentLiveMapCapture, JsonValue, LiveMapAuthority } from "../../types/index.js";
 import { hson } from "../../hson.js";
 import { is_Node } from "../../core/node-guards.js";
 import type {
@@ -30,6 +30,11 @@ import type {
 } from "../../types/livehost.types.js";
 import { LiveHostRecoveryError } from "./livehost.error.js";
 import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
+import {
+  encode_livehost_document_snapshot,
+  type LiveHostDocumentSnapshotEncoding,
+  type LiveHostOutboundDocumentSnapshotEnvelope,
+} from "./livehost.document-snapshot.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
 const DEFAULT_MAX_TAIL_BYTES = 1 * 1_024 * 1_024;
@@ -52,6 +57,21 @@ function is_json_value(value: unknown): value is JsonValue {
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) return false;
   return Object.values(value).every(is_json_value);
+}
+
+function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
+  return typeof value === "object"
+    && value !== null
+    && "kind" in value
+    && value.kind === "hson-document"
+    && "version" in value
+    && value.version === 1
+    && "mode" in value
+    && (value.mode === "element" || value.mode === "fragment")
+    && "rev" in value
+    && typeof value.rev === "number"
+    && "root" in value
+    && is_Node(value.root);
 }
 
 function clone_json_value(value: JsonValue): JsonValue {
@@ -82,6 +102,26 @@ function runtime_error(
   return new LiveHostRecoveryError(code, message, cause);
 }
 
+type TracedLiveHostRecoveryPlanner = LiveHostRecoveryPlanner & Readonly<{
+  plan_traced: (
+    request: LiveHostRecoveryRequest,
+    trace: LiveTraceContext,
+    correlation?: Readonly<{ requestId?: string }>,
+    hooks?: LiveHostRecoveryHooks,
+  ) => LiveHostRecoveryPlan;
+}>;
+
+/**
+ * The established public planner type remains legacy-only. Canonical envelopes
+ * are reachable solely through the internal host factory and retain the same
+ * runtime recovery item shape for the existing transport loop.
+ */
+function recovery_plan_snapshot_view(
+  snapshot: LiveHostOutboundDocumentSnapshotEnvelope,
+): LiveHostSnapshotEnvelope {
+  return snapshot as LiveHostSnapshotEnvelope;
+}
+
 /**
  * Create the host-side recovery planner for one canonical LiveMap stream.
  * The planner produces recovery material directly and has no transport role.
@@ -91,14 +131,18 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
   stream: LiveHostCanonicalStream<TMap>,
   options: LiveHostRecoveryOptions = {},
   traceSink?: LiveTraceSink,
-): LiveHostRecoveryPlanner & Readonly<{
-  plan_traced: (
-    request: LiveHostRecoveryRequest,
-    trace: LiveTraceContext,
-    correlation?: Readonly<{ requestId?: string }>,
-    hooks?: LiveHostRecoveryHooks,
-  ) => LiveHostRecoveryPlan;
-}> {
+): TracedLiveHostRecoveryPlanner {
+  return make_livehost_recovery_planner_internal(map, stream, options, traceSink, "legacy-hson");
+}
+
+/** @internal Construct the real planner with one explicit document snapshot encoding. */
+export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuthority>(
+  map: TMap,
+  stream: LiveHostCanonicalStream<TMap>,
+  options: LiveHostRecoveryOptions,
+  traceSink: LiveTraceSink | undefined,
+  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
+): TracedLiveHostRecoveryPlanner {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
   let activeAttemptCount = 0;
@@ -326,20 +370,30 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
           }
 
           headRev = capture.rev;
-          const snapshotHson = map.mode === "element" || map.mode === "fragment"
-            ? "root" in capture && is_Node(capture.root)
-              ? hson.fromNode(capture.root).toHson().noBreak().serialize()
-              : (() => { throw new Error("LiveHost document capture has no canonical root."); })()
-            : "value" in capture && capture.value !== undefined && is_json_value(capture.value)
-              ? hson.fromJson(clone_json_value(capture.value)).toHson().noBreak().serialize()
-              : (() => { throw new Error("LiveHost recovery snapshot root is not JSON."); })();
-          snapshotBody = Object.freeze({
-            logicalMapId: stream.logicalMapId,
-            incarnationId: stream.incarnationId,
-            rev: capture.rev,
-            mode: map.mode,
-            hson: snapshotHson,
-          });
+          if (map.mode === "element" || map.mode === "fragment") {
+            if (!is_document_capture(capture)) {
+              throw new Error("LiveHost document capture has no canonical root.");
+            }
+            snapshotBody = recovery_plan_snapshot_view(encode_livehost_document_snapshot(
+              {
+                logicalMapId: stream.logicalMapId,
+                incarnationId: stream.incarnationId,
+              },
+              capture,
+              documentSnapshotEncoding,
+            ));
+          } else {
+            if (!("value" in capture) || capture.value === undefined || !is_json_value(capture.value)) {
+              throw new Error("LiveHost recovery snapshot root is not JSON.");
+            }
+            snapshotBody = Object.freeze({
+              logicalMapId: stream.logicalMapId,
+              incarnationId: stream.incarnationId,
+              rev: capture.rev,
+              mode: map.mode,
+              hson: hson.fromJson(clone_json_value(capture.value)).toHson().noBreak().serialize(),
+            });
+          }
           encoded_bytes(snapshotBody);
           establish_cut(headRev);
         } catch (cause) {

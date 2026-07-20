@@ -1,7 +1,7 @@
 // livehost/core.ts
 
 import { hson } from "../../hson.js";
-import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
+import type { ClassifiedLiveMap, DocumentLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
 import type {
   LiveHost,
   LiveHostForMap,
@@ -35,7 +35,10 @@ import { decode_livehost_message, encode_livehost_message, is_livehost_json_valu
 import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 import { make_livehost_canonical_stream_runtime } from "./livehost.history.js";
-import { make_livehost_recovery_planner } from "./livehost.recovery.js";
+import {
+  make_livehost_recovery_planner_internal,
+} from "./livehost.recovery.js";
+import type { LiveHostDocumentSnapshotEncoding } from "./livehost.document-snapshot.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
 import { resolve_livehost_document_action } from "./livehost.document-actions.js";
@@ -142,12 +145,27 @@ export function create_livehost(
   return create_livehost_for_map(map, { ...shared, map });
 }
 
+/** @internal Construct a document host with one explicit snapshot wire encoding. */
+export function create_livehost_with_document_snapshot_encoding<
+  TMap extends DocumentLiveMap,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(
+  options: ExistingMapLiveHostOptions<TMap, TActions>,
+  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
+): LiveHostForMap<TMap, TActions> {
+  if (documentSnapshotEncoding !== "legacy-hson" && documentSnapshotEncoding !== "canonical-hson") {
+    throw new TypeError("LiveHost document snapshot encoding is unsupported.");
+  }
+  return create_livehost_for_map(options.map, options, documentSnapshotEncoding);
+}
+
 function create_livehost_for_map<
   TMap extends LiveMapAuthority,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 >(
   map: TMap,
   options: ExistingMapLiveHostOptions<TMap, TActions>,
+  documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding = "legacy-hson",
 ): LiveHostForMap<TMap, TActions> {
   const streamRuntime = make_livehost_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
@@ -156,7 +174,13 @@ function create_livehost_for_map<
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
   });
   const stream = streamRuntime.stream;
-  const recovery = make_livehost_recovery_planner(map, stream, options.recovery, options.trace);
+  const recovery = make_livehost_recovery_planner_internal(
+    map,
+    stream,
+    options.recovery ?? {},
+    options.trace,
+    documentSnapshotEncoding,
+  );
   const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
   const resume = make_livehost_resume_log();
