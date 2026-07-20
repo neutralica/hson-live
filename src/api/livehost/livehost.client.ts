@@ -55,6 +55,7 @@ import {
   LiveHostDuplicateActionIdError,
 } from "./livehost.error.js";
 import { decode_livehost_server_message, is_livehost_json_value } from "./livehost.protocol.js";
+import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
 
 let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
@@ -97,6 +98,12 @@ function make_action_status_id(): LiveHostActionStatusId {
   return `lhas-${nextActionStatusId}`;
 }
 
+function recovery_trace_strategy(strategy: LiveHostClientRecoveryStrategy | undefined): string {
+  if (strategy === "current") return "already-current";
+  if (strategy === "replay") return "incremental-replay";
+  return strategy ?? "unavailable";
+}
+
 function encode_client_message<TActions extends LiveHostActionPayloads>(message: LiveHostClientMessage<TActions>): string {
   return JSON.stringify(message);
 }
@@ -112,11 +119,19 @@ type PendingActionStatus = Readonly<{
   reject: (error: LiveHostDisconnectedError) => void;
 }>;
 
-type PendingRecovery = Readonly<{
+type PendingRecovery = {
   id: LiveHostRecoveryId;
   resolve: (result: LiveHostClientRecoveryResult) => void;
   reject: (error: LiveHostClientRecoveryError) => void;
-}>;
+  trace?: LiveTraceContext;
+  startedAt: number;
+  localRevBefore: number;
+  requestedRev?: number;
+  commitCount: number;
+  operationCount: number;
+  operationKinds: string[];
+  snapshotRev?: number;
+};
 
 type PendingSession = Readonly<{
   id: LiveHostSessionRequestId;
@@ -254,6 +269,7 @@ export function create_livehost_client<
 
   function fail_recovery(code: string, message: string, cause?: unknown): void {
     if (recoveryStatus === "disposed" || recoveryStatus === "failed") return;
+    const pending = pendingRecovery;
     const failure = Object.freeze({ code, message, ...(cause !== undefined ? { cause } : {}) });
     firstFailure ??= failure;
     recoveryFailures += 1;
@@ -263,8 +279,38 @@ export function create_livehost_client<
     activeRecoveryId = undefined;
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
-    const pending = pendingRecovery;
     pendingRecovery = undefined;
+    pending?.trace?.emit({
+      subsystem: "client",
+      phase: "recovery.apply",
+      status: "failure",
+      details: () => ({
+        requestId: pending.id,
+        strategy: recovery_trace_strategy(recoveryStrategy),
+        localRevBefore: pending.localRevBefore,
+        ...(pending.requestedRev !== undefined ? { requestedRev: pending.requestedRev } : {}),
+        commitCount: pending.commitCount,
+        operationCount: pending.operationCount,
+        localRevAfter: map.rev,
+        outcome: "failed",
+        errorCode: code,
+      }),
+    });
+    pending?.trace?.emit({
+      subsystem: "client",
+      phase: "recovery.complete",
+      status: "failure",
+      durationMs: pending === undefined ? 0 : Math.max(0, Date.now() - pending.startedAt),
+      details: () => ({
+        requestId: pending?.id ?? "unknown",
+        strategy: recovery_trace_strategy(recoveryStrategy),
+        ...(pending?.requestedRev !== undefined ? { requestedRev: pending.requestedRev } : {}),
+        finalRev: map.rev,
+        commitCount: pending?.commitCount ?? 0,
+        outcome: "failed",
+        errorCode: code,
+      }),
+    });
     pending?.reject(new LiveHostClientRecoveryError(code, message, cause));
   }
 
@@ -339,6 +385,12 @@ export function create_livehost_client<
     }
 
     lastAppliedRev = commit.rev;
+    if (pendingRecovery !== undefined && phase !== "live") {
+      pendingRecovery.commitCount += 1;
+      pendingRecovery.operationCount += commit.ops.length;
+      pendingRecovery.operationKinds.push(...commit.ops.map((operation) =>
+        "domain" in operation ? operation.op : operation.kind));
+    }
     if (phase === "body") bodyCommitsApplied += 1;
     if (phase === "tail") tailCommitsApplied += 1;
     if (phase === "live") liveCommitsApplied += 1;
@@ -371,6 +423,7 @@ export function create_livehost_client<
       }
       incarnationId = snapshot.incarnationId;
       lastAppliedRev = snapshot.rev;
+      if (pendingRecovery !== undefined) pendingRecovery.snapshotRev = snapshot.rev;
       snapshotInstalls += 1;
       notify({ kind: "snapshot", logicalMapId: snapshot.logicalMapId, incarnationId: snapshot.incarnationId, rev: snapshot.rev, map });
     } catch (cause) {
@@ -428,6 +481,43 @@ export function create_livehost_client<
     const pending = pendingRecovery;
     pendingRecovery = undefined;
     const previousIncarnation = options.recovery?.cursor?.incarnationId;
+    const strategy = recovery_trace_strategy(plan.outcome);
+    pending?.trace?.emit({
+      subsystem: "client",
+      phase: "recovery.apply",
+      status: "success",
+      details: () => ({
+        requestId: pending.id,
+        logicalMapId: plan.logicalMapId,
+        incarnationId: plan.incarnationId,
+        strategy,
+        localRevBefore: pending.localRevBefore,
+        ...(pending.requestedRev !== undefined ? { requestedRev: pending.requestedRev } : {}),
+        ...(pending.snapshotRev !== undefined ? { snapshotRev: pending.snapshotRev } : {}),
+        commitCount: pending.commitCount,
+        operationCount: pending.operationCount,
+        operationKinds: pending.operationKinds,
+        localRevAfter: map.rev,
+        outcome: plan.outcome === "current" ? "already-current" : "applied",
+      }),
+    });
+    pending?.trace?.emit({
+      subsystem: "client",
+      phase: "recovery.complete",
+      status: "success",
+      durationMs: Math.max(0, Date.now() - pending.startedAt),
+      details: () => ({
+        requestId: pending.id,
+        logicalMapId: plan.logicalMapId,
+        incarnationId: plan.incarnationId,
+        strategy,
+        ...(pending.requestedRev !== undefined ? { requestedRev: pending.requestedRev } : {}),
+        targetRev: plan.headRev,
+        finalRev: map.rev,
+        commitCount: pending.commitCount,
+        outcome: plan.outcome === "current" ? "already-current" : "synchronized",
+      }),
+    });
     pending?.resolve({
       strategy: plan.outcome,
       sessionId: plan.sessionId,
@@ -629,13 +719,42 @@ export function create_livehost_client<
     recoveryStatus = "recovering";
     recoveryStrategy = undefined;
     recoveryPlan = undefined;
+    const recoveryOptions = options.recovery;
+    const startedAt = Date.now();
+    const trace = options.trace === undefined
+      ? undefined
+      : create_live_trace_context(options.trace, `lht-client-recovery-${id}`);
+    trace?.emit({
+      subsystem: "client",
+      phase: "recovery.request",
+      status: "event",
+      details: () => ({
+        requestId: id,
+        logicalMapId: recoveryOptions.logicalMapId,
+        mapMode: map.mode,
+        reason: "explicit-recover",
+        ...(lastAppliedRev !== undefined ? { requestedRev: lastAppliedRev } : {}),
+        currentRev: map.rev,
+      }),
+    });
     const promise = new Promise<LiveHostClientRecoveryResult>((resolve, reject) => {
-      pendingRecovery = { id, resolve, reject };
+      pendingRecovery = {
+        id,
+        resolve,
+        reject,
+        ...(trace !== undefined ? { trace } : {}),
+        startedAt,
+        localRevBefore: map.rev,
+        ...(lastAppliedRev !== undefined ? { requestedRev: lastAppliedRev } : {}),
+        commitCount: 0,
+        operationCount: 0,
+        operationKinds: [],
+      };
     });
     send({
       type: "recover",
       id,
-      logicalMapId: options.recovery.logicalMapId,
+      logicalMapId: recoveryOptions.logicalMapId,
       ...(incarnationId !== undefined && lastAppliedRev !== undefined ? { incarnationId, lastAppliedRev } : {}),
     });
     return promise;
@@ -651,6 +770,20 @@ export function create_livehost_client<
     stopRecoveryMessages = undefined;
     recoveryPlan = undefined;
     recoveryStatus = "disposed";
+    pending?.trace?.emit({
+      subsystem: "client",
+      phase: "recovery.complete",
+      status: "failure",
+      durationMs: Math.max(0, Date.now() - pending.startedAt),
+      details: () => ({
+        requestId: pending.id,
+        strategy: recovery_trace_strategy(recoveryStrategy),
+        finalRev: map.rev,
+        commitCount: pending.commitCount,
+        outcome: "cancelled",
+        errorCode: "LIVEHOST_RECOVERY_DISPOSED",
+      }),
+    });
     pending?.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_DISPOSED", "LiveHost client recovery was disposed."));
     recoveryListeners.clear();
   }

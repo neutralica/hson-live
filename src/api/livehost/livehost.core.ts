@@ -833,12 +833,29 @@ function create_livehost_for_map<
       raw_send({ type: "session-attached", id: message.id, sessionId, epoch: connectionEpoch });
     }
 
-    function recovery_error(id: string, cause: unknown): void {
+    function recovery_error(id: string, cause: unknown, trace?: LiveTraceContext, startedAt?: number): void {
       const code = typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
         ? cause.code
         : "LIVEHOST_RECOVERY_TRANSPORT_FAILED";
       const message = cause instanceof Error ? cause.message : "LiveHost recovery transport failed.";
-      send_without_record({ type: "recovery-error", id, error: { code, message } });
+      trace?.emit({
+        subsystem: "transport",
+        phase: "recovery.transport",
+        status: "failure",
+        details: () => ({ requestId: id, outcome: "send-failed", errorCode: code }),
+      });
+      trace?.emit({
+        subsystem: "livehost",
+        phase: "recovery.complete",
+        status: "failure",
+        ...(startedAt !== undefined ? { durationMs: Math.max(0, Date.now() - startedAt) } : {}),
+        details: () => ({ requestId: id, outcome: "failed", errorCode: code }),
+      });
+      try {
+        send_without_record({ type: "recovery-error", id, error: { code, message } });
+      } catch {
+        // The recovery trace already owns the transport failure.
+      }
     }
 
     async function handle_deduped_action(
@@ -1090,19 +1107,58 @@ function create_livehost_for_map<
     function handle_recover(message: LiveHostClientRecoverMessage): void {
       if (!sessionId || connectionEpoch === undefined || !authoritative()) return;
       dispose_recovery_channel();
+      const startedAt = Date.now();
+      const trace = options.trace === undefined
+        ? undefined
+        : create_live_trace_context(options.trace, `lht-recovery-${message.id}-${stream.headRev}`);
+      const history = stream.history.debug();
+      trace?.emit({
+        subsystem: "livehost",
+        phase: "recovery.request",
+        status: "event",
+        details: () => ({
+          requestId: message.id,
+          logicalMapId: stream.logicalMapId,
+          incarnationId: stream.incarnationId,
+          mapMode: map.mode,
+          origin: "protocol-request",
+          reason: "explicit-recover",
+          ...(message.lastAppliedRev !== undefined ? { requestedRev: message.lastAppliedRev } : {}),
+          currentRev: stream.headRev,
+          oldestAvailableRev: history.earliestResumableBaseRev,
+        }),
+      });
       let plan;
       try {
-        plan = recovery.plan({
+        const request = {
           logicalMapId: message.logicalMapId,
           ...(message.incarnationId !== undefined ? { incarnationId: message.incarnationId } : {}),
           ...(message.lastAppliedRev !== undefined ? { lastAppliedRev: message.lastAppliedRev } : {}),
-        });
+        };
+        plan = trace === undefined ? recovery.plan(request) : recovery.plan_traced(request, trace, { requestId: message.id });
       } catch (cause) {
-        recovery_error(message.id, cause);
+        recovery_error(message.id, cause, trace, startedAt);
         return;
       }
       if (plan.outcome === "reject") {
-        send_without_record({ type: "recovery-plan", id: message.id, sessionId, logicalMapId: stream.logicalMapId, incarnationId: stream.incarnationId, headRev: stream.headRev, outcome: "reject", error: plan.error });
+        try {
+          send_without_record({ type: "recovery-plan", id: message.id, sessionId, logicalMapId: stream.logicalMapId, incarnationId: stream.incarnationId, headRev: stream.headRev, outcome: "reject", error: plan.error });
+          trace?.emit({
+            subsystem: "transport",
+            phase: "recovery.transport",
+            status: "success",
+            details: () => ({ requestId: message.id, strategy: "rejected", messageCount: 1, commitCount: 0, snapshotPresent: false, outcome: "sent" }),
+          });
+          trace?.emit({
+            subsystem: "livehost",
+            phase: "recovery.complete",
+            status: "failure",
+            durationMs: Math.max(0, Date.now() - startedAt),
+            details: () => ({ requestId: message.id, strategy: "rejected", targetRev: stream.headRev, outcome: "failed", errorCode: plan.error.code }),
+          });
+        } catch (cause) {
+          recovery_error(message.id, cause, trace, startedAt);
+        }
         return;
       }
       let channelActive = true;
@@ -1136,9 +1192,31 @@ function create_livehost_for_map<
           if (commit) send_without_record({ type: "commit", id: message.id, commit });
         }
         liveReady = true;
+        const bodyCommitCount = plan.outcome === "replay" ? plan.body.length : 0;
+        const bodyMessageCount = plan.outcome === "current" ? 0 : plan.outcome === "replay" ? plan.body.length : 1;
+        const strategy = plan.outcome === "current"
+          ? "already-current"
+          : plan.outcome === "replay"
+            ? "incremental-replay"
+            : completion.tail.length > 0 ? "snapshot-plus-tail" : "snapshot";
+        trace?.emit({
+          subsystem: "transport",
+          phase: "recovery.transport",
+          status: "success",
+          details: () => ({
+            requestId: message.id,
+            strategy,
+            ...(message.lastAppliedRev !== undefined ? { requestedRev: message.lastAppliedRev } : {}),
+            targetRev: plan.headRev,
+            messageCount: 2 + bodyMessageCount + completion.tail.length,
+            commitCount: bodyCommitCount + completion.tail.length,
+            snapshotPresent: plan.outcome === "snapshot",
+            outcome: "sent",
+          }),
+        });
       } catch (cause) {
         dispose_recovery_channel();
-        recovery_error(message.id, cause);
+        recovery_error(message.id, cause, trace, startedAt);
       }
     }
 
@@ -1184,6 +1262,30 @@ function create_livehost_for_map<
             },
           });
           return;
+        }
+        if (options.trace !== undefined) {
+          const retained = resume.debug_entries();
+          const requestedSeq = message.lastSeq;
+          const canReplay = requestedSeq !== undefined && resume.can_replay_after(requestedSeq);
+          const replayCount = canReplay ? retained.filter((entry) => entry.seq > requestedSeq).length : 0;
+          const resumeTrace = create_live_trace_context(options.trace, `lht-resume-${sessionId}-${requestedSeq ?? "initial"}`);
+          resumeTrace.emit({
+            subsystem: "livehost",
+            phase: "resume.plan",
+            status: "success",
+            details: () => ({
+              ...(requestedSeq !== undefined ? { requestedSeq } : {}),
+              currentSeq: seq,
+              ...(retained[0] !== undefined ? { oldestAvailableSeq: retained[0].seq } : {}),
+              strategy: replayCount > 0 ? "snapshot-plus-replay" : "snapshot",
+              revisionRelationship: requestedSeq === undefined
+                ? "unknown"
+                : requestedSeq === seq ? "equal" : requestedSeq < seq ? "behind" : "ahead",
+              replayCount,
+              snapshotPresent: true,
+              outcome: "selected",
+            }),
+          });
         }
         send_without_record({ type: "hello", sessionId, seq, snapshot: map.snap() });
         if (message.lastSeq !== undefined && resume.can_replay_after(message.lastSeq)) {

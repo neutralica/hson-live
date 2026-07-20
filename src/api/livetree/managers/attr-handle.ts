@@ -27,6 +27,7 @@ import {
 } from "../livetree.error.js";
 import type { LiveTree } from "../livetree.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
+import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 
 const FLAG_NAMES = new WeakMap<HsonNode, Set<string>>();
 
@@ -72,11 +73,21 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     set: (name, value) => {
       const key = normalize_attr_name(tree, name, "set");
       const decoded = normalize_attr_value(tree, key, value, "set");
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "set", name: key, value: decoded });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "set");
       return apply_attrs_replacement(tree, current, normalize_attrs_result({ ...current, [key]: decoded }), [key]);
     },
     setMany: (values) => {
       const additions = normalize_attrs_input(tree, values, "setMany");
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "setMany", values: additions });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "setMany");
       return apply_attrs_replacement(
         tree,
@@ -87,6 +98,11 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     drop: (name) => {
       const key = normalize_attr_name(tree, name, "drop");
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "drop", name: key });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "drop");
       const next: Record<string, CanonicalPublicAttrValue> = { ...current };
       delete next[key];
@@ -94,21 +110,53 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     },
     dropMany: (names) => {
       const normalized = normalize_drop_names(tree, names, "dropMany");
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "dropMany", names: normalized });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "dropMany");
       const next: Record<string, CanonicalPublicAttrValue> = { ...current };
       for (const name of normalized) delete next[name];
       return apply_attrs_replacement(tree, current, normalize_attrs_result(next), []);
     },
     clear: () => {
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "clear" });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "clear");
       return apply_attrs_replacement(tree, current, Object.freeze({}), []);
     },
     replace: (values) => {
       const next = normalize_attrs_input(tree, values, "replace");
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "replace", values: next });
+        return tree;
+      }
       const current = read_ordinary_attrs(tree, "replace");
       return apply_attrs_replacement(tree, current, next, Object.keys(next));
     },
   });
+}
+
+/** Apply one canonical attrs final state without consulting public binding delegation. */
+export function apply_projected_attrs_replacement(
+  node: HsonNode,
+  values: CanonicalPublicAttrs,
+): void {
+  const next = decode_public_attrs(values);
+  const current = decode_public_attrs(node.$_attrs ?? {});
+  if (next === undefined || current === undefined) {
+    throw new Error("LiveTree projected attrs replacement requires canonical ordinary attrs.");
+  }
+  if (canonical_public_attrs_equal(current, next)) return;
+  if (Object.keys(next).length === 0) delete node.$_attrs;
+  else node.$_attrs = clone_node(next);
+  FLAG_NAMES.set(node, new Set());
+  project_attrs_replacement(node, current, next);
 }
 
 export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {

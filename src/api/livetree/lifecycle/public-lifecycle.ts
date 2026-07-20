@@ -17,11 +17,17 @@ import {
   unmount_node_preserving_runtime,
 } from "./runtime-detach.js";
 import { LiveTreeAlreadyAttachedError, LiveTreeProtectedRootError } from "../livetree.error.js";
+import {
+  assert_document_structural_mutation_allowed,
+  delegate_document_empty_if_bound,
+  delegate_document_remove_if_bound,
+} from "./document-binding-state.js";
 
 type LifecycleTree = Pick<LiveTree, "node">;
 
 export function empty_livetree_contents<TTree extends LifecycleTree>(tree: TTree): TTree {
   const owner = tree.node;
+  if (delegate_document_empty_if_bound(owner)) return tree;
   const roots = owner.$_content.filter(is_Node);
 
   owner.$_content = [];
@@ -39,6 +45,7 @@ export function empty_livetree_contents<TTree extends LifecycleTree>(tree: TTree
 
 export function detach_livetree_contents<TTree extends LifecycleTree>(tree: TTree): DetachedLiveContent {
   const owner = tree.node;
+  assert_document_structural_mutation_allowed(owner, "detach contents");
   const content = [...owner.$_content];
   const roots = content.filter(is_Node);
 
@@ -54,6 +61,7 @@ export function detach_livetree_contents<TTree extends LifecycleTree>(tree: TTre
 
 export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
   const node = tree.node;
+  assert_document_structural_mutation_allowed(node, "detach branch");
   assert_not_browser_owned_root(node, "detach");
 
   const wasProjected = subtree_has_connected_projection(node);
@@ -68,6 +76,9 @@ export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
 export function remove_livetree_terminal(
   node: HsonNode,
 ): LiveTreeLifecycleResult {
+  const delegated = delegate_document_remove_if_bound(node);
+  if (delegated !== undefined) return delegated;
+  assert_document_structural_mutation_allowed(node, "remove branch");
   if (is_livetree_node_disposed(node)) return 0;
   assert_not_browser_owned_root(node, "remove");
 

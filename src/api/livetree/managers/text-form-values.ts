@@ -12,6 +12,7 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";
 import { LiveFormApi } from "../../../types/livetree-internals.types.js";
 import { ensure_node_attrs } from "../../../core/node-storage.js";
+import { delegate_document_text_mutation_if_bound } from "../lifecycle/document-binding-state.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -390,6 +391,7 @@ function isLeafTag(tag: unknown): boolean {
  * DOM: removes only direct Text children under the host element; keeps element children.
  */
 export function set_node_text_content(node: HsonNode, value: Primitive): void {
+  if (delegate_document_text_mutation_if_bound(node, { kind: "set", value })) return;
   const text = primitive_to_text(value);
   const leaf = make_leaf(text);
 
@@ -427,6 +429,7 @@ export function set_node_text_content(node: HsonNode, value: Primitive): void {
  * DOM: appends a Text node to the host element.
  */
 export function add_node_text_content(node: HsonNode, value: Primitive): void {
+  if (delegate_document_text_mutation_if_bound(node, { kind: "add", value })) return;
   const text = primitive_to_text(value);
   const leaf = make_leaf(text);
 
@@ -445,6 +448,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
  * Index counts all items in the VSN bucket $_content.
  */
 export function insert_node_text_leaf(node: HsonNode, index: number, value: Primitive): void {
+  if (delegate_document_text_mutation_if_bound(node, { kind: "insert", index, value })) return;
   const text = primitive_to_text(value);
   const leaf = make_leaf(text);
 
@@ -470,6 +474,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
  * Destructive overwrite: replace ALL content with one leaf; mirror to DOM using textContent.
  */
 export function overwrite_node_text_content(node: HsonNode, value: Primitive): void {
+  if (delegate_document_text_mutation_if_bound(node, { kind: "overwrite", value })) return;
   const text = primitive_to_text(value);
   const leaf = make_leaf(text);
 

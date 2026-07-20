@@ -42,6 +42,7 @@ import {
 import type { DetachedLiveContent, LiveTreeLifecycleResult } from "../../types/lifecycle.types.js";
 import { guard_api_surface } from "./utils/guard-api-surface.js";
 import { record_livetree_materialization } from "./debug/materialization-profile.js";
+import { assert_document_structural_mutation_allowed } from "./lifecycle/document-binding-state.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -335,6 +336,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   /** Create HTML or SVG children according to the current namespace scope. */
   public get create(): HtmlCreateHelper {
     this.assertActive("create content");
+    assert_document_structural_mutation_allowed(this.node, "create content");
     return (
       this.svg.inScope() ? make_svg_tree_create(this) : make_html_tree_create(this)
     ) as unknown as HtmlCreateHelper;

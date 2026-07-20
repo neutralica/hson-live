@@ -10,6 +10,7 @@ import { parse_selector } from "../utils/parse-selector.js";
 import { LiveTree } from "../livetree.js";
 import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 import { release_node_parent } from "../lifecycle/graph-ownership.js";
+import { assert_document_structural_mutation_allowed } from "../lifecycle/document-binding-state.js";
 
 
 type ContentItem = HsonNode | Primitive;
@@ -43,6 +44,7 @@ function unwrap_single_elem(node: HsonNode): HsonNode {
  * - returns number removed (semantic count)
  */
 export function remove_node_children(parent: HsonNode): number {
+  assert_document_structural_mutation_allowed(parent, "remove children");
   const container = unwrap_single_elem(parent);
 
   const kids = container.$_content;

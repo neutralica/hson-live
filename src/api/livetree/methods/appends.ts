@@ -28,6 +28,7 @@ import {
   LiveTreeDisposedError,
 } from "../livetree.error.js";
 import { record_livetree_materialization } from "../debug/materialization-profile.js";
+import { assert_document_structural_mutation_allowed } from "../lifecycle/document-binding-state.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_hson_elem` container
@@ -136,6 +137,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
   branches: readonly AppendTreeLike[],
   index?: number,
 ): TTree {
+  assert_document_structural_mutation_allowed(target.node, "append branches");
   if (branches.length === 0) return target;
   const targetNode = target.node;
   const branchRoots = branches.map((branch) => {
@@ -239,6 +241,7 @@ export function append_branch<TTree extends AppendTreeLike>(
   branch: AppendTreeLike,
   index?: number,
 ): TTree {
+  assert_document_structural_mutation_allowed(this.node, "append branch");
   record_livetree_materialization("appendBranchCalls");
   const targetNode = this.node;
   const srcNode = branch.node;
@@ -263,6 +266,7 @@ export function append_detached_content<TTree extends AppendTreeLike>(
   target: TTree,
   content: NodeContent,
 ): TTree {
+  assert_document_structural_mutation_allowed(target.node, "append detached content");
   const targetNode = target.node;
   const nodes = content.filter((item): item is HsonNode => typeof item === "object" && item !== null);
   assert_appendable_nodes(targetNode, nodes, "append detached contents");

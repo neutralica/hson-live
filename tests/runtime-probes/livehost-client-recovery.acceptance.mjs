@@ -19,6 +19,7 @@ function socket_pair() {
   const clientSent = [];
   const serverSent = [];
   let beforeServerDelivery;
+  let serverSendFailure;
 
   const client = {
     send(raw) {
@@ -30,6 +31,7 @@ function socket_pair() {
   };
   const server = {
     send(raw) {
+      if (serverSendFailure) throw serverSendFailure;
       serverSent.push(raw);
       beforeServerDelivery?.(JSON.parse(raw));
       for (const listener of [...clientMessages]) listener(raw);
@@ -44,6 +46,7 @@ function socket_pair() {
     clientSent,
     serverSent,
     set_before_server_delivery(hook) { beforeServerDelivery = hook; },
+    fail_server_sends(error = new Error("forced transport failure")) { serverSendFailure = error; },
     push_server(message) { server.send(JSON.stringify(message)); },
     close() {
       for (const listener of [...clientCloses]) listener();
@@ -89,6 +92,14 @@ function compact_hson(value) {
   return hson.fromJson(value).toHson().noBreak().serialize();
 }
 
+function trace_sink(events) {
+  return { emit(event) { events.push(event); } };
+}
+
+function recovery_events(events, requestId) {
+  return events.filter((event) => event.details?.requestId === requestId && event.phase.startsWith("recovery."));
+}
+
 await check("protocol accepts string HSON without parsing snapshot syntax", () => {
   const decoded = decode_livehost_server_message(JSON.stringify({
     type: "recovery-snapshot",
@@ -124,7 +135,9 @@ await check("protocol rejects legacy value snapshots and malformed HSON envelope
 });
 
 await check("snapshot recovery installs one atomic in-place restoration", async () => {
-  const host = hson.liveHost.create({ state: { value: 7 }, logicalMapId: "map-snapshot" });
+  const events = [];
+  const trace = trace_sink(events);
+  const host = hson.liveHost.create({ state: { value: 7 }, logicalMapId: "map-snapshot", trace });
   host.map.set(["value"], 8);
   const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 0 });
@@ -137,7 +150,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
       host.map.set(["value"], 9);
     }
   });
-  const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId } });
+  const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId }, trace });
   const oldMap = client.map;
   const observed = [];
   client.recovery.on_change((change) => observed.push({ kind: change.kind, value: change.map.snap(), active: change.map === client.map }));
@@ -159,16 +172,29 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal(typeof snapshotMessage.snapshot.hson, "string");
   assert.equal(snapshotMessage.snapshot.hson.includes("\n"), false);
   assert.equal("value" in snapshotMessage.snapshot, false);
+  const requestId = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id;
+  const traced = recovery_events(events, requestId);
+  assert.deepEqual(traced.filter((event) => event.traceId.startsWith("lht-recovery-")).map((event) => event.phase), [
+    "recovery.request", "recovery.plan", "recovery.material", "recovery.transport",
+  ]);
+  assert.equal(traced.find((event) => event.phase === "recovery.material").details.strategy, "snapshot-plus-tail");
+  assert.equal(traced.find((event) => event.phase === "recovery.material").details.snapshotPresent, true);
+  assert.equal(traced.find((event) => event.phase === "recovery.apply").details.commitCount, 0);
+  assert.equal(traced.find((event) => event.phase === "recovery.complete" && event.status === "success").details.finalRev, snapshotMessage.snapshot.rev);
+  const serializedTrace = JSON.stringify(traced);
+  assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
 });
 
 await check("replay applies exact commits once and current emits no body", async () => {
-  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-replay" });
+  const events = [];
+  const trace = trace_sink(events);
+  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-replay", trace });
   const base = host.stream.headRev;
   const mirror = hson.liveMap.fromJson(host.map.snap());
   host.map.set(["value"], 1);
   host.map.set(["value"], 2);
   const pair = socket_pair();
-  const client = attach(host, pair, recovery_options(host, mirror, base));
+  const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace });
   const revs = [];
   client.recovery.on_change((change) => revs.push(change.rev));
   const replay = await client.recovery.recover();
@@ -179,6 +205,17 @@ await check("replay applies exact commits once and current emits no body", async
   const current = await client.recovery.recover();
   assert.equal(current.strategy, "current");
   assert.equal(client.recovery.debug().consumerNotifications, notifications);
+  const requestIds = pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").map((message) => message.id);
+  const replayEvents = recovery_events(events, requestIds[0]);
+  assert.equal(replayEvents.find((event) => event.phase === "recovery.plan").details.strategy, "incremental-replay");
+  assert.equal(replayEvents.find((event) => event.phase === "recovery.material").details.commitCount, 2);
+  assert.equal(replayEvents.find((event) => event.phase === "recovery.transport").details.outcome, "sent");
+  assert.equal(replayEvents.find((event) => event.phase === "recovery.apply").details.outcome, "applied");
+  assert.equal(replayEvents.find((event) => event.phase === "recovery.complete" && event.status === "success").details.outcome, "synchronized");
+  const currentEvents = recovery_events(events, requestIds[1]);
+  assert.equal(currentEvents.find((event) => event.phase === "recovery.plan").details.strategy, "already-current");
+  assert.equal(currentEvents.some((event) => event.phase === "recovery.material"), false);
+  assert.equal(currentEvents.find((event) => event.phase === "recovery.complete" && event.status === "success").details.outcome, "already-current");
 });
 
 await check("small history falls back to snapshot", async () => {
@@ -208,14 +245,43 @@ await check("incarnation mismatch resets only after snapshot validation", async 
 });
 
 await check("revision ahead rejects without replacing the mirror", async () => {
-  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-ahead" });
+  const events = [];
+  const trace = trace_sink(events);
+  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-ahead", trace });
   const mirror = hson.liveMap.fromJson({ value: 99 });
   const pair = socket_pair();
-  const client = attach(host, pair, recovery_options(host, mirror, host.stream.headRev + 2));
+  const client = attach(host, pair, { ...recovery_options(host, mirror, host.stream.headRev + 2), trace });
   await assert.rejects(client.recovery.recover(), (error) => error instanceof LiveHostClientRecoveryError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, host.stream.headRev + 2);
   assert.equal(pair.serverSent.some((raw) => JSON.parse(raw).type === "recovery-snapshot"), false);
+  const requestId = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id;
+  const traced = recovery_events(events, requestId);
+  const plan = traced.find((event) => event.phase === "recovery.plan");
+  assert.equal(plan.details.revisionRelationship, "ahead");
+  assert.equal(plan.details.errorCode, "REVISION_AHEAD_OF_AUTHORITY");
+  assert.equal(traced.some((event) => event.phase === "recovery.material"), false);
+  assert.equal(traced.filter((event) => event.phase === "recovery.complete" && event.status === "failure").length, 2);
+  assert.equal(JSON.stringify(traced).includes("Client revision"), false);
+});
+
+await check("recovery transport failure is terminal and payload-free", async () => {
+  const events = [];
+  const trace = trace_sink(events);
+  const host = hson.liveHost.create({ state: { value: "private-material" }, logicalMapId: "map-send-failure", trace });
+  const pair = socket_pair();
+  const client = attach(host, pair, { recovery: { logicalMapId: host.stream.logicalMapId }, trace });
+  pair.fail_server_sends();
+  const promise = client.recovery.recover();
+  const requestId = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id;
+  pair.close();
+  await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_DISCONNECTED");
+  const traced = recovery_events(events, requestId);
+  assert.equal(traced.find((event) => event.phase === "recovery.transport").details.outcome, "send-failed");
+  assert.equal(traced.find((event) => event.phase === "recovery.transport").details.errorCode, "LIVEHOST_RECOVERY_TRANSPORT_FAILED");
+  assert.equal(traced.some((event) => event.phase === "recovery.complete" && event.status === "success"), false);
+  assert.equal(JSON.stringify(traced).includes("private-material"), false);
+  assert.equal(JSON.stringify(traced).includes("forced transport failure"), false);
 });
 
 await check("cut boundary puts pre-cut in body and post-cut in tail", async () => {
@@ -297,10 +363,15 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
   const base = host.stream.headRev;
   host.map.set(["value"], 1);
   const pair = socket_pair();
-  const client = attach(host, pair, recovery_options(host, mirror, base));
+  const events = [];
+  const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace: trace_sink(events) });
   await assert.rejects(client.recovery.recover(), (error) => error.code === "LIVEHOST_RECOVERY_REPLAY_CONFLICT");
   assert.equal(client.recovery.lastAppliedRev, base);
   assert.deepEqual(client.map.snap(), { value: 100 });
+  const failedApply = events.find((event) => event.phase === "recovery.apply" && event.status === "failure");
+  assert.equal(failedApply.details.errorCode, "LIVEHOST_RECOVERY_REPLAY_CONFLICT");
+  assert.equal(events.filter((event) => event.phase === "recovery.complete").length, 1);
+  assert.equal(events.some((event) => event.phase === "recovery.complete" && event.status === "success"), false);
   const replacement = hson.liveHost.client({ socket: pair.client, recovery: { logicalMapId: host.stream.logicalMapId } });
   replacement.connect();
   assert.equal((await replacement.recovery.recover()).strategy, "snapshot");
@@ -309,7 +380,8 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
 await check("invalid snapshot retains old mirror and cursor", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
-  const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "bad-snapshot", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
+  const events = [];
+  const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "bad-snapshot", cursor: { incarnationId: "old", lastAppliedRev: 4 } }, trace: trace_sink(events) });
   client.connect();
   const promise = client.recovery.recover();
   const id = JSON.parse(pair.clientSent.at(-1)).id;
@@ -318,6 +390,8 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
   await assert.rejects(promise, (error) => error.code === "LIVEHOST_RECOVERY_INVALID_SNAPSHOT");
   assert.equal(client.map, mirror);
   assert.equal(client.recovery.lastAppliedRev, 4);
+  assert.equal(events.find((event) => event.phase === "recovery.apply").details.errorCode, "LIVEHOST_RECOVERY_INVALID_SNAPSHOT");
+  assert.equal(events.filter((event) => event.phase === "recovery.complete").length, 1);
 });
 
 await check("malformed snapshot HSON fails installation without advancing state", async () => {
@@ -417,14 +491,16 @@ await check("disposal is idempotent and later messages cannot mutate", async () 
 });
 
 await check("two clients recover independently with replay and snapshot", async () => {
-  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-multi" });
+  const events = [];
+  const trace = trace_sink(events);
+  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-multi", trace });
   const base = host.stream.headRev;
   const replayMirror = hson.liveMap.fromJson(host.map.snap());
   host.map.set(["value"], 1);
   const replayPair = socket_pair();
   const snapshotPair = socket_pair();
-  const replayClient = attach(host, replayPair, recovery_options(host, replayMirror, base));
-  const snapshotClient = attach(host, snapshotPair, { recovery: { logicalMapId: host.stream.logicalMapId } });
+  const replayClient = attach(host, replayPair, { ...recovery_options(host, replayMirror, base), trace });
+  const snapshotClient = attach(host, snapshotPair, { recovery: { logicalMapId: host.stream.logicalMapId }, trace });
   const [replayResult, snapshotResult] = await Promise.all([
     replayClient.recovery.recover(),
     snapshotClient.recovery.recover(),
@@ -437,10 +513,16 @@ await check("two clients recover independently with replay and snapshot", async 
   assert.equal(replayClient.recovery.lastAppliedRev, host.stream.headRev);
   assert.equal(snapshotClient.recovery.lastAppliedRev, host.stream.headRev);
   assert.notEqual(replayClient.map, snapshotClient.map);
+  const requestIds = [replayPair, snapshotPair].map((pair) => pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id);
+  const attempts = requestIds.map((requestId) => recovery_events(events, requestId));
+  assert.deepEqual(attempts.map((attempt) => attempt.find((event) => event.phase === "recovery.plan").details.strategy), ["incremental-replay", "snapshot"]);
+  assert.equal(attempts.every((attempt) => new Set(attempt.map((event) => event.details.requestId)).size === 1), true);
+  assert.equal(attempts.every((attempt) => attempt.filter((event) => event.phase === "recovery.complete" && event.status === "success").length === 1), true);
 });
 
 await check("legacy hello synchronization remains unchanged", async () => {
-  const host = hson.liveHost.create({ state: { value: "legacy" } });
+  const events = [];
+  const host = hson.liveHost.create({ state: { value: "legacy" }, trace: trace_sink(events) });
   const pair = socket_pair();
   host.connect(pair.server);
   const client = hson.liveHost.client({ socket: pair.client });
@@ -448,6 +530,10 @@ await check("legacy hello synchronization remains unchanged", async () => {
   assert.deepEqual(client.map.snap(), host.map.snap());
   assert.equal(pair.clientSent.map(JSON.parse).some((message) => message.type === "hello"), true);
   assert.equal(pair.clientSent.map(JSON.parse).some((message) => message.type === "recover"), false);
+  const plan = events.find((event) => event.phase === "resume.plan");
+  assert.equal(plan.details.strategy, "snapshot");
+  assert.equal(plan.details.snapshotPresent, true);
+  assert.equal("requestedRev" in plan.details, false);
 });
 
 function ws_socket(ws) {

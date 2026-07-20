@@ -257,12 +257,14 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   const authority = element(`<main/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-trace", trace });
   authority.document.attrs.set(root, "class", "ready");
-  host.recovery.plan({
+  const replayPlan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
   });
-  host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
+  replayPlan.complete();
+  const snapshotPlan = host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
+  snapshotPlan.complete();
   await Promise.resolve();
   await Promise.resolve();
   const publication = events.find((event) => event.phase === "commit.publication");
@@ -281,8 +283,8 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
     outcome: "published",
   });
   assert.deepEqual(
-    events.filter((event) => event.phase === "recovery.material").map((event) => event.details.recoveryPhase),
-    ["replay", "snapshot"],
+    events.filter((event) => event.phase === "recovery.material").map((event) => event.details.strategy),
+    ["incremental-replay", "snapshot"],
   );
   assert.equal(JSON.stringify(events).includes("ready"), false);
 

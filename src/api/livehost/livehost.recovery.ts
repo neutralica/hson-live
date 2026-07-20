@@ -29,7 +29,7 @@ import type {
   LiveTraceSink,
 } from "../../types/livehost.types.js";
 import { LiveHostRecoveryError } from "./livehost.error.js";
-import { create_live_trace_context } from "./livehost.trace.js";
+import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
 const DEFAULT_MAX_TAIL_BYTES = 1 * 1_024 * 1_024;
@@ -91,7 +91,14 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
   stream: LiveHostCanonicalStream<TMap>,
   options: LiveHostRecoveryOptions = {},
   traceSink?: LiveTraceSink,
-): LiveHostRecoveryPlanner {
+): LiveHostRecoveryPlanner & Readonly<{
+  plan_traced: (
+    request: LiveHostRecoveryRequest,
+    trace: LiveTraceContext,
+    correlation?: Readonly<{ requestId?: string }>,
+    hooks?: LiveHostRecoveryHooks,
+  ) => LiveHostRecoveryPlan;
+}> {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
   let activeAttemptCount = 0;
@@ -103,6 +110,7 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
   let disposedAttemptCount = 0;
   let abortedAttemptCount = 0;
   let overflowCount = 0;
+  let traceAttemptCount = 0;
 
   function reject(code: LiveHostRecoveryRejectCode, message: string): LiveHostRecoveryRejectPlan {
     rejectPlanCount += 1;
@@ -118,21 +126,40 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
   }
 
   function plan(request: LiveHostRecoveryRequest, hooks: LiveHostRecoveryHooks = {}): LiveHostRecoveryPlan {
+    if (traceSink === undefined) return plan_internal(request, hooks, undefined, undefined);
+    traceAttemptCount += 1;
+    const trace = create_live_trace_context(
+      traceSink,
+      `lht-recovery-${stream.logicalMapId}-${traceAttemptCount}`,
+    );
+    return plan_internal(request, hooks, trace, undefined);
+  }
+
+  function plan_internal(
+    request: LiveHostRecoveryRequest,
+    hooks: LiveHostRecoveryHooks,
+    trace: LiveTraceContext | undefined,
+    correlation: Readonly<{ requestId?: string }> | undefined,
+  ): LiveHostRecoveryPlan {
     if (request.logicalMapId !== stream.logicalMapId) {
-      return reject(
+      const rejected = reject(
         "LIVEHOST_RECOVERY_INVALID_TARGET",
         `Unknown LiveHost logical map ID: ${request.logicalMapId}`,
       );
+      trace_plan(trace, request, rejected, "invalid", correlation);
+      return rejected;
     }
 
     if (
       request.lastAppliedRev !== undefined
       && (!Number.isInteger(request.lastAppliedRev) || request.lastAppliedRev < 0)
     ) {
-      return reject(
+      const rejected = reject(
         "LIVEHOST_RECOVERY_INVALID_REQUEST",
         "LiveHost recovery lastAppliedRev must be a non-negative integer.",
       );
+      trace_plan(trace, request, rejected, "invalid", correlation);
+      return rejected;
     }
 
     try {
@@ -249,10 +276,12 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
         clear_queues();
         release_active_attempt();
         state = "disposed";
-        return reject(
+        const rejected = reject(
           "REVISION_AHEAD_OF_AUTHORITY",
           `Client revision ${usableRevision} is ahead of authoritative revision ${headRev}.`,
         );
+        trace_plan(trace, request, rejected, "ahead", correlation);
+        return rejected;
       }
 
       if (sameIncarnation && usableRevision === headRev) {
@@ -313,7 +342,6 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
           });
           encoded_bytes(snapshotBody);
           establish_cut(headRev);
-          trace_recovery("snapshot", headRev);
         } catch (cause) {
           if (cause instanceof LiveHostRecoveryError) throw cause;
           throw runtime_error(
@@ -405,6 +433,8 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
       release_active_attempt();
       completedAttemptCount += 1;
 
+      trace_material(trace, request, outcome, producedBody, completedTail, headRev, snapshotBody, correlation);
+
       return Object.freeze({ caughtUp, tail: completedTail });
     }
 
@@ -437,17 +467,18 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
         outcome: "current",
         body: EMPTY_BODY,
       });
+      trace_plan(trace, request, currentPlan, "equal", correlation);
       return currentPlan;
     }
 
     if (outcome === "replay" && replayBody) {
-      trace_recovery("replay", headRev);
       replayPlanCount += 1;
       const replayPlan: LiveHostRecoveryReplayPlan = Object.freeze({
         ...base,
         outcome: "replay",
         body: replayBody,
       });
+      trace_plan(trace, request, replayPlan, "behind-with-history", correlation);
       return replayPlan;
     }
 
@@ -459,6 +490,13 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
         reason: snapshotReason,
         body: snapshotBody,
       });
+      trace_plan(
+        trace,
+        request,
+        snapshotPlan,
+        snapshotReason === "incarnation_mismatch" ? "incarnation-mismatch" : "behind-before-history",
+        correlation,
+      );
       return snapshotPlan;
     }
 
@@ -484,21 +522,89 @@ export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
     });
   }
 
-  function trace_recovery(phase: "snapshot" | "replay", revision: number): void {
-    if (map.mode !== "element" && map.mode !== "fragment") return;
-    if (traceSink === undefined) return;
-    const trace = create_live_trace_context(traceSink, `lht-recovery-${stream.logicalMapId}-${revision}`);
+  function trace_plan(
+    trace: LiveTraceContext | undefined,
+    request: LiveHostRecoveryRequest,
+    recoveryPlan: LiveHostRecoveryPlan,
+    relationship: string,
+    correlation: Readonly<{ requestId?: string }> | undefined,
+  ): void {
+    if (trace === undefined) return;
+    const history = stream.history.debug();
+    const strategy = recoveryPlan.outcome === "current"
+      ? "already-current"
+      : recoveryPlan.outcome === "replay"
+        ? "incremental-replay"
+        : recoveryPlan.outcome;
+    trace.emit({
+      subsystem: "livehost",
+      phase: "recovery.plan",
+      status: recoveryPlan.outcome === "reject" ? "failure" : "success",
+      details: () => ({
+        ...(correlation?.requestId !== undefined ? { requestId: correlation.requestId } : {}),
+        logicalMapId: stream.logicalMapId,
+        incarnationId: stream.incarnationId,
+        mapMode: map.mode,
+        ...(request.lastAppliedRev !== undefined ? { requestedRev: request.lastAppliedRev } : {}),
+        currentRev: stream.headRev,
+        oldestAvailableRev: history.earliestResumableBaseRev,
+        targetRev: recoveryPlan.outcome === "reject" ? stream.headRev : recoveryPlan.headRev,
+        strategy,
+        revisionRelationship: relationship,
+        outcome: recoveryPlan.outcome,
+        ...(recoveryPlan.outcome === "replay" ? { commitCount: recoveryPlan.body.length } : {}),
+        snapshotPresent: recoveryPlan.outcome === "snapshot",
+        ...(recoveryPlan.outcome === "reject" ? { errorCode: recoveryPlan.error.code } : {}),
+      }),
+    });
+  }
+
+  function trace_material(
+    trace: LiveTraceContext | undefined,
+    request: LiveHostRecoveryRequest,
+    outcome: "current" | "replay" | "snapshot",
+    body: readonly LiveHostRecoveryBodyItem[],
+    tail: readonly LiveHostCanonicalCommit[],
+    headRev: number,
+    snapshot: LiveHostSnapshotEnvelope | undefined,
+    correlation: Readonly<{ requestId?: string }> | undefined,
+  ): void {
+    if (trace === undefined || outcome === "current") return;
+    const commits = [
+      ...body.filter((item): item is Extract<LiveHostRecoveryBodyItem, { kind: "commit" }> => item.kind === "commit").map((item) => item.commit),
+      ...tail,
+    ];
+    const operationKinds = commits.flatMap((commit) => commit.ops.map((operation) =>
+      "domain" in operation ? operation.op : operation.kind));
     trace.emit({
       subsystem: "livehost",
       phase: "recovery.material",
       status: "success",
       details: () => ({
+        ...(correlation?.requestId !== undefined ? { requestId: correlation.requestId } : {}),
+        logicalMapId: stream.logicalMapId,
+        incarnationId: stream.incarnationId,
         mapMode: map.mode,
-        revision,
-        recoveryPhase: phase,
+        strategy: outcome === "replay"
+          ? "incremental-replay"
+          : tail.length > 0 ? "snapshot-plus-tail" : "snapshot",
+        snapshotPresent: snapshot !== undefined,
+        ...(snapshot !== undefined ? { snapshotByteLength: encoded_bytes(snapshot) } : {}),
+        commitCount: commits.length,
+        operationCount: operationKinds.length,
+        operationKinds,
+        ...(request.lastAppliedRev !== undefined ? { fromRev: request.lastAppliedRev } : {}),
+        toRev: headRev,
+        tailCommitCount: tail.length,
+        ...(tail[0] !== undefined ? { tailFromRev: tail[0].prevRev, tailToRev: tail[tail.length - 1].rev } : {}),
+        outcome: "constructed",
       }),
     });
   }
 
-  return Object.freeze({ plan, debug });
+  return Object.freeze({
+    plan,
+    plan_traced: (request, trace, correlation, hooks = {}) => plan_internal(request, hooks, trace, correlation),
+    debug,
+  });
 }

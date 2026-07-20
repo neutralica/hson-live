@@ -1176,6 +1176,8 @@ export type LiveHostClientOptionsForMap<
   actionStatusId?: () => LiveHostActionStatusId;
   recovery?: LiveHostClientRecoveryOptions;
   session?: LiveHostClientSessionOptions;
+  /** Optional local-only client lifecycle trace sink. Never transmitted. */
+  trace?: LiveTraceSink;
 }>;
 
 export type LiveHostClientOptions<

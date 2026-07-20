@@ -1,5 +1,6 @@
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
+export { canonical_hson_graph_equal as canonical_graph_equal } from "../../core/canonical-hson-equal.js";
 import type {
   DocumentLiveMapCapture,
   DocumentLiveMapInstallOptions,
@@ -133,25 +134,4 @@ export function prepare_document_install(
   } catch (cause) {
     throw new LiveMapDocumentInstallError("capture document identity is invalid", { cause });
   }
-}
-
-/** Canonical graph equality includes attributes, metadata, order, and QUIDs. */
-export function canonical_graph_equal(left: unknown, right: unknown): boolean {
-  if (left === right) return true;
-  if (left === null || right === null || typeof left !== typeof right) return false;
-  if (typeof left !== "object" || typeof right !== "object") return false;
-  if (Array.isArray(left)) {
-    return Array.isArray(right)
-      && left.length === right.length
-      && left.every((item, index) => canonical_graph_equal(item, right[index]));
-  }
-  if (Array.isArray(right)) return false;
-
-  const leftRecord = left as Record<string, unknown>;
-  const rightRecord = right as Record<string, unknown>;
-  const leftKeys = Object.keys(leftRecord);
-  const rightKeys = Object.keys(rightRecord);
-  return leftKeys.length === rightKeys.length
-    && leftKeys.every((key) => Object.prototype.hasOwnProperty.call(rightRecord, key)
-      && canonical_graph_equal(leftRecord[key], rightRecord[key]));
 }

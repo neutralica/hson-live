@@ -432,6 +432,20 @@ isolated. The governing invariant is:
 > Tracing enabled and tracing disabled must produce identical state, revisions,
 > commits, results, errors, and transport behavior.
 
+Canonical recovery uses aggregate `recovery.request`, `recovery.plan`,
+`recovery.material`, `recovery.transport`, `recovery.apply`, and
+`recovery.complete` events. The host trace exposes revision relationship and
+the selected already-current, incremental-replay, snapshot, or
+snapshot-plus-tail strategy. A client may opt into its local application trace
+with the same `trace` option. Host and client trace IDs remain runtime-local;
+the existing recovery request ID, logical map/incarnation identity, and
+revision facts relate the two narratives without adding tracing fields to the
+protocol. Recovery details contain counts, operation kinds, revisions,
+controlled outcomes, and error codes—not snapshots, HSON, commits, operation
+values, raw messages, or caught errors. The boundary that transports or applies
+a failure owns its event; recovery helpers do not repeatedly log the same
+failure.
+
 This is a narrow diagnostics foundation, not a complete observability platform.
 Client projection, graph-operation, LiveTree, remote collection, sampling,
 metrics, and viewer work remain deferred.
