@@ -392,6 +392,63 @@ await check("snapshot capabilities cannot change during one connection", async (
   assert.equal(messages.some((message) => message.type === "recovery-snapshot" && message.id === "changed-selection"), false);
 });
 
+await check("concurrent recovery is rejected without a second material sequence", async () => {
+  const authority = element(`<main data-_quid="0000000000000048"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "concurrent-recovery" });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  let repeated = false;
+  pair.set_before_server_delivery((message) => {
+    if (repeated || message.type !== "recovery-plan" || message.id !== "first-recovery") return;
+    repeated = true;
+    pair.client.send(JSON.stringify({
+      type: "recover",
+      id: "concurrent-recovery",
+      logicalMapId: host.stream.logicalMapId,
+      snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+    }));
+  });
+  pair.client.send(JSON.stringify({
+    type: "recover",
+    id: "first-recovery",
+    logicalMapId: host.stream.logicalMapId,
+    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+  }));
+  const messages = pair.serverSent.map(JSON.parse);
+  assert.equal(messages.filter((message) => message.type === "recovery-plan").length, 1);
+  assert.equal(messages.filter((message) => message.type === "recovery-snapshot").length, 1);
+  assert.equal(messages.filter((message) => message.type === "recovery-caught-up").length, 1);
+  assert.equal(
+    messages.find((message) => message.type === "recovery-error" && message.id === "concurrent-recovery")?.error.code,
+    "LIVEHOST_RECOVERY_IN_PROGRESS",
+  );
+});
+
+await check("completed request IDs reject while a new same-capability resync remains deliberate", async () => {
+  const authority = element(`<main data-_quid="0000000000000047"/>`);
+  const host = hson.liveHost.create({ map: authority, logicalMapId: "completed-recovery" });
+  const pair = socket_pair();
+  host.connect(pair.server);
+  const request = {
+    type: "recover",
+    id: "completed-request",
+    logicalMapId: host.stream.logicalMapId,
+    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+  };
+  pair.client.send(JSON.stringify(request));
+  pair.client.send(JSON.stringify(request));
+  pair.client.send(JSON.stringify({ ...request, id: "fresh-resync" }));
+  const messages = pair.serverSent.map(JSON.parse);
+  assert.equal(
+    messages.find((message) => message.type === "recovery-error" && message.id === "completed-request")?.error.code,
+    "LIVEHOST_RECOVERY_COMPLETED",
+  );
+  assert.equal(messages.filter((message) => message.type === "recovery-plan" && message.id === "completed-request").length, 1);
+  assert.equal(messages.filter((message) => message.type === "recovery-caught-up" && message.id === "completed-request").length, 1);
+  assert.equal(messages.filter((message) => message.type === "recovery-plan" && message.id === "fresh-resync").length, 1);
+  assert.equal(messages.filter((message) => message.type === "recovery-caught-up" && message.id === "fresh-resync").length, 1);
+});
+
 await check("malformed snapshot capability advertisements reject without document disclosure", async () => {
   const authority = element(`<main title="private-capability-document"/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "malformed-capabilities" });
@@ -549,6 +606,7 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
   await client.recovery.recover();
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
   const tailMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-commit" && message.phase === "tail");
+  const recoveryMessages = pair.serverSent.map(JSON.parse).filter((message) => message.id === tailMessage.id);
   assert.equal(snapshotMessage.snapshot.format, "view-state");
   assert.equal("hson" in snapshotMessage.snapshot, false);
   assert.equal(tailMessage.commit.rev, host.stream.headRev);
@@ -559,6 +617,13 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
   assert.equal(restored.$_attrs.title, "tail-applied");
   assert.equal(client.recovery.debug().snapshotInstalls, 1);
   assert.equal(client.recovery.debug().tailCommitsApplied, 1);
+  assert.deepEqual(recoveryMessages.map((message) => message.type), [
+    "recovery-plan",
+    "recovery-snapshot",
+    "recovery-commit",
+    "recovery-caught-up",
+  ]);
+  assert.equal(recoveryMessages.at(-1).caughtUp.throughRev, host.stream.headRev);
 });
 
 await check("view-state snapshot mode and revision mismatches fail before restore", async () => {

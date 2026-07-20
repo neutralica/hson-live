@@ -126,9 +126,9 @@ type TracedLiveHostRecoveryPlanner = LiveHostRecoveryPlanner & Readonly<{
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
 
 /**
- * The established public planner type remains legacy-only. Canonical envelopes
- * are reachable solely through the internal host factory and retain the same
- * runtime recovery item shape for the existing transport loop.
+ * The established public planner type remains legacy-only. Connection-selected
+ * envelopes retain the same internal recovery-item shape for the single host
+ * transport loop.
  */
 function recovery_plan_snapshot_view(
   snapshot: LiveHostOutboundDocumentSnapshotEnvelope,
@@ -490,18 +490,19 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       must_be_active();
       stopSubscription();
       const completedTail = Object.freeze([...tail]);
+      const throughRev = completedTail[completedTail.length - 1]?.rev ?? headRev;
       const caughtUp = Object.freeze({
         kind: "caught_up" as const,
         logicalMapId: stream.logicalMapId,
         incarnationId: stream.incarnationId,
-        throughRev: headRev,
+        throughRev,
       });
       clear_queues();
       state = "completed";
       release_active_attempt();
       completedAttemptCount += 1;
 
-      trace_material(trace, request, outcome, producedBody, completedTail, headRev, snapshotBody, correlation);
+      trace_material(trace, request, outcome, producedBody, completedTail, throughRev, snapshotBody, correlation);
 
       return Object.freeze({ caughtUp, tail: completedTail });
     }

@@ -62,6 +62,32 @@ const VIEW_STATE_V1_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object
   formatVersion: 1,
 });
 
+type LiveHostConnectionRecoveryState =
+  | Readonly<{ phase: "awaiting-recovery" }>
+  | Readonly<{
+    phase: "recovering";
+    requestId: string;
+    snapshotEncoding: LiveHostDocumentSnapshotEncoding;
+    capabilitySignature: string;
+  }>
+  | Readonly<{
+    phase: "caught-up";
+    requestId: string;
+    snapshotEncoding: LiveHostDocumentSnapshotEncoding;
+    capabilitySignature: string;
+  }>
+  | Readonly<{ phase: "failed" }>;
+
+class LiveHostConnectionRecoveryError extends Error {
+  public constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "LiveHostConnectionRecoveryError";
+  }
+}
+
 function select_snapshot_encoding(
   capabilities: LiveHostSnapshotCapabilities | undefined,
   documentMode: boolean,
@@ -744,8 +770,7 @@ function create_livehost_for_map<
     let connectionEpoch: number | undefined;
     let sessionResumable: boolean | undefined;
     let stopRecoveryChannel: LiveHostDisposer | undefined;
-    let negotiatedSnapshotEncoding: LiveHostDocumentSnapshotEncoding | undefined;
-    let snapshotCapabilitySignature: string | undefined;
+    let recoveryState: LiveHostConnectionRecoveryState = Object.freeze({ phase: "awaiting-recovery" });
 
     function raw_send(message: LiveHostServerMessage): void {
       if (transportOpen) socket.send(encode_livehost_message(message));
@@ -775,7 +800,7 @@ function create_livehost_for_map<
       stop?.();
     }
 
-    function negotiate_snapshot_encoding(message: LiveHostClientRecoverMessage): Readonly<{
+    function begin_recovery(message: LiveHostClientRecoverMessage): Readonly<{
       encoding: LiveHostDocumentSnapshotEncoding;
       acknowledgment?: LiveHostSnapshotEncodingSelection;
     }> {
@@ -784,28 +809,87 @@ function create_livehost_for_map<
         message.snapshotCapabilities,
         map.mode === "element" || map.mode === "fragment",
       );
-      if (negotiatedSnapshotEncoding === undefined) {
-        negotiatedSnapshotEncoding = selected;
-        snapshotCapabilitySignature = signature;
-      } else if (snapshotCapabilitySignature !== signature
-        || !snapshot_encoding_equal(negotiatedSnapshotEncoding, selected)) {
+      if (recoveryState.phase === "recovering") {
+        if (recoveryState.capabilitySignature !== signature
+          || !snapshot_encoding_equal(recoveryState.snapshotEncoding, selected)) {
+          throw new LiveHostRecoveryError(
+            "LIVEHOST_RECOVERY_NEGOTIATION_FAILED",
+            "LiveHost snapshot capabilities cannot change during one connection.",
+          );
+        }
+        throw new LiveHostConnectionRecoveryError(
+          "LIVEHOST_RECOVERY_IN_PROGRESS",
+          "LiveHost recovery is already in progress on this connection.",
+        );
+      }
+      if (recoveryState.phase === "failed") {
+        throw new LiveHostConnectionRecoveryError(
+          "LIVEHOST_RECOVERY_LIFECYCLE_INVALID",
+          "LiveHost recovery cannot restart on a failed connection.",
+        );
+      }
+      if (recoveryState.phase === "caught-up"
+        && (recoveryState.capabilitySignature !== signature
+          || !snapshot_encoding_equal(recoveryState.snapshotEncoding, selected))) {
         throw new LiveHostRecoveryError(
           "LIVEHOST_RECOVERY_NEGOTIATION_FAILED",
           "LiveHost snapshot capabilities cannot change during one connection.",
         );
       }
+      if (recoveryState.phase === "caught-up" && recoveryState.requestId === message.id) {
+        throw new LiveHostConnectionRecoveryError(
+          "LIVEHOST_RECOVERY_COMPLETED",
+          "LiveHost recovery request is already completed on this connection.",
+        );
+      }
+      const encoding = recoveryState.phase === "caught-up"
+        ? recoveryState.snapshotEncoding
+        : selected;
+      recoveryState = Object.freeze({
+        phase: "recovering",
+        requestId: message.id,
+        snapshotEncoding: encoding,
+        capabilitySignature: signature,
+      });
       return Object.freeze({
-        encoding: negotiatedSnapshotEncoding,
+        encoding,
         ...(message.snapshotCapabilities !== undefined
-          ? { acknowledgment: negotiatedSnapshotEncoding }
+          ? { acknowledgment: encoding }
           : {}),
       });
+    }
+
+    function fail_active_recovery(requestId: string): void {
+      if (recoveryState.phase === "recovering" && recoveryState.requestId === requestId) {
+        recoveryState = Object.freeze({ phase: "failed" });
+      }
+    }
+
+    function send_recovery(message: LiveHostServerMessage, requestId: string): void {
+      if (recoveryState.phase !== "recovering"
+        || recoveryState.requestId !== requestId
+        || !authoritative()) {
+        throw new LiveHostConnectionRecoveryError(
+          "LIVEHOST_RECOVERY_INTERRUPTED",
+          "LiveHost recovery was interrupted before completion.",
+        );
+      }
+      raw_send(message);
+      if (recoveryState.phase !== "recovering"
+        || recoveryState.requestId !== requestId
+        || !authoritative()) {
+        throw new LiveHostConnectionRecoveryError(
+          "LIVEHOST_RECOVERY_INTERRUPTED",
+          "LiveHost recovery was interrupted before completion.",
+        );
+      }
     }
 
     function fence_attachment(fencedSessionId: LiveHostSessionId, epoch: number): void {
       if (sessionId !== fencedSessionId || connectionEpoch !== epoch || fenced) return;
       raw_send({ type: "session-fenced", sessionId: fencedSessionId, epoch, code: "LIVEHOST_SESSION_ATTACHMENT_FENCED" });
       fenced = true;
+      recoveryState = Object.freeze({ phase: "failed" });
       dispose_recovery_channel();
     }
 
@@ -1175,7 +1259,6 @@ function create_livehost_for_map<
 
     function handle_recover(message: LiveHostClientRecoverMessage): void {
       if (!sessionId || connectionEpoch === undefined || !authoritative()) return;
-      dispose_recovery_channel();
       const startedAt = Date.now();
       const trace = options.trace === undefined
         ? undefined
@@ -1198,8 +1281,10 @@ function create_livehost_for_map<
         }),
       });
       let plan;
+      let negotiation;
       try {
-        const negotiation = negotiate_snapshot_encoding(message);
+        negotiation = begin_recovery(message);
+        dispose_recovery_channel();
         const request = {
           logicalMapId: message.logicalMapId,
           ...(message.incarnationId !== undefined ? { incarnationId: message.incarnationId } : {}),
@@ -1215,7 +1300,7 @@ function create_livehost_for_map<
           );
         const snapshotEncoding = negotiation.acknowledgment;
         if (plan.outcome === "reject") {
-          send_without_record({
+          send_recovery({
             type: "recovery-plan",
             id: message.id,
             sessionId,
@@ -1225,13 +1310,15 @@ function create_livehost_for_map<
             outcome: "reject",
             error: plan.error,
             ...(snapshotEncoding ? { snapshotEncoding } : {}),
-          });
+          }, message.id);
         }
       } catch (cause) {
+        fail_active_recovery(message.id);
         recovery_error(message.id, cause, trace, startedAt);
         return;
       }
       if (plan.outcome === "reject") {
+        fail_active_recovery(message.id);
         try {
           trace?.emit({
             subsystem: "transport",
@@ -1263,9 +1350,7 @@ function create_livehost_for_map<
         pendingLive.length = 0;
       };
       try {
-        const snapshotEncoding = message.snapshotCapabilities === undefined
-          ? undefined
-          : negotiatedSnapshotEncoding;
+        const snapshotEncoding = negotiation.acknowledgment;
         const base = {
           type: "recovery-plan" as const,
           id: message.id,
@@ -1275,19 +1360,27 @@ function create_livehost_for_map<
           headRev: plan.headRev,
           ...(snapshotEncoding ? { snapshotEncoding } : {}),
         };
-        if (plan.outcome === "snapshot") send_without_record({ ...base, outcome: "snapshot", reason: plan.reason });
-        else send_without_record({ ...base, outcome: plan.outcome });
+        if (plan.outcome === "snapshot") send_recovery({ ...base, outcome: "snapshot", reason: plan.reason }, message.id);
+        else send_recovery({ ...base, outcome: plan.outcome }, message.id);
         const completion = plan.complete((item) => {
-          if (item.kind === "snapshot") send_without_record({ type: "recovery-snapshot", id: message.id, snapshot: item.snapshot });
-          else send_without_record({ type: "recovery-commit", id: message.id, phase: "body", commit: item.commit });
+          if (item.kind === "snapshot") send_recovery({ type: "recovery-snapshot", id: message.id, snapshot: item.snapshot }, message.id);
+          else send_recovery({ type: "recovery-commit", id: message.id, phase: "body", commit: item.commit }, message.id);
         });
         stopLive = stream.on_commit((commit) => {
           if (!channelActive || !authoritative()) return;
           if (!liveReady) pendingLive.push(commit);
           else send_without_record({ type: "commit", id: message.id, commit });
         });
-        send_without_record({ type: "recovery-caught-up", id: message.id, caughtUp: completion.caughtUp });
-        for (const commit of completion.tail) send_without_record({ type: "recovery-commit", id: message.id, phase: "tail", commit });
+        for (const commit of completion.tail) {
+          send_recovery({ type: "recovery-commit", id: message.id, phase: "tail", commit }, message.id);
+        }
+        send_recovery({ type: "recovery-caught-up", id: message.id, caughtUp: completion.caughtUp }, message.id);
+        recoveryState = Object.freeze({
+          phase: "caught-up",
+          requestId: message.id,
+          snapshotEncoding: negotiation.encoding,
+          capabilitySignature: snapshot_capability_signature(message.snapshotCapabilities),
+        });
         while (pendingLive.length) {
           const commit = pendingLive.shift();
           if (commit) send_without_record({ type: "commit", id: message.id, commit });
@@ -1308,15 +1401,32 @@ function create_livehost_for_map<
             requestId: message.id,
             strategy,
             ...(message.lastAppliedRev !== undefined ? { requestedRev: message.lastAppliedRev } : {}),
-            targetRev: plan.headRev,
+            targetRev: completion.caughtUp.throughRev,
             messageCount: 2 + bodyMessageCount + completion.tail.length,
             commitCount: bodyCommitCount + completion.tail.length,
             snapshotPresent: plan.outcome === "snapshot",
             outcome: "sent",
           }),
         });
+        trace?.emit({
+          subsystem: "livehost",
+          phase: "recovery.complete",
+          status: "success",
+          durationMs: Math.max(0, Date.now() - startedAt),
+          details: () => ({
+            requestId: message.id,
+            strategy,
+            targetRev: completion.caughtUp.throughRev,
+            snapshotFormat: negotiation.encoding.format,
+            ...(negotiation.encoding.format === "view-state"
+              ? { snapshotFormatVersion: negotiation.encoding.formatVersion }
+              : {}),
+            outcome: "synchronized",
+          }),
+        });
       } catch (cause) {
         dispose_recovery_channel();
+        fail_active_recovery(message.id);
         recovery_error(message.id, cause, trace, startedAt);
       }
     }
@@ -1439,8 +1549,7 @@ function create_livehost_for_map<
     function detach_transport(hostShutdown = false): void {
       if (!transportOpen) return;
       transportOpen = false;
-      negotiatedSnapshotEncoding = undefined;
-      snapshotCapabilitySignature = undefined;
+      recoveryState = Object.freeze({ phase: "awaiting-recovery" });
       dispose_recovery_channel();
       if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
         sync.detach_session(sessionId);

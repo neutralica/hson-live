@@ -146,6 +146,18 @@ type PendingRecovery = {
   snapshotRev?: number;
 };
 
+type ClientRecoveryLifecycle =
+  | Readonly<{ phase: "disconnected" | "idle" | "failed" }>
+  | Readonly<{ phase: "awaiting-plan"; requestId: LiveHostRecoveryId }>
+  | Readonly<{
+    phase: "consuming";
+    requestId: LiveHostRecoveryId;
+    plan: Exclude<LiveHostServerRecoveryPlanMessage, { outcome: "reject" }>;
+    snapshotReceived: boolean;
+    tailStarted: boolean;
+  }>
+  | Readonly<{ phase: "caught-up"; requestId: LiveHostRecoveryId }>;
+
 type PendingSession = Readonly<{
   id: LiveHostSessionRequestId;
   kind: "create" | "reattach" | "goodbye";
@@ -251,9 +263,8 @@ export function create_livehost_client<
   let lastAppliedRev = options.recovery?.cursor?.lastAppliedRev;
   let firstFailure: LiveHostClientRecoveryFailure | undefined;
   let pendingRecovery: PendingRecovery | undefined;
-  let activeRecoveryId: LiveHostRecoveryId | undefined;
+  let recoveryLifecycle: ClientRecoveryLifecycle = Object.freeze({ phase: "disconnected" });
   let stopRecoveryMessages: LiveHostDisposer | undefined;
-  let recoveryPlan: LiveHostServerRecoveryPlanMessage | undefined;
   let negotiatedSnapshotEncoding: LiveHostSnapshotEncodingSelection | undefined;
   let bodyCommitsApplied = 0;
   let snapshotInstalls = 0;
@@ -289,8 +300,7 @@ export function create_livehost_client<
     recoveryFailures += 1;
     recoveryStatus = "failed";
     recoveryStrategy = recoveryStrategy ?? "reject";
-    recoveryPlan = undefined;
-    activeRecoveryId = undefined;
+    recoveryLifecycle = Object.freeze({ phase: "failed" });
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
     pendingRecovery = undefined;
@@ -339,8 +349,8 @@ export function create_livehost_client<
   }
 
   function require_plan(messageId: string): LiveHostServerRecoveryPlanMessage | undefined {
-    if (activeRecoveryId !== messageId || !recoveryPlan) return undefined;
-    return recoveryPlan;
+    if (recoveryLifecycle.phase !== "consuming" || recoveryLifecycle.requestId !== messageId) return undefined;
+    return recoveryLifecycle.plan;
   }
 
   function validate_snapshot_encoding_acknowledgment(
@@ -492,6 +502,9 @@ export function create_livehost_client<
       lastAppliedRev = snapshot.rev;
       if (pendingRecovery !== undefined) pendingRecovery.snapshotRev = snapshot.rev;
       snapshotInstalls += 1;
+      if (recoveryLifecycle.phase === "consuming" && recoveryLifecycle.requestId === messageId) {
+        recoveryLifecycle = Object.freeze({ ...recoveryLifecycle, snapshotReceived: true });
+      }
       notify({ kind: "snapshot", logicalMapId: snapshot.logicalMapId, incarnationId: snapshot.incarnationId, rev: snapshot.rev, map });
     } catch (cause) {
       if (cause instanceof LiveHostDocumentSnapshotDecodeError) {
@@ -504,15 +517,24 @@ export function create_livehost_client<
 
   function handle_recovery_message(message: LiveHostDecodedServerMessage): boolean {
     if (message.type !== "recovery-plan" && message.type !== "recovery-commit" && message.type !== "recovery-snapshot" && message.type !== "recovery-caught-up" && message.type !== "commit" && message.type !== "recovery-error") return false;
-    if (message.id !== activeRecoveryId || recoveryStatus === "failed" || recoveryStatus === "disposed") return true;
+    if (recoveryStatus === "failed" || recoveryStatus === "disposed") return true;
+    const activeRequestId = recoveryLifecycle.phase === "awaiting-plan"
+      || recoveryLifecycle.phase === "consuming"
+      || recoveryLifecycle.phase === "caught-up"
+      ? recoveryLifecycle.requestId
+      : undefined;
+    if (message.id !== activeRequestId) return true;
 
     if (message.type === "recovery-plan") {
+      if (recoveryLifecycle.phase !== "awaiting-plan") {
+        fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost sent more than one recovery plan for one recovery lifecycle.");
+        return true;
+      }
       if (message.logicalMapId !== options.recovery?.logicalMapId) {
         fail_recovery("LIVEHOST_RECOVERY_STREAM_MISMATCH", "Recovery plan targets a different logical map.");
         return true;
       }
       if (!validate_snapshot_encoding_acknowledgment(message.snapshotEncoding)) return true;
-      recoveryPlan = message;
       recoveryStrategy = message.outcome;
       if (message.outcome === "reject") {
         fail_recovery(message.error.code, message.error.message);
@@ -520,7 +542,15 @@ export function create_livehost_client<
       }
       if (message.outcome !== "snapshot" && (incarnationId !== message.incarnationId || lastAppliedRev === undefined)) {
         fail_recovery("LIVEHOST_RECOVERY_CURSOR_MISMATCH", "Recovery plan requires a matching complete mirror cursor.");
+        return true;
       }
+      recoveryLifecycle = Object.freeze({
+        phase: "consuming",
+        requestId: message.id,
+        plan: message,
+        snapshotReceived: false,
+        tailStarted: false,
+      });
       return true;
     }
 
@@ -529,27 +559,66 @@ export function create_livehost_client<
       return true;
     }
 
+    if (recoveryLifecycle.phase === "awaiting-plan") {
+      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery material arrived before its recovery plan.");
+      return true;
+    }
+    if (recoveryLifecycle.phase === "caught-up") {
+      if (message.type === "commit") {
+        apply_commit(message.commit, "live");
+        return true;
+      }
+      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery material arrived after caught-up.");
+      return true;
+    }
     const plan = require_plan(message.id);
-    if (!plan || plan.outcome === "reject") return true;
+    if (!plan || plan.outcome === "reject" || recoveryLifecycle.phase !== "consuming") return true;
     if (message.type === "recovery-snapshot") {
+      if (plan.outcome !== "snapshot" || recoveryLifecycle.snapshotReceived || recoveryLifecycle.tailStarted) {
+        fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery snapshot order is invalid.");
+        return true;
+      }
       install_snapshot(message.id, message.snapshot);
       return true;
     }
     if (message.type === "recovery-commit") {
+      if (message.phase === "body") {
+        if (plan.outcome !== "replay" || recoveryLifecycle.tailStarted) {
+          fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery body commit order is invalid.");
+          return true;
+        }
+      } else {
+        if (plan.outcome === "snapshot" && !recoveryLifecycle.snapshotReceived) {
+          fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery tail arrived before its snapshot.");
+          return true;
+        }
+        if (!recoveryLifecycle.tailStarted) {
+          recoveryLifecycle = Object.freeze({ ...recoveryLifecycle, tailStarted: true });
+        }
+      }
       apply_commit(message.commit, message.phase);
       return true;
     }
     if (message.type === "commit") {
-      apply_commit(message.commit, "live");
+      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost live commit arrived before caught-up.");
       return true;
     }
 
     const caught = message.caughtUp;
-    if (caught.logicalMapId !== plan.logicalMapId || caught.incarnationId !== plan.incarnationId || caught.throughRev !== plan.headRev || incarnationId !== caught.incarnationId || lastAppliedRev !== caught.throughRev) {
+    if (plan.outcome === "snapshot" && !recoveryLifecycle.snapshotReceived) {
+      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost caught-up arrived before its snapshot.");
+      return true;
+    }
+    if (caught.logicalMapId !== plan.logicalMapId
+      || caught.incarnationId !== plan.incarnationId
+      || caught.throughRev < plan.headRev
+      || incarnationId !== caught.incarnationId
+      || lastAppliedRev !== caught.throughRev) {
       fail_recovery("LIVEHOST_RECOVERY_CAUGHT_UP_MISMATCH", "Caught-up boundary does not match the installed mirror cursor.");
       return true;
     }
     recoveryStatus = "caught_up";
+    recoveryLifecycle = Object.freeze({ phase: "caught-up", requestId: message.id });
     const pending = pendingRecovery;
     pendingRecovery = undefined;
     const previousIncarnation = options.recovery?.cursor?.incarnationId;
@@ -584,7 +653,7 @@ export function create_livehost_client<
         incarnationId: plan.incarnationId,
         strategy,
         ...(pending.requestedRev !== undefined ? { requestedRev: pending.requestedRev } : {}),
-        targetRev: plan.headRev,
+        targetRev: caught.throughRev,
         finalRev: map.rev,
         commitCount: pending.commitCount,
         outcome: plan.outcome === "current" ? "already-current" : "synchronized",
@@ -595,7 +664,7 @@ export function create_livehost_client<
       sessionId: plan.sessionId,
       logicalMapId: plan.logicalMapId,
       incarnationId: plan.incarnationId,
-      headRev: plan.headRev,
+      headRev: caught.throughRev,
       incarnationChanged: previousIncarnation !== undefined && previousIncarnation !== plan.incarnationId,
     });
     return true;
@@ -754,6 +823,14 @@ export function create_livehost_client<
   function connect(): LiveHostDisposer {
     if (isConnected) return disconnect;
     isConnected = true;
+    if (!recoveryDisposed) {
+      recoveryLifecycle = Object.freeze({ phase: "idle" });
+      if (recoveryStatus === "failed" || recoveryStatus === "caught_up") {
+        recoveryStatus = "idle";
+        recoveryStrategy = undefined;
+        firstFailure = undefined;
+      }
+    }
     const stopMessage = options.socket.onMessage((raw) => {
       const decoded = decode_livehost_client_server_message(raw);
       if (!decoded.ok || is_recovery_message(decoded.value)) return;
@@ -783,6 +860,7 @@ export function create_livehost_client<
     if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
       fail_recovery("LIVEHOST_RECOVERY_DISCONNECTED", "LiveHost recovery transport disconnected.");
     }
+    recoveryLifecycle = Object.freeze({ phase: "disconnected" });
   }
 
   function recover(): Promise<LiveHostClientRecoveryResult> {
@@ -790,12 +868,12 @@ export function create_livehost_client<
     if (!options.recovery) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_NOT_CONFIGURED", "LiveHost client recovery is not configured."));
     if (!isConnected) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_DISCONNECTED", "LiveHost recovery requires a connected transport."));
     if (pendingRecovery) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_IN_PROGRESS", "LiveHost recovery is already in progress."));
+    if (recoveryStatus === "failed") return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_LIFECYCLE_INVALID", "LiveHost recovery requires a reconnect after failure."));
     const id = make_recovery_id();
     install_recovery_messages();
-    activeRecoveryId = id;
+    recoveryLifecycle = Object.freeze({ phase: "awaiting-plan", requestId: id });
     recoveryStatus = "recovering";
     recoveryStrategy = undefined;
-    recoveryPlan = undefined;
     const recoveryOptions = options.recovery;
     const startedAt = Date.now();
     const trace = options.trace === undefined
@@ -843,10 +921,9 @@ export function create_livehost_client<
     recoveryDisposed = true;
     const pending = pendingRecovery;
     pendingRecovery = undefined;
-    activeRecoveryId = undefined;
+    recoveryLifecycle = Object.freeze({ phase: "failed" });
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
-    recoveryPlan = undefined;
     recoveryStatus = "disposed";
     pending?.trace?.emit({
       subsystem: "client",

@@ -88,6 +88,23 @@ function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
   };
 }
 
+function begin_scripted_projected_recovery(logicalMapId) {
+  const pair = socket_pair();
+  const mirror = hson.liveMap.fromJson({ value: 0 });
+  const client = hson.liveHost.client({
+    socket: pair.client,
+    map: mirror,
+    recovery: {
+      logicalMapId,
+      cursor: { incarnationId: "inc", lastAppliedRev: 0 },
+    },
+  });
+  client.connect();
+  const promise = client.recovery.recover();
+  const id = JSON.parse(pair.clientSent.at(-1)).id;
+  return { pair, mirror, client, promise, id };
+}
+
 function compact_hson(value) {
   return hson.fromJson(value).toHson().noBreak().serialize();
 }
@@ -175,12 +192,12 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const requestId = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover").id;
   const traced = recovery_events(events, requestId);
   assert.deepEqual(traced.filter((event) => event.traceId.startsWith("lht-recovery-")).map((event) => event.phase), [
-    "recovery.request", "recovery.plan", "recovery.material", "recovery.transport",
+    "recovery.request", "recovery.plan", "recovery.material", "recovery.transport", "recovery.complete",
   ]);
   assert.equal(traced.find((event) => event.phase === "recovery.material").details.strategy, "snapshot-plus-tail");
   assert.equal(traced.find((event) => event.phase === "recovery.material").details.snapshotPresent, true);
-  assert.equal(traced.find((event) => event.phase === "recovery.apply").details.commitCount, 0);
-  assert.equal(traced.find((event) => event.phase === "recovery.complete" && event.status === "success").details.finalRev, snapshotMessage.snapshot.rev);
+  assert.equal(traced.find((event) => event.phase === "recovery.apply").details.commitCount, 1);
+  assert.equal(traced.find((event) => event.phase === "recovery.complete" && event.status === "success").details.finalRev, host.stream.headRev);
   const serializedTrace = JSON.stringify(traced);
   assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
 });
@@ -206,6 +223,17 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(current.strategy, "current");
   assert.equal(client.recovery.debug().consumerNotifications, notifications);
   const requestIds = pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").map((message) => message.id);
+  const emitted = pair.serverSent.map(JSON.parse);
+  assert.deepEqual(emitted.filter((message) => message.id === requestIds[0]).map((message) => message.type), [
+    "recovery-plan",
+    "recovery-commit",
+    "recovery-commit",
+    "recovery-caught-up",
+  ]);
+  assert.deepEqual(emitted.filter((message) => message.id === requestIds[1]).map((message) => message.type), [
+    "recovery-plan",
+    "recovery-caught-up",
+  ]);
   const replayEvents = recovery_events(events, requestIds[0]);
   assert.equal(replayEvents.find((event) => event.phase === "recovery.plan").details.strategy, "incremental-replay");
   assert.equal(replayEvents.find((event) => event.phase === "recovery.material").details.commitCount, 2);
@@ -284,6 +312,22 @@ await check("recovery transport failure is terminal and payload-free", async () 
   assert.equal(JSON.stringify(traced).includes("forced transport failure"), false);
 });
 
+await check("disconnect after plan prevents caught-up and a new connection recovers cleanly", async () => {
+  const host = hson.liveHost.create({ state: { value: 1 }, logicalMapId: "mid-recovery-disconnect" });
+  const pair = socket_pair();
+  pair.set_before_server_delivery((message) => {
+    if (message.type === "recovery-plan") pair.close();
+  });
+  const client = attach(host, pair, { recovery: { logicalMapId: host.stream.logicalMapId } });
+  await assert.rejects(client.recovery.recover(), (error) => error.code === "LIVEHOST_RECOVERY_DISCONNECTED");
+  assert.equal(pair.serverSent.map(JSON.parse).some((message) => message.type === "recovery-caught-up"), false);
+
+  const reconnectPair = socket_pair();
+  const reconnect = attach(host, reconnectPair, { recovery: { logicalMapId: host.stream.logicalMapId } });
+  assert.equal((await reconnect.recovery.recover()).strategy, "snapshot");
+  assert.deepEqual(reconnect.map.snap(), host.map.snap());
+});
+
 await check("cut boundary puts pre-cut in body and post-cut in tail", async () => {
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-cut" });
   const base = host.stream.headRev;
@@ -301,7 +345,7 @@ await check("cut boundary puts pre-cut in body and post-cut in tail", async () =
   const revs = [];
   client.recovery.on_change((change) => revs.push(change.rev));
   const result = await client.recovery.recover();
-  assert.equal(result.headRev, base + 1);
+  assert.equal(result.headRev, base + 2);
   assert.deepEqual(revs, [base + 1, base + 2]);
   assert.equal(new Set(revs).size, revs.length);
   assert.equal(client.recovery.debug().bodyCommitsApplied, 1);
@@ -388,6 +432,102 @@ await check("client rejects unsupported snapshot negotiation acknowledgments", a
     });
     await assert.rejects(promise, (error) => error.code === expectedCode);
   }
+});
+
+await check("client rejects snapshot, replay, and caught-up before the recovery plan", async () => {
+  for (const [label, message] of [
+    ["snapshot-before-plan", (id) => ({
+      type: "recovery-snapshot",
+      id,
+      snapshot: {
+        logicalMapId: "snapshot-before-plan",
+        incarnationId: "inc",
+        rev: 0,
+        mode: "data-object",
+        hson: compact_hson({ value: 0 }),
+      },
+    })],
+    ["replay-before-plan", (id) => ({
+      type: "recovery-commit",
+      id,
+      phase: "body",
+      commit: canonical_set("replay-before-plan", "inc", 0, 1, 0, 1),
+    })],
+    ["caught-before-plan", (id) => ({
+      type: "recovery-caught-up",
+      id,
+      caughtUp: { kind: "caught_up", logicalMapId: "caught-before-plan", incarnationId: "inc", throughRev: 0 },
+    })],
+  ]) {
+    const fixture = begin_scripted_projected_recovery(label);
+    fixture.pair.push_server(message(fixture.id));
+    await assert.rejects(fixture.promise, (error) => error.code === "LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER");
+    assert.equal(fixture.client.recovery.status, "failed");
+  }
+});
+
+await check("client rejects a second plan, duplicate snapshot, and duplicate caught-up", async () => {
+  {
+    const fixture = begin_scripted_projected_recovery("second-plan");
+    const plan = { type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "second-plan", incarnationId: "inc", headRev: 0, outcome: "current", snapshotEncoding: { format: "hson" } };
+    fixture.pair.push_server(plan);
+    fixture.pair.push_server(plan);
+    await assert.rejects(fixture.promise, (error) => error.code === "LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER");
+  }
+  {
+    const fixture = begin_scripted_projected_recovery("duplicate-snapshot");
+    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-snapshot", incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding: { format: "hson" } });
+    const snapshot = { type: "recovery-snapshot", id: fixture.id, snapshot: { logicalMapId: "duplicate-snapshot", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) } };
+    fixture.pair.push_server(snapshot);
+    fixture.pair.push_server(snapshot);
+    await assert.rejects(fixture.promise, (error) => error.code === "LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER");
+    assert.deepEqual(fixture.mirror.snap(), { value: 1 });
+    assert.equal(fixture.client.recovery.debug().snapshotInstalls, 1);
+  }
+  {
+    const fixture = begin_scripted_projected_recovery("duplicate-caught-up");
+    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-caught-up", incarnationId: "inc", headRev: 0, outcome: "current", snapshotEncoding: { format: "hson" } });
+    const caughtUp = { type: "recovery-caught-up", id: fixture.id, caughtUp: { kind: "caught_up", logicalMapId: "duplicate-caught-up", incarnationId: "inc", throughRev: 0 } };
+    fixture.pair.push_server(caughtUp);
+    await fixture.promise;
+    fixture.pair.push_server(caughtUp);
+    assert.equal(fixture.client.recovery.failure.code, "LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER");
+    assert.equal(fixture.client.recovery.status, "failed");
+  }
+});
+
+await check("client rejects mismatched snapshot formats and out-of-order replay without applying twice", async () => {
+  for (const [label, snapshotEncoding, snapshot] of [
+    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", formatVersion: 1, payload: "<invalid>" }],
+    ["ack-view-state-body-hson", { format: "view-state", formatVersion: 1 }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
+  ]) {
+    const fixture = begin_scripted_projected_recovery(label);
+    fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding });
+    fixture.pair.push_server({ type: "recovery-snapshot", id: fixture.id, snapshot });
+    await assert.rejects(fixture.promise, (error) => error.code === "LIVEHOST_SNAPSHOT_NEGOTIATION_MISMATCH");
+    assert.deepEqual(fixture.mirror.snap(), { value: 0 });
+  }
+
+  const fixture = begin_scripted_projected_recovery("out-of-order-replay");
+  fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "out-of-order-replay", incarnationId: "inc", headRev: 2, outcome: "replay", snapshotEncoding: { format: "hson" } });
+  fixture.pair.push_server({ type: "recovery-commit", id: fixture.id, phase: "body", commit: canonical_set("out-of-order-replay", "inc", 1, 2, 1, 2) });
+  fixture.pair.push_server({ type: "recovery-commit", id: fixture.id, phase: "body", commit: canonical_set("out-of-order-replay", "inc", 0, 1, 0, 1) });
+  await assert.rejects(fixture.promise, (error) => error.code === "LIVEHOST_RECOVERY_COMMIT_GAP");
+  assert.deepEqual(fixture.mirror.snap(), { value: 0 });
+  assert.equal(fixture.client.recovery.debug().bodyCommitsApplied, 0);
+});
+
+await check("duplicate replay revisions are ignored without duplicate application", async () => {
+  const fixture = begin_scripted_projected_recovery("duplicate-replay");
+  fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: "duplicate-replay", incarnationId: "inc", headRev: 1, outcome: "replay", snapshotEncoding: { format: "hson" } });
+  const commit = canonical_set("duplicate-replay", "inc", 0, 1, 0, 1);
+  fixture.pair.push_server({ type: "recovery-commit", id: fixture.id, phase: "body", commit });
+  fixture.pair.push_server({ type: "recovery-commit", id: fixture.id, phase: "body", commit });
+  fixture.pair.push_server({ type: "recovery-caught-up", id: fixture.id, caughtUp: { kind: "caught_up", logicalMapId: "duplicate-replay", incarnationId: "inc", throughRev: 1 } });
+  assert.equal((await fixture.promise).headRev, 1);
+  assert.deepEqual(fixture.mirror.snap(), { value: 1 });
+  assert.equal(fixture.client.recovery.debug().bodyCommitsApplied, 1);
+  assert.equal(fixture.client.recovery.debug().duplicateCommitsIgnored, 1);
 });
 
 await check("replay conflict preserves cursor and supports a later snapshot attempt", async () => {
@@ -503,8 +643,9 @@ await check("tail overflow is visible and a fresh recovery succeeds", async () =
   const client = attach(host, pair, recovery_options(host, mirror, 0));
   await assert.rejects(client.recovery.recover(), (error) => error.code === "LIVEHOST_RECOVERY_TAIL_OVERFLOW");
   assert.notEqual(client.recovery.status, "caught_up");
-  const fresh = hson.liveHost.client({ socket: pair.client, recovery: { logicalMapId: host.stream.logicalMapId } });
-  fresh.connect();
+  pair.close();
+  const freshPair = socket_pair();
+  const fresh = attach(host, freshPair, { recovery: { logicalMapId: host.stream.logicalMapId } });
   assert.equal((await fresh.recovery.recover()).strategy, "snapshot");
 });
 
@@ -550,7 +691,13 @@ await check("two clients recover independently with replay and snapshot", async 
   const attempts = requestIds.map((requestId) => recovery_events(events, requestId));
   assert.deepEqual(attempts.map((attempt) => attempt.find((event) => event.phase === "recovery.plan").details.strategy), ["incremental-replay", "snapshot"]);
   assert.equal(attempts.every((attempt) => new Set(attempt.map((event) => event.details.requestId)).size === 1), true);
-  assert.equal(attempts.every((attempt) => attempt.filter((event) => event.phase === "recovery.complete" && event.status === "success").length === 1), true);
+  assert.equal(attempts.every((attempt) => {
+    const completions = attempt
+      .filter((event) => event.phase === "recovery.complete" && event.status === "success")
+      .map((event) => event.subsystem)
+      .sort();
+    return JSON.stringify(completions) === JSON.stringify(["client", "livehost"]);
+  }), true);
 });
 
 await check("legacy hello synchronization remains unchanged", async () => {

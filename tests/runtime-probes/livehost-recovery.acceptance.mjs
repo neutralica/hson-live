@@ -59,7 +59,7 @@ function project_snapshot_hson(source) {
 
   assert.deepEqual(produced, [baseRev + 1, baseRev + 2]);
   assert.deepEqual(completion.tail.map((commit) => commit.rev), [baseRev + 3]);
-  assert.equal(completion.caughtUp.throughRev, baseRev + 2);
+  assert.equal(completion.caughtUp.throughRev, baseRev + 3);
 
   const allRecovered = [...produced, ...completion.tail.map((commit) => commit.rev)];
   assert.deepEqual(allRecovered, [baseRev + 1, baseRev + 2, baseRev + 3]);
@@ -98,7 +98,7 @@ function project_snapshot_hson(source) {
   assert.equal(Object.isFrozen(plan.body), true);
 
   const completion = plan.complete();
-  assert.equal(completion.caughtUp.throughRev, plan.body.rev);
+  assert.equal(completion.caughtUp.throughRev, plan.body.rev + 1);
   assert.deepEqual(completion.tail.map((commit) => commit.rev), [plan.body.rev + 1]);
   assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
 }

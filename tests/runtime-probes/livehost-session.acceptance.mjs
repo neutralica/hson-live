@@ -17,6 +17,7 @@ function socket_pair() {
   const serverCloses = new Set();
   const clientSent = [];
   const serverSent = [];
+  let beforeServerDelivery;
   let closed = false;
   const client = {
     send(raw) { clientSent.push(raw); for (const listener of [...serverMessages]) listener(raw); },
@@ -25,7 +26,7 @@ function socket_pair() {
     onClose(listener) { clientCloses.add(listener); return () => clientCloses.delete(listener); },
   };
   const server = {
-    send(raw) { serverSent.push(raw); for (const listener of [...clientMessages]) listener(raw); },
+    send(raw) { serverSent.push(raw); beforeServerDelivery?.(JSON.parse(raw)); for (const listener of [...clientMessages]) listener(raw); },
     close() { close(); },
     onMessage(listener) { serverMessages.add(listener); return () => serverMessages.delete(listener); },
     onClose(listener) { serverCloses.add(listener); return () => serverCloses.delete(listener); },
@@ -36,7 +37,14 @@ function socket_pair() {
     for (const listener of [...clientCloses]) listener();
     for (const listener of [...serverCloses]) listener();
   }
-  return { client, server, clientSent, serverSent, close };
+  return {
+    client,
+    server,
+    clientSent,
+    serverSent,
+    set_before_server_delivery(hook) { beforeServerDelivery = hook; },
+    close,
+  };
 }
 
 function fake_clock() {
@@ -168,6 +176,28 @@ await check("old close after fencing cannot detach the new epoch", async () => {
   await second.client.recovery.recover();
   await second.client.action("increment");
   assert.deepEqual(host.map.snap(), { value: 1 });
+});
+
+await check("replacement during recovery prevents the old connection from reaching caught-up", async () => {
+  const { host } = host_fixture({ logicalMapId: "mid-recovery-fence" });
+  const first = await create_recovered(host);
+  const options = resume_options(host, first.client, first.client.session.credential);
+  let replacement;
+  let attached;
+  first.pair.set_before_server_delivery((message) => {
+    if (replacement !== undefined || message.type !== "recovery-plan") return;
+    replacement = connect_client(host, options);
+    attached = replacement.client.session.reattach();
+  });
+  const interrupted = first.client.recovery.recover();
+  await assert.rejects(interrupted, (error) => error.code === "LIVEHOST_SESSION_ATTACHMENT_FENCED");
+  await attached;
+  const interruptedId = first.pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").at(-1).id;
+  const interruptedMessages = first.pair.serverSent.map(JSON.parse).filter((message) => message.id === interruptedId);
+  assert.equal(interruptedMessages.filter((message) => message.type === "recovery-plan").length, 1);
+  assert.equal(interruptedMessages.some((message) => message.type === "recovery-caught-up"), false);
+  assert.equal((await replacement.client.recovery.recover()).strategy, "current");
+  assert.equal(replacement.client.recovery.status, "caught_up");
 });
 
 await check("A to B to C fencing increases epochs and leaves only C authoritative", async () => {
