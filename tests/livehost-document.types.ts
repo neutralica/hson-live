@@ -1,4 +1,4 @@
-import { create_livehost, create_livehost_client, hson } from "../src/index.ts";
+import { create_livehost, create_livehost_client, create_persistent_livehost, hson } from "../src/index.ts";
 import type {
   ElementLiveMap,
   ExistingMapLiveHostOptions,
@@ -14,6 +14,10 @@ import type {
   LiveMap,
   LiveTree,
   ProjectedLiveHostOptions,
+  LiveHostPersistenceAdapter,
+  LiveHostPersistedCommit,
+  LiveHostPersistedDocumentCheckpoint,
+  LiveHostPersistedMapState,
 } from "../src/index.ts";
 
 const replacementAttrs: LiveMapDocumentAttrs = {
@@ -135,6 +139,28 @@ exclusiveElementHost.mutate((draft) => draft.document.attrs.set(
 ));
 // @ts-expect-error exclusive document maps omit mutation methods
 exclusiveElementHost.map.document.attrs.set({ kind: "path", path: [] }, "id", "direct");
+declare const persistenceAdapter: LiveHostPersistenceAdapter;
+declare const persistedCommit: LiveHostPersistedCommit;
+declare const persistedCheckpoint: LiveHostPersistedDocumentCheckpoint;
+declare const persistedState: LiveHostPersistedMapState;
+persistenceAdapter.appendCommit(persistedCommit);
+persistenceAdapter.replaceCheckpoint(persistedCheckpoint);
+void persistedState;
+const persistentElementHost = create_persistent_livehost({
+  map: elementCandidate,
+  authority: "exclusive",
+  persistence: persistenceAdapter,
+});
+persistentElementHost.then((host) => {
+  host.checkpoint();
+  host.mutate((draft) => draft.document.attrs.set(documentTarget, "id", "persistent"));
+  // @ts-expect-error persistent host maps are read-only
+  host.map.document.attrs.set(documentTarget, "id", "direct");
+});
+// @ts-expect-error persistence is available only through the async persistent constructor
+create_livehost({ map: elementCandidate, persistence: persistenceAdapter });
+// @ts-expect-error projected-data persistence is deliberately unsupported in version one
+create_persistent_livehost({ map: existingProjectedMap, authority: "exclusive", persistence: persistenceAdapter });
 const elementHostAlias: LiveHostForMap<ElementLiveMap> = elementHost;
 const documentTarget = { kind: "path", path: [] } as const;
 const optionalAttr = elementCandidate.document.attrs.get(documentTarget, "title");

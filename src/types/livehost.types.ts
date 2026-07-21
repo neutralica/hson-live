@@ -1323,6 +1323,81 @@ export type ExclusiveLiveHostForMap<
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
 }>;
 
+/** Stable persisted map-kind discriminant. Projected data is reserved for a later codec. */
+export type LiveHostPersistedMapKind = "document" | "projected-data";
+
+export type LiveHostPersistedViewState = Readonly<{
+  format: "view-state";
+  formatVersion: 1;
+  payload: string;
+}>;
+
+export type LiveHostPersistedDocumentCheckpoint = Readonly<{
+  logicalMapId: LiveHostLogicalMapId;
+  incarnationId: LiveHostIncarnationId;
+  mapKind: "document";
+  mode: DocumentLiveMap["mode"];
+  rev: number;
+  snapshot: LiveHostPersistedViewState;
+}>;
+
+export type LiveHostPersistedCheckpoint = LiveHostPersistedDocumentCheckpoint;
+
+/** Exact accepted canonical commit, keyed idempotently by map/incarnation/revision. */
+export type LiveHostPersistedCommit = Readonly<{
+  logicalMapId: LiveHostLogicalMapId;
+  incarnationId: LiveHostIncarnationId;
+  mapKind: "document";
+  commit: LiveHostCanonicalCommit;
+}>;
+
+export type LiveHostPersistedMapState = Readonly<{
+  checkpoint: LiveHostPersistedCheckpoint;
+  commits: readonly LiveHostPersistedCommit[];
+}>;
+
+/** Backend port. Implementations must make exact repeated appends idempotent. */
+export interface LiveHostPersistenceAdapter {
+  load(logicalMapId: LiveHostLogicalMapId): Promise<LiveHostPersistedMapState | undefined>;
+  /** Exact repeats for map/incarnation/revision must be idempotent; conflicting repeats must reject. */
+  appendCommit(record: LiveHostPersistedCommit): Promise<void>;
+  /** Atomically replace the checkpoint and remove commits through its revision. */
+  replaceCheckpoint(record: LiveHostPersistedCheckpoint): Promise<void>;
+}
+
+export type PersistentDocumentLiveHostOptions<
+  TMap extends DocumentLiveMap = DocumentLiveMap,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Omit<ExclusiveExistingMapLiveHostOptions<TMap, TActions>, "authority"> & Readonly<{
+  authority: "exclusive";
+  persistence: LiveHostPersistenceAdapter;
+}>;
+
+export type PersistentLiveHostForMap<
+  TMap extends DocumentLiveMap = DocumentLiveMap,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = ExclusiveLiveHostForMap<TMap, TActions> & Readonly<{
+  checkpoint: () => Promise<void>;
+}>;
+
+export type LiveHostPersistentStoreEntry = Readonly<{
+  id: LiveHostStoreId;
+  host: PersistentLiveHostForMap;
+}>;
+
+export type LiveHostPersistentStore = Readonly<{
+  has: (id: LiveHostStoreId) => boolean;
+  get: (id: LiveHostStoreId) => PersistentLiveHostForMap | undefined;
+  create: <TMap extends DocumentLiveMap, TActions extends LiveHostActionPayloads = LiveHostActionPayloads>(
+    id: LiveHostStoreId,
+    options: Omit<PersistentDocumentLiveHostOptions<TMap, TActions>, "logicalMapId" | "persistence">,
+  ) => Promise<LiveHostResult<PersistentLiveHostForMap<TMap, TActions>>>;
+  load: (id: LiveHostStoreId) => Promise<LiveHostResult<PersistentLiveHostForMap | undefined>>;
+  unload: (id: LiveHostStoreId) => Promise<boolean>;
+  list: () => readonly LiveHostPersistentStoreEntry[];
+  connect: (id: LiveHostStoreId, socket: LiveHostSocketLike) => Promise<LiveHostResult<LiveHostDisposer>>;
+}>;
+
 /** Compatibility surface for existing projected-state hosts. */
 export type LiveHost<
   TState extends JsonValue | undefined = JsonValue | undefined,

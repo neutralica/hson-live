@@ -4,7 +4,7 @@ import {
   type PreparedLiveMapTransition,
 } from "../livemap/livemap.authority.js";
 
-export type LiveHostAuthorityMutationSource = "host" | "action" | "document-action" | "link";
+export type LiveHostAuthorityMutationSource = "host" | "action" | "document-action" | "link" | "checkpoint";
 
 export type LiveHostAuthorityGateInput<TMap extends object> = Readonly<{
   map: TMap;
@@ -52,17 +52,29 @@ export type LiveHostExclusiveAuthority<TMap extends object, TContext = undefined
     source?: LiveHostAuthorityMutationSource,
     context?: TContext,
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
+  runExclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
   dispose: () => void;
+  closed: Promise<void>;
   readonly failed: boolean;
 }>;
 
-type QueueTask<TMap extends object, TContext> = {
+type MutationQueueTask<TMap extends object, TContext> = {
+  kind: "mutation";
   mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>;
   source: LiveHostAuthorityMutationSource;
   context: TContext | undefined;
   resolve: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
   reject: (cause: unknown) => void;
 };
+
+type BarrierQueueTask<TResult = unknown> = {
+  kind: "barrier";
+  operation: () => TResult | Promise<TResult>;
+  resolve: (result: TResult) => void;
+  reject: (cause: unknown) => void;
+};
+
+type QueueTask<TMap extends object, TContext> = MutationQueueTask<TMap, TContext> | BarrierQueueTask;
 
 /** One host-scoped FIFO authority queue with one future durability gate. */
 export function make_livehost_exclusive_authority<TMap extends object, TContext = undefined>(
@@ -84,6 +96,8 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
   const queue: QueueTask<TMap, TContext>[] = [];
   let active = false;
   let state: "open" | "closing" | "failed" | "closed" = "open";
+  let resolveClosed: (() => void) | undefined;
+  const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
 
   const emit = (event: LiveHostAuthorityEvent): void => {
     try { options.event?.(event); } catch { /* Diagnostics never own authority. */ }
@@ -107,11 +121,12 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     if (active || state !== "closing") return;
     staged.releaseManagement(owner);
     state = "closed";
+    resolveClosed?.();
     options.released?.();
     emit({ phase: "released", source: "host", queueDepth: 0 });
   }
 
-  async function run(task: QueueTask<TMap, TContext>): Promise<void> {
+  async function run_mutation(task: MutationQueueTask<TMap, TContext>): Promise<void> {
     let transition: PreparedLiveMapTransition | undefined;
     try {
       transition = staged.prepare(task.mutation);
@@ -142,11 +157,11 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
           });
         } catch (cause) {
           staged.discard(transition);
-          const error = new LiveHostAuthorityError(
-            "LIVEHOST_AUTHORITY_GATE_REJECTED",
-            "LiveHost authority gate rejected the prepared transition.",
-            { cause },
-          );
+          const error = structured_gate_error(cause) ?? new LiveHostAuthorityError(
+              "LIVEHOST_AUTHORITY_GATE_REJECTED",
+              "LiveHost authority gate rejected the prepared transition.",
+              { cause },
+            );
           emit({ phase: "gate-failed", source: task.source, queueDepth: queue.length, errorCode: error.code });
           task.reject(error);
           return;
@@ -215,6 +230,14 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     }
   }
 
+  async function run_barrier(task: BarrierQueueTask): Promise<void> {
+    try {
+      task.resolve(await task.operation());
+    } catch (cause) {
+      task.reject(cause);
+    }
+  }
+
   function drain(): void {
     if (active || state === "failed" || state === "closed") return;
     const task = queue.shift();
@@ -223,7 +246,8 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
       return;
     }
     active = true;
-    void run(task).finally(() => {
+    const running = task.kind === "mutation" ? run_mutation(task) : run_barrier(task);
+    void running.finally(() => {
       active = false;
       drain();
     });
@@ -247,8 +271,29 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
       ));
     }
     return new Promise((resolve, reject) => {
-      queue.push({ mutation, source, context, resolve, reject });
+      queue.push({ kind: "mutation", mutation, source, context, resolve, reject });
       emit({ phase: "enqueued", source, queueDepth: queue.length + (active ? 1 : 0) });
+      drain();
+    });
+  }
+
+  function runExclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
+    if (state === "failed") {
+      return Promise.reject(new LiveHostAuthorityError(
+        "LIVEHOST_AUTHORITY_TERMINAL",
+        "LiveHost exclusive authority is terminally failed.",
+      ));
+    }
+    if (state !== "open") {
+      return Promise.reject(new LiveHostAuthorityError(
+        "LIVEHOST_AUTHORITY_CLOSED",
+        "LiveHost exclusive authority is closed.",
+      ));
+    }
+    return new Promise<TResult>((resolve, reject) => {
+      const task: BarrierQueueTask<TResult> = { kind: "barrier", operation, resolve, reject };
+      queue.push(task as BarrierQueueTask);
+      emit({ phase: "enqueued", source: "checkpoint", queueDepth: queue.length + (active ? 1 : 0) });
       drain();
     });
   }
@@ -257,6 +302,8 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
 
   return Object.freeze({
     mutate,
+    runExclusive,
+    closed,
     dispose(): void {
       if (state === "closed" || state === "closing") return;
       state = "closing";
@@ -269,4 +316,13 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     },
     get failed() { return state === "failed"; },
   });
+}
+
+function structured_gate_error(cause: unknown): (Error & Readonly<{ code: string }>) | undefined {
+  return cause instanceof Error
+    && "code" in cause
+    && typeof cause.code === "string"
+    && cause.code.startsWith("LIVEHOST_")
+    ? cause as Error & Readonly<{ code: string }>
+    : undefined;
 }

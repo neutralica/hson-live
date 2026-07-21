@@ -90,6 +90,12 @@ export {
     debug_livemap_quids
 } from "./api/livemap/livemap.quid.js";
 export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
+export {
+  create_persistent_livehost,
+  create_livehost_persistent_store,
+  LiveHostPersistenceError,
+} from "./api/livehost/livehost.persistence.js";
+export type { LiveHostPersistenceErrorCode } from "./api/livehost/livehost.persistence.error.js";
 export { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
 export {
@@ -346,6 +352,17 @@ export type {
     LiveHostStoreCreateOptions,
     LiveHostStoreEntry,
     LiveHostStoreId,
+    LiveHostPersistenceAdapter,
+    LiveHostPersistedMapKind,
+    LiveHostPersistedViewState,
+    LiveHostPersistedDocumentCheckpoint,
+    LiveHostPersistedCheckpoint,
+    LiveHostPersistedCommit,
+    LiveHostPersistedMapState,
+    PersistentDocumentLiveHostOptions,
+    PersistentLiveHostForMap,
+    LiveHostPersistentStore,
+    LiveHostPersistentStoreEntry,
     LiveHostValidator,
     LiveHostWireValue,
 } from "./types/index.js";

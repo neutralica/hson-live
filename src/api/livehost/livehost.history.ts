@@ -236,7 +236,8 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
   throw new Error("LiveHost canonical graph operation discriminant is invalid.");
 }
 
-function canonical_commit<TMap extends LiveMapAuthority>(
+/** @internal Construct the exact detached canonical envelope used by history and persistence. */
+export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
   map: TMap,
   commit: LiveMapCommit<LiveMapAnyOp>,
   logicalMapId: LiveHostLogicalMapId,
@@ -299,7 +300,13 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
 export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAuthority>(
   map: TMap,
   options: LiveHostCanonicalStreamOptions = {},
-  runtime: Readonly<{ observeCommits?: boolean }> = {},
+  runtime: Readonly<{
+    observeCommits?: boolean;
+    initialHistory?: Readonly<{
+      baseRevision: number;
+      commits: readonly LiveHostCanonicalCommit[];
+    }>;
+  }> = {},
 ): Readonly<{
   stream: LiveHostCanonicalStream<TMap>;
   correlateCommit: (commit: LiveMapCommit<LiveMapAnyOp>, causation: LiveHostCommitCausation) => void;
@@ -316,7 +323,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
   }>> = [];
   const listeners = new Set<LiveHostCanonicalCommitListener>();
   let retainedEncodedBytes = 0;
-  let headRev = map.rev;
+  let headRev = runtime.initialHistory?.baseRevision ?? map.rev;
   let isPublishing = false;
   let publishedCommitCount = 0;
   let publicationErrorCount = 0;
@@ -338,6 +345,26 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     retained.push(entry);
     retainedEncodedBytes += entry.encodedBytes;
     trim_history();
+  }
+
+  if (runtime.initialHistory !== undefined) {
+    if (!Number.isInteger(headRev) || headRev < 0) {
+      throw new Error("LiveHost initial history base revision is invalid.");
+    }
+    for (const commit of runtime.initialHistory.commits) {
+      if (commit.logicalMapId !== logicalMapId
+        || commit.incarnationId !== incarnationId
+        || commit.mode !== map.mode
+        || commit.prevRev !== headRev
+        || commit.rev !== headRev + 1) {
+        throw new Error("LiveHost initial history is not contiguous with its authority.");
+      }
+      append_history(commit);
+      headRev = commit.rev;
+    }
+    if (map.rev !== headRev) {
+      throw new Error("LiveHost restored authority revision does not match initial history.");
+    }
   }
 
   function drain_publication_queue(): void {
@@ -375,7 +402,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
       trace_commit(commit, origin, "skip");
       return;
     }
-    const canonical = canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
+    const canonical = make_livehost_canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
     append_history(canonical);
     headRev = canonical.rev;
     publicationQueue.push(Object.freeze({ canonical, source: commit }));

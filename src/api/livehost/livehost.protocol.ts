@@ -393,7 +393,8 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGrap
   return undefined;
 }
 
-function decode_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
+/** @internal Strict persisted/network canonical commit decoder. */
+export function decode_livehost_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
   if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops"])) return undefined;
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
@@ -690,7 +691,7 @@ function decode_recovery_server_message(
   if (!id) return fail("LiveHost recovery server message requires non-empty id.");
 
   if (value.type === "recovery-commit") {
-    const commit = decode_canonical_commit(value.commit);
+    const commit = decode_livehost_canonical_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "phase", "commit"]) || (value.phase !== "body" && value.phase !== "tail") || !commit) {
       return fail("Malformed LiveHost recovery commit message.");
     }
@@ -698,7 +699,7 @@ function decode_recovery_server_message(
     return ok(message);
   }
   if (value.type === "commit") {
-    const commit = decode_canonical_commit(value.commit);
+    const commit = decode_livehost_canonical_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "commit"]) || !commit) return fail("Malformed LiveHost canonical commit message.");
     const message: LiveHostServerCanonicalCommitMessage = { type: "commit", id, commit };
     return ok(message);

@@ -45,6 +45,7 @@ import {
 } from "./livehost.recovery.js";
 import type { LiveHostDocumentSnapshotEncoding } from "./livehost.document-snapshot.js";
 import { LiveHostRecoveryError } from "./livehost.error.js";
+import { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 import {
   make_livehost_exclusive_authority,
   LiveHostAuthorityError,
@@ -64,6 +65,7 @@ import {
 let livehost_session_inc = 0;
 let livehost_trace_inc = 0;
 const hostedMapAuthorities = new WeakMap<object, Readonly<{ shared: number; exclusive?: object }>>();
+const exclusiveHostAuthorities = new WeakMap<object, ReturnType<typeof make_livehost_exclusive_authority>>();
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
@@ -208,6 +210,12 @@ export function create_livehost<
 export function create_livehost(
   input: unknown = {},
 ): LiveHostForMap<LiveMapAuthority> | ExclusiveLiveHostForMap<LiveMapAuthority> {
+  if (typeof input === "object" && input !== null && "persistence" in input) {
+    throw new LiveHostPersistenceError(
+      "LIVEHOST_PERSISTENCE_REQUIRES_EXCLUSIVE",
+      "LiveHost persistence requires the asynchronous exclusive-host constructor.",
+    );
+  }
   const options = input as ProjectedLiveHostOptions
     | ExclusiveProjectedLiveHostOptions
     | ExistingMapLiveHostOptions<LiveMapAuthority>
@@ -226,13 +234,17 @@ export function create_livehost(
 }
 
 /** Internal construction seam used by focused gate and failure tests. */
-export function create_livehost_internal<TMap extends LiveMapAuthority>(
-  options: ExistingMapLiveHostOptions<TMap> | ExclusiveExistingMapLiveHostOptions<TMap>,
+export function create_livehost_internal<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(
+  options: ExistingMapLiveHostOptions<TMap, TActions> | ExclusiveExistingMapLiveHostOptions<TMap, TActions>,
   internal: Readonly<{
     authorityGate?: LiveHostAuthorityGate<TMap>;
     beforeAcceptedCommitIngestion?: () => void;
+    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LiveHostCanonicalCommit[] }>;
   }> = {},
-): LiveHostForMap<TMap> | ExclusiveLiveHostForMap<TMap> {
+): LiveHostForMap<TMap, TActions> | ExclusiveLiveHostForMap<TMap, TActions> {
   return create_livehost_for_map(options.map, options, internal);
 }
 
@@ -245,6 +257,7 @@ function create_livehost_for_map<
   internal: Readonly<{
     authorityGate?: LiveHostAuthorityGate<TMap>;
     beforeAcceptedCommitIngestion?: () => void;
+    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LiveHostCanonicalCommit[] }>;
   }> = {},
 ): LiveHostForMap<TMap, TActions> | ExclusiveLiveHostForMap<TMap, TActions> {
   const exclusive = options.authority === "exclusive";
@@ -255,7 +268,10 @@ function create_livehost_for_map<
     ...(options.incarnationId !== undefined ? { incarnationId: options.incarnationId } : {}),
     ...(options.history !== undefined ? { history: options.history } : {}),
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
-  }, { observeCommits: !exclusive });
+  }, {
+    observeCommits: !exclusive,
+    ...(internal.initialHistory !== undefined ? { initialHistory: internal.initialHistory } : {}),
+  });
   const stream = streamRuntime.stream;
   const recovery = make_livehost_recovery_planner_internal(
     map,
@@ -1737,7 +1753,7 @@ function create_livehost_for_map<
     else release_hosted_map(map, hostOwner, false);
   }
 
-  return {
+  const host = {
     map,
     stream,
     recovery,
@@ -1753,6 +1769,30 @@ function create_livehost_for_map<
         exclusiveAuthority.mutate(mutation, "host"),
     } : {}),
   };
+  if (exclusiveAuthority !== undefined) {
+    exclusiveHostAuthorities.set(host, exclusiveAuthority as ReturnType<typeof make_livehost_exclusive_authority>);
+  }
+  return host;
+}
+
+/** @internal Run a non-mutation barrier in one exclusive host's FIFO. */
+export function run_livehost_exclusive_task<TResult>(
+  host: object,
+  operation: () => TResult | Promise<TResult>,
+): Promise<TResult> {
+  const authority = exclusiveHostAuthorities.get(host);
+  if (authority === undefined) {
+    return Promise.reject(new LiveHostAuthorityError(
+      "LIVEHOST_AUTHORITY_CLOSED",
+      "LiveHost does not expose exclusive authority.",
+    ));
+  }
+  return authority.runExclusive(operation);
+}
+
+/** @internal Wait until exclusive host management has been safely released. */
+export function wait_livehost_exclusive_closed(host: object): Promise<void> {
+  return exclusiveHostAuthorities.get(host)?.closed ?? Promise.resolve();
 }
 
 function reserve_hosted_map(map: object, owner: object, exclusive: boolean): void {
