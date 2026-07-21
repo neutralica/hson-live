@@ -588,7 +588,8 @@ function clone_hson_content(value: HsonNode | Primitive): HsonNode | Primitive {
   return is_Node(value) ? clone_hson_node(value) : value;
 }
 
-function overwrite_hson_node(target: HsonNode, source: HsonNode): void {
+/** Internal exact root installation that preserves the owned root object. */
+export function overwrite_hson_node(target: HsonNode, source: HsonNode): void {
   target.$_tag = source.$_tag;
   if (source.$_attrs === undefined) delete target.$_attrs;
   else target.$_attrs = { ...source.$_attrs };

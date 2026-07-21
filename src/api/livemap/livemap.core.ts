@@ -3,7 +3,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
-import { clone_live_root, delete_live_path, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
+import { clone_live_root, delete_live_path, overwrite_hson_node, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
 import { make_livemap_node_handle } from "./livemap.node.js";
@@ -19,6 +19,13 @@ import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root 
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
 import type { LiveMapDocumentReplayController, PreparedDocumentReplay } from "./livemap.document.replay.js";
+import {
+  LiveMapTransitionError,
+  make_livemap_transition_controller,
+  register_livemap_staged_authority,
+  type LiveMapTransitionController,
+  type PreparedLiveMapTransition,
+} from "./livemap.authority.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -27,6 +34,19 @@ type LiveMapConstructiveSetWriteOp = Readonly<{
 }>;
 
 type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
+
+type BuiltLiveMapCore = Readonly<{
+  core: LiveMapCore<JsonValue | undefined>;
+  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController;
+  transitionController: LiveMapTransitionController;
+  currentRoot: () => HsonNode;
+  currentSchema: () => LiveMapSchema | undefined;
+  detachUnsafeReferences: () => void;
+  prepareDetachedCommit: (
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    nextRoot: HsonNode,
+  ) => PreparedLiveMapTransition;
+}>;
 
 
 
@@ -55,23 +75,25 @@ type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
  */
 export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | undefined> {
   const prepared = prepare_livemap_root(input);
-  return make_livemap_core_from_owned_root(prepared).core;
+  const built = make_livemap_core_from_owned_root(prepared);
+  register_staged_facade(built.core, built);
+  return built.core;
 }
 
 /** Construct the public shape-specific façade after detached root ownership. */
 export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   const prepared = prepare_livemap_root(input);
   const built = make_livemap_core_from_owned_root(prepared);
-  return facade_for_livemap_root(built.core, prepared, built.document);
+  const facade = facade_for_livemap_root(built.core, prepared, built.document);
+  register_staged_facade(facade, built);
+  return facade;
 }
 
 /** Build the shared Core around a root already cloned, validated, and indexed. */
 function make_livemap_core_from_owned_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
-): Readonly<{
-  core: LiveMapCore<JsonValue | undefined>;
-  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController;
-}> {
+  initial: Readonly<{ revision?: number; schema?: LiveMapSchema }> = {},
+): BuiltLiveMapCore {
   const initialMode = prepared.mode;
   let owned = {
     root: prepared.root,
@@ -82,26 +104,76 @@ function make_livemap_core_from_owned_root(
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
-  let currentSchema: LiveMapSchema | undefined;
+  let currentSchema: LiveMapSchema | undefined = initial.schema;
   /** Revision zero represents the initial graph before any changed commit. */
-  let currentRev = 0;
+  let currentRev = initial.revision ?? 0;
+  const transitionController = make_livemap_transition_controller(initialMode, () => currentRev);
+
+  function prepareDetachedCommit(
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    detachedRoot: HsonNode,
+  ): PreparedLiveMapTransition {
+    const preparedNext = prepare_livemap_root(detachedRoot);
+    if (preparedNext.mode !== initialMode) {
+      throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
+    }
+    const baseRoot = clone_live_root(owned.root);
+    return transitionController.prepare({
+      commit,
+      baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
+      install: () => {
+        if (initialMode === "element" || initialMode === "fragment") {
+          owned = { root: preparedNext.root, documentIdentity: preparedNext.documentIdentity };
+        } else {
+          overwrite_hson_node(owned.root, preparedNext.root);
+        }
+        currentRev = commit.rev;
+      },
+      notify: (acceptedCommit) => {
+        if (initialMode === "element" || initialMode === "fragment") {
+          commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+        } else {
+          feedHub.emit(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => snap_live_path(owned.root, path));
+          commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+        }
+      },
+    });
+  }
+
+  function detachUnsafeReferences(): void {
+    const detached = prepare_livemap_root(owned.root);
+    owned = { root: detached.root, documentIdentity: detached.documentIdentity };
+    transitionController.invalidate();
+  }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
   const commitOps = (
     writeOps: readonly LiveMapCoreWriteOp[],
     origin: "authoritative" | "replay" = "authoritative",
   ): LiveMapCommit => {
-    return commit_ops(
+    transitionController.assertPublicMutationAllowed();
+    if (origin === "replay") {
+      transitionController.invalidate();
+      return apply_replay_ops(
+        owned.root,
+        currentSchema,
+        feedHub,
+        () => currentRev,
+        (rev) => { currentRev = rev; },
+        writeOps,
+        commitObserverHub,
+      );
+    }
+    const transition = prepare_projected_transition(
       owned.root,
       currentSchema,
       feedHub,
       () => currentRev,
-      (rev) => {
-        currentRev = rev;
-      },
+      (rev) => { currentRev = rev; },
       writeOps,
       commitObserverHub,
-      origin,
+      transitionController,
     );
+    return transitionController.accept(transition, "legacy").commit as LiveMapCommit;
   };
 
   const getStoreApi = (): LiveMapStoreApi<JsonValue | undefined> => {
@@ -141,8 +213,10 @@ function make_livemap_core_from_owned_root(
     get: () => currentSchema,
 
     use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
+      transitionController.assertPublicMutationAllowed();
       must_core_schema_root(schema, owned.root);
       currentSchema = schema;
+      transitionController.invalidate();
 
       return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
     },
@@ -175,7 +249,15 @@ function make_livemap_core_from_owned_root(
   });
 
   const debugApi = Object.freeze({
-    node: (path: LivePath) => make_livemap_node_handle(owned.root, must_live_path(path)),
+    node: (path: LivePath) => {
+      transitionController.assertPublicMutationAllowed();
+      return make_livemap_node_handle(
+        owned.root,
+        must_live_path(path),
+        transitionController.invalidate,
+        transitionController.assertPublicMutationAllowed,
+      );
+    },
   });
 
   const core: LiveMapCore<JsonValue | undefined> = {
@@ -266,6 +348,7 @@ function make_livemap_core_from_owned_root(
 
     /** Explicit synchronous transaction grouping, not automatic notification coalescing. */
     batch: (fn) => {
+      transitionController.assertPublicMutationAllowed();
       const writeOps: LiveMapCoreWriteOp[] = [];
       let isOpen = true;
       const tx = make_batch_tx(owned.root, writeOps, () => isOpen);
@@ -298,6 +381,7 @@ function make_livemap_core_from_owned_root(
     },
     /** Restore projected state and revision without a commit, feed, or increment. */
     restore: (capture: LiveMapCapture<JsonValue | undefined>): void => {
+      transitionController.assertPublicMutationAllowed();
       const normalized = must_projected_capture(capture);
       const operation: LiveMapWriteOp = {
         kind: "replace",
@@ -314,6 +398,7 @@ function make_livemap_core_from_owned_root(
       }
       owned = { root: candidate, documentIdentity: undefined };
       currentRev = normalized.rev;
+      transitionController.invalidate();
       commitObserverHub.emitSnapshot(normalized.rev);
     },
     /** Replace the root only when the caller's base revision is still current. */
@@ -336,6 +421,7 @@ function make_livemap_core_from_owned_root(
     },
     /** Replay semantic ops only when their base revision and prior values match. */
     replay: (input: LiveMapReplay) => {
+      transitionController.assertPublicMutationAllowed();
       const replay = must_livemap_replay(input);
       must_expected_rev(
         replay.prevRev,
@@ -369,7 +455,14 @@ function make_livemap_core_from_owned_root(
   }
 
   if (initialMode !== "element" && initialMode !== "fragment") {
-    return { core };
+    return {
+      core,
+      transitionController,
+      currentRoot: () => owned.root,
+      currentSchema: () => currentSchema,
+      detachUnsafeReferences,
+      prepareDetachedCommit,
+    };
   }
 
   const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController = {
@@ -385,75 +478,251 @@ function make_livemap_core_from_owned_root(
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
     apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
+      transitionController.assertPublicMutationAllowed();
       const prevRev = currentRev;
-      if (canonical_graph_equal(owned.root, candidate.root)) {
-        return Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
-      }
-
-      const operation: LiveMapGraphReplaceRootOp = Object.freeze({
-        domain: "graph",
-        op: "replace-root",
-        mode: candidate.mode,
-        root: clone_live_root(candidate.root),
-      });
-      const nextOwned = {
-        root: candidate.root,
-        documentIdentity: candidate.identity,
-      };
-      const rev = prevRev + 1;
-      const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = Object.freeze({
-        changed: true,
-        prevRev,
-        rev,
-        ops: Object.freeze([operation]),
-      });
-
-      // One closure-state swap makes root and persisted-identity lookup visible
-      // together. Document feeds/replay do not exist yet, so this commit is
-      // returned without entering the projected-data feed hub.
-      owned = nextOwned;
-      currentRev = rev;
-      commitObserverHub.emitCommit(commit, "authoritative");
-      return commit;
+      const unchanged = canonical_graph_equal(owned.root, candidate.root);
+      const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = unchanged
+        ? Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) })
+        : Object.freeze({
+          changed: true,
+          prevRev,
+          rev: prevRev + 1,
+          ops: Object.freeze([Object.freeze({
+            domain: "graph",
+            op: "replace-root",
+            mode: candidate.mode,
+            root: clone_live_root(candidate.root),
+          })]),
+        });
+      const transition = prepare_document_transition(
+        owned.root,
+        commit,
+        transitionController,
+        () => {
+          owned = { root: candidate.root, documentIdentity: candidate.identity };
+          currentRev = commit.rev;
+        },
+        (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+      );
+      return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
     },
     restore: (candidate: PreparedDocumentInstall, revision: number): void => {
+      transitionController.assertPublicMutationAllowed();
       owned = {
         root: candidate.root,
         documentIdentity: candidate.identity,
       };
       currentRev = revision;
+      transitionController.invalidate();
       commitObserverHub.emitSnapshot(revision);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
+      transitionController.assertPublicMutationAllowed();
       const prevRev = currentRev;
-      const rev = prevRev + 1;
-      const commit: LiveMapGraphCommit<TOp> = Object.freeze({
-        changed: true,
-        prevRev,
-        rev,
-        ops: Object.freeze([candidate.operation]),
-      });
-
-      owned = {
-        root: candidate.root,
-        documentIdentity: candidate.identity,
-      };
-      currentRev = rev;
-      commitObserverHub.emitCommit(commit, "authoritative");
-      return commit;
+      const unchanged = canonical_graph_equal(owned.root, candidate.root);
+      const rev = unchanged ? prevRev : prevRev + 1;
+      const commit: LiveMapGraphCommit<TOp> = unchanged
+        ? Object.freeze({ changed: false, prevRev, rev, ops: Object.freeze([]) })
+        : Object.freeze({
+          changed: true,
+          prevRev,
+          rev,
+          ops: Object.freeze([candidate.operation]),
+        });
+      const transition = prepare_document_transition(
+        owned.root,
+        commit,
+        transitionController,
+        () => {
+          owned = { root: candidate.root, documentIdentity: candidate.identity };
+          currentRev = rev;
+        },
+        (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+      );
+      return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<TOp>;
     },
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
+      transitionController.assertPublicMutationAllowed();
       owned = {
         root: candidate.root,
         documentIdentity: candidate.identity,
       };
       currentRev = candidate.commit.rev;
+      transitionController.invalidate();
       commitObserverHub.emitCommit(candidate.commit, "replay");
       return candidate.commit;
     },
   };
 
-  return { core, document };
+  return {
+    core,
+    document,
+    transitionController,
+    currentRoot: () => owned.root,
+    currentSchema: () => currentSchema,
+    detachUnsafeReferences,
+    prepareDetachedCommit,
+  };
+}
+
+/** Register the internal callback-based staging seam on one completed façade. */
+function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLiveMapCore): void {
+  register_livemap_staged_authority(map, Object.freeze({
+    prepare(mutation): PreparedLiveMapTransition {
+      const preparedDraft = prepare_livemap_root(built.currentRoot());
+      const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
+        revision: built.core.rev,
+        ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
+      });
+      const draft = facade_for_livemap_root(draftBuilt.core, preparedDraft, draftBuilt.document);
+      const observations: Array<Readonly<{
+        commit: LiveMapCommit<LiveMapAnyOp>;
+        origin: "authoritative" | "replay";
+      }>> = [];
+      draft.commits.observe((event) => {
+        if (event.kind === "commit") observations.push({ commit: event.commit, origin: event.origin });
+        else observations.push({
+          commit: Object.freeze({ changed: false, prevRev: event.revision, rev: event.revision, ops: Object.freeze([]) }),
+          origin: "replay",
+        });
+      });
+
+      const ephemeral = make_ephemeral_staged_draft(draft as TMap);
+      let result: unknown;
+      try {
+        result = mutation(ephemeral.draft);
+      } finally {
+        ephemeral.expire();
+      }
+      if (is_promise_like(result)) {
+        throw new LiveMapTransitionError(
+          "LIVEMAP_TRANSITION_INVALID",
+          "Staged LiveMap mutation callback must be synchronous.",
+        );
+      }
+      if (!is_livemap_commit(result)) {
+        throw new Error("Staged LiveMap mutation must return its LiveMap commit.");
+      }
+      if (result.changed) {
+        const observation = observations[0];
+        if (observations.length !== 1
+          || observation === undefined
+          || observation.origin !== "authoritative"
+          || observation.commit !== result) {
+          throw new Error("Staged LiveMap mutation must produce exactly one authoritative commit.");
+        }
+      } else if (observations.length !== 0
+        || !canonical_graph_equal(preparedDraft.root, draftBuilt.currentRoot())) {
+        throw new Error("Staged LiveMap no-op mutation changed detached authority state.");
+      }
+
+      return built.prepareDetachedCommit(result, draftBuilt.currentRoot());
+    },
+    accept: built.transitionController.accept,
+    discard: built.transitionController.discard,
+    claimManagement(owner, schedule): void {
+      built.transitionController.claimManagement(
+        owner,
+        schedule as unknown as (mutation: (draft: object) => LiveMapCommit<LiveMapAnyOp>) => Promise<LiveMapCommit<LiveMapAnyOp>>,
+      );
+      try {
+        built.detachUnsafeReferences();
+      } catch (cause) {
+        built.transitionController.releaseManagement(owner);
+        throw cause;
+      }
+    },
+    releaseManagement: built.transitionController.releaseManagement,
+    scheduleManaged: (mutation) => built.transitionController.scheduleManaged(
+      mutation as (draft: object) => LiveMapCommit<LiveMapAnyOp>,
+    ),
+  }));
+}
+
+const STAGED_DRAFT_UNAVAILABLE_PROPERTIES = new Set<PropertyKey>([
+  "commits",
+  "debug",
+  "feed",
+  "linkTo",
+  "replay",
+  "restore",
+  "schema",
+  "sub",
+  "withSchema",
+]);
+
+/** Restrict and expire the detached callback façade without exposing candidate state. */
+function make_ephemeral_staged_draft<TMap extends object>(value: TMap): Readonly<{
+  draft: TMap;
+  expire: () => void;
+}> {
+  const proxies = new WeakMap<object, object>();
+  let active = true;
+
+  const wrap = <TValue extends object>(target: TValue): TValue => {
+    const existing = proxies.get(target);
+    if (existing !== undefined) return existing as TValue;
+    const proxyTarget = typeof target === "function" ? function () {} : Object.create(null) as object;
+    const proxy = new Proxy(proxyTarget, {
+      has(_current, property) {
+        return Reflect.has(target, property);
+      },
+      get(_current, property) {
+        if (STAGED_DRAFT_UNAVAILABLE_PROPERTIES.has(property)) {
+          throw new LiveMapTransitionError(
+            "LIVEMAP_TRANSITION_INVALID",
+            "Operation is unavailable on a staged LiveMap draft.",
+          );
+        }
+        const member = Reflect.get(target, property, target) as unknown;
+        return (typeof member === "object" && member !== null) || typeof member === "function"
+          ? wrap(member as object)
+          : member;
+      },
+      set() {
+        throw new LiveMapTransitionError(
+          "LIVEMAP_TRANSITION_INVALID",
+          "Staged LiveMap draft properties cannot be assigned directly.",
+        );
+      },
+      apply(_current, thisArgument, argumentsList) {
+        if (!active) {
+          throw new LiveMapTransitionError(
+            "LIVEMAP_TRANSITION_INVALID",
+            "Staged LiveMap draft is expired.",
+          );
+        }
+        return Reflect.apply(target as (...args: unknown[]) => unknown, thisArgument, argumentsList);
+      },
+    }) as TValue;
+    proxies.set(target, proxy);
+    return proxy;
+  };
+
+  return Object.freeze({
+    draft: wrap(value),
+    expire(): void { active = false; },
+  });
+}
+
+function is_promise_like(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === "object"
+    && value !== null
+    && "then" in value
+    && typeof value.then === "function";
+}
+
+function is_livemap_commit(value: unknown): value is LiveMapCommit<LiveMapAnyOp> {
+  return typeof value === "object"
+    && value !== null
+    && "changed" in value
+    && typeof value.changed === "boolean"
+    && "prevRev" in value
+    && typeof value.prevRev === "number"
+    && "rev" in value
+    && typeof value.rev === "number"
+    && "ops" in value
+    && Array.isArray(value.ops);
 }
 
 /**
@@ -826,14 +1095,8 @@ function plain_object_from_set_many_values(values: LiveMapSetManyValues): JsonVa
 }
 
 
-/**
- * Run the full mutation pipeline for normalized write intents.
- *
- * The order is deliberate: schema preflight, editor preflight on a cloned HSON
- * root, live editor application, then feed emission from the committed graph.
- */
-
-function commit_ops(
+/** Prepare one exact projected transition entirely against detached state. */
+function prepare_projected_transition(
   root: HsonNode,
   schema: LiveMapSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
@@ -841,40 +1104,72 @@ function commit_ops(
   setRev: (rev: number) => void,
   writeOps: readonly LiveMapCoreWriteOp[],
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
-  origin: "authoritative" | "replay",
-): LiveMapCommit {
-  /**
-   * Preflight against a cloned JSON view and cloned editor root before touching
-   * the live root. That keeps explicit batches all-or-nothing for schema/editor
-   * failures.
-   */
+  transitionController: LiveMapTransitionController,
+): PreparedLiveMapTransition {
   must_core_schema_write_ops(schema, root, writeOps);
-  must_editor_write_ops(root, writeOps);
-
-  const applied = apply_write_ops(root, writeOps);
+  const baseRoot = clone_live_root(root);
+  const nextRoot = clone_live_root(root);
+  const applied = apply_write_ops(nextRoot, writeOps);
   const prevRev = getRev();
   const rev = applied.changed
     ? prevRev + 1
     : prevRev;
-
-  if (applied.changed) {
-    setRev(rev);
-  }
-
   const commit: LiveMapCommit = Object.freeze({
     changed: applied.changed,
     prevRev,
     rev,
     ops: applied.ops,
   });
-
-  feedHub.emit(
+  return transitionController.prepare({
     commit,
-    (feedPath) => snap_live_path(root, feedPath),
-  );
-  commitObserverHub.emitCommit(commit, origin);
+    baseStillCurrent: () => canonical_graph_equal(root, baseRoot),
+    install: () => {
+      overwrite_hson_node(root, nextRoot);
+      setRev(rev);
+    },
+    notify: (acceptedCommit) => {
+      feedHub.emit(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => snap_live_path(root, feedPath));
+      commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+    },
+  });
+}
 
+/** Privileged historical replay retains its exact existing notification semantics. */
+function apply_replay_ops(
+  root: HsonNode,
+  schema: LiveMapSchema | undefined,
+  feedHub: ReturnType<typeof make_livemap_feed_hub>,
+  getRev: () => number,
+  setRev: (rev: number) => void,
+  writeOps: readonly LiveMapCoreWriteOp[],
+  commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
+): LiveMapCommit {
+  must_core_schema_write_ops(schema, root, writeOps);
+  must_editor_write_ops(root, writeOps);
+  const applied = apply_write_ops(root, writeOps);
+  const prevRev = getRev();
+  const rev = applied.changed ? prevRev + 1 : prevRev;
+  if (applied.changed) setRev(rev);
+  const commit: LiveMapCommit = Object.freeze({ changed: applied.changed, prevRev, rev, ops: applied.ops });
+  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+  commitObserverHub.emitCommit(commit, "replay");
   return commit;
+}
+
+function prepare_document_transition(
+  currentRoot: HsonNode,
+  commit: LiveMapCommit<LiveMapGraphOp>,
+  transitionController: LiveMapTransitionController,
+  install: () => void,
+  notify: (commit: LiveMapCommit<LiveMapAnyOp>) => void,
+): PreparedLiveMapTransition {
+  const baseRoot = clone_live_root(currentRoot);
+  return transitionController.prepare({
+    commit,
+    baseStillCurrent: () => canonical_graph_equal(currentRoot, baseRoot),
+    install,
+    notify,
+  });
 }
 
 /**

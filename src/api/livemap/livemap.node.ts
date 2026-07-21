@@ -105,7 +105,12 @@ function replaceChildNodeAt(parent: HsonNode, path: LivePath, index: number, chi
  * commits, revisions, feeds, subscriptions, and ordinary LiveMap state
  * guarantees. Avoid it in normal application state code.
  */
-export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMapNodeHandle {
+export function make_livemap_node_handle(
+  root: HsonNode,
+  path: LivePath,
+  invalidateAuthority: () => void = () => {},
+  assertMutationAllowed: () => void = () => {},
+): LiveMapNodeHandle {
   const handlePath = [...path];
   const getNode = () => resolveLiveMapNode(root, handlePath);
   const mustNode = () => mustResolveNode(root, handlePath);
@@ -122,19 +127,27 @@ export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMa
     },
     attr: (name) => getNode()?.$_attrs?.[name],
     setAttr: (name, value) => {
+      assertMutationAllowed();
       setNodeAttr(mustAttrsNode(), name, value);
+      invalidateAuthority();
       return handle;
     },
     setAttrs: (attrs) => {
+      assertMutationAllowed();
       setNodeAttrs(mustAttrsNode(), attrs);
+      invalidateAuthority();
       return handle;
     },
     removeAttr: (name) => {
+      assertMutationAllowed();
       removeNodeAttr(mustAttrsNode(), name);
+      invalidateAuthority();
       return handle;
     },
     clearAttrs: () => {
+      assertMutationAllowed();
       clearNodeAttrs(mustAttrsNode());
+      invalidateAuthority();
       return handle;
     },
     meta: () => getNode()?.$_meta,
@@ -144,38 +157,52 @@ export function make_livemap_node_handle(root: HsonNode, path: LivePath): LiveMa
     child: (tag: string) => findDirectChildNodeByTag(getNode(), tag),
     mustChild: (tag: string) => mustFindDirectChildNodeByTag(root, handlePath, tag),
     append: (child: HsonNode) => {
+      assertMutationAllowed();
       appendChildNode(mustNode(), child);
+      invalidateAuthority();
       return handle;
     },
     insert: {
       child: (index, child) => {
+        assertMutationAllowed();
         insertChildNodeAt(mustNode(), handlePath, index, child);
+        invalidateAuthority();
         return handle;
       },
     },
     move: {
       child: (fromIndex, toIndex) => {
+        assertMutationAllowed();
         moveChildNodeAt(mustNode(), handlePath, fromIndex, toIndex);
+        invalidateAuthority();
         return handle;
       },
     },
     remove: {
       children: () => {
+        assertMutationAllowed();
         removeChildNodes(mustNode());
+        invalidateAuthority();
         return handle;
       },
       child: (index) => {
+        assertMutationAllowed();
         removeChildNodeAt(mustNode(), handlePath, index);
+        invalidateAuthority();
         return handle;
       },
     },
     replace: {
       children: (children) => {
+        assertMutationAllowed();
         replaceChildNodes(mustNode(), children);
+        invalidateAuthority();
         return handle;
       },
       child: (index, child) => {
+        assertMutationAllowed();
         replaceChildNodeAt(mustNode(), handlePath, index, child);
+        invalidateAuthority();
         return handle;
       },
     },

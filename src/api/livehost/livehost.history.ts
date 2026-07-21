@@ -299,9 +299,11 @@ export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
 export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAuthority>(
   map: TMap,
   options: LiveHostCanonicalStreamOptions = {},
+  runtime: Readonly<{ observeCommits?: boolean }> = {},
 ): Readonly<{
   stream: LiveHostCanonicalStream<TMap>;
   correlateCommit: (commit: LiveMapCommit<LiveMapAnyOp>, causation: LiveHostCommitCausation) => void;
+  ingestAccepted: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
 }> {
   const logicalMapId = must_identity(options.logicalMapId ?? make_logical_map_id(), "logical map ID");
   const incarnationId = must_identity(options.incarnationId ?? make_incarnation_id(), "incarnation ID");
@@ -515,10 +517,12 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
 
   // Register before the host exposes its map so canonical ingestion is the
   // first host-owned observer of every later authoritative mutation.
-  map.commits.observe((event) => {
-    if (event.kind === "commit") ingest(event.commit, event.origin);
-    else trace_snapshot(event.revision);
-  });
+  if (runtime.observeCommits !== false) {
+    map.commits.observe((event) => {
+      if (event.kind === "commit") ingest(event.commit, event.origin);
+      else trace_snapshot(event.revision);
+    });
+  }
 
   function trace_snapshot(revision: number): void {
     if (map.mode !== "element" && map.mode !== "fragment") return;
@@ -538,6 +542,9 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     correlateCommit(commit, causation): void {
       if (!commit.changed) return;
       commitCausation.set(commit, causation);
+    },
+    ingestAccepted(commit): void {
+      ingest(commit, "authoritative");
     },
   });
 }

@@ -21,7 +21,7 @@ export type LiveHostDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
   | Readonly<{ kind: "unavailable"; message: string }>
   | Readonly<{ kind: "invalid"; message: string }>
-  | Readonly<{ kind: "ready"; payload: JsonValue; execute: () => LiveMapGraphCommit }>;
+  | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LiveMapAuthority) => LiveMapGraphCommit }>;
 
 const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActionName>([
   "document.attrs.set",
@@ -53,7 +53,6 @@ export function resolve_livehost_document_action(
     return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} requires an object payload.` });
   }
 
-  const api = document_api(map);
   const target = decode_livehost_document_target(payload.target);
   if (target === undefined) {
     return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} target is malformed.` });
@@ -72,7 +71,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => api.attrs.set(target, attributeName, value),
+      execute: (targetMap = map) => document_api_for(targetMap).attrs.set(target, attributeName, value),
     });
   }
 
@@ -85,7 +84,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => api.attrs.drop(target, attributeName),
+      execute: (targetMap = map) => document_api_for(targetMap).attrs.drop(target, attributeName),
     });
   }
 
@@ -98,7 +97,8 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload: decoded_action_payload({ target, values }),
-      execute: () => {
+      execute: (targetMap = map) => {
+        const api = document_api_for(targetMap);
         if (name === "document.attrs.setMany") return api.attrs.setMany(target, values);
         return api.attrs.replace(target, values);
       },
@@ -114,7 +114,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload: decoded_action_payload({ target, names }),
-      execute: () => api.attrs.dropMany(target, names),
+      execute: (targetMap = map) => document_api_for(targetMap).attrs.dropMany(target, names),
     });
   }
 
@@ -123,7 +123,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload: decoded_action_payload({ target }),
-      execute: () => api.attrs.clear(target),
+      execute: (targetMap = map) => document_api_for(targetMap).attrs.clear(target),
     });
   }
 
@@ -138,7 +138,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => api.content.replace(target, index, replacement),
+      execute: (targetMap = map) => document_api_for(targetMap).content.replace(target, index, replacement),
     });
   }
 
@@ -153,7 +153,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => api.content.insert(target, index, content),
+      execute: (targetMap = map) => document_api_for(targetMap).content.insert(target, index, content),
     });
   }
 
@@ -164,7 +164,7 @@ export function resolve_livehost_document_action(
     return Object.freeze({
       kind: "ready",
       payload,
-      execute: () => api.content.remove(target, index),
+      execute: (targetMap = map) => document_api_for(targetMap).content.remove(target, index),
     });
   }
 
@@ -175,7 +175,7 @@ export function resolve_livehost_document_action(
   return Object.freeze({
     kind: "ready",
     payload,
-    execute: () => api.content.move(target, from, to),
+    execute: (targetMap = map) => document_api_for(targetMap).content.move(target, from, to),
   });
 }
 
@@ -217,6 +217,11 @@ function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
 
 function document_api(map: DocumentLiveMap): LiveMapDocumentApi {
   return map.document;
+}
+
+function document_api_for(map: LiveMapAuthority): LiveMapDocumentApi {
+  if (is_document_live_map(map)) return document_api(map);
+  throw new Error("LiveHost document action draft mode is unavailable.");
 }
 
 function is_record(value: unknown): value is Readonly<Record<string, JsonValue>> {

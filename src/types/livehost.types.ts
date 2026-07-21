@@ -11,7 +11,10 @@ import type {
   LiveMapDocumentContent,
   LiveMapDocumentTarget,
   LiveMapGraphOp,
+  LiveMapAnyOp,
+  LiveMapCommit,
   LiveMapAuthority,
+  LiveMapDocumentApi,
   LiveMapRootMode,
   LivePath,
   LiveMapOp,
@@ -25,6 +28,7 @@ export type LiveHostActionRequestId = string;
 export type LiveHostActionStatusId = string;
 export type LiveHostActionName = string;
 export type LiveHostSeq = number;
+export type LiveHostAuthorityMode = "shared" | "exclusive";
 export type LiveHostRecoveryId = string;
 export type LiveHostSessionRequestId = string;
 export type LiveHostSessionCredential = string;
@@ -799,9 +803,51 @@ export type LiveHostActionContextForMap<
   TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
 > = Readonly<{
   map: TMap;
+  mutate: (
+    mutation: (draft: LiveHostMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
+  ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
   seq: LiveHostSeq;
   origin: LiveHostActionOrigin;
   emit_event: (event: string, payload: JsonValue) => boolean;
+}>;
+
+type LiveHostDataMutationDraft<TMap extends LiveMapAuthority> = Omit<
+  TMap,
+  "commits" | "debug" | "feed" | "replay" | "restore" | "schema" | "sub" | "withSchema"
+>;
+
+type LiveHostDocumentMutationDraft<TMap extends DocumentLiveMap> = Omit<
+  TMap,
+  "commits" | "debug" | "replay" | "restore"
+>;
+
+/** Ephemeral mutation surface used only inside host-owned staged callbacks. */
+export type LiveHostMutationDraft<TMap extends LiveMapAuthority> =
+  TMap extends DocumentLiveMap ? LiveHostDocumentMutationDraft<TMap>
+  : LiveHostDataMutationDraft<TMap>;
+
+type ReadonlyHostedDocumentApi = Readonly<{
+  root: LiveMapDocumentApi["root"];
+  byQuid: LiveMapDocumentApi["byQuid"];
+  content: () => ReturnType<LiveMapDocumentApi["content"]>;
+  attrs: Pick<LiveMapDocumentApi["attrs"], "get" | "has" | "keys" | "must">;
+}>;
+
+/** Read and observation surface exposed by an exclusive host. */
+export type LiveHostReadonlyMap<TMap extends LiveMapAuthority> = Pick<
+  TMap,
+  "mode" | "rev" | "root" | "capture" | "commits"
+> & (TMap extends LiveMap
+  ? Pick<TMap, Extract<"snap" | "feed" | "sub", keyof TMap>>
+  : TMap extends DocumentLiveMap
+    ? Readonly<{ document: ReadonlyHostedDocumentApi }>
+    : Pick<TMap, Extract<"snap" | "feed" | "sub", keyof TMap>>);
+
+/** Action context used when the host exclusively owns mutation authority. */
+export type ExclusiveLiveHostActionContextForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = Omit<LiveHostActionContextForMap<TMap>, "map"> & Readonly<{
+  map: LiveHostReadonlyMap<TMap>;
 }>;
 
 export type LiveHostActionContext<
@@ -831,6 +877,17 @@ export type LiveHostActionsForMap<
   [TName in keyof TActions & string]: LiveHostActionHandlerForMap<TActions[TName], TMap, TActions>;
 }>;
 
+export type ExclusiveLiveHostActionsForMap<
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+> = Readonly<{
+  [TName in keyof TActions & string]: (
+    ctx: ExclusiveLiveHostActionContextForMap<TMap>,
+    payload: TActions[TName],
+    message: LiveHostClientActionMessage<TActions>,
+  ) => JsonValue | void | Promise<JsonValue | void>;
+}>;
+
 export type LiveHostActions<
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
   TState extends JsonValue | undefined = JsonValue | undefined,
@@ -858,6 +915,7 @@ type LiveHostSharedOptions<
   actionDedupe?: LiveHostActionDedupeOptions;
   authorizeAction?: LiveHostActionAuthorizer<TActions>;
   trace?: LiveTraceSink;
+  authority?: LiveHostAuthorityMode;
 }>;
 
 export type ProjectedLiveHostOptions<
@@ -874,6 +932,22 @@ export type ExistingMapLiveHostOptions<
 > = LiveHostSharedOptions<TMap, TActions> & Readonly<{
   map: TMap;
   state?: never;
+}>;
+
+export type ExclusiveProjectedLiveHostOptions<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Omit<ProjectedLiveHostOptions<TState, TActions>, "authority" | "actions"> & Readonly<{
+  authority: "exclusive";
+  actions?: Partial<ExclusiveLiveHostActionsForMap<TActions, LiveMap<TState>>>;
+}>;
+
+export type ExclusiveExistingMapLiveHostOptions<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Omit<ExistingMapLiveHostOptions<TMap, TActions>, "authority" | "actions"> & Readonly<{
+  authority: "exclusive";
+  actions?: Partial<ExclusiveLiveHostActionsForMap<TActions, TMap>>;
 }>;
 
 /** Backward-compatible name for the projected-state constructor form. */
@@ -1237,6 +1311,16 @@ export type LiveHostForMap<
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>>;
   connect: (socket: LiveHostSocketLike) => LiveHostConnection;
   dispose: LiveHostDisposer;
+}>;
+
+export type ExclusiveLiveHostForMap<
+  TMap extends LiveMapAuthority = LiveMap<JsonValue | undefined>,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+> = Omit<LiveHostForMap<TMap, TActions>, "map"> & Readonly<{
+  map: LiveHostReadonlyMap<TMap>;
+  mutate: (
+    mutation: (draft: LiveHostMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>,
+  ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
 }>;
 
 /** Compatibility surface for existing projected-state hosts. */

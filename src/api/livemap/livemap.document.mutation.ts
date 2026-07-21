@@ -28,7 +28,6 @@ import {
   type LiveMapDocumentIdentityIndex,
 } from "./livemap.document.identity.js";
 import { classify_live_root_mode } from "./livemap.document.js";
-import { canonical_graph_equal } from "./livemap.document.install.js";
 import {
   decode_document_attr_value,
   decode_document_attrs,
@@ -463,10 +462,6 @@ function finish_mutation<TOp extends LiveMapGraphOp>(
   controller: LiveMapDocumentMutationController,
   candidate: PreparedDocumentMutation<TOp>,
 ): LiveMapGraphCommit<TOp> {
-  const prevRev = controller.rev();
-  if (canonical_graph_equal(controller.root(), candidate.root)) {
-    return Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) });
-  }
   return controller.applyMutation(candidate);
 }
 

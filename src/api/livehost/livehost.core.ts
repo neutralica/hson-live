@@ -21,6 +21,9 @@ import type {
   LiveHostDisposer,
   LiveHostOptions,
   ExistingMapLiveHostOptions,
+  ExclusiveExistingMapLiveHostOptions,
+  ExclusiveLiveHostForMap,
+  ExclusiveProjectedLiveHostOptions,
   ProjectedLiveHostOptions,
   LiveHostMapValue,
   LiveHostSchemaDecoder,
@@ -42,6 +45,12 @@ import {
 } from "./livehost.recovery.js";
 import type { LiveHostDocumentSnapshotEncoding } from "./livehost.document-snapshot.js";
 import { LiveHostRecoveryError } from "./livehost.error.js";
+import {
+  make_livehost_exclusive_authority,
+  LiveHostAuthorityError,
+  type LiveHostAuthorityEvent,
+  type LiveHostAuthorityGate,
+} from "./livehost.authority.js";
 import { make_livehost_session_manager } from "./livehost.session.js";
 import { make_livehost_action_dedupe_store } from "./livehost.actions.js";
 import { resolve_livehost_document_action } from "./livehost.document-actions.js";
@@ -54,6 +63,7 @@ import {
 
 let livehost_session_inc = 0;
 let livehost_trace_inc = 0;
+const hostedMapAuthorities = new WeakMap<object, Readonly<{ shared: number; exclusive?: object }>>();
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
@@ -182,14 +192,26 @@ function clone_action_payload(value: JsonValue | undefined, frozen: boolean): Js
 export function create_livehost<
   TState extends JsonValue | undefined = JsonValue | undefined,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(options: ExclusiveProjectedLiveHostOptions<TState, TActions>): ExclusiveLiveHostForMap<LiveMap<TState>, TActions>;
+export function create_livehost<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(options: ExclusiveExistingMapLiveHostOptions<TMap, TActions>): ExclusiveLiveHostForMap<TMap, TActions>;
+export function create_livehost<
+  TState extends JsonValue | undefined = JsonValue | undefined,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 >(options?: ProjectedLiveHostOptions<TState, TActions>): LiveHost<TState, TActions>;
 export function create_livehost<
   TMap extends LiveMapAuthority,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 >(options: ExistingMapLiveHostOptions<TMap, TActions>): LiveHostForMap<TMap, TActions>;
 export function create_livehost(
-  options: ProjectedLiveHostOptions | ExistingMapLiveHostOptions<LiveMapAuthority> = {},
-): LiveHostForMap<LiveMapAuthority> {
+  input: unknown = {},
+): LiveHostForMap<LiveMapAuthority> | ExclusiveLiveHostForMap<LiveMapAuthority> {
+  const options = input as ProjectedLiveHostOptions
+    | ExclusiveProjectedLiveHostOptions
+    | ExistingMapLiveHostOptions<LiveMapAuthority>
+    | ExclusiveExistingMapLiveHostOptions<LiveMapAuthority>;
   if ("map" in options && options.map !== undefined) {
     if ("state" in options) {
       throw new TypeError("LiveHost options state and map are mutually exclusive.");
@@ -203,19 +225,37 @@ export function create_livehost(
   return create_livehost_for_map(map, { ...shared, map });
 }
 
+/** Internal construction seam used by focused gate and failure tests. */
+export function create_livehost_internal<TMap extends LiveMapAuthority>(
+  options: ExistingMapLiveHostOptions<TMap> | ExclusiveExistingMapLiveHostOptions<TMap>,
+  internal: Readonly<{
+    authorityGate?: LiveHostAuthorityGate<TMap>;
+    beforeAcceptedCommitIngestion?: () => void;
+  }> = {},
+): LiveHostForMap<TMap> | ExclusiveLiveHostForMap<TMap> {
+  return create_livehost_for_map(options.map, options, internal);
+}
+
 function create_livehost_for_map<
   TMap extends LiveMapAuthority,
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 >(
   map: TMap,
-  options: ExistingMapLiveHostOptions<TMap, TActions>,
-): LiveHostForMap<TMap, TActions> {
+  options: ExistingMapLiveHostOptions<TMap, TActions> | ExclusiveExistingMapLiveHostOptions<TMap, TActions>,
+  internal: Readonly<{
+    authorityGate?: LiveHostAuthorityGate<TMap>;
+    beforeAcceptedCommitIngestion?: () => void;
+  }> = {},
+): LiveHostForMap<TMap, TActions> | ExclusiveLiveHostForMap<TMap, TActions> {
+  const exclusive = options.authority === "exclusive";
+  const hostOwner = Object.freeze({});
+  assert_hosted_map_available(map, exclusive);
   const streamRuntime = make_livehost_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
     ...(options.incarnationId !== undefined ? { incarnationId: options.incarnationId } : {}),
     ...(options.history !== undefined ? { history: options.history } : {}),
     ...(options.trace !== undefined ? { trace: options.trace } : {}),
-  });
+  }, { observeCommits: !exclusive });
   const stream = streamRuntime.stream;
   const recovery = make_livehost_recovery_planner_internal(
     map,
@@ -226,7 +266,7 @@ function create_livehost_for_map<
   const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
   const resume = make_livehost_resume_log();
-  const actions: Partial<LiveHostActionsForMap<TActions, TMap>> = options.actions ?? {};
+  const actions = (options.actions ?? {}) as Partial<LiveHostActionsForMap<TActions, TMap>>;
   let seq = 0;
   const actionRequests = make_livehost_action_dedupe_store(
     () => stream.headRev,
@@ -235,6 +275,60 @@ function create_livehost_for_map<
   );
   const connections = new Set<LiveHostDisposer>();
   let disposed = false;
+  reserve_hosted_map(map, hostOwner, exclusive);
+
+  function trace_authority_event(event: LiveHostAuthorityEvent): void {
+    if (options.trace === undefined) return;
+    const trace = create_live_trace_context(options.trace, make_livehost_trace_id());
+    trace.emit({
+      subsystem: "livehost",
+      phase: `authority.${event.phase}`,
+      status: event.phase === "gate-failed" || event.phase === "failed" || event.phase === "notification-failed"
+        ? "failure"
+        : event.phase === "enqueued" || event.phase === "prepared" || event.phase === "gate-started"
+          ? "event"
+          : "success",
+      details: () => ({
+        logicalMapId: stream.logicalMapId,
+        mapMode: map.mode,
+        source: event.source,
+        queueDepth: event.queueDepth,
+        ...(event.baseRevision !== undefined ? { prevRev: event.baseRevision } : {}),
+        ...(event.nextRevision !== undefined ? { rev: event.nextRevision } : {}),
+        ...(event.changed !== undefined ? { changed: event.changed } : {}),
+        ...(event.errorCode !== undefined ? { errorCode: event.errorCode } : {}),
+      }),
+    });
+  }
+
+  let exclusiveAuthority: ReturnType<typeof make_livehost_exclusive_authority<TMap, LiveHostCommitCausation | undefined>> | undefined;
+  try {
+    exclusiveAuthority = exclusive
+      ? make_livehost_exclusive_authority<TMap, LiveHostCommitCausation | undefined>(map, {
+      ...(internal.authorityGate !== undefined ? { gate: internal.authorityGate } : {}),
+      accepted(commit, notificationFailureCount, _source, causation): void {
+        internal.beforeAcceptedCommitIngestion?.();
+        if (causation !== undefined) streamRuntime.correlateCommit(commit, causation);
+        streamRuntime.ingestAccepted(commit);
+        if (notificationFailureCount > 0) {
+          trace_authority_event({
+            phase: "notification-failed",
+            source: _source,
+            queueDepth: 0,
+            baseRevision: commit.prevRev,
+            nextRevision: commit.rev,
+            changed: true,
+          });
+        }
+      },
+      event: trace_authority_event,
+        released: () => release_hosted_map(map, hostOwner, true),
+      })
+      : undefined;
+  } catch (cause) {
+    release_hosted_map(map, hostOwner, exclusive);
+    throw cause;
+  }
 
   function next_seq(): LiveHostSeq {
     seq += 1;
@@ -245,12 +339,54 @@ function create_livehost_for_map<
     origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
     causation?: LiveHostCommitCausation,
-  ): LiveHostActionContextForMap<TMap> {
-    return Object.freeze({
-      map: causation === undefined ? map : correlated_action_map(map, causation),
+  ): Readonly<{
+    context: LiveHostActionContextForMap<TMap>;
+    finish: () => Promise<void> | undefined;
+  }> {
+    let open = true;
+    const pending: Promise<LiveMapCommit<LiveMapAnyOp>>[] = [];
+    const context: LiveHostActionContextForMap<TMap> = Object.freeze({
+      map: exclusive ? map : causation === undefined ? map : correlated_action_map(map, causation),
+      mutate(mutation) {
+        if (!open) {
+          return Promise.reject(new LiveHostAuthorityError(
+            "LIVEHOST_AUTHORITY_CLOSED",
+            "LiveHost action mutation context is expired.",
+          ));
+        }
+        let operation: Promise<LiveMapCommit<LiveMapAnyOp>>;
+        if (exclusiveAuthority !== undefined) {
+          operation = exclusiveAuthority.mutate(
+            mutation as unknown as (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
+            "action",
+            causation,
+          );
+        } else {
+          try {
+            const commit = mutation(map as never);
+            if (causation !== undefined) correlate_action_commit(commit, causation);
+            operation = Promise.resolve(commit);
+          } catch (cause) {
+            operation = Promise.reject(cause);
+          }
+        }
+        pending.push(operation);
+        return operation;
+      },
       seq,
       origin,
       emit_event: emitEvent,
+    });
+    return Object.freeze({
+      context,
+      finish(): Promise<void> | undefined {
+        open = false;
+        if (pending.length === 0) return undefined;
+        return Promise.allSettled(pending).then((results) => {
+          const failed = results.find((result) => result.status === "rejected");
+          if (failed?.status === "rejected") throw failed.reason;
+        });
+      },
     });
   }
 
@@ -425,7 +561,11 @@ function create_livehost_for_map<
       return { ok: false, code: "LIVEHOST_ACTION_INVALID", message: documentAction.message };
     }
     if (documentAction.kind === "ready") {
-      const handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]> = () => {
+      const handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]> = async (context) => {
+        if (exclusive) {
+          await context.mutate((draft) => documentAction.execute(draft as unknown as TMap));
+          return;
+        }
         const commit = documentAction.execute();
         if (causation !== undefined) correlate_action_commit(commit, causation);
       };
@@ -570,8 +710,11 @@ function create_livehost_for_map<
       parentSpanId,
       () => ({ action: message.name, origin: origin.kind }),
     );
+    const scope = action_context(origin, emitEvent, causation);
     try {
-      const result = await handler(action_context(origin, emitEvent, causation), payload as never, message);
+      const result = await handler(scope.context, payload as never, message);
+      const tracked = scope.finish();
+      if (tracked !== undefined) await tracked;
       if (result !== undefined && !is_livehost_json_value(result)) {
         handlerSpan?.failure(() => ({
           action: message.name,
@@ -597,6 +740,12 @@ function create_livehost_for_map<
         ...(result !== undefined ? { result } : {}),
       });
     } catch (cause) {
+      try {
+        const tracked = scope.finish();
+        if (tracked !== undefined) await tracked;
+      } catch (trackedCause) {
+        cause = trackedCause;
+      }
       const causeCode = safe_error_code(cause, "LIVEHOST_ACTION_FAILED");
       handlerSpan?.failure(() => ({ action: message.name, errorCode: causeCode }));
       trace_state_boundary(trace, parentSpanId, previousRev);
@@ -1584,6 +1733,8 @@ function create_livehost_for_map<
     connections.clear();
     sessions.dispose();
     actionRequests.dispose();
+    if (exclusiveAuthority !== undefined) exclusiveAuthority.dispose();
+    else release_hosted_map(map, hostOwner, false);
   }
 
   return {
@@ -1597,7 +1748,56 @@ function create_livehost_for_map<
     dispatch_action,
     connect,
     dispose,
+    ...(exclusiveAuthority !== undefined ? {
+      mutate: (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) =>
+        exclusiveAuthority.mutate(mutation, "host"),
+    } : {}),
   };
+}
+
+function reserve_hosted_map(map: object, owner: object, exclusive: boolean): void {
+  const current = hostedMapAuthorities.get(map);
+  if (exclusive) {
+    if (current !== undefined && (current.shared > 0 || current.exclusive !== undefined)) {
+      throw new LiveHostAuthorityError(
+        "LIVEHOST_AUTHORITY_ALREADY_MANAGED",
+        "LiveMap already belongs to another LiveHost authority.",
+      );
+    }
+    hostedMapAuthorities.set(map, Object.freeze({ shared: 0, exclusive: owner }));
+    return;
+  }
+  if (current?.exclusive !== undefined) {
+    throw new LiveHostAuthorityError(
+      "LIVEHOST_AUTHORITY_ALREADY_MANAGED",
+      "LiveMap already belongs to an exclusive LiveHost authority.",
+    );
+  }
+  hostedMapAuthorities.set(map, Object.freeze({ shared: (current?.shared ?? 0) + 1 }));
+}
+
+function assert_hosted_map_available(map: object, exclusive: boolean): void {
+  const current = hostedMapAuthorities.get(map);
+  if (exclusive ? current !== undefined : current?.exclusive !== undefined) {
+    throw new LiveHostAuthorityError(
+      "LIVEHOST_AUTHORITY_ALREADY_MANAGED",
+      exclusive
+        ? "LiveMap already belongs to another LiveHost authority."
+        : "LiveMap already belongs to an exclusive LiveHost authority.",
+    );
+  }
+}
+
+function release_hosted_map(map: object, owner: object, exclusive: boolean): void {
+  const current = hostedMapAuthorities.get(map);
+  if (current === undefined) return;
+  if (exclusive) {
+    if (current.exclusive === owner) hostedMapAuthorities.delete(map);
+    return;
+  }
+  if (current.exclusive !== undefined || current.shared <= 0) return;
+  if (current.shared === 1) hostedMapAuthorities.delete(map);
+  else hostedMapAuthorities.set(map, Object.freeze({ shared: current.shared - 1 }));
 }
 
 function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {

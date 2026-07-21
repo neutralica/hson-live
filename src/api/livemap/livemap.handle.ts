@@ -1,12 +1,13 @@
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
 import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
 import { ensure_livemap_quid } from "./livemap.quid.js";
 import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
+import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
@@ -95,32 +96,39 @@ function write_link_target(target: LiveMapPathHandle, value: JsonValue, mode: "r
     return;
   }
 
-  const targetPath = internals.path;
-
-  if (targetPath.length === 0 || internals.core.snap(targetPath) !== undefined) {
-    if (mode === "replace") internals.core.replace(targetPath, value);
-    else internals.core.set(targetPath, value);
+  const scheduled = schedule_livemap_managed_mutation(internals.core, (draft) =>
+    write_link_core(draft as LiveMapPathHandleCore, internals.path, value, mode));
+  if (scheduled !== undefined) {
+    void scheduled.catch(() => undefined);
     return;
+  }
+  write_link_core(internals.core, internals.path, value, mode);
+}
+
+function write_link_core(
+  core: LiveMapPathHandleCore,
+  targetPath: LivePath,
+  value: JsonValue,
+  mode: "replace" | "set",
+): LiveMapCommit {
+
+  if (targetPath.length === 0 || core.snap(targetPath) !== undefined) {
+    return mode === "replace" ? core.replace(targetPath, value) : core.set(targetPath, value);
   }
 
   const parentPath = parent_live_path(targetPath);
 
   if (parentPath === undefined) {
-    if (mode === "replace") internals.core.replace(targetPath, value);
-    else internals.core.set(targetPath, value);
-
-    return;
+    return mode === "replace" ? core.replace(targetPath, value) : core.set(targetPath, value);
   }
   const key = targetPath[targetPath.length - 1];
-  const parentValue = internals.core.snap(parentPath);
+  const parentValue = core.snap(parentPath);
 
   if (typeof key === "string" && is_object_value(parentValue)) {
-    internals.core.setMany(parentPath, { [key]: value });
-    return;
+    return core.setMany(parentPath, { [key]: value });
   }
 
-  if (mode === "replace") internals.core.replace(targetPath, value);
-  else internals.core.set(targetPath, value);
+  return mode === "replace" ? core.replace(targetPath, value) : core.set(targetPath, value);
 }
 
 /** True for resolved JSON object values that can receive linked child writes. */
@@ -141,6 +149,23 @@ function propagate_delete_link(
   sourceValue: JsonValue | undefined,
   target: LiveMapPathHandle,
 ): void {
+  const internals = pathHandleInternals.get(target);
+  if (internals !== undefined) {
+    const scheduled = schedule_livemap_managed_mutation(internals.core, (draft) =>
+      propagate_delete_core(
+        draft as LiveMapPathHandleCore,
+        internals.path,
+        sourcePath,
+        deletePath,
+        sourceValue,
+      ));
+    if (scheduled !== undefined) {
+      void scheduled.catch(() => undefined);
+      return;
+    }
+    propagate_delete_core(internals.core, internals.path, sourcePath, deletePath, sourceValue);
+    return;
+  }
   if (path_is_prefix(deletePath, sourcePath)) {
     target.delete();
     return;
@@ -149,4 +174,18 @@ function propagate_delete_link(
   if (path_is_prefix(sourcePath, deletePath) && sourceValue !== undefined) {
     target.replace(sourceValue);
   }
+}
+
+function propagate_delete_core(
+  core: LiveMapPathHandleCore,
+  targetPath: LivePath,
+  sourcePath: LivePath,
+  deletePath: LivePath,
+  sourceValue: JsonValue | undefined,
+): LiveMapCommit {
+  if (path_is_prefix(deletePath, sourcePath)) return core.delete(targetPath);
+  if (path_is_prefix(sourcePath, deletePath) && sourceValue !== undefined) {
+    return core.replace(targetPath, sourceValue);
+  }
+  return core.batch(() => {});
 }
