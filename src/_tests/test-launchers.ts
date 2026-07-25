@@ -1,0 +1,318 @@
+export type HsonLiveTestSubject =
+  | "LiveHost"
+  | "LiveMap"
+  | "LiveTree"
+  | "Transform"
+  | "Core";
+
+export type HsonLiveTestRuntime =
+  | "node"
+  | "node-synthetic-dom"
+  | "node-real-websocket"
+  | "node-real-websocket-process";
+
+export type HsonLiveTestLauncher = Readonly<{
+  id: string;
+  subject: HsonLiveTestSubject;
+  displayName: string;
+  packageScript: `test:${string}`;
+  repositoryModule: `tests/${string}`;
+  runtime: HsonLiveTestRuntime;
+  executableChecks: number;
+  collections: readonly string[];
+}>;
+
+function launcher(
+  value: Omit<HsonLiveTestLauncher, "collections"> & {
+    collections: readonly string[];
+  },
+): HsonLiveTestLauncher {
+  return Object.freeze({
+    ...value,
+    collections: Object.freeze([...value.collections]),
+  });
+}
+
+export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
+  Object.freeze([
+    launcher({
+      id: "transform.hson-tokenizer",
+      subject: "Transform",
+      displayName: "HSON tokenizer",
+      packageScript: "test:hson-tokenizer",
+      repositoryModule: "tests/hson-tokenizer.acceptance.mts",
+      runtime: "node",
+      executableChecks: 55,
+      collections: ["hson", "tokenization", "parsing"],
+    }),
+    launcher({
+      id: "transform.hson-serializer",
+      subject: "Transform",
+      displayName: "HSON serializer",
+      packageScript: "test:hson-serializer",
+      repositoryModule: "tests/hson-serializer.acceptance.mts",
+      runtime: "node",
+      executableChecks: 74,
+      collections: ["hson", "serialization", "round-trip"],
+    }),
+    launcher({
+      id: "core.canonical-hson-equality",
+      subject: "Core",
+      displayName: "Canonical HSON equality",
+      packageScript: "test:canonical-hson-equality",
+      repositoryModule: "tests/canonical-hson-equality.acceptance.mts",
+      runtime: "node",
+      executableChecks: 12,
+      collections: ["canonical-graph", "equality"],
+    }),
+    launcher({
+      id: "livemap.view-state-snapshot-codec",
+      subject: "LiveMap",
+      displayName: "View-state snapshot codec",
+      packageScript: "test:view-state-snapshot-codec",
+      repositoryModule: "tests/view-state-snapshot-codec.acceptance.mts",
+      runtime: "node",
+      executableChecks: 19,
+      collections: ["document", "snapshot", "codec"],
+    }),
+    launcher({
+      id: "core.public-boundaries",
+      subject: "Core",
+      displayName: "Public package boundaries",
+      packageScript: "test:public-boundaries",
+      repositoryModule: "tests/public-boundaries.acceptance.mts",
+      runtime: "node",
+      executableChecks: 5,
+      collections: ["public-api", "LiveMap", "LiveTree", "Transform"],
+    }),
+    launcher({
+      id: "livetree.attrs",
+      subject: "LiveTree",
+      displayName: "LiveTree canonical attributes",
+      packageScript: "test:livetree-attrs",
+      repositoryModule: "tests/livetree-attrs.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 12,
+      collections: ["attributes", "style", "dom-projection"],
+    }),
+    launcher({
+      id: "livetree.document-attrs",
+      subject: "LiveTree",
+      displayName: "Document LiveTree attribute binding",
+      packageScript: "test:liveproject-document-attrs",
+      repositoryModule: "tests/liveproject-document-attrs.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 10,
+      collections: ["document", "binding", "attributes"],
+    }),
+    launcher({
+      id: "livetree.document-structure",
+      subject: "LiveTree",
+      displayName: "Document LiveTree structural binding",
+      packageScript: "test:liveproject-document-structure",
+      repositoryModule: "tests/liveproject-document-structure.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 11,
+      collections: ["document", "binding", "structure"],
+    }),
+    launcher({
+      id: "livetree.document-delegation",
+      subject: "LiveTree",
+      displayName: "Document LiveTree mutation delegation",
+      packageScript: "test:liveproject-document-delegation",
+      repositoryModule: "tests/liveproject-document-delegation.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 8,
+      collections: ["document", "binding", "delegation"],
+    }),
+    launcher({
+      id: "livetree.document-root",
+      subject: "LiveTree",
+      displayName: "Document LiveTree root convergence",
+      packageScript: "test:liveproject-document-root",
+      repositoryModule: "tests/liveproject-document-root.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 8,
+      collections: ["document", "binding", "root"],
+    }),
+    launcher({
+      id: "livetree.document-snapshot",
+      subject: "LiveTree",
+      displayName: "Document LiveTree snapshot convergence",
+      packageScript: "test:liveproject-document-snapshot",
+      repositoryModule: "tests/liveproject-document-snapshot.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 9,
+      collections: ["document", "binding", "snapshot"],
+    }),
+    launcher({
+      id: "livemap.document",
+      subject: "LiveMap",
+      displayName: "Document LiveMap",
+      packageScript: "test:livemap-document",
+      repositoryModule: "tests/livemap-document.acceptance.mts",
+      runtime: "node",
+      executableChecks: 14,
+      collections: ["document", "construction", "identity"],
+    }),
+    launcher({
+      id: "livemap.document-install",
+      subject: "LiveMap",
+      displayName: "Document LiveMap installation",
+      packageScript: "test:livemap-document-install",
+      repositoryModule: "tests/livemap-document-install.acceptance.mts",
+      runtime: "node",
+      executableChecks: 11,
+      collections: ["document", "installation", "identity"],
+    }),
+    launcher({
+      id: "livemap.document-mutation",
+      subject: "LiveMap",
+      displayName: "Document LiveMap mutation",
+      packageScript: "test:livemap-document-mutation",
+      repositoryModule: "tests/livemap-document-mutation.acceptance.mts",
+      runtime: "node",
+      executableChecks: 21,
+      collections: ["document", "mutation", "attributes", "content"],
+    }),
+    launcher({
+      id: "livemap.document-attrs-read",
+      subject: "LiveMap",
+      displayName: "Document LiveMap attribute reads",
+      packageScript: "test:livemap-document-attrs-read",
+      repositoryModule: "tests/livemap-document-attrs-read.acceptance.mts",
+      runtime: "node",
+      executableChecks: 8,
+      collections: ["document", "attributes", "reads"],
+    }),
+    launcher({
+      id: "livemap.document-replay",
+      subject: "LiveMap",
+      displayName: "Document LiveMap observation and replay",
+      packageScript: "test:livemap-document-replay",
+      repositoryModule: "tests/livemap-document-replay.acceptance.mts",
+      runtime: "node",
+      executableChecks: 16,
+      collections: ["document", "observation", "replay"],
+    }),
+    launcher({
+      id: "livemap.staged-authority",
+      subject: "LiveMap",
+      displayName: "Staged LiveMap authority",
+      packageScript: "test:livemap-staged-authority",
+      repositoryModule: "tests/livemap-staged-authority.acceptance.mts",
+      runtime: "node",
+      executableChecks: 13,
+      collections: ["authority", "lifecycle", "commit"],
+    }),
+    launcher({
+      id: "livehost.authority",
+      subject: "LiveHost",
+      displayName: "Exclusive LiveHost authority",
+      packageScript: "test:livehost-authority",
+      repositoryModule: "tests/runtime-probes/livehost-authority.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 19,
+      collections: ["authority", "lifecycle", "commit"],
+    }),
+    launcher({
+      id: "livehost.persistence",
+      subject: "LiveHost",
+      displayName: "Persistent LiveHost",
+      packageScript: "test:livehost-persistence",
+      repositoryModule: "tests/runtime-probes/livehost-persistence.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 16,
+      collections: ["persistence", "authority", "recovery"],
+    }),
+    launcher({
+      id: "livehost.recovery",
+      subject: "LiveHost",
+      displayName: "LiveHost recovery",
+      packageScript: "test:livehost-recovery",
+      repositoryModule: "tests/runtime-probes/livehost-recovery.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 11,
+      collections: ["recovery", "history", "snapshot"],
+    }),
+    launcher({
+      id: "livehost.client-recovery",
+      subject: "LiveHost",
+      displayName: "LiveHost client recovery",
+      packageScript: "test:livehost-client-recovery",
+      repositoryModule: "tests/runtime-probes/livehost-client-recovery.acceptance.mjs",
+      runtime: "node-real-websocket",
+      executableChecks: 28,
+      collections: ["client", "recovery", "protocol", "websocket"],
+    }),
+    launcher({
+      id: "livehost.document-recovery",
+      subject: "LiveHost",
+      displayName: "LiveHost document recovery",
+      packageScript: "test:livehost-document-recovery",
+      repositoryModule: "tests/runtime-probes/livehost-document-recovery.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 28,
+      collections: ["document", "recovery", "snapshot"],
+    }),
+    launcher({
+      id: "livehost.document-actions",
+      subject: "LiveHost",
+      displayName: "Hosted document actions",
+      packageScript: "test:livehost-document-actions",
+      repositoryModule: "tests/runtime-probes/livehost-document-actions.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 28,
+      collections: ["document", "actions", "recovery"],
+    }),
+    launcher({
+      id: "livehost.protocol-document",
+      subject: "LiveHost",
+      displayName: "LiveHost document protocol",
+      packageScript: "test:livehost-protocol-document",
+      repositoryModule: "tests/runtime-probes/livehost-protocol-document.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 8,
+      collections: ["document", "protocol", "validation"],
+    }),
+    launcher({
+      id: "livehost.session",
+      subject: "LiveHost",
+      displayName: "LiveHost session",
+      packageScript: "test:livehost-session",
+      repositoryModule: "tests/runtime-probes/livehost-session.acceptance.mjs",
+      runtime: "node-real-websocket",
+      executableChecks: 15,
+      collections: ["session", "recovery", "websocket"],
+    }),
+    launcher({
+      id: "livehost.action-dedupe",
+      subject: "LiveHost",
+      displayName: "LiveHost action deduplication",
+      packageScript: "test:livehost-action-dedupe",
+      repositoryModule: "tests/runtime-probes/livehost-action-dedupe.acceptance.mjs",
+      runtime: "node-real-websocket-process",
+      executableChecks: 21,
+      collections: ["actions", "deduplication", "identity", "websocket"],
+    }),
+    launcher({
+      id: "livehost.trace",
+      subject: "LiveHost",
+      displayName: "LiveHost tracing",
+      packageScript: "test:livehost-trace",
+      repositoryModule: "tests/runtime-probes/livehost-trace.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 12,
+      collections: ["trace", "actions", "redaction"],
+    }),
+    launcher({
+      id: "livehost.authorization",
+      subject: "LiveHost",
+      displayName: "LiveHost action authorization",
+      packageScript: "test:livehost-authorization",
+      repositoryModule: "tests/runtime-probes/livehost-authorization.acceptance.mjs",
+      runtime: "node",
+      executableChecks: 10,
+      collections: ["actions", "authorization", "policy"],
+    }),
+  ]);

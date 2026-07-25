@@ -35,6 +35,10 @@
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
     },
+    "./test-launchers": {
+      "types": "./dist/_tests/test-launchers.d.ts",
+      "import": "./dist/_tests/test-launchers.js"
+    },
     "./diagnostics/test-exports": "./dist/_tests/test-exports.js"
   },
   "scripts": {
