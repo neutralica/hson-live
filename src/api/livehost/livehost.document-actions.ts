@@ -12,10 +12,10 @@ import {
   decode_livehost_document_attribute_name,
   decode_livehost_document_attrs,
   decode_livehost_document_attribute_value,
-  decode_livehost_document_content,
   decode_livehost_document_target,
   is_livehost_json_value,
 } from "./livehost.protocol.js";
+import { decode_livehost_graph_content } from "./livehost.graph-content-codec.js";
 
 export type LiveHostDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
@@ -131,8 +131,10 @@ export function resolve_livehost_document_action(
     if (!has_exact_keys(payload, ["target", "index", "replacement"])) return invalid_fields(name);
     const index = non_negative_integer(payload.index);
     if (index === undefined) return invalid_index(name);
-    const replacement = decode_livehost_document_content(payload.replacement);
-    if (replacement === undefined) {
+    let replacement;
+    try {
+      replacement = decode_livehost_graph_content(payload.replacement);
+    } catch {
       return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} replacement is invalid.` });
     }
     return Object.freeze({
@@ -146,8 +148,10 @@ export function resolve_livehost_document_action(
     if (!has_exact_keys(payload, ["target", "index", "content"])) return invalid_fields(name);
     const index = non_negative_integer(payload.index);
     if (index === undefined) return invalid_index(name);
-    const content = decode_livehost_document_content(payload.content);
-    if (content === undefined) {
+    let content;
+    try {
+      content = decode_livehost_graph_content(payload.content);
+    } catch {
       return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content is invalid.` });
     }
     return Object.freeze({

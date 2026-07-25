@@ -94,6 +94,13 @@ export type LiveHostWireValue =
   | Readonly<{ present: false }>
   | Readonly<{ present: true; value: JsonValue }>;
 
+/** Versioned exact HSON-backed representation used for graph content at LiveHost boundaries. */
+export type LiveHostEncodedGraphContent = Readonly<{
+  format: "hson-graph";
+  formatVersion: 1;
+  payload: string;
+}>;
+
 export type LiveHostCanonicalSetOp = Readonly<{
   kind: "set";
   path: LivePath;
@@ -125,12 +132,33 @@ export type LiveHostCanonicalSpliceOp = Readonly<{
   next: LiveHostWireValue;
 }>;
 
+export type LiveHostEncodedGraphReplaceRootOp = Omit<
+  Extract<LiveMapGraphOp, { op: "replace-root" }>,
+  "root"
+> & Readonly<{ root: LiveHostEncodedGraphContent }>;
+
+export type LiveHostEncodedGraphReplaceContentOp = Omit<
+  Extract<LiveMapGraphOp, { op: "replace-content" }>,
+  "replacement"
+> & Readonly<{ replacement: LiveHostEncodedGraphContent }>;
+
+export type LiveHostEncodedGraphInsertContentOp = Omit<
+  Extract<LiveMapGraphOp, { op: "insert-content" }>,
+  "content"
+> & Readonly<{ content: LiveHostEncodedGraphContent }>;
+
+export type LiveHostEncodedGraphOp =
+  | Exclude<LiveMapGraphOp, { op: "replace-root" | "replace-content" | "insert-content" }>
+  | LiveHostEncodedGraphReplaceRootOp
+  | LiveHostEncodedGraphReplaceContentOp
+  | LiveHostEncodedGraphInsertContentOp;
+
 export type LiveHostCanonicalOp =
   | LiveHostCanonicalSetOp
   | LiveHostCanonicalDeleteOp
   | LiveHostCanonicalReplaceOp
   | LiveHostCanonicalSpliceOp
-  | LiveMapGraphOp;
+  | LiveHostEncodedGraphOp;
 
 /** One immutable changed commit in an incarnation's authoritative stream. */
 export type LiveHostCanonicalCommit = Readonly<{

@@ -3,7 +3,6 @@ import type {
   DocumentLiveMap,
   LiveMapAnyOp,
   LiveMapCommit,
-  LiveMapGraphOp,
 } from "../../types/livemap.types.js";
 import type {
   ExclusiveLiveHostForMap,
@@ -29,7 +28,10 @@ import {
   wait_livehost_exclusive_closed,
 } from "./livehost.core.js";
 import { make_livehost_canonical_commit } from "./livehost.history.js";
-import { decode_livehost_canonical_commit } from "./livehost.protocol.js";
+import {
+  decode_livehost_canonical_commit,
+  decode_livehost_document_commit,
+} from "./livehost.protocol.js";
 import { create_live_trace_context } from "./livehost.trace.js";
 import {
   decode_view_state_snapshot,
@@ -320,12 +322,7 @@ function validate_persisted_state(
         mapKind: "document" as const,
         commit: canonical,
       });
-      map.replay(Object.freeze({
-        changed: true,
-        prevRev: canonical.prevRev,
-        rev: canonical.rev,
-        ops: canonical.ops as readonly LiveMapGraphOp[],
-      }));
+      map.replay(decode_livehost_document_commit(canonical));
       commits.push(persistedCommit);
       canonicalCommits.push(canonical);
       expectedPrevRev = canonical.rev;

@@ -25,6 +25,7 @@ import { create_live_trace_context, type LiveHostCommitCausation } from "./liveh
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import { clone_live_root } from "../livemap/livemap.editor.js";
+import { encode_livehost_graph_content } from "./livehost.graph-content-codec.js";
 
 const DEFAULT_MAX_COMMITS = 1_024;
 const DEFAULT_MAX_BYTES = 4 * 1_024 * 1_024;
@@ -169,13 +170,13 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
   throw new Error("LiveHost canonical commit operation kind is invalid.");
 }
 
-function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
+function canonical_graph_op(op: LiveMapGraphOp): LiveHostCanonicalOp {
   if (op.op === "replace-root") {
     return Object.freeze({
       domain: "graph",
       op: "replace-root",
       mode: op.mode,
-      root: clone_live_root(op.root),
+      root: encode_livehost_graph_content(clone_live_root(op.root)),
     });
   }
   const target = op.target.kind === "path"
@@ -207,9 +208,9 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
       op: "replace-content",
       target,
       index: op.index,
-      replacement: is_Node(op.replacement)
-        ? clone_live_root(op.replacement)
-        : op.replacement,
+      replacement: encode_livehost_graph_content(
+        is_Node(op.replacement) ? clone_live_root(op.replacement) : op.replacement,
+      ),
     });
   }
   if (op.op === "insert-content") {
@@ -218,7 +219,9 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveMapGraphOp {
       op: "insert-content",
       target,
       index: op.index,
-      content: is_Node(op.content) ? clone_live_root(op.content) : op.content,
+      content: encode_livehost_graph_content(
+        is_Node(op.content) ? clone_live_root(op.content) : op.content,
+      ),
     });
   }
   if (op.op === "remove-content") {

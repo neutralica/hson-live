@@ -287,17 +287,23 @@ The structural actions call only `content.insert(target, index, content)`,
 Targets use the existing canonical document target union: a persisted QUID or
 a numeric canonical document path.
 
-Payloads are strict JSON action payloads. Attribute values are canonical
+Payloads use JSON framing and strict JSON metadata. Attribute values are canonical
 primitives, or the existing structured style value when the name is `style`.
 Bulk values records use that same canonical domain. `setMany` preserves
 unspecified ordinary attrs, `dropMany` ignores valid absent names, `clear`
 removes all ordinary attrs, and `replace` installs the exact supplied bag.
 System metadata and persisted QUIDs are always preserved. Empty or equal final
 bags acknowledge without a revision, history entry, or publication.
-Content replacement and insertion accept a canonical primitive or the same
-JSON-safe canonical node representation already validated for graph
-operations. They do not accept raw HTML or introduce an HSON text action
-transport.
+Content replacement and insertion accept a canonical primitive or node through
+the versioned `{ format: "hson-graph", formatVersion: 1, payload: string }`
+encoding. The payload is deterministic typed HSON data. Raw `HsonNode` object
+layouts and raw HTML are not protocol representations.
+
+The same graph encoding is used for node- or primitive-bearing canonical
+commit fields in retained history, live publication, recovery replay tails,
+and persisted commit records. Outer protocol framing, targets, indexes, paths,
+IDs, revisions, and projected data remain JSON. Complete-map snapshots continue
+to use the separate exact `view-state` codec.
 
 Insertion accepts indexes from `0` through the current slot count, inclusive;
 the slot count appends. Removal accepts only an existing slot. Move accepts

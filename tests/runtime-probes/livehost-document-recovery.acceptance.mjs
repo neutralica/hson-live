@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { make_livehost_canonical_stream } from "../../src/api/livehost/livehost.history.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
+import { decode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
 import { encode_view_state_snapshot } from "../../src/api/livemap/livemap.document.view-state-codec.ts";
 import { ViewStateSnapshotCodecError } from "../../src/api/livemap/livemap.document.view-state-codec.error.ts";
 import { LiveHostDocumentSnapshotEncodeError } from "../../src/api/livehost/livehost.document-snapshot.ts";
@@ -257,7 +258,12 @@ await check("node-bearing fragment history is detached and incremental replay pr
   assert.equal(retainedOp?.op, "replace-content");
   if (sourceOp?.op !== "replace-content" || retainedOp?.op !== "replace-content") throw new Error("Expected content replacement");
   assert.notEqual(retainedOp.replacement, sourceOp.replacement);
-  assert.deepEqual(retainedOp.replacement, sourceOp.replacement);
+  assert.deepEqual(decode_livehost_graph_content(retainedOp.replacement), sourceOp.replacement);
+  assert.equal(JSON.stringify(retainedOp.replacement).includes("$_tag"), false);
+  assert.equal(
+    host.stream.history.debug().retainedEncodedBytes,
+    new TextEncoder().encode(JSON.stringify(retained)).byteLength,
+  );
 
   const mirror = fragment(initial);
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
@@ -282,11 +288,11 @@ await check("insert-content history detaches canonical nodes from source commits
     throw new Error("Expected content insertion");
   }
   assert.notEqual(retainedOp.content, sourceOp.content);
-  assert.deepEqual(retainedOp.content, sourceOp.content);
+  assert.deepEqual(decode_livehost_graph_content(retainedOp.content), sourceOp.content);
   content.$_tag = "caller-mutated";
   sourceOp.content.$_tag = "commit-mutated";
   assert.equal(authority.document.byQuid("000000000000001h")?.$_tag, "b");
-  assert.equal(retainedOp.content.$_tag, "b");
+  assert.equal(decode_livehost_graph_content(retainedOp.content).$_tag, "b");
 });
 
 await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {

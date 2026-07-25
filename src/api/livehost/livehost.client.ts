@@ -6,8 +6,7 @@ import type {
   JsonValue,
   LiveMap,
   LiveMapAuthority,
-  LiveMapGraphCommit,
-  LiveMapGraphOp,
+  LiveMapDocumentContent,
   LiveMapOp,
 } from "../../types/index.js";
 import type {
@@ -56,7 +55,14 @@ import {
   LiveHostDisconnectedError,
   LiveHostDuplicateActionIdError,
 } from "./livehost.error.js";
-import { decode_livehost_client_server_message, is_livehost_json_value } from "./livehost.protocol.js";
+import {
+  decode_livehost_client_server_message,
+  decode_livehost_document_commit,
+  is_livehost_json_value,
+} from "./livehost.protocol.js";
+import {
+  encode_livehost_graph_content,
+} from "./livehost.graph-content-codec.js";
 import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
 import {
   decode_livehost_document_snapshot,
@@ -118,7 +124,30 @@ function recovery_trace_strategy(strategy: LiveHostClientRecoveryStrategy | unde
 }
 
 function encode_client_message<TActions extends LiveHostActionPayloads>(message: LiveHostClientMessage<TActions>): string {
-  return JSON.stringify(message);
+  if (message.type !== "action" || message.payload === undefined) return JSON.stringify(message);
+  if (message.name !== "document.content.insert" && message.name !== "document.content.replace") {
+    return JSON.stringify(message);
+  }
+  if (typeof message.payload !== "object" || message.payload === null || Array.isArray(message.payload)) {
+    return JSON.stringify(message);
+  }
+  const field = message.name === "document.content.insert" ? "content" : "replacement";
+  if (!Object.prototype.hasOwnProperty.call(message.payload, field)) return JSON.stringify(message);
+  let encodedContent;
+  try {
+    encodedContent = encode_livehost_graph_content(message.payload[field] as LiveMapDocumentContent);
+  } catch {
+    // Preserve the established asynchronous structured action rejection path
+    // without ever falling back to a raw node-shaped wire payload.
+    encodedContent = { format: "hson-graph", formatVersion: 1, payload: "" } as const;
+  }
+  return JSON.stringify({
+    ...message,
+    payload: {
+      ...message.payload,
+      [field]: encodedContent,
+    },
+  });
 }
 
 type PendingAction = Readonly<{
@@ -197,22 +226,6 @@ function local_ops(commit: LiveHostCanonicalCommit): readonly LiveMapOp[] {
     }
     if (next === undefined) throw new Error(`Canonical ${op.kind} next value is absent.`);
     return { kind: op.kind, path: op.path, prev, next };
-  });
-}
-
-function local_graph_commit(commit: LiveHostCanonicalCommit): LiveMapGraphCommit {
-  const operations: LiveMapGraphOp[] = [];
-  for (const operation of commit.ops) {
-    if (!("domain" in operation)) {
-      throw new Error("Canonical projected operation cannot replay on a document mirror.");
-    }
-    operations.push(operation);
-  }
-  return Object.freeze({
-    changed: true,
-    prevRev: commit.prevRev,
-    rev: commit.rev,
-    ops: Object.freeze(operations),
   });
 }
 
@@ -424,7 +437,7 @@ export function create_livehost_client<
     const localRevBefore = map.rev;
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
-        ? map.replay(local_graph_commit(commit))
+        ? map.replay(decode_livehost_document_commit(commit))
         : map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
       if (!applied.changed || map.rev !== localRevBefore + 1) {
         throw new Error("Canonical changed commit did not advance the client mirror exactly once.");

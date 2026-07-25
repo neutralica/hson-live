@@ -72,6 +72,12 @@ type CodecPayload = Readonly<{
   root: CodecValue;
 }>;
 
+type ExactValuePayload = Readonly<{
+  valueKind: "canonical-graph-content";
+  valueVersion: 1;
+  value: CodecValue;
+}>;
+
 type Budget = {
   nodes: number;
 };
@@ -157,6 +163,68 @@ export function decode_view_state_snapshot(
     );
   }
   return capture;
+}
+
+/**
+ * Internal exact-value primitive shared with LiveHost's graph-content boundary.
+ * The returned string is deterministic HSON data, not source-style document HSON.
+ */
+export function encode_exact_hson_value(
+  value: HsonNode | Primitive,
+  options?: ViewStateSnapshotCodecOptions,
+): string {
+  const limits = codec_limits(options);
+  const payloadValue: ExactValuePayload = {
+    valueKind: "canonical-graph-content",
+    valueVersion: 1,
+    value: encode_value(value, 1, { nodes: 0 }, limits),
+  };
+  let payload: string;
+  try {
+    payload = serialize_hson(parse_json(payloadValue as JsonValue), { noBreak: true });
+  } catch (cause) {
+    throw codec_error(
+      "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+      "Exact HSON value representation could not be serialized.",
+      cause,
+    );
+  }
+  assert_payload_size(payload, limits);
+  return payload;
+}
+
+/** Internal inverse of `encode_exact_hson_value`. */
+export function decode_exact_hson_value(
+  payload: string,
+  options?: ViewStateSnapshotCodecOptions,
+): HsonNode | Primitive {
+  const limits = codec_limits(options);
+  assert_payload_size(payload, limits);
+  let parsedNode: HsonNode;
+  try {
+    parsedNode = parse_hson(payload);
+  } catch (cause) {
+    throw codec_error(
+      "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
+      "Exact HSON value payload is not valid HSON.",
+      cause,
+    );
+  }
+  const representation = json_value_from_node(parsedNode);
+  const record = exact_record(representation, ["valueKind", "valueVersion", "value"]);
+  if (record.valueKind !== "canonical-graph-content" || record.valueVersion !== 1) {
+    throw invalid_representation();
+  }
+  const value = decode_value(record.value, 1, { nodes: 0 }, limits);
+  if (!is_Node(value) && !is_primitive(value)) throw invalid_representation();
+  const canonical = encode_exact_hson_value(value, limits);
+  if (canonical !== payload) {
+    throw codec_error(
+      "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
+      "Exact HSON value payload is not deterministic.",
+    );
+  }
+  return value;
 }
 
 function encode_value(

@@ -1150,6 +1150,12 @@ their own `set-attr`, `remove-attr`, `replace-attrs`, `replace-content`, `insert
 `remove-content`, and `move-content` records; they never masquerade as
 `replace-root` installation.
 
+Local LiveMap document commits remain runtime-domain values and may naturally
+contain detached `HsonNode` content. LiveHost converts those graph-bearing
+fields to its versioned exact `hson-graph` representation only when retaining,
+transporting, remotely replaying, or persisting the commit. Projected LiveMap
+operations remain JSON-domain operations.
+
 The input capture, installed owned root, later captures, and returned operation
 root share no mutable references. `debug.node()` can still damage live graph or
 identity assumptions without a revision; a later valid install replaces both

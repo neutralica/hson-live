@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
+import { encode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
 
 let checks = 0;
 
@@ -68,21 +69,21 @@ check("document commits decode graph operations without projected coercion", () 
       op: "replace-content",
       target: { kind: "path", path: [] },
       index: 0,
-      replacement: { $_tag: "span", $_meta: { "data-_quid": "0000000000000002" }, $_content: [] },
+      replacement: encode_livehost_graph_content({ $_tag: "span", $_meta: { "data-_quid": "0000000000000002" }, $_content: [] }),
     },
     {
       domain: "graph",
       op: "insert-content",
       target: { kind: "path", path: [] },
       index: 1,
-      content: "text",
+      content: encode_livehost_graph_content("text"),
     },
     {
       domain: "graph",
       op: "insert-content",
       target: { kind: "path", path: [] },
       index: 2,
-      content: { $_tag: "aside", $_meta: { "data-_quid": "0000000000000003" }, $_content: [] },
+      content: encode_livehost_graph_content({ $_tag: "aside", $_meta: { "data-_quid": "0000000000000003" }, $_content: [] }),
     },
     {
       domain: "graph",
@@ -129,7 +130,7 @@ check("replace-root requires canonical same-mode HSON and persisted identity", (
     domain: "graph",
     op: "replace-root",
     mode: "element",
-    root: element_root(),
+    root: encode_livehost_graph_content(element_root()),
   }]));
   assert.equal(valid.ok, true);
 
@@ -139,7 +140,7 @@ check("replace-root requires canonical same-mode HSON and persisted identity", (
     domain: "graph",
     op: "replace-root",
     mode: "element",
-    root: fragment.capture().root,
+    root: encode_livehost_graph_content(fragment.capture().root),
   }]));
   assert.equal(mismatched.ok, false);
 
@@ -150,11 +151,17 @@ check("replace-root requires canonical same-mode HSON and persisted identity", (
     if (node.$_tag === "p") node.$_meta["data-_quid"] = "0000000000000001";
     for (const child of node.$_content) if (typeof child === "object" && child !== null) stack.push(child);
   }
+  const duplicatePayload = encode_livehost_graph_content(
+    element_root(`<main data-_quid="0000000000000001" <p data-_quid="0000000000000002"/>/>`),
+  );
   const duplicate = decode(commit("element", [{
     domain: "graph",
     op: "replace-root",
     mode: "element",
-    root: duplicateRoot,
+    root: {
+      ...duplicatePayload,
+      payload: duplicatePayload.payload.replace("0000000000000002", "0000000000000001"),
+    },
   }]));
   assert.equal(duplicate.ok, false);
 });
@@ -175,9 +182,9 @@ check("malformed graph targets, attributes, content, and mixed operations are re
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { title: {} } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { style: { color: [] } } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: {}, extra: true },
-    { domain: "graph", op: "replace-content", target: { kind: "path", path: [] }, index: 0, replacement: { $_tag: "p", $_content: [], extra: true } },
+    { domain: "graph", op: "replace-content", target: { kind: "path", path: [] }, index: 0, replacement: { format: "hson-graph", formatVersion: 1, payload: "<broken" } },
     { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: -1, content: "x" },
-    { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0, content: { $_tag: "p", $_content: [], extra: true } },
+    { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0, content: { format: "hson-graph", formatVersion: 2, payload: "" } },
     { domain: "graph", op: "insert-content", target: { kind: "path", path: [] }, index: 0 },
     { domain: "graph", op: "remove-content", target: { kind: "path", path: [] }, index: 0, extra: true },
     { domain: "graph", op: "remove-content", target: { kind: "path", path: [] } },

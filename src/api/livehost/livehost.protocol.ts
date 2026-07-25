@@ -33,24 +33,22 @@ import type {
   LiveHostServerSessionRejectedMessage,
   LiveHostWireValue,
 } from "../../types/livehost.types.js";
-import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { CssMap } from "../../core/style.types.js";
-import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../core/types.js";
+import type { Primitive } from "../../core/types.js";
+import { is_Node } from "../../core/node-guards.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
 import {
   decode_document_attrs,
   is_public_document_attr_name,
 } from "../livemap/livemap.document.attrs.js";
-import { index_livemap_document_elements } from "../livemap/livemap.document.identity.js";
 import type {
   DocumentLiveMapMode,
   JsonValue,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
-  LiveMapDocumentContent,
   LiveMapDocumentTarget,
+  LiveMapGraphCommit,
   LiveMapGraphOp,
   LiveMapRootMode,
   LivePath,
@@ -60,6 +58,10 @@ import type {
   LiveHostDecodedServerRecoverySnapshotMessage,
   LiveHostValidatedSnapshotEnvelope,
 } from "./livehost.document-snapshot.js";
+import {
+  decode_livehost_graph_content,
+  is_livehost_encoded_graph_content,
+} from "./livehost.graph-content-codec.js";
 
 function ok<T>(value: T): LiveHostResult<T> {
   return { ok: true, value };
@@ -178,80 +180,6 @@ function decode_style_map(value: unknown): CssMap | undefined {
   return Object.freeze(decoded);
 }
 
-function decode_hson_attrs(value: unknown): HsonAttrs | undefined {
-  if (!is_record(value)) return undefined;
-  const attrs: HsonAttrs = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (is_finite_primitive(item)) attrs[key] = item;
-    else if (key === "style") {
-      const style = decode_style_map(item);
-      if (style === undefined) return undefined;
-      attrs.style = style;
-    } else return undefined;
-  }
-  return Object.freeze(attrs);
-}
-
-function decode_hson_meta(value: unknown): HsonMeta | undefined {
-  if (!is_record(value)) return undefined;
-  const meta: Record<string, string> = {};
-  for (const [key, item] of Object.entries(value)) {
-    if (!key.startsWith("data-_") || typeof item !== "string") return undefined;
-    meta[key] = item;
-  }
-  return Object.freeze(meta);
-}
-
-function decode_hson_node(value: unknown): HsonNode | undefined {
-  if (!is_record(value)) return undefined;
-  const allowedKeys = ["$_tag", "$_content"];
-  if (Object.prototype.hasOwnProperty.call(value, "$_meta")) allowedKeys.push("$_meta");
-  if (Object.prototype.hasOwnProperty.call(value, "$_attrs")) allowedKeys.push("$_attrs");
-  if (!has_exact_keys(value, allowedKeys) || typeof value.$_tag !== "string" || !Array.isArray(value.$_content)) {
-    return undefined;
-  }
-
-  const meta = Object.prototype.hasOwnProperty.call(value, "$_meta")
-    ? decode_hson_meta(value.$_meta)
-    : undefined;
-  const attrs = Object.prototype.hasOwnProperty.call(value, "$_attrs")
-    ? decode_hson_attrs(value.$_attrs)
-    : undefined;
-  if ((Object.prototype.hasOwnProperty.call(value, "$_meta") && meta === undefined)
-    || (Object.prototype.hasOwnProperty.call(value, "$_attrs") && attrs === undefined)) return undefined;
-
-  const content: Array<HsonNode | Primitive> = [];
-  for (const item of value.$_content) {
-    if (is_finite_primitive(item)) content.push(item);
-    else {
-      const child = decode_hson_node(item);
-      if (child === undefined) return undefined;
-      content.push(child);
-    }
-  }
-  Object.freeze(content);
-  const node: HsonNode = {
-    $_tag: value.$_tag,
-    ...(meta === undefined ? {} : { $_meta: meta }),
-    ...(attrs === undefined ? {} : { $_attrs: attrs }),
-    $_content: content,
-  };
-  Object.freeze(node);
-  return node;
-}
-
-function validate_canonical_node(value: unknown): HsonNode | undefined {
-  const node = decode_hson_node(value);
-  if (node === undefined) return undefined;
-  try {
-    assert_invariants(node, "decode_livehost_graph_operation");
-    index_livemap_document_elements(node);
-    return node;
-  } catch {
-    return undefined;
-  }
-}
-
 function decode_document_target(value: unknown): LiveMapDocumentTarget | undefined {
   if (!is_record(value)) return undefined;
   if (value.kind === "path" && has_exact_keys(value, ["kind", "path"]) && Array.isArray(value.path)) {
@@ -271,28 +199,6 @@ function decode_attribute_name(value: unknown): string | undefined {
 function decode_attribute_value(name: string, value: unknown): LiveMapDocumentAttributeValue | undefined {
   if (is_finite_primitive(value)) return value;
   return name === "style" ? decode_style_map(value) : undefined;
-}
-
-function decode_document_content(value: unknown): LiveMapDocumentContent | undefined {
-  if (is_finite_primitive(value)) return value;
-  const node = decode_hson_node(value);
-  if (node === undefined) return undefined;
-  try {
-    const validationRoot: HsonNode = node.$_tag === ELEM_TAG
-      ? {
-        $_tag: ROOT_TAG,
-        $_content: [{
-          $_tag: ELEM_TAG,
-          $_content: [{ $_tag: "div", $_content: [node] }],
-        }],
-      }
-      : node;
-    assert_invariants(validationRoot, "decode_livehost_graph_content");
-    index_livemap_document_elements(validationRoot);
-    return node;
-  } catch {
-    return undefined;
-  }
 }
 
 /** Shared strict payload decoders used by graph commits and hosted document actions. */
@@ -315,22 +221,18 @@ export function decode_livehost_document_attrs(value: unknown): LiveMapDocumentA
   return decode_document_attrs(value);
 }
 
-export function decode_livehost_document_content(value: unknown): LiveMapDocumentContent | undefined {
-  return decode_document_content(value);
-}
-
-function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGraphOp | undefined {
+function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCanonicalOp | undefined {
   if (!is_record(value) || value.domain !== "graph") return undefined;
   if (value.op === "replace-root") {
     if (!has_exact_keys(value, ["domain", "op", "mode", "root"]) || value.mode !== mode) return undefined;
-    const root = validate_canonical_node(value.root);
-    if (root === undefined) return undefined;
+    if (!is_livehost_encoded_graph_content(value.root)) return undefined;
     try {
-      if (classify_live_root_mode(root) !== mode) return undefined;
+      const root = decode_livehost_graph_content(value.root);
+      if (!is_Node(root) || classify_live_root_mode(root) !== mode) return undefined;
     } catch {
       return undefined;
     }
-    return Object.freeze({ domain: "graph", op: "replace-root", mode, root });
+    return Object.freeze({ domain: "graph", op: "replace-root", mode, root: value.root });
   }
 
   const target = decode_document_target(value.target);
@@ -361,7 +263,7 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGrap
     if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement"])) return undefined;
     const index = required_rev(value.index);
     if (index === undefined) return undefined;
-    const replacement = decode_document_content(value.replacement);
+    const replacement = is_livehost_encoded_graph_content(value.replacement) ? value.replacement : undefined;
     return replacement === undefined
       ? undefined
       : Object.freeze({ domain: "graph", op: "replace-content", target, index, replacement });
@@ -370,7 +272,7 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveMapGrap
     if (!has_exact_keys(value, ["domain", "op", "target", "index", "content"])) return undefined;
     const index = required_rev(value.index);
     if (index === undefined) return undefined;
-    const content = decode_document_content(value.content);
+    const content = is_livehost_encoded_graph_content(value.content) ? value.content : undefined;
     return content === undefined
       ? undefined
       : Object.freeze({ domain: "graph", op: "insert-content", target, index, content });
@@ -412,6 +314,38 @@ export function decode_livehost_canonical_commit(value: unknown): LiveHostCanoni
     ops.push(op);
   }
   return Object.freeze({ logicalMapId, incarnationId, mode, prevRev, rev, ops: Object.freeze(ops) });
+}
+
+/** @internal Convert an encoded document commit into detached LiveMap-domain operations. */
+export function decode_livehost_document_commit(
+  commit: LiveHostCanonicalCommit,
+): LiveMapGraphCommit {
+  if (commit.mode !== "element" && commit.mode !== "fragment") {
+    throw new Error("LiveHost canonical commit is not a document commit.");
+  }
+  const operations: LiveMapGraphOp[] = [];
+  for (const operation of commit.ops) {
+    if (!("domain" in operation)) {
+      throw new Error("LiveHost document commit contains a projected operation.");
+    }
+    if (operation.op === "replace-root") {
+      const root = decode_livehost_graph_content(operation.root);
+      if (!is_Node(root)) throw new Error("LiveHost replace-root payload did not decode to a node.");
+      operations.push({ ...operation, root });
+    } else if (operation.op === "replace-content") {
+      operations.push({ ...operation, replacement: decode_livehost_graph_content(operation.replacement) });
+    } else if (operation.op === "insert-content") {
+      operations.push({ ...operation, content: decode_livehost_graph_content(operation.content) });
+    } else {
+      operations.push(operation);
+    }
+  }
+  return Object.freeze({
+    changed: true,
+    prevRev: commit.prevRev,
+    rev: commit.rev,
+    ops: Object.freeze(operations),
+  });
 }
 
 function decode_snapshot(

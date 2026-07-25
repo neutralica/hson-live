@@ -276,7 +276,12 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
     style: { width: { value: 2, unit: "px" } },
   }));
   await host.checkpoint();
-  await host.mutate((draft) => draft.document.attrs.set(root, "tail", "applied"));
+  const inserted = element(`<section data-_quid="0000000000001011" style="display:block"/>`).element.node();
+  await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
+  const persistedTail = adapter.state("persistent-reload").commits[0];
+  assert.equal(JSON.stringify(persistedTail).includes("$_tag"), false);
+  assert.equal(persistedTail.commit.ops[0].content.format, "hson-graph");
+  inserted.$_tag = "caller-mutated";
   const expected = map.capture();
   const incarnation = host.stream.incarnationId;
   assert.equal(await store.unload("persistent-reload"), true);
@@ -286,6 +291,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   assert.equal(restored.stream.incarnationId, incarnation);
   assert.equal(restored.map.rev, expected.rev);
   assert.equal(canonical_hson_graph_equal(restored.map.capture().root, expected.root), true);
+  assert.equal(restored.map.document.byQuid("0000000000001011")?.$_tag, "section");
   assert.deepEqual(restored.stream.history.replay_after(1)?.map((commit) => commit.rev), [2]);
   assert.throws(() => restored.map.document.attrs.set(root, "direct", true));
   assert.equal((await restored.mutate((draft) => draft.document.attrs.set(root, "continued", true))).rev, 3);
