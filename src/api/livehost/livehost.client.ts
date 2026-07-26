@@ -1,14 +1,16 @@
 // livehost/client.ts
 
-import { hson } from "../../hson.js";
+import type { JsonValue } from "../../core/types.js";
 import type {
   ClassifiedLiveMap,
-  JsonValue,
   LiveMap,
   LiveMapAuthority,
   LiveMapDocumentContent,
   LiveMapOp,
-} from "../../types/index.js";
+} from "../../types/livemap.types.js";
+import { parse_hson } from "../transform/parsers/parse-hson.js";
+import { parse_json } from "../transform/parsers/parse-json.js";
+import { make_classified_livemap } from "../livemap/livemap.core.js";
 import type {
   LiveHostActionId,
   LiveHostActionPayloads,
@@ -490,8 +492,7 @@ export function create_livehost_client<
             "Canonical document snapshot cannot restore a projected-data mirror.",
           );
         }
-        const node = hson.fromHson(snapshot.hson).toNode();
-        const staged = hson.liveMap.fromNode(node);
+        const staged = make_classified_livemap(parse_hson(snapshot.hson));
         if (staged.mode !== snapshot.mode || staged.mode !== map.mode || !is_projected_live_map(staged)) {
           throw new Error(`Recovery snapshot mode ${snapshot.mode} does not match mirror mode ${map.mode}.`);
         }
@@ -1185,7 +1186,7 @@ function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedL
 }
 
 function classified_live_map(map: LiveMapAuthority | undefined): ClassifiedLiveMap {
-  if (map === undefined) return hson.liveMap.fromJson({});
+  if (map === undefined) return make_classified_livemap(parse_json({}));
   if (is_projected_live_map(map) || is_document_live_map(map)) return map;
   throw new Error("LiveHost client map is not a classified LiveMap authority.");
 }

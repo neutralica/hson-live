@@ -35,7 +35,7 @@ import type {
 } from "../../types/livehost.types.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { CssMap } from "../../core/style.types.js";
-import type { Primitive } from "../../core/types.js";
+import type { JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
 import { classify_live_root_mode } from "../livemap/livemap.document.js";
 import {
@@ -44,7 +44,6 @@ import {
 } from "../livemap/livemap.document.attrs.js";
 import type {
   DocumentLiveMapMode,
-  JsonValue,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentTarget,
@@ -52,7 +51,7 @@ import type {
   LiveMapGraphOp,
   LiveMapRootMode,
   LivePath,
-} from "../../types/index.js";
+} from "../../types/livemap.types.js";
 import type {
   LiveHostDecodedServerMessage,
   LiveHostDecodedServerRecoverySnapshotMessage,

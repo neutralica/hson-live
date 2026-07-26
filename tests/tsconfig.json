@@ -18,6 +18,7 @@
     "../dist",
     "../node_modules",
     "../src/_refactor/**/*",
+    "./entrypoints/**/*",
     "./runtime-probes/**/*"
   ]
 }

@@ -8,6 +8,27 @@
 ### overview
 HSON is a glue format: a structural representation capable of fully expressing both JSON and HTML within a unified syntax resembling a pared-down form of HTML.
 
+## package entrypoints
+
+The `hson-live` root import remains the complete backward-compatible API. More
+focused imports are also available when a consumer only needs one subsystem:
+
+```ts
+import { hson } from "hson-live/hson";
+import { LiveTree } from "hson-live/livetree";
+import { make_livemap_core, type LiveMapCommit } from "hson-live/livemap";
+import {
+  liveHost,
+  decode_livehost_server_message,
+  type LiveHostSocketLike,
+} from "hson-live/livehost";
+```
+
+The dedicated subpaths provide narrower declaration graphs. `hson-live/livetree`
+is intentionally browser- and DOM-oriented. `hson-live/livehost` is designed for
+DOM-free server and Worker environments, while depending on LiveMap and core
+graph types where the protocol requires them.
+
 JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
 
 #### By expressing either format through a commonview structure, HSON enables JSON and HTML to be translated into one another losslessly, deterministically, and reversibly, preserving data integrity across any number of round-trip transformations. 

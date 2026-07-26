@@ -1,7 +1,7 @@
 // livehost/core.ts
 
-import { hson } from "../../hson.js";
-import type { ClassifiedLiveMap, JsonValue, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/index.js";
+import type { JsonValue } from "../../core/types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/livemap.types.js";
 import type {
   LiveHost,
   LiveHostForMap,
@@ -40,6 +40,8 @@ import { decode_livehost_message, encode_livehost_message, is_livehost_json_valu
 import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 import { make_livehost_canonical_stream_runtime } from "./livehost.history.js";
+import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { parse_json } from "../transform/parsers/parse-json.js";
 import {
   make_livehost_recovery_planner_internal,
 } from "./livehost.recovery.js";
@@ -228,7 +230,11 @@ export function create_livehost(
   }
   const stateResult = decode_with_schema(options.schema?.state, options.state ?? {});
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
-  const map = hson.liveMap.fromJson(initialState);
+  const classified = make_classified_livemap(parse_json(initialState));
+  if (classified.mode !== "data-object" && classified.mode !== "data-array") {
+    throw new Error(`LiveHost projected state produced unexpected root mode ${classified.mode}.`);
+  }
+  const map: LiveMap = classified;
   const { state: _state, ...shared } = options;
   return create_livehost_for_map(map, { ...shared, map });
 }

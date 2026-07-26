@@ -1,4 +1,3 @@
-import { hson } from "../../hson.js";
 import type { DocumentLiveMapCapture } from "../../types/livemap.types.js";
 import type {
   LiveHostServerMessage,
@@ -10,6 +9,9 @@ import {
   encode_view_state_snapshot,
 } from "../livemap/livemap.document.view-state-codec.js";
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
+import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { parse_hson } from "../transform/parsers/parse-hson.js";
+import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 
 /** @internal Common outer recovery fields shared by both accepted snapshot bodies. */
 export type LiveHostSnapshotCommonFields = Pick<
@@ -32,7 +34,7 @@ export type LiveHostValidatedSnapshotEnvelope =
   | LiveHostHsonSnapshotEnvelope
   | LiveHostViewStateSnapshotEnvelope;
 
-/** @internal Closed host-side document snapshot wire selection. */
+/** Closed host-side document snapshot wire selection. */
 export type LiveHostDocumentSnapshotEncoding =
   | Readonly<{ format: "hson" }>
   | Readonly<{ format: "view-state"; formatVersion: 1 }>;
@@ -123,7 +125,7 @@ export function encode_livehost_document_snapshot(
       ...common,
       rev: capture.rev,
       mode: capture.mode,
-      hson: hson.fromNode(capture.root).toHson().noBreak().serialize(),
+      hson: serialize_hson(capture.root, { noBreak: true }),
     });
   }
   if (!is_view_state_encoding(encoding)) {
@@ -157,8 +159,7 @@ export function decode_livehost_document_snapshot(
   snapshot: LiveHostValidatedSnapshotEnvelope,
 ): DocumentLiveMapCapture {
   if ("hson" in snapshot) {
-    const node = hson.fromHson(snapshot.hson).toNode();
-    const staged = hson.liveMap.fromNode(node);
+    const staged = make_classified_livemap(parse_hson(snapshot.hson));
     if (staged.mode !== "element" && staged.mode !== "fragment") {
       throw new Error("LiveHost HSON document snapshot reconstructed a non-document root.");
     }

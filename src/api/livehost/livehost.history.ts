@@ -2,13 +2,13 @@
 
 import type {
   LiveMapAuthority,
-  JsonValue,
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapGraphOp,
   LiveMapOp,
   LivePath,
-} from "../../types/index.js";
+} from "../../types/livemap.types.js";
+import type { JsonValue } from "../../core/types.js";
 import type {
   LiveHostCanonicalCommit,
   LiveHostCanonicalCommitListener,

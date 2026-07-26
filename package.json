@@ -23,6 +23,18 @@
       "types": "./dist/hson.d.ts",
       "import": "./dist/hson.js"
     },
+    "./livetree": {
+      "types": "./dist/api/livetree/index.d.ts",
+      "import": "./dist/api/livetree/index.js"
+    },
+    "./livemap": {
+      "types": "./dist/api/livemap/index.d.ts",
+      "import": "./dist/api/livemap/index.js"
+    },
+    "./livehost": {
+      "types": "./dist/api/livehost/index.d.ts",
+      "import": "./dist/api/livehost/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -46,6 +58,7 @@
     "build": "npm run clean && tsc",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
+    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",

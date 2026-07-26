@@ -1,7 +1,7 @@
 // livehost.recovery.ts
 
-import type { DocumentLiveMapCapture, JsonValue, LiveMapAuthority } from "../../types/index.js";
-import { hson } from "../../hson.js";
+import type { JsonValue } from "../../core/types.js";
+import type { DocumentLiveMapCapture, LiveMapAuthority } from "../../types/livemap.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import type {
   LiveHostCanonicalCommit,
@@ -35,6 +35,8 @@ import {
   type LiveHostDocumentSnapshotEncoding,
   type LiveHostOutboundDocumentSnapshotEnvelope,
 } from "./livehost.document-snapshot.js";
+import { parse_json } from "../transform/parsers/parse-json.js";
+import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
 const DEFAULT_MAX_TAIL_BYTES = 1 * 1_024 * 1_024;
@@ -405,7 +407,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               incarnationId: stream.incarnationId,
               rev: capture.rev,
               mode: map.mode,
-              hson: hson.fromJson(clone_json_value(capture.value)).toHson().noBreak().serialize(),
+              hson: serialize_hson(parse_json(clone_json_value(capture.value)), { noBreak: true }),
             });
           }
           encoded_bytes(snapshotBody);

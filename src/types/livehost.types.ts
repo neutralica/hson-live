@@ -4,7 +4,6 @@ import type {
   ClassifiedLiveMap,
   DataLiveMapMode,
   DocumentLiveMap,
-  JsonValue,
   LiveMap,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -18,7 +17,8 @@ import type {
   LiveMapRootMode,
   LivePath,
   LiveMapOp,
-} from "./index.js";
+} from "./livemap.types.js";
+import type { JsonValue } from "../core/types.js";
 
 export type LiveHostId = string;
 export type LiveHostStoreId = string;

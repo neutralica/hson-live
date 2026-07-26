@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../types/index.js";
+import type { JsonValue } from "../../core/types.js";
 import type {
   LiveHostActionDedupeDiagnostics,
   LiveHostActionDedupeOptions,

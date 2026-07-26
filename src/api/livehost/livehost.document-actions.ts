@@ -1,10 +1,10 @@
 import type {
   DocumentLiveMap,
   LiveMapDocumentApi,
-  JsonValue,
   LiveMapAuthority,
   LiveMapGraphCommit,
-} from "../../types/index.js";
+} from "../../types/livemap.types.js";
+import type { JsonValue } from "../../core/types.js";
 import type {
   LiveHostDocumentActionName,
 } from "../../types/livehost.types.js";

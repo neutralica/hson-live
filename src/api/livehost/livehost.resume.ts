@@ -1,6 +1,7 @@
 // livehost.resume.ts
 
-import type { JsonValue, LivePath } from "../../types/index.js";
+import type { JsonValue } from "../../core/types.js";
+import type { LivePath } from "../../types/livemap.types.js";
 import type { LiveHostSeq, LiveHostServerSyncMessage } from "../../types/livehost.types.js";
 
 export type LiveHostResumeEntry = Readonly<{

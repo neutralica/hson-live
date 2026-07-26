@@ -1,6 +1,7 @@
 // livehost/sync.ts
 
-import type { JsonValue, LiveMap, LiveMapAuthority, LivePath } from "../../types/index.js";
+import type { JsonValue } from "../../core/types.js";
+import type { LiveMap, LiveMapAuthority, LivePath } from "../../types/livemap.types.js";
 import type {
   LiveHostError,
   LiveHostResult,

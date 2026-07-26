@@ -1,4 +1,3 @@
-import { hson } from "../../hson.js";
 import type {
   DocumentLiveMap,
   LiveMapAnyOp,
@@ -38,6 +37,7 @@ import {
   encode_view_state_snapshot,
 } from "../livemap/livemap.document.view-state-codec.js";
 import { LiveHostPersistenceError } from "./livehost.persistence.error.js";
+import { make_classified_livemap } from "../livemap/livemap.core.js";
 export { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 
 type PersistentHostInternals = Readonly<{ authorityHost: object }>;
@@ -293,7 +293,7 @@ function validate_persisted_state(
     const checkpoint = checkpointValue as unknown as LiveHostPersistedDocumentCheckpoint;
     const capture = decode_view_state_snapshot(checkpoint.snapshot);
     if (capture.rev !== checkpoint.rev || capture.mode !== checkpoint.mode) throw invalid_state();
-    const map = hson.liveMap.fromNode(capture.root);
+    const map = make_classified_livemap(capture.root);
     if (map.mode !== capture.mode) throw invalid_state();
     map.restore(capture);
 
