@@ -371,6 +371,7 @@ export type {
     LiveHostValidator,
     LiveHostWireValue,
 } from "./types/index.js";
+export { LiveHostDocumentSnapshotEncoding } from "./api/livehost/livehost.document-snapshot.js";
 export { LiveMapSchemaError } from "./api/livemap/livemap.error.js";
 export { snap_live_path } from "./api/livemap/livemap.editor.js";
 export { make_livemap_schema, define_livemap_schema, LIVEMAP_SCHEMA } from "./api/livemap/livemap.schema.js";
