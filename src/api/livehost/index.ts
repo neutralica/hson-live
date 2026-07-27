@@ -1,4 +1,4 @@
-export { liveHost } from "./livehost.facade.js";
+export { hsonLiveHost, liveHost } from "./livehost.facade.js";
 export { create_livehost } from "./livehost.core.js";
 export { create_livehost_client } from "./livehost.client.js";
 export {

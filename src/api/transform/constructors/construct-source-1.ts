@@ -1,7 +1,6 @@
 // construct-source-1.ts
 
 import { HsonNode } from "../../../core/types.js";
-import { FrameConstructor } from "../../../types/constructor.types.js";
 import { HsonSourceConstructor_2, OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { JsonValue } from "../../../core/types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
@@ -11,6 +10,7 @@ import { parse_html } from "../parsers/parse-html.js";
 import { parse_json } from "../parsers/parse-json.js";
 import { construct_output_2 } from "./construct-output-2.js";
 import { SourceConstructor_1 } from "../../../types/constructor.types.js";
+import type { TransformFrame } from "../transform.types.js";
 
 import { is_svg_markup, node_from_svg } from "../utils/node-utils/node-from-svg.js";
 
@@ -120,7 +120,7 @@ export function construct_source_1(
         rawInput: raw,
       };
 
-      const frame: FrameConstructor = { input: raw, node, meta };
+      const frame: TransformFrame = { input: raw, node, meta };
       return construct_output_2(frame);
     },
 
@@ -141,7 +141,7 @@ export function construct_source_1(
 
       const node: HsonNode = parse_json(raw);
 
-      const frame: FrameConstructor = {
+      const frame: TransformFrame = {
         input: raw,
         node,
         meta: {
@@ -168,9 +168,9 @@ export function construct_source_1(
      *   at the HTML stage, not here.
      */
     fromHson(input: string): HsonSourceConstructor_2 {
-      let frame: FrameConstructor | undefined;
+      let frame: TransformFrame | undefined;
 
-      const getFrame = (): FrameConstructor => {
+      const getFrame = (): TransformFrame => {
         if (frame) return frame;
 
         frame = {
@@ -220,7 +220,7 @@ export function construct_source_1(
      * should already be reflected in how it was constructed.
      */
     fromNode(input: HsonNode): OutputConstructor_2 {
-      const frame: FrameConstructor = {
+      const frame: TransformFrame = {
         input: JSON.stringify(input),
         node: input,
         meta: {

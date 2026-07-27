@@ -11,7 +11,7 @@ import { make_livehost_sync_manager } from "./livehost.sync.js";
  * Stable LiveHost namespace shared by `hson.liveHost` and the dedicated
  * `hson-live/livehost` entrypoint.
  */
-export const liveHost = Object.freeze({
+export const hsonLiveHost = Object.freeze({
   create: create_livehost,
   client: create_livehost_client,
   registry: create_livehost_store,
@@ -26,3 +26,6 @@ export const liveHost = Object.freeze({
     syncManager: make_livehost_sync_manager,
   }),
 });
+
+/** Backward-compatible alias for the canonical LiveHost facade. */
+export const liveHost = hsonLiveHost;

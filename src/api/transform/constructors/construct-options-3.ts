@@ -1,28 +1,28 @@
 import { $RENDER } from "../../../core/constants.js";
 import type {
-  FrameOptions,
-  FrameRender,
-  HsonOptionsConstructor_3,
-  JsonValueConstructor_4,
-  OptionsConstructor_3,
-  RenderFormats,
-  SerializeConstructor_4,
-} from "../../../types/constructor.types.js";
+  TransformFrameOptions,
+  TransformFrameRender,
+  TransformHsonOptions,
+  TransformJsonValue,
+  TransformOutputOptions,
+  TransformRenderFormat,
+  TransformSerialize,
+} from "../transform.types.js";
 import { construct_hson_render_4, construct_html_render_4, construct_json_render_4 } from "./construct-render-4.js";
 
 type JsonOptionFinalizer =
-  OptionsConstructor_3<(typeof $RENDER)["JSON"]> & JsonValueConstructor_4;
+  TransformOutputOptions<(typeof $RENDER)["JSON"]> & TransformJsonValue;
 
 type HtmlOptionFinalizer =
-  OptionsConstructor_3<(typeof $RENDER)["HTML"]> & SerializeConstructor_4;
+  TransformOutputOptions<(typeof $RENDER)["HTML"]> & TransformSerialize;
 
 type HsonOptionFinalizer =
-  HsonOptionsConstructor_3 & SerializeConstructor_4;
+  TransformHsonOptions & TransformSerialize;
 
-function with_frame_options<K extends RenderFormats>(
-  render: FrameRender<K>,
-  options: FrameOptions,
-): FrameRender<K> {
+function with_frame_options<K extends TransformRenderFormat>(
+  render: TransformFrameRender<K>,
+  options: TransformFrameOptions,
+): TransformFrameRender<K> {
   return {
     output: render.output,
     frame: {
@@ -34,10 +34,10 @@ function with_frame_options<K extends RenderFormats>(
 
 /** Build the composable JSON option/value surface. */
 export function construct_json_options_3(
-  render: FrameRender<(typeof $RENDER)["JSON"]>,
+  render: TransformFrameRender<(typeof $RENDER)["JSON"]>,
 ): JsonOptionFinalizer {
   const finalize = (
-    next: FrameRender<(typeof $RENDER)["JSON"]>,
+    next: TransformFrameRender<(typeof $RENDER)["JSON"]>,
   ): JsonOptionFinalizer => construct_json_options_3(next);
 
   return {
@@ -55,10 +55,10 @@ export function construct_json_options_3(
 
 /** Build the composable HTML serialization surface. */
 export function construct_html_options_3(
-  render: FrameRender<(typeof $RENDER)["HTML"]>,
+  render: TransformFrameRender<(typeof $RENDER)["HTML"]>,
 ): HtmlOptionFinalizer {
   const finalize = (
-    next: FrameRender<(typeof $RENDER)["HTML"]>,
+    next: TransformFrameRender<(typeof $RENDER)["HTML"]>,
   ): HtmlOptionFinalizer => construct_html_options_3(next);
 
   return {
@@ -76,14 +76,14 @@ export function construct_html_options_3(
 
 /** Build the composable HSON option/finalizer surface. */
 export function construct_hson_options_3(
-  render: FrameRender<(typeof $RENDER)["HSON"]>,
+  render: TransformFrameRender<(typeof $RENDER)["HSON"]>,
 ): HsonOptionFinalizer {
   const finalize = (
-    next: FrameRender<(typeof $RENDER)["HSON"]>,
+    next: TransformFrameRender<(typeof $RENDER)["HSON"]>,
   ): HsonOptionFinalizer => construct_hson_options_3(next);
 
   return {
-    withOptions(opts: FrameOptions): HsonOptionFinalizer {
+    withOptions(opts: TransformFrameOptions): HsonOptionFinalizer {
       return finalize(with_frame_options(render, opts));
     },
 

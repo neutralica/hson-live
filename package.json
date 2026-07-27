@@ -23,6 +23,10 @@
       "types": "./dist/hson.d.ts",
       "import": "./dist/hson.js"
     },
+    "./transform": {
+      "types": "./dist/api/transform/index.d.ts",
+      "import": "./dist/api/transform/index.js"
+    },
     "./livetree": {
       "types": "./dist/api/livetree/index.d.ts",
       "import": "./dist/api/livetree/index.js"
@@ -58,7 +62,7 @@
     "build": "npm run clean && tsc",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
-    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json",
+    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",
@@ -66,6 +70,8 @@
     "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",
     "test:livehost-graph-content-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-graph-content-codec.acceptance.mts",
     "test:public-boundaries": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/public-boundaries.acceptance.mts",
+    "test:root-compatibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/root-compatibility.acceptance.mts",
+    "test:transform-worker": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-worker.acceptance.mts",
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
     "test:liveproject-document-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-attrs.acceptance.mts",
     "test:liveproject-document-structure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-structure.acceptance.mts",
@@ -101,6 +107,7 @@
     "ws": "^8.21.1"
   },
   "dependencies": {
-    "dompurify": "^3.3.0"
+    "dompurify": "^3.3.0",
+    "htmlparser2": "^10.0.0"
   }
 }

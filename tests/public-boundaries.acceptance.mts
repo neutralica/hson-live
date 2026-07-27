@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { hson } from "../src/hson.ts";
+import {
+  hson,
+  hsonLiveHost,
+  hsonLiveMap,
+  hsonLiveTree,
+  hsonTransform,
+  liveHost,
+} from "../src/hson.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 
 let checks = 0;
@@ -9,6 +16,24 @@ function check(name: string, fn: () => void): void {
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
+
+check("canonical facade runtime identities remain stable", () => {
+  assert.equal(hson.transform, hsonTransform);
+  assert.equal(hson.liveHost, hsonLiveHost);
+  assert.equal(hson.liveTree, hsonLiveTree);
+  assert.equal(liveHost, hsonLiveHost);
+  assert.equal(hson.reflect, hson.liveProject);
+
+  assert.equal(hson.fromHson, hsonTransform.fromHson);
+  assert.equal(hson.fromJson, hsonTransform.fromJson);
+  assert.equal(hson.fromNode, hsonTransform.fromNode);
+
+  assert.notEqual(hson.liveMap, hsonLiveMap);
+  assert.equal(hson.liveMap.fromHson, hsonLiveMap.fromHson);
+  assert.equal(hson.liveMap.fromJson, hsonLiveMap.fromJson);
+  assert.equal(hson.liveMap.fromNode, hsonLiveMap.fromNode);
+  assert.equal(hson.liveMap.schema, hsonLiveMap.schema);
+});
 
 function is_node(value: HsonNode | Primitive): value is HsonNode {
   return typeof value === "object" && value !== null && "$_tag" in value;

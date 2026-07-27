@@ -1,12 +1,15 @@
 // construct-render-4.ts
 
-import { OutputRenderFormats } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
 import { make_string } from "../../../core/stringify.js";
-import { JsonValueConstructor_4, SerializeConstructor_4 } from "../../../types/constructor.types.js";
-import { FrameRender } from "../../../types/constructor.types.js";
 import { serialize_hson } from "../serializers/serialize-hson.js";
 import type { JsonValue } from "../../../core/types.js";
+import type {
+  TransformFrameRender,
+  TransformJsonValue,
+  TransformOutputRenderFormat,
+  TransformSerialize,
+} from "../transform.types.js";
 
 function clone_json_value(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map(clone_json_value);
@@ -38,7 +41,7 @@ function clone_json_value(value: JsonValue): JsonValue {
  * @param context - Render context containing the frame and chosen format.
  * @returns Stage-4 terminal render API.
  */
-function serialize_render(context: FrameRender<OutputRenderFormats | (typeof $RENDER)["HSON"]>): string {
+function serialize_render(context: TransformFrameRender<TransformOutputRenderFormat | (typeof $RENDER)["HSON"]>): string {
   const { frame, output } = context;
 
   switch (output) {
@@ -58,22 +61,22 @@ function serialize_render(context: FrameRender<OutputRenderFormats | (typeof $RE
 
 /** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
 export function construct_hson_render_4(
-  context: FrameRender<(typeof $RENDER)["HSON"]>,
-): SerializeConstructor_4 {
+  context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
+): TransformSerialize {
   return { serialize: () => serialize_render(context) };
 }
 
 export function construct_html_render_4(
-  context: FrameRender<(typeof $RENDER)["HTML"]>,
-): SerializeConstructor_4 {
+  context: TransformFrameRender<(typeof $RENDER)["HTML"]>,
+): TransformSerialize {
   return {
     serialize: () => serialize_render(context),
   };
 }
 
 export function construct_json_render_4(
-  context: FrameRender<(typeof $RENDER)["JSON"]>,
-): JsonValueConstructor_4 {
+  context: TransformFrameRender<(typeof $RENDER)["JSON"]>,
+): TransformJsonValue {
   return {
     serialize: () => serialize_render(context),
     value: () => {

@@ -1,3 +1,4 @@
+export { hsonLiveTree } from "./livetree.facade.js";
 export { LiveTree } from "./livetree.js";
 export {
   LIVETREE_ALREADY_ATTACHED_ERROR_CODE,

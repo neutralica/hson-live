@@ -10,24 +10,34 @@ HSON is a glue format: a structural representation capable of fully expressing b
 
 ## package entrypoints
 
-The `hson-live` root import remains the complete backward-compatible API. More
-focused imports are also available when a consumer only needs one subsystem:
+The `hson-live` root import remains the complete backward-compatible umbrella
+API. Canonical subsystem facades are available from both the root and dedicated
+subpaths:
 
 ```ts
-import { hson } from "hson-live/hson";
-import { LiveTree } from "hson-live/livetree";
-import { make_livemap_core, type LiveMapCommit } from "hson-live/livemap";
 import {
-  liveHost,
-  decode_livehost_server_message,
-  type LiveHostSocketLike,
-} from "hson-live/livehost";
+  hson,
+  hsonTransform,
+  hsonLiveMap,
+  hsonLiveTree,
+  hsonLiveHost,
+} from "hson-live";
+
+import { hsonTransform } from "hson-live/transform";
+import { hsonLiveMap } from "hson-live/livemap";
+import { hsonLiveTree } from "hson-live/livetree";
+import { hsonLiveHost } from "hson-live/livehost";
 ```
 
-The dedicated subpaths provide narrower declaration graphs. `hson-live/livetree`
-is intentionally browser- and DOM-oriented. `hson-live/livehost` is designed for
-DOM-free server and Worker environments, while depending on LiveMap and core
-graph types where the protocol requires them.
+The dedicated subpaths are environmental boundaries. `transform`, `livemap`,
+and `livehost` are DOM-free and suitable for strict Worker consumers;
+`livetree` is intentionally browser- and DOM-oriented. Existing root imports,
+the `hson-live/hson` umbrella entrypoint, loose subsystem exports, and the
+`liveHost` alias remain supported.
+
+The umbrella exposes projection as `hson.reflect`; `hson.liveProject` remains
+an exact compatibility alias. Browser-only HTML constructors remain available
+on `hson` and `hson.liveMap`.
 
 JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
 
@@ -76,8 +86,13 @@ HSON's syntax expresses an explicit intermediate representation (IR), a node gra
 This representation is stable under repeated transformations. Serializing to another format and back does not degrade, reorder, or reinterpret the data. The result is a format that serves as both data and markup without collapsing one into the other or privileging either.
 
 ## hson.transform
-hson.transform is a set of core transformers responsible for:
-- parsing HTML, JSON, SVG, XML, and HSON strings into a shared HsonNode intermediate representation (IR)
+`hson.transform` is the canonical `hsonTransform` facade. Its dedicated
+`hson-live/transform` entrypoint handles DOM-free HSON, JSON, and existing-node
+transformation. The complete `hson` umbrella retains trusted and untrusted HTML
+input methods for browser consumers.
+
+The transform subsystem is responsible for:
+- parsing JSON and HSON strings into a shared HsonNode intermediate representation (IR)
 - serializing that node graph from any supported format to any other
 - performing repeated round-trip conversions without structural drift
 - preserving mixed content, attributes, ordering, and unique node identifiers

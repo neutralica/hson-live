@@ -4,9 +4,10 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": false
   },
-  "files": ["public-entrypoints.ts", "root-compatibility.ts"]
+  "files": ["livetree-browser.ts"]
 }

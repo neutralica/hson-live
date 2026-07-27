@@ -1,13 +1,22 @@
 // construct-output-2.ts
 
-import { OutputConstructor_2 } from "../../../types/constructor.types.js";
 import { $RENDER } from "../../../core/constants.js";
-import { FrameConstructor } from "../../../types/constructor.types.js";
-import { parse_external_html } from "../parsers/parse-external-html.transform.js";
 import { serialize_html } from "../serializers/serialize-html.js";
 import { json_value_from_node } from "../serializers/serialize-json.js";
 import { construct_hson_options_3, construct_html_options_3, construct_json_options_3 } from "./construct-options-3.js";
-import { FrameRender } from "../../../types/constructor.types.js";
+import type {
+  TransformFrame,
+  TransformFrameRender,
+  TransformOutput,
+} from "../transform.types.js";
+
+type TransformHtmlSanitizer = (html: string) => TransformFrame["node"];
+let transformHtmlSanitizer: TransformHtmlSanitizer | undefined;
+
+/** @internal Install the browser sanitizer used by the compatibility pipeline. */
+export function set_transform_html_sanitizer(sanitizer: TransformHtmlSanitizer): void {
+  transformHtmlSanitizer = sanitizer;
+}
 
 /**
  * HSON pipeline, stage 2: choose an output representation.
@@ -29,15 +38,15 @@ import { FrameRender } from "../../../types/constructor.types.js";
  * @returns Stage-2 output-selection API.
  */
  
-export function construct_output_2(frame: FrameConstructor): OutputConstructor_2 {
-  function makeBuilder(currentFrame: FrameConstructor): OutputConstructor_2 {
+export function construct_output_2(frame: TransformFrame): TransformOutput {
+  function makeBuilder(currentFrame: TransformFrame): TransformOutput {
     return {
       toNode() {
         return currentFrame.node;
       },
 
       toHson() {
-        const ctx: FrameRender<(typeof $RENDER)["HSON"]> = {
+        const ctx: TransformFrameRender<(typeof $RENDER)["HSON"]> = {
           // HSON is intentionally lazy so options selected after `.toHson()`
           // participate in the final serialization pass.
           frame: currentFrame,
@@ -50,7 +59,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
       toJson() {
         const json = json_value_from_node(currentFrame.node);
 
-        const ctx: FrameRender<(typeof $RENDER)["JSON"]> = {
+        const ctx: TransformFrameRender<(typeof $RENDER)["JSON"]> = {
           frame: { ...currentFrame, json },
           output: $RENDER.JSON,
         };
@@ -61,7 +70,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
       toHtml() {
         const html = serialize_html(currentFrame.node);
 
-        const ctx: FrameRender<(typeof $RENDER)["HTML"]> = {
+        const ctx: TransformFrameRender<(typeof $RENDER)["HTML"]> = {
           frame: { ...currentFrame, html },
           output: $RENDER.HTML,
         };
@@ -69,7 +78,7 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
         return construct_html_options_3(ctx);
       },
 
-      sanitizeBEWARE(): OutputConstructor_2 {
+      sanitizeBEWARE(): TransformOutput {
         const node = currentFrame.node;
         if (!node) {
           throw new Error("sanitizeBEWARE(): frame is missing HSON node data");
@@ -77,9 +86,14 @@ export function construct_output_2(frame: FrameConstructor): OutputConstructor_2
 
         // Node → HTML → sanitized Node, then continue from a fresh frame
         const rawHtml = serialize_html(node);
-        const sanitizedNode = parse_external_html(rawHtml);
+        if (!transformHtmlSanitizer) {
+          throw new Error(
+            "sanitizeBEWARE() requires the browser-capable hson-live umbrella facade.",
+          );
+        }
+        const sanitizedNode = transformHtmlSanitizer(rawHtml);
 
-        const nextFrame: FrameConstructor = {
+        const nextFrame: TransformFrame = {
           input: rawHtml,
           node: sanitizedNode,
           meta: {
