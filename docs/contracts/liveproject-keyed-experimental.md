@@ -22,14 +22,12 @@ Patch 7A requires an application `key` selector. Keys are strings or numbers,
 and duplicates fail with `LIVE_PROJECTION_DUPLICATE_KEY` before predictable
 LiveTree mutation.
 
-LiveMap path-handle QUIDs currently identify paths. They do not prove that an
-array value survived an array rewrite or movement, so the projector does not
-misrepresent them as stable item identities. `sourceQuid` is therefore
-currently `undefined` in item contexts and mapping diagnostics. Application
-keys provide continuity for local commits, replay, and replacement mirrors.
-If LiveMap later exposes stable value-node identity across its semantic array
-operations, source QUID can take precedence within one source ownership
-boundary while application keys continue to provide cross-snapshot continuity.
+LiveMap path handles are positional and have no persistent identifier. They do
+not prove that an array value survived an array rewrite or movement, so the
+projector does not misrepresent them as stable item identities. `sourceQuid`
+therefore remains `undefined` in item contexts and mapping diagnostics unless a
+future source explicitly supplies canonical node identity. Application keys
+provide continuity for local commits, replay, and replacement mirrors.
 
 A key mutation is removal of the old keyed projection plus insertion of a new
 one. No projection remains indexed under both keys.

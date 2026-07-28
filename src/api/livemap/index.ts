@@ -30,15 +30,6 @@ export {
   subscribe_paths,
 } from "./livemap-helpers.js";
 export {
-  debug_livemap_quids,
-  drop_livemap_quid,
-  ensure_livemap_quid,
-  get_livemap_owner,
-  get_livemap_quid,
-  reindex_livemap_quid,
-  remint_livemap_quid,
-} from "./livemap.quid.js";
-export {
   define_livemap_schema,
   LIVEMAP_SCHEMA,
   make_livemap_schema,

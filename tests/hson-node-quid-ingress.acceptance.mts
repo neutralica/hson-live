@@ -1,3 +1,4 @@
+// @hson-live-external-test
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
 import { hson } from "../src/hson.ts";

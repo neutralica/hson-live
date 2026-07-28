@@ -443,12 +443,12 @@ application-level selectors.
 
 ## Identity direction
 
-The current `LiveMapPathHandle.quid` identifies the data path-handle object through an
-experimental runtime registry. It is not stored in projected JSON, is not the
-QUID of the HSON value currently at that path, and does not turn the handle into
-an identity-following reference.
+A LiveMap path handle is identified operationally by its owning LiveMap and
+canonical path. It is map-local, positional, not serialized, and has no public
+identifier. Repeated access to the same path on one map returns the same cached
+handle object.
 
-The idealized system distinguishes:
+The system distinguishes:
 
 - a path, which follows location;
 - a node QUID, which follows a particular graph node while that identity is
@@ -457,12 +457,10 @@ The idealized system distinguishes:
   and
 - a host/session identifier, which belongs to replication lifecycle.
 
-Document-map persisted `data-_quid` identity is sparse and indexed separately
-from the `lmq` handle registry. Existing valid QUIDs are preserved, ordinary
-elements without QUIDs remain positional and unquidded, and duplicate present
-QUIDs are rejected. Construction, reads, capture, and installation never mint
-identity. A future durable-handle or binding operation may explicitly promote a
-node through a committed graph mutation.
+Document-map persisted `data-_quid` identity is sparse and indexed within the
+document map. Existing valid QUIDs are preserved, ordinary elements without
+QUIDs remain positional and unquidded, and duplicate present QUIDs are rejected.
+Construction, reads, capture, and installation never mint identity.
 
 These identifiers must never be silently substituted for one another. A future
 identity-oriented reference should become absent when its node disappears,

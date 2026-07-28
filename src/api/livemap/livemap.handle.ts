@@ -5,7 +5,6 @@ import type { LiveMapCommit, LiveMapCore, LiveMapPathHandle, LivePath } from "..
 import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
-import { ensure_livemap_quid } from "./livemap.quid.js";
 import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
 import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
 
@@ -52,7 +51,6 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
   const handlePath = must_live_path(path);
 
   const handle: LiveMapPathHandle<TValue> = {
-    get quid() { return ensure_livemap_quid(handle); },
     get rev() { return core.rev; },
     path: () => clone_live_path(handlePath),
     snap: () => core.snap(handlePath) as TValue,

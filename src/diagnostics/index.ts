@@ -7,6 +7,14 @@ export { is_Node as _is_Node } from "../core/node-guards.js"
 export { _circuit_test  } from "./test-circuit.js";
 export { _format_test  } from "./test-format.js";
 export type { Artifact, LoopReport, FixtureAtom, LoopOpts } from "../types/diagnostics.types.js";
+export {
+  hson_live_test_launchers,
+} from "../_tests/test-launchers.js";
+export type {
+  HsonLiveTestLauncher,
+  HsonLiveTestRuntime,
+  HsonLiveTestSubject,
+} from "../_tests/test-launchers.js";
 
 
 // dev exports 

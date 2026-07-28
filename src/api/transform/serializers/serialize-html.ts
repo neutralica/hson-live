@@ -9,6 +9,7 @@ import { make_string } from '../../../core/stringify.js';
 import { _snip } from '../utils/sys-utils/snip.utils.js';
 import { is_Node } from '../../../core/node-guards.js';
 import { assert_invariants } from '../../../core/assert-invariants.js';
+import { collect_hson_node_quid_claims } from '../../../core/hson-node-quid.js';
 import { clone_node } from '../../../core/clone-node.js';
 import { HsonNode } from '../../../core/types.js';
 import { _throw_transform_err } from '../utils/sys-utils/throw-transform-err.utils.js';
@@ -309,6 +310,11 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  */
 export function serialize_html(node: HsonNode | Primitive): string {
 
+  if (is_Node(node)) {
+    // Serialization validates canonical value and placement only. Duplicate
+    // valid claims remain cold data and are emitted faithfully.
+    collect_hson_node_quid_claims(node);
+  }
   const clone = clone_node(node);
   if (!is_Node(clone)) {
     _throw_transform_err('input node cannot be undefined for node_to_html', 'serialize_html', make_string(node));

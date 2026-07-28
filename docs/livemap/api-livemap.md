@@ -177,7 +177,7 @@ commits advance exactly once.
 
 `map.at(path)` returns a `LiveMapPathHandle` with:
 
-- `path()`, `snap()`, `rev`, and stable `quid`;
+- `path()`, `snap()`, and `rev`;
 - `at(relativePath)`;
 - `set`, `setMany`, `replace`, `delete`, and `update`;
 - `.object` and `.array` helper namespaces;
@@ -185,7 +185,8 @@ commits advance exactly once.
 - `linkTo(target)`.
 
 Handles retain path identity, not a frozen node/value. Reads and writes resolve
-against the map's current graph.
+against the map's current graph. Handles are interned by canonical path within
+one map and expose no persistent or process-global identifier.
 
 ## Object helpers
 

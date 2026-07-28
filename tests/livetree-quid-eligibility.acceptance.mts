@@ -1,3 +1,4 @@
+// @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
 import { EVERY_VSN, _DATA_INDEX, _DATA_QUID } from "../src/core/constants.ts";

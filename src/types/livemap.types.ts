@@ -7,7 +7,6 @@ import type {
   LiveMapSchemaRule,
   LiveMapSchemaValue,
 } from "../api/livemap/livemap.schema.js";
-import type { LiveMapQuid } from "../api/livemap/livemap.quid.js";
 
 
 /**
@@ -793,7 +792,6 @@ export type LiveMapArrayItem<TValue> = LiveMapArrayShape<TValue> extends readonl
 export type LiveMapArrayWriteItem<TValue> = LiveMapWriteValue<LiveMapArrayItem<TValue>>;
 
 export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
-  readonly quid: LiveMapQuid;
   /** Current revision of the owning LiveMap. */
   readonly rev: number;
   path: () => LivePath;

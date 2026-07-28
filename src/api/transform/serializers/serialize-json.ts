@@ -2,6 +2,7 @@
 
 import { JsonObj, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
+import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { is_Node, is_indexed } from "../../../core/node-guards.js";
 import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX } from "../../../core/constants.js";
 import {  HsonNode } from "../../../core/types.js";
@@ -59,6 +60,9 @@ export function serialize_json($node: HsonNode): string {
 
 /** Project a canonical HSON graph directly to its in-memory JSON value. */
 export function json_value_from_node($node: HsonNode): JsonValue {
+    // JSON projection is still a canonical HsonNode egress boundary even
+    // though projected application JSON intentionally omits node identity.
+    collect_hson_node_quid_claims($node);
     const clone = collapse_redundant_roots(clone_node($node))
     assert_invariants(clone, 'serialize_json')
     return jsonFromNode(clone);

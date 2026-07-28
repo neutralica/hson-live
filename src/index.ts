@@ -80,15 +80,6 @@ export {
     stop_all,
     subscribe_paths,
 } from "./api/livemap/livemap-helpers.js";
-export {
-    get_livemap_quid,
-    get_livemap_owner,
-    ensure_livemap_quid,
-    reindex_livemap_quid,
-    drop_livemap_quid,
-    remint_livemap_quid,
-    debug_livemap_quids
-} from "./api/livemap/livemap.quid.js";
 export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
 export {
   create_persistent_livehost,

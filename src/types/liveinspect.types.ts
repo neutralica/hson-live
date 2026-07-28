@@ -34,7 +34,6 @@ export type LiveInspectorArrayKeyResolver = (
 
 /** Mutation-free source view supplied to inspector render extensions. */
 export type LiveInspectorReadHandle = Readonly<{
-  readonly quid: string;
   readonly rev: number;
   path: () => LivePath;
   snap: () => JsonValue;
@@ -111,7 +110,6 @@ export type LiveInspectorSelection = Readonly<{
   key: LiveProjectionKey | undefined;
   arrayIdentity: LiveInspectorArrayIdentity | undefined;
   sourceRevision: number;
-  sourceQuidContext: string;
   viewQuid: string;
   childCount: number;
   schema: string | undefined;
@@ -164,7 +162,6 @@ export type LiveInspectorDiagnostics = Readonly<{
 export type LiveInspectorMappingSummary = Readonly<{
   path: LivePath;
   applicationKey: LiveProjectionKey | undefined;
-  sourceQuidContext: string;
   viewQuid: string;
   kind: LiveInspectorValueKind;
   role: LiveInspectorBranchRole;

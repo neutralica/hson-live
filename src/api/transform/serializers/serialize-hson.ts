@@ -13,6 +13,7 @@ import {
   _META_DATA_PREFIX,
 } from "../../../core/constants.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
+import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { is_persisted_quid } from "../../../core/persisted-quid.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
@@ -507,6 +508,9 @@ export function serialize_hson(
     );
   }
 
+  // Egress is a cold canonical boundary: validate every supplied identity,
+  // while deliberately allowing equal valid claims on distinct graph nodes.
+  collect_hson_node_quid_claims(root);
   assert_invariants(root, "serialize_hson");
   const ctx: SerializeContext = {
     options: {

@@ -860,7 +860,6 @@ class InspectorController {
       ["Key / index", selected.key === undefined ? "—" : JSON.stringify(selected.key)],
       ["Array identity", selected.arrayIdentity ?? "—"],
       ["Revision", String(selected.source.rev)],
-      ["Current path-handle QUID context", selected.source.quid],
       ["View QUID", selected.viewQuid],
       ["Child count", String(selected.childCount)],
       ["Schema", this.effectiveSchemaSummary(selected.path) ?? "unavailable"],
@@ -901,7 +900,6 @@ class InspectorController {
       key: branch.key,
       arrayIdentity: branch.arrayIdentity,
       sourceRevision: branch.source.rev,
-      sourceQuidContext: branch.source.quid,
       viewQuid: branch.viewQuid,
       childCount: branch.childCount,
       schema: this.effectiveSchemaSummary(branch.path),
@@ -987,7 +985,6 @@ class InspectorController {
       .map((branch) => Object.freeze({
         path: Object.freeze([...branch.path]),
         applicationKey: branch.key,
-        sourceQuidContext: branch.source.quid,
         viewQuid: branch.viewQuid,
         kind: branch.kind,
         role: branch.role,
@@ -1355,7 +1352,6 @@ class BranchController {
 
 function readonlyHandle(source: LiveMapPathHandle): LiveInspectorReadHandle {
   const wrap = (handle: LiveMapPathHandle): LiveInspectorReadHandle => Object.freeze({
-    get quid() { return handle.quid; },
     get rev() { return handle.rev; },
     path: () => Object.freeze([...handle.path()]),
     snap: () => {

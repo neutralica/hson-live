@@ -4,6 +4,7 @@ import { ELEM_OBJ, EVERY_VSN, LEAF_NODES } from "../../../core/constants.js";
 import { Primitive } from "../../../core/types.js";
 import { HsonNode } from "../../../core/types.js";
 import { is_Node } from "../../../core/node-guards.js";
+import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { serialize_xml } from "../../transform/serializers/serialize-html.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { create_livetree } from "../creation/create-livetree.js";
@@ -33,6 +34,7 @@ const is_vsn_tag = (tag: string): boolean => VSN_SET.has(tag);
 const is_leaf_vsn = (tag: string): boolean => LEAF_SET.has(tag);
 /** Serialize one content item through the canonical XML/HSON serializer. */
 const serialize_content_item = (item: ContentItem): string => {
+  if (is_Node(item)) collect_hson_node_quid_claims(item);
   return serialize_xml(item);
 };
 
@@ -159,6 +161,7 @@ export class ContentManager {
         return serialize_node_inner_markup(node);
       },
       get outerHTML(): string {
+        collect_hson_node_quid_claims(node);
         return serialize_xml(node);
       },
     });
