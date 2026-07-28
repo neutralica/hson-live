@@ -73,6 +73,7 @@
     "test:root-compatibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/root-compatibility.acceptance.mts",
     "test:transform-worker": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-worker.acceptance.mts",
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
+    "test:livetree-quid-eligibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-quid-eligibility.acceptance.mts",
     "test:liveproject-document-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-attrs.acceptance.mts",
     "test:liveproject-document-structure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-structure.acceptance.mts",
     "test:liveproject-document-delegation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-delegation.acceptance.mts",

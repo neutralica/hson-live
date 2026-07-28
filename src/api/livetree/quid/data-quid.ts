@@ -7,6 +7,7 @@ import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 import { ensure_node_meta, prune_empty_node_meta } from '../../../core/node-storage.js';
 import { record_livetree_materialization } from '../debug/materialization-profile.js';
 import { encode_persisted_quid, is_persisted_quid } from '../../../core/persisted-quid.js';
+import { is_ordinary_element_node } from '../../../core/node-guards.js';
 
 
 
@@ -22,6 +23,14 @@ import { encode_persisted_quid, is_persisted_quid } from '../../../core/persiste
  */
 const QUID_TO_NODE = new Map<string, HsonNode>();
 const NODE_TO_QUID = new WeakMap<HsonNode, string>();
+
+function assert_quid_eligible(n: HsonNode, operation: string): void {
+  const eligible: boolean = is_ordinary_element_node(n);
+  if (eligible) return;
+  throw new Error(
+    `Cannot ${operation} QUID metadata on ineligible HSON structural node "${n.$_tag}".`,
+  );
+}
 
 function assert_quid_available(q: string, n: HsonNode): void {
   const registered = QUID_TO_NODE.get(q);
@@ -55,11 +64,15 @@ export function mint_quid(): string {
  ***************************************/
 export function get_quid(n: HsonNode): string | undefined {
   const q = n.$_meta?.[_DATA_QUID];
+  const registeredQ = NODE_TO_QUID.get(n);
+  if (q === undefined && registeredQ === undefined) return undefined;
+
+  assert_quid_eligible(n, "read");
   if (q !== undefined && !is_persisted_quid(q)) {
     throw new Error(`Invalid persisted QUID "${String(q)}".`);
   }
   if (q !== undefined) return q;
-  return NODE_TO_QUID.get(n);
+  return registeredQ;
 }
 
 /***************************************
@@ -84,6 +97,7 @@ export function ensure_quid(
   n: HsonNode,
   opts?: { persist?: boolean },
 ): string {
+  assert_quid_eligible(n, "ensure");
   record_livetree_materialization("quidEnsureCalls");
   const persist = opts?.persist ?? true; // default true
 
@@ -113,7 +127,9 @@ export function ensure_quid(
  ***************************************/
 export function get_node_by_quid(q: string): HsonNode | undefined {
   record_livetree_materialization("quidLookups");
-  return QUID_TO_NODE.get(q);
+  const node = QUID_TO_NODE.get(q);
+  if (node !== undefined) assert_quid_eligible(node, "resolve");
+  return node;
 }
 
 /***************************************
@@ -134,6 +150,7 @@ export function get_node_by_quid(q: string): HsonNode | undefined {
  * registry entry, but it must not overwrite another live owner.
  ***************************************/
 export function reindex_quid(n: HsonNode): void {
+  assert_quid_eligible(n, "reindex");
   const q = get_quid(n);
   if (!q) return;
 
@@ -170,6 +187,9 @@ export { _DATA_QUID };
 export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAttr?: boolean }): void {
   const metadataQuid = n.$_meta?.[_DATA_QUID];
   const registryQuid = NODE_TO_QUID.get(n);
+  if (metadataQuid !== undefined || registryQuid !== undefined) {
+    assert_quid_eligible(n, "drop");
+  }
 
   // Only remove forward entries when this node still owns them.
   // This prevents malformed duplicate metadata from deleting another node's binding.
@@ -207,8 +227,13 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
  */
 export function destroy_subtree_quids(root: HsonNode): number {
   let destroyed = 0;
+  const nodes = collect_subtree_nodes(root, "post");
 
-  for (const node of collect_subtree_nodes(root, "post")) {
+  // Validate the complete graph before destroying any identity so an invalid
+  // descendant cannot leave the subtree partially scrubbed.
+  for (const node of nodes) get_quid(node);
+
+  for (const node of nodes) {
     const q = get_quid(node);
     const hadMeta = node.$_meta !== undefined && _DATA_QUID in node.$_meta;
     const hadDomAttr = get_el_for_node(node)?.hasAttribute(_DATA_QUID) ?? false;
@@ -237,6 +262,7 @@ export function remint_quid(
   n: HsonNode,
   opts?: { persist?: boolean; scrubMeta?: boolean },
 ): string {
+  assert_quid_eligible(n, "remint");
   // Drop old identity ownership before claiming a new QUID for the same node.
   drop_quid(n, { scrubMeta: opts?.scrubMeta ?? true, stripDomAttr: false });
 

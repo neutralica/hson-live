@@ -6,6 +6,8 @@ import { LiveTree } from "../livetree.js";
 import { make_branch_from_node } from "../creation/create-branch.js";
 import { has_own_entries, prune_empty_node_meta } from "../../../core/node-storage.js";
 import { CREATE_NODE } from "../../../core/factories.js";
+import { is_ordinary_element_node } from "../../../core/node-guards.js";
+import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -41,11 +43,12 @@ function clone_branch_inner(
     return c;
   });
 
-  // Mint a new quid for dst after the copied source identity has been removed.
+  // Mint a new quid only for canonical identity-bearing ordinary nodes.
   const oldQ = get_quid(src);
-  const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true });
-
-  if (oldQ) quidMap.set(oldQ, newQ);
+  if (is_ordinary_element_node(dst)) {
+    const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true });
+    if (oldQ) quidMap.set(oldQ, newQ);
+  }
 
   return dst;
 }
@@ -54,6 +57,9 @@ function clone_branch_with_quids(
   srcRoot: HsonNode,
   opts?: CloneOpts,
 ): { root: HsonNode; quidMap: QuidMap } {
+  // Reject invalid source identity before cloning or registering any node.
+  for (const node of collect_subtree_nodes(srcRoot, "pre")) get_quid(node);
+
   const quidMap: QuidMap = new Map();
   const root = clone_branch_inner(srcRoot, quidMap, { persistQuidMeta: opts?.persistQuidMeta ?? true });
   return { root, quidMap };
