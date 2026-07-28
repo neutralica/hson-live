@@ -13,7 +13,7 @@ import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_string } from "../../../core/value-guards.js";
 import { Primitive } from "../../../core/types.js";
-import { is_ordinary_element_node } from "../../../core/node-guards.js";
+import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
 
 
 
@@ -132,15 +132,19 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const open = tok as TokenOpen;
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
+        const legacyQuidDeclared = open.rawAttrs.some((attr) => attr.name === _DATA_QUID);
+        const legacyQuid = meta[_DATA_QUID];
+        delete meta[_DATA_QUID];
         if (open.quid !== undefined) {
-            if (meta[_DATA_QUID] !== undefined) {
+            if (legacyQuidDeclared) {
                 _throw_transform_err(`conflicting persisted QUID declarations on <${open.tag}>`, "parse_tokens");
             }
-            meta[_DATA_QUID] = open.quid.value;
         }
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
-        if (open.quid !== undefined && !is_ordinary_element_node(node)) {
-            _throw_transform_err(`persisted QUID declaration is not allowed on <${open.tag}>`, "parse_tokens");
+        if (legacyQuidDeclared) {
+            assign_ingested_hson_node_quid(node, legacyQuid, "parse_tokens");
+        } else if (open.quid !== undefined) {
+            assign_ingested_hson_node_quid(node, open.quid.value, "parse_tokens");
         }
 
         // VSNs carry no $_attrs

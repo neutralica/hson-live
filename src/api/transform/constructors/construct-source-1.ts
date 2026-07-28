@@ -12,18 +12,12 @@ import { construct_output_2 } from "./construct-output-2.js";
 import { SourceConstructor_1 } from "../../../types/constructor.types.js";
 import type { TransformFrame } from "../transform.types.js";
 
-import { is_svg_markup, node_from_svg } from "../utils/node-utils/node-from-svg.js";
-
-const DATA_QUID_ATTR = "data-_quid";
-
-function html_without_runtime_quids(element: Element): string {
-  const template = document.createElement("template");
-  template.innerHTML = element.innerHTML;
-  for (const descendant of Array.from(template.content.querySelectorAll("*"))) {
-    descendant.removeAttribute(DATA_QUID_ATTR);
-  }
-  return template.innerHTML;
-}
+import {
+  is_svg_markup,
+  node_from_svg,
+  SVG_NS,
+} from "../utils/node-utils/node-from-svg.js";
+import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 
 /**
  * Per-call HTML parsing options for `construct_source_1.fromHtml()`.
@@ -78,15 +72,17 @@ export function construct_source_1(
       input: string | Element,
       options: HtmlSourceOptions = { sanitize: true }
     ): OutputConstructor_2 {
-      const raw: string =
-        typeof input === "string" ? input : html_without_runtime_quids(input);
-
+      const isElementInput = typeof input !== "string";
+      const raw = isElementInput ? input.outerHTML : input;
       const trimmed = raw.trimStart();
+      const isSvgInput = isElementInput
+        ? input.namespaceURI === SVG_NS
+        : is_svg_markup(trimmed);
       let node: HsonNode;
       let sanitized = false;
 
       // 1) SVG special case (UNSAFE only)
-      if (is_svg_markup(trimmed)) {
+      if (isSvgInput) {
         if (!pipelineOptions.unsafe) {
           _throw_transform_err(
             "fromHtml(): external SVG is only allowed on the UNSAFE pipeline or via internal VSN→SVG nodes.",
@@ -95,10 +91,11 @@ export function construct_source_1(
           );
         }
 
-        // Match old behavior: parse SVG via XML + node_from_svg
-        const el = new DOMParser()
-          .parseFromString(raw, "image/svg+xml")
-          .documentElement;
+        const el = isElementInput
+          ? input
+          : new DOMParser()
+            .parseFromString(raw, "image/svg+xml")
+            .documentElement;
         node = node_from_svg(el);
         sanitized = false; // no DOMPurify here
       } else {
@@ -108,13 +105,13 @@ export function construct_source_1(
 
         node = shouldSanitize
           ? parse_external_html(raw) // DOMPurify + HTML semantics
-          : parse_html(raw);         // raw HTML→Node, no DOMPurify
+          : parse_html(input);       // raw HTML/DOM→Node, no DOMPurify
 
         sanitized = shouldSanitize;
       }
 
       const meta: Record<string, unknown> = {
-        origin: is_svg_markup(trimmed) ? "svg-html" : "html",
+        origin: isSvgInput ? "svg-html" : "html",
         unsafePipeline: pipelineOptions.unsafe,
         sanitized,
         rawInput: raw,
@@ -220,6 +217,7 @@ export function construct_source_1(
      * should already be reflected in how it was constructed.
      */
     fromNode(input: HsonNode): OutputConstructor_2 {
+      scan_ingested_hson_node_quids(input, "fromNode");
       const frame: TransformFrame = {
         input: JSON.stringify(input),
         node: input,

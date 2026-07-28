@@ -12,18 +12,23 @@ export const hsonLiveTree = {
   fromUntrustedHtml(input: string | Element): LiveTree {
     return make_branch_from_node(
       SAFE_TRANSFORM_SOURCE.fromHtml(input, { sanitize: true }).toNode(),
+      { quidGraphValidated: true },
     );
   },
   fromTrustedHtml(input: string | Element): LiveTree {
     return make_branch_from_node(
       UNSAFE_TRANSFORM_SOURCE.fromHtml(input, { sanitize: false }).toNode(),
+      { quidGraphValidated: true },
     );
   },
   fromJson(input: string | JsonValue): LiveTree {
     return make_branch_from_node(UNSAFE_TRANSFORM_SOURCE.fromJson(input).toNode());
   },
   fromHson(input: string): LiveTree {
-    return make_branch_from_node(UNSAFE_TRANSFORM_SOURCE.fromHson(input).toNode());
+    return make_branch_from_node(
+      UNSAFE_TRANSFORM_SOURCE.fromHson(input).toNode(),
+      { quidGraphValidated: true },
+    );
   },
   fromNode(node: HsonNode): LiveTree {
     return make_branch_from_node(node);

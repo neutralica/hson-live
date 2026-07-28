@@ -415,7 +415,10 @@ check("content identity preflight handles removal, addition, collision, duplicat
   assertAtomic(map, before, () => map.document.content.replace(path(0), 0, colliding));
   errorCode(() => map.document.content.replace(path(0), 0, colliding), "INVALID_DOCUMENT_IDENTITY");
 
-  const duplicate = ordinary(`<section data-_quid="0000000000000007" <i data-_quid="0000000000000008"/> <b data-_quid="0000000000000008"/>/>`);
+  const duplicate = ordinary(`<section data-_quid="0000000000000007" <i data-_quid="0000000000000008"/> <b data-_quid="0000000000000009"/>/>`);
+  const duplicateNode = nodes(duplicate).find((node) => node.$_tag === "b");
+  if (duplicateNode === undefined) throw new Error("expected duplicate fixture node");
+  duplicateNode.$_meta = { "data-_quid": "0000000000000008" };
   errorCode(() => map.document.content.replace(path(0), 0, duplicate), "INVALID_DOCUMENT_IDENTITY");
   assert.deepEqual(map.capture(), before);
 

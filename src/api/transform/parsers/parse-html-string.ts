@@ -18,13 +18,16 @@ import {
 } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { is_indexed } from "../../../core/node-guards.js";
-import { is_persisted_quid } from "../../../core/persisted-quid.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
 import { normalize_attr_ws } from "../utils/attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../utils/attrs-utils/parse-style.js";
 import { decode_html_key_tag } from "../utils/html-utils/encode-html-tag.js";
 import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import {
+  assign_ingested_hson_node_quid,
+  scan_ingested_hson_node_quids,
+} from "../utils/hson-utils/quid-ingress.js";
 
 const ALLOWED_ATTRS = new Set([
   "href",
@@ -81,9 +84,10 @@ function attributes_from_element(
   element: Element,
   sanitize: boolean,
   svg: boolean,
-): { attrs: HsonAttrs; meta?: HsonMeta } {
+): { attrs: HsonAttrs; meta?: HsonMeta; quid?: string } {
   const attrs: HsonAttrs = {};
   let meta: HsonMeta | undefined;
+  let quid: string | undefined;
 
   for (const [authoredName, value] of Object.entries(element.attribs)) {
     const lower = authoredName.toLowerCase();
@@ -98,10 +102,7 @@ function attributes_from_element(
     }
 
     if (lower === _DATA_QUID) {
-      if (!is_persisted_quid(value)) {
-        _throw_transform_err("invalid persisted QUID in HTML input", "parse-html-string", value);
-      }
-      (meta ??= {})[_DATA_QUID] = value;
+      quid = value;
       continue;
     }
 
@@ -126,6 +127,7 @@ function attributes_from_element(
   return {
     attrs,
     ...(meta === undefined ? {} : { meta }),
+    ...(quid === undefined ? {} : { quid }),
   };
 }
 
@@ -192,14 +194,29 @@ function element_to_hson(
       "parse-html-string",
     );
   }
+  const { attrs, meta, quid } = attributes_from_element(element, sanitize, svg);
   if (tag === STR_TAG) {
+    if (quid !== undefined) {
+      assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "parse-html-string");
+    }
     _throw_transform_err("literal <_hson_str> is not allowed in input HTML", "parse-html-string");
   }
   if (tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(tag)) {
+    if (quid !== undefined) {
+      assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "parse-html-string");
+    }
     _throw_transform_err(`unknown VSN-like tag: <${tag}>`, "parse-html-string");
   }
+  if (quid !== undefined && tag.startsWith(HSON_SYS_PREFIX)) {
+    assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "parse-html-string");
+  }
 
-  const { attrs, meta } = attributes_from_element(element, sanitize, svg);
+  const finish = (node: HsonNode): HsonNode => {
+    if (quid !== undefined) {
+      assign_ingested_hson_node_quid(node, quid, "parse-html-string");
+    }
+    return node;
+  };
 
   if ((tag === "style" || tag === "script") && !sanitize) {
     let content = text_content(element.children).trim();
@@ -211,7 +228,7 @@ function element_to_hson(
       content = content.slice("<![CDATA[".length, end);
     }
     if (content.length > 0) {
-      return CREATE_NODE({
+      return finish(CREATE_NODE({
         $_tag: tag,
         $_attrs: attrs,
         $_meta: meta,
@@ -221,7 +238,7 @@ function element_to_hson(
             $_content: [CREATE_NODE({ $_tag: STR_TAG, $_content: [content] })],
           }),
         ],
-      });
+      }));
     }
   }
 
@@ -254,23 +271,26 @@ function element_to_hson(
     if (primitive === undefined || typeof primitive === "string") {
       _throw_transform_err("<_hson_val> must contain a non-string primitive", "parse-html-string");
     }
-    return CREATE_NODE({ $_tag: VAL_TAG, $_content: [primitive] });
+    return finish(CREATE_NODE({ $_tag: VAL_TAG, $_content: [primitive] }));
   }
 
-  if (tag === OBJ_TAG) return CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes });
+  if (tag === OBJ_TAG) return finish(CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes }));
   if (tag === ARR_TAG) {
     if (!childNodes.every(is_indexed)) {
       _throw_transform_err("_hson_array children are not valid index tags", "parse-html-string");
     }
-    return CREATE_NODE({ $_tag: ARR_TAG, $_content: childNodes });
+    return finish(CREATE_NODE({ $_tag: ARR_TAG, $_content: childNodes }));
   }
   if (tag === II_TAG) {
     if (childNodes.length !== 1) {
       _throw_transform_err("<_hson_ii> must have exactly one child", "parse-html-string");
     }
-    return CREATE_NODE({ $_tag: II_TAG, $_content: [childNodes[0]], $_meta: meta });
+    return finish(CREATE_NODE({ $_tag: II_TAG, $_content: [childNodes[0]], $_meta: meta }));
   }
   if (tag === ELEM_TAG) {
+    if (quid !== undefined) {
+      assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "parse-html-string");
+    }
     _throw_transform_err("_hson_elem tag found in html", "parse-html-string");
   }
 
@@ -282,12 +302,12 @@ function element_to_hson(
       ? childNodes
       : [CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes })];
 
-  return CREATE_NODE({
+  return finish(CREATE_NODE({
     $_tag: tag,
     $_attrs: attrs,
     $_meta: meta,
     $_content: content,
-  });
+  }));
 }
 
 function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode {
@@ -318,6 +338,20 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
 }
 
 function standalone_svg_node(element: Element): HsonNode {
+  const attrs: HsonAttrs = {};
+  let quid: string | undefined;
+  for (const [name, value] of Object.entries(element.attribs)) {
+    if (name.toLowerCase() === _DATA_QUID) quid = value;
+    else attrs[name] = value;
+  }
+  if (quid !== undefined && element.name.startsWith(HSON_SYS_PREFIX)) {
+    assign_ingested_hson_node_quid(
+      CREATE_NODE({ $_tag: element.name }),
+      quid,
+      "parse-html-string",
+    );
+  }
+
   const children: HsonNode[] = [];
   for (const child of element.children) {
     if (isTag(child)) children.push(standalone_svg_node(child));
@@ -326,11 +360,15 @@ function standalone_svg_node(element: Element): HsonNode {
     }
   }
 
-  return CREATE_NODE({
+  const node = CREATE_NODE({
     $_tag: element.name,
-    $_attrs: { ...element.attribs },
+    $_attrs: attrs,
     $_content: children,
   });
+  if (quid !== undefined) {
+    assign_ingested_hson_node_quid(node, quid, "parse-html-string");
+  }
+  return node;
 }
 
 function root_is_empty(root: HsonNode): boolean {
@@ -354,13 +392,14 @@ export function parse_html_string(input: string, sanitize: boolean): HsonNode {
     lowerCaseTags: false,
     recognizeSelfClosing: true,
   });
+  let root: HsonNode | undefined;
   if (!sanitize && /^<\s*svg[\s>]/i.test(input.trimStart())) {
     const svg = document.children.find(isTag);
     if (svg !== undefined && svg.name.toLowerCase() === "svg") {
-      return standalone_svg_node(svg);
+      root = standalone_svg_node(svg);
     }
   }
-  const root = root_from_children(document.children, sanitize);
+  root ??= root_from_children(document.children, sanitize);
   if (sanitize && root_is_empty(root)) {
     _throw_transform_err(
       "parse_html_string(): all content removed by sanitizer (forbidden tags/attrs only).",
@@ -368,6 +407,7 @@ export function parse_html_string(input: string, sanitize: boolean): HsonNode {
       input.slice(0, 200),
     );
   }
+  scan_ingested_hson_node_quids(root, "parse-html-string");
   assert_invariants(root, "parse-html-string");
   return root;
 }

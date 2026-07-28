@@ -26,6 +26,10 @@ import { Primitive } from "../../../core/types.js";
 import { should_try_optional_endtags, should_try_void_expand } from "../utils/html-preflights/preflight-helpers.js";
 import { decode_html_key_tag } from "../utils/html-utils/encode-html-tag.js";
 import { esc_attrs_quoted_angles } from "../utils/html-preflights/preflight-attrs-escaping.js";
+import {
+    assign_ingested_hson_node_quid,
+    scan_ingested_hson_node_quids,
+} from "../utils/hson-utils/quid-ingress.js";
 
 
 
@@ -275,6 +279,7 @@ export function parse_html(input: string | Element): HsonNode {
     const actualContentRootNode = convert(inputElement);
     const final = wrap_as_root(actualContentRootNode);
 
+    scan_ingested_hson_node_quids(final, "parse-html");
     assert_invariants(final, "parse-html");
     return final;
 }
@@ -332,12 +337,27 @@ function convert(el: Element, parentTag?: string): HsonNode {
             "parse-html"
         );
     }
-    const { attrs: sortedAcc, meta: metaAcc } = parse_html_attrs(el);
+    const { attrs: sortedAcc, meta: metaAcc, quid } = parse_html_attrs(el);
+    const finish = (node: HsonNode): HsonNode => {
+        if (quid !== undefined) {
+            assign_ingested_hson_node_quid(node, quid, "parse-html");
+        }
+        return node;
+    };
     if (dec === STR_TAG) {
+        if (quid !== undefined) {
+            assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
+        }
         _throw_transform_err('literal <_hson_str> is not allowed in input HTML', 'parse-html');
     }
     if (dec.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(dec)) {
+        if (quid !== undefined) {
+            assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
+        }
         _throw_transform_err(`unknown VSN-like tag: <${dec}>`, 'parse-html');
+    }
+    if (quid !== undefined && dec.startsWith(HSON_SYS_PREFIX)) {
+        assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
     }
 
     // Raw text elements: treat their textContent as a single string node
@@ -355,7 +375,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
         }
 
         if (text_content) {
-            return CREATE_NODE({
+            return finish(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -368,7 +388,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
                         ]
                     })
                 ]
-            });
+            }));
         }
     }
 
@@ -421,33 +441,36 @@ function convert(el: Element, parentTag?: string): HsonNode {
             _throw_transform_err('<_hson_val> cannot contain a string after coercion', 'parse-html', prim);
         }
 
-        return CREATE_NODE({ $_tag: VAL_TAG, $_content: [prim as Primitive] });
+        return finish(CREATE_NODE({ $_tag: VAL_TAG, $_content: [prim as Primitive] }));
     }
 
     if (dec === OBJ_TAG) {
         // Children are property nodes (already produced under this element)
-        return CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes });
+        return finish(CREATE_NODE({ $_tag: OBJ_TAG, $_content: childNodes }));
     }
 
     if (dec === ARR_TAG) {
         if (!childNodes.every(node => is_indexed(node))) {
             _throw_transform_err('_hson_array children are not valid index tags', 'parse-html');
         }
-        return CREATE_NODE({ $_tag: ARR_TAG, $_content: childNodes });
+        return finish(CREATE_NODE({ $_tag: ARR_TAG, $_content: childNodes }));
     }
 
     if (dec === II_TAG) {
         if (childNodes.length !== 1) {
             _throw_transform_err('<_hson_ii> must have exactly one child', 'parse-html');
         }
-        return CREATE_NODE({
+        return finish(CREATE_NODE({
             $_tag: II_TAG,
             $_content: [childNodes[0]],
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-        });
+        }));
     }
 
     if (dec === ELEM_TAG) {
+        if (quid !== undefined) {
+            assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
+        }
         _throw_transform_err('_hson_elem tag found in html', 'parse-html');
     }
 
@@ -455,14 +478,14 @@ function convert(el: Element, parentTag?: string): HsonNode {
 
     if (childNodes.length === 0) {
         // Void element, stay in element mode with empty cluster
-        return CREATE_NODE({
+        return finish(CREATE_NODE({
             $_tag: dec,
             $_attrs: sortedAcc,
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
             $_content: [
                 CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] })
             ]
-        });
+        }));
     }
 
     if (childNodes.length === 1) {
@@ -470,18 +493,18 @@ function convert(el: Element, parentTag?: string): HsonNode {
 
         // Pass through explicit clusters untouched (no mixing, no extra box)
         if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG) {
-            return CREATE_NODE({
+            return finish(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
                 $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
                 $_content: [only]
-            });
+            }));
         }
     }
 
     // Otherwise, we have multiple non-cluster children (text/elements):
     // wrap once in _hson_elem (pure element mode).
-    return CREATE_NODE({
+    return finish(CREATE_NODE({
         $_tag: dec,
         $_attrs: sortedAcc,
         $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
@@ -491,7 +514,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
                 $_content: childNodes
             })
         ]
-    });
+    }));
 }
 
 /**

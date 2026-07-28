@@ -65,13 +65,13 @@ export function construct_tree(
           : parse_external_html(raw);
       }
 
-      return make_branch_from_node(node);
+      return make_branch_from_node(node, { quidGraphValidated: true });
     },
 
     fromUntrustedHtml(input): LiveTree {
       const raw = typeof input === "string" ? input : input.innerHTML;
       const node = parse_external_html(raw);
-      return make_branch_from_node(node);
+      return make_branch_from_node(node, { quidGraphValidated: true });
     },
 
     fromJson(input: string | JsonValue): LiveTree {
@@ -82,7 +82,7 @@ export function construct_tree(
 
     fromHson(input: string): LiveTree {
       const node = parse_hson(input);
-      return make_branch_from_node(node);
+      return make_branch_from_node(node, { quidGraphValidated: true });
     },
 
     fromNode(input: HsonNode): LiveTree {

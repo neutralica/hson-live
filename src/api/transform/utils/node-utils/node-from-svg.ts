@@ -1,8 +1,12 @@
 // node-from-svg.ts
 
 import { HsonNode } from "../../../../core/types.js";
-import { STR_TAG } from "../../../../core/constants.js";
+import { HSON_SYS_PREFIX, STR_TAG, _DATA_QUID } from "../../../../core/constants.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
+import {
+  assign_ingested_hson_node_quid,
+  scan_ingested_hson_node_quids,
+} from "../hson-utils/quid-ingress.js";
 
 
 //  tiny helper once, reuse everywhere
@@ -31,7 +35,8 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * - Tag names are normalized to lowercase for stable serialization (`<viewBox>` attributes remain verbatim).
  *
  * Attribute handling:
- * - Copies all attributes as-is into `$_attrs` (no normalization, no filtering).
+ * - Routes `data-_quid` through canonical protected metadata assignment.
+ * - Copies every other attribute as-is into `$_attrs` (no normalization or filtering).
  * - This preserves SVG-specific casing and names like `viewBox`, `stroke-width`, and `xlink:href`.
  *
  * Child handling:
@@ -46,22 +51,37 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * @returns An `HsonNode` representing `el` and its SVG subtree.
  */
 export function node_from_svg(el: Element): HsonNode {
+  const root = convert_svg_element(el);
+  scan_ingested_hson_node_quids(root, "node_from_svg");
+  return root;
+}
+
+function convert_svg_element(el: Element): HsonNode {
   const tag = el.tagName; 
   const attrs: Record<string, string> = {};
+  let quid: string | undefined;
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes[i];
-    attrs[a.name] = a.value;
+    if (a.name.toLowerCase() === _DATA_QUID) quid = a.value;
+    else attrs[a.name] = a.value;
+  }
+  if (quid !== undefined && tag.startsWith(HSON_SYS_PREFIX)) {
+    assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "node_from_svg");
   }
   const kids: HsonNode[] = [];
   el.childNodes.forEach(n => {
-    if (n.nodeType === Node.ELEMENT_NODE) kids.push(node_from_svg(n as Element));
+    if (n.nodeType === Node.ELEMENT_NODE) kids.push(convert_svg_element(n as Element));
     else if (n.nodeType === Node.TEXT_NODE && n.nodeValue) {
       kids.push(CREATE_NODE({ $_tag: STR_TAG, $_content: [n.nodeValue] }));
     }
   });
-  return CREATE_NODE({
+  const node = CREATE_NODE({
     $_tag: tag,
     $_attrs: attrs,
     $_content: kids.length ? kids : [],
   });
+  if (quid !== undefined) {
+    assign_ingested_hson_node_quid(node, quid, "node_from_svg");
+  }
+  return node;
 }

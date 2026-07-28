@@ -82,5 +82,5 @@ export function clone_branch_method<TSelf extends LiveTree>(this: TSelf): TSelf 
   const srcNode: HsonNode = this.node;
   const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode).root;
 
-  return make_branch_from_node(clonedRootNode) as TSelf;
+  return make_branch_from_node(clonedRootNode, { quidGraphValidated: true }) as TSelf;
 }

@@ -43,10 +43,10 @@ export type HsonNodeQuidValidationCode =
 export class HsonNodeQuidValidationError extends Error {
   readonly code: HsonNodeQuidValidationCode;
   readonly node: HsonNode;
-  readonly path?: string;
+  readonly path: string | undefined;
   readonly value?: unknown;
-  readonly conflictingNode?: HsonNode;
-  readonly conflictingPath?: string;
+  readonly conflictingNode: HsonNode | undefined;
+  readonly conflictingPath: string | undefined;
 
   constructor(
     code: HsonNodeQuidValidationCode,

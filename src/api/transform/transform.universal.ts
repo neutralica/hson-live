@@ -8,6 +8,7 @@ import type {
   TransformFrame,
   TransformOutput,
 } from "./transform.types.js";
+import { scan_ingested_hson_node_quids } from "./utils/hson-utils/quid-ingress.js";
 
 function frame_meta(origin: string, unsafe: boolean): Record<string, unknown> {
   return {
@@ -60,6 +61,7 @@ export function transform_from_node(
   input: HsonNode,
   unsafe = true,
 ): TransformOutput {
+  scan_ingested_hson_node_quids(input, "fromNode");
   const frame: TransformFrame = {
     input: JSON.stringify(input),
     node: input,

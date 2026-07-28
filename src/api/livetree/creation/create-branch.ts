@@ -6,6 +6,7 @@ import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-tran
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { create_livetree } from "./create-livetree.js";
+import { scan_ingested_hson_node_quids } from "../../transform/utils/hson-utils/quid-ingress.js";
 
 /**
  * Normalize a parsed HSON root into a detached `LiveTree` branch.
@@ -17,10 +18,18 @@ import { create_livetree } from "./create-livetree.js";
  * This is the detached-branch path used by `hson.liveTree.from*` entrypoints.
  * It does not graft into the existing live DOM.
  *
- * @param rootNode - Raw HSON root to normalize.
+ * @param rootNode - Raw HSON root to validate and normalize.
+ * @param opts - Internal proof that an immediately preceding parser or clone
+ *               boundary already completed canonical QUID graph validation.
  * @returns A detached `LiveTree` rooted at the unwrapped concrete node.
  */
-export function make_branch_from_node(rootNode: HsonNode): LiveTree {
+export function make_branch_from_node(
+  rootNode: HsonNode,
+  opts?: { quidGraphValidated?: boolean },
+): LiveTree {
+  if (!opts?.quidGraphValidated) {
+    scan_ingested_hson_node_quids(rootNode, "createBranchFromNode");
+  }
   const unwrapped = unwrap_root_elem(rootNode);
   if (unwrapped.length === 0) {
     console.warn("createBranchFromNode: nothing to unwrap; falling back to rootNode");

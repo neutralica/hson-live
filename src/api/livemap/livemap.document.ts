@@ -46,13 +46,14 @@ export type PreparedLiveMapRoot = Readonly<{
 /** Clone, validate, classify, and establish document identity before ownership. */
 export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
   const root = clone_live_root(input);
+  const identity = index_livemap_document_elements(root);
   const mode = classify_live_root_mode(root);
 
   if (mode === "element" || mode === "fragment") {
     return {
       root,
       mode,
-      documentIdentity: index_livemap_document_elements(root),
+      documentIdentity: identity,
     };
   }
 

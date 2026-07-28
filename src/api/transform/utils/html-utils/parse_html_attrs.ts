@@ -29,8 +29,9 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
  * Extract HSON-facing attributes from a live DOM `Element`.
  *
  * Rules:
- * - Returns `attrs` for user-visible attributes and optional `meta` for reserved
- *   on-wire metadata (`data-_...` keys).
+ * - Returns `attrs` for user-visible attributes, optional `meta` for reserved
+ *   structural metadata, and protected QUID input separately for canonical
+ *   attachment by the caller.
  * - Drops internal transit-only attributes (`data--*`) used during preprocessing.
  * - Normalizes style into a structured object via `parse_style_string`.
  * - Ignores XML namespace noise (`xmlns`, `xmlns:*`, `xml:*`) so HTML/SVG/XML
@@ -48,15 +49,17 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
  *   whitespace (but does not apply this to `style`, which is parsed separately).
  *
  * @param el - The DOM element to read attributes from.
- * @returns `{ attrs, meta? }` where `attrs` holds user attributes and `meta`
- *          holds reserved on-wire metadata when present.
+ * @returns Parsed ordinary attributes plus optional structural metadata and a
+ *          separately captured protected QUID value.
  */
 export function parse_html_attrs(el: Element): {
   attrs: HsonAttrs;
   meta?: HsonMeta;
+  quid?: string;
 } {
   const attrs: HsonAttrs = {};
   let meta: HsonMeta | undefined;
+  let quid: string | undefined;
   const svg = isSvgElement(el);
 
   // walk all DOM attributes verbatim
@@ -75,7 +78,7 @@ export function parse_html_attrs(el: Element): {
     }
 
     if (key === _DATA_QUID) {
-      (meta ??= {})[_DATA_QUID] = v;
+      quid = v;
       continue;
     }
 
@@ -104,7 +107,11 @@ export function parse_html_attrs(el: Element): {
     (attrs as any)[key] = normalize_attr_ws(v);
   }
 
-  return { attrs, meta };
+  return {
+    attrs,
+    ...(meta === undefined ? {} : { meta }),
+    ...(quid === undefined ? {} : { quid }),
+  };
 }
 
 /**

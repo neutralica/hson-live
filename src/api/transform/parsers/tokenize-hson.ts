@@ -10,7 +10,7 @@ import {
 import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
 import type { ArraySymbol, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
-import { is_persisted_quid } from "../../../core/persisted-quid.js";
+import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
