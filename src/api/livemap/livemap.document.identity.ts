@@ -1,7 +1,8 @@
-import { _DATA_QUID } from "../../core/constants.js";
-import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import {
+  HsonNodeQuidValidationError,
+  scan_hson_node_quids,
+} from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
-import { is_persisted_quid } from "../../core/persisted-quid.js";
 
 /** Per-map persisted identity index for ordinary document elements. */
 export type LiveMapDocumentIdentityIndex = ReadonlyMap<string, HsonNode>;
@@ -23,39 +24,24 @@ export class LiveMapDocumentIdentityError extends Error {
  * either LiveTree's global node registry or LiveMap path-handle `lmq` identity.
  */
 export function index_livemap_document_elements(root: HsonNode): LiveMapDocumentIdentityIndex {
-  const index = new Map<string, HsonNode>();
-  const stack: HsonNode[] = [root];
+  try {
+    return scan_hson_node_quids(root);
+  } catch (cause) {
+    if (!(cause instanceof HsonNodeQuidValidationError)) throw cause;
 
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (node === undefined) continue;
-
-    if (is_ordinary_element_node(node)) {
-      const persisted = node.$_meta?.[_DATA_QUID];
-      if (persisted !== undefined && !is_persisted_quid(persisted)) {
-        throw new LiveMapDocumentIdentityError(
-          "MALFORMED_QUID",
-          `LiveMap document element <${node.$_tag}> has an invalid ${persisted === "" ? "empty" : "malformed"} data-_quid.`,
-        );
-      }
-
-      if (persisted !== undefined) {
-        const duplicate = index.get(persisted);
-        if (duplicate !== undefined && duplicate !== node) {
-          throw new LiveMapDocumentIdentityError(
-            "DUPLICATE_QUID",
-            `LiveMap document contains duplicate data-_quid "${persisted}" on <${duplicate.$_tag}> and <${node.$_tag}>.`,
-          );
-        }
-        index.set(persisted, node);
-      }
+    if (cause.code === "DUPLICATE_QUID" && cause.conflictingNode !== undefined) {
+      throw new LiveMapDocumentIdentityError(
+        "DUPLICATE_QUID",
+        `LiveMap document contains duplicate data-_quid "${String(cause.value)}" on <${cause.conflictingNode.$_tag}> and <${cause.node.$_tag}>.`,
+      );
     }
 
-    for (let childIndex = node.$_content.length - 1; childIndex >= 0; childIndex -= 1) {
-      const child = node.$_content[childIndex];
-      if (is_Node(child)) stack.push(child);
-    }
+    const malformedKind = cause.value === "" ? "empty" : "malformed";
+    throw new LiveMapDocumentIdentityError(
+      "MALFORMED_QUID",
+      cause.code === "INELIGIBLE_QUID"
+        ? `LiveMap document node <${cause.node.$_tag}> is ineligible for data-_quid.`
+        : `LiveMap document element <${cause.node.$_tag}> has an invalid ${malformedKind} data-_quid.`,
+    );
   }
-
-  return index;
 }

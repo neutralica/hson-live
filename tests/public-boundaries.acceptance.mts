@@ -100,7 +100,11 @@ check("JSON value and HTML serialization finalizers expose no parse method", () 
 });
 
 check("LiveTree exposes attrs and flags without obsolete aliases", () => {
-  const tree = hson.liveTree.fromJson({});
+  assert.throws(
+    () => hson.liveTree.fromJson({}),
+    /ineligible HSON structural node "_hson_root"/,
+  );
+  const tree = hson.liveTree.fromHson("<main/>");
   tree.attrs.set("title", "Save");
   tree.flags.set("disabled");
   assert.equal(tree.attrs.get("title"), "Save");

@@ -10,14 +10,12 @@ import {
   STR_TAG,
   VAL_TAG,
   _DATA_INDEX,
-  _DATA_QUID,
   _META_DATA_PREFIX,
 } from "./constants.js";
+import { validate_hson_node_quid } from "./hson-node-quid.js";
 import { _throw_transform_err } from "./errors.js";
 import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
-import { is_ordinary_element_node } from "./node-guards.js";
-import { is_persisted_quid } from "./persisted-quid.js";
 import { make_string } from "./stringify.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
@@ -42,8 +40,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         push(errs, cfg, `${here}@meta:${k}: illegal meta key (only "${_META_DATA_PREFIX}*" allowed)`); if (cfg.throwOnFirst) return;
       }
     }
-    const persistedQuid = n.$_meta[_DATA_QUID];
-    if (persistedQuid !== undefined && (!is_ordinary_element_node(n) || !is_persisted_quid(persistedQuid))) {
+    try {
+      validate_hson_node_quid(n);
+    } catch {
       push(errs, cfg, `${here}: data-_quid must be a canonical persisted QUID on an ordinary element`); if (cfg.throwOnFirst) return;
     }
   }

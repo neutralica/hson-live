@@ -4,10 +4,14 @@ import { HsonNode } from '../../../core/types.js';
 import { _DATA_QUID } from '../../../core/constants.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
-import { ensure_node_meta, prune_empty_node_meta } from '../../../core/node-storage.js';
 import { record_livetree_materialization } from '../debug/materialization-profile.js';
-import { encode_persisted_quid, is_persisted_quid } from '../../../core/persisted-quid.js';
-import { is_ordinary_element_node } from '../../../core/node-guards.js';
+import {
+  assert_hson_node_quid_eligible,
+  assign_hson_node_quid,
+  mint_hson_node_quid,
+  read_hson_node_quid,
+  remove_hson_node_quid,
+} from '../../../core/hson-node-quid.js';
 
 
 
@@ -24,14 +28,6 @@ import { is_ordinary_element_node } from '../../../core/node-guards.js';
 const QUID_TO_NODE = new Map<string, HsonNode>();
 const NODE_TO_QUID = new WeakMap<HsonNode, string>();
 
-function assert_quid_eligible(n: HsonNode, operation: string): void {
-  const eligible: boolean = is_ordinary_element_node(n);
-  if (eligible) return;
-  throw new Error(
-    `Cannot ${operation} QUID metadata on ineligible HSON structural node "${n.$_tag}".`,
-  );
-}
-
 function assert_quid_available(q: string, n: HsonNode): void {
   const registered = QUID_TO_NODE.get(q);
   if (!registered || registered === n) return;
@@ -41,12 +37,7 @@ function assert_quid_available(q: string, n: HsonNode): void {
 
 /** Generate one canonical 80-bit persisted QUID from secure random bytes. */
 export function mint_quid(): string {
-  if (!globalThis.crypto?.getRandomValues) {
-    throw new Error("secure QUID generation is unavailable");
-  }
-  const bytes = new Uint8Array(10);
-  globalThis.crypto.getRandomValues(bytes);
-  return encode_persisted_quid(bytes);
+  return mint_hson_node_quid();
 }
 
 /***************************************
@@ -63,15 +54,12 @@ export function mint_quid(): string {
  * been assigned a QUID.
  ***************************************/
 export function get_quid(n: HsonNode): string | undefined {
-  const q = n.$_meta?.[_DATA_QUID];
-  const registeredQ = NODE_TO_QUID.get(n);
-  if (q === undefined && registeredQ === undefined) return undefined;
-
-  assert_quid_eligible(n, "read");
-  if (q !== undefined && !is_persisted_quid(q)) {
-    throw new Error(`Invalid persisted QUID "${String(q)}".`);
-  }
+  const q = read_hson_node_quid(n);
   if (q !== undefined) return q;
+
+  const registeredQ = NODE_TO_QUID.get(n);
+  if (registeredQ === undefined) return undefined;
+  assert_hson_node_quid_eligible(n, "read");
   return registeredQ;
 }
 
@@ -97,7 +85,7 @@ export function ensure_quid(
   n: HsonNode,
   opts?: { persist?: boolean },
 ): string {
-  assert_quid_eligible(n, "ensure");
+  assert_hson_node_quid_eligible(n, "ensure");
   record_livetree_materialization("quidEnsureCalls");
   const persist = opts?.persist ?? true; // default true
 
@@ -106,13 +94,11 @@ export function ensure_quid(
 
   // Persisted identity cannot silently steal another node's registry entry.
   assert_quid_available(q, n);
+  if (persist) assign_hson_node_quid(n, q);
+
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
   record_livetree_materialization("quidRegistryWrites", 2);
-
-  if (persist) {
-    ensure_node_meta(n)[_DATA_QUID] = q;
-  }
 
   return q;
 }
@@ -128,7 +114,7 @@ export function ensure_quid(
 export function get_node_by_quid(q: string): HsonNode | undefined {
   record_livetree_materialization("quidLookups");
   const node = QUID_TO_NODE.get(q);
-  if (node !== undefined) assert_quid_eligible(node, "resolve");
+  if (node !== undefined) assert_hson_node_quid_eligible(node, "resolve");
   return node;
 }
 
@@ -150,7 +136,7 @@ export function get_node_by_quid(q: string): HsonNode | undefined {
  * registry entry, but it must not overwrite another live owner.
  ***************************************/
 export function reindex_quid(n: HsonNode): void {
-  assert_quid_eligible(n, "reindex");
+  assert_hson_node_quid_eligible(n, "reindex");
   const q = get_quid(n);
   if (!q) return;
 
@@ -185,11 +171,12 @@ export { _DATA_QUID };
  * be grafted again later.
  ***************************************/
 export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAttr?: boolean }): void {
-  const metadataQuid = n.$_meta?.[_DATA_QUID];
+  const hasMetadataQuid = n.$_meta?.[_DATA_QUID] !== undefined;
   const registryQuid = NODE_TO_QUID.get(n);
-  if (metadataQuid !== undefined || registryQuid !== undefined) {
-    assert_quid_eligible(n, "drop");
+  if (hasMetadataQuid || registryQuid !== undefined) {
+    assert_hson_node_quid_eligible(n, "drop");
   }
+  const metadataQuid = read_hson_node_quid(n);
 
   // Only remove forward entries when this node still owns them.
   // This prevents malformed duplicate metadata from deleting another node's binding.
@@ -206,10 +193,7 @@ export function drop_quid(n: HsonNode, opts?: { scrubMeta?: boolean; stripDomAtt
   NODE_TO_QUID.delete(n);
 
   // optional: remove from meta to avoid persistence
-  if (opts?.scrubMeta && n.$_meta) {
-    if (_DATA_QUID in n.$_meta) delete n.$_meta[_DATA_QUID];
-    prune_empty_node_meta(n);
-  }
+  if (opts?.scrubMeta && metadataQuid !== undefined) remove_hson_node_quid(n);
 
   // optional: strip DOM attribute if mounted
   if (opts?.stripDomAttr) {
@@ -262,19 +246,17 @@ export function remint_quid(
   n: HsonNode,
   opts?: { persist?: boolean; scrubMeta?: boolean },
 ): string {
-  assert_quid_eligible(n, "remint");
+  assert_hson_node_quid_eligible(n, "remint");
   // Drop old identity ownership before claiming a new QUID for the same node.
   drop_quid(n, { scrubMeta: opts?.scrubMeta ?? true, stripDomAttr: false });
 
   // Write new identity metadata and indexes.
   const q = mint_quid();
   assert_quid_available(q, n);
+  if (opts?.persist ?? true) assign_hson_node_quid(n, q);
+
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
-
-  if (opts?.persist ?? true) {
-    ensure_node_meta(n)[_DATA_QUID] = q;
-  }
   return q;
 }
 

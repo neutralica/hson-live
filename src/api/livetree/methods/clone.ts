@@ -8,6 +8,7 @@ import { has_own_entries, prune_empty_node_meta } from "../../../core/node-stora
 import { CREATE_NODE } from "../../../core/factories.js";
 import { is_ordinary_element_node } from "../../../core/node-guards.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
+import { scan_hson_node_quids } from "../../../core/hson-node-quid.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -57,7 +58,11 @@ function clone_branch_with_quids(
   srcRoot: HsonNode,
   opts?: CloneOpts,
 ): { root: HsonNode; quidMap: QuidMap } {
-  // Reject invalid source identity before cloning or registering any node.
+  // Reject invalid or duplicate persisted identity before cloning or
+  // registering any node.
+  scan_hson_node_quids(srcRoot);
+
+  // Also preflight LiveTree's runtime-only reverse cache.
   for (const node of collect_subtree_nodes(srcRoot, "pre")) get_quid(node);
 
   const quidMap: QuidMap = new Map();
