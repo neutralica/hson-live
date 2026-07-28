@@ -15,8 +15,11 @@ export function collect_subtree_nodes(
   order: SubtreeTraversalOrder = "post",
 ): readonly HsonNode[] {
   const nodes: HsonNode[] = [];
+  const visited = new WeakSet<HsonNode>();
 
   const visit = (node: HsonNode): void => {
+    if (visited.has(node)) return;
+    visited.add(node);
     if (order === "pre") nodes.push(node);
 
     for (const child of node.$_content) {

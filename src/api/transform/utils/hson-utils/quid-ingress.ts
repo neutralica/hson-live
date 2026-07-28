@@ -1,7 +1,7 @@
 import {
   HsonNodeQuidValidationError,
   assign_hson_node_quid,
-  scan_hson_node_quids,
+  collect_hson_node_quid_claims,
   type PersistedQuid,
 } from "../../../../core/hson-node-quid.js";
 import type { HsonNode } from "../../../../core/types.js";
@@ -40,13 +40,18 @@ export function assign_ingested_hson_node_quid(
   }
 }
 
-/** Validate one completed public-ingress graph without minting or registration. */
+/**
+ * Validate canonical QUID format and placement across one cold ingress graph.
+ *
+ * Equal canonical values on distinct nodes are preserved here. Identity
+ * uniqueness belongs to the active LiveTree or LiveMap ownership boundary.
+ */
 export function scan_ingested_hson_node_quids(
   root: HsonNode,
   boundary: string,
 ): void {
   try {
-    scan_hson_node_quids(root);
+    collect_hson_node_quid_claims(root);
   } catch (cause) {
     if (cause instanceof HsonNodeQuidValidationError) {
       throw_quid_ingress_error(cause, boundary);

@@ -75,10 +75,11 @@ check("every current and future-prefix clean VSN reads as absent and rejects ide
 check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone without repair", () => {
   for (const [index, tag] of vsnTags.entries()) {
     const q = `000000000000${(0x100 + index).toString(32).padStart(4, "0")}`;
-    const invalid = node(tag, [], { [_DATA_QUID]: q });
+    const invalid = node(tag);
     const ordinaryBeforeInvalid = node(`before-${index}`);
     const source = node(`root-${index}`, [ordinaryBeforeInvalid, invalid]);
     const tree = new LiveTree(source);
+    invalid.$_meta = { [_DATA_QUID]: q };
 
     for (const operation of [
       () => get_quid(invalid),

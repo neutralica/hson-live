@@ -1,6 +1,10 @@
 // livetree.ts
 
-import { ensure_quid, get_node_by_quid } from "./quid/data-quid.js";
+import {
+  admit_livetree_quid_graph,
+  ensure_quid,
+  get_node_by_quid,
+} from "./quid/data-quid.js";
 import { HsonNode } from "../../core/types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
 import { get_el_for_node } from "./utils/node-map-helpers.js";
@@ -78,10 +82,9 @@ class LiveTreeNodeRef implements NodeRef {
   }
 }
 
-function makeRef(node: HsonNode): NodeRef {
+function makeRef(node: HsonNode, admittedQuid?: string): NodeRef {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  /*  Ensure the node has a stable QUID and keeps NODE_ELEMENT_MAP happy. */
-  const q = ensure_quid(node);
+  const q = admittedQuid ?? ensure_quid(node);
   return new LiveTreeNodeRef(q, node);
 }
 
@@ -151,13 +154,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @param input - Either a `HsonNode` or another `LiveTree`.
    * @see makeRef
    */
-  private setRef(input: HsonNode | LiveTree): void {
+  private setRef(input: HsonNode | LiveTree, admittedQuid?: string): void {
     this.invalidate_dom_api();
     if (input instanceof LiveTree) {
-      this.nodeRef = makeRef(input.node);
+      this.nodeRef = makeRef(input.node, admittedQuid);
       return;
     }
-    this.nodeRef = makeRef(input);
+    this.nodeRef = makeRef(input, admittedQuid);
   }
   /**
    * Internal helper to assign the `hostRoot` for this `LiveTree`.
@@ -199,9 +202,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    *                references from.
    */
   constructor(input: HsonNode | LiveTree) {
+    const inputNode = input instanceof LiveTree ? input.node : input;
+    assert_livetree_node_active(inputNode, "create a LiveTree handle");
+    const admittedQuid = admit_livetree_quid_graph(inputNode);
     record_livetree_materialization("liveTreeInstances");
     this.setRoot(input);
-    this.setRef(input);
+    this.setRef(input, admittedQuid);
     const node = this.nodeRef.resolveNode();
     if (!node) throw new Error("LiveTree constructor: ref did not resolve");
     index_subtree_ownership(node);

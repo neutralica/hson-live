@@ -8,9 +8,13 @@ import { record_livetree_materialization } from '../debug/materialization-profil
 import {
   assert_hson_node_quid_eligible,
   assign_hson_node_quid,
+  collect_hson_node_quid_claims,
+  HsonNodeQuidValidationError,
+  index_unique_hson_node_quid_claims,
   mint_hson_node_quid,
   read_hson_node_quid,
   remove_hson_node_quid,
+  type HsonNodeQuidClaim,
 } from '../../../core/hson-node-quid.js';
 
 
@@ -27,6 +31,7 @@ import {
  */
 const QUID_TO_NODE = new Map<string, HsonNode>();
 const NODE_TO_QUID = new WeakMap<HsonNode, string>();
+export const LIVETREE_QUID_MINT_RETRY_LIMIT = 32;
 
 function assert_quid_available(q: string, n: HsonNode): void {
   const registered = QUID_TO_NODE.get(q);
@@ -38,6 +43,81 @@ function assert_quid_available(q: string, n: HsonNode): void {
 /** Generate one canonical 80-bit persisted QUID from secure random bytes. */
 export function mint_quid(): string {
   return mint_hson_node_quid();
+}
+
+function mint_available_quid(
+  reserved: ReadonlySet<string> = new Set(),
+): string {
+  for (let attempt = 0; attempt < LIVETREE_QUID_MINT_RETRY_LIMIT; attempt += 1) {
+    const candidate = mint_quid();
+    if (!reserved.has(candidate) && !QUID_TO_NODE.has(candidate)) return candidate;
+  }
+  throw new Error(
+    `Unable to generate an available LiveTree QUID after ${LIVETREE_QUID_MINT_RETRY_LIMIT} secure attempts.`,
+  );
+}
+
+function unique_incoming_claims(
+  root: HsonNode,
+): readonly HsonNodeQuidClaim[] {
+  const claims = collect_hson_node_quid_claims(root);
+  try {
+    index_unique_hson_node_quid_claims(claims);
+  } catch (cause) {
+    if (cause instanceof HsonNodeQuidValidationError) {
+      throw new Error(
+        `Duplicate QUID "${String(cause.value)}" occurs within the incoming LiveTree graph.`,
+        { cause },
+      );
+    }
+    throw cause;
+  }
+  return claims;
+}
+
+function assert_claims_available(
+  claims: readonly HsonNodeQuidClaim[],
+): void {
+  for (const claim of claims) assert_quid_available(claim.quid, claim.node);
+}
+
+/** Validate one complete incoming graph against LiveTree's active ownership. */
+export function preflight_livetree_quid_graph(
+  root: HsonNode,
+): readonly HsonNodeQuidClaim[] {
+  const claims = unique_incoming_claims(root);
+  assert_claims_available(claims);
+  return claims;
+}
+
+/**
+ * Atomically claim supplied graph identity and ensure identity for its handle root.
+ *
+ * Absent descendants remain unquidded. Supplied descendant QUIDs are active as
+ * soon as the graph is admitted, even before descendant handles are created.
+ */
+export function admit_livetree_quid_graph(root: HsonNode): string {
+  assert_hson_node_quid_eligible(root, "admit");
+  const claims = preflight_livetree_quid_graph(root);
+  const existingRootQuid = get_quid(root);
+  const reserved = new Set(claims.map((claim) => claim.quid));
+  const rootQuid = existingRootQuid ?? mint_available_quid(reserved);
+
+  if (existingRootQuid === undefined) assign_hson_node_quid(root, rootQuid);
+  for (const claim of claims) {
+    QUID_TO_NODE.set(claim.quid, claim.node);
+    NODE_TO_QUID.set(claim.node, claim.quid);
+  }
+  if (existingRootQuid === undefined) {
+    QUID_TO_NODE.set(rootQuid, root);
+    NODE_TO_QUID.set(root, rootQuid);
+  }
+  record_livetree_materialization("quidEnsureCalls");
+  record_livetree_materialization(
+    "quidRegistryWrites",
+    2 * (claims.length + (existingRootQuid === undefined ? 1 : 0)),
+  );
+  return rootQuid;
 }
 
 /***************************************
@@ -86,11 +166,10 @@ export function ensure_quid(
   opts?: { persist?: boolean },
 ): string {
   assert_hson_node_quid_eligible(n, "ensure");
-  record_livetree_materialization("quidEnsureCalls");
   const persist = opts?.persist ?? true; // default true
 
   let q = get_quid(n);
-  if (!q) q = mint_quid();
+  if (!q) q = mint_available_quid();
 
   // Persisted identity cannot silently steal another node's registry entry.
   assert_quid_available(q, n);
@@ -98,6 +177,7 @@ export function ensure_quid(
 
   QUID_TO_NODE.set(q, n);
   NODE_TO_QUID.set(n, q);
+  record_livetree_materialization("quidEnsureCalls");
   record_livetree_materialization("quidRegistryWrites", 2);
 
   return q;
@@ -247,12 +327,12 @@ export function remint_quid(
   opts?: { persist?: boolean; scrubMeta?: boolean },
 ): string {
   assert_hson_node_quid_eligible(n, "remint");
+  const q = mint_available_quid();
+
   // Drop old identity ownership before claiming a new QUID for the same node.
   drop_quid(n, { scrubMeta: opts?.scrubMeta ?? true, stripDomAttr: false });
 
   // Write new identity metadata and indexes.
-  const q = mint_quid();
-  assert_quid_available(q, n);
   if (opts?.persist ?? true) assign_hson_node_quid(n, q);
 
   QUID_TO_NODE.set(q, n);

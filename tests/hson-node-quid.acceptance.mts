@@ -30,6 +30,7 @@ restoreCrypto();
 const {
   HsonNodeQuidValidationError,
   assign_hson_node_quid,
+  collect_hson_node_quid_claims,
   encode_persisted_quid,
   ensure_hson_node_quid,
   has_hson_node_quid,
@@ -250,6 +251,17 @@ check("graph scan rejects sibling and ancestor-descendant duplicate claims deter
   assert.equal(nestedError.node, descendant);
 });
 
+check("canonical claim collection preserves duplicate values without registration", () => {
+  const duplicateQ = q(1450);
+  const left = node("left", [], { [_DATA_QUID]: duplicateQ });
+  const right = node("right", [], { [_DATA_QUID]: duplicateQ });
+  const claims = collect_hson_node_quid_claims(node("root", [left, right]));
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims.map((claim) => claim.quid), [duplicateQ, duplicateQ]);
+  assert.deepEqual(claims.map((claim) => claim.node), [left, right]);
+  assert.equal(get_node_by_quid(duplicateQ), undefined);
+});
+
 check("graph scan rejects duplicates in document, data-object, and array-contained graphs", () => {
   const documentQ = q(1500);
   const document = node("_hson_root", [
@@ -355,9 +367,8 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
     node("b", [], { [_DATA_QUID]: duplicateQ }),
   ]);
   assert.throws(
-    () => new LiveTree(treeSource).cloneBranch(),
-    (cause) => cause instanceof HsonNodeQuidValidationError
-      && cause.code === "DUPLICATE_QUID",
+    () => new LiveTree(treeSource),
+    /Duplicate QUID/,
   );
 
   const mapSource = node("_hson_root", [node("_hson_elem", [

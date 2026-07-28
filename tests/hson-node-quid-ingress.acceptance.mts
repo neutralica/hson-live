@@ -18,8 +18,11 @@ import {
   destroy_subtree_quids,
   ensure_quid,
   get_node_by_quid,
+  LIVETREE_QUID_MINT_RETRY_LIMIT,
 } from "../src/api/livetree/quid/data-quid.ts";
 import { is_persisted_quid } from "../src/core/persisted-quid.ts";
+import { LiveTree } from "../src/api/livetree/livetree.ts";
+import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 
 const Q1 = "0000000000000001";
 const Q2 = "0000000000000002";
@@ -140,6 +143,33 @@ function with_dom_node_constants(fn: () => void): void {
   } finally {
     if (descriptor === undefined) Reflect.deleteProperty(globalThis, "Node");
     else Object.defineProperty(globalThis, "Node", descriptor);
+  }
+}
+
+function with_generated_candidates(
+  finalBytes: readonly number[],
+  fn: (calls: () => number) => void,
+): void {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  let callCount = 0;
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    writable: true,
+    value: {
+      getRandomValues<T extends ArrayBufferView | null>(array: T): T {
+        assert.ok(array instanceof Uint8Array);
+        array.fill(0);
+        array[array.length - 1] = finalBytes[Math.min(callCount, finalBytes.length - 1)] ?? 0;
+        callCount += 1;
+        return array;
+      },
+    } as Crypto,
+  });
+  try {
+    fn(() => callCount);
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(globalThis, "crypto");
+    else Object.defineProperty(globalThis, "crypto", descriptor);
   }
 }
 
@@ -314,17 +344,16 @@ check("HSON rejects QUID annotations on every expressible current VSN form", () 
   }
 });
 
-check("HSON completed-graph validation rejects sibling and nested duplicates", () => {
-  const sibling = assert_validation_code(
-    () => parse_hson(`<a @${Q1}/> <b @${Q1}/>`),
-    "DUPLICATE_QUID",
+check("HSON cold parsing preserves sibling and nested duplicate canonical claims", () => {
+  const sibling = parse_hson(`<a @${Q1}/> <b @${Q1}/>`);
+  assert.deepEqual(
+    nodes(sibling).filter((node) => read_hson_node_quid(node) === Q1).map((node) => node.$_tag),
+    ["a", "b"],
   );
-  assert.notEqual(sibling.path, sibling.conflictingPath);
-  const nested = assert_validation_code(
-    () => parse_hson(`<a @${Q1} <b @${Q1}/>/>`),
-    "DUPLICATE_QUID",
-  );
-  assert.notEqual(nested.path, nested.conflictingPath);
+  const nested = parse_hson(`<a @${Q1} <b @${Q1}/>/>`);
+  assert.equal(read_hson_node_quid(must_tag(nested, "a")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(nested, "b")), Q1);
+  assert.equal(get_node_by_quid(Q1), undefined);
 });
 
 check("HSON accepts distinct or absent identity and parsing stays cold", () => {
@@ -356,19 +385,18 @@ check("trusted and untrusted HTML reject malformed protected metadata through th
   }
 });
 
-check("HTML completed-graph validation rejects sibling and nested duplicates", () => {
-  assert_validation_code(
-    () => hsonTransform.fromTrustedHtml(
-      `<main data-_quid="${Q1}"/><aside data-_quid="${Q1}"/>`,
-    ),
-    "DUPLICATE_QUID",
-  );
-  assert_validation_code(
-    () => hsonTransform.fromTrustedHtml(
-      `<main data-_quid="${Q1}"><aside data-_quid="${Q1}"/></main>`,
-    ),
-    "DUPLICATE_QUID",
-  );
+check("HTML cold transforms preserve sibling and nested duplicate canonical claims", () => {
+  const sibling = hsonTransform.fromTrustedHtml(
+    `<main data-_quid="${Q1}"/><aside data-_quid="${Q1}"/>`,
+  ).toNode();
+  assert.equal(read_hson_node_quid(must_tag(sibling, "main")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(sibling, "aside")), Q1);
+  const nested = hsonTransform.fromTrustedHtml(
+    `<main data-_quid="${Q1}"><aside data-_quid="${Q1}"/></main>`,
+  ).toNode();
+  assert.equal(read_hson_node_quid(must_tag(nested, "main")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(nested, "aside")), Q1);
+  assert.equal(get_node_by_quid(Q1), undefined);
 });
 
 check("HTML accepts distinct claims through both trust facades", () => {
@@ -399,17 +427,16 @@ check("standalone SVG text preserves protected QUID metadata and ordinary SVG at
   assert.equal(must_tag(svg, "path").$_attrs?.["stroke-width"], "2");
 });
 
-check("standalone SVG text rejects malformed and duplicate graph identity", () => {
+check("standalone SVG text rejects malformed identity and preserves duplicate canonical claims", () => {
   assert_validation_code(
     () => hsonTransform.fromTrustedHtml(`<svg data-_quid="bad"/>`),
     "MALFORMED_QUID",
   );
-  assert_validation_code(
-    () => hsonTransform.fromTrustedHtml(
-      `<svg><path data-_quid="${Q1}"/><circle data-_quid="${Q1}"/></svg>`,
-    ),
-    "DUPLICATE_QUID",
-  );
+  const duplicate = hsonTransform.fromTrustedHtml(
+    `<svg><path data-_quid="${Q1}"/><circle data-_quid="${Q1}"/></svg>`,
+  ).toNode();
+  assert.equal(read_hson_node_quid(must_tag(duplicate, "path")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(duplicate, "circle")), Q1);
 });
 
 check("SVG DOM ingestion applies the same metadata route without changing namespaces", () => {
@@ -443,7 +470,7 @@ check("SVG DOM ingestion applies the same metadata route without changing namesp
   });
 });
 
-check("SVG DOM ingestion rejects malformed and duplicate identity", () => {
+check("SVG DOM ingestion rejects malformed placement and preserves duplicate canonical identity", () => {
   with_dom_node_constants(() => {
     assert_validation_code(
       () => node_from_svg(dom_element({
@@ -477,7 +504,9 @@ check("SVG DOM ingestion rejects malformed and duplicate identity", () => {
         }) as unknown as Record<string, unknown>,
       ],
     });
-    assert_validation_code(() => node_from_svg(duplicate), "DUPLICATE_QUID");
+    const parsed = node_from_svg(duplicate);
+    assert.equal(read_hson_node_quid(must_tag(parsed, "path")), Q1);
+    assert.equal(read_hson_node_quid(must_tag(parsed, "circle")), Q1);
   });
 });
 
@@ -519,7 +548,9 @@ check("DOM/XML element ingestion shares HTML protected metadata and completed sc
         }) as unknown as Record<string, unknown>,
       ],
     });
-    assert_validation_code(() => parse_html(duplicate), "DUPLICATE_QUID");
+    const duplicateRoot = parse_html(duplicate);
+    assert.equal(read_hson_node_quid(must_tag(duplicateRoot, "catalog")), Q1);
+    assert.equal(read_hson_node_quid(must_tag(duplicateRoot, "entry")), Q1);
   });
 });
 
@@ -544,7 +575,7 @@ check("all public transform graph facades agree on valid and malformed metadata"
   }
 });
 
-check("raw validated fromNode rejects VSN placement and duplicate claims without repair", () => {
+check("raw validated fromNode rejects VSN placement but preserves duplicate canonical claims", () => {
   const invalidVsn = document_root(element("main", Q1));
   invalidVsn.$_meta = { [_DATA_QUID]: Q2 };
   const beforeVsn = structuredClone(invalidVsn);
@@ -554,22 +585,18 @@ check("raw validated fromNode rejects VSN placement and duplicate claims without
   );
   assert.deepEqual(invalidVsn, beforeVsn);
 
-  const duplicate = document_root(element("main", Q1), element("aside", Q1));
+  const duplicate = document_root(element("main", Q1, [element("aside", Q1)]));
   const beforeDuplicate = structuredClone(duplicate);
-  assert_validation_code(
-    () => hsonTransform.fromNode(duplicate),
-    "DUPLICATE_QUID",
-  );
+  const coldDuplicate = hsonTransform.fromNode(duplicate).toNode();
+  assert.equal(read_hson_node_quid(must_tag(coldDuplicate, "main")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(coldDuplicate, "aside")), Q1);
   assert.deepEqual(duplicate, beforeDuplicate);
 
   assert_validation_code(
     () => make_branch_from_node(invalidVsn),
     "INELIGIBLE_QUID",
   );
-  assert_validation_code(
-    () => make_branch_from_node(duplicate),
-    "DUPLICATE_QUID",
-  );
+  assert.throws(() => make_branch_from_node(duplicate), /Duplicate QUID/);
   assert.deepEqual(invalidVsn, beforeVsn);
   assert.deepEqual(duplicate, beforeDuplicate);
 });
@@ -653,6 +680,122 @@ check("XML-shaped Element input retains its supplied root and matches equivalent
     assert.equal(read_hson_node_quid(must_tag(fromElement, "entry")), Q5);
     assert.equal(sourceElement.outerHTML, sourceBefore);
   });
+});
+
+check("cold duplicate HTML string and Element graphs are equivalent but LiveTree admission rejects atomically", () => {
+  with_browser_ingress_dom(() => {
+    const markup =
+      `<section><button data-_quid="${Q6}">A</button>`
+      + `<button data-_quid="${Q6}">B</button></section>`;
+    const sourceElement = browser_source_element(markup);
+    const sourceBefore = sourceElement.outerHTML;
+    const fromString = hson.fromTrustedHtml(markup).toNode();
+    const fromElement = hson.fromTrustedHtml(sourceElement).toNode();
+    assert.deepEqual(fromElement, fromString);
+    assert.equal(
+      nodes(fromString).filter((node) => read_hson_node_quid(node) === Q6).length,
+      2,
+    );
+    assert.equal(get_node_by_quid(Q6), undefined);
+
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(markup), /Duplicate QUID/);
+    assert.throws(() => hsonLiveTree.fromTrustedHtml(sourceElement), /Duplicate QUID/);
+    assert.equal(get_node_by_quid(Q6), undefined);
+    assert.equal(sourceElement.outerHTML, sourceBefore);
+  });
+});
+
+check("LiveTree admission claims supplied descendants while preserving sparse absent descendants", () => {
+  const source = document_root(element("main", Q4, [
+    element("supplied", Q5),
+    element("absent"),
+  ]));
+  const supplied = must_tag(source, "supplied");
+  const absent = must_tag(source, "absent");
+  const tree = make_branch_from_node(source);
+  let absentHandle: LiveTree | undefined;
+  try {
+    assert.equal(read_hson_node_quid(tree.node), Q4);
+    assert.equal(get_node_by_quid(Q4), tree.node);
+    assert.equal(read_hson_node_quid(supplied), Q5);
+    assert.equal(get_node_by_quid(Q5), supplied);
+    assert.equal(read_hson_node_quid(absent), undefined);
+
+    absentHandle = new LiveTree(absent);
+    const laterQuid = read_hson_node_quid(absent);
+    assert.equal(is_persisted_quid(laterQuid), true);
+    assert.equal(get_node_by_quid(laterQuid!), absent);
+  } finally {
+    if (absentHandle !== undefined) destroy_subtree_quids(absentHandle.node);
+    destroy_subtree_quids(tree.node);
+  }
+});
+
+check("LiveTree detach retains ownership and terminal removal releases it", () => {
+  const parent = make_branch_from_node(document_root(element("main")));
+  const branch = make_branch_from_node(document_root(element("section", Q3)));
+  try {
+    parent.append(branch);
+    assert.equal(get_node_by_quid(Q3), branch.node);
+    assert.equal(branch.detach(), 1);
+    assert.equal(read_hson_node_quid(branch.node), Q3);
+    assert.equal(get_node_by_quid(Q3), branch.node);
+    assert.equal(branch.remove(), 1);
+    assert.equal(get_node_by_quid(Q3), undefined);
+  } finally {
+    destroy_subtree_quids(parent.node);
+  }
+});
+
+check("unpublished generated collisions retry and exhaustion is atomic", () => {
+  const owner = element("owner", Q1);
+  ensure_quid(owner);
+  const retried = element("retried");
+  const successfulProfile = begin_livetree_materialization_profile();
+  let retriedTree: LiveTree | undefined;
+  let successfulCalls = 0;
+  try {
+    with_generated_candidates([1, 2], (calls) => {
+      retriedTree = new LiveTree(retried);
+      successfulCalls = calls();
+    });
+    const successfulMetrics = successfulProfile.stop();
+    assert.equal(successfulCalls, 2);
+    assert.equal(read_hson_node_quid(retried), Q2);
+    assert.equal(get_node_by_quid(Q1), owner);
+    assert.equal(get_node_by_quid(Q2), retried);
+    assert.equal(successfulMetrics.quidEnsureCalls, 1);
+    assert.equal(successfulMetrics.quidRegistryWrites, 2);
+  } finally {
+    successfulProfile.stop();
+    if (retriedTree !== undefined) destroy_subtree_quids(retriedTree.node);
+  }
+
+  const exhausted = element("exhausted", undefined, [element("cold-supplied", Q4)]);
+  const exhaustedBefore = structuredClone(exhausted);
+  const exhaustedProfile = begin_livetree_materialization_profile();
+  let exhaustedCalls = 0;
+  try {
+    with_generated_candidates([1], (calls) => {
+      assert.throws(
+        () => new LiveTree(exhausted),
+        new RegExp(`after ${LIVETREE_QUID_MINT_RETRY_LIMIT} secure attempts`),
+      );
+      exhaustedCalls = calls();
+    });
+    const exhaustedMetrics = exhaustedProfile.stop();
+    assert.equal(exhaustedCalls, LIVETREE_QUID_MINT_RETRY_LIMIT);
+    assert.deepEqual(exhausted, exhaustedBefore);
+    assert.equal(get_node_by_quid(Q1), owner);
+    assert.equal(get_node_by_quid(Q4), undefined);
+    assert.equal(
+      Object.values(exhaustedMetrics).every((value) => value === 0),
+      true,
+    );
+  } finally {
+    exhaustedProfile.stop();
+    destroy_subtree_quids(owner);
+  }
 });
 
 check("cold Element identity is claimed unchanged while absent identity is minted on materialization", () => {
@@ -774,8 +917,13 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
   assert.equal(get_node_by_quid(Q1), undefined);
   assert.equal(get_node_by_quid(Q2), undefined);
 
+  const duplicateCold = hsonTransform.fromNode(
+    document_root(element("main", Q1, [element("aside", Q1)])),
+  ).toNode();
+  assert.equal(read_hson_node_quid(must_tag(duplicateCold, "main")), Q1);
+  assert.equal(read_hson_node_quid(must_tag(duplicateCold, "aside")), Q1);
   assert.throws(
-    () => hsonLiveMap.fromNode(document_root(element("main", Q1), element("aside", Q1))),
+    () => hsonLiveMap.fromNode(duplicateCold),
     (error) => error instanceof Error
       && validation_cause(error)?.code === "DUPLICATE_QUID",
   );
@@ -786,6 +934,15 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
     (error) => error instanceof Error
       && validation_cause(error)?.code === "INELIGIBLE_QUID",
   );
+
+  const crossMapSource = document_root(element("shared", Q6));
+  const firstMap = hsonLiveMap.fromNode(crossMapSource);
+  const secondMap = hsonLiveMap.fromNode(crossMapSource);
+  assert.equal(firstMap.mode, "element");
+  assert.equal(secondMap.mode, "element");
+  assert.equal(firstMap.document.byQuid(Q6)?.$_tag, "shared");
+  assert.equal(secondMap.document.byQuid(Q6)?.$_tag, "shared");
+  assert.equal(get_node_by_quid(Q6), undefined);
 });
 
 check("failed document capture installation is atomic", () => {

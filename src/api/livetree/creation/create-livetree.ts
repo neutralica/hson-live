@@ -5,18 +5,11 @@
 
 import { HsonNode } from "../../../core/types.js";
 import { LiveTree } from "../livetree.js";
-import { ensure_quid } from "../quid/data-quid.js";
-import { index_subtree_ownership } from "../lifecycle/graph-ownership.js";
 import { assert_livetree_node_active } from "../livetree-state.js";
 
 // CHANGE: canonical creation for a standalone branch (no parent roots).
 export function create_livetree(node: HsonNode): LiveTree {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  index_subtree_ownership(node);
-  // CHANGE: guarantee identity exists even without DOM projection.
-  ensure_quid(node);
-
-  // CHANGE: single canonical constructor call.
   return new LiveTree(node);
 }
 
@@ -40,9 +33,6 @@ export function create_livetree(node: HsonNode): LiveTree {
  * @returns A `LiveTree` bound to `node` with inherited host roots.
  */
 export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
-  // CHANGE: guarantee identity exists on returned handle.
-  ensure_quid(node);
-
   // CHANGE: adopt the parent’s host root context.
   return create_livetree(node).adoptRoots(parent.hostRootNode());
 }

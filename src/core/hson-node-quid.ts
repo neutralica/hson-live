@@ -158,17 +158,24 @@ export function remove_hson_node_quid(node: HsonNode): PersistedQuid | undefined
   return existing;
 }
 
+export type HsonNodeQuidClaim = Readonly<{
+  quid: PersistedQuid;
+  node: HsonNode;
+  path: string;
+}>;
+
 /**
  * Validate and collect every canonical QUID claim in one HSON object graph.
  *
- * Distinct nodes may not claim the same value. Repeated references to the same
- * object are one graph node and are visited once. Traversal is deterministic
- * depth-first content order and never mutates or registers the graph.
+ * Equal values on distinct nodes are preserved as separate claims. Repeated
+ * references to the same object are one graph node and are visited once.
+ * Traversal is deterministic depth-first content order and never mutates or
+ * registers the graph.
  */
-export function scan_hson_node_quids(
+export function collect_hson_node_quid_claims(
   root: HsonNode,
-): ReadonlyMap<PersistedQuid, HsonNode> {
-  const claims = new Map<PersistedQuid, { node: HsonNode; path: string }>();
+): readonly HsonNodeQuidClaim[] {
+  const claims: HsonNodeQuidClaim[] = [];
   const visited = new WeakSet<HsonNode>();
   const stack: { node: HsonNode; path: string }[] = [{
     node: root,
@@ -197,21 +204,11 @@ export function scan_hson_node_quids(
     }
 
     if (quid !== undefined) {
-      const prior = claims.get(quid);
-      if (prior !== undefined && prior.node !== current.node) {
-        throw new HsonNodeQuidValidationError(
-          "DUPLICATE_QUID",
-          `Duplicate persisted QUID "${quid}" at ${prior.path} and ${current.path}.`,
-          {
-            node: current.node,
-            path: current.path,
-            value: quid,
-            conflictingNode: prior.node,
-            conflictingPath: prior.path,
-          },
-        );
-      }
-      claims.set(quid, { node: current.node, path: current.path });
+      claims.push(Object.freeze({
+        quid,
+        node: current.node,
+        path: current.path,
+      }));
     }
 
     for (let index = current.node.$_content.length - 1; index >= 0; index -= 1) {
@@ -224,7 +221,46 @@ export function scan_hson_node_quids(
     }
   }
 
+  return Object.freeze(claims);
+}
+
+/** Deterministically reject duplicate claims and build one ownership index. */
+export function index_unique_hson_node_quid_claims(
+  claims: readonly HsonNodeQuidClaim[],
+): ReadonlyMap<PersistedQuid, HsonNode> {
+  const indexed = new Map<PersistedQuid, HsonNodeQuidClaim>();
+  for (const claim of claims) {
+    const prior = indexed.get(claim.quid);
+    if (prior !== undefined && prior.node !== claim.node) {
+      throw new HsonNodeQuidValidationError(
+        "DUPLICATE_QUID",
+        `Duplicate persisted QUID "${claim.quid}" at ${prior.path} and ${claim.path}.`,
+        {
+          node: claim.node,
+          path: claim.path,
+          value: claim.quid,
+          conflictingNode: prior.node,
+          conflictingPath: prior.path,
+        },
+      );
+    }
+    indexed.set(claim.quid, claim);
+  }
   return new Map(
-    [...claims].map(([quid, claim]) => [quid, claim.node]),
+    [...indexed].map(([quid, claim]) => [quid, claim.node]),
+  );
+}
+
+/**
+ * Validate one graph and require unique persisted claims.
+ *
+ * This compatibility helper remains the canonical ownership-domain scan.
+ * Pure transform boundaries use `collect_hson_node_quid_claims()` instead.
+ */
+export function scan_hson_node_quids(
+  root: HsonNode,
+): ReadonlyMap<PersistedQuid, HsonNode> {
+  return index_unique_hson_node_quid_claims(
+    collect_hson_node_quid_claims(root),
   );
 }
