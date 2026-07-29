@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
@@ -197,3 +198,4 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
 });
 
 process.stdout.write(`1..${checks}\n`);
+emit_hson_live_test_completion("livetree.quid-eligibility", checks, checks, 0);

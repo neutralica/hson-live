@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import {
   create_livehost_persistent_store,
@@ -504,3 +505,4 @@ await check("corrupt persisted envelopes and tails reject without partial regist
 });
 
 process.stdout.write(`# ${checks} persistent LiveHost checks passed\n`);
+emit_hson_live_test_completion("livehost.persistence", checks, checks, 0);

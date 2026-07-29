@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
@@ -205,3 +206,4 @@ check("local reads through a hosted authority create no history or publication",
 });
 
 process.stdout.write(`# ${checks} Document LiveMap attrs read checks passed\n`);
+emit_hson_live_test_completion("livemap.document-attrs-read", checks, checks, 0);

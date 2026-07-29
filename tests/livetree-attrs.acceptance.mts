@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
@@ -356,3 +357,4 @@ check("attrs and flags remain separate when one name changes ownership", () => {
 });
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);
+emit_hson_live_test_completion("livetree.attrs", checks, checks, 0);

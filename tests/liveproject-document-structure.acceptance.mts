@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -250,3 +251,4 @@ check("disposal stops projection and restores unbound structural behavior", () =
 });
 
 process.stdout.write(`# ${checks} document LiveTree structural binding checks passed\n`);
+emit_hson_live_test_completion("livetree.document-structure", checks, checks, 0);

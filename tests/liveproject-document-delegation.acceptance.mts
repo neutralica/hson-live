@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -233,3 +234,4 @@ check("projection failure after delegated canonical success fails without escapi
 });
 
 process.stdout.write(`# ${checks} bound document mutation delegation checks passed\n`);
+emit_hson_live_test_completion("livetree.document-delegation", checks, checks, 0);

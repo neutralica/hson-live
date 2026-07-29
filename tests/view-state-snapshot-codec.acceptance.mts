@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -583,3 +584,4 @@ check("encoding does not mutate source structure or insertion order", () => {
 });
 
 process.stdout.write(`# ${checks} view-state snapshot codec checks passed\n`);
+emit_hson_live_test_completion("livemap.view-state-snapshot-codec", checks, checks, 0);

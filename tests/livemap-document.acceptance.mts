@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type { HsonNode, NodeContent, Primitive } from "../src/core/types.ts";
@@ -331,3 +332,4 @@ check("unsafe debug node mutation remains live and revision-bypassing", () => {
 });
 
 process.stdout.write(`# ${checks} document LiveMap checks passed\n`);
+emit_hson_live_test_completion("livemap.document", checks, checks, 0);

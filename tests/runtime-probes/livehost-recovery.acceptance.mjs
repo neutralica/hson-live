@@ -1,5 +1,8 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { LiveHostRecoveryError, hson } from "../../src/index.ts";
+
+let checks = 0;
 
 function request_for(host, lastAppliedRev = host.stream.headRev) {
   return {
@@ -37,6 +40,7 @@ function project_snapshot_hson(source) {
   assert.equal(completion.caughtUp.throughRev, plan.headRev);
   assert.deepEqual(completion.tail, []);
 }
+checks += 1;
 
 // Replay is contiguous and a reentrant mutation during body publication lands
 // in the tail, after every replay commit and exactly once.
@@ -65,6 +69,7 @@ function project_snapshot_hson(source) {
   assert.deepEqual(allRecovered, [baseRev + 1, baseRev + 2, baseRev + 3]);
   assert.equal(new Set(allRecovered).size, allRecovered.length);
 }
+checks += 1;
 
 // Deterministic barriers prove the snapshot cut: a mutation immediately before
 // the cut and one while capture is prepared belong to the snapshot; a mutation
@@ -102,6 +107,7 @@ function project_snapshot_hson(source) {
   assert.deepEqual(completion.tail.map((commit) => commit.rev), [plan.body.rev + 1]);
   assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
 }
+checks += 1;
 
 // Snapshot HSON covers the complete projected JsonValue domain while remaining
 // compact canonical text inside the recovery envelope.
@@ -124,6 +130,7 @@ function project_snapshot_hson(source) {
   assert.deepEqual(project_snapshot_hson(plan.body.hson), state);
   plan.dispose();
 }
+checks += 1;
 
 // Same logical map but a different incarnation resets through a snapshot.
 {
@@ -138,6 +145,7 @@ function project_snapshot_hson(source) {
   assert.equal(plan.body.incarnationId, host.stream.incarnationId);
   plan.dispose();
 }
+checks += 1;
 
 // Same-incarnation revision-ahead is a hard classified rejection.
 {
@@ -147,6 +155,7 @@ function project_snapshot_hson(source) {
   assert.equal(plan.error.code, "REVISION_AHEAD_OF_AUTHORITY");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
 }
+checks += 1;
 
 // Incomplete history falls back to snapshot; Patch 1 coverage remains exact.
 {
@@ -166,6 +175,7 @@ function project_snapshot_hson(source) {
   assert.deepEqual(project_snapshot_hson(plan.body.hson), { value: 2 });
   plan.dispose();
 }
+checks += 1;
 
 // Tail overflow aborts visibly, clears queued state, emits no completion, and
 // leaves both stream and planner reusable.
@@ -194,6 +204,7 @@ function project_snapshot_hson(source) {
   assert.equal(later.outcome, "current");
   later.complete();
 }
+checks += 1;
 
 // Explicit disposal releases the subscription and all queued state.
 {
@@ -212,6 +223,7 @@ function project_snapshot_hson(source) {
   assert.equal(plan.debug().queuedTailCommits, 0);
   expect_recovery_error(() => plan.complete(), "LIVEHOST_RECOVERY_DISPOSED");
 }
+checks += 1;
 
 // The byte bound is enforced independently of the commit-count bound.
 {
@@ -226,6 +238,7 @@ function project_snapshot_hson(source) {
   }, "LIVEHOST_RECOVERY_TAIL_OVERFLOW");
   assert.equal(host.recovery.debug().activeAttemptCount, 0);
 }
+checks += 1;
 
 // Snapshot-planning and observer failures dispose cleanly and do not poison a
 // later attempt or Patch 1 canonical history.
@@ -254,4 +267,6 @@ function project_snapshot_hson(source) {
   later.complete();
 }
 
+checks += 1;
 process.stdout.write("LiveHost recovery acceptance checks passed.\n");
+emit_hson_live_test_completion("livehost.recovery", checks, checks, 0);

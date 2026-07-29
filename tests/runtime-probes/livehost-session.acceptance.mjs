@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
 import { LiveHostClientSessionError, hson } from "../../src/index.ts";
@@ -391,3 +392,4 @@ await check("real WebSocket reattachment fences A before B recovers", async () =
 });
 
 process.stdout.write(`LiveHost session acceptance checks passed (${checks}).\n`);
+emit_hson_live_test_completion("livehost.session", checks, checks, 0);

@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import {
@@ -432,3 +433,4 @@ await check("host trace identity is distinct per processing attempt despite retr
 });
 
 process.stdout.write(`# ${checks} LiveHost trace checks passed\n`);
+emit_hson_live_test_completion("livehost.trace", checks, checks, 0);

@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import type {
@@ -287,3 +288,4 @@ check("data façades do not expose document install at runtime", () => {
 });
 
 process.stdout.write(`# ${checks} document install checks passed\n`);
+emit_hson_live_test_completion("livemap.document-install", checks, checks, 0);

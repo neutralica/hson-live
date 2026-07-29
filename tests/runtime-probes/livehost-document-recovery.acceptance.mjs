@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { make_livehost_canonical_stream } from "../../src/api/livehost/livehost.history.ts";
@@ -883,3 +884,4 @@ await check("hosted document action carries action causation into commit publica
 });
 
 process.stdout.write(`# ${checks} LiveHost document recovery checks passed\n`);
+emit_hson_live_test_completion("livehost.document-recovery", checks, checks, 0);

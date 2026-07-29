@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
@@ -374,3 +375,4 @@ check("snapshot restore swaps mode-compatible root, QUID index, and exact revisi
 });
 
 process.stdout.write(`# ${checks} document observation/replay checks passed\n`);
+emit_hson_live_test_completion("livemap.document-replay", checks, checks, 0);

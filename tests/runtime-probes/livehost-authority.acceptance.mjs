@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { create_livehost_internal } from "../../src/api/livehost/livehost.core.ts";
@@ -387,3 +388,4 @@ await check("exclusive ownership conflicts and release are controlled", async ()
 });
 
 process.stdout.write(`# ${checks} exclusive LiveHost authority checks passed\n`);
+emit_hson_live_test_completion("livehost.authority", checks, checks, 0);

@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
@@ -414,3 +415,4 @@ check("malformed content escape still fails at the parse boundary", () => {
 });
 
 process.stdout.write(`# ${checks} HSON tokenizer checks passed\n`);
+emit_hson_live_test_completion("transform.hson-tokenizer", checks, checks, 0);

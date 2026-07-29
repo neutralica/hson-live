@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 import { create_live_trace_collector } from "../../src/diagnostics/index.ts";
@@ -133,3 +134,4 @@ await check("opaque connection attachment reaches action policy without entering
 });
 
 process.stdout.write(`# ${checks} LiveHost authorization checks passed\n`);
+emit_hson_live_test_completion("livehost.authorization", checks, checks, 0);

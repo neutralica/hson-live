@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import {
@@ -315,3 +316,4 @@ check("existing projected mutation facades retain synchronous commit behavior", 
 });
 
 process.stdout.write(`# ${checks} staged LiveMap authority checks passed\n`);
+emit_hson_live_test_completion("livemap.staged-authority", checks, checks, 0);

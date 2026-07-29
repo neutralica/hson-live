@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 
 import { hson } from "../src/hson.ts";
@@ -565,3 +566,4 @@ check("representative 500-property document serializes and reparses in both layo
 });
 
 process.stdout.write(`# ${checks} HSON serializer checks passed\n`);
+emit_hson_live_test_completion("transform.hson-serializer", checks, checks, 0);

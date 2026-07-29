@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -190,3 +191,4 @@ check("reentrant observation during root DOM convergence fails closed", () => {
 });
 
 process.stdout.write(`# ${checks} compatible document root convergence checks passed\n`);
+emit_hson_live_test_completion("livetree.document-root", checks, checks, 0);

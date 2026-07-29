@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 
 import assert from "node:assert/strict";
@@ -137,3 +138,4 @@ check("actual LiveTree bridge targets retain canonical lifecycle ownership", () 
 });
 
 process.stdout.write(`# ${checks} LiveMap path-handle checks passed\n`);
+emit_hson_live_test_completion("livemap.path-handle", checks, checks, 0);

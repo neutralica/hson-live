@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
@@ -965,3 +966,4 @@ check("failed document capture installation is atomic", () => {
 });
 
 process.stdout.write(`# ${checks} HsonNode QUID ingress checks passed\n`);
+emit_hson_live_test_completion("transform.hson-node-quid-ingress", checks, checks, 0);

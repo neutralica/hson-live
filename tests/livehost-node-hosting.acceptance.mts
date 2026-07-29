@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
@@ -1034,3 +1035,4 @@ check("Node adapter closes on outgoing backpressure without dropping a canonical
 
 await sequence;
 process.stdout.write(`# ${checks} LiveHost Node hosting checks passed\n`);
+emit_hson_live_test_completion("livehost.node-hosting", checks, checks, 0);

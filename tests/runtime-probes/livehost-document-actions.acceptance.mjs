@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../../src/index.ts";
 
@@ -674,3 +675,4 @@ await check("snapshot fallback preserves movement order, mode, revision and QUID
 });
 
 process.stdout.write(`# ${checks} hosted document action checks passed\n`);
+emit_hson_live_test_completion("livehost.document-actions", checks, checks, 0);

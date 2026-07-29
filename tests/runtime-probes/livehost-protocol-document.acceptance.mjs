@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
 import { encode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
@@ -280,3 +281,4 @@ check("recovery plans carry bounded snapshot encoding acknowledgments", () => {
 });
 
 process.stdout.write(`# ${checks} LiveHost document protocol checks passed\n`);
+emit_hson_live_test_completion("livehost.protocol-document", checks, checks, 0);

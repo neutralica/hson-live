@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
@@ -255,3 +256,4 @@ check("JSON projection validates HsonNode identity without changing output shape
 });
 
 console.log(`hson-node QUID egress acceptance: ${checks} checks passed`);
+emit_hson_live_test_completion("transform.hson-node-quid-egress", checks, checks, 0);

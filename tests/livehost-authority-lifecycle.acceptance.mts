@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import {
@@ -361,3 +362,4 @@ check("activity observers stop cleanly and authority-only lifecycle creates no D
 
 await sequence;
 process.stdout.write(`1..${checks}\n`);
+emit_hson_live_test_completion("livehost.authority-lifecycle", checks, checks, 0);

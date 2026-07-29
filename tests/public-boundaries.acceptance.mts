@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
@@ -207,3 +208,4 @@ check("document install is present only on document runtime façades", () => {
 });
 
 process.stdout.write(`# ${checks} public boundary checks passed\n`);
+emit_hson_live_test_completion("core.public-boundaries", checks, checks, 0);

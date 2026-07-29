@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -826,3 +827,4 @@ await check(
 process.stdout.write(
     `LiveHost action dedupe acceptance checks passed (${checks}).\n`,
 );
+emit_hson_live_test_completion("livehost.action-dedupe", checks, checks, 0);

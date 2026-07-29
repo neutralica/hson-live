@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
@@ -622,3 +623,4 @@ check("ordinary public LiveTree calls retain one compatibility runtime", () => {
 });
 
 process.stdout.write(`LiveTree runtime scope acceptance: ${checks}/${checks}\n`);
+emit_hson_live_test_completion("livetree.runtime-scope", checks, checks, 0);

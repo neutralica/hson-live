@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
 import { decode_livehost_server_message, LiveHostClientRecoveryError, hson } from "../../src/index.ts";
@@ -776,3 +777,4 @@ await check("real WebSocket reconnect uses a new session and recovers state", as
 });
 
 process.stdout.write(`LiveHost client recovery acceptance checks passed (${checks}).\n`);
+emit_hson_live_test_completion("livehost.client-recovery", checks, checks, 0);

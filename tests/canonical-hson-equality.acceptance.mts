@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -204,3 +205,4 @@ check("comparison does not mutate key order, content, attrs, metadata, or style"
 });
 
 process.stdout.write(`# ${checks} canonical HSON equality checks passed\n`);
+emit_hson_live_test_completion("core.canonical-hson-equality", checks, checks, 0);

@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
@@ -397,3 +398,4 @@ check("LiveMap remains non-minting while LiveTree retains canonical minting", ()
 });
 
 process.stdout.write(`1..${checks}\n`);
+emit_hson_live_test_completion("core.hson-node-quid", checks, checks, 0);

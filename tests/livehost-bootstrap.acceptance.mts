@@ -1,3 +1,4 @@
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -644,3 +645,4 @@ check("HTTP encoded-size failure is deterministic and no-store", async () => {
 await sequence;
 base.authority.dispose();
 process.stdout.write(`1..${checks}\n`);
+emit_hson_live_test_completion("livehost.bootstrap", checks, checks, 0);
