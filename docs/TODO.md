@@ -2,6 +2,19 @@
 
 # 2DÜ
 
+## still TODO 20JUL2026 (priorities tbc)
+• configurable bind host and port;
+• /healthz; (???)
+• HTTP and WebSocket routing;
+• bounded shutdown;
+• structured operational logging;
+• origin/auth/workload limits;
+• report/session eviction;
+• package/build artifact correctness;
+• restart and single-instance semantics;
+• TLS/reverse-proxy deployment expectations.
+
+
 ## High priority after Node LiveHost refactor, before SSR
 
 • Close the deferred mutable-global findings in
