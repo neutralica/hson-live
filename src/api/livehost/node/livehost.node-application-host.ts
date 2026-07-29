@@ -55,7 +55,7 @@ export type NodeHostedApplication = Readonly<{
     authorityId: string,
     websocket: WebSocket,
     context: NodeWebSocketDispatchContext,
-  ): void;
+  ): void | Promise<void>;
   dispose(): void | Promise<void>;
 }>;
 
@@ -639,7 +639,7 @@ export async function start_node_application_host(
           });
           log({ type: "websocket-dispatch", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "accepted" });
           try {
-            application.acceptWebSocket(authorityId, websocket, Object.freeze({
+            const accepted = application.acceptWebSocket(authorityId, websocket, Object.freeze({
               request: normalized.value,
               principal: authenticated.value,
               transportPolicy: Object.freeze({
@@ -649,6 +649,11 @@ export async function start_node_application_host(
                 },
               }),
             }));
+            if (accepted instanceof Promise) {
+              void accepted.catch(() => {
+                websocket.close(1011, "Application WebSocket dispatch failed.");
+              });
+            }
           } catch {
             websocket.close(1011, "Application WebSocket dispatch failed.");
           }

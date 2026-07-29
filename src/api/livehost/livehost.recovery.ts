@@ -157,6 +157,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
   stream: LiveHostCanonicalStream<TMap>,
   options: LiveHostRecoveryOptions,
   traceSink: LiveTraceSink | undefined,
+  activity?: (active: boolean) => void,
 ): TracedLiveHostRecoveryPlanner {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
@@ -170,6 +171,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
   let abortedAttemptCount = 0;
   let overflowCount = 0;
   let traceAttemptCount = 0;
+  const activeAttemptDisposers = new Set<LiveHostDisposer>();
+  let disposed = false;
 
   function reject(code: LiveHostRecoveryRejectCode, message: string): LiveHostRecoveryRejectPlan {
     rejectPlanCount += 1;
@@ -201,6 +204,9 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
     correlation: Readonly<{ requestId?: string }> | undefined,
     documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
   ): LiveHostRecoveryPlan {
+    if (disposed) {
+      throw runtime_error("LIVEHOST_RECOVERY_DISPOSED", "LiveHost recovery planner is disposed.");
+    }
     if (request.logicalMapId !== stream.logicalMapId) {
       const rejected = reject(
         "LIVEHOST_RECOVERY_INVALID_TARGET",
@@ -246,6 +252,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       if (released) return;
       released = true;
       activeAttemptCount -= 1;
+      activeAttemptDisposers.delete(dispose);
+      activity?.(false);
     }
 
     function clear_queues(): void {
@@ -320,6 +328,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
     stopSubscription = stream.on_commit(enqueue_tail);
     activeAttemptCount += 1;
+    activity?.(true);
 
     let outcome: "current" | "replay" | "snapshot";
     let headRev = stream.headRev;
@@ -530,6 +539,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       dispose,
       debug,
     };
+    activeAttemptDisposers.add(dispose);
 
     if (outcome === "current") {
       currentPlanCount += 1;
@@ -591,6 +601,13 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       abortedAttemptCount,
       overflowCount,
     });
+  }
+
+  function dispose_planner(): void {
+    if (disposed) return;
+    disposed = true;
+    for (const dispose of [...activeAttemptDisposers]) dispose();
+    activeAttemptDisposers.clear();
   }
 
   function trace_plan(
@@ -697,5 +714,6 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       encoding,
     ),
     debug,
+    dispose: dispose_planner,
   });
 }

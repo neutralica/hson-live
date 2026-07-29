@@ -64,6 +64,10 @@ import {
   type LiveTraceContext,
   type LiveTraceSpan,
 } from "./livehost.trace.js";
+import {
+  make_livehost_activity_controller,
+  register_livehost_activity_controller,
+} from "./livehost.activity.js";
 
 let livehost_session_inc = 0;
 let livehost_trace_inc = 0;
@@ -269,6 +273,7 @@ function create_livehost_for_map<
 ): LiveHostForMap<TMap, TActions> | ExclusiveLiveHostForMap<TMap, TActions> {
   const exclusive = options.authority === "exclusive";
   const hostOwner = Object.freeze({});
+  const activity = make_livehost_activity_controller();
   assert_hosted_map_available(map, exclusive);
   const streamRuntime = make_livehost_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
@@ -280,14 +285,33 @@ function create_livehost_for_map<
     ...(internal.initialHistory !== undefined ? { initialHistory: internal.initialHistory } : {}),
   });
   const stream = streamRuntime.stream;
+  const recoveryActivityReleases: LiveHostDisposer[] = [];
   const recovery = make_livehost_recovery_planner_internal(
     map,
     stream,
     options.recovery ?? {},
     options.trace,
+    (active) => {
+      if (active) recoveryActivityReleases.push(activity.acquire("recovery"));
+      else recoveryActivityReleases.pop()?.();
+    },
   );
   const sync = make_livehost_sync_manager(map);
   const sessions = make_livehost_session_manager(options.sessions);
+  const retainedSessions = new Set<LiveHostSessionId>();
+  const retainedSessionReleases = new Map<LiveHostSessionId, LiveHostDisposer>();
+  const stopSessionActivity = sessions.on_change((event) => {
+    if (event.kind === "attached" && !retainedSessions.has(event.session.sessionId)) {
+      retainedSessions.add(event.session.sessionId);
+      retainedSessionReleases.set(event.session.sessionId, activity.acquire("session"));
+    } else if (
+      (event.kind === "expired" || event.kind === "revoked")
+      && retainedSessions.delete(event.session.sessionId)
+    ) {
+      retainedSessionReleases.get(event.session.sessionId)?.();
+      retainedSessionReleases.delete(event.session.sessionId);
+    }
+  });
   const resume = make_livehost_resume_log();
   const actions = (options.actions ?? {}) as Partial<LiveHostActionsForMap<TActions, TMap>>;
   let seq = 0;
@@ -819,7 +843,7 @@ function create_livehost_for_map<
     };
   }
 
-  async function dispatch_action_scoped(
+  async function dispatch_action_scoped_internal(
     message: LiveHostClientActionMessage<TActions>,
     origin: LiveHostActionOrigin,
     emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
@@ -923,6 +947,20 @@ function create_livehost_for_map<
     return response;
   }
 
+  async function dispatch_action_scoped(
+    message: LiveHostClientActionMessage<TActions>,
+    origin: LiveHostActionOrigin,
+    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+    trace?: LiveTraceContext,
+  ): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
+    const release = activity.acquire("action");
+    try {
+      return await dispatch_action_scoped_internal(message, origin, emitEvent, trace);
+    } finally {
+      release();
+    }
+  }
+
   function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
     const trace = make_action_trace(message, DIRECT_ACTION_ORIGIN);
     return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false, trace);
@@ -937,6 +975,7 @@ function create_livehost_for_map<
 
   function connect(socket: LiveHostSocketLike, connectionContext?: LiveHostConnectionContext): LiveHostConnection {
     if (disposed) return inert_connection();
+    const releaseConnectionActivity = activity.acquire("connection");
     const attachedContext: LiveHostConnectionContext | undefined = connectionContext === undefined
       ? undefined
       : Object.freeze({
@@ -1731,11 +1770,19 @@ function create_livehost_for_map<
       }
     }
 
-    const stopMessage = socket.onMessage((raw) => { void handle_message(raw); });
+    let stopMessage: LiveHostDisposer | void;
+    try {
+      stopMessage = socket.onMessage((raw) => { void handle_message(raw); });
+    } catch (error) {
+      transportOpen = false;
+      releaseConnectionActivity();
+      throw error;
+    }
 
     function detach_transport(hostShutdown = false): void {
       if (!transportOpen) return;
       transportOpen = false;
+      releaseConnectionActivity();
       recoveryState = Object.freeze({ phase: "awaiting-recovery" });
       dispose_recovery_channel();
       if (!hostShutdown && sessionId && connectionEpoch !== undefined && sessions.is_active(sessionId, connectionEpoch)) {
@@ -1746,7 +1793,13 @@ function create_livehost_for_map<
       connections.delete(shutdown_for_host);
     }
 
-    const stopClose = socket.onClose(detach_transport);
+    let stopClose: LiveHostDisposer | void;
+    try {
+      stopClose = socket.onClose(detach_transport);
+    } catch (error) {
+      detach_transport();
+      throw error;
+    }
     if (stopMessage) disposers.push(stopMessage);
     if (stopClose) disposers.push(stopClose);
 
@@ -1769,15 +1822,22 @@ function create_livehost_for_map<
     disposed = true;
     for (const shutdown of [...connections]) shutdown();
     connections.clear();
+    stopSessionActivity();
     sessions.dispose();
+    for (const release of retainedSessionReleases.values()) release();
+    retainedSessionReleases.clear();
+    retainedSessions.clear();
+    recovery.dispose();
     actionRequests.dispose();
     if (exclusiveAuthority !== undefined) exclusiveAuthority.dispose();
     else release_hosted_map(map, hostOwner, false);
+    activity.dispose();
   }
 
   const host = {
     map,
     stream,
+    activity: activity.public,
     recovery,
     sessions: Object.freeze({ debug: sessions.debug, on_change: sessions.on_change, dispose: sessions.dispose }),
     actionRequests: Object.freeze({ debug: actionRequests.debug, dispose: actionRequests.dispose }),
@@ -1787,10 +1847,17 @@ function create_livehost_for_map<
     connect,
     dispose,
     ...(exclusiveAuthority !== undefined ? {
-      mutate: (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) =>
-        exclusiveAuthority.mutate(mutation, "host"),
+      mutate: async (mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>) => {
+        const release = activity.acquire("mutation");
+        try {
+          return await exclusiveAuthority.mutate(mutation, "host");
+        } finally {
+          release();
+        }
+      },
     } : {}),
   };
+  register_livehost_activity_controller(host, activity);
   if (exclusiveAuthority !== undefined) {
     exclusiveHostAuthorities.set(host, exclusiveAuthority as ReturnType<typeof make_livehost_exclusive_authority>);
   }

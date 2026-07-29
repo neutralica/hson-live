@@ -1,0 +1,4 @@
+# .sccconfig
+
+--no-cocomo
+--exclude-dir node_modules,dist,dist-node,coverage,.wrangler

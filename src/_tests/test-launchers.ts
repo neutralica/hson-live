@@ -395,4 +395,14 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       executableChecks: 31,
       collections: ["bootstrap", "hson", "recovery", "http", "websocket", "externally-discoverable"],
     }),
+    launcher({
+      id: "livehost.authority-lifecycle",
+      subject: "LiveHost",
+      displayName: "LiveHost authority lifecycle",
+      packageScript: "test:livehost-authority-lifecycle",
+      repositoryModule: "tests/livehost-authority-lifecycle.acceptance.mts",
+      runtime: "node",
+      executableChecks: 18,
+      collections: ["authority", "lifecycle", "eviction", "capacity", "restart", "externally-discoverable"],
+    }),
   ]);

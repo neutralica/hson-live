@@ -361,6 +361,7 @@ export type LiveHostRecoveryPlannerDiagnostics = Readonly<{
 export type LiveHostRecoveryPlanner = Readonly<{
   plan: (request: LiveHostRecoveryRequest, hooks?: LiveHostRecoveryHooks) => LiveHostRecoveryPlan;
   debug: () => LiveHostRecoveryPlannerDiagnostics;
+  dispose: LiveHostDisposer;
 }>;
 
 export type LiveHostResult<T> =
@@ -1344,6 +1345,7 @@ export type LiveHostForMap<
 > = Readonly<{
   map: TMap;
   stream: LiveHostCanonicalStream<TMap>;
+  activity: LiveHostActivity;
   recovery: LiveHostRecoveryPlanner;
   sessions: LiveHostSessionInspector;
   actionRequests: LiveHostActionDedupeInspector;
@@ -1352,6 +1354,34 @@ export type LiveHostForMap<
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>>;
   connect: (socket: LiveHostSocketLike, context?: LiveHostConnectionContext) => LiveHostConnection;
   dispose: LiveHostDisposer;
+}>;
+
+export type LiveHostActivityKind =
+  | "connection"
+  | "session"
+  | "action"
+  | "recovery"
+  | "mutation"
+  | "persistence";
+
+export type LiveHostActivityState = "active" | "idle" | "disposed";
+
+/** Non-sensitive quiescence information for application-owned authority lifecycle policy. */
+export type LiveHostActivitySnapshot = Readonly<{
+  state: LiveHostActivityState;
+  connectionCount: number;
+  retainedSessionCount: number;
+  actionCount: number;
+  recoveryCount: number;
+  mutationCount: number;
+  persistenceCount: number;
+  blockerCount: number;
+  blockers: readonly LiveHostActivityKind[];
+}>;
+
+export type LiveHostActivity = Readonly<{
+  snapshot(): LiveHostActivitySnapshot;
+  on_change(listener: (snapshot: LiveHostActivitySnapshot) => void): LiveHostDisposer;
 }>;
 
 export type ExclusiveLiveHostForMap<
@@ -1480,4 +1510,89 @@ export type LiveHostStore = Readonly<{
     socket: LiveHostSocketLike,
     context?: LiveHostConnectionContext,
   ) => LiveHostResult<LiveHostDisposer>;
+}>;
+
+export type LiveHostAuthorityRegistryBlocker =
+  | LiveHostActivityKind
+  | "acquisition"
+  | "loading"
+  | "disposing";
+
+export type LiveHostAuthorityAcquisition<
+  TAuthority extends LiveHostLifecycleAuthority = LiveHostForMap,
+> = Readonly<{
+  authority: TAuthority;
+  release: LiveHostDisposer;
+}>;
+
+export type LiveHostAuthorityEvictionResult =
+  | Readonly<{ status: "evicted" }>
+  | Readonly<{ status: "not-found" }>
+  | Readonly<{ status: "busy"; blockers: readonly LiveHostAuthorityRegistryBlocker[] }>
+  | Readonly<{ status: "disposing" }>
+  | Readonly<{ status: "failed"; error: Readonly<{ code: string; message: string; cause?: unknown }> }>;
+
+export type LiveHostAuthorityRegistryEvent = Readonly<{
+  type:
+    | "creation-started"
+    | "creation-completed"
+    | "creation-failed"
+    | "became-active"
+    | "became-idle"
+    | "eviction-requested"
+    | "eviction-blocked"
+    | "eviction-completed"
+    | "eviction-failed"
+    | "capacity-rejected"
+    | "disposal-started"
+    | "disposal-completed"
+    | "disposal-failed";
+  key?: string;
+  code?: string;
+  blockers?: readonly LiveHostAuthorityRegistryBlocker[];
+}>;
+
+export type LiveHostAuthorityRegistrySchedule = (
+  delayMs: number,
+  callback: () => void,
+) => LiveHostDisposer;
+
+export type LiveHostAuthorityRegistryOptions<
+  TAuthority extends LiveHostLifecycleAuthority = LiveHostForMap,
+> = Readonly<{
+  maxAuthorities: number;
+  idleMs: number;
+  sweepIntervalMs?: number;
+  create(key: LiveHostStoreId): TAuthority | Promise<TAuthority>;
+  dispose?(authority: TAuthority): void | Promise<void>;
+  now?: () => number;
+  schedule?: LiveHostAuthorityRegistrySchedule;
+  event?(event: LiveHostAuthorityRegistryEvent): void;
+}>;
+
+export type LiveHostAuthorityRegistryDiagnostics = Readonly<{
+  state: "accepting" | "disposing" | "disposed";
+  entryCount: number;
+  loadingCount: number;
+  activeCount: number;
+  idleCount: number;
+  disposingCount: number;
+  acquisitionCount: number;
+}>;
+
+export type LiveHostAuthorityRegistry<
+  TAuthority extends LiveHostLifecycleAuthority = LiveHostForMap,
+> = Readonly<{
+  acquire(key: LiveHostStoreId): Promise<LiveHostResult<LiveHostAuthorityAcquisition<TAuthority>>>;
+  evict(key: LiveHostStoreId): Promise<LiveHostAuthorityEvictionResult>;
+  sweep(): Promise<number>;
+  has(key: LiveHostStoreId): boolean;
+  diagnostics(): LiveHostAuthorityRegistryDiagnostics;
+  dispose(): Promise<void>;
+}>;
+
+/** Minimum authority-owned lifecycle surface accepted by the bounded registry. */
+export type LiveHostLifecycleAuthority = Readonly<{
+  activity: LiveHostActivity;
+  dispose: LiveHostDisposer;
 }>;

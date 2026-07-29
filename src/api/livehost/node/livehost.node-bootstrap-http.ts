@@ -7,12 +7,15 @@ import {
   type LiveHostBootstrapCodecOptions,
   type LiveHostBootstrapAuthority,
 } from "../livehost.bootstrap.js";
+import type { LiveHostDisposer } from "../../../types/livehost.types.js";
 
 export type NodeLiveHostBootstrapResolution =
   | Readonly<{
       ok: true;
       authority: LiveHostBootstrapAuthority;
       websocketEndpoint: string;
+      /** Optional application-owned acquisition held through exact capture and encoding. */
+      release?: LiveHostDisposer;
     }>
   | Readonly<{
       ok: false;
@@ -168,5 +171,7 @@ export async function handle_node_livehost_bootstrap_request(
         ? "LiveHost bootstrap package exceeds its configured byte limit."
         : "LiveHost bootstrap package could not be produced.",
     );
+  } finally {
+    resolution.release?.();
   }
 }

@@ -471,6 +471,7 @@ check("real HTTP helper and WebSocket continuation share one application authori
   });
   const selector = "probe:network";
   let resolutions = 0;
+  let acquisitionReleases = 0;
   const application: NodeHostedApplication = {
     name: "bootstrap-probe",
     authorities: [{ kind: "exact", value: selector }],
@@ -482,7 +483,12 @@ check("real HTTP helper and WebSocket continuation share one application authori
           resolve(candidate) {
             resolutions += 1;
             return candidate === selector
-              ? { ok: true, authority, websocketEndpoint: `/?livehost=${encodeURIComponent(selector)}` }
+              ? {
+                  ok: true,
+                  authority,
+                  websocketEndpoint: `/?livehost=${encodeURIComponent(selector)}`,
+                  release: () => { acquisitionReleases += 1; },
+                }
               : {
                   ok: false,
                   status: 404,
@@ -527,6 +533,7 @@ check("real HTTP helper and WebSocket continuation share one application authori
     assert.deepEqual(client.map.capture(), authority.map.capture());
     assert.equal(client.map.rev, authority.stream.headRev);
     assert.equal(resolutions, 1);
+    assert.equal(acquisitionReleases, 1);
     client.dispose();
     websocket.close();
   } finally {

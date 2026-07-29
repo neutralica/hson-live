@@ -39,6 +39,7 @@ import {
 } from "../livemap/livemap.document.view-state-codec.js";
 import { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { acquire_livehost_internal_activity } from "./livehost.activity.js";
 export { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 
 type PersistentHostInternals = Readonly<{ authorityHost: object }>;
@@ -97,8 +98,12 @@ function make_persistence_gate(
   adapter: LiveHostPersistenceAdapter,
   identity: () => Readonly<{ logicalMapId: string; incarnationId: string }>,
   options: PersistenceTraceOptions,
+  authority: () => object | undefined,
 ): (input: Readonly<{ commit: LiveMapCommit<LiveMapAnyOp> }>) => Promise<void> {
   return async ({ commit }) => {
+    const release = authority() === undefined
+      ? () => {}
+      : acquire_livehost_internal_activity(authority() as object, "persistence");
     const current = identity();
     const record = persisted_commit(map, current.logicalMapId, current.incarnationId, commit);
     persistence_trace(options, "append.started", "event", {
@@ -122,6 +127,8 @@ function make_persistence_gate(
         "LiveHost could not durably append the prepared commit.",
         { cause },
       );
+    } finally {
+      release();
     }
     persistence_trace(options, "append.completed", "success", {
       logicalMapId: current.logicalMapId,
@@ -139,6 +146,7 @@ function persistent_host_view<TMap extends DocumentLiveMap, TActions extends Liv
   options: PersistenceTraceOptions,
 ): PersistentLiveHostForMap<TMap, TActions> {
   const checkpoint = (): Promise<void> => run_livehost_exclusive_task(authorityHost, async () => {
+    const release = acquire_livehost_internal_activity(authorityHost, "persistence");
     const record = document_checkpoint(
       map,
       authorityHost.stream.logicalMapId,
@@ -163,6 +171,8 @@ function persistent_host_view<TMap extends DocumentLiveMap, TActions extends Liv
         "LiveHost could not replace its persisted checkpoint.",
         { cause },
       );
+    } finally {
+      release();
     }
     persistence_trace(options, "checkpoint.completed", "success", {
       logicalMapId: record.logicalMapId,
@@ -197,12 +207,14 @@ export async function create_persistent_livehost<
   }
 
   let identity: Readonly<{ logicalMapId: string; incarnationId: string }> | undefined;
+  let activityHost: object | undefined;
   const authorityHost = create_livehost_internal(options, {
     authorityGate: make_persistence_gate(options.map, options.persistence, () => {
       if (identity === undefined) throw new Error("Persistent LiveHost identity is unavailable.");
       return identity;
-    }, options),
+    }, options, () => activityHost),
   }) as ExclusiveLiveHostForMap<TMap, TActions>;
+  activityHost = authorityHost;
   identity = Object.freeze({
     logicalMapId: authorityHost.stream.logicalMapId,
     incarnationId: authorityHost.stream.incarnationId,
@@ -349,6 +361,7 @@ async function restore_persistent_livehost(
 ): Promise<PersistentLiveHostForMap> {
   const validated = validate_persisted_state(logicalMapId, state);
   let identity: Readonly<{ logicalMapId: string; incarnationId: string }> | undefined;
+  let activityHost: object | undefined;
   const options: PersistentDocumentLiveHostOptions = {
     map: validated.map,
     authority: "exclusive",
@@ -361,12 +374,13 @@ async function restore_persistent_livehost(
     authorityGate: make_persistence_gate(validated.map, adapter, () => {
       if (identity === undefined) throw new Error("Restored persistent LiveHost identity is unavailable.");
       return identity;
-    }, options),
+    }, options, () => activityHost),
     initialHistory: {
       baseRevision: validated.checkpoint.rev,
       commits: validated.canonicalCommits,
     },
   }) as ExclusiveLiveHostForMap<DocumentLiveMap>;
+  activityHost = authorityHost;
   identity = Object.freeze({
     logicalMapId: authorityHost.stream.logicalMapId,
     incarnationId: authorityHost.stream.incarnationId,

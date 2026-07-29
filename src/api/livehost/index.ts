@@ -36,6 +36,7 @@ export {
   create_livehost_store,
   create_livehost_store as create_livehost_registry,
 } from "./livehost.store.js";
+export { create_livehost_authority_registry } from "./livehost.authority-registry.js";
 export {
   create_livehost_persistent_store,
   create_persistent_livehost,

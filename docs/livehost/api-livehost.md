@@ -489,6 +489,52 @@ outlive requests but require application lifecycle management. Worker adapters
 must arrange durable-object/event-lifetime concerns; Node adapters must arrange
 socket server and shutdown behavior.
 
+## Authority activity and bounded ownership
+
+**Experimental.** Every authority exposes `activity.snapshot()` and
+`activity.on_change()`. The snapshot contains counts only for connections,
+retained sessions, actions, recovery attempts, exclusive mutations, and
+persistence work. It contains no identities, credentials, paths, payloads, or
+graph state. A newly created authority is idle. A detached resumable session
+remains active until goodbye, expiry, or authority disposal.
+
+`create_livehost_authority_registry()` is an environment-neutral,
+application-owned bounded registry. `acquire(key)` coalesces concurrent creation
+for the same key and returns an idempotent lease. The caller holds the lease
+through bootstrap capture or until `host.connect()` synchronously installs the
+connection claim. Eviction marks an entry unavailable, rechecks the lifecycle
+generation, disposes exactly once, and then removes it. Ordinary eviction
+returns `busy` rather than disconnecting a healthy client. Capacity pressure
+selects the oldest idle entry deterministically; with no safe candidate,
+acquisition fails with `LIVEHOST_AUTHORITY_CAPACITY_EXHAUSTED`.
+
+Idle time begins when the final activity blocker and acquisition are released.
+One unreferenced sweep handles idle expiry. Reacquisition changes the lifecycle
+generation, so a stale sweep cannot remove the entry. Registry disposal stops
+new acquisition and scheduling, settles pending creation, and terminally
+disposes resident entries. The registry belongs to a registered application;
+the Node application host does not contain or enumerate it.
+
+The Node bootstrap helper accepts an optional application lease release in a
+successful resolution and invokes it only after exact capture and encoding.
+
+Ephemeral eviction or process restart loses state, history, sessions, dedupe
+outcomes, and transient events. Recreating the same `logicalMapId` creates a new
+`incarnationId`; old bootstrap state follows the existing incarnation-
+replacement snapshot recovery path. Persistent document unload disposes only
+the resident authority. Loading the same validated checkpoint and contiguous
+tail restores its established logical identity, incarnation, and revision.
+Projected-data authorities are not persistent.
+
+The supported initial Node topology is one process-local application registry
+and one owner for each logical authority. Multiple Node processes serving the
+same namespace are unsupported without request affinity and external ownership
+coordination. A shared database preserves document records but does not provide
+authority locking, shared sessions, or commit coordination. Cluster mode,
+distributed locks, leader election, cross-process pub/sub, and multi-region
+ownership are not implemented. Durable Objects retain their platform ownership
+model and are not forced through Node registry policy.
+
 ## Experimental production Node boundary
 
 The Node-only `hson-live/livehost/node` subpath supports Node
@@ -559,6 +605,8 @@ messages.
 ## Known limitations and deferred surfaces
 
 - Persistence supports document maps only and has no bundled backend.
+- Bounded lifecycle is application-owned and does not provide distributed
+  authority ownership.
 - Cloudflare/Worker socket adaptation remains application-owned.
 - Document projected subscriptions are unsupported.
 - History and action outcomes are bounded in memory.
