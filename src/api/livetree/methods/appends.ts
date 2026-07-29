@@ -29,6 +29,10 @@ import {
 } from "../livetree.error.js";
 import { record_livetree_materialization } from "../debug/materialization-profile.js";
 import { assert_document_structural_mutation_allowed } from "../lifecycle/document-binding-state.js";
+import {
+  runtime_for_tree,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
 
 /**
  * Append one or more HSON nodes into a target node's `_hson_elem` container
@@ -52,6 +56,7 @@ import { assert_document_structural_mutation_allowed } from "../lifecycle/docume
 function appendNodes(
   targetNode: HsonNode,
   nodesToAppend: HsonNode[],
+  runtime: LiveTreeRuntime,
   index?: number,
 ): void {
   if (!targetNode.$_content) targetNode.$_content = [];
@@ -92,7 +97,7 @@ const parentNs: "html" | "svg" =
     let insertIx = normalize_ix(index, domChildren.length);
 
     for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode, parentNs);
+      const dom = project_livetree(newNode, parentNs, runtime, liveElement.ownerDocument);
       const refNode = domChildren[insertIx] ?? null;
       liveElement.insertBefore(dom, refNode);
       record_livetree_materialization("domAppendOperations");
@@ -100,7 +105,7 @@ const parentNs: "html" | "svg" =
     }
   } else {
     for (const newNode of nodesToAppend) {
-      const dom = project_livetree(newNode, parentNs);
+      const dom = project_livetree(newNode, parentNs, runtime, liveElement.ownerDocument);
       liveElement.appendChild(dom);
       record_livetree_materialization("domAppendOperations");
     }
@@ -139,6 +144,15 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
 ): TTree {
   assert_document_structural_mutation_allowed(target.node, "append branches");
   if (branches.length === 0) return target;
+  const runtime = runtime_for_tree(target);
+  for (const branch of branches) {
+    if (runtime_for_tree(branch) !== runtime) {
+      throw new LiveTreeBatchError(
+        LIVETREE_BATCH_VALIDATION_ERROR_CODE,
+        "LiveTree batch contains a branch from another runtime scope.",
+      );
+    }
+  }
   const targetNode = target.node;
   const branchRoots = branches.map((branch) => {
     if (!can_append_branch_to_tree(target, branch)) {
@@ -152,7 +166,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
   const roots = branchRoots.flat();
 
   try {
-    assert_appendable_forest(targetNode, roots);
+    assert_appendable_forest(targetNode, roots, runtime);
   } catch (error) {
     if (error instanceof LiveTreeBatchError) throw error;
     throw new LiveTreeBatchError(
@@ -177,7 +191,7 @@ export function append_branches_atomic<TTree extends AppendTreeLike>(
     if (liveElement !== undefined) {
       fragment = liveElement.ownerDocument.createDocumentFragment();
       for (const root of roots) {
-        const dom = project_livetree(root, parentNs);
+        const dom = project_livetree(root, parentNs, runtime, liveElement.ownerDocument);
         fragment.appendChild(dom);
       }
       domRoots.push(...Array.from(fragment.childNodes));
@@ -245,6 +259,10 @@ export function append_branch<TTree extends AppendTreeLike>(
   record_livetree_materialization("appendBranchCalls");
   const targetNode = this.node;
   const srcNode = branch.node;
+  const runtime = runtime_for_tree(this);
+  if (runtime_for_tree(branch) !== runtime) {
+    throw new Error("[LiveTree.append] cannot append a branch from another runtime scope.");
+  }
 
   if (!can_append_branch_to_tree(this, branch)) {
     throw new Error(
@@ -254,9 +272,9 @@ export function append_branch<TTree extends AppendTreeLike>(
 
   const nodesToAppend: HsonNode[] = unwrap_root_elem(srcNode);
 
-  assert_appendable_nodes(targetNode, nodesToAppend, "append branch");
+  assert_appendable_nodes(targetNode, nodesToAppend, "append branch", runtime);
 
-  appendNodes(targetNode, nodesToAppend, index);
+  appendNodes(targetNode, nodesToAppend, runtime, index);
   branch.adoptRoots(this.hostRootNode());
   return this;
 }
@@ -265,11 +283,16 @@ export function append_branch<TTree extends AppendTreeLike>(
 export function append_detached_content<TTree extends AppendTreeLike>(
   target: TTree,
   content: NodeContent,
+  sourceRuntime: LiveTreeRuntime,
 ): TTree {
   assert_document_structural_mutation_allowed(target.node, "append detached content");
   const targetNode = target.node;
+  const runtime = runtime_for_tree(target);
+  if (runtime !== sourceRuntime) {
+    throw new Error("Detached LiveTree content cannot cross runtime scopes.");
+  }
   const nodes = content.filter((item): item is HsonNode => typeof item === "object" && item !== null);
-  assert_appendable_nodes(targetNode, nodes, "append detached contents");
+  assert_appendable_nodes(targetNode, nodes, "append detached contents", runtime);
 
   const liveElement = get_el_for_node(targetNode);
   const parentNs: "html" | "svg" =
@@ -280,7 +303,12 @@ export function append_detached_content<TTree extends AppendTreeLike>(
 
   if (liveElement) {
     for (const item of content) {
-      liveElement.appendChild(project_livetree(item as HsonNode | Primitive, parentNs));
+      liveElement.appendChild(project_livetree(
+        item as HsonNode | Primitive,
+        parentNs,
+        runtime,
+        liveElement.ownerDocument,
+      ));
     }
   }
   return target;
@@ -290,6 +318,7 @@ function assert_appendable_nodes(
   target: HsonNode,
   roots: readonly HsonNode[],
   operation: string,
+  runtime: LiveTreeRuntime,
 ): void {
   const targetSubtree = new Set(collect_subtree_nodes(target, "pre"));
   record_livetree_materialization("appendValidationTargetNodes", targetSubtree.size);
@@ -324,7 +353,7 @@ function assert_appendable_nodes(
       }
       localQuids.set(quid, node);
 
-      const registered = get_node_by_quid(quid);
+      const registered = get_node_by_quid(quid, runtime);
       if (registered && registered !== node) {
         throw new Error(`Duplicate QUID "${quid}" is already registered to another node.`);
       }
@@ -332,7 +361,11 @@ function assert_appendable_nodes(
   }
 }
 
-function assert_appendable_forest(target: HsonNode, roots: readonly HsonNode[]): void {
+function assert_appendable_forest(
+  target: HsonNode,
+  roots: readonly HsonNode[],
+  runtime: LiveTreeRuntime,
+): void {
   const targetSubtree = new Set(collect_subtree_nodes(target, "pre"));
   record_livetree_materialization("appendValidationTargetNodes", targetSubtree.size);
   const forestNodes = new Set<HsonNode>();
@@ -363,7 +396,7 @@ function assert_appendable_forest(target: HsonNode, roots: readonly HsonNode[]):
         throw new Error(`Duplicate QUID "${quid}" occurs within the appended batch.`);
       }
       localQuids.set(quid, node);
-      const registered = get_node_by_quid(quid);
+      const registered = get_node_by_quid(quid, runtime);
       if (registered !== undefined && registered !== node) {
         throw new Error(`Duplicate QUID "${quid}" is already registered to another node.`);
       }

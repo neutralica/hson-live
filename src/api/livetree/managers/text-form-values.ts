@@ -345,8 +345,8 @@ function primitive_to_text(value: Primitive): string {
 
 // was creating document.createElement("_hson_str") which injects <_hson_str> into DOM.
 // Now: always create a Text node.
-function make_dom_text(value: Primitive): Text {
-  return document.createTextNode(primitive_to_text(value));
+function make_dom_text(host: Element, value: Primitive): Text {
+  return host.ownerDocument.createTextNode(primitive_to_text(value));
 }
 
 // remove direct child Text nodes (these represent projected text leaves).
@@ -369,7 +369,7 @@ function replace_dom_text_leaves(host: Element, value: Primitive): void {
 
   const refIndex = firstTextIndex >= 0 ? firstTextIndex : 0;
   const ref = host.childNodes.item(refIndex) ?? null;
-  host.insertBefore(make_dom_text(value), ref);
+  host.insertBefore(make_dom_text(host, value), ref);
 }
 
 
@@ -440,7 +440,7 @@ export function add_node_text_content(node: HsonNode, value: Primitive): void {
   const host = get_el_for_node(node);
   if (!host) return;
 
-  host.appendChild(make_dom_text(text));
+  host.appendChild(make_dom_text(host, text));
 }
 
 /**
@@ -465,7 +465,7 @@ export function insert_node_text_leaf(node: HsonNode, index: number, value: Prim
   const host = get_el_for_node(node);
   if (!host) return;
 
-  const domText = make_dom_text(text);
+  const domText = make_dom_text(host, text);
   const ref = host.childNodes.item(ix) ?? null;
   host.insertBefore(domText, ref);
 }

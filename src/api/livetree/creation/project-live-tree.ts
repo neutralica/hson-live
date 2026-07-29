@@ -18,6 +18,12 @@ import {
   VAL_TAG,
 } from "../../../core/constants.js";
 import { record_livetree_materialization } from "../debug/materialization-profile.js";
+import {
+  default_livetree_runtime,
+  register_runtime_document,
+  runtime_for_node,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
 
 
 
@@ -59,13 +65,18 @@ import { record_livetree_materialization } from "../debug/materialization-profil
  */
 export function project_livetree(
   node: HsonNode | Primitive,
-  parentNs: "html" | "svg" = "html"
+  parentNs: "html" | "svg" = "html",
+  runtime: LiveTreeRuntime = is_Node(node)
+    ? runtime_for_node(node) ?? default_livetree_runtime()
+    : default_livetree_runtime(),
+  ownerDocument: Document = document,
 ): Node {
+  register_runtime_document(runtime, ownerDocument);
   record_livetree_materialization("domProjectionCalls");
   // Non-node primitives → plain text
   if (!is_Node(node)) {
     record_livetree_materialization("domTextNodesCreated");
-    return document.createTextNode(String(node ?? ""));
+    return ownerDocument.createTextNode(String(node ?? ""));
   }
 
   const n = node as HsonNode;
@@ -74,7 +85,7 @@ export function project_livetree(
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
     record_livetree_materialization("domTextNodesCreated");
     const v = n.$_content?.[0];
-    return document.createTextNode(String(v ?? ""));
+    return ownerDocument.createTextNode(String(v ?? ""));
   }
 
   // VSNs: unwrap into a fragment
@@ -84,7 +95,7 @@ export function project_livetree(
     n.$_tag === ELEM_TAG ||
     n.$_tag === ARR_TAG
   ) {
-    const frag = document.createDocumentFragment();
+    const frag = ownerDocument.createDocumentFragment();
     record_livetree_materialization("domFragmentsCreated");
 
     if (n.$_tag === ARR_TAG) {
@@ -93,7 +104,12 @@ export function project_livetree(
         const payload =
           is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
-          frag.appendChild(project_livetree(payload as HsonNode | Primitive, parentNs));
+          frag.appendChild(project_livetree(
+            payload as HsonNode | Primitive,
+            parentNs,
+            runtime,
+            ownerDocument,
+          ));
         }
       }
       return frag;
@@ -101,7 +117,12 @@ export function project_livetree(
 
     // _hson_root/_hson_obj/_hson_elem -> render their children directly
     for (const child of n.$_content ?? []) {
-      frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
+      frag.appendChild(project_livetree(
+        child as HsonNode | Primitive,
+        parentNs,
+        runtime,
+        ownerDocument,
+      ));
     }
     return frag;
   }
@@ -111,7 +132,12 @@ export function project_livetree(
   // A reusable detach retains its physical projection, mappings, listeners,
   // and runtime state. Reinsert that same element instead of rebuilding it.
   const retainedElement = get_el_for_node(n);
-  if (retainedElement && !retainedElement.isConnected) return retainedElement;
+  if (retainedElement && !retainedElement.isConnected) {
+    if (retainedElement.ownerDocument !== ownerDocument) {
+      throw new Error("A retained LiveTree projection cannot move between documents implicitly.");
+    }
+    return retainedElement;
+  }
 
   const tag = n.$_tag;
   const illegalDomTag = (badTag: string) =>
@@ -131,8 +157,8 @@ export function project_livetree(
   // create element respecting namespace
   const el: Element =
     ns === "svg"
-      ? document.createElementNS(SVG_NS, tag)
-      : document.createElement(tag);
+      ? ownerDocument.createElementNS(SVG_NS, tag)
+      : ownerDocument.createElement(tag);
   record_livetree_materialization("domElementsCreated");
 
   // Belt-and-suspenders: guard against any factory emitting HSON DOM tags.
@@ -142,7 +168,7 @@ export function project_livetree(
 
   // single source of truth for mapping HsonNode -> Element
   link_node_to_el(n, el);
-  const quid = ensure_quid(n); // uses meta if present, mints if not
+  const quid = ensure_quid(n, undefined, runtime); // uses meta if present, mints if not
 
   // reflect QUID onto DOM
   if (ns === "svg") {
@@ -214,17 +240,22 @@ export function project_livetree(
         const payload =
           is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
-          el.appendChild(project_livetree(payload as HsonNode | Primitive, ns));
+          el.appendChild(project_livetree(
+            payload as HsonNode | Primitive,
+            ns,
+            runtime,
+            ownerDocument,
+          ));
         }
       }
     } else {
       for (const c of container.$_content ?? []) {
-        el.appendChild(project_livetree(c as HsonNode | Primitive, ns));
+        el.appendChild(project_livetree(c as HsonNode | Primitive, ns, runtime, ownerDocument));
       }
     }
   } else {
     for (const c of kids) {
-      el.appendChild(project_livetree(c as HsonNode | Primitive, ns));
+      el.appendChild(project_livetree(c as HsonNode | Primitive, ns, runtime, ownerDocument));
     }
   }
 

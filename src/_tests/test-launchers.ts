@@ -136,6 +136,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["quid", "eligibility", "identity", "externally-discoverable"],
     }),
     launcher({
+      id: "livetree.runtime-scope",
+      subject: "LiveTree",
+      displayName: "LiveTree runtime scope isolation",
+      packageScript: "test:livetree-runtime-scope",
+      repositoryModule: "tests/livetree-runtime-scope.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 24,
+      collections: ["quid", "runtime", "lifecycle", "css", "LiveProject", "externally-discoverable"],
+    }),
+    launcher({
       id: "livetree.document-attrs",
       subject: "LiveTree",
       displayName: "Document LiveTree attribute binding",

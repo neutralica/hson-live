@@ -1,7 +1,9 @@
 // lifecycle-registry.ts
 
-const OWNER_DISPOSABLE_REG = new Map<string, Set<() => void>>();
-const OWNER_DISPOSABLE_KIND_REG = new Map<string, Map<() => void, LifecycleResourceKind>>();
+import {
+  default_livetree_runtime,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
 
 export type LifecycleResourceKind =
   | "binding"
@@ -27,12 +29,18 @@ export type DisposableDrainResult = Readonly<{
   bounded: boolean;
 }>;
 
-export function disposables_count_for_owner(ownerQuid: string): number {
-  return OWNER_DISPOSABLE_REG.get(ownerQuid)?.size ?? 0;
+export function disposables_count_for_owner(
+  ownerQuid: string,
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
+): number {
+  return runtime.ownerDisposables.get(ownerQuid)?.size ?? 0;
 }
 
-export function lifecycle_resource_counts_for_owner(ownerQuid: string): LifecycleResourceCounts {
-  const kinds = OWNER_DISPOSABLE_KIND_REG.get(ownerQuid);
+export function lifecycle_resource_counts_for_owner(
+  ownerQuid: string,
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
+): LifecycleResourceCounts {
+  const kinds = runtime.ownerDisposableKinds.get(ownerQuid);
   const count = (kind: LifecycleResourceKind): number => {
     if (!kinds) return 0;
     let total = 0;
@@ -43,7 +51,7 @@ export function lifecycle_resource_counts_for_owner(ownerQuid: string): Lifecycl
   };
 
   return Object.freeze({
-    total: disposables_count_for_owner(ownerQuid),
+    total: disposables_count_for_owner(ownerQuid, runtime),
     binding: count("binding"),
     listener: count("listener"),
     treeEvent: count("tree-event"),
@@ -56,35 +64,40 @@ export function disposable_add_for_owner(
   ownerQuid: string,
   off: () => void,
   kind: LifecycleResourceKind = "other",
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
 ): void {
-  let set = OWNER_DISPOSABLE_REG.get(ownerQuid);
+  let set = runtime.ownerDisposables.get(ownerQuid);
 
   if (!set) {
     set = new Set();
-    OWNER_DISPOSABLE_REG.set(ownerQuid, set);
+    runtime.ownerDisposables.set(ownerQuid, set);
   }
 
   set.add(off);
 
-  let kinds = OWNER_DISPOSABLE_KIND_REG.get(ownerQuid);
+  let kinds = runtime.ownerDisposableKinds.get(ownerQuid);
   if (!kinds) {
     kinds = new Map();
-    OWNER_DISPOSABLE_KIND_REG.set(ownerQuid, kinds);
+    runtime.ownerDisposableKinds.set(ownerQuid, kinds);
   }
   kinds.set(off, kind);
 }
 
-export function disposable_remove_for_owner(ownerQuid: string, off: () => void): void {
-  const set = OWNER_DISPOSABLE_REG.get(ownerQuid);
+export function disposable_remove_for_owner(
+  ownerQuid: string,
+  off: () => void,
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
+): void {
+  const set = runtime.ownerDisposables.get(ownerQuid);
 
   if (!set) return;
 
   set.delete(off);
-  OWNER_DISPOSABLE_KIND_REG.get(ownerQuid)?.delete(off);
+  runtime.ownerDisposableKinds.get(ownerQuid)?.delete(off);
 
   if (set.size === 0) {
-    OWNER_DISPOSABLE_REG.delete(ownerQuid);
-    OWNER_DISPOSABLE_KIND_REG.delete(ownerQuid);
+    runtime.ownerDisposables.delete(ownerQuid);
+    runtime.ownerDisposableKinds.delete(ownerQuid);
   }
 }
 
@@ -96,27 +109,31 @@ export function own_disposable_for_owner(
   ownerQuid: string,
   dispose: () => void,
   kind: LifecycleResourceKind = "other",
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
 ): () => void {
   let active = true;
 
   const off = (): void => {
     if (!active) return;
     active = false;
-    disposable_remove_for_owner(ownerQuid, off);
+    disposable_remove_for_owner(ownerQuid, off, runtime);
     dispose();
   };
 
-  disposable_add_for_owner(ownerQuid, off, kind);
+  disposable_add_for_owner(ownerQuid, off, kind, runtime);
   return off;
 }
 
-export function disposables_off_for_owner(ownerQuid: string): void {
-  const set = OWNER_DISPOSABLE_REG.get(ownerQuid);
+export function disposables_off_for_owner(
+  ownerQuid: string,
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
+): void {
+  const set = runtime.ownerDisposables.get(ownerQuid);
 
   if (!set) return;
 
-  OWNER_DISPOSABLE_REG.delete(ownerQuid);
-  OWNER_DISPOSABLE_KIND_REG.delete(ownerQuid);
+  runtime.ownerDisposables.delete(ownerQuid);
+  runtime.ownerDisposableKinds.delete(ownerQuid);
 
   for (const off of set) {
     try {
@@ -135,29 +152,30 @@ export function disposables_off_for_owner(ownerQuid: string): void {
 export function disposables_drain_for_owners(
   ownerQuids: readonly string[],
   passLimit: number = TERMINAL_DISPOSABLE_DRAIN_LIMIT,
+  runtime: LiveTreeRuntime = default_livetree_runtime(),
 ): DisposableDrainResult {
   const owners = [...new Set(ownerQuids)];
   let passes = 0;
   let callbacks = 0;
 
   const pendingCount = (): number => owners.reduce(
-    (total, owner) => total + disposables_count_for_owner(owner),
+    (total, owner) => total + disposables_count_for_owner(owner, runtime),
     0,
   );
 
   while (pendingCount() > 0 && passes < passLimit) {
     passes += 1;
     for (const owner of owners) {
-      callbacks += disposables_count_for_owner(owner);
-      disposables_off_for_owner(owner);
+      callbacks += disposables_count_for_owner(owner, runtime);
+      disposables_off_for_owner(owner, runtime);
     }
   }
 
   const bounded = pendingCount() > 0;
   if (bounded) {
     for (const owner of owners) {
-      OWNER_DISPOSABLE_REG.delete(owner);
-      OWNER_DISPOSABLE_KIND_REG.delete(owner);
+      runtime.ownerDisposables.delete(owner);
+      runtime.ownerDisposableKinds.delete(owner);
     }
     console.warn(
       `[LiveTree.lifecycle] terminal disposable drain exceeded ${passLimit} passes; remaining callbacks were discarded`,

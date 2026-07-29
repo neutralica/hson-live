@@ -11,6 +11,10 @@ import { LiveTree } from "../livetree.js";
 import { matchAttrs, matchMeta, matchText, search_nodes } from "./search.js";
 import { release_node_parent } from "../lifecycle/graph-ownership.js";
 import { assert_document_structural_mutation_allowed } from "../lifecycle/document-binding-state.js";
+import {
+  default_livetree_runtime,
+  runtime_for_node,
+} from "../runtime/livetree-runtime.js";
 
 
 type ContentItem = HsonNode | Primitive;
@@ -46,6 +50,7 @@ function unwrap_single_elem(node: HsonNode): HsonNode {
 export function remove_node_children(parent: HsonNode): number {
   assert_document_structural_mutation_allowed(parent, "remove children");
   const container = unwrap_single_elem(parent);
+  const runtime = runtime_for_node(parent) ?? default_livetree_runtime();
 
   const kids = container.$_content;
   if (!Array.isArray(kids) || kids.length === 0) return 0;
@@ -68,29 +73,12 @@ export function remove_node_children(parent: HsonNode): number {
   for (const n of toRemove) {
     release_node_parent(n, container);
     // then funnel teardown
-    detach_node_deep(n);
+    // This legacy operation unlinks the child and clears its projection
+    // resources, but intentionally leaves the child handle and QUID reusable.
+    detach_node_deep(n, runtime);
   }
 
   return toRemove.length;
-}
-
-export function empty_contents(this: LiveTree): LiveTree {
-  const parent = this.node;
-  const kids = parent.$_content;
-
-  if (!Array.isArray(kids) || kids.length === 0) return this;
-
-  const toDetach: HsonNode[] = [];
-  for (const ch of kids) {
-    if (is_Node(ch)) toDetach.push(ch);
-  }
-
-  // drop everything, including primitives
-  parent.$_content = [];
-
-  for (const n of toDetach) detach_node_deep(n);
-
-  return this;
 }
 
 // factor out “does this node match the query”

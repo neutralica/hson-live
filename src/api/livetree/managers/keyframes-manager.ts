@@ -273,10 +273,10 @@ function renderDecls(decls: CssDeclMap): string[] {
  * @returns
  *   Complete CSS text for a single `@keyframes <name> { ... }` block.
  */
-function renderKeyframes(def: KeyframesDef): string {
+function renderKeyframes(def: KeyframesDef, emittedName: string = def.name): string {
   // start block.
   const lines: string[] = [];
-  lines.push(`@keyframes ${def.name} {`);
+  lines.push(`@keyframes ${emittedName} {`);
 
   // render steps.
   for (const step of def.steps) {
@@ -325,6 +325,8 @@ function renderKeyframes(def: KeyframesDef): string {
 export function manage_keyframes(args: {
   // Called whenever keyframes change.
   onChange: () => void;
+  /** Internal runtime-local emitted-name prefix. */
+  namePrefix?: string;
 }): KeyframesManager {
   // storage by name.
   const byName: Map<KeyframesName, KeyframesDef> = new Map();
@@ -463,7 +465,7 @@ export function manage_keyframes(args: {
 
     renderOne(name: KeyframesName): string {
       const def = byName.get(name.trim());
-      return def ? renderKeyframes(def) : "";
+      return def ? renderKeyframes(def, `${args.namePrefix ?? ""}${def.name}`) : "";
     },
 
     renderAll(): string {
@@ -474,7 +476,7 @@ export function manage_keyframes(args: {
       const blocks: string[] = [];
       for (const n of names) {
         const def = byName.get(n);
-        if (def) blocks.push(renderKeyframes(def));
+        if (def) blocks.push(renderKeyframes(def, `${args.namePrefix ?? ""}${def.name}`));
       }
 
       return blocks.join("\n\n");

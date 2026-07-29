@@ -9,7 +9,8 @@ import { HsonNode } from "../../../../core/types.js";
 import { unwrap_root_elem } from "../../../transform/utils/html-utils/unwrap-root-elem.js";
 import { is_svg_markup, node_from_svg } from "../../../transform/utils/node-utils/node-from-svg.js";
 import { is_Node } from "../../../../core/node-guards.js";
-import { create_livetree } from "../../creation/create-livetree.js";
+import { create_livetree_in_runtime } from "../../creation/create-livetree.js";
+import { runtime_for_tree } from "../../runtime/livetree-runtime.js";
 import { make_tree_selector } from "../../creation/make-tree-selector.js";
 import { LiveTree } from "../../livetree.js";
 import { TreeSelector } from "../../creation/tree-selector.js";
@@ -136,7 +137,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
         $_content: [],
         ...(ns === "svg" && t === "svg" ? { $_attrs: { xmlns: "http://www.w3.org/2000/svg" } } : {}),
       });
-      const branch = create_livetree(node);
+      const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
       if (typeof insertIx === "number") tree.append(branch, insertIx);
       else tree.append(branch);
@@ -196,7 +197,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       );
     }
 
-    const branch = create_livetree(node);
+    const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
     if (typeof index === "number") tree.append(branch, index);
     else tree.append(branch);
@@ -281,7 +282,7 @@ export function make_create_core(tree: LiveTree): CreateCore {
       );
     }
 
-    const branch = create_livetree(node);
+    const branch = create_livetree_in_runtime(node, runtime_for_tree(tree));
 
     if (typeof index === "number") tree.append(branch, index);
     else tree.append(branch);

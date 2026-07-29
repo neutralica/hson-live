@@ -9,6 +9,7 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { is_ordinary_element_node } from "../../../core/node-guards.js";
 import { collect_subtree_nodes } from "../utils/subtree-traversal.js";
 import { scan_hson_node_quids } from "../../../core/hson-node-quid.js";
+import { runtime_for_tree, type LiveTreeRuntime } from "../runtime/livetree-runtime.js";
 
 
 // clone + remint in one traversal so mapping is correct by construction
@@ -22,6 +23,7 @@ function clone_branch_inner(
   src: HsonNode,
   quidMap: QuidMap,
   opts: CloneOpts,
+  runtime: LiveTreeRuntime,
 ): HsonNode {
   const dst = CREATE_NODE({ $_tag: src.$_tag });
 
@@ -39,15 +41,15 @@ function clone_branch_inner(
   // deep clone content
   dst.$_content = src.$_content.map((c) => {
     if (typeof c === "object" && c !== null) {
-      return clone_branch_inner(c as HsonNode, quidMap, opts);
+      return clone_branch_inner(c as HsonNode, quidMap, opts, runtime);
     }
     return c;
   });
 
   // Mint a new quid only for canonical identity-bearing ordinary nodes.
-  const oldQ = get_quid(src);
+  const oldQ = get_quid(src, runtime);
   if (is_ordinary_element_node(dst)) {
-    const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true });
+    const newQ = ensure_quid(dst, { persist: opts.persistQuidMeta ?? true }, runtime);
     if (oldQ) quidMap.set(oldQ, newQ);
   }
 
@@ -56,6 +58,7 @@ function clone_branch_inner(
 
 function clone_branch_with_quids(
   srcRoot: HsonNode,
+  runtime: LiveTreeRuntime,
   opts?: CloneOpts,
 ): { root: HsonNode; quidMap: QuidMap } {
   // Reject invalid or duplicate persisted identity before cloning or
@@ -63,10 +66,15 @@ function clone_branch_with_quids(
   scan_hson_node_quids(srcRoot);
 
   // Also preflight LiveTree's runtime-only reverse cache.
-  for (const node of collect_subtree_nodes(srcRoot, "pre")) get_quid(node);
+  for (const node of collect_subtree_nodes(srcRoot, "pre")) get_quid(node, runtime);
 
   const quidMap: QuidMap = new Map();
-  const root = clone_branch_inner(srcRoot, quidMap, { persistQuidMeta: opts?.persistQuidMeta ?? true });
+  const root = clone_branch_inner(
+    srcRoot,
+    quidMap,
+    { persistQuidMeta: opts?.persistQuidMeta ?? true },
+    runtime,
+  );
   return { root, quidMap };
 }
 
@@ -75,12 +83,15 @@ function clone_branch_with_quids(
 // - deep clones nodes sans QUIDs
 // - mints new QUIDs
 // - builds old->new QUID map
-// - copies per-QUID CSS rules internally via CssManager @internal hook
-// - animations, event listeners, and events are *not* copied: 
-//    this function returns flat HTML that looks the same but doesn't adopt any old behaviors
+// Runtime resources are deliberately not copied. The clone is structural-only:
+// fresh QUIDs, no CSS/listener/event/observer/binding ownership transfer.
 export function clone_branch_method<TSelf extends LiveTree>(this: TSelf): TSelf {
   const srcNode: HsonNode = this.node;
-  const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode).root;
+  const runtime = runtime_for_tree(this);
+  const clonedRootNode: HsonNode = clone_branch_with_quids(srcNode, runtime).root;
 
-  return make_branch_from_node(clonedRootNode, { quidGraphValidated: true }) as TSelf;
+  return make_branch_from_node(
+    clonedRootNode,
+    { quidGraphValidated: true, runtime },
+  ) as TSelf;
 }

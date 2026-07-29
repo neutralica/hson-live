@@ -8,16 +8,19 @@ import { _DATA_QUID, get_el_if_quid as get_el_by_quid, get_node_by_quid } from "
 import { make_tree_selector } from "../creation/make-tree-selector.js";
 import { TreeSelector } from "../creation/tree-selector.js";
 import { create_livetree } from "../creation/create-livetree.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+import { create_livetree_in_runtime } from "../creation/create-livetree.js";
 
 // honest maybe-returning lookup from DOM element back to tree node
 function resolve_tree_from_el(tree: LiveTree, el: Element): LiveTree | undefined {
   const quid = get_el_by_quid(el);
   if (!quid) return undefined;
 
-  const node = get_node_by_quid(quid);
+  const runtime = runtime_for_tree(tree);
+  const node = get_node_by_quid(quid, runtime);
   if (!node) return undefined;
 
-  const t = create_livetree(node);
+  const t = create_livetree_in_runtime(node, runtime);
   t.adoptRoots(tree.hostRootNode());
 
   return t;

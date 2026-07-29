@@ -13,6 +13,11 @@ import { manage_property } from "./at-property-builder.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { manage_keyframes } from "./keyframes-manager.js";
 import { css_supports_decl } from "./style-setter.js";
+import {
+  default_livetree_runtime,
+  register_runtime_document,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
 
 
 const CSS_HOST_TAG = "hson-_style";
@@ -129,14 +134,15 @@ function canon_to_css_prop(propCanon: string): string {
 }
 
 /**
- * Singleton manager for QUID-scoped stylesheet rules.
+ * Runtime-owned manager for QUID-scoped stylesheet rules.
  *
  * `CssManager` owns the “stylesheet-backed” side of styling in HSON/LiveTree.
  * Rather than mutating inline `style=""`, it maintains an in-memory rule model:
  *
  *   QUID → (canonicalCssProp → renderedValue)
  *
- * and renders that model into a single `<style>` element in the active `document`.
+ * and renders that model into one runtime-owned `<style>` element per
+ * registered projection document.
  * Each QUID maps to one selector (via `selectorForQuid`), producing blocks like:
  *
  *   [data-_quid="…"] { opacity: 0.5; transform: translate(…); }
@@ -150,14 +156,14 @@ function canon_to_css_prop(propCanon: string): string {
  *   keyframes stay in sync with the rule model.
  *
  * DOM contract:
- * - On first use, `invoke()` ensures a host container exists:
+ * - On first use in a document, the manager ensures a host container exists:
  *     `<hson-_style id="css-manager"> … </hson-_style>`
  *   and that it contains:
  *     `<style id="_hson"> … </style>`
- * - Rendering targets the *current* global `document`. If the document identity
- *   changes (e.g. test harness swapping `globalThis.document`), `CssManager`
- *   drops cached DOM references and resets internal state so rules and managers
- *   are not leaked across documents.
+ * - Existing public APIs use the compatibility-default runtime. Isolated
+ *   runtimes register the documents that host their projections.
+ * - Document changes add independent style hosts; they never reset another
+ *   document's or runtime's rule state.
  *
  * Render policy:
  * - Mutations mark the manager as changed and schedule/perform a sync to DOM.
@@ -170,15 +176,18 @@ function canon_to_css_prop(propCanon: string): string {
  *   property identifiers, to fail fast during development.
  */
 export class CssManager {
-  private static instance: CssManager | null = null;
   // QUID → (property → rendered value)
   private readonly rulesByQuid: Map<string, Map<string, string>> = new Map();
-  private styleEl: HTMLStyleElement | null = null;
+  private readonly styleEls = new Map<Document, HTMLStyleElement>();
   private atPropManager: PropertyManager;
   private keyframeManager: KeyframesManager;
   private changed: boolean = false;
-  private readonly globalCss: Map<string, string> = new Map();
+  private readonly globalCss = new GlobalCss();
   private globalsApi: GlobalCssApi | undefined;
+  private readonly documentListener = (): void => {
+    this.changed = true;
+    this.scheduleSync();
+  };
   private notify_global_css_changed(): void {
     this.markChanged();      //  (batched)
     // this.syncToDom();           // immediate
@@ -188,11 +197,13 @@ export class CssManager {
   private scheduled: boolean = false;        // prevents multiple schedules
   private rafId: number | null = null;       // lets us cancel when forcing sync
 
-  private boundDoc: Document | null = null;
-
-  private constructor() {
+  private constructor(private readonly runtime: LiveTreeRuntime) {
     this.atPropManager = manage_property({ onChange: () => this.markChanged() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
+    this.keyframeManager = manage_keyframes({
+      onChange: () => this.markChanged(),
+    });
+    this.runtime.styleDocumentListeners.add(this.documentListener);
+    this.runtime.disposeCss = () => this.disposeRuntimeStyles();
   }
 
   /**
@@ -243,99 +254,11 @@ export class CssManager {
     });
   }
 
-  private ensureBoundDoc(): void {
-    const doc = (globalThis as any).document as Document | undefined;
-    if (!doc) return;
-
-    if (this.boundDoc !== doc) {
-      this.boundDoc = doc;
-      this.styleEl = null;
-      this.resetManagersAndRules();
-    }
-  }
-
-
-  /**
-   * Resets all in-memory CSS state and owned sub-managers to a clean baseline.
-   *
-   * This is primarily a test/host-environment safety valve:
-   * - When the global `document` identity changes (e.g. Happy DOM replacing
-   *   `globalThis.document`), previously cached DOM references and rule maps
-   *   are no longer valid. This method clears rule state and recreates
-   *   `@property` / keyframe managers so they are bound to the new document.
-   *
-   * Side effects:
-   * - Clears all QUID-scoped rule maps.
-   * - Clears internal scheduling/dirty flags.
-   * - Reinitializes `PropertyManager` and `KeyframesManager` with fresh
-   *   `onChange` hooks.
-   * - If the current `<style>` element is still connected, empties its text.
-   */
-  private resetManagersAndRules(): void {
-    this.rulesByQuid.clear();
-    this.changed = false;
-    this.scheduled = false;
-    this.atPropManager = manage_property({ onChange: () => this.markChanged() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
-
-    if (this.styleEl && this.styleEl.isConnected) {
-      this.styleEl.textContent = "";
-    }
-  }
-
-
-  /**
-   * Ensures the manager has a live `<style>` element in the current `document`
-   * and returns it.
-   *
-   * Responsibilities:
-   * 1) Detect host-document swaps:
-   *    - If `globalThis.document` is not the same object previously seen,
-   *      cached DOM references are discarded and internal rule/manager state is
-   *      reset to avoid leaking rules across documents.
-   *
-   * 2) Validate cached element:
-   *    - If `this.styleEl` exists but is detached or belongs to a different
-   *      document, it is discarded and recreated.
-   *
-   * 3) Create / locate the host container and style element:
-   *    - Ensures a host element `${CSS_HOST_TAG}#${CSS_HOST_ID}` exists.
-   *    - Ensures a child `<style id="${CSS_STYLE_ID}">` exists inside the host.
-   *
-   * 4) Mirror external resets:
-   *    - If a test harness or caller manually clears the `<style>` text while
-   *      the manager still has non-empty rule state, this method treats the DOM
-   *      as authoritative and clears `rulesByQuid` to match.
-   *
-   * Mount policy:
-   * - Prefers `document.head` when connected, otherwise `document.body`,
-   *   otherwise `document.documentElement`. Throws if none are available.
-   *
-   * @throws Error if no connected mount point exists in the current document.
-   * @returns The ensured `<style>` element used for rendered CSS output.
-   */
-  private ensureStyleElement(): HTMLStyleElement | undefined {
-    // NEW: guard against true Node / no DOM
-    this.ensureBoundDoc();
-
-    const doc = this.boundDoc ?? ((globalThis as any).document as Document | undefined);
-    if (!doc) return undefined;
-
-
-    // use the local doc var instead of global `document`
-    if (this.boundDoc !== doc) {
-      this.boundDoc = doc;
-      this.styleEl = null;
-      this.resetManagersAndRules();
-    }
-
-    if (this.styleEl) {
-      if (!this.styleEl.isConnected || this.styleEl.ownerDocument !== doc) {
-        this.styleEl = null;
-      } else {
-        return this.styleEl;
-      }
-    }
+  /** Ensure this runtime's isolated style element exists in one projection document. */
+  private ensureStyleElement(doc: Document): HTMLStyleElement {
+    const cached = this.styleEls.get(doc);
+    if (cached?.isConnected && cached.ownerDocument === doc) return cached;
+    if (cached) this.styleEls.delete(doc);
 
     const mount =
       (doc.head && doc.head.isConnected ? doc.head : null) ??
@@ -360,9 +283,12 @@ export class CssManager {
       host.appendChild(styleEl);
     }
 
-
-    this.styleEl = styleEl;
+    this.styleEls.set(doc, styleEl);
     return styleEl;
+  }
+
+  private runtimeDocuments(): readonly Document[] {
+    return [...this.runtime.styleDocuments];
   }
 
 
@@ -449,14 +375,13 @@ export class CssManager {
   }
 
   private syncToDom(): void {
-    const styleEl = this.ensureStyleElement();
-    if (!styleEl) return;
-
     const cssText = this.buildCombinedCss({
       globalsCss: this.globals_invoke().renderAll(),
     });
 
-    styleEl.textContent = cssText;
+    for (const document of this.runtimeDocuments()) {
+      this.ensureStyleElement(document).textContent = cssText;
+    }
     this.changed = false;
   }
 
@@ -488,23 +413,21 @@ export class CssManager {
 
       forEachDomElement: (scope, fn) => {
         // guard document
-        const doc = (globalThis as any).document as Document | undefined;
-        if (!doc) return;
-
-        for (const quid of scope.quids) {
-          const el = doc.querySelector(selector_for_quid(quid));
-          if (el) fn(el);
+        for (const document of this.runtimeDocuments()) {
+          for (const quid of scope.quids) {
+            const el = document.querySelector(selector_for_quid(quid));
+            if (el) fn(el);
+          }
         }
       },
 
       getFirstDomElement: (scope) => {
         // guard document
-        const doc = (globalThis as any).document as Document | undefined;
-        if (!doc) return undefined;
-
-        for (const quid of scope.quids) {
-          const el = doc.querySelector(selector_for_quid(quid));
-          if (el) return el;
+        for (const document of this.runtimeDocuments()) {
+          for (const quid of scope.quids) {
+            const el = document.querySelector(selector_for_quid(quid));
+            if (el) return el;
+          }
         }
         return undefined;
       },
@@ -515,18 +438,44 @@ export class CssManager {
 
 
   /**
-   * Return the singleton `CssManager` instance.
+   * Return the compatibility-default runtime's `CssManager` instance.
    *
    * Note: this does **not** force creation of a `<style>` element. It only
-   * binds to the current `document` if one exists.
+   * registers the current `document` on first rendering use if one exists.
    */
   public static invoke(): CssManager {
-    if (!CssManager.instance) CssManager.instance = new CssManager();
+    return CssManager.forRuntime(
+      default_livetree_runtime(),
+      { claimAmbientDocument: true },
+    );
+  }
 
-    // bind doc if present, but do NOT create <style> here
-    CssManager.instance.ensureBoundDoc();
+  /** Resolve the stylesheet owner for one LiveTree runtime. @internal */
+  public static forRuntime(
+    runtime: LiveTreeRuntime,
+    opts?: { claimAmbientDocument?: boolean },
+  ): CssManager {
+    if (opts?.claimAmbientDocument) {
+      const ambient = (globalThis as { document?: Document }).document;
+      if (
+        ambient !== undefined
+        && (
+          runtime === default_livetree_runtime()
+          || runtime.styleDocuments.size === 0
+        )
+      ) {
+        register_runtime_document(runtime, ambient);
+      }
+    }
+    if (runtime.cssManager instanceof CssManager) return runtime.cssManager;
+    const manager = new CssManager(runtime);
+    runtime.cssManager = manager;
+    return manager;
+  }
 
-    return CssManager.instance;
+  /** Canonical selector for one QUID inside this runtime's owned Document. @internal */
+  public selectorForQuid(quid: string): string {
+    return selector_for_quid(quid);
   }
 
   /**
@@ -576,7 +525,7 @@ export class CssManager {
   /**
    * Exposes the `@property` registration manager used by this `CssManager`.
    *
-   * @returns The live `PropertyManager` instance (singleton-owned).
+   * @returns The live `PropertyManager` instance owned by this runtime.
    */
   public get atProperty(): PropertyManager {
     return this.atPropManager;
@@ -585,7 +534,7 @@ export class CssManager {
   /**
    * Exposes the keyframes/animation definition manager used by this `CssManager`.
    *
-   * @returns The live `KeyframesManager` instance (singleton-owned).
+   * @returns The live `KeyframesManager` instance owned by this runtime.
    */
   public get keyframes(): KeyframesManager {
     return this.keyframeManager;
@@ -618,6 +567,7 @@ export class CssManager {
 
     this.clearQuid(q);
     this.keyframeManager.releaseOwner(q);
+    this.globals_invoke().dropBySelectorFragment(this.selectorForQuid(q));
   }
 
   // --- WRITE API (QUID-based) -------------------------------------------
@@ -782,14 +732,32 @@ export class CssManager {
 
     // recreate managers to drop all registrations
     this.atPropManager = manage_property({ onChange: () => this.markChanged() });
-    this.keyframeManager = manage_keyframes({ onChange: () => this.markChanged() });
+    this.keyframeManager = manage_keyframes({
+      onChange: () => this.markChanged(),
+    });
 
     // clear style element if it exists
-    const styleEl = this.ensureStyleElement();
-    if (styleEl) {
-      styleEl.textContent = "";
+    for (const styleEl of this.styleEls.values()) styleEl.textContent = "";
+    this.styleEls.clear();
+    this.globalCss.api(() => undefined).clearAll();
+  }
+
+  private disposeRuntimeStyles(): void {
+    if (this.rafId !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(this.rafId);
     }
-    this.globalCss.clear();
+    this.rafId = null;
+    this.scheduled = false;
+    this.changed = false;
+    this.runtime.styleDocumentListeners.delete(this.documentListener);
+    for (const styleEl of this.styleEls.values()) {
+      const host = styleEl.parentElement;
+      styleEl.remove();
+      if (host?.childNodes.length === 0) host.remove();
+    }
+    this.styleEls.clear();
+    this.rulesByQuid.clear();
+    this.globalCss.api(() => undefined).clearAll();
   }
 
   /**
@@ -850,7 +818,7 @@ export class CssManager {
 
   private globals_invoke(): GlobalCssApi {
     if (!this.globalsApi) {
-      this.globalsApi = GlobalCss.api(() => this.notify_global_css_changed());
+      this.globalsApi = this.globalCss.api(() => this.notify_global_css_changed());
     }
     return this.globalsApi;
   }
@@ -866,7 +834,12 @@ export class CssManager {
    * rules, DOM sync, snapshots, dev resets, and other internal plumbing.
    */
   public static api(): CssManagerApi {
-    const mgr = CssManager.invoke();
+    return CssManager.apiForRuntime(default_livetree_runtime());
+  }
+
+  /** Runtime-local CSS facade for LiveTree handles. @internal */
+  public static apiForRuntime(runtime: LiveTreeRuntime): CssManagerApi {
+    const mgr = CssManager.forRuntime(runtime, { claimAmbientDocument: true });
     const globalApi = mgr.globals_invoke();
 
     return {
@@ -878,19 +851,6 @@ export class CssManager {
 
   public snapshot(): string {
     return this.renderCss()
-  }
-
-  /** @internal */
-
-  public _copyRulesForQuidMap(quidMap: ReadonlyMap<string, string>): void {
-    for (const [oldQ, newQ] of quidMap) {
-      const rules = this.rulesByQuid.get(oldQ);
-      if (!rules) continue;
-
-      // clone the inner map so edits don’t alias
-      this.rulesByQuid.set(newQ, new Map(rules));
-    }
-    this.markChanged();
   }
 
 }

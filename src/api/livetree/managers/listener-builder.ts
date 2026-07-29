@@ -3,6 +3,7 @@
 import { ListenerBuilder, ListenOpts, MissingPolicy, ListenerSub, ElemMap } from "../../../types/listen.types.js";
 import { LiveTree } from "../livetree.js";
 import { own_disposable_for_owner } from "./lifecycle-registry.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 
 type QueuedListener = {
@@ -51,6 +52,7 @@ function addWithOff(
   handler: EventListener,
   opts: AddEventListenerOptions,
   ownerQuid: string,
+  tree: LiveTree,
   onOff: () => void,
 ): () => void {
   let off: () => void = () => undefined;
@@ -71,7 +73,7 @@ function addWithOff(
     set?.delete(off);
     if (set?.size === 0) TARGET_LISTENER_REG.delete(target);
     onOff();
-  }, "listener");
+  }, "listener", runtime_for_tree(tree));
 
   set.add(off);
   return off;
@@ -152,12 +154,15 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
   const resolveAmbientTarget = (): EventTarget | null => {
     try {
+      const ownerDocument = tree.dom.el()?.ownerDocument;
       if (opts.target === "window") {
-        return typeof window !== "undefined" ? window : null;
+        return ownerDocument?.defaultView
+          ?? (typeof window !== "undefined" ? window : null);
       }
 
       if (opts.target === "document") {
-        return typeof document !== "undefined" ? document : null;
+        return ownerDocument
+          ?? (typeof document !== "undefined" ? document : null);
       }
 
       return null;
@@ -280,7 +285,7 @@ export function build_listener(tree: LiveTree): ListenerBuilder {
 
       for (const tgt of targets) {
         let off: () => void = () => undefined;
-        off = addWithOff(tgt, job.type, job.handler, aelo, tree.quid, () => {
+        off = addWithOff(tgt, job.type, job.handler, aelo, tree.quid, tree, () => {
           if (!job.offs) return;
           const index = job.offs.indexOf(off);
           if (index >= 0) job.offs.splice(index, 1);

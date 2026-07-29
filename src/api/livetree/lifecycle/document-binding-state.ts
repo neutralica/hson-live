@@ -27,7 +27,7 @@ export type DocumentBindingNodeRegistration = Readonly<{
   delegateAttrs: (mutation: DocumentBoundAttrsMutation) => void;
   delegateText: (mutation: DocumentBoundTextMutation) => void;
   delegateEmpty: () => void;
-  delegateRemove: () => 1;
+  delegateRemove: () => 1 | undefined;
   rejectStructuralMutation: (operation: string) => never;
 }>;
 

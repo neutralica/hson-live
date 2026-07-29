@@ -6,17 +6,23 @@ import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-tran
 import { parse_html } from "../../transform/parsers/parse-html.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
-import { create_livetree } from "./create-livetree.js";
 import { link_node_to_el, get_node_for_el } from "../utils/node-map-helpers.js";
 import {
   _DATA_QUID,
   admit_livetree_quid_graph,
-  ensure_quid,
+  get_quid,
 } from "../quid/data-quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { Primitive } from "../../../core/types.js";
 import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
+import {
+  default_livetree_runtime,
+  register_runtime_document,
+  runtime_for_node,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
+import { create_livetree_in_runtime } from "./create-livetree.js";
 
 
 
@@ -29,22 +35,29 @@ import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
 function graft_node_into_element(
   element: HTMLElement,
   nodeToRender: HsonNode,
+  runtime: LiveTreeRuntime,
 ): LiveTree {
+  register_runtime_document(runtime, element.ownerDocument);
   link_node_to_el(nodeToRender, element);
   const parentNs: "html" | "svg" =
     element.namespaceURI === SVG_NS ? "svg" : "html";
 
   // reflect attrs from root node onto existing host element
-  sync_root_attrs_to_element(nodeToRender, element);
+  sync_root_attrs_to_element(nodeToRender, element, runtime);
 
-  const frag = document.createDocumentFragment();
+  const frag = element.ownerDocument.createDocumentFragment();
   for (const child of nodeToRender.$_content ?? []) {
-    frag.appendChild(project_livetree(child as HsonNode | Primitive, parentNs));
+    frag.appendChild(project_livetree(
+      child as HsonNode | Primitive,
+      parentNs,
+      runtime,
+      element.ownerDocument,
+    ));
   }
 
   element.replaceChildren(frag);
 
-  return create_livetree(nodeToRender);
+  return create_livetree_in_runtime(nodeToRender, runtime);
 }
 
 /**
@@ -68,6 +81,14 @@ export function graft(
     _throw_transform_err("error getting target element", "graft", element);
   }
 
+  const existingNode = get_node_for_el(targetElement);
+  if (existingNode) {
+    return create_livetree_in_runtime(
+      existingNode,
+      runtime_for_node(existingNode) ?? default_livetree_runtime(),
+    );
+  }
+
   const parsedRoot: HsonNode = parse_html(targetElement);
   const contentNodes = unwrap_root_elem(parsedRoot);
 
@@ -85,13 +106,10 @@ export function graft(
       "graft",
     );
   }
-  const existingNode = get_node_for_el(targetElement);
-  if (existingNode) {
-    return create_livetree(existingNode);
-  }
-
-  admit_livetree_quid_graph(nodeToRender);
-  return graft_node_into_element(targetElement, nodeToRender);
+  const runtime = default_livetree_runtime();
+  register_runtime_document(runtime, targetElement.ownerDocument);
+  admit_livetree_quid_graph(nodeToRender, runtime);
+  return graft_node_into_element(targetElement, nodeToRender, runtime);
 }
 
 /**
@@ -107,8 +125,15 @@ export function graft_body(
   return graft(element, options);
 }
 
-function sync_root_attrs_to_element(node: HsonNode, el: HTMLElement): void {
-  const quid = ensure_quid(node);
+function sync_root_attrs_to_element(
+  node: HsonNode,
+  el: HTMLElement,
+  runtime: LiveTreeRuntime,
+): void {
+  const quid = get_quid(node, runtime);
+  if (quid === undefined) {
+    throw new Error("graft root was not admitted into its LiveTree runtime.");
+  }
   set_attrs_safe(el, _DATA_QUID, quid);
 
   const attrs = node.$_attrs;

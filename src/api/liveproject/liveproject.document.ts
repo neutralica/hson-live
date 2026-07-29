@@ -11,7 +11,7 @@ import type {
   LiveMapDocumentTarget,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
-import { create_livetree } from "../livetree/creation/create-livetree.js";
+import { create_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import {
   document_binding_for_node,
@@ -31,7 +31,6 @@ import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.
 import {
   DOCUMENT_BINDING_ALREADY_BOUND_ERROR_CODE,
   DOCUMENT_BINDING_DISPOSED_ERROR_CODE,
-  DOCUMENT_BINDING_DELEGATION_ROOT_FORBIDDEN_ERROR_CODE,
   DOCUMENT_BINDING_DELEGATION_TARGET_INVALID_ERROR_CODE,
   DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE,
   DOCUMENT_BINDING_DOM_MAPPING_MISMATCH_ERROR_CODE,
@@ -54,6 +53,10 @@ import {
   plan_document_root_convergence,
   type DocumentRootMaterial,
 } from "./liveproject.document.root.js";
+import {
+  default_livetree_runtime,
+  type LiveTreeRuntime,
+} from "../livetree/runtime/livetree-runtime.js";
 
 export type DocumentLiveTreeBindingStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
 
@@ -73,7 +76,17 @@ type ProjectedRegistration = DocumentBindingNodeRegistration & Readonly<{
 const ACTIVE_DOCUMENT_BINDINGS = new WeakSet<ElementLiveMap>();
 
 /** Internal attribute-only proof that projects one ElementLiveMap into one LiveTree. */
-export function bind_document_livetree(map: ElementLiveMap): DocumentLiveTreeBinding {
+export function bind_document_livetree(
+  map: ElementLiveMap,
+): DocumentLiveTreeBinding {
+  return bind_document_livetree_in_runtime(map, default_livetree_runtime());
+}
+
+/** Bind a document projection into an already-selected LiveTree runtime. @internal */
+export function bind_document_livetree_in_runtime(
+  map: ElementLiveMap,
+  runtime: LiveTreeRuntime,
+): DocumentLiveTreeBinding {
   if (ACTIVE_DOCUMENT_BINDINGS.has(map)) {
     throw new DocumentLiveTreeBindingError(
       DOCUMENT_BINDING_ALREADY_BOUND_ERROR_CODE,
@@ -95,7 +108,7 @@ export function bind_document_livetree(map: ElementLiveMap): DocumentLiveTreeBin
   }
   let tree: LiveTree;
   try {
-    tree = create_livetree(sourceElement);
+    tree = create_livetree_in_runtime(sourceElement, runtime);
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_BINDING_PROJECTION_FAILED_ERROR_CODE, "Initial LiveTree projection construction failed.");
@@ -237,13 +250,26 @@ export function bind_document_livetree(map: ElementLiveMap): DocumentLiveTreeBin
     map.document.content.remove(registration.canonicalTarget, 0);
   };
 
-  const delegate_remove = (registration: ProjectedRegistration): 1 => {
+  const dispose_binding = (): void => {
+    if (currentStatus === "disposed") return;
+    const disposeObserver = off;
+    off = undefined;
+    disposeObserver?.();
+    for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+    byPath.clear();
+    byQuid.clear();
+    ACTIVE_DOCUMENT_BINDINGS.delete(map);
+    currentStatus = "disposed";
+  };
+
+  const delegate_remove = (registration: ProjectedRegistration): 1 | undefined => {
     canonical_node_for(registration);
     if (registration.canonicalPath.length === 0) {
-      throw new DocumentLiveTreeBindingError(
-        DOCUMENT_BINDING_DELEGATION_ROOT_FORBIDDEN_ERROR_CODE,
-        "The bound document root cannot be removed through LiveTree.remove().",
-      );
+      // Root removal is terminal lifecycle of the borrowed projection, not a
+      // canonical LiveMap edit. Stop the bridge first, then let LiveTree own
+      // its normal runtime teardown.
+      dispose_binding();
+      return undefined;
     }
     const index = registration.canonicalPath[registration.canonicalPath.length - 1]!;
     const parentPath = Object.freeze(registration.canonicalPath.slice(0, -1));
@@ -567,17 +593,7 @@ export function bind_document_livetree(map: ElementLiveMap): DocumentLiveTreeBin
       }
       return Object.freeze({ projectionTransactions, registeredElements: registrations.length });
     },
-    dispose: () => {
-      if (currentStatus === "disposed") return;
-      const disposeObserver = off;
-      off = undefined;
-      disposeObserver?.();
-      for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
-      byPath.clear();
-      byQuid.clear();
-      ACTIVE_DOCUMENT_BINDINGS.delete(map);
-      currentStatus = "disposed";
-    },
+    dispose: dispose_binding,
   });
   return binding;
 }

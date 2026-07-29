@@ -22,6 +22,10 @@ import {
   delegate_document_empty_if_bound,
   delegate_document_remove_if_bound,
 } from "./document-binding-state.js";
+import {
+  runtime_for_tree,
+  type LiveTreeRuntime,
+} from "../runtime/livetree-runtime.js";
 
 type LifecycleTree = Pick<LiveTree, "node">;
 
@@ -34,7 +38,7 @@ export function empty_livetree_contents<TTree extends LifecycleTree>(tree: TTree
   for (const root of roots) release_node_parent(root, owner);
 
   for (const root of roots) {
-    dispose_node_deep(root);
+    dispose_node_deep(root, runtime_for_tree(tree));
     release_subtree_ownership(root);
   }
 
@@ -56,7 +60,7 @@ export function detach_livetree_contents<TTree extends LifecycleTree>(tree: TTre
   }
 
   get_el_for_node(owner)?.replaceChildren();
-  return make_detached_live_content(content);
+  return make_detached_live_content(content, runtime_for_tree(tree));
 }
 
 export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
@@ -75,6 +79,7 @@ export function detach_livetree(tree: LiveTree): LiveTreeLifecycleResult {
 
 export function remove_livetree_terminal(
   node: HsonNode,
+  runtime: LiveTreeRuntime,
 ): LiveTreeLifecycleResult {
   const delegated = delegate_document_remove_if_bound(node);
   if (delegated !== undefined) return delegated;
@@ -83,12 +88,15 @@ export function remove_livetree_terminal(
   assert_not_browser_owned_root(node, "remove");
 
   unlink_node_from_parent(node);
-  dispose_node_deep(node);
+  dispose_node_deep(node, runtime);
   release_subtree_ownership(node);
   return 1;
 }
 
-function make_detached_live_content(content: NodeContent): DetachedLiveContent {
+function make_detached_live_content(
+  content: NodeContent,
+  runtime: LiveTreeRuntime,
+): DetachedLiveContent {
   let attached = false;
 
   return Object.freeze({
@@ -98,7 +106,7 @@ function make_detached_live_content(content: NodeContent): DetachedLiveContent {
     },
     appendTo<TTree extends LiveTree>(target: TTree): TTree {
       if (attached) throw new LiveTreeAlreadyAttachedError("append detached contents");
-      append_detached_content(target, content);
+      append_detached_content(target, content, runtime);
       attached = true;
       return target;
     },

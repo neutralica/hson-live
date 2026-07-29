@@ -5,8 +5,9 @@ import { unwrap_root_elem } from "../../transform/utils/html-utils/unwrap-root-e
 import { _throw_transform_err } from "../../transform/utils/sys-utils/throw-transform-err.utils.js";
 import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
-import { create_livetree } from "./create-livetree.js";
+import { create_livetree, create_livetree_in_runtime } from "./create-livetree.js";
 import { scan_ingested_hson_node_quids } from "../../transform/utils/hson-utils/quid-ingress.js";
+import type { LiveTreeRuntime } from "../runtime/livetree-runtime.js";
 
 /**
  * Normalize a parsed HSON root into a detached `LiveTree` branch.
@@ -25,7 +26,7 @@ import { scan_ingested_hson_node_quids } from "../../transform/utils/hson-utils/
  */
 export function make_branch_from_node(
   rootNode: HsonNode,
-  opts?: { quidGraphValidated?: boolean },
+  opts?: { quidGraphValidated?: boolean; runtime?: LiveTreeRuntime },
 ): LiveTree {
   if (!opts?.quidGraphValidated) {
     scan_ingested_hson_node_quids(rootNode, "createBranchFromNode");
@@ -43,6 +44,8 @@ export function make_branch_from_node(
   }
 
   const actualRoot = unwrapped[0];
-  return create_livetree(actualRoot);
+  return opts?.runtime === undefined
+    ? create_livetree(actualRoot)
+    : create_livetree_in_runtime(actualRoot, opts.runtime);
 
 }

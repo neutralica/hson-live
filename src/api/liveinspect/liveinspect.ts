@@ -30,6 +30,7 @@ import { project_keyed_collection } from "../liveproject/liveproject.keyed.js";
 import { LiveProjectionError, LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE } from "../liveproject/liveproject.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
+import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
 import {
   LIVE_INSPECTOR_DISPOSED_ERROR_CODE,
   LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE,
@@ -236,7 +237,12 @@ class InspectorController {
       }));
       this.recordMaterialization(this.rootProjection, rootStarted);
       this.rootProjectionOff = this.rootProjection.subscribe(() => this.onRootProjectionChange());
-      own_disposable_for_owner(this.inspectorRoot.quid, () => this.dispose(), "other");
+      own_disposable_for_owner(
+        this.inspectorRoot.quid,
+        () => this.dispose(),
+        "other",
+        runtime_for_tree(this.inspectorRoot),
+      );
       this.currentStatus = "ready";
       this.initializing = false;
       this.renderDetails();
@@ -1253,7 +1259,14 @@ class BranchController {
       const result = selected.renderer(readonlyHandle(this.source), context);
       const normalized = normalizeAuxiliary(result);
       this.previewHost.append(normalized.tree);
-      if (normalized.dispose !== undefined) own_disposable_for_owner(normalized.tree.quid, normalized.dispose, "other");
+      if (normalized.dispose !== undefined) {
+        own_disposable_for_owner(
+          normalized.tree.quid,
+          normalized.dispose,
+          "other",
+          runtime_for_tree(normalized.tree),
+        );
+      }
       this.auxiliary = { name: selected.name, tree: normalized.tree, update: normalized.update };
       this.specializationName = selected.name;
       this.defaultPreview.flags.set("hidden");

@@ -11,34 +11,6 @@ const GLOBAL_VARS_RULE_KEY = "global-vars::root";
 const GLOBAL_VARS_SELECTOR = ":root";
 
 /**
- * GlobalCss change subscribers.
- *
- * Subscribers are notified after rule state changes and are expected to
- * trigger stylesheet re-rendering.
- */
-const _listeners = new Set<() => void>();
-
-/**
- * Whether a subscriber notification is already queued.
- */
-let _pending = false;
-
-/**
- * Queue one batched notification for all GlobalCss subscribers.
- *
- * Multiple mutations in the same turn are coalesced into one microtask.
- */
-function notifyChanged(): void {
-  if (_pending) return;
-  _pending = true;
-
-  queueMicrotask(() => {
-    _pending = false;
-    for (const fn of _listeners) fn();
-  });
-}
-
-/**
  * Render a StyleSetter value into CSS declaration text.
  *
  * @param v Value supplied through the StyleSetter surface.
@@ -219,10 +191,21 @@ export class GlobalCss {
 
   private readonly rules = new Map<string, GlobalRule>();
   private readonly rendered = new Map<string, string>();
+  private readonly listeners = new Set<() => void>();
+  private pending = false;
 
   public static invoke(): GlobalCss {
     if (!this._inst) this._inst = new GlobalCss();
     return this._inst;
+  }
+
+  private notifyChanged(): void {
+    if (this.pending) return;
+    this.pending = true;
+    queueMicrotask(() => {
+      this.pending = false;
+      for (const fn of this.listeners) fn();
+    });
   }
 
   /**
@@ -235,17 +218,23 @@ export class GlobalCss {
  * @returns A stable rule-management API.
  */
   public static api(onChange: () => void) {
-    _listeners.add(onChange);
+    return GlobalCss.invoke().api(onChange);
+  }
 
-    const g = () => GlobalCss.invoke();
+  /** Runtime-local facade factory. @internal */
+  public api(onChange: () => void) {
+    this.listeners.add(onChange);
+
+    const g = () => this;
     const root = g().facade([]);
 
     return {
       ...root,
       var: g().varsFacade(),
-      dispose: () => { _listeners.delete(onChange); },
+      dispose: () => { this.listeners.delete(onChange); },
       drop: (ruleKey: string) => g().remove(ruleKey),
       dropByPrefix: (prefix: string) => g().removeByPrefix(prefix),
+      dropBySelectorFragment: (fragment: string) => g().removeBySelectorFragment(fragment),
       clearAll: () => g().clear(),
       has: (ruleKey: string) => g().has(ruleKey),
       list: () => g().list(),
@@ -261,7 +250,7 @@ export class GlobalCss {
  * @returns A facade for creating rules and nested scoped facades.
  */
   private facade(scopes: readonly string[] = []) {
-    const g = () => GlobalCss.invoke();
+    const g = () => this;
 
     return {
       rule: (ruleKey: string, selector: string) =>
@@ -327,7 +316,7 @@ export class GlobalCss {
         const hadRule = this.rules.delete(ruleKey);
         const hadRendered = this.rendered.delete(ruleKey);
 
-        if (hadRule || hadRendered) notifyChanged();
+        if (hadRule || hadRendered) this.notifyChanged();
         return;
       }
 
@@ -336,7 +325,7 @@ export class GlobalCss {
 
       this.rules.set(ruleKey, { selector, decls: { ...decls }, scopes: [...scopes] });
       this.rendered.set(ruleKey, cssText);
-      notifyChanged();
+      this.notifyChanged();
     };
 
 
@@ -401,7 +390,7 @@ export class GlobalCss {
         const pseudoKey = `${ruleKey}${suf}`;
         const pseudoSelector = `${selector}${suf}`;
 
-        const h = GlobalCss.invoke().rule(pseudoKey, pseudoSelector, scopes);
+        const h = this.rule(pseudoKey, pseudoSelector, scopes);
         h.setMany(pseudoDecls);
 
         if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
@@ -421,7 +410,7 @@ export class GlobalCss {
         const hadRule = this.rules.delete(ruleKey);
         const hadRendered = this.rendered.delete(ruleKey);
 
-        if (hadRule || hadRendered) notifyChanged();
+        if (hadRule || hadRendered) this.notifyChanged();
       },
     };
   }
@@ -457,7 +446,7 @@ export class GlobalCss {
         const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
         const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
 
-        if (hadRule || hadRendered) notifyChanged();
+        if (hadRule || hadRendered) this.notifyChanged();
         return;
       }
 
@@ -471,7 +460,7 @@ export class GlobalCss {
       });
 
       this.rendered.set(GLOBAL_VARS_RULE_KEY, cssText);
-      notifyChanged();
+      this.notifyChanged();
     };
 
     return {
@@ -522,7 +511,7 @@ export class GlobalCss {
         const hadRule = this.rules.delete(GLOBAL_VARS_RULE_KEY);
         const hadRendered = this.rendered.delete(GLOBAL_VARS_RULE_KEY);
 
-        if (hadRule || hadRendered) notifyChanged();
+        if (hadRule || hadRendered) this.notifyChanged();
       },
 
       list: () => {
@@ -558,7 +547,7 @@ export class GlobalCss {
     const hadRule = this.rules.delete(source);
     const hadRendered = this.rendered.delete(source);
 
-    if (hadRule || hadRendered) notifyChanged();
+    if (hadRule || hadRendered) this.notifyChanged();
   }
 /**
  * Remove all global rules whose key begins with the supplied prefix.
@@ -587,8 +576,21 @@ private removeByPrefix(prefixRaw: string): void {
     changed = true;
   }
 
-  if (changed) notifyChanged();
+  if (changed) this.notifyChanged();
 }
+
+  private removeBySelectorFragment(fragmentRaw: string): void {
+    const fragment = fragmentRaw.trim();
+    if (!fragment) return;
+    let changed = false;
+    for (const [key, rule] of [...this.rules]) {
+      if (!rule.selector.includes(fragment)) continue;
+      this.rules.delete(key);
+      this.rendered.delete(key);
+      changed = true;
+    }
+    if (changed) this.notifyChanged();
+  }
   /**
    * Remove all global rules.
    */
@@ -596,7 +598,7 @@ private removeByPrefix(prefixRaw: string): void {
     if (this.rules.size === 0 && this.rendered.size === 0) return;
     this.rules.clear();
     this.rendered.clear();
-    notifyChanged();
+    this.notifyChanged();
   }
 
   /**

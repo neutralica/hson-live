@@ -2,6 +2,13 @@
 
 # 2DÜ
 
+## High priority after Node LiveHost refactor, before SSR
+
+• Close the deferred mutable-global findings in
+  `docs/livetree-runtime-scope.md`: LiveHost identity/trace counters and
+  authority ownership, transform sanitizer injection, materialization profiling
+  state, and the remaining ambient document/window entrypoints.
+
 ## 14JUL2026
 • liveTree.fuse? method to append conventional DOM to LiveTree and preserve it 
 

@@ -21,6 +21,12 @@ import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
 import {
+  bind_graph_runtime,
+  default_livetree_runtime,
+  runtime_for_node,
+  type LiveTreeRuntime,
+} from "../livetree/runtime/livetree-runtime.js";
+import {
   DOCUMENT_BINDING_CONTENT_INDEX_INVALID_ERROR_CODE,
   DOCUMENT_BINDING_CONTENT_MISMATCH_ERROR_CODE,
   DOCUMENT_BINDING_CONTENT_PATH_INVALID_ERROR_CODE,
@@ -47,6 +53,7 @@ export type DocumentStructuralPlan = Readonly<{
   finalNodes: ReadonlySet<HsonNode>;
   removedRoots: readonly HsonNode[];
   affectedOwners: readonly HsonNode[];
+  runtime: LiveTreeRuntime;
 }>;
 
 type PersistedQuidLookup = (node: HsonNode) => string | undefined;
@@ -59,6 +66,7 @@ export function plan_document_structural_transaction(
   persistedQuidForExisting: PersistedQuidLookup,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
+  const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
   const affectedOwners = new Set<ShadowNode>();
 
   for (const operation of operations) {
@@ -117,12 +125,18 @@ export function plan_document_structural_transaction(
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
   const finalNodes = new Set<HsonNode>();
   collect_shadow_nodes(root, finalNodes);
-  validate_final_quids(root, oldNodes, finalNodes);
+  validate_final_quids(root, oldNodes, finalNodes, runtime);
   const removedRoots = find_removed_roots(projectedRoot, finalNodes);
   const mountedAffectedOwners = [...affectedOwners]
     .map((shadow) => shadow.node)
     .filter((node) => finalNodes.has(node) && get_el_for_node(node) !== undefined);
-  return Object.freeze({ root, finalNodes, removedRoots, affectedOwners: Object.freeze(mountedAffectedOwners) });
+  return Object.freeze({
+    root,
+    finalNodes,
+    removedRoots,
+    affectedOwners: Object.freeze(mountedAffectedOwners),
+    runtime,
+  });
 }
 
 /** Plan complete compatible-root convergence while retaining the projected root object. */
@@ -132,6 +146,7 @@ export function plan_document_root_structural_transaction(
   persistedQuidForExisting: PersistedQuidLookup,
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
+  const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
   root.attrs = must_attrs(canonicalFinalRoot.$_attrs ?? {});
   root.content = canonicalFinalRoot.$_content.map((item, index) =>
     plan_root_replacement(root, root.content[index], item));
@@ -140,7 +155,7 @@ export function plan_document_root_structural_transaction(
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
   const finalNodes = new Set<HsonNode>();
   collect_shadow_nodes(root, finalNodes);
-  validate_final_quids(root, oldNodes, finalNodes);
+  validate_final_quids(root, oldNodes, finalNodes, runtime);
   const removedRoots = find_removed_roots(projectedRoot, finalNodes);
   const mountedOwners: HsonNode[] = [];
   walk_shadow(root, (shadow) => {
@@ -149,7 +164,7 @@ export function plan_document_root_structural_transaction(
     }
   });
   const affectedOwners = Object.freeze(mountedOwners);
-  return Object.freeze({ root, finalNodes, removedRoots, affectedOwners });
+  return Object.freeze({ root, finalNodes, removedRoots, affectedOwners, runtime });
 }
 
 function plan_root_replacement(
@@ -181,13 +196,14 @@ function plan_root_replacement(
 /** Apply one fully validated structural plan through explicit internal graph/DOM machinery. */
 export function apply_document_structural_transaction(plan: DocumentStructuralPlan): void {
   apply_shadow_node(plan.root);
+  bind_graph_runtime(plan.root.node, plan.runtime);
   for (const removed of plan.removedRoots) {
     release_subtree_ownership(removed);
-    dispose_node_deep(removed);
+    dispose_node_deep(removed, plan.runtime);
   }
   index_subtree_ownership(plan.root.node);
 
-  for (const owner of plan.affectedOwners) reconcile_owner_dom(owner);
+  for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
 }
 
 function shadow_existing(
@@ -195,13 +211,12 @@ function shadow_existing(
   persistedQuidForExisting: PersistedQuidLookup,
   parent?: ShadowNode,
 ): ShadowNode {
+  const persistedQuid = persistedQuidForExisting(node);
   const shadow: ShadowNode = {
     node,
     fresh: false,
     ...(parent === undefined ? {} : { parent }),
-    ...(persistedQuidForExisting(node) === undefined
-      ? {}
-      : { persistedQuid: persistedQuidForExisting(node) }),
+    ...(persistedQuid === undefined ? {} : { persistedQuid }),
     attrs: must_attrs(node.$_attrs ?? {}),
     content: [],
   };
@@ -315,12 +330,17 @@ function copy_replacement_shell(target: HsonNode, source: HsonNode): void {
   else target.$_meta = clone_node(source.$_meta);
 }
 
-function reconcile_owner_dom(owner: HsonNode): void {
+function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
   const element = get_el_for_node(owner);
   if (element === undefined) return;
   try {
     const namespace: "html" | "svg" = element.namespaceURI === "http://www.w3.org/2000/svg" ? "svg" : "html";
-    const desired = flatten_dom_content(owner.$_content, namespace);
+    const desired = flatten_dom_content(
+      owner.$_content,
+      namespace,
+      runtime,
+      element.ownerDocument,
+    );
     element.replaceChildren(...desired);
   } catch (cause) {
     throw new DocumentLiveTreeBindingError(
@@ -331,31 +351,45 @@ function reconcile_owner_dom(owner: HsonNode): void {
   }
 }
 
-function flatten_dom_content(content: readonly (HsonNode | Primitive)[], namespace: "html" | "svg"): Node[] {
+function flatten_dom_content(
+  content: readonly (HsonNode | Primitive)[],
+  namespace: "html" | "svg",
+  runtime: LiveTreeRuntime,
+  ownerDocument: Document,
+): Node[] {
   const result: Node[] = [];
-  for (const item of content) result.push(...flatten_dom_item(item, namespace));
+  for (const item of content) {
+    result.push(...flatten_dom_item(item, namespace, runtime, ownerDocument));
+  }
   return result;
 }
 
-function flatten_dom_item(item: HsonNode | Primitive, namespace: "html" | "svg"): Node[] {
-  if (!is_Node(item)) return [document.createTextNode(String(item ?? ""))];
+function flatten_dom_item(
+  item: HsonNode | Primitive,
+  namespace: "html" | "svg",
+  runtime: LiveTreeRuntime,
+  ownerDocument: Document,
+): Node[] {
+  if (!is_Node(item)) return [ownerDocument.createTextNode(String(item ?? ""))];
   if (item.$_tag === STR_TAG || item.$_tag === VAL_TAG) {
-    return [document.createTextNode(String(item.$_content[0] ?? ""))];
+    return [ownerDocument.createTextNode(String(item.$_content[0] ?? ""))];
   }
   if (item.$_tag === ARR_TAG) {
     const result: Node[] = [];
     for (const wrapper of item.$_content) {
       const payload = is_Node(wrapper) ? wrapper.$_content[0] : undefined;
-      if (payload !== undefined && payload !== null) result.push(...flatten_dom_item(payload, namespace));
+      if (payload !== undefined && payload !== null) {
+        result.push(...flatten_dom_item(payload, namespace, runtime, ownerDocument));
+      }
     }
     return result;
   }
   if (item.$_tag === ROOT_TAG || item.$_tag === OBJ_TAG || item.$_tag === ELEM_TAG) {
-    return flatten_dom_content(item.$_content, namespace);
+    return flatten_dom_content(item.$_content, namespace, runtime, ownerDocument);
   }
   const existing = get_el_for_node(item);
   if (existing !== undefined) return [existing];
-  return [project_livetree(item, namespace)];
+  return [project_livetree(item, namespace, runtime, ownerDocument)];
 }
 
 function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode): void {
@@ -372,7 +406,12 @@ function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNo
   }
 }
 
-function validate_final_quids(root: ShadowNode, oldNodes: ReadonlySet<HsonNode>, finalNodes: ReadonlySet<HsonNode>): void {
+function validate_final_quids(
+  root: ShadowNode,
+  oldNodes: ReadonlySet<HsonNode>,
+  finalNodes: ReadonlySet<HsonNode>,
+  runtime: LiveTreeRuntime,
+): void {
   const byQuid = new Map<string, HsonNode>();
   walk_shadow(root, (shadow) => {
     const quid = shadow.persistedQuid;
@@ -385,7 +424,7 @@ function validate_final_quids(root: ShadowNode, oldNodes: ReadonlySet<HsonNode>,
       );
     }
     byQuid.set(quid, shadow.node);
-    const registered = get_node_by_quid(quid);
+    const registered = get_node_by_quid(quid, runtime);
     if (registered !== undefined && registered !== shadow.node
       && (!oldNodes.has(registered) || finalNodes.has(registered))) {
       throw new DocumentLiveTreeBindingError(

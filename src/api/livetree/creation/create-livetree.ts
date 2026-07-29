@@ -6,11 +6,25 @@
 import { HsonNode } from "../../../core/types.js";
 import { LiveTree } from "../livetree.js";
 import { assert_livetree_node_active } from "../livetree-state.js";
+import {
+  runtime_for_tree,
+  type LiveTreeRuntime,
+  with_livetree_construction_runtime,
+} from "../runtime/livetree-runtime.js";
 
 // CHANGE: canonical creation for a standalone branch (no parent roots).
 export function create_livetree(node: HsonNode): LiveTree {
   assert_livetree_node_active(node, "create a LiveTree handle");
   return new LiveTree(node);
+}
+
+/** Construct a handle in one already-selected runtime. @internal */
+export function create_livetree_in_runtime(
+  node: HsonNode,
+  runtime: LiveTreeRuntime,
+): LiveTree {
+  assert_livetree_node_active(node, "create a LiveTree handle");
+  return with_livetree_construction_runtime(node, runtime, () => new LiveTree(node));
 }
 
 
@@ -34,5 +48,6 @@ export function create_livetree(node: HsonNode): LiveTree {
  */
 export function wrap_in_tree(parent: LiveTree, node: HsonNode): LiveTree {
   // CHANGE: adopt the parent’s host root context.
-  return create_livetree(node).adoptRoots(parent.hostRootNode());
+  return create_livetree_in_runtime(node, runtime_for_tree(parent))
+    .adoptRoots(parent.hostRootNode());
 }

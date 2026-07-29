@@ -12,6 +12,7 @@ import { SvgLiveTree } from "../../../types/svg.types.js";
 import { _DATA_QUID, ensure_quid, get_node_by_quid } from "../quid/data-quid.js";
 import { wrap_in_tree } from "../creation/create-livetree.js";
 import { is_Node } from "../../../core/node-guards.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 // “batching” helpers + queryish types
 
@@ -353,7 +354,7 @@ export function make_find_for(tree: LiveTree): FindWithById {
   base.must = mustBase;
 
   base.byQuid = (quid: string): LiveTree | undefined => {
-    const node = get_node_by_quid(quid);
+    const node = get_node_by_quid(quid, runtime_for_tree(tree));
     if (!node) return undefined;
     if (!node_in_subtree(tree.node, node)) return undefined;
     return wrap_in_tree(tree, node);

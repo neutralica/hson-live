@@ -5,7 +5,6 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { bind_document_livetree } from "../src/api/liveproject/liveproject.document.ts";
 import {
-  DOCUMENT_BINDING_DELEGATION_ROOT_FORBIDDEN_ERROR_CODE,
   DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE,
   DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE,
   DocumentLiveTreeBindingError,
@@ -167,9 +166,9 @@ check("nested remove and removeSelf delegate one raw parent-slot removal", () =>
   assert.equal(raw_node(map.element.node(), [0, 0]).$_tag, "c");
   assert.equal(observations.length, 3);
   assert.equal(binding.diagnostics().projectionTransactions, 3);
-  assert.throws(() => binding.tree.remove(), (cause) => cause instanceof DocumentLiveTreeBindingError
-    && cause.code === DOCUMENT_BINDING_DELEGATION_ROOT_FORBIDDEN_ERROR_CODE);
-  assert.equal(binding.status, "active");
+  assert.equal(binding.tree.remove(), 1);
+  assert.equal(binding.status, "disposed");
+  assert.equal(map.element.node().$_tag, "main");
   binding.dispose();
 });
 

@@ -47,6 +47,13 @@ import type { DetachedLiveContent, LiveTreeLifecycleResult } from "../../types/l
 import { guard_api_surface } from "./utils/guard-api-surface.js";
 import { record_livetree_materialization } from "./debug/materialization-profile.js";
 import { assert_document_structural_mutation_allowed } from "./lifecycle/document-binding-state.js";
+import {
+  bind_tree_runtime,
+  default_livetree_runtime,
+  requested_runtime_for_construction,
+  runtime_for_node,
+  runtime_for_tree,
+} from "./runtime/livetree-runtime.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
@@ -82,9 +89,9 @@ class LiveTreeNodeRef implements NodeRef {
   }
 }
 
-function makeRef(node: HsonNode, admittedQuid?: string): NodeRef {
+function makeRef(node: HsonNode, admittedQuid: string | undefined, tree: LiveTree): NodeRef {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  const q = admittedQuid ?? ensure_quid(node);
+  const q = admittedQuid ?? ensure_quid(node, undefined, runtime_for_tree(tree));
   return new LiveTreeNodeRef(q, node);
 }
 
@@ -157,10 +164,10 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   private setRef(input: HsonNode | LiveTree, admittedQuid?: string): void {
     this.invalidate_dom_api();
     if (input instanceof LiveTree) {
-      this.nodeRef = makeRef(input.node, admittedQuid);
+      this.nodeRef = makeRef(input.node, admittedQuid, this);
       return;
     }
-    this.nodeRef = makeRef(input, admittedQuid);
+    this.nodeRef = makeRef(input, admittedQuid, this);
   }
   /**
    * Internal helper to assign the `hostRoot` for this `LiveTree`.
@@ -203,8 +210,14 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    */
   constructor(input: HsonNode | LiveTree) {
     const inputNode = input instanceof LiveTree ? input.node : input;
+    const runtime = input instanceof LiveTree
+      ? runtime_for_tree(input)
+      : requested_runtime_for_construction(inputNode)
+        ?? runtime_for_node(inputNode)
+        ?? default_livetree_runtime();
     assert_livetree_node_active(inputNode, "create a LiveTree handle");
-    const admittedQuid = admit_livetree_quid_graph(inputNode);
+    const admittedQuid = admit_livetree_quid_graph(inputNode, runtime);
+    bind_tree_runtime(this, runtime);
     record_livetree_materialization("liveTreeInstances");
     this.setRoot(input);
     this.setRef(input, admittedQuid);
@@ -327,7 +340,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   public remove(): LiveTreeLifecycleResult {
     const node = this.nodeRef.resolveNode();
     if (!node) return 0;
-    return remove_livetree_terminal(node);
+    return remove_livetree_terminal(node, runtime_for_tree(this));
   }
 
 
@@ -389,6 +402,10 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
   public adoptRoots(root: HsonNode): this {
     this.assertActive("adopt roots");
     assert_livetree_node_active(root, "adopt disposed root");
+    const rootRuntime = runtime_for_node(root);
+    if (rootRuntime !== undefined && rootRuntime !== runtime_for_tree(this)) {
+      throw new Error("LiveTree cannot adopt a host root from another runtime scope.");
+    }
     this.hostRoot = root;
     return this;
   }
@@ -468,7 +485,7 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
     this.assertActive("access events");
     if (!this.eventsInternal) {
       this.eventsInternal = guard_api_surface(
-        make_tree_events(this.quid),
+        make_tree_events(this.quid, runtime_for_tree(this)),
         () => this.assertActive("access events"),
         this,
       );

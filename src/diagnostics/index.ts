@@ -36,6 +36,24 @@ export type {
   LiveTraceStatus,
   LiveTraceSubsystem,
 } from "../types/livehost.types.js";
+export {
+  bind_document_livetree_for_runtime_test as _bind_document_livetree_for_runtime_test,
+  create_livetree_for_runtime_test as _create_livetree_for_runtime_test,
+  create_livetree_runtime_test_handle as _create_livetree_runtime_test_handle,
+  dispose_livetree_runtime_test_handle as _dispose_livetree_runtime_test_handle,
+  livetree_runtime_test_claim_count as _livetree_runtime_test_claim_count,
+  livetree_runtime_test_css_manager as _livetree_runtime_test_css_manager,
+  livetree_runtime_test_owns_document as _livetree_runtime_test_owns_document,
+  livetree_runtime_test_resource_counts as _livetree_runtime_test_resource_counts,
+  livetree_runtime_test_same_runtime as _livetree_runtime_test_same_runtime,
+  lookup_livetree_runtime_test_node as _lookup_livetree_runtime_test_node,
+  own_livetree_runtime_test_disposable as _own_livetree_runtime_test_disposable,
+  project_livetree_for_runtime_test as _project_livetree_for_runtime_test,
+  register_livetree_runtime_test_document as _register_livetree_runtime_test_document,
+} from "./livetree-runtime.test.js";
+export type {
+  LiveTreeRuntimeTestHandle as _LiveTreeRuntimeTestHandle,
+} from "./livetree-runtime.test.js";
 export { append_branches_atomic as _append_livetree_branches_atomic } from "../api/livetree/methods/appends.js";
 
 export { parse_style_string as _parse_style_string } from "../api/transform/utils/attrs-utils/parse-style.js";

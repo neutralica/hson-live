@@ -7,7 +7,7 @@ import { is_Node } from "../../../core/node-guards.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { serialize_xml } from "../../transform/serializers/serialize-html.js";
 import { make_tree_selector } from "../creation/make-tree-selector.js";
-import { create_livetree } from "../creation/create-livetree.js";
+import { wrap_in_tree } from "../creation/create-livetree.js";
 import { LiveTree } from "../livetree.js";
 import { TreeSelector } from "../creation/tree-selector.js";
 
@@ -176,26 +176,20 @@ export class ContentManager {
   public at(ix: number): LiveTree | undefined {
     const n = this.at_node(ix);
     if (!n) return undefined;
-    const t = create_livetree(n);
-    t.adoptRoots(this.owner.hostRootNode());
-    return t;
+    return wrap_in_tree(this.owner, n);
   }
 
   /** Return a `LiveTree` handle for the first effective node-child. */
   public first(): LiveTree | undefined {
     const n = this.at_node(0);
     if (!n) return undefined;
-    const t = create_livetree(n);
-    t.adoptRoots(this.owner.hostRootNode());
-    return t;
+    return wrap_in_tree(this.owner, n);
   }
 
   /** Return a selector containing all effective node-children. */
   public all(): TreeSelector {
     const trees = this.effective_node_children().map((n) => {
-      const t = create_livetree(n);
-      t.adoptRoots(this.owner.hostRootNode());
-      return t;
+      return wrap_in_tree(this.owner, n);
     });
 
     return make_tree_selector(trees);
@@ -210,9 +204,7 @@ export class ContentManager {
    */
   public deep(): TreeSelector {
     const trees = this.effective_descendant_nodes().map((n) => {
-      const t = create_livetree(n);
-      t.adoptRoots(this.owner.hostRootNode());
-      return t;
+      return wrap_in_tree(this.owner, n);
     });
 
     return make_tree_selector(trees);
@@ -235,8 +227,6 @@ export class ContentManager {
       throw new Error(msg);
     }
 
-    const t = create_livetree(kids[0]!);
-    t.adoptRoots(this.owner.hostRootNode());
-    return t;
+    return wrap_in_tree(this.owner, kids[0]!);
   }
 }

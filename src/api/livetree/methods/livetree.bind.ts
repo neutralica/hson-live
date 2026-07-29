@@ -3,6 +3,7 @@
 import type { JsonValue, LivePath } from "../../../types/index.js";
 import type { LiveTree } from "../livetree.js";
 import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
 
@@ -140,6 +141,7 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue extends JsonValue 
     tree.quid,
     normalize_disposer(map.sub.path(path, sync)),
     "binding",
+    runtime_for_tree(tree),
   );
 }
 
@@ -159,7 +161,12 @@ function bind_paths_for<TTree extends LiveTreeBindable>(
 
   sync();
   const disposers = paths.map((path) => normalize_disposer(map.sub.path(path, sync)));
-  return own_disposable_for_owner(tree.quid, () => dispose_all(disposers), "binding");
+  return own_disposable_for_owner(
+    tree.quid,
+    () => dispose_all(disposers),
+    "binding",
+    runtime_for_tree(tree),
+  );
 }
 
 function bind_text_paths_for<TTree extends LiveTreeBindable>(

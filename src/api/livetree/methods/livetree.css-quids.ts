@@ -7,6 +7,22 @@ import { LiveTree } from "../livetree.js";
 import { CssManager, isLiveTree, pseudo_to_suffix } from "../managers/css-manager.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter, StyleGetterAdapters } from "../managers/style-getter.js";
 import { make_css_var_facade, make_style_setter, StyleSetter, StyleSetterAdapters } from "../managers/style-setter.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+
+function manager_for_host(host: LiveTree | void): CssManager {
+  return host
+    ? CssManager.forRuntime(
+      runtime_for_tree(host),
+      { claimAmbientDocument: true },
+    )
+    : CssManager.invoke();
+}
+
+function api_for_host(host: LiveTree | void): CssRuleFacade & ReturnType<typeof CssManager.api> {
+  return host
+    ? CssManager.apiForRuntime(runtime_for_tree(host))
+    : CssManager.api();
+}
 
 function cache_surface_value<TValue>(
   target: object,
@@ -48,7 +64,7 @@ const mkCssQuidAdapter = (
       // CHANGED: pseudos and nested selector blocks are now selector-backed
       // rules. Clearing a css handle should clear selector rules owned by this
       // same handle, but not selector rules owned by child nodes.
-      CssManager.api().dropByPrefix(selectorRuleOwnerKey(hostOrVoid, ids));
+      api_for_host(hostOrVoid).dropByPrefix(selectorRuleOwnerKey(hostOrVoid, ids));
     },
     applySelector: (pattern, decls) => {
       // CHANGED: setMany selector blocks must opt in with `&`. The public
@@ -56,11 +72,11 @@ const mkCssQuidAdapter = (
       // setMany keys should not be guessed into selectors.
       if (!is_explicit_selector_pattern(pattern)) return;
 
-      const selector = resolveSelector(ids, pattern);
+      const selector = resolveSelector(ids, pattern, mgr);
       // CHANGED: selector rules are keyed by their resolved selector, not the raw
       // pattern. This keeps set/get addressing identical for selector CSS.
       const ruleKey = selectorRuleKey(hostOrVoid, ids, selector);
-      const handle = CssManager.api().rule(ruleKey, selector);
+      const handle = api_for_host(hostOrVoid).rule(ruleKey, selector);
 
       handle.setMany(decls);
     },
@@ -68,9 +84,9 @@ const mkCssQuidAdapter = (
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
       // CHANGED: pseudo shorthand keys are now selector-rule sugar. This makes
       // `__before` and `css.selector("&::before")` address the same rule store.
-      const selector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`);
+      const selector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`, mgr);
       const ruleKey = selectorRuleKey(hostOrVoid, ids, selector);
-      const handle = CssManager.api().rule(ruleKey, selector);
+      const handle = api_for_host(hostOrVoid).rule(ruleKey, selector);
 
       handle.setMany(pseudoDecls);
       // auto-content for ::before/::after if omitted
@@ -81,21 +97,22 @@ const mkCssQuidAdapter = (
   };
 };
 
-function quidSelector(quid: string): string {
+function quidSelector(quid: string, manager: CssManager): string {
   const q = quid.trim();
   if (!q) throw new Error("quid_selector: empty quid");
-  return `[data-_quid="${q}"]`;
+  return manager.selectorForQuid(q);
 }
 
 function resolveSelector(
   ids: readonly string[],
   patternRaw: string,
+  manager: CssManager = CssManager.invoke(),
 ): string {
   const pattern = patternRaw.trim();
   if (!pattern) throw new Error("css.selector: empty selector pattern");
 
   return ids
-    .map((quid) => quidSelector(quid))
+    .map((quid) => quidSelector(quid, manager))
     // CHANGED: explicit `&` performs placeholder replacement. Without `&`,
     // css.selector(pattern) preserves the older appended-pattern behavior.
     .map((selfSel) => pattern.includes("&")
@@ -252,8 +269,8 @@ function mkSelectorStyleGetter(
   pattern: string,
   scopeKey = "",
 ): StyleGetterAdapters {
-  const gcss = CssManager.api();
-  const selector = resolveSelector(ids, pattern);
+  const gcss = api_for_host(host);
+  const selector = resolveSelector(ids, pattern, manager_for_host(host));
   const ruleKey = selectorRuleKey(host, ids, selector, scopeKey);
 
   return {
@@ -284,9 +301,10 @@ function mkSelectorStyleHandle<TReturn extends LiveTree | void>(
   ids: string[],
   patternRaw: string,
   scopeKey = "",
-  ruleApi: CssRuleFacade = CssManager.api(),
+  ruleApi?: CssRuleFacade,
 ): StyleHandle<TReturn> {
-  const setter = mkSelectorStyleSetter(ret, ids, patternRaw, scopeKey, ruleApi);
+  const runtimeRuleApi = ruleApi ?? api_for_host(ret);
+  const setter = mkSelectorStyleSetter(ret, ids, patternRaw, scopeKey, runtimeRuleApi);
   const getterAdapters = mkSelectorStyleGetter(ret, ids, patternRaw, scopeKey);
   const getMany = make_style_get_many(getterAdapters);
 
@@ -329,16 +347,17 @@ function mkSelectorStyleSetter<TReturn extends LiveTree | void>(
   ids: string[],
   patternRaw: string,
   scopeKey = "",
-  ruleApi: CssRuleFacade = CssManager.api(),
+  ruleApi?: CssRuleFacade,
 ): StyleSetter<TReturn> {
-  const gcss = CssManager.api();
+  const gcss = api_for_host(ret);
+  const runtimeRuleApi = ruleApi ?? gcss;
 
-  const selector = resolveSelector(ids, patternRaw);
+  const selector = resolveSelector(ids, patternRaw, manager_for_host(ret));
   // CHANGED: setter and getter must address the selector rule by the same
   // resolved selector+scope key.
   const ruleKey = selectorRuleKey(ret, ids, selector, scopeKey);
 
-  const handle = ruleApi.rule(ruleKey, selector);
+  const handle = runtimeRuleApi.rule(ruleKey, selector);
 
   return make_style_setter<TReturn>(ret, {
     apply: (propCanon, value) => {
@@ -361,7 +380,7 @@ function mkSelectorStyleSetter<TReturn extends LiveTree | void>(
     // keep pseudo support working on selector-scoped rules too
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
       const suf = pseudo_to_suffix(pseudo);
-      const pseudoHandle = ruleApi.rule(`${ruleKey}${suf}`, `${selector}${suf}`);
+      const pseudoHandle = runtimeRuleApi.rule(`${ruleKey}${suf}`, `${selector}${suf}`);
       pseudoHandle.setMany(pseudoDecls);
 
       if ((pseudo === "__before" || pseudo === "__after") && !("content" in pseudoDecls)) {
@@ -377,8 +396,9 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
   scopeKey: string,
   ruleApi: CssRuleFacade,
 ): CssHandleBase<TReturn> {
-  const gcss = CssManager.api();
-  const selector = resolveSelector(ids, "&");
+  const gcss = api_for_host(ret);
+  const manager = manager_for_host(ret);
+  const selector = resolveSelector(ids, "&", manager);
   const ruleKey = selectorRuleKey(ret, ids, selector, scopeKey);
   const handle = ruleApi.rule(ruleKey, selector);
 
@@ -399,7 +419,7 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
     applySelector: (pattern, decls) => {
       if (!is_explicit_selector_pattern(pattern)) return;
 
-      const scopedSelector = resolveSelector(ids, pattern);
+      const scopedSelector = resolveSelector(ids, pattern, manager);
       const scopedRuleKey = selectorRuleKey(ret, ids, scopedSelector, scopeKey);
       const scopedHandle = ruleApi.rule(scopedRuleKey, scopedSelector);
 
@@ -407,7 +427,7 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
     },
 
     applyPseudo: (pseudo: CssPseudoKey, pseudoDecls: CssMapBase) => {
-      const pseudoSelector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`);
+      const pseudoSelector = resolveSelector(ids, `&${pseudo_to_suffix(pseudo)}`, manager);
       const pseudoRuleKey = selectorRuleKey(ret, ids, pseudoSelector, scopeKey);
       const pseudoHandle = ruleApi.rule(pseudoRuleKey, pseudoSelector);
 
@@ -437,9 +457,9 @@ function mkScopedQuidStyleHandle<TReturn extends LiveTree | void>(
     atProperty: gcss.atProperty,
     keyframes: gcss.keyframes,
     get anim() {
-      return cache_surface_value(this, "anim", CssManager.invoke().animForQuids(ids));
+      return cache_surface_value(this, "anim", manager.animForQuids(ids));
     },
-    devSnapshot: () => CssManager.invoke().snapshot(),
+    devSnapshot: () => manager.snapshot(),
     selector: (pattern: string) => mkSelectorStyleHandle(ret, ids, pattern, scopeKey, ruleApi),
     media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("media", query)), ruleApi.media(query)),
     supports: (cond: SupportsQueryInput) => mkScopedQuidStyleHandle(ret, ids, joinScopeKey(scopeKey, scopeKeyFor("supports", cond)), ruleApi.supports(cond)),
@@ -496,7 +516,7 @@ function scopedMethods<TReturn extends LiveTree | void>(
   ret: TReturn,
   ids: string[],
 ) {
-  const gcss = CssManager.api();
+  const gcss = api_for_host(ret);
 
   return {
     media: (query: MediaQueryInput) => mkScopedQuidStyleHandle(ret, ids, scopeKeyFor("media", query), gcss.media(query)),
@@ -533,7 +553,9 @@ export function css_for_quids(
   a: LiveTree | readonly string[],
   b?: readonly string[],
 ): CssHandleBase<any> {
-  const mgr = CssManager.invoke();
+  const mgr = isLiveTree(a)
+    ? manager_for_host(a)
+    : CssManager.invoke();
 
   if (isLiveTree(a)) {
     const host: LiveTree = a;
