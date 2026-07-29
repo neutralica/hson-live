@@ -1,7 +1,7 @@
 // livehost.store.ts
 
 import { JsonValue } from "../../core/types.js";
-import { LiveHostResult, LiveHostStore, LiveHostStoreId, LiveHost, LiveHostActionPayloads, LiveHostStoreCreateOptions, LiveHostStoreEntry, LiveHostSocketLike, LiveHostDisposer } from "../../types/livehost.types.js";
+import { LiveHostResult, LiveHostStore, LiveHostStoreId, LiveHost, LiveHostActionPayloads, LiveHostStoreCreateOptions, LiveHostStoreEntry, LiveHostSocketLike, LiveHostDisposer, LiveHostConnectionContext } from "../../types/livehost.types.js";
 import { create_livehost } from "./livehost.core.js";
 
 
@@ -57,13 +57,17 @@ export function create_livehost_store(): LiveHostStore {
     return Array.from(hosts.entries(), ([id, host]) => Object.freeze({ id, host }));
   }
 
-  function connect(id: LiveHostStoreId, socket: LiveHostSocketLike): LiveHostResult<LiveHostDisposer> {
+  function connect(
+    id: LiveHostStoreId,
+    socket: LiveHostSocketLike,
+    context?: LiveHostConnectionContext,
+  ): LiveHostResult<LiveHostDisposer> {
     const host = hosts.get(id);
     if (!host) {
       return fail(`Unknown LiveHost store entry: ${id}`, "LIVEHOST_STORE_UNKNOWN_ID");
     }
 
-    return ok(host.connect(socket));
+    return ok(host.connect(socket, context));
   }
 
   return Object.freeze({

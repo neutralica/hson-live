@@ -13,9 +13,9 @@ function socket_pair() {
     server: { send(raw) { serverSent.push(raw); for (const fn of clientListeners) fn(raw); }, close() {}, onMessage(fn) { serverListeners.add(fn); return () => serverListeners.delete(fn); }, onClose() { return () => {}; } },
   };
 }
-function connect(host, clientId) {
+function connect(host, clientId, context) {
   const pair = socket_pair(); let request = 0, attempt = 0;
-  host.connect(pair.server);
+  host.connect(pair.server, context);
   const client = hson.liveHost.client({ socket: pair.client, clientId, actionId: () => `${clientId}-request-${++request}`, actionAttemptId: () => `${clientId}-attempt-${++attempt}` });
   client.connect(); return { client, pair };
 }
@@ -116,6 +116,20 @@ await check("throwing trace sinks cannot alter allow or deny", async () => {
 await check("authorization adds no protocol fields", async () => {
   const f = fixture({ authorizeAction: () => true }); const { client, pair } = connect(f.host, "wire"); await client.action("set", { value: 15 });
   for (const raw of [...pair.clientSent, ...pair.serverSent]) { const value = JSON.parse(raw); for (const key of ["authorizeAction", "authorization", "trace", "traceId"]) assert.equal(key in value, false); }
+});
+
+await check("opaque connection attachment reaches action policy without entering protocol", async () => {
+  const attachment = Object.freeze({ roles: ["writer"], secret: "attachment-only" });
+  let seen;
+  const f = fixture({ authorizeAction(context) { seen = context.connection; return true; } });
+  const { client, pair } = connect(f.host, "attached", {
+    principalId: "principal-a",
+    attachment,
+  });
+  assert.equal((await client.action("set", { value: 16 })).type, "ack");
+  assert.equal(seen.principalId, "principal-a");
+  assert.equal(seen.attachment, attachment);
+  assert.equal([...pair.clientSent, ...pair.serverSent].some((raw) => raw.includes("attachment-only")), false);
 });
 
 process.stdout.write(`# ${checks} LiveHost authorization checks passed\n`);

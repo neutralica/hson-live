@@ -15,6 +15,9 @@
     "glue format"
   ],
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0 <25"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -106,7 +109,8 @@
     "test:livehost-action-dedupe": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-action-dedupe.acceptance.mjs",
     "test:livehost-trace": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-trace.acceptance.mjs",
     "test:livehost-authorization": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-authorization.acceptance.mjs",
-    "test:livehost-node-hosting": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-node-hosting.acceptance.mts"
+    "test:livehost-node-hosting": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-node-hosting.acceptance.mts",
+    "test:livehost-bootstrap": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-bootstrap.acceptance.mts"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

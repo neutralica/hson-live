@@ -8,11 +8,18 @@ import {
   type BrowserWebSocketLike,
 } from "hson-live/livehost";
 import {
+  assert_supported_livehost_node_runtime,
+  create_node_exact_origin_policy,
   create_node_livehost_socket,
+  is_supported_livehost_node_runtime,
+  normalize_node_request,
   start_node_application_host,
+  type NodeApplicationSecurity,
   type NodeAuthorityNamespace,
   type NodeHostedApplication,
   type NodeHostOperationalEvent,
+  type NodePolicyResult,
+  type NodeRequestContext,
 } from "hson-live/livehost/node";
 import WebSocket, { type RawData } from "ws";
 
@@ -83,17 +90,17 @@ function browser_fixture(): Readonly<{
   return { raw, adapter };
 }
 
-function open_websocket(url: string): Promise<WebSocket> {
+function open_websocket(url: string, headers?: Readonly<Record<string, string>>): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const websocket = new WebSocket(url);
+    const websocket = new WebSocket(url, { headers });
     websocket.once("open", () => resolve(websocket));
     websocket.once("error", reject);
   });
 }
 
-function rejected_websocket_status(url: string): Promise<number> {
+function rejected_websocket_status(url: string, headers?: Readonly<Record<string, string>>): Promise<number> {
   return new Promise((resolve, reject) => {
-    const websocket = new WebSocket(url);
+    const websocket = new WebSocket(url, { headers });
     websocket.once("unexpected-response", (_request, response) => {
       resolve(response.statusCode ?? 0);
       response.resume();
@@ -108,6 +115,10 @@ function rejected_websocket_status(url: string): Promise<number> {
 
 function socket_close(websocket: WebSocket): Promise<number> {
   return new Promise((resolve) => websocket.once("close", (code) => resolve(code)));
+}
+
+function next_json_message(websocket: WebSocket): Promise<Readonly<Record<string, unknown>>> {
+  return new Promise((resolve) => websocket.once("message", (data) => resolve(JSON.parse(data.toString()))));
 }
 
 type MockApplication = Readonly<{
@@ -538,6 +549,487 @@ check("operational events remain structured and separate from protocol state", a
     ]),
   );
   assert.equal(events.some((event) => "authorityId" in event), false);
+});
+
+function production_security(
+  contexts: NodeRequestContext[] = [],
+  token = "correct-horse-battery-staple",
+): NodeApplicationSecurity {
+  const security: NodeApplicationSecurity = {
+    origin: create_node_exact_origin_policy({
+      allowedOrigins: ["https://public.example"],
+      allowMissing: false,
+      allowNull: false,
+    }),
+    authenticate(context) {
+      contexts.push(context);
+      return context.headers.get("authorization") === `Bearer ${token}`
+        ? {
+            ok: true,
+            value: Object.freeze({
+              id: "principal-a",
+              anonymous: false,
+              value: Object.freeze({ role: "tester" }),
+            }),
+          }
+        : { ok: false, status: 401, code: "AUTH_REQUIRED" };
+    },
+    authorizeAuthority: () => ({ ok: true, value: undefined }),
+  };
+  return Object.freeze(security);
+}
+
+function secure_application(
+  contexts: NodeRequestContext[] = [],
+  security: NodeApplicationSecurity = production_security(contexts),
+): MockApplication {
+  let accepts = 0;
+  let disposals = 0;
+  const registration: NodeHostedApplication = {
+    name: "secure",
+    authorities: [{ kind: "exact", value: "secure" }],
+    security,
+    httpRoutes: [{
+      method: "GET",
+      path: "/bootstrap",
+      access: "bootstrap-read",
+      bodyless: true,
+      handle(_request, response, context) {
+        contexts.push(context);
+        response.writeHead(200, { "content-type": "text/plain" });
+        response.end("secure");
+      },
+    }],
+    acceptWebSocket(_authorityId, websocket, context) {
+      accepts += 1;
+      contexts.push(context.request);
+      websocket.on("message", (message: RawData) => websocket.send(message));
+    },
+    dispose() {
+      disposals += 1;
+    },
+  };
+  return Object.freeze({
+    registration: Object.freeze(registration),
+    accepts: () => accepts,
+    disposals: () => disposals,
+  });
+}
+
+const secureHeaders = Object.freeze({
+  Origin: "https://public.example",
+  Authorization: "Bearer correct-horse-battery-staple",
+});
+
+check("supported Node runtime contract is explicit and executable-boundary only", () => {
+  assert.equal(is_supported_livehost_node_runtime("22.12.0"), true);
+  assert.equal(is_supported_livehost_node_runtime("22.20.1"), true);
+  assert.equal(is_supported_livehost_node_runtime("24.14.0"), true);
+  assert.equal(is_supported_livehost_node_runtime("20.11.0"), false);
+  assert.equal(is_supported_livehost_node_runtime("25.0.0"), false);
+  assert.throws(() => assert_supported_livehost_node_runtime("20.11.0"), />=22.12.0 <25/);
+});
+
+check("production registration requires explicit application security before listening", async () => {
+  const app = mock_application("insecure", [{ kind: "exact", value: "insecure" }]);
+  await assert.rejects(
+    start_node_application_host({
+      port: 0,
+      deployment: { mode: "production" },
+      applications: [app.registration],
+    }),
+    /requires explicit security policy/,
+  );
+  assert.equal(app.disposals(), 1);
+});
+
+check("direct mode ignores spoofed forwarded identity", async () => {
+  const contexts: NodeRequestContext[] = [];
+  const app = secure_application(contexts);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+  });
+  const response = await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: {
+      ...secureHeaders,
+      "X-Forwarded-For": "203.0.113.10",
+      "X-Forwarded-Proto": "https",
+      "X-Forwarded-Host": "spoof.example",
+    },
+  });
+  assert.equal(response.status, 200);
+  const context = contexts[0];
+  assert.equal(context?.proxyInterpretation, "direct");
+  assert.equal(context?.effectiveScheme, "http");
+  assert.notEqual(context?.effectiveHost, "spoof.example");
+  assert.notEqual(context?.effectiveClientAddress, "203.0.113.10");
+  await host.stop();
+});
+
+check("trusted immediate proxy supplies explicit first-hop external identity", async () => {
+  const contexts: NodeRequestContext[] = [];
+  const app = secure_application(contexts);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      proxy: {
+        trustImmediatePeer: () => true,
+        forwardedForHop: "first",
+      },
+    },
+    applications: [app.registration],
+  });
+  const response = await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: {
+      ...secureHeaders,
+      "X-Forwarded-For": "203.0.113.10, 10.0.0.4",
+      "X-Forwarded-Proto": "https",
+      "X-Forwarded-Host": "public.example",
+    },
+  });
+  assert.equal(response.status, 200);
+  const context = contexts[0];
+  assert.equal(context?.proxyInterpretation, "trusted-proxy");
+  assert.equal(context?.effectiveClientAddress, "203.0.113.10");
+  assert.equal(context?.effectiveOrigin, "https://public.example");
+  await host.stop();
+});
+
+check("trusted proxy rejects unsupported or malformed forwarded ambiguity", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      proxy: { trustImmediatePeer: () => true, forwardedForHop: "last" },
+    },
+    applications: [app.registration],
+  });
+  const response = await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: { ...secureHeaders, Forwarded: "for=203.0.113.10;proto=https" },
+  });
+  assert.equal(response.status, 400);
+  assert.equal(app.accepts(), 0);
+  await host.stop();
+});
+
+check("one exact origin policy protects HTTP and WebSocket before dispatch", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+  });
+  assert.equal((await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: { ...secureHeaders, Origin: "https://evil.example" },
+  })).status, 403);
+  assert.equal(await rejected_websocket_status(
+    `${host.url}?livehost=secure`,
+    { ...secureHeaders, Origin: "https://evil.example" },
+  ), 403);
+  assert.equal(app.accepts(), 0);
+  await host.stop();
+});
+
+check("missing and null browser origins require explicit policy choices", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+  });
+  assert.equal((await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: { Authorization: secureHeaders.Authorization },
+  })).status, 403);
+  assert.equal((await fetch(`${host.httpUrl}/bootstrap`, {
+    headers: { Authorization: secureHeaders.Authorization, Origin: "null" },
+  })).status, 403);
+  await host.stop();
+});
+
+check("authentication and authority authorization complete before callbacks or upgrade", async () => {
+  let authentication = 0;
+  let authorization = 0;
+  const securityValue: NodeApplicationSecurity = {
+    origin: () => ({ ok: true, value: undefined }),
+    authenticate() {
+      authentication += 1;
+      return { ok: false, status: 401, code: "AUTH_REQUIRED" };
+    },
+    authorizeAuthority() {
+      authorization += 1;
+      return { ok: true, value: undefined };
+    },
+  };
+  const security = Object.freeze(securityValue);
+  const app = secure_application([], security);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+  });
+  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`), 401);
+  assert.equal(authentication, 1);
+  assert.equal(authorization, 0);
+  assert.equal(app.accepts(), 0);
+  await host.stop();
+});
+
+check("HTTP bootstrap and WebSocket independently authenticate the same principal", async () => {
+  const principalIds: string[] = [];
+  const operations: string[] = [];
+  const securityValue: NodeApplicationSecurity = {
+    origin: create_node_exact_origin_policy({ allowedOrigins: ["https://public.example"] }),
+    authenticate() {
+      return { ok: true, value: { id: "same-user", anonymous: false } };
+    },
+    authorizeAuthority(_context, principal, operation) {
+      principalIds.push(principal.id ?? "");
+      operations.push(operation);
+      return { ok: true, value: undefined };
+    },
+  };
+  const security = Object.freeze(securityValue);
+  const app = secure_application([], security);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+  });
+  assert.equal((await fetch(`${host.httpUrl}/bootstrap`, { headers: secureHeaders })).status, 200);
+  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  websocket.close();
+  assert.deepEqual(principalIds, ["same-user", "same-user"]);
+  assert.deepEqual(operations, ["bootstrap-read", "websocket-connect"]);
+  await host.stop();
+});
+
+check("asynchronous policy is bounded before WebSocket acceptance", async () => {
+  const securityValue: NodeApplicationSecurity = {
+    origin: () => new Promise<NodePolicyResult<void>>(() => undefined),
+    authenticate: () => ({ ok: true, value: { id: "late", anonymous: false } }),
+    authorizeAuthority: () => ({ ok: true, value: undefined }),
+  };
+  const security = Object.freeze(securityValue);
+  const app = secure_application([], security);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production", limits: { handshakeTimeoutMs: 20 } },
+    applications: [app.registration],
+  });
+  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`), 408);
+  assert.equal(app.accepts(), 0);
+  await host.stop();
+});
+
+check("finite URL and bodyless-route limits reject before application state", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production", limits: { maxUrlBytes: 80 } },
+    applications: [app.registration],
+  });
+  const response = await fetch(`${host.httpUrl}/bootstrap?${"x".repeat(100)}`, { headers: secureHeaders });
+  assert.equal(response.status, 413);
+  assert.equal(app.accepts(), 0);
+  await host.stop();
+});
+
+check("connection admission is bounded globally before a second upgrade", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      limits: { maxConnections: 1, maxConnectionsPerApplication: 1, maxConnectionsPerClient: 1 },
+    },
+    applications: [app.registration],
+  });
+  const first = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`, secureHeaders), 503);
+  first.close();
+  await host.stop();
+});
+
+check("WebSocket message-rate budget closes abusive connections", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      limits: { maxMessagesPerWindow: 1, messageWindowMs: 10_000 },
+    },
+    applications: [app.registration],
+  });
+  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  const closed = socket_close(websocket);
+  websocket.send("one");
+  websocket.send("two");
+  assert.equal(await closed, 1008);
+  await host.stop();
+});
+
+check("security events are structured and redact selectors principals and credentials", async () => {
+  const events: NodeHostOperationalEvent[] = [];
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app.registration],
+    log: (event) => events.push(event),
+  });
+  await rejected_websocket_status(`${host.url}?livehost=secure`, {
+    Origin: "https://public.example",
+    Authorization: "Bearer very-secret-invalid-token",
+  });
+  const serialized = JSON.stringify(events);
+  assert.equal(serialized.includes("very-secret-invalid-token"), false);
+  assert.equal(serialized.includes("principal-a"), false);
+  assert.equal(serialized.includes("livehost"), false);
+  assert.equal(events.some((event) => event.type === "policy-rejection"), true);
+  await host.stop();
+});
+
+check("resumable credentials are principal-bound before an active attachment can be fenced", async () => {
+  let nextSession = 0;
+  const authority = create_livehost({
+    state: { value: 0 },
+    sessionId: () => `bound-session-${++nextSession}`,
+  });
+  const securityValue: NodeApplicationSecurity = {
+    origin: create_node_exact_origin_policy({ allowedOrigins: ["https://public.example"] }),
+    authenticate(context) {
+      const id = context.headers.get("x-test-principal");
+      return id === undefined
+        ? { ok: false, status: 401, code: "AUTH_REQUIRED" }
+        : { ok: true, value: { id, anonymous: false, value: { id } } };
+    },
+    authorizeAuthority: () => ({ ok: true, value: undefined }),
+  };
+  const security = Object.freeze(securityValue);
+  const appValue: NodeHostedApplication = {
+    name: "bound",
+    authorities: [{ kind: "exact", value: "bound" }],
+    security,
+    acceptWebSocket(_authorityId, websocket, context) {
+      authority.connect(create_node_livehost_socket(websocket), {
+        principalId: context.principal.id,
+        attachment: context.principal.value,
+      });
+    },
+    dispose() {
+      authority.dispose();
+    },
+  };
+  const app = Object.freeze(appValue);
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [app],
+  });
+  const headersA = { Origin: "https://public.example", "X-Test-Principal": "principal-a" };
+  const first = await open_websocket(`${host.url}?livehost=bound`, headersA);
+  const createdMessage = next_json_message(first);
+  first.send(JSON.stringify({ type: "session-create", id: "create" }));
+  const created = await createdMessage;
+  assert.equal(created.type, "session-created");
+  assert.equal(typeof created.credential, "string");
+
+  let fenced = false;
+  first.on("message", (data) => {
+    if (JSON.parse(data.toString()).type === "session-fenced") fenced = true;
+  });
+  const wrong = await open_websocket(`${host.url}?livehost=bound`, {
+    Origin: "https://public.example",
+    "X-Test-Principal": "principal-b",
+  });
+  const rejectedMessage = next_json_message(wrong);
+  wrong.send(JSON.stringify({ type: "session-attach", id: "wrong", credential: created.credential }));
+  const rejected = await rejectedMessage;
+  assert.equal(rejected.type, "session-rejected");
+  assert.equal(rejected.code, "LIVEHOST_SESSION_CREDENTIAL_UNKNOWN");
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  assert.equal(fenced, false);
+
+  const second = await open_websocket(`${host.url}?livehost=bound`, headersA);
+  const attachedMessage = next_json_message(second);
+  second.send(JSON.stringify({ type: "session-attach", id: "right", credential: created.credential }));
+  assert.equal((await attachedMessage).type, "session-attached");
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  assert.equal(fenced, true);
+  first.close();
+  wrong.close();
+  second.close();
+  await host.stop();
+});
+
+check("heartbeat preserves responsive idle sockets", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      limits: { heartbeatIntervalMs: 30, heartbeatDeadlineMs: 10 },
+    },
+    applications: [app.registration],
+  });
+  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  await new Promise<void>((resolve) => setTimeout(resolve, 90));
+  assert.equal(websocket.readyState, WebSocket.OPEN);
+  websocket.close();
+  await host.stop();
+});
+
+check("heartbeat terminates a socket that does not answer ping", async () => {
+  const app = secure_application();
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: {
+      mode: "production",
+      limits: { heartbeatIntervalMs: 30, heartbeatDeadlineMs: 10 },
+    },
+    applications: [app.registration],
+  });
+  const websocket = new WebSocket(`${host.url}?livehost=secure`, {
+    headers: secureHeaders,
+    autoPong: false,
+  });
+  await new Promise<void>((resolve, reject) => {
+    websocket.once("open", resolve);
+    websocket.once("error", reject);
+  });
+  assert.equal(await socket_close(websocket), 1006);
+  await host.stop();
+});
+
+check("Node adapter closes on outgoing backpressure without dropping a canonical message", async () => {
+  let backpressure = 0;
+  const security = production_security();
+  const appValue: NodeHostedApplication = {
+    name: "pressure",
+    authorities: [{ kind: "exact", value: "pressure" }],
+    security,
+    acceptWebSocket(_authorityId, websocket) {
+      Object.defineProperty(websocket, "bufferedAmount", { configurable: true, value: 2 });
+      create_node_livehost_socket(websocket, {
+        maxBufferedAmount: 1,
+        onBackpressure: () => backpressure += 1,
+      }).send("canonical-commit");
+    },
+    dispose() {},
+  };
+  const host = await start_node_application_host({
+    port: 0,
+    deployment: { mode: "production" },
+    applications: [Object.freeze(appValue)],
+  });
+  const websocket = await open_websocket(`${host.url}?livehost=pressure`, secureHeaders);
+  assert.equal(await socket_close(websocket), 1013);
+  assert.equal(backpressure, 1);
+  await host.stop();
 });
 
 await sequence;

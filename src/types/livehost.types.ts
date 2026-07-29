@@ -489,6 +489,18 @@ export type LiveHostActionAuthorizationSession = Readonly<{
   resumable: boolean;
 }>;
 
+/**
+ * Opaque, transport-supplied attachment context for one LiveHost connection.
+ *
+ * LiveHost does not interpret `attachment`. A stable `principalId`, when
+ * supplied, binds resumable session credentials to that authenticated
+ * principal without persisting or placing the attachment on the wire.
+ */
+export type LiveHostConnectionContext = Readonly<{
+  principalId?: string;
+  attachment?: unknown;
+}>;
+
 export type LiveHostActionAuthorizationContext<
   TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
 > = {
@@ -498,6 +510,7 @@ export type LiveHostActionAuthorizationContext<
     payload: TActions[TName];
     logicalMapId: LiveHostLogicalMapId;
     incarnationId: LiveHostIncarnationId;
+    connection?: LiveHostConnectionContext;
   }>;
 }[keyof TActions & string];
 
@@ -1337,7 +1350,7 @@ export type LiveHostForMap<
   seq: LiveHostSeq;
   schema?: LiveHostSchema<LiveHostMapValue<TMap>, TActions>;
   dispatch_action: (message: LiveHostClientActionMessage<TActions>) => Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>>;
-  connect: (socket: LiveHostSocketLike) => LiveHostConnection;
+  connect: (socket: LiveHostSocketLike, context?: LiveHostConnectionContext) => LiveHostConnection;
   dispose: LiveHostDisposer;
 }>;
 
@@ -1423,7 +1436,11 @@ export type LiveHostPersistentStore = Readonly<{
   load: (id: LiveHostStoreId) => Promise<LiveHostResult<PersistentLiveHostForMap | undefined>>;
   unload: (id: LiveHostStoreId) => Promise<boolean>;
   list: () => readonly LiveHostPersistentStoreEntry[];
-  connect: (id: LiveHostStoreId, socket: LiveHostSocketLike) => Promise<LiveHostResult<LiveHostDisposer>>;
+  connect: (
+    id: LiveHostStoreId,
+    socket: LiveHostSocketLike,
+    context?: LiveHostConnectionContext,
+  ) => Promise<LiveHostResult<LiveHostDisposer>>;
 }>;
 
 /** Compatibility surface for existing projected-state hosts. */
@@ -1458,5 +1475,9 @@ export type LiveHostStore = Readonly<{
   >(id: LiveHostStoreId, host: LiveHost<TState, TActions>) => LiveHostResult<LiveHost<TState, TActions>>;
   delete: (id: LiveHostStoreId) => boolean;
   list: () => readonly LiveHostStoreEntry[];
-  connect: (id: LiveHostStoreId, socket: LiveHostSocketLike) => LiveHostResult<LiveHostDisposer>;
+  connect: (
+    id: LiveHostStoreId,
+    socket: LiveHostSocketLike,
+    context?: LiveHostConnectionContext,
+  ) => LiveHostResult<LiveHostDisposer>;
 }>;

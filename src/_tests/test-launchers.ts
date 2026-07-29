@@ -152,7 +152,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:liveproject-document-attrs",
       repositoryModule: "tests/liveproject-document-attrs.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 10,
+      executableChecks: 11,
       collections: ["document", "binding", "attributes"],
     }),
     launcher({
@@ -382,7 +382,17 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-node-hosting",
       repositoryModule: "tests/livehost-node-hosting.acceptance.mts",
       runtime: "node-real-websocket",
-      executableChecks: 26,
+      executableChecks: 44,
       collections: ["transport", "websocket", "node-host", "externally-discoverable"],
+    }),
+    launcher({
+      id: "livehost.bootstrap",
+      subject: "LiveHost",
+      displayName: "LiveHost HTTP HSON bootstrap",
+      packageScript: "test:livehost-bootstrap",
+      repositoryModule: "tests/livehost-bootstrap.acceptance.mts",
+      runtime: "node-real-websocket",
+      executableChecks: 31,
+      collections: ["bootstrap", "hson", "recovery", "http", "websocket", "externally-discoverable"],
     }),
   ]);

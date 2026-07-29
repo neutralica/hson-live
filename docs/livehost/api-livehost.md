@@ -2,24 +2,28 @@
 
 LiveHost is the transport-independent authority for one hosted LiveMap. It owns
 action execution, ordered publication, recovery planning, connection/session
-state, and optional document persistence. The package does not provide a
-WebSocket server; applications adapt a socket to `LiveHostSocketLike`.
+state, and optional document persistence. Experimental package surfaces provide
+browser/Node socket adapters, a reusable Node application host, and a versioned
+HTTP HSON bootstrap-to-WebSocket continuation path.
 
 All imports in this reference are package exports:
 
 ```ts
 import {
+  capture_livehost_bootstrap,
+  create_livehost_bootstrap_client,
   create_livehost,
   create_livehost_client,
+  decode_livehost_bootstrap,
+  install_livehost_bootstrap,
   create_persistent_livehost,
   create_livehost_persistent_store,
-  hson,
-} from "hson-live";
+} from "hson-live/livehost";
 
-import type {
-  LiveHostPersistenceAdapter,
-  LiveHostSocketLike,
-} from "hson-live";
+import {
+  handle_node_livehost_bootstrap_request,
+  start_node_application_host,
+} from "hson-live/livehost/node";
 ```
 
 `hson.liveHost.create`, `.client`, and `.registry` are aliases for the principal
@@ -31,8 +35,10 @@ factory functions. Public types are also exported by `hson-live/types`.
   `create_livehost_store`/`create_livehost_registry`,
   `create_persistent_livehost`, `create_livehost_persistent_store`, the protocol
   encode/decode functions, and their exported types.
-- **Experimental but callable:** document-mode recovery negotiation, exclusive
-  authority, persistence, tracing, and the lower-level stream/recovery helpers.
+- **Experimental but callable:** HTTP HSON bootstrap, browser/Node socket
+  adapters, the Node application host, document-mode recovery negotiation,
+  exclusive authority, persistence, tracing, and lower-level stream/recovery
+  helpers.
 - **Diagnostic:** `.debug()` methods, trace sinks, and `hson.liveHost.debug`.
 - **Internal:** staged-authority gates, session manager implementation, graph
   identity indexes, and protocol implementation helpers not exported at a
@@ -310,11 +316,109 @@ ordering. An adapter owns the actual WebSocket/in-memory channel, backpressure,
 authentication before attachment, and platform lifecycle.
 
 The abstraction works with in-memory test transports, Node WebSocket wrappers,
-and Worker/Cloudflare socket wrappers. No package-exported adapter is supplied.
-The host core does not import Node WebSocket APIs. Protocol decoders return
+and Worker/Cloudflare socket wrappers. `hson-live/livehost` exports the browser
+adapter; `hson-live/livehost/node` exports the `ws` adapter and transport-only
+Node application host. Worker adapters remain platform/application adapters.
+The authority core does not import Node WebSocket APIs. Protocol decoders return
 `LiveHostResult`; they do not throw for malformed envelopes. There is no
 top-level numeric protocol-version field; recovery snapshot encodings carry
 their own format version.
+
+## HTTP HSON bootstrap and continuation
+
+**Experimental; all four LiveMap modes.**
+
+Version 1 uses the exact media type
+`application/vnd.hson-live.livehost-bootstrap+hson; version=1`. Its canonical
+HSON envelope contains:
+
+```ts
+type LiveHostBootstrapPackageV1 = Readonly<{
+  format: "hson-livehost-bootstrap";
+  formatVersion: 1;
+  authoritySelector: string; // application transport routing only
+  logicalMapId: string;      // canonical recovery identity
+  incarnationId: string;     // one concrete authority history
+  mode: "data-object" | "data-array" | "element" | "fragment";
+  rev: number;               // exact revision represented by state
+  state: { format: "hson"; payload: string };
+  continuation: {
+    transport: "websocket";
+    endpoint: string;
+    capabilities: { hsonSnapshots: true };
+  };
+}>;
+```
+
+The nested state payload intentionally reuses the established, validated
+`LiveHostSnapshotEnvelope.hson` representation. This avoids a third graph
+encoding and preserves document QUID validation, primitives, empty/absent
+content, fragments, attributes, mode, and revision. The bootstrap format
+version, HSON syntax, graph-content version, WebSocket protocol, and map
+revision are independent version domains.
+
+`capture_livehost_bootstrap()` asks the existing recovery planner for a
+snapshot cut. Tail observation is active before `map.capture()`; the capture
+revision is checked against the canonical stream head. Commits after that cut
+are intentionally omitted from HTTP and recovered through the established
+current/replay/snapshot path.
+
+`decode_livehost_bootstrap()` performs exact-field, identity, mode, revision,
+continuation, graph, QUID, encoded-byte, graph-depth, and graph-node validation.
+`install_livehost_bootstrap()` returns a detached map plus the exact recovery
+cursor. `create_livehost_bootstrap_client()` creates the ordinary LiveHost
+client around that map; `connect_and_recover()` enters the existing recovery
+state machine rather than implementing another one.
+
+The Node helper is GET-only. It accepts the exact media type or `*/*`, returns
+`406` for an incompatible `Accept`, defaults successful and error responses to
+`Cache-Control: no-store`, and emits canonical HSON only on success. Applications
+resolve the authority selector and supply the WebSocket endpoint:
+
+```ts
+import {
+  LIVEHOST_BOOTSTRAP_MEDIA_TYPE,
+  decode_livehost_bootstrap,
+  install_livehost_bootstrap,
+  create_livehost_bootstrap_client,
+} from "hson-live/livehost";
+import {
+  handle_node_livehost_bootstrap_request,
+} from "hson-live/livehost/node";
+
+const route = {
+  method: "GET",
+  path: "/bootstrap",
+  handle(request, response) {
+    return handle_node_livehost_bootstrap_request(request, response, {
+      resolve(selector) {
+        const authority = authorities.get(selector);
+        return authority
+          ? { ok: true, authority, websocketEndpoint: `/live?livehost=${encodeURIComponent(selector)}` }
+          : {
+              ok: false,
+              status: 404,
+              code: "LIVEHOST_BOOTSTRAP_AUTHORITY_UNKNOWN",
+              message: "Unknown authority.",
+            };
+      },
+    });
+  },
+};
+
+const response = await fetch("/bootstrap?livehost=room%3Aone", {
+  headers: { Accept: LIVEHOST_BOOTSTRAP_MEDIA_TYPE },
+});
+const bootstrap = decode_livehost_bootstrap(await response.text());
+const installed = install_livehost_bootstrap(bootstrap);
+const socket = applicationSocketFactory(bootstrap.continuation.endpoint);
+const live = create_livehost_bootstrap_client(installed, { socket });
+await live.connect_and_recover();
+```
+
+The HTTP and WebSocket paths must use the same application-owned authority
+registry. The Node host owns neither a bootstrap registry nor LiveHost
+authorities. Bootstrap packages contain no session credential.
 
 ## Persistence
 
@@ -377,13 +481,56 @@ to `rev`. Document maps use `root()`/`capture()`. Persistent-host creation and
 loading are asynchronous; ordinary host construction and reads are synchronous.
 An SSR renderer remains outside LiveHost.
 
-A hydration payload should preserve logical/incarnation identity and revision,
-then use canonical recovery rather than assuming the server snapshot is still
-current. How LiveTree HTML hydration consumes that payload is unresolved.
+HTTP state bootstrap and WebSocket continuation are implemented. LiveTree HTML
+hydration remains unresolved. The bootstrap map is detached canonical state; it
+does not create a LiveTree runtime, DOM, CSS manager, or HTML.
 Request-scoped hosts should be disposed. Shared process/Worker authorities may
 outlive requests but require application lifecycle management. Worker adapters
 must arrange durable-object/event-lifetime concerns; Node adapters must arrange
 socket server and shutdown behavior.
+
+## Experimental production Node boundary
+
+The Node-only `hson-live/livehost/node` subpath supports Node
+`>=22.12.0 <25`. Ordinary `hson-live` and `hson-live/livehost` imports do not
+run the executable runtime guard and remain free of Node HTTP and `ws` imports.
+
+`start_node_application_host` separates transport policy from authority state.
+Production applications supply an origin policy, authentication hook, and
+authority-access hook. These run, in that order, against one immutable
+`NodeRequestContext` before an HTTP application handler or WebSocket upgrade.
+The host never logs header values, principals, authority selectors, or
+credentials. `/healthz` remains process readiness only.
+
+Direct mode ignores all forwarded identity headers. Trusted-proxy mode must be
+configured with an immediate-peer predicate and an explicit first/last
+`X-Forwarded-For` hop. It supports `X-Forwarded-For`,
+`X-Forwarded-Proto`, and `X-Forwarded-Host`; the standardized `Forwarded`
+header is rejected rather than guessed. Supported deployment shapes are:
+
+```text
+browser --HTTP/WS--> Node
+browser --HTTPS/WSS--> trusted TLS proxy --HTTP/WS--> Node
+```
+
+The Node host does not terminate TLS or manage certificates. Only an explicitly
+trusted immediate proxy may change the effective external scheme, host, or
+client address.
+
+Production mode has finite header, URL, handshake, pending-upgrade, payload,
+message-rate, connection, heartbeat, and outgoing-buffer defaults. Exceeding
+outgoing `bufferedAmount` closes the connection instead of dropping a canonical
+commit; normal LiveHost recovery resumes after reconnect. Applications pass the
+authenticated principal's stable ID and optional opaque attachment to
+`host.connect(socket, context)`. Resumable credentials are bound to that stable
+ID, and a mismatched principal is rejected before the current attachment can be
+fenced. The opaque attachment is available to `authorizeAction` as
+`context.connection`, but is not serialized, traced, or persisted.
+
+Omitting the deployment option retains the experimental pre-2C1 localhost
+compatibility behavior. Production executables must explicitly select
+`{ mode: "production" }`; production registration rejects applications without
+security policy.
 
 ## Errors and validation
 
@@ -412,11 +559,12 @@ messages.
 ## Known limitations and deferred surfaces
 
 - Persistence supports document maps only and has no bundled backend.
-- No real WebSocket/Cloudflare adapter is package-exported.
+- Cloudflare/Worker socket adaptation remains application-owned.
 - Document projected subscriptions are unsupported.
 - History and action outcomes are bounded in memory.
 - Events are not replayed or persisted.
-- SSR rendering, HTML hydration, and request-framework integration are not
-  implemented by LiveHost.
+- SSR rendering and LiveTree HTML hydration are not implemented by LiveHost.
+- Bootstrap version 1 is one bounded, uncompressed body with no credentials,
+  immutable caching, streaming, multipart transfer, or HTML.
 - Debug constructors and diagnostics are callable but are not the preferred
   application entrypoints.

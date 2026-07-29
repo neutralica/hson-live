@@ -18,6 +18,7 @@ import type {
   LiveHostClientSessionAttachMessage,
   LiveHostCanonicalCommit,
   LiveHostConnection,
+  LiveHostConnectionContext,
   LiveHostDisposer,
   LiveHostOptions,
   ExistingMapLiveHostOptions,
@@ -641,6 +642,7 @@ function create_livehost_for_map<
     origin: Extract<LiveHostActionOrigin, { kind: "session" }>,
     trace?: LiveTraceContext,
     parentSpanId?: string,
+    connectionContext?: LiveHostConnectionContext,
   ): AuthorizationResult | Promise<AuthorizationResult> {
     const authorizer = options.authorizeAction;
     if (authorizer === undefined) {
@@ -672,6 +674,7 @@ function create_livehost_for_map<
       payload: policyPayload,
       logicalMapId: stream.logicalMapId,
       incarnationId: stream.incarnationId,
+      ...(connectionContext === undefined ? {} : { connection: connectionContext }),
     }) as LiveHostActionAuthorizationContext<TActions>;
 
     function finish(decision: boolean): AuthorizationResult {
@@ -932,8 +935,18 @@ function create_livehost_for_map<
     });
   }
 
-  function connect(socket: LiveHostSocketLike): LiveHostConnection {
+  function connect(socket: LiveHostSocketLike, connectionContext?: LiveHostConnectionContext): LiveHostConnection {
     if (disposed) return inert_connection();
+    const attachedContext: LiveHostConnectionContext | undefined = connectionContext === undefined
+      ? undefined
+      : Object.freeze({
+          ...(connectionContext.principalId === undefined
+            ? {}
+            : { principalId: connectionContext.principalId }),
+          ...(Object.prototype.hasOwnProperty.call(connectionContext, "attachment")
+            ? { attachment: connectionContext.attachment }
+            : {}),
+        });
     const disposers: LiveHostDisposer[] = [];
     let transportOpen = true;
     let fenced = false;
@@ -1081,6 +1094,7 @@ function create_livehost_for_map<
         attachment,
         () => sync.remove_session(id),
         () => session_subscription_count(id),
+        attachedContext,
       );
       if (!created.ok) {
         sync.remove_session(id);
@@ -1120,6 +1134,7 @@ function create_livehost_for_map<
         attachment,
         () => sync.remove_session(nextSessionId),
         () => session_subscription_count(nextSessionId),
+        attachedContext,
       );
       if (!created.ok || !created.value.credential) {
         sync.remove_session(nextSessionId);
@@ -1137,7 +1152,7 @@ function create_livehost_for_map<
         reject_session(message.id, "LIVEHOST_SESSION_NOT_ATTACHED", "This transport already owns a LiveHost session.");
         return;
       }
-      const attached = sessions.reattach(message.credential, attachment);
+      const attached = sessions.reattach(message.credential, attachment, attachedContext);
       if (!attached.ok) {
         reject_session(
           message.id,
@@ -1268,6 +1283,7 @@ function create_livehost_for_map<
         origin,
         trace,
         actionSpan?.spanId,
+        attachedContext,
       );
       const authorized = authorization instanceof Promise
         ? await authorization

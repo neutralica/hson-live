@@ -1,11 +1,21 @@
 import type { LiveHostSocketLike } from "../../../types/livehost.types.js";
 import WebSocket from "ws";
 
+export type NodeLiveHostSocketOptions = Readonly<{
+  onSend?: (message: string) => void;
+  maxBufferedAmount?: number;
+  onBackpressure?: () => void;
+}>;
+
 /** @experimental Concrete Node `ws` transport adapter for LiveHost. */
 export function create_node_livehost_socket(
   websocket: WebSocket,
-  onSend?: (message: string) => void,
+  optionsOrOnSend?: NodeLiveHostSocketOptions | ((message: string) => void),
 ): LiveHostSocketLike {
+  const options: NodeLiveHostSocketOptions = typeof optionsOrOnSend === "function"
+    ? { onSend: optionsOrOnSend }
+    : optionsOrOnSend ?? {};
+  let backpressureClosed = false;
   const close_after_error = (): void => {
     if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
       websocket.close(1011, "LiveHost WebSocket error.");
@@ -20,8 +30,23 @@ export function create_node_livehost_socket(
   return Object.freeze({
     send(message) {
       if (websocket.readyState !== WebSocket.OPEN) return;
-      onSend?.(message);
-      websocket.send(message);
+      if (
+        options.maxBufferedAmount !== undefined
+        && websocket.bufferedAmount > options.maxBufferedAmount
+      ) {
+        if (!backpressureClosed) {
+          backpressureClosed = true;
+          options.onBackpressure?.();
+          websocket.close(1013, "LiveHost transport backpressure limit exceeded.");
+        }
+        return;
+      }
+      options.onSend?.(message);
+      try {
+        websocket.send(message);
+      } catch {
+        close_after_error();
+      }
     },
     close(code, reason) {
       if (websocket.readyState === WebSocket.CLOSED) return;

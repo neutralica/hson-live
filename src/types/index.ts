@@ -141,6 +141,7 @@ export type {
   LiveHostRecoverySnapshotReason,
   LiveHostDisposer,
   LiveHostConnection,
+  LiveHostConnectionContext,
   LiveHostEventListener,
   LiveHostError,
   LiveHostId,

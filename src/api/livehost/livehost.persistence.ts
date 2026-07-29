@@ -16,6 +16,7 @@ import type {
   LiveHostPersistedMapState,
   LiveHostResult,
   LiveHostSocketLike,
+  LiveHostConnectionContext,
   LiveHostStoreId,
   LiveTraceSink,
   PersistentDocumentLiveHostOptions,
@@ -513,12 +514,16 @@ export function create_livehost_persistent_store(
     list(): readonly LiveHostPersistentStoreEntry[] {
       return Object.freeze(Array.from(hosts, ([id, host]) => Object.freeze({ id, host })));
     },
-    async connect(id: LiveHostStoreId, socket: LiveHostSocketLike): Promise<LiveHostResult<LiveHostDisposer>> {
+    async connect(
+      id: LiveHostStoreId,
+      socket: LiveHostSocketLike,
+      context?: LiveHostConnectionContext,
+    ): Promise<LiveHostResult<LiveHostDisposer>> {
       try {
         const loaded = await get_or_load(id);
         return loaded === undefined
           ? fail("Unknown LiveHost persistent store entry.", "LIVEHOST_STORE_UNKNOWN_ID")
-          : ok(loaded.connect(socket));
+          : ok(loaded.connect(socket, context));
       } catch (cause) {
         return fail(
           cause instanceof Error ? cause.message : "LiveHost persisted state could not be loaded.",

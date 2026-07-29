@@ -1,5 +1,7 @@
 import {
   create_browser_livehost_socket,
+  decode_livehost_bootstrap,
+  install_livehost_bootstrap,
   decode_livehost_server_message,
   hsonLiveHost,
   liveHost,
@@ -15,3 +17,5 @@ void create_browser_livehost_socket(websocketUrl, BrowserSocket);
 void liveHost;
 void hsonLiveHost;
 void decode_livehost_server_message("{}");
+declare const bootstrapHson: string;
+void install_livehost_bootstrap(decode_livehost_bootstrap(bootstrapHson));

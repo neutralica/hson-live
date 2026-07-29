@@ -1,5 +1,6 @@
 import type {
   LiveHostConnectionEpoch,
+  LiveHostConnectionContext,
   LiveHostDisposer,
   LiveHostResult,
   LiveHostSessionCredential,
@@ -22,6 +23,7 @@ type SessionRecord = {
   readonly sessionId: LiveHostSessionId;
   readonly credential?: LiveHostSessionCredential;
   readonly resumable: boolean;
+  readonly principalId?: string;
   readonly disposeResources: LiveHostDisposer;
   readonly subscriptionCount: () => number;
   state: LiveHostSessionState;
@@ -50,8 +52,13 @@ export type LiveHostSessionManager = Readonly<{
     attachment: SessionAttachment,
     disposeResources: LiveHostDisposer,
     subscriptionCount: () => number,
+    context?: LiveHostConnectionContext,
   ) => LiveHostResult<SessionSuccess>;
-  reattach: (credential: unknown, attachment: SessionAttachment) => LiveHostResult<SessionSuccess>;
+  reattach: (
+    credential: unknown,
+    attachment: SessionAttachment,
+    context?: LiveHostConnectionContext,
+  ) => LiveHostResult<SessionSuccess>;
   detach: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => boolean;
   goodbye: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => LiveHostResult<void>;
   is_active: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => boolean;
@@ -156,6 +163,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     attachment: SessionAttachment,
     disposeResources: LiveHostDisposer,
     subscriptionCount: () => number,
+    context?: LiveHostConnectionContext,
   ): LiveHostResult<SessionSuccess> {
     if (disposed) return fail("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session manager is disposed.");
     if (sessions.has(sessionId)) return fail("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", `LiveHost session ID is already in use: ${sessionId}`);
@@ -169,6 +177,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
       sessionId,
       ...(credential ? { credential } : {}),
       resumable,
+      ...(context?.principalId === undefined ? {} : { principalId: context.principalId }),
       disposeResources,
       subscriptionCount,
       state: "attached",
@@ -185,7 +194,11 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     return ok({ sessionId, epoch: record.epoch, resumable, ...(credential ? { credential } : {}) });
   }
 
-  function reattach(credential: unknown, attachment: SessionAttachment): LiveHostResult<SessionSuccess> {
+  function reattach(
+    credential: unknown,
+    attachment: SessionAttachment,
+    context?: LiveHostConnectionContext,
+  ): LiveHostResult<SessionSuccess> {
     if (disposed) return reject("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session manager is disposed.");
     if (credential === undefined || credential === null || credential === "") {
       return reject("LIVEHOST_SESSION_CREDENTIAL_MISSING", "LiveHost session credential is missing.");
@@ -197,6 +210,9 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     if (!record) return reject("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", "LiveHost session credential is unknown.");
     if (record.state === "expired") return reject("LIVEHOST_SESSION_CREDENTIAL_EXPIRED", "LiveHost session credential has expired.");
     if (record.state === "revoked") return reject("LIVEHOST_SESSION_CREDENTIAL_REVOKED", "LiveHost session credential has been revoked.");
+    if (record.principalId !== context?.principalId) {
+      return reject("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", "LiveHost session credential is unknown.");
+    }
 
     const previous = record.attachment;
     const previousEpoch = record.epoch;
