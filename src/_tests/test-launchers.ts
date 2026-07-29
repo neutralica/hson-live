@@ -112,7 +112,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:public-boundaries",
       repositoryModule: "tests/public-boundaries.acceptance.mts",
       runtime: "node",
-      executableChecks: 5,
+      executableChecks: 6,
       collections: ["public-api", "LiveMap", "LiveTree", "Transform"],
     }),
     launcher({
@@ -152,7 +152,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:liveproject-document-attrs",
       repositoryModule: "tests/liveproject-document-attrs.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 11,
+      executableChecks: 10,
       collections: ["document", "binding", "attributes"],
     }),
     launcher({
@@ -372,7 +372,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-authorization",
       repositoryModule: "tests/runtime-probes/livehost-authorization.acceptance.mjs",
       runtime: "node",
-      executableChecks: 10,
+      executableChecks: 11,
       collections: ["actions", "authorization", "policy"],
     }),
     launcher({
