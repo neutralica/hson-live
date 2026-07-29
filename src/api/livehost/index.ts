@@ -1,6 +1,13 @@
 export { hsonLiveHost, liveHost } from "./livehost.facade.js";
 export { create_livehost } from "./livehost.core.js";
 export { create_livehost_client } from "./livehost.client.js";
+export { create_browser_livehost_socket } from "./livehost.browser-socket.js";
+export type {
+  BrowserLiveHostSocket,
+  BrowserLiveHostSocketStatus,
+  BrowserWebSocketConstructor,
+  BrowserWebSocketLike,
+} from "./livehost.browser-socket.js";
 export {
   create_livehost_store,
   create_livehost_store as create_livehost_registry,

@@ -375,4 +375,14 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       executableChecks: 10,
       collections: ["actions", "authorization", "policy"],
     }),
+    launcher({
+      id: "livehost.node-hosting",
+      subject: "LiveHost",
+      displayName: "LiveHost Node hosting",
+      packageScript: "test:livehost-node-hosting",
+      repositoryModule: "tests/livehost-node-hosting.acceptance.mts",
+      runtime: "node-real-websocket",
+      executableChecks: 26,
+      collections: ["transport", "websocket", "node-host", "externally-discoverable"],
+    }),
   ]);

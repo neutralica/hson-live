@@ -39,6 +39,10 @@
       "types": "./dist/api/livehost/index.d.ts",
       "import": "./dist/api/livehost/index.js"
     },
+    "./livehost/node": {
+      "types": "./dist/api/livehost/node/index.d.ts",
+      "import": "./dist/api/livehost/node/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -62,7 +66,7 @@
     "build": "npm run clean && tsc",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
-    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
+    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-node-quid": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid.acceptance.mts",
@@ -101,20 +105,21 @@
     "test:livehost-session": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-session.acceptance.mjs",
     "test:livehost-action-dedupe": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-action-dedupe.acceptance.mjs",
     "test:livehost-trace": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-trace.acceptance.mjs",
-    "test:livehost-authorization": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-authorization.acceptance.mjs"
+    "test:livehost-authorization": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-authorization.acceptance.mjs",
+    "test:livehost-node-hosting": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-node-hosting.acceptance.mts"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",
     "@types/node": "^22.20.1",
-    "@types/ws": "^8.18.1",
     "chokidar-cli": "^3.0.0",
     "npm-run-all": "^4.1.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "ws": "^8.21.1"
+    "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@types/ws": "^8.18.1",
     "dompurify": "^3.3.0",
-    "htmlparser2": "^10.0.0"
+    "htmlparser2": "^10.0.0",
+    "ws": "^8.21.1"
   }
 }
