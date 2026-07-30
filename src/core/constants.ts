@@ -60,4 +60,3 @@ export const HSON_META_QUID = "quid" as const;
 export const HSON_META_TRANSIT_PREFIX = "_hson_meta_attr_v2_" as const;
 
 export const _TRANSIT_PREFIX = "_hson_attr_transit_v1_";
-export const _TRANSIT_ATTRS = `${_TRANSIT_PREFIX}attrmap`;

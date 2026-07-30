@@ -24,6 +24,12 @@ import {
   type LiveMapPathHandle,
 } from "hson-live/livemap";
 import { hsonLiveHost as hostSubpath } from "hson-live/livehost";
+import {
+  hsonReflect as reflectSubpath,
+  type CollectionReflect,
+  type DocumentReflect,
+  type Reflect as ReflectFacade,
+} from "hson-live/reflect";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
 import { get_livemap_quid } from "hson-live";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
@@ -34,11 +40,21 @@ void transformSubpath;
 void mapSubpath;
 void treeSubpath;
 void hostSubpath;
+void reflectSubpath;
 void LiveTree;
 void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
 void bareHsonString;
+
+const reflectFacade: ReflectFacade = reflectSubpath;
+const umbrellaReflect: ReflectFacade = hson.reflect;
+declare const documentReflect: DocumentReflect;
+declare const collectionReflect: CollectionReflect;
+void reflectFacade;
+void umbrellaReflect;
+void documentReflect;
+void collectionReflect;
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends

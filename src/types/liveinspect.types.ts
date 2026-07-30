@@ -1,7 +1,7 @@
 import type { JsonValue } from "../core/types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { LiveMap, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./livemap.types.js";
-import type { LiveProjectionKey } from "./liveproject.types.js";
+import type { CollectionReflectKey } from "./reflect.types.js";
 import type { LiveInspectorError } from "../api/liveinspect/liveinspect.error.js";
 
 export type LiveInspectorSource = LiveInspectorMapSource | LiveMapPathHandle;
@@ -30,7 +30,7 @@ export type LiveInspectorArrayKeyContext = Readonly<{
 export type LiveInspectorArrayKeyResolver = (
   item: JsonValue,
   context: LiveInspectorArrayKeyContext,
-) => LiveProjectionKey | undefined;
+) => CollectionReflectKey | undefined;
 
 /** Mutation-free source view supplied to inspector render extensions. */
 export type LiveInspectorReadHandle = Readonly<{
@@ -46,7 +46,7 @@ export type LiveInspectorSemanticContext = Readonly<{
   depth: number;
   role: LiveInspectorBranchRole;
   kind: LiveInspectorValueKind;
-  key: LiveProjectionKey | undefined;
+  key: CollectionReflectKey | undefined;
   arrayIdentity: LiveInspectorArrayIdentity | undefined;
 }>;
 
@@ -107,7 +107,7 @@ export type LiveInspectorSelection = Readonly<{
   path: LivePath;
   role: LiveInspectorBranchRole;
   kind: LiveInspectorValueKind;
-  key: LiveProjectionKey | undefined;
+  key: CollectionReflectKey | undefined;
   arrayIdentity: LiveInspectorArrayIdentity | undefined;
   sourceRevision: number;
   viewQuid: string;
@@ -123,8 +123,8 @@ export type LiveInspectorDiagnostics = Readonly<{
   visibleBranchCount: number;
   materializedBranchCount: number;
   collapsedStructuralBranchCount: number;
-  objectProjectors: number;
-  arrayProjectors: number;
+  objectReflectors: number;
+  arrayReflectors: number;
   primitiveUpdates: number;
   typeReplacements: number;
   recordsCreated: number;
@@ -141,7 +141,7 @@ export type LiveInspectorDiagnostics = Readonly<{
   specializedRendererFailures: number;
   rendererHookFailures: number;
   delegatedListenerCount: number;
-  projectionFailures: number;
+  reflectFailures: number;
   observerFailures: number;
   eagerlyMaterializedBranches: number;
   lazilyMaterializedBranches: number;
@@ -161,7 +161,7 @@ export type LiveInspectorDiagnostics = Readonly<{
 
 export type LiveInspectorMappingSummary = Readonly<{
   path: LivePath;
-  applicationKey: LiveProjectionKey | undefined;
+  applicationKey: CollectionReflectKey | undefined;
   viewQuid: string;
   kind: LiveInspectorValueKind;
   role: LiveInspectorBranchRole;

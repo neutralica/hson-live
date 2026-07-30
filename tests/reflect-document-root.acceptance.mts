@@ -4,14 +4,14 @@ import { hson } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import { bind_document_livetree } from "../src/api/liveproject/liveproject.document.ts";
+import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "../src/api/liveproject/liveproject.document.error.ts";
+  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
+  DocumentReflectError,
+} from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -52,7 +52,7 @@ function mount(root: HsonNode): FakeElement {
 
 check("compatible install retains tree, root, DOM, and bounded descendant identity", () => {
   const map = element(`<main @0000000000000501 class="old" <p @0000000000000502 "old"/> <i/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const tree = binding.tree;
   const root = tree.node;
   const rootDom = mount(root);
@@ -76,7 +76,7 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
   assert.equal((rootDom.childNodes[0] as FakeElement).childNodes[0] instanceof FakeText, true);
   assert.equal(((rootDom.childNodes[0] as FakeElement).childNodes[0] as FakeText).data, "next");
   assert.equal(binding.sourceRevision, commit.rev);
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
 
   create_livetree(paragraph).adoptRoots(root).attrs.set("after", "replace");
   assert.equal(map.document.attrs.get(path(0, 0), "after"), "replace");
@@ -85,7 +85,7 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
 
 check("QUID-less compatible root retains projection-local identity without mutating canonical state", () => {
   const map = element(`<main class="old"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const root = binding.tree.node;
   const projectionQuid = root.$_meta?.["quid"];
   assert.equal(typeof projectionQuid, "string");
@@ -101,7 +101,7 @@ check("QUID-less compatible root retains projection-local identity without mutat
 check("replayed compatible replace-root uses one convergence transaction", () => {
   const source = element(`<main @0000000000000503/>`);
   const target = element(`<main @0000000000000503/>`);
-  const binding = bind_document_livetree(target);
+  const binding = hsonReflect(target);
   const root = binding.tree.node;
   const replacement = element(`<main @0000000000000503 title="replayed" <b/>/>`);
   const commit = source.install(replacement.capture());
@@ -109,36 +109,36 @@ check("replayed compatible replace-root uses one convergence transaction", () =>
   assert.equal(binding.tree.node, root);
   assert.equal(binding.tree.attrs.get("title"), "replayed");
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
 
 check("canonical-equivalent install performs no convergence", () => {
   const map = element(`<main @0000000000000504 class="same"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const root = binding.tree.node;
   const commit = map.install(map.capture());
   assert.equal(commit.changed, false);
   assert.equal(binding.tree.node, root);
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(binding.diagnostics().projectionTransactions, 0);
+  assert.equal(binding.diagnostics().updatesApplied, 0);
   binding.dispose();
 });
 
 check("tag and persisted root-QUID transitions fail closed", () => {
   const tagMap = element(`<main @0000000000000505/>`);
-  const tagBinding = bind_document_livetree(tagMap);
+  const tagBinding = hsonReflect(tagMap);
   const tagRoot = structuredClone(tagBinding.tree.node);
   tagMap.install(element(`<article @0000000000000505/>`).capture());
-  assert.equal(tagBinding.failure?.code, DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE);
+  assert.equal(tagBinding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.deepEqual(tagBinding.tree.node, tagRoot);
   tagBinding.dispose();
 
   const quidMap = element(`<main @0000000000000506/>`);
-  const quidBinding = bind_document_livetree(quidMap);
+  const quidBinding = hsonReflect(quidMap);
   const quidRoot = structuredClone(quidBinding.tree.node);
   quidMap.install(element(`<main @0000000000000507/>`).capture());
-  assert.equal(quidBinding.failure?.code, DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE);
+  assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE);
   assert.deepEqual(quidBinding.tree.node, quidRoot);
   quidBinding.dispose();
 });
@@ -146,11 +146,11 @@ check("tag and persisted root-QUID transitions fail closed", () => {
 check("descendant QUID collision fails before projected mutation", () => {
   create_livetree(element(`<aside @0000000000000508/>`).element.node());
   const map = element(`<main @0000000000000509 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const before = structuredClone(binding.tree.node);
   map.install(element(`<main @0000000000000509 <aside @0000000000000508/>/>`).capture());
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
   assert.deepEqual(binding.tree.node, before);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
@@ -158,22 +158,22 @@ check("descendant QUID collision fails before projected mutation", () => {
 
 check("mounted root DOM failure preserves canonical install and fails observer-side", () => {
   const map = element(`<main @0000000000000510 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   const commit = map.install(element(`<main @0000000000000510 title="canonical" <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
-  assert.throws(() => binding.tree.attrs.set("blocked", true), DocumentLiveTreeBindingError);
+  assert.throws(() => binding.tree.attrs.set("blocked", true), DocumentReflectError);
   binding.dispose();
 });
 
 check("reentrant observation during root DOM convergence fails closed", () => {
   const map = element(`<main @0000000000000511 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.beforeReplace = () => {
     rootDom.beforeReplace = undefined;
@@ -184,11 +184,11 @@ check("reentrant observation during root DOM convergence fails closed", () => {
   assert.equal(map.rev, 2);
   assert.equal(map.document.attrs.get(path(), "reentrant"), true);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
-  assert.equal(binding.diagnostics().projectionTransactions, 0);
+  assert.equal(binding.diagnostics().updatesApplied, 0);
   binding.dispose();
 });
 
 process.stdout.write(`# ${checks} compatible document root convergence checks passed\n`);
-emit_hson_live_test_completion("livetree.document-root", checks, checks, 0);
+emit_hson_live_test_completion("reflect.document-root", checks, checks, 0);

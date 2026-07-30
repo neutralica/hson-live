@@ -4,12 +4,12 @@ import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
-import { bind_document_livetree } from "../src/api/liveproject/liveproject.document.ts";
+import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE,
-  DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "../src/api/liveproject/liveproject.document.error.ts";
+  DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
+  DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
+  DocumentReflectError,
+} from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -54,7 +54,7 @@ function mount(root: HsonNode): FakeElement {
 
 check("bound text.set delegates one replacement while preserving element content", () => {
   const map = element(`<main @0000000000000501 "old" <b @0000000000000502/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   const preserved = raw_node(binding.tree.node, [0, 1]);
   const preservedDom = get_el_for_node(preserved);
@@ -65,11 +65,11 @@ check("bound text.set delegates one replacement while preserving element content
     assert.equal(binding.tree.text.set(value), binding.tree);
   }
   const revision = map.rev;
-  const transactions = binding.diagnostics().projectionTransactions;
+  const transactions = binding.diagnostics().updatesApplied;
   const writes = rootDom.replaceWrites;
   binding.tree.text.set("");
   assert.equal(map.rev, revision);
-  assert.equal(binding.diagnostics().projectionTransactions, transactions);
+  assert.equal(binding.diagnostics().updatesApplied, transactions);
   assert.equal(rootDom.replaceWrites, writes);
   assert.equal(observations.length, 4);
   assert.equal(transactions, 4);
@@ -83,19 +83,19 @@ check("bound text.set delegates one replacement while preserving element content
 
 check("text.set inserts one canonical text slot when the bucket has no text", () => {
   const map = element(`<main @0000000000000503 <b/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   binding.tree.text.set("first");
   const bucket = raw_node(map.element.node(), [0]);
   assert.equal(raw_node(map.element.node(), [0, 0]).$_content[0], "first");
   assert.equal((bucket.$_content[1] as HsonNode).$_tag, "b");
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
 
 check("text.add and text.insert map to exact raw _hson_elem insertion slots", () => {
   const map = element(`<main @0000000000000504 "a" <b/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
@@ -109,20 +109,20 @@ check("text.add and text.insert map to exact raw _hson_elem insertion slots", ()
   ]);
   assert.deepEqual([...rootDom.childNodes].map((item) => item instanceof FakeText ? item.data : (item as FakeElement).tagName), ["a", "false", "b", "0"]);
   assert.equal(observations.length, 2);
-  assert.equal(binding.diagnostics().projectionTransactions, 2);
+  assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 
   const empty = element(`<main @0000000000000505/>`);
-  const emptyBinding = bind_document_livetree(empty);
+  const emptyBinding = hsonReflect(empty);
   emptyBinding.tree.text.add(null);
   assert.equal(raw_node(empty.element.node(), [0, 0]).$_content[0], "");
-  assert.equal(emptyBinding.diagnostics().projectionTransactions, 1);
+  assert.equal(emptyBinding.diagnostics().updatesApplied, 1);
   emptyBinding.dispose();
 });
 
 check("empty delegates only zero-or-one physical content slots", () => {
   const map = element(`<main @0000000000000506 <section @0000000000000507 "inside"/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const sectionNode = raw_node(binding.tree.node, [0, 0]);
   const sectionTree = create_livetree(sectionNode).adoptRoots(binding.tree.hostRootNode());
@@ -133,24 +133,24 @@ check("empty delegates only zero-or-one physical content slots", () => {
   assert.equal(raw_node(map.element.node(), [0, 0]).$_content.length, 0);
   assert.equal(sectionDom.childNodes.length, 0);
   const revision = map.rev;
-  const transactions = binding.diagnostics().projectionTransactions;
+  const transactions = binding.diagnostics().updatesApplied;
   const writes = sectionDom.replaceWrites;
   sectionTree.empty();
   assert.equal(map.rev, revision);
-  assert.equal(binding.diagnostics().projectionTransactions, transactions);
+  assert.equal(binding.diagnostics().updatesApplied, transactions);
   assert.equal(sectionDom.replaceWrites, writes);
   assert.equal(observations.length, 1);
   assert.equal(binding.tree.empty(), binding.tree);
   assert.equal(map.element.node().$_content.length, 0);
   assert.equal((get_el_for_node(binding.tree.node) as unknown as FakeElement).childNodes.length, 0);
   assert.equal(observations.length, 2);
-  assert.equal(binding.diagnostics().projectionTransactions, 2);
+  assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
 
 check("nested remove and removeSelf delegate one raw parent-slot removal", () => {
   const map = element(`<main @0000000000000508 <a @0000000000000509/> <b/> <c/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const aNode = raw_node(binding.tree.node, [0, 0]);
   const bNode = raw_node(binding.tree.node, [0, 1]);
@@ -166,7 +166,7 @@ check("nested remove and removeSelf delegate one raw parent-slot removal", () =>
   assert.equal(aTree.removeSelf(), 1);
   assert.equal(raw_node(map.element.node(), [0, 0]).$_tag, "c");
   assert.equal(observations.length, 3);
-  assert.equal(binding.diagnostics().projectionTransactions, 3);
+  assert.equal(binding.diagnostics().updatesApplied, 3);
   assert.equal(binding.tree.remove(), 1);
   assert.equal(binding.status, "disposed");
   assert.equal(map.element.node().$_tag, "main");
@@ -175,7 +175,7 @@ check("nested remove and removeSelf delegate one raw parent-slot removal", () =>
 
 check("replayed path changes are used by later text delegation", () => {
   const map = element(`<main @0000000000000510 <a "left"/> <b "right"/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const bNode = raw_node(binding.tree.node, [0, 1]);
   const bTree = create_livetree(bNode).adoptRoots(binding.tree.hostRootNode());
   map.replay({
@@ -187,14 +187,14 @@ check("replayed path changes are used by later text delegation", () => {
   bTree.text.set("moved");
   assert.equal(raw_node(map.element.node(), [0, 0, 0, 0]).$_content[0], "moved");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.diagnostics().projectionTransactions, 2);
+  assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
 
 check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
   const map = element(`<main @0000000000000511 "one" "two"/>`);
   map.document.content.insert(path(), 1, projected_element(`<aside/>`));
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const branch = create_livetree(projected_element(`<aside/>`));
   const before = structuredClone(binding.tree.node);
   for (const mutation of [
@@ -207,9 +207,9 @@ check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
     () => binding.tree.detachContents(),
     () => binding.tree.removeChildren(),
   ]) {
-    assert.throws(mutation, (cause) => cause instanceof DocumentLiveTreeBindingError
-      && (cause.code === DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE
-        || cause.code === "DOCUMENT_BINDING_UNSUPPORTED_OPERATION"));
+    assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
+      && (cause.code === DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE
+        || cause.code === "DOCUMENT_REFLECT_UNSUPPORTED_OPERATION"));
   }
   assert.deepEqual(binding.tree.node, before);
   assert.equal(map.rev, 1);
@@ -219,19 +219,19 @@ check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
 
 check("projection failure after delegated canonical success fails without escaping", () => {
   const map = element(`<main @0000000000000512/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   assert.equal(binding.tree.text.add("canonical"), binding.tree);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
-  assert.throws(() => binding.tree.text.set("blocked"), DocumentLiveTreeBindingError);
+  assert.throws(() => binding.tree.text.set("blocked"), DocumentReflectError);
   binding.dispose();
   binding.tree.text.overwrite("unbound");
   assert.equal(binding.tree.text.get(), "unbound");
 });
 
 process.stdout.write(`# ${checks} bound document mutation delegation checks passed\n`);
-emit_hson_live_test_completion("livetree.document-delegation", checks, checks, 0);
+emit_hson_live_test_completion("reflect.document-delegation", checks, checks, 0);

@@ -17,9 +17,8 @@ import { strip_html_comments } from "../utils/html-preflights/strip-html-comment
 import { wrap_cdata } from "../../../safety/wrap-cdata.js";
 import { optional_endtag_preflight } from "../utils/html-preflights/optional-endtag.js";
 import { escape_attr_angles } from "../../../safety/escape_angles.js";
-import { dedupe_attrs_html } from "../../../safety/dedupe-attrs.js";
 import { quote_unquoted_attrs } from "../utils/html-preflights/quoted-unquoted.js";
-import { mangle_illegal_attrs } from "../utils/html-preflights/mangle-illegal-attrs.js";
+import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 import { encode_hson_metadata_transit } from "../utils/html-preflights/hson-metadata-transit.js";
 import { namespace_svg } from "../utils/html-preflights/namespace-svg.js";
 import { is_indexed } from "../../../core/node-guards.js";
@@ -80,11 +79,10 @@ function snip_context(s: string, at: number, radius = 80): string {
  * 3. Escape text + expand entities (`escape_text`, `expand_entities`).
  * 4. Add required SVG namespace handling (`namespace_svg`).
  * 5. Normalize unquoted attribute values (`quote_unquoted_attrs`).
- * 6. Encode syntactic `hson:*` names with the dedicated private transit codec.
- * 7. Encode remaining XML-hostile names (`mangle_illegal_attrs`).
+ * 6. Apply duplicate policy and encode XML-hostile ordinary names.
+ * 7. Encode syntactic `hson:*` names with the dedicated private transit codec.
  * 8. Attempt XML parse via `DOMParser("application/xml")`.
  * 9. On parse errors, apply gated repairs in order:
- *    - Deduplicate attributes (`dedupe_attrs_html`) for duplicate-attr errors.
  *    - Patch bare ampersands (`amp_fix`) for entity errors.
  *    - Quote unquoted attrs (`quote_unquoted_attrs`) and re-amp-fix.
  *    - Escape literal `<` inside attrs (`escape_attr_angles`).
@@ -118,9 +116,12 @@ export function parse_html(input: string | Element): HsonNode {
         // - expand void HTML tags: <input ...> → <input ... />
         const svgSafe = namespace_svg(ents);
         const quoted = quote_unquoted_attrs(svgSafe);
-        const hsonTransitSafe = encode_hson_metadata_transit(quoted);
-        const mangled = mangle_illegal_attrs(hsonTransitSafe);
-        const voidSafe = expand_void_tags(mangled);
+        const ordinaryTransitSafe = normalize_html_source_attributes(
+            quoted,
+            { encodeTransit: true },
+        );
+        const hsonTransitSafe = encode_hson_metadata_transit(ordinaryTransitSafe);
+        const voidSafe = expand_void_tags(hsonTransitSafe);
         // Make quoted attribute values XML-safe before the first parse.
         // Firefox rejects bare `&` in quoted attrs such as url('a&b.png'), even
         // when Chrome's XML parser appears to tolerate it.
@@ -169,17 +170,7 @@ export function parse_html(input: string | Element): HsonNode {
                 );
             }
 
-            // 1) Duplicate attributes: only then dedupe
-            if (/Duplicate|redefined/i.test(msg)) {
-                const deduped = dedupe_attrs_html(xmlSrc);
-                tryParse(deduped, "dedupe_attrs_html");
-            }
-        }
-
-        if (hasErr()) {
-            const msg = errText();
-
-            // 2) Entity / ampersand problems: only then amp-fix
+            // 1) Entity / ampersand problems: only then amp-fix
             // (Patterns vary by engine; keep loose but still clearly entity-related.)
             if (/Entity|reference to entity|The entity name must immediately follow the '&' in the entity reference/i.test(msg)) {
                 tryParse(amp_fix(xmlSrc), "amp_fix(entity)");
@@ -189,7 +180,7 @@ export function parse_html(input: string | Element): HsonNode {
         if (hasErr()) {
             const msg = errText();
 
-            // 3) Unquoted attribute values: only then quote them (and re-run amp fix once)
+            // 2) Unquoted attribute values: only then quote them (and re-run amp fix once)
             // IMPORTANT: do NOT run this for tag mismatch errors; it's a regex and can worsen things.
             if (
                 /AttValue|attribute value|expected ['"]|quotation mark|not well-formed/i.test(msg) &&
@@ -202,7 +193,7 @@ export function parse_html(input: string | Element): HsonNode {
         }
         if (hasErr()) {
 
-            // 4) Literal '<' inside attribute values
+            // 3) Literal '<' inside attribute values
             // DOMParser messages vary; keep it narrow-ish but not brittle.
             const msg = errText();
             // raw < inside a quoted attribute value
@@ -353,7 +344,10 @@ function convert(
     const { attrs: sortedAcc, meta: metaAcc, quid } = parse_html_attrs(
         el,
         dec,
-        { allowHsonTransit },
+        {
+            allowHsonTransit,
+            allowOrdinaryTransit: allowHsonTransit,
+        },
     );
     const finish = (node: HsonNode): HsonNode => {
         if (quid !== undefined) {

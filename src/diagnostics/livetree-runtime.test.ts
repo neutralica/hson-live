@@ -6,9 +6,9 @@ import {
 } from "../api/livetree/creation/create-livetree.js";
 import { project_livetree } from "../api/livetree/creation/project-live-tree.js";
 import {
-  bind_document_livetree_in_runtime,
-  type DocumentLiveTreeBinding,
-} from "../api/liveproject/liveproject.document.js";
+  reflect_document_in_runtime,
+  type DocumentReflect,
+} from "../api/reflect/reflect.document.js";
 import { CssManager } from "../api/livetree/managers/css-manager.js";
 import {
   lifecycle_resource_counts_for_owner,
@@ -124,11 +124,11 @@ export function livetree_runtime_test_owns_document(
   return runtime_owns_document(runtime_for_handle(handle), document);
 }
 
-export function bind_document_livetree_for_runtime_test(
+export function reflect_document_for_runtime_test(
   handle: LiveTreeRuntimeTestHandle,
   map: ElementLiveMap,
-): DocumentLiveTreeBinding {
-  return bind_document_livetree_in_runtime(map, runtime_for_handle(handle));
+): DocumentReflect {
+  return reflect_document_in_runtime(map, runtime_for_handle(handle));
 }
 
 export function livetree_runtime_test_same_runtime(

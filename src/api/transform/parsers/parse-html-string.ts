@@ -31,6 +31,8 @@ import {
   scan_ingested_hson_node_quids,
 } from "../utils/hson-utils/quid-ingress.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
+import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
+import { normalize_html_source_attributes } from "../utils/html-preflights/ordinary-attribute-transit.js";
 
 const ALLOWED_ATTRS = new Set([
   "href",
@@ -103,8 +105,13 @@ function attributes_from_element(
         "parse-html-string",
       );
     }
+    if (lower.startsWith(_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private ordinary-attribute transit name "${authoredName}" is forbidden`,
+        "parse-html-string",
+      );
+    }
     if (sanitize && !sanitized_attribute(lower, value)) continue;
-    if (lower.startsWith(_TRANSIT_PREFIX)) continue;
     if (lower === "xmlns" || lower.startsWith("xmlns:") || lower.startsWith("xml:")) continue;
 
     if (lower.startsWith(HSON_META_MARKUP_PREFIX)) {
@@ -115,6 +122,12 @@ function attributes_from_element(
       if (admission.key === HSON_META_QUID) quid = admission.value;
       else (meta ??= {})[admission.key] = admission.value;
       continue;
+    }
+    if (!is_valid_hson_attribute_name(authoredName)) {
+      _throw_transform_err(
+        `invalid HSON attribute name "${authoredName}"`,
+        "parse-html-string",
+      );
     }
 
     if (lower === "style") {
@@ -352,11 +365,18 @@ function standalone_svg_node(element: Element): HsonNode {
   const attrs: HsonAttrs = {};
   let meta: HsonMeta | undefined;
   let quid: string | undefined;
+  const hasHref = Object.keys(element.attribs).some((name) => name.toLowerCase() === "href");
   for (const [name, value] of Object.entries(element.attribs)) {
     const lower = name.toLowerCase();
     if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
         `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        "parse-html-string",
+      );
+    }
+    if (lower.startsWith(_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private ordinary-attribute transit name "${name}" is forbidden`,
         "parse-html-string",
       );
     }
@@ -367,6 +387,8 @@ function standalone_svg_node(element: Element): HsonNode {
       }
       if (admission.key === HSON_META_QUID) quid = admission.value;
       else (meta ??= {})[admission.key] = admission.value;
+    } else if (lower === "xlink:href") {
+      if (!hasHref) attrs.href = value;
     } else {
       attrs[name] = value;
     }
@@ -414,14 +436,15 @@ function root_is_empty(root: HsonNode): boolean {
  * parsed tree is filtered before it is converted into canonical HSON.
  */
 export function parse_html_string(input: string, sanitize: boolean): HsonNode {
-  const document = parseDocument(input, {
+  const normalizedInput = normalize_html_source_attributes(input);
+  const document = parseDocument(normalizedInput, {
     decodeEntities: true,
     lowerCaseAttributeNames: false,
     lowerCaseTags: false,
     recognizeSelfClosing: true,
   });
   let root: HsonNode | undefined;
-  if (!sanitize && /^<\s*svg[\s>]/i.test(input.trimStart())) {
+  if (!sanitize && /^<\s*svg[\s>]/i.test(normalizedInput.trimStart())) {
     const svg = document.children.find(isTag);
     if (svg !== undefined && svg.name.toLowerCase() === "svg") {
       root = standalone_svg_node(svg);

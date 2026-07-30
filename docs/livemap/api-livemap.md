@@ -442,7 +442,7 @@ captures contain HSON nodes; LiveHost recovery serializes them as HSON or
 negotiated view-state rather than by blindly JSON-stringifying the capture.
 
 Passing browser `Element` objects belongs to other hson/LiveTree construction
-paths and is unavailable in Node/Worker execution. Hydration coordination
+paths and is unavailable in Node/Worker execution. Synchronization coordination
 between a server LiveMap, LiveHost revision, and LiveTree is not yet a public
 product contract.
 
@@ -466,4 +466,4 @@ write errors do not partially change the graph.
 - Unsafe node handles bypass every normal state guarantee.
 - Links are one-way and have no distributed/cross-process transport.
 - There is no public `get`, `has`, or `node` method directly on a map.
-- Server rendering and LiveTree hydration orchestration remain external.
+- Server rendering and LiveTree adoption orchestration remain external.

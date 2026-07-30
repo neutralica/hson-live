@@ -7,34 +7,34 @@ import type {
   LiveMapPathHandle,
   LivePath,
 } from "./livemap.types.js";
-import type { LiveProjectionError } from "../api/liveproject/liveproject.error.js";
+import type { CollectionReflectError } from "../api/reflect/reflect.collection.error.js";
 
 /** Application identity used by the first keyed collection projector. */
-export type LiveProjectionKey = string | number;
+export type CollectionReflectKey = string | number;
 
-export type LiveProjectionStatus =
+export type CollectionReflectStatus =
   | "initializing"
   | "ready"
-  | "reconciling"
+  | "updating"
   | "failed"
   | "disposed";
 
-export type LiveProjectionChangeKind =
+export type CollectionReflectChangeKind =
   | "nested"
-  | "reconcile"
+  | "update"
   | "source-replaced"
-  | "resync";
+  | "synchronize";
 
 /** Commit context delivered to a surviving item's renderer update hook. */
-export type LiveProjectionChange = Readonly<{
-  kind: LiveProjectionChangeKind;
+export type CollectionReflectChange = Readonly<{
+  kind: CollectionReflectChangeKind;
   commit?: LiveMapCommit;
   ops: readonly LiveMapOp[];
 }>;
 
 /** Immutable context for one current source-item/view correspondence. */
-export type LiveProjectionItemContext = Readonly<{
-  key: LiveProjectionKey;
+export type CollectionReflectItemContext = Readonly<{
+  key: CollectionReflectKey;
   /** Undefined until LiveMap exposes stable value-node identity across array rewrites. */
   sourceQuid: string | undefined;
   path: LivePath;
@@ -43,36 +43,36 @@ export type LiveProjectionItemContext = Readonly<{
   own: (cleanup: () => void) => LiveMapDisposer;
 }>;
 
-export type LiveProjectionItemUpdate<TItem extends JsonValue = JsonValue> = (
+export type CollectionReflectItemUpdate<TItem extends JsonValue = JsonValue> = (
   source: LiveMapPathHandle<TItem>,
-  change: LiveProjectionChange,
-  context: LiveProjectionItemContext,
+  change: CollectionReflectChange,
+  context: CollectionReflectItemContext,
 ) => void;
 
-export type LiveProjectionRenderResult<TItem extends JsonValue = JsonValue> =
+export type CollectionReflectRenderResult<TItem extends JsonValue = JsonValue> =
   | LiveTree
   | Readonly<{
     tree: LiveTree;
-    update?: LiveProjectionItemUpdate<TItem>;
+    update?: CollectionReflectItemUpdate<TItem>;
     dispose?: () => void;
   }>;
 
-export type LiveProjectionRender<TItem extends JsonValue = JsonValue> = (
+export type CollectionReflectRender<TItem extends JsonValue = JsonValue> = (
   source: LiveMapPathHandle<TItem>,
-  context: LiveProjectionItemContext,
-) => LiveProjectionRenderResult<TItem>;
+  context: CollectionReflectItemContext,
+) => CollectionReflectRenderResult<TItem>;
 
-export type LiveKeyedProjectionOptions<TItem extends JsonValue = JsonValue> = Readonly<{
+export type CollectionReflectOptions<TItem extends JsonValue = JsonValue> = Readonly<{
   source: LiveMapPathHandle<readonly TItem[]>;
   host: LiveTree;
-  key: (value: TItem, context: Readonly<{ path: LivePath; ordinal: number }>) => LiveProjectionKey;
-  render: LiveProjectionRender<TItem>;
+  key: (value: TItem, context: Readonly<{ path: LivePath; ordinal: number }>) => CollectionReflectKey;
+  render: CollectionReflectRender<TItem>;
 }>;
 
-export type LiveProjectionDiagnostics = Readonly<{
-  status: LiveProjectionStatus;
+export type CollectionReflectDiagnostics = Readonly<{
+  status: CollectionReflectStatus;
   sourceRevisionLastApplied: number;
-  projectedItemCount: number;
+  reflectedItemCount: number;
   recordsCreated: number;
   recordsReused: number;
   recordsMoved: number;
@@ -81,7 +81,7 @@ export type LiveProjectionDiagnostics = Readonly<{
   batchAttachmentPasses: number;
   recordsBatchAttached: number;
   largestAttachedBatch: number;
-  fullReconciliations: number;
+  fullSynchronizations: number;
   targetedCommitApplications: number;
   ignoredOutOfScopeCommits: number;
   keyConflicts: number;
@@ -93,40 +93,40 @@ export type LiveProjectionDiagnostics = Readonly<{
   subscriptionsDisposed: number;
   sourceQuidMappings: number;
   applicationKeyMappings: number;
-  firstFailure: LiveProjectionError | undefined;
-  lastSourceReplacementFailure: LiveProjectionError | undefined;
+  firstFailure: CollectionReflectError | undefined;
+  lastSourceReplacementFailure: CollectionReflectError | undefined;
 }>;
 
-export type LiveProjectionMappingSummary = Readonly<{
-  applicationKey: LiveProjectionKey;
+export type CollectionReflectMappingSummary = Readonly<{
+  applicationKey: CollectionReflectKey;
   sourceQuid: string | undefined;
   sourcePath: LivePath;
   viewQuid: string;
   ordinal: number;
 }>;
 
-export type LiveProjectionSnapshot = Readonly<{
-  status: LiveProjectionStatus;
+export type CollectionReflectSnapshot = Readonly<{
+  status: CollectionReflectStatus;
   itemCount: number;
   sourcePath: LivePath;
   sourceRevisionLastApplied: number;
-  failure: LiveProjectionError | undefined;
+  failure: CollectionReflectError | undefined;
 }>;
 
-export type LiveProjectionListener = (snapshot: LiveProjectionSnapshot) => void;
+export type CollectionReflectListener = (snapshot: CollectionReflectSnapshot) => void;
 
 /** Public lifecycle and diagnostics surface for one keyed projection. */
-export type LiveKeyedProjection<TItem extends JsonValue = JsonValue> = Readonly<{
-  readonly status: LiveProjectionStatus;
+export type CollectionReflect<TItem extends JsonValue = JsonValue> = Readonly<{
+  readonly status: CollectionReflectStatus;
   readonly host: LiveTree;
   readonly itemCount: number;
   readonly sourcePath: LivePath;
   readonly sourceRevisionLastApplied: number;
-  readonly failure: LiveProjectionError | undefined;
-  diagnostics: () => LiveProjectionDiagnostics;
-  debugMappings: () => readonly LiveProjectionMappingSummary[];
-  subscribe: (listener: LiveProjectionListener) => LiveMapDisposer;
+  readonly failure: CollectionReflectError | undefined;
+  diagnostics: () => CollectionReflectDiagnostics;
+  debugMappings: () => readonly CollectionReflectMappingSummary[];
+  subscribe: (listener: CollectionReflectListener) => LiveMapDisposer;
   replaceSource: (source: LiveMapPathHandle<readonly TItem[]>) => void;
-  resync: () => void;
+  synchronize: () => void;
   dispose: () => void;
 }>;

@@ -35,9 +35,8 @@ and `livehost` are DOM-free and suitable for strict Worker consumers;
 the `hson-live/hson` umbrella entrypoint, loose subsystem exports, and the
 `liveHost` alias remain supported.
 
-The umbrella exposes projection as `hson.reflect`; `hson.liveProject` remains
-an exact compatibility alias. Browser-only HTML constructors remain available
-on `hson` and `hson.liveMap`.
+The umbrella exposes the LiveMap-authoritative reflector as `hson.reflect`.
+Browser-only HTML constructors remain available on `hson` and `hson.liveMap`.
 
 JSON and HTML occupy different domains — data and markup — but both are built from hierarchical, tree-structured relationships. In JSON, structure emerges from key:value associations; in HTML it arises from parent–child relationships between elements. HSON formalizes the equivalence between the two, representing both  structures within the same underlying node graph.
 
@@ -115,7 +114,7 @@ HTML attributes, text content, child nodes, CSS rules and styles, animations and
 
 Once grafted onto document.body, mutations to LiveTree’s node graph are immediately updated in the DOM. Complex documents can be created, transformed, and animated without relying on intermediary abstractions such as:
 -! templates
--! reconciliation layers
+-! synchronization layers
 -! shadow DOM
 -! direct use of low-level DOM construction APIs
 -! large UI frameworks
@@ -185,9 +184,9 @@ Cleanup is built-in: rules are automatically deleted from the <hson-_style> styl
 
 ### view === state?
 
-* state and view cannot diverge; there is only one data node structure of which they are both projections
+* LiveMap remains authoritative while the reflector coordinates a LiveTree view
 * serialization is not an edge case operation but core functionality
-* responsive interfaces require no reconciliation step; they are always up to date
+* responsive interfaces update directly from canonical commits
 * DOM manipulation becomes authoritative and first-class rather than a side effect
 * non-JS runtimes (including WASM) gain a clear, stable target for DOM-adjacent interaction
 
@@ -196,7 +195,7 @@ Cleanup is built-in: rules are automatically deleted from the <hson-_style> styl
 
 ### HSON-LIVE IS EXPERIMENTAL - USE WITH CAUTION
 
-The transformation core is stable, but the surrounding APIs are still evolving. The project is suitable for exploration, prototyping, and controlled environments. 
+The transformation core is stable, but the surrounding APIs are still evolving. The library is suitable for exploration, prototyping, and controlled environments.
 
 !!!hson-live is not currently recommended for use with untrusted HTML or for security-critical production use.
 
@@ -218,7 +217,7 @@ npx tsc
 Compiled output is written to dist/.
 
 ## GitHub & documentation
-The project repo can be found at 
+The repository can be found at
 `https://github.com/neutralica/hson-live`
 
 See the docs/ directory for detailed documentation of HSON syntax, transformer behavior, and the LiveTree API. Full documentation is also made available at hson::LiveDemo. 

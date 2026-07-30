@@ -11,7 +11,7 @@ import {
   hsonLiveHost,
   liveHost,
 } from "./api/livehost/livehost.facade.js";
-import { hsonReflect } from "./api/liveproject/liveproject.facade.js";
+import { hsonReflect } from "./api/reflect/reflect.facade.js";
 import { hsonInspect } from "./api/liveinspect/liveinspect.facade.js";
 import type {
   HsonString,
@@ -25,6 +25,7 @@ export {
   hsonLiveHost,
   hsonLiveMap,
   hsonLiveTree,
+  hsonReflect,
   hsonTransform,
   hsonString,
   liveHost,
@@ -49,7 +50,6 @@ export interface HsonFacade {
   liveTree: typeof hsonLiveTree;
   liveHost: typeof hsonLiveHost;
   reflect: typeof hsonReflect;
-  liveProject: typeof hsonReflect;
   inspect: typeof hsonInspect;
 }
 
@@ -70,6 +70,5 @@ export const hson: HsonFacade = {
   liveHost: hsonLiveHost,
 
   reflect: hsonReflect,
-  liveProject: hsonReflect,
   inspect: hsonInspect,
 };

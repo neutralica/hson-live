@@ -15,7 +15,7 @@ HSON—Hypertext Structured Object Notation—is the underlying notation. It mod
 - **LiveTree** projects HSON into live browser documents.
 - **LiveHost** maintains authoritative HSON state across clients and server runtimes.
 
-The project is experimental. It is a working library and architectural research project, not a finished general-purpose web framework.
+The library is experimental. It is working architectural research, not a finished general-purpose web framework.
 
 ---
 
@@ -231,7 +231,7 @@ LiveTree provides graph-backed interfaces for:
 - DOM geometry and inspection;
 - deterministic detach, transfer, removal, and cleanup.
 
-LiveTree does not require a virtual DOM or reconciliation pass. Mutating the graph updates its DOM projection directly.
+LiveTree does not require a virtual DOM synchronization pass. Mutating the graph updates its DOM projection directly.
 
 Eligible live nodes receive stable QUID identity. QUIDs support lookup, graph continuity, and locally scoped CSS without requiring Shadow DOM or generated class names.
 
@@ -271,9 +271,9 @@ button.listen.onClick(() => {
 
 A binding reads the current value immediately and subscribes to later changes.
 
-The state graph and document graph remain distinct owners, but their relationship is explicit. There is no hidden reconciliation layer deciding whether the view has caught up with state.
+The state graph and document graph retain distinct responsibilities, but their relationship is explicit. LiveMap remains authoritative, and the reflector updates the view from observed commits.
 
-For broader graph projection, `hson.reflect`—also retained under the compatibility name `hson.liveProject`—provides a borrowing bridge between LiveMap authority and a LiveTree runtime.
+For broader graph reflection, `hson.reflect` provides an optional binding that borrows LiveMap authority and coordinates a LiveTree runtime.
 
 ---
 
@@ -327,13 +327,13 @@ ordered live commits
 
 State may change between the HTTP response and the WebSocket connection. This does not create a separate synchronization problem: the existing recovery system replays the missing commits or installs a newer snapshot when history is no longer available.
 
-The bootstrap path establishes server-to-browser state continuity. It does not yet constitute LiveTree HTML hydration or a complete SSR product.
+The bootstrap path establishes server-to-browser state continuity. It does not yet constitute LiveTree HTML adoption or a complete SSR product.
 
 ---
 
 ## What hson-live is exploring
 
-The project is built around several concrete propositions:
+The library is built around several concrete propositions:
 
 ### Data and markup can share one explicit structural model
 
@@ -345,7 +345,7 @@ A live graph does not have to become an unserializable runtime object. HSON rema
 
 ### State and view can share a source without being the same object
 
-LiveMap and LiveTree retain different responsibilities. When connected deliberately, they operate from canonical graph state rather than from independently evolving copies reconciled after the fact.
+LiveMap and LiveTree retain different responsibilities. When connected deliberately, the reflector observes canonical LiveMap commits and synchronizes the LiveTree view without granting it equal authority.
 
 ### A hosted application can be a revisioned graph rather than a collection of client-side simulations
 
@@ -353,7 +353,7 @@ LiveHost accepts actions, mutates one authority, and publishes one ordered histo
 
 ### Infrastructure should be inspectable
 
-The public LiveDemo environment exposes demos, diagnostics, test inventories, and real transport checks. Claims made by the project are intended to be exercised rather than presented only as examples.
+The public LiveDemo environment exposes demos, diagnostics, test inventories, and real transport checks. Claims made by the library are intended to be exercised rather than presented only as examples.
 
 ---
 
@@ -370,9 +370,9 @@ Current limitations include:
 - projected-data persistence is not currently provided;
 - document persistence remains experimental;
 - LiveHost is not a CRDT and does not provide offline merge;
-- HTTP HSON bootstrap is implemented, but LiveTree HTML hydration is not;
+- HTTP HSON bootstrap is implemented, but LiveTree HTML adoption is not;
 - framework-specific SSR integrations are not provided;
-- the project has not been presented as a security-certified runtime.
+- the library has not been presented as a security-certified runtime.
 
 Use `fromUntrustedHtml` for untrusted HTML input. `fromTrustedHtml` deliberately bypasses sanitization and must only receive trusted source.
 

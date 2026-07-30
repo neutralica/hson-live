@@ -10,21 +10,21 @@
 
 `hson.inspect.fromJson({ value, host })` and `hson.inspect.fromHson({ value, host })` explicitly create an inspector-owned `LiveMap`. Plain values are not silently copied by `create`.
 
-The inspector is layered on `hson.liveProject.keyedCollection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
+The inspector is layered on `hson.reflect.collection`. Object properties are keyed by property name. Arrays use an explicit `arrayKey` result only when every item has one; otherwise an entirely unkeyed array uses honest positional identity. Mixed key coverage and duplicate keys fail with classified errors. Positional rows represent positions and do not promise logical continuity when values move.
 
 The inspector keeps no second authoritative source graph, serialized mirror, hash-key table, mutation adapter, or transport state. Nested adapters are thin source views consumed by the Patch 7A engine.
 
 ## Rendering grammar
 
-Every value has one stable semantic row with a label, type, neutral preview, and real button controls. Objects project named property rows. Arrays project ordered item rows. Empty object and array states remain distinct. Long strings are previewed with `longStringLimit`; the source value is unchanged. Stable attributes such as `data-hson-inspect-kind`, `data-hson-inspect-role`, and `data-hson-inspect-depth` are styling and test hooks.
+Every value has one stable semantic row with a label, type, neutral preview, and real button controls. Objects reflect named property rows. Arrays reflect ordered item rows. Empty object and array states remain distinct. Long strings are previewed with `longStringLimit`; the source value is unchanged. Stable attributes such as `data-hson-inspect-kind`, `data-hson-inspect-role`, and `data-hson-inspect-depth` are styling and test hooks.
 
-`initialDepth` bounds eager materialization. A collapsed unvisited branch has no descendant projector. First expansion creates it through keyed projection. Later collapse hides rather than destroys materialized descendants, so expansion state and row identity remain local and stable. `expandAll` is guarded by `expandAllLimit`.
+`initialDepth` bounds eager materialization. A collapsed unvisited branch has no descendant reflector. First expansion creates it through keyed projection. Later collapse hides rather than destroys materialized descendants, so expansion state and row identity remain local and stable. `expandAll` is guarded by `expandAllLimit`.
 
 ## Materialization and scale
 
 Materialization is synchronous and incremental by semantic collection. Each newly visible collection is read once, its rows are constructed as detached `LiveTree` branches, and consecutive new rows are attached as one validated batch. Existing keyed records are reused and moved without rebuilding their view-QUID-bearing branches. No staged scheduler or virtualization policy is active, so a call that reveals a collection completes before returning and source replacement cannot interleave with that call. Failure before or during attachment leaves that collection's new forest detached and the previously committed view intact; there is no asynchronous work to cancel.
 
-Lazy depth remains the primary scale control: collapsed, unvisited descendants consume no projector, row tree, delegated listener, or scoped stylesheet. A materialized collection uses bounded DOM attachment operations and one inspector-root interaction listener and stylesheet, rather than one of each per row. Diagnostics expose materialization and batch counts plus elapsed materialization time; they are observational and are not published once per new row.
+Lazy depth remains the primary scale control: collapsed, unvisited descendants consume no reflector, row tree, delegated listener, or scoped stylesheet. A materialized collection uses bounded DOM attachment operations and one inspector-root interaction listener and stylesheet, rather than one of each per row. Diagnostics expose materialization and batch counts plus elapsed materialization time; they are observational and are not published once per new row.
 
 The inspector intentionally does not promise unlimited rendering. In the hosted jsdom fixture, flat 1,000-row object and array collections exhibit approximately proportional operation counts and complete in hundreds of milliseconds on the development machine, but jsdom construction and disposal costs remain material. Browser behavior has not yet been characterized as a cross-browser performance contract. Prefer lazy depth for large nested graphs, application keys for movable arrays, and an application-specific view when a collection is large enough that synchronously constructing every visible accessible row would disrupt the UI. `expandAllLimit` remains a safety boundary, not virtualization.
 
@@ -42,7 +42,7 @@ Semantic renderer hooks and prioritized specializations receive only a mutation-
 
 ## Replacement and disposal
 
-`replaceSource(next)` validates before reconciling. Compatible replacement preserves property rows by name and array rows by application key, including surviving expansion and selection; handles and canonical paths change to the new source context. Failed validation leaves the previous subscription and view active and preserves the underlying classified cause.
+`replaceSource(next)` validates before synchronizing. Compatible replacement preserves property rows by name and array rows by application key, including surviving expansion and selection; handles and canonical paths change to the new source context. Failed validation leaves the previous subscription and view active and preserves the underlying classified cause.
 
 `dispose()` is terminal and idempotent. It removes inspector-owned branches, projections, subscriptions, delegated listeners, scoped CSS, selection/expansion state, and renderer resources. Removing the inspector root externally invokes the same cleanup. Later source commits do nothing. Mutating methods on a disposed handle throw `LIVE_INSPECTOR_DISPOSED`.
 

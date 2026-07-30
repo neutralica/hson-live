@@ -37,7 +37,7 @@ export type {
   LiveTraceSubsystem,
 } from "../types/livehost.types.js";
 export {
-  bind_document_livetree_for_runtime_test as _bind_document_livetree_for_runtime_test,
+  reflect_document_for_runtime_test as _reflect_document_for_runtime_test,
   create_livetree_for_runtime_test as _create_livetree_for_runtime_test,
   create_livetree_runtime_test_handle as _create_livetree_runtime_test_handle,
   dispose_livetree_runtime_test_handle as _dispose_livetree_runtime_test_handle,

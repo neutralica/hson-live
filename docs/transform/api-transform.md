@@ -124,6 +124,15 @@ Parses trusted HTML through the unsafe/raw HTML path.
   root element itself.
 - SVG markup is allowed on this path.
 
+For raw HTML strings, ordinary attribute names compare case-insensitively for
+duplicate detection. The last ordinary value wins, repeated `class`
+declarations merge unique tokens in encounter order, and duplicate `hson:*`
+metadata declarations reject. Canonical-valid colonized ordinary names are
+carried reversibly through the XML-backed browser parser and admitted under
+their original semantic name. Invalid names and authored private parser-transit
+names reject. `data--attrmap`, like every `data-*` spelling, is ordinary
+application data.
+
 Use only for developer-authored or otherwise trusted markup.
 
 ### `hson.fromJson(input: string | JsonValue)`

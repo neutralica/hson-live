@@ -46,6 +46,10 @@
       "types": "./dist/api/livehost/node/index.d.ts",
       "import": "./dist/api/livehost/node/index.js"
     },
+    "./reflect": {
+      "types": "./dist/api/reflect/index.d.ts",
+      "import": "./dist/api/reflect/index.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
@@ -78,6 +82,7 @@
     "test:diagnostics-inventory": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/diagnostics-inventory.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",
     "test:hson-array-index": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-array-index.acceptance.mts",
+    "test:hson-attribute-transport": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-attribute-transport.acceptance.mts",
     "test:canonical-hson-equality": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-hson-equality.acceptance.mts",
     "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",
     "test:livehost-graph-content-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-graph-content-codec.acceptance.mts",
@@ -87,11 +92,11 @@
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
     "test:livetree-quid-eligibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-quid-eligibility.acceptance.mts",
     "test:livetree-runtime-scope": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-runtime-scope.acceptance.mts",
-    "test:liveproject-document-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-attrs.acceptance.mts",
-    "test:liveproject-document-structure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-structure.acceptance.mts",
-    "test:liveproject-document-delegation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-delegation.acceptance.mts",
-    "test:liveproject-document-root": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-root.acceptance.mts",
-    "test:liveproject-document-snapshot": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/liveproject-document-snapshot.acceptance.mts",
+    "test:reflect-document-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-attrs.acceptance.mts",
+    "test:reflect-document-structure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-structure.acceptance.mts",
+    "test:reflect-document-delegation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-delegation.acceptance.mts",
+    "test:reflect-document-root": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-root.acceptance.mts",
+    "test:reflect-document-snapshot": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-snapshot.acceptance.mts",
     "test:livemap-document": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document.acceptance.mts",
     "test:livemap-document-install": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-install.acceptance.mts",
     "test:livemap-document-mutation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-mutation.acceptance.mts",

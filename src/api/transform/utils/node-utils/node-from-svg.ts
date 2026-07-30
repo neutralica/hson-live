@@ -7,6 +7,7 @@ import {
   HSON_META_QUID,
   HSON_META_MARKUP_PREFIX,
   HSON_META_TRANSIT_PREFIX,
+  _TRANSIT_PREFIX,
 } from "../../../../core/constants.js";
 import { admit_hson_metadata_markup } from "../../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
@@ -46,8 +47,9 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  *
  * Attribute handling:
  * - Routes `quid` through canonical protected metadata assignment.
- * - Copies every other attribute as-is into `$_attrs` (no normalization or filtering).
- * - This preserves SVG-specific casing and names like `viewBox`, `stroke-width`, and `xlink:href`.
+ * - Copies every other attribute as-is into `$_attrs` except for the established
+ *   `xlink:href` → `href` alias when no literal `href` is present.
+ * - This preserves SVG-specific casing and names like `viewBox` and `stroke-width`.
  *
  * Child handling:
  * - Element children become nested HSON nodes via recursive conversion.
@@ -72,12 +74,20 @@ function convert_svg_element(el: Element): HsonNode {
   const attrs: Record<string, string> = {};
   const meta: HsonMeta = {};
   let quid: string | undefined;
+  const hasHref = el.hasAttribute("href");
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes[i];
     const name = a.name;
-    if (name.startsWith(HSON_META_TRANSIT_PREFIX)) {
+    const lowerName = name.toLowerCase();
+    if (lowerName.startsWith(HSON_META_TRANSIT_PREFIX)) {
       _throw_transform_err(
         `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        "node_from_svg",
+      );
+    }
+    if (lowerName.startsWith(_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private ordinary-attribute transit name "${name}" is forbidden`,
         "node_from_svg",
       );
     }
@@ -88,6 +98,8 @@ function convert_svg_element(el: Element): HsonNode {
       }
       if (admission.key === HSON_META_QUID) quid = admission.value;
       else meta[admission.key] = admission.value;
+    } else if (lowerName === "xlink:href") {
+      if (!hasHref) attrs.href = a.value;
     } else {
       attrs[name] = a.value;
     }

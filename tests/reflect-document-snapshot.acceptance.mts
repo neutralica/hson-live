@@ -4,15 +4,15 @@ import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { DocumentLiveMapCapture, ElementLiveMap } from "../src/types/livemap.types.ts";
-import { bind_document_livetree } from "../src/api/liveproject/liveproject.document.ts";
+import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
-  DOCUMENT_BINDING_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE,
-  DOCUMENT_BINDING_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "../src/api/liveproject/liveproject.document.error.ts";
+  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
+  DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE,
+  DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
+  DocumentReflectError,
+} from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -72,7 +72,7 @@ function with_capture(
 
 check("compatible mounted snapshot retains root and bounded descendant identity", () => {
   const map = element(`<main @0000000000000601 class="old" <p @0000000000000602 "old"/> <i/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const tree = binding.tree;
   const root = tree.node;
   const rootDom = mount(root);
@@ -93,7 +93,7 @@ check("compatible mounted snapshot retains root and bounded descendant identity"
   assert.equal(root.$_attrs?.class, "restored");
   assert.equal(((rootDom.childNodes[0] as FakeElement).childNodes[0] as FakeText).data, "next");
   assert.equal(binding.sourceRevision, 2);
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
 
   create_livetree(paragraph).adoptRoots(root).attrs.set("after", "snapshot");
   assert.equal(map.document.attrs.get(path(0, 0), "after"), "snapshot");
@@ -105,7 +105,7 @@ check("compatible mounted snapshot retains root and bounded descendant identity"
 
 check("detached QUID-less snapshot retains projection-local root identity", () => {
   const map = element(`<main class="old"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const root = binding.tree.node;
   const projectionQuid = root.$_meta?.["quid"];
   const restored = element(`<main class="restored" "detached"/>`);
@@ -121,7 +121,7 @@ check("detached QUID-less snapshot retains projection-local root identity", () =
 
 check("restore followed by commit projects from the exact restored revision", () => {
   const map = element(`<main @0000000000000603/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const restored = element(`<main @0000000000000603 title="snapshot"/>`);
   restored.document.attrs.set(path(), "snapshot-rev", 1);
   restored.document.attrs.set(path(), "snapshot-rev", 2);
@@ -131,7 +131,7 @@ check("restore followed by commit projects from the exact restored revision", ()
   assert.equal(commit.rev, 3);
   assert.equal(binding.sourceRevision, 3);
   assert.equal(binding.tree.attrs.get("after"), "commit");
-  assert.equal(binding.diagnostics().projectionTransactions, 2);
+  assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
 
@@ -143,14 +143,14 @@ check("snapshot capture revision mismatch fails without latest-state convergence
     const capture = map.capture();
     return Object.freeze({ ...capture, rev: capture.rev + 1 });
   });
-  const binding = bind_document_livetree(wrapped);
+  const binding = hsonReflect(wrapped);
   const before = structuredClone(binding.tree.node);
   map.restore(element(`<main @0000000000000604 class="canonical"/>`).capture());
   assert.equal(captures, 1);
   assert.equal(map.element.node().$_attrs?.class, "canonical");
   assert.deepEqual(binding.tree.node, before);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
 });
@@ -162,7 +162,7 @@ check("repeated snapshots independently recapture and converge", () => {
     captures += 1;
     return map.capture();
   });
-  const binding = bind_document_livetree(wrapped);
+  const binding = hsonReflect(wrapped);
   const first = element(`<main @0000000000000605 state="first"/>`);
   first.document.attrs.set(path(), "rev", 1);
   const second = element(`<main @0000000000000605 state="second"/>`);
@@ -174,26 +174,26 @@ check("repeated snapshots independently recapture and converge", () => {
   assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 2);
   assert.equal(binding.tree.attrs.get("state"), "second");
-  assert.equal(binding.diagnostics().projectionTransactions, 2);
+  assert.equal(binding.diagnostics().updatesApplied, 2);
   binding.dispose();
 });
 
 check("incompatible snapshot tag and root QUID transitions fail closed", () => {
   const tagMap = element(`<main @0000000000000606/>`);
-  const tagBinding = bind_document_livetree(tagMap);
+  const tagBinding = hsonReflect(tagMap);
   const tagTree = tagBinding.tree;
   tagMap.restore(element(`<article @0000000000000606/>`).capture());
   assert.equal(tagBinding.status, "failed");
-  assert.equal(tagBinding.failure?.code, DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE);
+  assert.equal(tagBinding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.equal(tagBinding.tree, tagTree);
   tagBinding.dispose();
 
   const quidMap = element(`<main @0000000000000607/>`);
-  const quidBinding = bind_document_livetree(quidMap);
+  const quidBinding = hsonReflect(quidMap);
   const quidRoot = quidBinding.tree.node;
   quidMap.restore(element(`<main @0000000000000608/>`).capture());
   assert.equal(quidBinding.status, "failed");
-  assert.equal(quidBinding.failure?.code, DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE);
+  assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE);
   assert.equal(quidBinding.tree.node, quidRoot);
   quidBinding.dispose();
 });
@@ -205,12 +205,12 @@ check("capture failure remains observer-isolated and disposable", () => {
     captures += 1;
     throw new Error("forced capture failure");
   });
-  const binding = bind_document_livetree(wrapped);
+  const binding = hsonReflect(wrapped);
   map.restore(element(`<main @0000000000000609 title="canonical"/>`).capture());
   assert.equal(captures, 1);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
   assert.equal(binding.status, "disposed");
@@ -218,17 +218,17 @@ check("capture failure remains observer-isolated and disposable", () => {
 
 check("snapshot DOM failure and reentrant observation follow root failure isolation", () => {
   const failedMap = element(`<main @0000000000000610 <a/>/>`);
-  const failedBinding = bind_document_livetree(failedMap);
+  const failedBinding = hsonReflect(failedMap);
   const failedDom = mount(failedBinding.tree.node);
   failedDom.failReplace = true;
   failedMap.restore(element(`<main @0000000000000610 <b/>/>`).capture());
   assert.equal(failedBinding.status, "failed");
-  assert.equal(failedBinding.failure?.code, DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
+  assert.equal(failedBinding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
   assert.equal(failedBinding.sourceRevision, 0);
   failedBinding.dispose();
 
   const reentrantMap = element(`<main @0000000000000611 <a/>/>`);
-  const reentrantBinding = bind_document_livetree(reentrantMap);
+  const reentrantBinding = hsonReflect(reentrantMap);
   const reentrantDom = mount(reentrantBinding.tree.node);
   reentrantDom.beforeReplace = () => {
     reentrantDom.beforeReplace = undefined;
@@ -236,15 +236,15 @@ check("snapshot DOM failure and reentrant observation follow root failure isolat
   };
   reentrantMap.restore(element(`<main @0000000000000611 <b/>/>`).capture());
   assert.equal(reentrantBinding.status, "failed");
-  assert.equal(reentrantBinding.failure?.code, DOCUMENT_BINDING_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
+  assert.equal(reentrantBinding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
   assert.equal(reentrantBinding.sourceRevision, 0);
-  assert.throws(() => reentrantBinding.tree.attrs.set("blocked", true), DocumentLiveTreeBindingError);
+  assert.throws(() => reentrantBinding.tree.attrs.set("blocked", true), DocumentReflectError);
   reentrantBinding.dispose();
 });
 
 check("disposal during snapshot convergence wins over transaction completion", () => {
   const map = element(`<main @0000000000000612 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.beforeReplace = () => {
     rootDom.beforeReplace = undefined;
@@ -259,4 +259,4 @@ check("disposal during snapshot convergence wins over transaction completion", (
 });
 
 process.stdout.write(`# ${checks} compatible document snapshot convergence checks passed\n`);
-emit_hson_live_test_completion("livetree.document-snapshot", checks, checks, 0);
+emit_hson_live_test_completion("reflect.document-snapshot", checks, checks, 0);

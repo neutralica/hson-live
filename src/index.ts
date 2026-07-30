@@ -1,6 +1,7 @@
 // index.ts
 
 export { hson, hsonString, type HsonFacade } from "./hson.js";
+export { hsonReflect, type Reflect } from "./api/reflect/reflect.facade.js";
 export { LiveTree } from "./api/livetree/livetree.js";
 export {
     LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
@@ -24,7 +25,13 @@ export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
 
 export { make_livemap_core } from "./api/livemap/livemap.core.js";
-export { project_keyed_collection } from "./api/liveproject/liveproject.keyed.js";
+export { reflect_collection } from "./api/reflect/reflect.collection.js";
+export {
+    reflect_document,
+    type DocumentReflect,
+    type DocumentReflectStatus,
+} from "./api/reflect/reflect.document.js";
+export * from "./api/reflect/reflect.document.error.js";
 export { create_live_inspector } from "./api/liveinspect/liveinspect.js";
 export {
     LIVE_INSPECTOR_DISPOSED_ERROR_CODE,
@@ -46,21 +53,21 @@ export {
 } from "./api/liveinspect/liveinspect.error.js";
 export type { LiveInspectorErrorCode } from "./api/liveinspect/liveinspect.error.js";
 export {
-    LIVE_PROJECTION_BRANCH_ATTACHED_ERROR_CODE,
-    LIVE_PROJECTION_DISPOSED_ERROR_CODE,
-    LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE,
-    LIVE_PROJECTION_HOST_NOT_EMPTY_ERROR_CODE,
-    LIVE_PROJECTION_INVALID_BRANCH_ERROR_CODE,
-    LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE,
-    LIVE_PROJECTION_MAPPING_CONFLICT_ERROR_CODE,
-    LIVE_PROJECTION_MISSING_IDENTITY_ERROR_CODE,
-    LIVE_PROJECTION_RENDERER_CREATE_ERROR_CODE,
-    LIVE_PROJECTION_RENDERER_UPDATE_ERROR_CODE,
-    LIVE_PROJECTION_SOURCE_REPLACEMENT_ERROR_CODE,
-    LIVE_PROJECTION_UNSUPPORTED_OPERATION_ERROR_CODE,
-    LiveProjectionError,
-} from "./api/liveproject/liveproject.error.js";
-export type { LiveProjectionErrorCode } from "./api/liveproject/liveproject.error.js";
+    COLLECTION_REFLECT_BRANCH_ATTACHED_ERROR_CODE,
+    COLLECTION_REFLECT_DISPOSED_ERROR_CODE,
+    COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE,
+    COLLECTION_REFLECT_HOST_NOT_EMPTY_ERROR_CODE,
+    COLLECTION_REFLECT_INVALID_BRANCH_ERROR_CODE,
+    COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE,
+    COLLECTION_REFLECT_MAPPING_CONFLICT_ERROR_CODE,
+    COLLECTION_REFLECT_MISSING_IDENTITY_ERROR_CODE,
+    COLLECTION_REFLECT_RENDERER_CREATE_ERROR_CODE,
+    COLLECTION_REFLECT_RENDERER_UPDATE_ERROR_CODE,
+    COLLECTION_REFLECT_SOURCE_REPLACEMENT_ERROR_CODE,
+    COLLECTION_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+    CollectionReflectError,
+} from "./api/reflect/reflect.collection.error.js";
+export type { CollectionReflectErrorCode } from "./api/reflect/reflect.collection.error.js";
 export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
 export {
     LiveMapDocumentAttributeNotFoundError,
@@ -152,20 +159,20 @@ export type {
     LiveMapCommitObservation,
     LiveMapCommitObserver,
     LiveMapCommitObserverApi,
-    LiveKeyedProjection,
-    LiveKeyedProjectionOptions,
-    LiveProjectionChange,
-    LiveProjectionChangeKind,
-    LiveProjectionDiagnostics,
-    LiveProjectionItemContext,
-    LiveProjectionItemUpdate,
-    LiveProjectionKey,
-    LiveProjectionListener,
-    LiveProjectionMappingSummary,
-    LiveProjectionRender,
-    LiveProjectionRenderResult,
-    LiveProjectionSnapshot,
-    LiveProjectionStatus,
+    CollectionReflect,
+    CollectionReflectOptions,
+    CollectionReflectChange,
+    CollectionReflectChangeKind,
+    CollectionReflectDiagnostics,
+    CollectionReflectItemContext,
+    CollectionReflectItemUpdate,
+    CollectionReflectKey,
+    CollectionReflectListener,
+    CollectionReflectMappingSummary,
+    CollectionReflectRender,
+    CollectionReflectRenderResult,
+    CollectionReflectSnapshot,
+    CollectionReflectStatus,
     LiveInspector,
     LiveInspectorArrayIdentity,
     LiveInspectorArrayKeyContext,

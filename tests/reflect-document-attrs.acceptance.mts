@@ -8,18 +8,18 @@ import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { unlinkNode } from "../src/api/livetree/utils/node-map-helpers.ts";
 import {
-  bind_document_livetree,
-} from "../src/api/liveproject/liveproject.document.ts";
+  hsonReflect,
+} from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_BINDING_ALREADY_BOUND_ERROR_CODE,
-  DOCUMENT_BINDING_DISPOSED_ERROR_CODE,
-  DOCUMENT_BINDING_PROJECTION_FAILED_ERROR_CODE,
-  DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_TARGET_MISSING_ERROR_CODE,
-  DOCUMENT_BINDING_UNSUPPORTED_OPERATION_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "../src/api/liveproject/liveproject.document.error.ts";
+  DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
+  DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
+  DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
+  DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+  DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+  DocumentReflectError,
+} from "../src/api/reflect/reflect.document.error.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -88,7 +88,7 @@ function path(...segments: number[]) {
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {
   const map = element(`<main id="root" @0000000000000301 <section @0000000000000302 <span/>/>/>`);
   const canonicalRead = map.element.node();
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   assert.notEqual(binding.tree.node, canonicalRead);
   assert.deepEqual(binding.tree.node, canonicalRead);
   assert.equal(binding.status, "active");
@@ -99,7 +99,7 @@ check("initial binding owns a detached graph and indexes raw canonical paths", (
 
 check("canonical attrs project by raw path and QUID into graph and mounted DOM", () => {
   const map = element(`<main id="root" @0000000000000303 <section @0000000000000304 <span/>/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   const sectionNode = raw_node(binding.tree.node, [0, 0]);
   const spanNode = raw_node(binding.tree.node, [0, 0, 0, 0]);
@@ -118,7 +118,7 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
   assert.equal(spanDom.getAttribute("enabled"), "true");
   assert.equal(spanDom.getAttribute("nullable"), "null");
   assert.equal(binding.sourceRevision, map.rev);
-  assert.equal(binding.diagnostics().projectionTransactions, 3);
+  assert.equal(binding.diagnostics().updatesApplied, 3);
   const spanTree = create_livetree(spanNode).adoptRoots(binding.tree.hostRootNode());
   spanTree.attrs.set("delegated", "by-path");
   assert.equal(map.document.attrs.get(path(0, 0, 0, 0), "delegated"), "by-path");
@@ -128,7 +128,7 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
 
 check("bound attrs and convenience managers delegate without feedback", () => {
   const map = element(`<main @0000000000000305/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const dom = mount(binding.tree.node);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
@@ -146,14 +146,14 @@ check("bound attrs and convenience managers delegate without feedback", () => {
   assert.equal(map.document.attrs.get(path(), "data-user-id"), "42");
   assert.equal(dom.getAttribute("data-user-id"), "42");
   assert.equal(observations.length, 6);
-  assert.equal(binding.diagnostics().projectionTransactions, 6);
+  assert.equal(binding.diagnostics().updatesApplied, 6);
 
   const revision = map.rev;
-  const transactions = binding.diagnostics().projectionTransactions;
+  const transactions = binding.diagnostics().updatesApplied;
   const writes = dom.writes;
   binding.tree.attrs.set("title", "one");
   assert.equal(map.rev, revision);
-  assert.equal(binding.diagnostics().projectionTransactions, transactions);
+  assert.equal(binding.diagnostics().updatesApplied, transactions);
   assert.equal(dom.writes, writes);
 
   binding.tree.attrs.clear();
@@ -167,7 +167,7 @@ check("bound attrs and convenience managers delegate without feedback", () => {
 
 check("multi-operation attrs replay is one projection transaction", () => {
   const map = element(`<main @0000000000000306/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const replayed = map.replay({
     changed: true,
@@ -180,13 +180,13 @@ check("multi-operation attrs replay is one projection transaction", () => {
   });
   assert.equal(replayed.rev, 1);
   assert.deepEqual(binding.tree.node.$_attrs, { a: 1, b: 2 });
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
 
 check("unsupported root replacement fails closed without escaping canonical mutation", () => {
   const map = element(`<main @0000000000000307 "before"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const before = structuredClone(binding.tree.node);
   const replacement = element(`<article @0000000000000316/>`);
   const commit = map.install(replacement.capture());
@@ -194,11 +194,11 @@ check("unsupported root replacement fails closed without escaping canonical muta
   assert.equal(map.element.node().$_tag, "article");
   assert.deepEqual(binding.tree.node, before);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.throws(
     () => binding.tree.attrs.set("id", "blocked"),
-    (cause) => cause instanceof DocumentLiveTreeBindingError
-      && cause.code === DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE,
+    (cause) => cause instanceof DocumentReflectError
+      && cause.code === DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
   );
   map.document.attrs.set(path(), "title", "canonical-only");
   assert.equal(binding.tree.attrs.get("title"), undefined);
@@ -207,66 +207,66 @@ check("unsupported root replacement fails closed without escaping canonical muta
 
 check("projection failure is isolated from the committed map mutation", () => {
   const map = element(`<main @0000000000000308/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const dom = mount(binding.tree.node);
   dom.failOn = "boom";
   const commit = map.document.attrs.set(path(), "boom", "canonical");
   assert.equal(commit.changed, true);
   assert.equal(map.document.attrs.get(path(), "boom"), "canonical");
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_PROJECTION_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
 });
 
 check("a previously mounted node losing its DOM mapping fails closed", () => {
   const map = element(`<main @0000000000000312/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   map.document.attrs.set(path(), "first", "projected");
   unlinkNode(binding.tree.node);
   const commit = map.document.attrs.set(path(), "second", "canonical");
   assert.equal(commit.changed, true);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, "DOCUMENT_BINDING_DOM_MAPPING_MISMATCH");
+  assert.equal(binding.failure?.code, "DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH");
   binding.dispose();
 });
 
 check("projected path and persisted-QUID divergence fail closed", () => {
   const quidMap = element(`<main @0000000000000313/>`);
-  const quidBinding = bind_document_livetree(quidMap);
+  const quidBinding = hsonReflect(quidMap);
   if (quidBinding.tree.node.$_meta === undefined) throw new Error("Expected projected metadata");
   quidBinding.tree.node.$_meta["quid"] = "0000000000000314";
   quidMap.document.attrs.set(path(), "canonical", "retained");
   assert.equal(quidBinding.status, "failed");
-  assert.equal(quidBinding.failure?.code, DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE);
+  assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE);
   quidBinding.dispose();
 
   const pathMap = element(`<main @0000000000000315 <span/>/>`);
-  const pathBinding = bind_document_livetree(pathMap);
+  const pathBinding = hsonReflect(pathMap);
   pathBinding.tree.node.$_content.length = 0;
   pathMap.document.attrs.set(path(0, 0), "canonical", "retained");
   assert.equal(pathBinding.status, "failed");
-  assert.equal(pathBinding.failure?.code, DOCUMENT_BINDING_TARGET_MISSING_ERROR_CODE);
+  assert.equal(pathBinding.failure?.code, DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE);
   pathBinding.dispose();
 });
 
 check("cardinality and disposal preserve authority boundaries", () => {
   const map = element(`<main @0000000000000309/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const dom = mount(binding.tree.node);
   assert.throws(
-    () => bind_document_livetree(map),
-    (cause) => cause instanceof DocumentLiveTreeBindingError
-      && cause.code === DOCUMENT_BINDING_ALREADY_BOUND_ERROR_CODE,
+    () => hsonReflect(map),
+    (cause) => cause instanceof DocumentReflectError
+      && cause.code === DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
   );
   binding.dispose();
   binding.dispose();
   assert.equal(binding.status, "disposed");
   assert.throws(
     () => binding.diagnostics(),
-    (cause) => cause instanceof DocumentLiveTreeBindingError
-      && cause.code === DOCUMENT_BINDING_DISPOSED_ERROR_CODE,
+    (cause) => cause instanceof DocumentReflectError
+      && cause.code === DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
   );
   map.document.attrs.set(path(), "canonical", "map-only");
   assert.equal(binding.tree.attrs.get("canonical"), undefined);
@@ -281,8 +281,8 @@ check("cardinality and disposal preserve authority boundaries", () => {
 check("different maps keep binding revision and failure state isolated", () => {
   const left = element(`<main @0000000000000310/>`);
   const right = element(`<main @0000000000000311/>`);
-  const leftBinding = bind_document_livetree(left);
-  const rightBinding = bind_document_livetree(right);
+  const leftBinding = hsonReflect(left);
+  const rightBinding = hsonReflect(right);
   left.document.attrs.set(path(), "side", "left");
   assert.equal(leftBinding.sourceRevision, 1);
   assert.equal(rightBinding.sourceRevision, 0);
@@ -292,4 +292,4 @@ check("different maps keep binding revision and failure state isolated", () => {
 });
 
 process.stdout.write(`# ${checks} document LiveTree attrs binding checks passed\n`);
-emit_hson_live_test_completion("livetree.document-attrs", checks, checks, 0);
+emit_hson_live_test_completion("reflect.document-attrs", checks, checks, 0);

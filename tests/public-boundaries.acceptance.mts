@@ -4,6 +4,7 @@ import {
   hson,
   hsonLiveHost,
   hsonLiveMap,
+  hsonReflect,
   hsonLiveTree,
   hsonTransform,
   liveHost,
@@ -23,7 +24,11 @@ check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.liveHost, hsonLiveHost);
   assert.equal(hson.liveTree, hsonLiveTree);
   assert.equal(liveHost, hsonLiveHost);
-  assert.equal(hson.reflect, hson.liveProject);
+  assert.equal(hson.reflect, hsonReflect);
+  assert.equal(typeof hsonReflect, "function");
+  assert.equal(hsonReflect.collection, hson.reflect.collection);
+  const removedReflectAlias = ["live", "Project"].join("");
+  assert.equal(removedReflectAlias in hson, false);
 
   assert.equal(hson.fromHson, hsonTransform.fromHson);
   assert.equal(hson.fromJson, hsonTransform.fromJson);

@@ -15,33 +15,33 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import type {
-  LiveKeyedProjection,
-  LiveKeyedProjectionOptions,
-  LiveProjectionChange,
-  LiveProjectionDiagnostics,
-  LiveProjectionItemContext,
-  LiveProjectionItemUpdate,
-  LiveProjectionKey,
-  LiveProjectionListener,
-  LiveProjectionMappingSummary,
-  LiveProjectionRenderResult,
-  LiveProjectionSnapshot,
-  LiveProjectionStatus,
-} from "../../types/liveproject.types.js";
+  CollectionReflect,
+  CollectionReflectOptions,
+  CollectionReflectChange,
+  CollectionReflectDiagnostics,
+  CollectionReflectItemContext,
+  CollectionReflectItemUpdate,
+  CollectionReflectKey,
+  CollectionReflectListener,
+  CollectionReflectMappingSummary,
+  CollectionReflectRenderResult,
+  CollectionReflectSnapshot,
+  CollectionReflectStatus,
+} from "../../types/reflect.types.js";
 import {
-  LIVE_PROJECTION_BRANCH_ATTACHED_ERROR_CODE,
-  LIVE_PROJECTION_DISPOSED_ERROR_CODE,
-  LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE,
-  LIVE_PROJECTION_HOST_NOT_EMPTY_ERROR_CODE,
-  LIVE_PROJECTION_INVALID_BRANCH_ERROR_CODE,
-  LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE,
-  LIVE_PROJECTION_MAPPING_CONFLICT_ERROR_CODE,
-  LIVE_PROJECTION_MISSING_IDENTITY_ERROR_CODE,
-  LIVE_PROJECTION_RENDERER_CREATE_ERROR_CODE,
-  LIVE_PROJECTION_RENDERER_UPDATE_ERROR_CODE,
-  LIVE_PROJECTION_SOURCE_REPLACEMENT_ERROR_CODE,
-  LiveProjectionError,
-} from "./liveproject.error.js";
+  COLLECTION_REFLECT_BRANCH_ATTACHED_ERROR_CODE,
+  COLLECTION_REFLECT_DISPOSED_ERROR_CODE,
+  COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE,
+  COLLECTION_REFLECT_HOST_NOT_EMPTY_ERROR_CODE,
+  COLLECTION_REFLECT_INVALID_BRANCH_ERROR_CODE,
+  COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE,
+  COLLECTION_REFLECT_MAPPING_CONFLICT_ERROR_CODE,
+  COLLECTION_REFLECT_MISSING_IDENTITY_ERROR_CODE,
+  COLLECTION_REFLECT_RENDERER_CREATE_ERROR_CODE,
+  COLLECTION_REFLECT_RENDERER_UPDATE_ERROR_CODE,
+  COLLECTION_REFLECT_SOURCE_REPLACEMENT_ERROR_CODE,
+  CollectionReflectError,
+} from "./reflect.collection.error.js";
 
 type MutableDiagnostics = {
   recordsCreated: number;
@@ -52,7 +52,7 @@ type MutableDiagnostics = {
   batchAttachmentPasses: number;
   recordsBatchAttached: number;
   largestAttachedBatch: number;
-  fullReconciliations: number;
+  fullSynchronizations: number;
   targetedCommitApplications: number;
   ignoredOutOfScopeCommits: number;
   keyConflicts: number;
@@ -75,48 +75,48 @@ type RendererOwner = Readonly<{
   disposeUnattached: () => void;
 }>;
 
-type ProjectionRecord<TItem extends JsonValue> = {
-  key: LiveProjectionKey;
+type CollectionReflectRecord<TItem extends JsonValue> = {
+  key: CollectionReflectKey;
   sourceQuid: string | undefined;
   path: LivePath;
   ordinal: number;
   tree: LiveTree;
   viewQuid: string;
-  update: LiveProjectionItemUpdate<TItem> | undefined;
+  update: CollectionReflectItemUpdate<TItem> | undefined;
   owner: RendererOwner;
   disposed: boolean;
 };
 
 type DesiredItem<TItem extends JsonValue> = Readonly<{
-  key: LiveProjectionKey;
+  key: CollectionReflectKey;
   value: TItem;
   source: LiveMapPathHandle<TItem>;
   path: LivePath;
   ordinal: number;
 }>;
 
-type ReconcileKind = "reconcile" | "source-replaced" | "resync";
+type UpdateKind = "update" | "source-replaced" | "synchronize";
 
 /** Create the experimental keyed LiveMap -> LiveTree collection projector. */
-export function project_keyed_collection<TItem extends JsonValue>(
-  options: LiveKeyedProjectionOptions<TItem>,
-): LiveKeyedProjection<TItem> {
-  return new KeyedProjection(options).publicHandle();
+export function reflect_collection<TItem extends JsonValue>(
+  options: CollectionReflectOptions<TItem>,
+): CollectionReflect<TItem> {
+  return new CollectionReflector(options).publicHandle();
 }
 
-class KeyedProjection<TItem extends JsonValue> {
+class CollectionReflector<TItem extends JsonValue> {
   private source: LiveMapPathHandle<readonly TItem[]>;
-  private readonly projectionHost: LiveTree;
-  private readonly selectKey: LiveKeyedProjectionOptions<TItem>["key"];
-  private readonly render: LiveKeyedProjectionOptions<TItem>["render"];
-  private records: ProjectionRecord<TItem>[] = [];
-  private recordsByKey = new Map<LiveProjectionKey, ProjectionRecord<TItem>>();
+  private readonly reflectHost: LiveTree;
+  private readonly selectKey: CollectionReflectOptions<TItem>["key"];
+  private readonly render: CollectionReflectOptions<TItem>["render"];
+  private records: CollectionReflectRecord<TItem>[] = [];
+  private recordsByKey = new Map<CollectionReflectKey, CollectionReflectRecord<TItem>>();
   private sourceOff: (() => void) | undefined;
-  private readonly listeners = new Set<LiveProjectionListener>();
-  private currentStatus: LiveProjectionStatus = "initializing";
-  private currentFailure: LiveProjectionError | undefined;
-  private firstFailure: LiveProjectionError | undefined;
-  private replacementFailure: LiveProjectionError | undefined;
+  private readonly listeners = new Set<CollectionReflectListener>();
+  private currentStatus: CollectionReflectStatus = "initializing";
+  private currentFailure: CollectionReflectError | undefined;
+  private firstFailure: CollectionReflectError | undefined;
+  private replacementFailure: CollectionReflectError | undefined;
   private lastAppliedRevision: number;
   private readonly counts: MutableDiagnostics = {
     recordsCreated: 0,
@@ -127,7 +127,7 @@ class KeyedProjection<TItem extends JsonValue> {
     batchAttachmentPasses: 0,
     recordsBatchAttached: 0,
     largestAttachedBatch: 0,
-    fullReconciliations: 0,
+    fullSynchronizations: 0,
     targetedCommitApplications: 0,
     ignoredOutOfScopeCommits: 0,
     keyConflicts: 0,
@@ -139,43 +139,43 @@ class KeyedProjection<TItem extends JsonValue> {
     subscriptionsDisposed: 0,
   };
 
-  public constructor(options: LiveKeyedProjectionOptions<TItem>) {
+  public constructor(options: CollectionReflectOptions<TItem>) {
     this.source = options.source;
-    this.projectionHost = options.host;
+    this.reflectHost = options.host;
     this.selectKey = options.key;
     this.render = options.render;
     this.lastAppliedRevision = options.source.rev;
 
-    if (this.projectionHost.isDisposed) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_INVALID_BRANCH_ERROR_CODE,
+    if (this.reflectHost.isDisposed) {
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_INVALID_BRANCH_ERROR_CODE,
         "Live projection host is disposed.",
       );
     }
-    if (this.projectionHost.content.count() !== 0) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_HOST_NOT_EMPTY_ERROR_CODE,
+    if (this.reflectHost.content.count() !== 0) {
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_HOST_NOT_EMPTY_ERROR_CODE,
         "Patch 7A requires a dedicated empty LiveTree host.",
       );
     }
 
     try {
-      this.reconcile(this.source, "reconcile", undefined, true);
+      this.update(this.source, "update", undefined, true);
       this.currentStatus = "ready";
       this.attachSource();
     } catch (error) {
       this.disposeRecords(this.records);
       this.records = [];
       this.recordsByKey.clear();
-      throw asProjectionError(error, LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE, "Initial keyed projection failed.");
+      throw asCollectionReflectError(error, COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE, "Initial keyed projection failed.");
     }
   }
 
-  public publicHandle(): LiveKeyedProjection<TItem> {
+  public publicHandle(): CollectionReflect<TItem> {
     const self = this;
     return Object.freeze({
       get status() { return self.currentStatus; },
-      get host() { return self.projectionHost; },
+      get host() { return self.reflectHost; },
       get itemCount() { return self.records.length; },
       get sourcePath() { return [...self.source.path()]; },
       get sourceRevisionLastApplied() { return self.lastAppliedRevision; },
@@ -184,7 +184,7 @@ class KeyedProjection<TItem extends JsonValue> {
       debugMappings: () => self.debugMappings(),
       subscribe: (listener) => self.subscribe(listener),
       replaceSource: (source) => self.replaceSource(source),
-      resync: () => self.resync(),
+      synchronize: () => self.synchronize(),
       dispose: () => self.dispose(),
     });
   }
@@ -215,8 +215,8 @@ class KeyedProjection<TItem extends JsonValue> {
       if (matching.some((op) => isStructuralOp(basePath, op))) {
         const exactSpliceOnly = matching.every((op) => op.kind === "splice" && paths_equal(op.path, basePath));
         if (exactSpliceOnly) this.counts.targetedCommitApplications += 1;
-        else this.counts.fullReconciliations += 1;
-        this.reconcile(this.source, "reconcile", event.commit, false);
+        else this.counts.fullSynchronizations += 1;
+        this.update(this.source, "update", event.commit, false);
       } else {
         this.applyNested(event.commit, matching);
       }
@@ -224,9 +224,9 @@ class KeyedProjection<TItem extends JsonValue> {
       this.currentStatus = "ready";
       this.notify();
     } catch (error) {
-      const failure = asProjectionError(
+      const failure = asCollectionReflectError(
         error,
-        LIVE_PROJECTION_RENDERER_UPDATE_ERROR_CODE,
+        COLLECTION_REFLECT_RENDERER_UPDATE_ERROR_CODE,
         `Projection commit ${event.commit.rev} failed.`,
       );
       this.fail(failure);
@@ -241,8 +241,8 @@ class KeyedProjection<TItem extends JsonValue> {
       const relative = relative_live_path(basePath, op.path);
       const ordinal = relative?.[0];
       if (typeof ordinal !== "number") {
-        this.counts.fullReconciliations += 1;
-        this.reconcile(this.source, "reconcile", commit, false);
+        this.counts.fullSynchronizations += 1;
+        this.update(this.source, "update", commit, false);
         return;
       }
       const itemOps = affected.get(ordinal) ?? [];
@@ -262,17 +262,17 @@ class KeyedProjection<TItem extends JsonValue> {
     const keyChanged = [...desiredByOrdinal].some(([ordinal, desired]) => this.records[ordinal]?.key !== desired.key);
     if (keyChanged) {
       this.counts.targetedCommitApplications += 1;
-      this.reconcile(this.source, "reconcile", commit, false);
+      this.update(this.source, "update", commit, false);
       return;
     }
 
-    this.currentStatus = "reconciling";
+    this.currentStatus = "updating";
     for (const [ordinal, itemOps] of affected) {
       const record = this.records[ordinal];
       const desired = desiredByOrdinal.get(ordinal);
       if (record === undefined || desired === undefined) {
-        throw new LiveProjectionError(
-          LIVE_PROJECTION_MAPPING_CONFLICT_ERROR_CODE,
+        throw new CollectionReflectError(
+          COLLECTION_REFLECT_MAPPING_CONFLICT_ERROR_CODE,
           `No projection record exists for nested update at ordinal ${ordinal}.`,
         );
       }
@@ -283,20 +283,20 @@ class KeyedProjection<TItem extends JsonValue> {
     this.counts.targetedCommitApplications += 1;
   }
 
-  private reconcile(
+  private update(
     nextSource: LiveMapPathHandle<readonly TItem[]>,
-    kind: ReconcileKind,
+    kind: UpdateKind,
     commit: LiveMapCommit | undefined,
     countFull: boolean,
   ): void {
     const readStarted = materialization_now();
     const desired = this.readCollection(nextSource);
-    record_livetree_materialization("projectionSourceReadMs", materialization_now() - readStarted);
-    if (countFull) this.counts.fullReconciliations += 1;
+    record_livetree_materialization("reflectSourceReadMs", materialization_now() - readStarted);
+    if (countFull) this.counts.fullSynchronizations += 1;
 
     const oldByKey = this.recordsByKey;
-    const staged: ProjectionRecord<TItem>[] = [];
-    const nextRecords: ProjectionRecord<TItem>[] = [];
+    const staged: CollectionReflectRecord<TItem>[] = [];
+    const nextRecords: CollectionReflectRecord<TItem>[] = [];
     const usedTrees = new Set(this.records.map((record) => record.tree.node));
 
     const renderStarted = materialization_now();
@@ -316,12 +316,12 @@ class KeyedProjection<TItem extends JsonValue> {
       this.disposeRecords(staged);
       throw error;
     } finally {
-      record_livetree_materialization("projectionRendererCreateMs", materialization_now() - renderStarted);
+      record_livetree_materialization("reflectRendererCreateMs", materialization_now() - renderStarted);
     }
     const stagedSet = new Set(staged);
 
-    this.currentStatus = "reconciling";
-    const change: LiveProjectionChange = Object.freeze({
+    this.currentStatus = "updating";
+    const change: CollectionReflectChange = Object.freeze({
       kind,
       ...(commit === undefined ? {} : { commit }),
       ops: Object.freeze(commit === undefined ? [] : [...commit.ops]),
@@ -344,7 +344,7 @@ class KeyedProjection<TItem extends JsonValue> {
       this.disposeRecords(staged);
       throw error;
     } finally {
-      record_livetree_materialization("projectionSurvivorUpdateMs", materialization_now() - updateStarted);
+      record_livetree_materialization("reflectSurvivorUpdateMs", materialization_now() - updateStarted);
     }
 
     const attachStarted = materialization_now();
@@ -359,7 +359,7 @@ class KeyedProjection<TItem extends JsonValue> {
         const item = desired[ordinal];
         if (record === undefined || item === undefined) continue;
         if (stagedSet.has(record)) {
-          const batch: ProjectionRecord<TItem>[] = [];
+          const batch: CollectionReflectRecord<TItem>[] = [];
           let end = ordinal;
           while (end < nextRecords.length) {
             const candidate = nextRecords[end];
@@ -367,7 +367,7 @@ class KeyedProjection<TItem extends JsonValue> {
             batch.push(candidate);
             end += 1;
           }
-          append_branches_atomic(this.projectionHost, batch.map((entry) => entry.tree), ordinal);
+          append_branches_atomic(this.reflectHost, batch.map((entry) => entry.tree), ordinal);
           currentOrder.splice(ordinal, 0, ...batch);
           this.counts.batchAttachmentPasses += 1;
           this.counts.recordsBatchAttached += batch.length;
@@ -385,11 +385,11 @@ class KeyedProjection<TItem extends JsonValue> {
         }
         const currentOrdinal = currentOrder.indexOf(record);
         if (currentOrdinal === -1) {
-          this.projectionHost.append(record.tree, ordinal);
+          this.reflectHost.append(record.tree, ordinal);
           currentOrder.splice(ordinal, 0, record);
         } else if (currentOrdinal !== ordinal) {
           record.tree.detach();
-          this.projectionHost.append(record.tree, ordinal);
+          this.reflectHost.append(record.tree, ordinal);
           currentOrder.splice(currentOrdinal, 1);
           currentOrder.splice(ordinal, 0, record);
           this.counts.recordsMoved += 1;
@@ -402,24 +402,24 @@ class KeyedProjection<TItem extends JsonValue> {
       this.disposeRecords(staged);
       throw error;
     } finally {
-      record_livetree_materialization("projectionAttachmentMs", materialization_now() - attachStarted);
+      record_livetree_materialization("reflectAttachmentMs", materialization_now() - attachStarted);
     }
 
     this.records = nextRecords;
     this.recordsByKey = new Map(nextRecords.map((record) => [record.key, record]));
   }
 
-  private createRecord(item: DesiredItem<TItem>, usedTrees: Set<object>): ProjectionRecord<TItem> {
+  private createRecord(item: DesiredItem<TItem>, usedTrees: Set<object>): CollectionReflectRecord<TItem> {
     const owner = makeRendererOwner();
     const context = makeItemContext(item, owner);
-    let result: LiveProjectionRenderResult<TItem>;
+    let result: CollectionReflectRenderResult<TItem>;
     try {
       result = this.render(item.source, context);
     } catch (error) {
       owner.disposeUnattached();
       this.counts.rendererFailures += 1;
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_RENDERER_CREATE_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_RENDERER_CREATE_ERROR_CODE,
         `Renderer creation failed for projection key ${formatKey(item.key)}.`,
         error,
       );
@@ -438,7 +438,7 @@ class KeyedProjection<TItem extends JsonValue> {
       this.assertRenderableBranch(tree, usedTrees);
       owner.attach(tree);
       if (normalized.dispose !== undefined) owner.own(normalized.dispose);
-      const record: ProjectionRecord<TItem> = {
+      const record: CollectionReflectRecord<TItem> = {
         key: item.key,
         sourceQuid: undefined,
         path: item.path,
@@ -460,30 +460,30 @@ class KeyedProjection<TItem extends JsonValue> {
 
   private assertRenderableBranch(tree: LiveTree, usedTrees: Set<object>): void {
     if (!(tree instanceof LiveTree) || tree.isDisposed) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_INVALID_BRANCH_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_INVALID_BRANCH_ERROR_CODE,
         "Projection renderer must return one active LiveTree branch.",
       );
     }
     const node = tree.node;
     if (usedTrees.has(node)) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_MAPPING_CONFLICT_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_MAPPING_CONFLICT_ERROR_CODE,
         "Projection renderer returned a branch already owned by this projection.",
       );
     }
     if (parent_for_node(node) !== undefined || get_el_for_node(node)?.parentNode) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_BRANCH_ATTACHED_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_BRANCH_ATTACHED_ERROR_CODE,
         "Projection renderer returned a branch attached elsewhere.",
       );
     }
   }
 
   private updateRecord(
-    record: ProjectionRecord<TItem>,
+    record: CollectionReflectRecord<TItem>,
     source: LiveMapPathHandle<TItem>,
-    change: LiveProjectionChange,
+    change: CollectionReflectChange,
     path: LivePath = record.path,
     ordinal: number = record.ordinal,
   ): void {
@@ -493,8 +493,8 @@ class KeyedProjection<TItem extends JsonValue> {
       this.counts.recordsUpdated += 1;
     } catch (error) {
       this.counts.rendererFailures += 1;
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_RENDERER_UPDATE_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_RENDERER_UPDATE_ERROR_CODE,
         `Renderer update failed for projection key ${formatKey(record.key)}.`,
         error,
       );
@@ -506,14 +506,14 @@ class KeyedProjection<TItem extends JsonValue> {
     try {
       const snapshot = source.snap();
       if (!Array.isArray(snapshot)) {
-        throw new LiveProjectionError(
-          LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE,
+        throw new CollectionReflectError(
+          COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE,
           `Keyed projection source at ${JSON.stringify(source.path())} is not an array.`,
         );
       }
       value = snapshot as readonly TItem[];
     } catch (error) {
-      throw asProjectionError(error, LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE, "Keyed projection source could not be read.");
+      throw asCollectionReflectError(error, COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE, "Keyed projection source could not be read.");
     }
 
     const desired = value.map((_item, ordinal) => this.readItem(source, ordinal));
@@ -525,8 +525,8 @@ class KeyedProjection<TItem extends JsonValue> {
     const itemSource = source.at([ordinal]) as LiveMapPathHandle<TItem>;
     const value = itemSource.snap();
     if (value === undefined) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_INVALID_SOURCE_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_INVALID_SOURCE_ERROR_CODE,
         `Keyed projection item ${ordinal} does not resolve.`,
       );
     }
@@ -535,31 +535,31 @@ class KeyedProjection<TItem extends JsonValue> {
     try {
       key = this.selectKey(value, Object.freeze({ path: [...path], ordinal }));
     } catch (error) {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_MISSING_IDENTITY_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_MISSING_IDENTITY_ERROR_CODE,
         `Key selector failed for projection item ${ordinal}.`,
         error,
       );
     }
     if (typeof key !== "string" && typeof key !== "number") {
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_MISSING_IDENTITY_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_MISSING_IDENTITY_ERROR_CODE,
         `Projection item ${ordinal} has no valid string or number key.`,
       );
     }
     return Object.freeze({ key, value, source: itemSource, path: [...path], ordinal });
   }
 
-  private assertUniqueKeys(keys: readonly LiveProjectionKey[]): void {
-    const seen = new Set<LiveProjectionKey>();
+  private assertUniqueKeys(keys: readonly CollectionReflectKey[]): void {
+    const seen = new Set<CollectionReflectKey>();
     for (const key of keys) {
       if (!seen.has(key)) {
         seen.add(key);
         continue;
       }
       this.counts.keyConflicts += 1;
-      throw new LiveProjectionError(
-        LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE,
+      throw new CollectionReflectError(
+        COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE,
         `Duplicate projection key ${formatKey(key)}.`,
       );
     }
@@ -569,7 +569,7 @@ class KeyedProjection<TItem extends JsonValue> {
     this.assertUsable("replace source");
     const priorStatus = this.currentStatus;
     try {
-      this.reconcile(source, "source-replaced", undefined, true);
+      this.update(source, "source-replaced", undefined, true);
       this.detachSource();
       this.source = source;
       this.lastAppliedRevision = source.rev;
@@ -581,40 +581,40 @@ class KeyedProjection<TItem extends JsonValue> {
       this.notify();
     } catch (error) {
       this.counts.failedSourceReplacements += 1;
-      const projectionFailure = asProjectionError(
+      const reflectFailure = asCollectionReflectError(
         error,
-        LIVE_PROJECTION_SOURCE_REPLACEMENT_ERROR_CODE,
+        COLLECTION_REFLECT_SOURCE_REPLACEMENT_ERROR_CODE,
         "Live projection source replacement failed.",
       );
-      const failure = new LiveProjectionError(
-        LIVE_PROJECTION_SOURCE_REPLACEMENT_ERROR_CODE,
+      const failure = new CollectionReflectError(
+        COLLECTION_REFLECT_SOURCE_REPLACEMENT_ERROR_CODE,
         "Live projection source replacement failed; the prior source remains subscribed.",
-        projectionFailure,
+        reflectFailure,
       );
       this.replacementFailure = failure;
-      if (this.currentStatus === "reconciling") this.fail(projectionFailure);
+      if (this.currentStatus === "updating") this.fail(reflectFailure);
       else if (this.currentStatus !== "failed") this.currentStatus = priorStatus;
       throw failure;
     }
   }
 
-  private resync(): void {
+  private synchronize(): void {
     this.assertUsable("resynchronize");
     try {
-      this.reconcile(this.source, "resync", undefined, true);
+      this.update(this.source, "synchronize", undefined, true);
       this.lastAppliedRevision = this.source.rev;
       this.currentFailure = undefined;
       this.currentStatus = "ready";
       this.notify();
     } catch (error) {
-      const failure = asProjectionError(error, LIVE_PROJECTION_RENDERER_UPDATE_ERROR_CODE, "Projection resynchronization failed.");
+      const failure = asCollectionReflectError(error, COLLECTION_REFLECT_RENDERER_UPDATE_ERROR_CODE, "Projection resynchronization failed.");
       this.fail(failure);
       this.notify();
       throw failure;
     }
   }
 
-  private subscribe(listener: LiveProjectionListener): () => void {
+  private subscribe(listener: CollectionReflectListener): () => void {
     this.assertUsable("subscribe");
     if (typeof listener !== "function") throw new TypeError("Live projection listener must be a function.");
     this.listeners.add(listener);
@@ -637,7 +637,7 @@ class KeyedProjection<TItem extends JsonValue> {
     }
   }
 
-  private snapshot(): LiveProjectionSnapshot {
+  private snapshot(): CollectionReflectSnapshot {
     return Object.freeze({
       status: this.currentStatus,
       itemCount: this.records.length,
@@ -647,11 +647,11 @@ class KeyedProjection<TItem extends JsonValue> {
     });
   }
 
-  private diagnostics(): LiveProjectionDiagnostics {
+  private diagnostics(): CollectionReflectDiagnostics {
     return Object.freeze({
       status: this.currentStatus,
       sourceRevisionLastApplied: this.lastAppliedRevision,
-      projectedItemCount: this.records.length,
+      reflectedItemCount: this.records.length,
       ...this.counts,
       sourceQuidMappings: this.records.filter((record) => record.sourceQuid !== undefined).length,
       applicationKeyMappings: this.recordsByKey.size,
@@ -660,7 +660,7 @@ class KeyedProjection<TItem extends JsonValue> {
     });
   }
 
-  private debugMappings(): readonly LiveProjectionMappingSummary[] {
+  private debugMappings(): readonly CollectionReflectMappingSummary[] {
     this.assertUsable("inspect mappings");
     return Object.freeze(this.records.map((record) => Object.freeze({
       applicationKey: record.key,
@@ -671,20 +671,20 @@ class KeyedProjection<TItem extends JsonValue> {
     })));
   }
 
-  private fail(error: LiveProjectionError): void {
+  private fail(error: CollectionReflectError): void {
     this.firstFailure ??= error;
     this.currentFailure ??= error;
     this.currentStatus = "failed";
   }
 
-  private removeRecord(record: ProjectionRecord<TItem>): void {
+  private removeRecord(record: CollectionReflectRecord<TItem>): void {
     if (record.disposed) return;
     record.disposed = true;
     record.tree.remove();
     this.counts.recordsRemoved += 1;
   }
 
-  private disposeRecords(records: readonly ProjectionRecord<TItem>[]): void {
+  private disposeRecords(records: readonly CollectionReflectRecord<TItem>[]): void {
     for (const record of records) this.removeRecord(record);
   }
 
@@ -701,8 +701,8 @@ class KeyedProjection<TItem extends JsonValue> {
 
   private assertUsable(operation: string): void {
     if (this.currentStatus !== "disposed") return;
-    throw new LiveProjectionError(
-      LIVE_PROJECTION_DISPOSED_ERROR_CODE,
+    throw new CollectionReflectError(
+      COLLECTION_REFLECT_DISPOSED_ERROR_CODE,
       `Live projection is disposed; cannot ${operation}.`,
     );
   }
@@ -768,7 +768,7 @@ function makeRendererOwner(): RendererOwner {
 function makeItemContext(
   item: Pick<DesiredItem<JsonValue>, "key" | "path" | "ordinal">,
   owner: RendererOwner,
-): LiveProjectionItemContext {
+): CollectionReflectItemContext {
   return Object.freeze({
     key: item.key,
     sourceQuid: undefined,
@@ -779,16 +779,16 @@ function makeItemContext(
 }
 
 function normalizeRenderResult<TItem extends JsonValue>(
-  result: LiveProjectionRenderResult<TItem>,
+  result: CollectionReflectRenderResult<TItem>,
 ): Readonly<{
   tree: LiveTree;
-  update: LiveProjectionItemUpdate<TItem> | undefined;
+  update: CollectionReflectItemUpdate<TItem> | undefined;
   dispose: (() => void) | undefined;
 }> {
   if (result instanceof LiveTree) return { tree: result, update: undefined, dispose: undefined };
   if (typeof result !== "object" || result === null || !(result.tree instanceof LiveTree)) {
-    throw new LiveProjectionError(
-      LIVE_PROJECTION_INVALID_BRANCH_ERROR_CODE,
+    throw new CollectionReflectError(
+      COLLECTION_REFLECT_INVALID_BRANCH_ERROR_CODE,
       "Projection renderer returned an invalid branch result.",
     );
   }
@@ -817,16 +817,16 @@ function pathsOverlapSource(sourcePath: LivePath, opPath: LivePath): boolean {
   return path_is_prefix(sourcePath, opPath) || path_is_prefix(opPath, sourcePath);
 }
 
-function asProjectionError(
+function asCollectionReflectError(
   error: unknown,
-  fallbackCode: ConstructorParameters<typeof LiveProjectionError>[0],
+  fallbackCode: ConstructorParameters<typeof CollectionReflectError>[0],
   fallbackMessage: string,
-): LiveProjectionError {
-  return error instanceof LiveProjectionError
+): CollectionReflectError {
+  return error instanceof CollectionReflectError
     ? error
-    : new LiveProjectionError(fallbackCode, fallbackMessage, error);
+    : new CollectionReflectError(fallbackCode, fallbackMessage, error);
 }
 
-function formatKey(key: LiveProjectionKey): string {
+function formatKey(key: CollectionReflectKey): string {
   return JSON.stringify(key);
 }

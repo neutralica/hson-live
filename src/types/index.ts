@@ -10,21 +10,21 @@ export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from
 export type { SvgLiveTree } from "./svg.types.js";
 export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphSetAttrOp, LiveMapGraphRemoveAttrOp, LiveMapGraphReplaceAttrsOp, LiveMapGraphReplaceContentOp, LiveMapGraphInsertContentOp, LiveMapGraphRemoveContentOp, LiveMapGraphMoveContentOp, LiveMapGraphCommit, LiveMapCommitOrigin, LiveMapCommitObservation, LiveMapCommitObserver, LiveMapCommitObserverApi, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapInstallOptions, LiveMapDocumentPath, LiveMapDocumentTarget, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs, LiveMapDocumentContent, DocumentLiveMapAttrsMustApi, DocumentLiveMapAttrsReadApi, DocumentLiveMapAttrsMutationApi, DocumentLiveMapAttrsApi, DocumentLiveMapContentApi, LiveMapDocumentApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, LiveMapAuthority, ClassifiedLiveMap } from "./livemap.types.js";
 export type {
-  LiveKeyedProjection,
-  LiveKeyedProjectionOptions,
-  LiveProjectionChange,
-  LiveProjectionChangeKind,
-  LiveProjectionDiagnostics,
-  LiveProjectionItemContext,
-  LiveProjectionItemUpdate,
-  LiveProjectionKey,
-  LiveProjectionListener,
-  LiveProjectionMappingSummary,
-  LiveProjectionRender,
-  LiveProjectionRenderResult,
-  LiveProjectionSnapshot,
-  LiveProjectionStatus,
-} from "./liveproject.types.js";
+  CollectionReflect,
+  CollectionReflectOptions,
+  CollectionReflectChange,
+  CollectionReflectChangeKind,
+  CollectionReflectDiagnostics,
+  CollectionReflectItemContext,
+  CollectionReflectItemUpdate,
+  CollectionReflectKey,
+  CollectionReflectListener,
+  CollectionReflectMappingSummary,
+  CollectionReflectRender,
+  CollectionReflectRenderResult,
+  CollectionReflectSnapshot,
+  CollectionReflectStatus,
+} from "./reflect.types.js";
 export type {
   LiveHost,
   LiveHostActionContext,

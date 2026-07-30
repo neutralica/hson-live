@@ -13,17 +13,23 @@ import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
 import { normalize_attr_ws } from "../attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
 import {
+  decode_ordinary_attr_transit_name,
+  is_ordinary_attr_transit_name,
+} from "../html-preflights/ordinary-attribute-transit.js";
+import {
   decode_hson_metadata_transit_name,
   is_hson_metadata_transit_name,
 } from "../html-preflights/hson-metadata-transit.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
+import { is_valid_hson_attribute_name } from "../../../../core/hson-name.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
 const isSvgElement = (el: Element): boolean => el.namespaceURI === SVG_NAMESPACE;
 
 const isNamespaceNoise = (name: string): boolean => {
-  return name === "xmlns" || name.startsWith("xmlns:") || name.startsWith("xml:");
+  const lower = name.toLowerCase();
+  return lower === "xmlns" || lower.startsWith("xmlns:") || lower.startsWith("xml:");
 };
 
 const attrKeyForElement = (el: Element, name: string): string => {
@@ -47,7 +53,8 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
  *   attachment by the caller.
  * - Decodes dedicated HSON metadata transit names only for the string parser
  *   path and rejects externally authored private names.
- * - Drops internal generic transit-only attributes used during preprocessing.
+ * - Decodes generic ordinary-attribute transit names only for the string parser
+ *   path and rejects externally authored private names.
  * - Normalizes style into a structured object via `parse_style_string`.
  * - Ignores XML namespace noise (`xmlns`, `xmlns:*`, `xml:*`) so HTML/SVG/XML
  *   sources don’t leak parser plumbing into HSON.
@@ -70,7 +77,10 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
 export function parse_html_attrs(
   el: Element,
   nodeTag: string,
-  options: Readonly<{ allowHsonTransit?: boolean }> = {},
+  options: Readonly<{
+    allowHsonTransit?: boolean;
+    allowOrdinaryTransit?: boolean;
+  }> = {},
 ): {
   attrs: HsonAttrs;
   meta?: HsonMeta;
@@ -80,26 +90,55 @@ export function parse_html_attrs(
   let meta: HsonMeta | undefined;
   let quid: string | undefined;
   const svg = isSvgElement(el);
+  const admittedKeys = new Set<string>();
 
   // walk all DOM attributes verbatim
   for (const a of Array.from(el.attributes)) {
-    const name = a.name;
+    const parserName = a.name;
+    let name = parserName;
+    if (is_ordinary_attr_transit_name(parserName)) {
+      if (!options.allowOrdinaryTransit) {
+        _throw_transform_err(
+          `externally authored private ordinary-attribute transit name "${parserName}" is forbidden`,
+          "parse-html-attrs",
+        );
+      }
+      const decoded = decode_ordinary_attr_transit_name(parserName);
+      if (decoded === undefined) {
+        _throw_transform_err(
+          `malformed private ordinary-attribute transit name "${parserName}"`,
+          "parse-html-attrs",
+        );
+      }
+      const decodedLower = decoded.toLowerCase();
+      if (
+        decodedLower.startsWith(HSON_META_MARKUP_PREFIX)
+        || decodedLower.startsWith(HSON_META_TRANSIT_PREFIX)
+        || decodedLower.startsWith(_TRANSIT_PREFIX)
+      ) {
+        _throw_transform_err(
+          `private ordinary-attribute transit decoded to reserved name "${decoded}"`,
+          "parse-html-attrs",
+        );
+      }
+      name = decoded;
+    }
     const key = attrKeyForElement(el, name);
     const v = a.value ?? "";
 
     // A) decode dedicated HSON metadata transit or admit a literal DOM name.
     let metadataMarkupName: string | undefined;
-    if (is_hson_metadata_transit_name(key)) {
+    if (is_hson_metadata_transit_name(parserName)) {
       if (!options.allowHsonTransit) {
         _throw_transform_err(
-          `externally authored private HSON metadata transit name "${key}" is forbidden`,
+          `externally authored private HSON metadata transit name "${parserName}" is forbidden`,
           "parse-html-attrs",
         );
       }
-      metadataMarkupName = decode_hson_metadata_transit_name(key);
+      metadataMarkupName = decode_hson_metadata_transit_name(parserName);
       if (metadataMarkupName === undefined) {
         _throw_transform_err(
-          `malformed private HSON metadata transit name "${key}"`,
+          `malformed private HSON metadata transit name "${parserName}"`,
           "parse-html-attrs",
         );
       }
@@ -124,11 +163,23 @@ export function parse_html_attrs(
       continue;
     }
 
-    // B) generic parser transit remains internal.
-    if (key.startsWith(_TRANSIT_PREFIX)) continue;
-    if (key.startsWith(HSON_META_TRANSIT_PREFIX)) {
+    // B) private parser names may never be admitted as ordinary attributes.
+    const lowerName = name.toLowerCase();
+    if (lowerName.startsWith(_TRANSIT_PREFIX)) {
       _throw_transform_err(
-        `externally authored private HSON metadata transit name "${key}" is forbidden`,
+        `externally authored private ordinary-attribute transit name "${name}" is forbidden`,
+        "parse-html-attrs",
+      );
+    }
+    if (lowerName.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        "parse-html-attrs",
+      );
+    }
+    if (!is_valid_hson_attribute_name(name)) {
+      _throw_transform_err(
+        `invalid HSON attribute name "${name}"`,
         "parse-html-attrs",
       );
     }
@@ -143,10 +194,27 @@ export function parse_html_attrs(
     if (isNamespaceNoise(name)) continue;
 
     // E) svg alias normalize
-    if (svg && name === "xlink:href") {
-      if (!el.hasAttribute("href")) (attrs as any).href = v;
+    if (svg && name.toLowerCase() === "xlink:href") {
+      if (!el.hasAttribute("href")) {
+        if (admittedKeys.has("href")) {
+          _throw_transform_err(
+            `attribute name collision after canonicalization: "${name}"`,
+            "parse-html-attrs",
+          );
+        }
+        admittedKeys.add("href");
+        (attrs as any).href = v;
+      }
       continue;
     }
+
+    if (admittedKeys.has(key)) {
+      _throw_transform_err(
+        `attribute name collision after transit decoding: "${name}"`,
+        "parse-html-attrs",
+      );
+    }
+    admittedKeys.add(key);
 
     // F) presence-only flags canonicalized as key="key"
     if (isPresenceAttr(key, name, v)) {

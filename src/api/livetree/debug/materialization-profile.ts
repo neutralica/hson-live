@@ -25,10 +25,10 @@ export type LiveTreeMaterializationProfile = Readonly<{
   specializationMatchCalls: number;
   inspectorRootListeners: number;
   inspectorCssRuleSets: number;
-  projectionSourceReadMs: number;
-  projectionRendererCreateMs: number;
-  projectionSurvivorUpdateMs: number;
-  projectionAttachmentMs: number;
+  reflectSourceReadMs: number;
+  reflectRendererCreateMs: number;
+  reflectSurvivorUpdateMs: number;
+  reflectAttachmentMs: number;
   inspectorBranchConstructionMs: number;
 }>;
 
@@ -91,10 +91,10 @@ function empty_profile(): MutableProfile {
     specializationMatchCalls: 0,
     inspectorRootListeners: 0,
     inspectorCssRuleSets: 0,
-    projectionSourceReadMs: 0,
-    projectionRendererCreateMs: 0,
-    projectionSurvivorUpdateMs: 0,
-    projectionAttachmentMs: 0,
+    reflectSourceReadMs: 0,
+    reflectRendererCreateMs: 0,
+    reflectSurvivorUpdateMs: 0,
+    reflectAttachmentMs: 0,
     inspectorBranchConstructionMs: 0,
   };
 }

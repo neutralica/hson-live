@@ -21,13 +21,13 @@ import type {
   LiveInspectorStatus,
   LiveInspectorValueKind,
 } from "../../types/liveinspect.types.js";
-import type { LiveKeyedProjection, LiveProjectionChange, LiveProjectionKey } from "../../types/liveproject.types.js";
+import type { CollectionReflect, CollectionReflectChange, CollectionReflectKey } from "../../types/reflect.types.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { make_detached_livetree_create } from "../livetree/creation/make-detached-livetree.js";
 import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
 import { format_live_path, path_is_prefix, paths_overlap, relative_live_path } from "../livemap/livemap.path.js";
-import { project_keyed_collection } from "../liveproject/liveproject.keyed.js";
-import { LiveProjectionError, LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE } from "../liveproject/liveproject.error.js";
+import { reflect_collection } from "../reflect/reflect.collection.js";
+import { CollectionReflectError, COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE } from "../reflect/reflect.collection.error.js";
 import { construct_source_1 } from "../transform/constructors/construct-source-1.js";
 import { record_livetree_materialization } from "../livetree/debug/materialization-profile.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
@@ -71,8 +71,8 @@ type InspectorCreationContext = Readonly<{
 }>;
 
 type MutableCounts = {
-  objectProjectors: number;
-  arrayProjectors: number;
+  objectReflectors: number;
+  arrayReflectors: number;
   primitiveUpdates: number;
   typeReplacements: number;
   recordsCreated: number;
@@ -88,7 +88,7 @@ type MutableCounts = {
   specializedRendererMatches: number;
   specializedRendererFailures: number;
   rendererHookFailures: number;
-  projectionFailures: number;
+  reflectFailures: number;
   observerFailures: number;
   eagerlyMaterializedBranches: number;
   lazilyMaterializedBranches: number;
@@ -120,13 +120,13 @@ class InspectorController {
   private readonly inspectorRoot: LiveTree;
   private readonly treeRegion: LiveTree;
   private readonly detailRegion: LiveTree;
-  private rootProjection: LiveKeyedProjection<JsonValue>;
+  private rootProjection: CollectionReflect<JsonValue>;
   private rootProjectionOff: (() => void) | undefined;
   private rootBranch: BranchController | undefined;
   private selected: BranchController | undefined;
   private readonly branchesById = new Map<string, BranchController>();
   private readonly branchesByPath = new Map<string, BranchController>();
-  private readonly projectors = new Set<LiveKeyedProjection<JsonValue>>();
+  private readonly reflectors = new Set<CollectionReflect<JsonValue>>();
   private readonly listeners = new Set<LiveInspectorListener>();
   private readonly initialDepth: number;
   private readonly longStringLimit: number;
@@ -136,7 +136,7 @@ class InspectorController {
   private readonly hsonMode: LiveInspectorHsonMode;
   private readonly specializations: readonly LiveInspectorSpecialization[];
   private readonly renderers: NonNullable<LiveInspectorOptions["renderers"]>;
-  private activeChange: LiveProjectionChange | undefined;
+  private activeChange: CollectionReflectChange | undefined;
   private currentStatus: LiveInspectorStatus = "initializing";
   private currentFailure: LiveInspectorError | undefined;
   private firstFailure: LiveInspectorError | undefined;
@@ -146,8 +146,8 @@ class InspectorController {
   private nextBranchId = 0;
   private absorbedProjectionCounts = { created: 0, reused: 0, moved: 0, removed: 0, batchPasses: 0, batchRows: 0 };
   private readonly counts: MutableCounts = {
-    objectProjectors: 0,
-    arrayProjectors: 0,
+    objectReflectors: 0,
+    arrayReflectors: 0,
     primitiveUpdates: 0,
     typeReplacements: 0,
     recordsCreated: 0,
@@ -163,7 +163,7 @@ class InspectorController {
     specializedRendererMatches: 0,
     specializedRendererFailures: 0,
     rendererHookFailures: 0,
-    projectionFailures: 0,
+    reflectFailures: 0,
     observerFailures: 0,
     eagerlyMaterializedBranches: 0,
     lazilyMaterializedBranches: 0,
@@ -223,7 +223,7 @@ class InspectorController {
       this.installStyles();
       this.installDelegatedInteraction();
       const rootStarted = materializationNow();
-      this.rootProjection = this.registerProjector(project_keyed_collection<JsonValue>({
+      this.rootProjection = this.registerReflector(reflect_collection<JsonValue>({
         source: make_singleton_collection_handle(this.sourceContext.handle, true),
         host: this.treeRegion,
         key: () => "__hson_inspector_root__",
@@ -288,7 +288,7 @@ class InspectorController {
     source: LiveMapPathHandle<JsonValue>,
     input: Readonly<{
       role: LiveInspectorBranchRole;
-      key: LiveProjectionKey | undefined;
+      key: CollectionReflectKey | undefined;
       depth: number;
       parent: BranchController | undefined;
       own: (cleanup: () => void) => () => void;
@@ -319,12 +319,12 @@ class InspectorController {
     }
   }
 
-  public createChildProjector(branch: BranchController): LiveKeyedProjection<JsonValue> {
+  public createChildReflector(branch: BranchController): CollectionReflect<JsonValue> {
     const value = branch.source.snap();
     if (is_json_object(value)) {
-      this.counts.objectProjectors += 1;
+      this.counts.objectReflectors += 1;
       const started = materializationNow();
-      const projector = this.registerProjector(project_keyed_collection<JsonValue>({
+      const reflector = this.registerReflector(reflect_collection<JsonValue>({
         source: make_object_collection_handle(branch.source),
         host: branch.childrenRegion,
         key: (_item, context) => {
@@ -342,14 +342,14 @@ class InspectorController {
           own: context.own,
         }),
       }));
-      this.recordMaterialization(projector, started);
-      return projector;
+      this.recordMaterialization(reflector, started);
+      return reflector;
     }
     if (Array.isArray(value)) {
-      this.counts.arrayProjectors += 1;
+      this.counts.arrayReflectors += 1;
       branch.arrayIdentity = this.arrayIdentity(value, branch.source.path());
       const started = materializationNow();
-      const projector = this.registerProjector(project_keyed_collection<JsonValue>({
+      const reflector = this.registerReflector(reflect_collection<JsonValue>({
         source: make_array_collection_handle(branch.source),
         host: branch.childrenRegion,
         key: (item, context) => this.arrayItemKey(item, branch, context.ordinal, context.path),
@@ -361,8 +361,8 @@ class InspectorController {
           own: context.own,
         }),
       }));
-      this.recordMaterialization(projector, started);
-      return projector;
+      this.recordMaterialization(reflector, started);
+      return reflector;
     }
     throw new LiveInspectorError(
       LIVE_INSPECTOR_NON_STRUCTURAL_EXPANSION_ERROR_CODE,
@@ -370,22 +370,22 @@ class InspectorController {
     );
   }
 
-  public replaceChildProjector(branch: BranchController, projector: LiveKeyedProjection<JsonValue>): void {
+  public replaceChildReflector(branch: BranchController, reflector: CollectionReflect<JsonValue>): void {
     const value = branch.source.snap();
     if (is_json_object(value)) {
-      projector.replaceSource(make_object_collection_handle(branch.source));
+      reflector.replaceSource(make_object_collection_handle(branch.source));
       return;
     }
     if (Array.isArray(value)) {
       branch.arrayIdentity = this.arrayIdentity(value, branch.source.path());
-      projector.replaceSource(make_array_collection_handle(branch.source));
+      reflector.replaceSource(make_array_collection_handle(branch.source));
       return;
     }
   }
 
-  public unregisterProjector(projector: LiveKeyedProjection<JsonValue>): void {
-    if (!this.projectors.delete(projector)) return;
-    const diagnostics = projector.diagnostics();
+  public unregisterReflector(reflector: CollectionReflect<JsonValue>): void {
+    if (!this.reflectors.delete(reflector)) return;
+    const diagnostics = reflector.diagnostics();
     this.absorbedProjectionCounts.created += diagnostics.recordsCreated;
     this.absorbedProjectionCounts.reused += diagnostics.recordsReused;
     this.absorbedProjectionCounts.moved += diagnostics.recordsMoved;
@@ -394,21 +394,21 @@ class InspectorController {
     this.absorbedProjectionCounts.batchRows += diagnostics.recordsBatchAttached;
   }
 
-  private recordMaterialization(projector: LiveKeyedProjection<JsonValue>, started: number): void {
+  private recordMaterialization(reflector: CollectionReflect<JsonValue>, started: number): void {
     this.counts.materializationPasses += 1;
-    this.counts.rowsMaterialized += projector.itemCount;
-    this.counts.largestMaterialization = Math.max(this.counts.largestMaterialization, projector.itemCount);
+    this.counts.rowsMaterialized += reflector.itemCount;
+    this.counts.largestMaterialization = Math.max(this.counts.largestMaterialization, reflector.itemCount);
     this.counts.materializationDurationMs += materializationNow() - started;
   }
 
-  public disposeProjector(projector: LiveKeyedProjection<JsonValue>): void {
-    projector.dispose();
-    this.unregisterProjector(projector);
+  public disposeReflector(reflector: CollectionReflect<JsonValue>): void {
+    reflector.dispose();
+    this.unregisterReflector(reflector);
   }
 
-  private registerProjector(projector: LiveKeyedProjection<JsonValue>): LiveKeyedProjection<JsonValue> {
-    this.projectors.add(projector);
-    return projector;
+  private registerReflector(reflector: CollectionReflect<JsonValue>): CollectionReflect<JsonValue> {
+    this.reflectors.add(reflector);
+    return reflector;
   }
 
   public arrayIdentity(value: readonly JsonValue[], arrayPath: LivePath): LiveInspectorArrayIdentity {
@@ -437,7 +437,7 @@ class InspectorController {
     branch: BranchController,
     index: number,
     itemPath: LivePath,
-  ): LiveProjectionKey {
+  ): CollectionReflectKey {
     if (branch.arrayIdentity !== "application-key") return index;
     const key = this.arrayKey?.(item, {
       arrayPath: Object.freeze([...branch.source.path()]),
@@ -459,7 +459,7 @@ class InspectorController {
     return ops.some((op) => paths_overlap(path, op.path));
   }
 
-  private withChange<T>(change: LiveProjectionChange, run: () => T): T {
+  private withChange<T>(change: CollectionReflectChange, run: () => T): T {
     const previous = this.activeChange;
     if (previous === undefined) this.activeChange = change;
     try { return run(); }
@@ -686,7 +686,7 @@ class InspectorController {
       if (Array.isArray(item)) {
         const identity = this.arrayIdentity(item, itemPath);
         if (identity === "application-key") {
-          const keys = new Set<LiveProjectionKey>();
+          const keys = new Set<CollectionReflectKey>();
           for (let index = 0; index < item.length; index += 1) {
             const key = this.arrayKey?.(item[index] as JsonValue, {
               arrayPath: itemPath,
@@ -928,8 +928,8 @@ class InspectorController {
       visibleBranchCount: branches.filter((branch) => branch.visible).length,
       materializedBranchCount: branches.length,
       collapsedStructuralBranchCount: branches.filter((branch) => branch.isStructural && !branch.expanded).length,
-      objectProjectors: this.counts.objectProjectors,
-      arrayProjectors: this.counts.arrayProjectors,
+      objectReflectors: this.counts.objectReflectors,
+      arrayReflectors: this.counts.arrayReflectors,
       primitiveUpdates: this.counts.primitiveUpdates,
       typeReplacements: this.counts.typeReplacements,
       recordsCreated: projection.created,
@@ -946,7 +946,7 @@ class InspectorController {
       specializedRendererFailures: this.counts.specializedRendererFailures,
       rendererHookFailures: this.counts.rendererHookFailures,
       delegatedListenerCount: this.currentStatus === "disposed" ? 0 : 1,
-      projectionFailures: this.counts.projectionFailures,
+      reflectFailures: this.counts.reflectFailures,
       observerFailures: this.counts.observerFailures,
       eagerlyMaterializedBranches: this.counts.eagerlyMaterializedBranches,
       lazilyMaterializedBranches: this.counts.lazilyMaterializedBranches,
@@ -972,8 +972,8 @@ class InspectorController {
     let removed = this.absorbedProjectionCounts.removed;
     let batchPasses = this.absorbedProjectionCounts.batchPasses;
     let batchRows = this.absorbedProjectionCounts.batchRows;
-    for (const projector of this.projectors) {
-      const diagnostics = projector.diagnostics();
+    for (const reflector of this.reflectors) {
+      const diagnostics = reflector.diagnostics();
       created += diagnostics.recordsCreated;
       reused += diagnostics.recordsReused;
       moved += diagnostics.recordsMoved;
@@ -1044,7 +1044,7 @@ class InspectorController {
 
   private failProjection(error: unknown): void {
     const failure = this.translateProjectionError(error, "Live inspector projection failed.");
-    this.counts.projectionFailures += 1;
+    this.counts.reflectFailures += 1;
     this.firstFailure ??= failure;
     this.currentFailure ??= failure;
     this.currentStatus = "failed";
@@ -1052,7 +1052,7 @@ class InspectorController {
 
   private translateProjectionError(error: unknown, message: string): LiveInspectorError {
     if (error instanceof LiveInspectorError) return error;
-    if (hasProjectionCode(error, LIVE_PROJECTION_DUPLICATE_KEY_ERROR_CODE)) {
+    if (hasProjectionCode(error, COLLECTION_REFLECT_DUPLICATE_KEY_ERROR_CODE)) {
       return new LiveInspectorError(LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE, "Live inspector array contains duplicate application keys.", error);
     }
     return new LiveInspectorError(LIVE_INSPECTOR_PROJECTION_ERROR_CODE, message, error);
@@ -1063,11 +1063,11 @@ class InspectorController {
     this.currentStatus = "disposed";
     this.rootProjectionOff?.();
     this.rootProjectionOff = undefined;
-    if (this.rootProjection !== undefined) this.disposeProjector(this.rootProjection);
-    for (const projector of [...this.projectors]) {
-      this.disposeProjector(projector);
+    if (this.rootProjection !== undefined) this.disposeReflector(this.rootProjection);
+    for (const reflector of [...this.reflectors]) {
+      this.disposeReflector(reflector);
     }
-    this.projectors.clear();
+    this.reflectors.clear();
     this.selected = undefined;
     this.branchesById.clear();
     this.branchesByPath.clear();
@@ -1083,14 +1083,14 @@ class InspectorController {
 
 type LiveInspectorRendererResultForProjection = Readonly<{
   tree: LiveTree;
-  update: (source: LiveMapPathHandle<JsonValue>, change: LiveProjectionChange) => void;
+  update: (source: LiveMapPathHandle<JsonValue>, change: CollectionReflectChange) => void;
 }>;
 
 class BranchController {
   public readonly tree: LiveTree;
   public readonly childrenRegion: LiveTree;
   public readonly role: LiveInspectorBranchRole;
-  public readonly key: LiveProjectionKey | undefined;
+  public readonly key: CollectionReflectKey | undefined;
   public readonly depth: number;
   public readonly parent: BranchController | undefined;
   public readonly id: string;
@@ -1102,7 +1102,7 @@ class BranchController {
   public materialized = false;
   public disposed = false;
   public specializationName: string | undefined;
-  private childProjector: LiveKeyedProjection<JsonValue> | undefined;
+  private childReflector: CollectionReflect<JsonValue> | undefined;
   private auxiliary: AuxiliaryRenderer | undefined;
   private readonly disclosure: LiveTree;
   private readonly selectionControl: LiveTree;
@@ -1114,7 +1114,7 @@ class BranchController {
     private readonly inspector: InspectorController,
     source: LiveMapPathHandle<JsonValue>,
     role: LiveInspectorBranchRole,
-    key: LiveProjectionKey | undefined,
+    key: CollectionReflectKey | undefined,
     depth: number,
     parent: BranchController | undefined,
   ) {
@@ -1197,15 +1197,15 @@ class BranchController {
     const value = passValue ?? next.snap();
     this.kind = kindOf(value);
     if (previousKind !== this.kind) {
-      this.disposeChildProjector();
+      this.disposeChildReflector();
       this.arrayIdentity = Array.isArray(value) ? this.inspector.arrayIdentity(value, this.path) : undefined;
       this.inspector.typeReplaced();
     } else if (this.isPrimitive) {
       this.inspector.primitiveUpdated();
     }
     this.refreshPresentation(value);
-    if (this.materialized && this.isStructural && this.childProjector !== undefined) {
-      this.inspector.replaceChildProjector(this, this.childProjector);
+    if (this.materialized && this.isStructural && this.childReflector !== undefined) {
+      this.inspector.replaceChildReflector(this, this.childReflector);
     }
   }
 
@@ -1287,7 +1287,7 @@ class BranchController {
     if (this.expanded) return;
     const before = this.inspector.branchCount();
     if (!this.materialized) {
-      this.childProjector = this.inspector.createChildProjector(this);
+      this.childReflector = this.inspector.createChildReflector(this);
       this.materialized = true;
     }
     this.expanded = true;
@@ -1338,11 +1338,11 @@ class BranchController {
     this.selectionControl.dom.htmlEl()?.focus();
   }
 
-  private disposeChildProjector(): void {
-    const projector = this.childProjector;
-    if (projector === undefined) return;
-    this.childProjector = undefined;
-    this.inspector.disposeProjector(projector);
+  private disposeChildReflector(): void {
+    const reflector = this.childReflector;
+    if (reflector === undefined) return;
+    this.childReflector = undefined;
+    this.inspector.disposeReflector(reflector);
     this.materialized = false;
     this.expanded = false;
   }
@@ -1357,7 +1357,7 @@ class BranchController {
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.disposeChildProjector();
+    this.disposeChildReflector();
     this.disposeAuxiliary();
     this.inspector.unregisterBranch(this);
   }
@@ -1450,7 +1450,7 @@ function hasProjectionCode(error: unknown, code: string): boolean {
   const seen = new Set<object>();
   while (cursor instanceof Error && !seen.has(cursor)) {
     seen.add(cursor);
-    if (cursor instanceof LiveProjectionError && cursor.code === code) return true;
+    if (cursor instanceof CollectionReflectError && cursor.code === code) return true;
     cursor = (cursor as Error & { cause?: unknown }).cause;
   }
   return false;

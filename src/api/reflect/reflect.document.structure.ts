@@ -27,14 +27,14 @@ import {
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
 import {
-  DOCUMENT_BINDING_CONTENT_INDEX_INVALID_ERROR_CODE,
-  DOCUMENT_BINDING_CONTENT_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_CONTENT_PATH_INVALID_ERROR_CODE,
-  DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
-  DOCUMENT_BINDING_REUSE_INCOMPATIBLE_ERROR_CODE,
-  DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "./liveproject.document.error.js";
+  DOCUMENT_REFLECT_CONTENT_INDEX_INVALID_ERROR_CODE,
+  DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
+  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+  DOCUMENT_REFLECT_REUSE_INCOMPATIBLE_ERROR_CODE,
+  DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
+  DocumentReflectError,
+} from "./reflect.document.error.js";
 
 type ShadowContent = ShadowNode | Primitive;
 
@@ -71,8 +71,8 @@ export function plan_document_structural_transaction(
 
   for (const operation of operations) {
     if (operation.op === "replace-root") {
-      throw new DocumentLiveTreeBindingError(
-        DOCUMENT_BINDING_CONTENT_PATH_INVALID_ERROR_CODE,
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
         "Root replacement is outside the structural-content binding proof.",
       );
     }
@@ -288,8 +288,8 @@ function resolve_shadow_target(root: ShadowNode, target: LiveMapDocumentTarget, 
     walk_shadow(root, (candidate) => {
       if (candidate.persistedQuid !== target.quid) return;
       if (found !== undefined && found !== candidate) {
-        throw new DocumentLiveTreeBindingError(
-          DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
           "Persisted QUID resolves to multiple projected structural targets.",
         );
       }
@@ -318,8 +318,8 @@ function apply_shadow_node(shadow: ShadowNode): HsonNode {
 
 function copy_replacement_shell(target: HsonNode, source: HsonNode): void {
   if (target.$_tag !== source.$_tag) {
-    throw new DocumentLiveTreeBindingError(
-      DOCUMENT_BINDING_REUSE_INCOMPATIBLE_ERROR_CODE,
+    throw new DocumentReflectError(
+      DOCUMENT_REFLECT_REUSE_INCOMPATIBLE_ERROR_CODE,
       "A same-QUID replacement changed element kind during structural application.",
     );
   }
@@ -343,8 +343,8 @@ function reconcile_owner_dom(owner: HsonNode, runtime: LiveTreeRuntime): void {
     );
     element.replaceChildren(...desired);
   } catch (cause) {
-    throw new DocumentLiveTreeBindingError(
-      DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE,
+    throw new DocumentReflectError(
+      DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
       "Mounted DOM structural projection failed.",
       cause,
     );
@@ -418,8 +418,8 @@ function validate_final_quids(
     if (quid === undefined) return;
     const duplicate = byQuid.get(quid);
     if (duplicate !== undefined && duplicate !== shadow.node) {
-      throw new DocumentLiveTreeBindingError(
-        DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Projected structural result contains duplicate persisted QUIDs.",
       );
     }
@@ -427,8 +427,8 @@ function validate_final_quids(
     const registered = get_node_by_quid(quid, runtime);
     if (registered !== undefined && registered !== shadow.node
       && (!oldNodes.has(registered) || finalNodes.has(registered))) {
-      throw new DocumentLiveTreeBindingError(
-        DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
         "Inserted persisted QUID is owned by another active LiveTree node.",
       );
     }
@@ -461,8 +461,8 @@ function nearest_ordinary_owner(target: ShadowNode): ShadowNode {
     if (is_ordinary_element_node(current.node)) return current;
     current = current.parent;
   }
-  throw new DocumentLiveTreeBindingError(
-    DOCUMENT_BINDING_CONTENT_PATH_INVALID_ERROR_CODE,
+  throw new DocumentReflectError(
+    DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
     "Structural target has no ordinary projected DOM owner.",
   );
 }
@@ -474,8 +474,8 @@ function is_shadow_node(input: ShadowContent | undefined): input is ShadowNode {
 function must_attrs(input: unknown): CanonicalPublicAttrs {
   const attrs = decode_public_attrs(input);
   if (attrs !== undefined) return attrs;
-  throw new DocumentLiveTreeBindingError(
-    DOCUMENT_BINDING_CONTENT_MISMATCH_ERROR_CODE,
+  throw new DocumentReflectError(
+    DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
     "Structural transaction contains invalid ordinary attributes.",
   );
 }
@@ -490,23 +490,23 @@ function assert_existing_index(target: ShadowNode, index: number, operation: str
   throw content_index_error(operation, index);
 }
 
-function content_path_error(operation: string): DocumentLiveTreeBindingError {
-  return new DocumentLiveTreeBindingError(
-    DOCUMENT_BINDING_CONTENT_PATH_INVALID_ERROR_CODE,
+function content_path_error(operation: string): DocumentReflectError {
+  return new DocumentReflectError(
+    DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
     `Structural operation ${operation} does not resolve to a projected raw content target.`,
   );
 }
 
-function content_index_error(operation: string, index: number): DocumentLiveTreeBindingError {
-  return new DocumentLiveTreeBindingError(
-    DOCUMENT_BINDING_CONTENT_INDEX_INVALID_ERROR_CODE,
+function content_index_error(operation: string, index: number): DocumentReflectError {
+  return new DocumentReflectError(
+    DOCUMENT_REFLECT_CONTENT_INDEX_INVALID_ERROR_CODE,
     `Structural operation ${operation} has invalid raw content index ${index}.`,
   );
 }
 
-function content_mismatch(): DocumentLiveTreeBindingError {
-  return new DocumentLiveTreeBindingError(
-    DOCUMENT_BINDING_CONTENT_MISMATCH_ERROR_CODE,
+function content_mismatch(): DocumentReflectError {
+  return new DocumentReflectError(
+    DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
     "Planned projected structure does not match the canonical final graph.",
   );
 }

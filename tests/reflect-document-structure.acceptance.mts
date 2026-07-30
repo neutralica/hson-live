@@ -4,15 +4,15 @@ import { hson } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap } from "../src/types/livemap.types.ts";
-import { bind_document_livetree } from "../src/api/liveproject/liveproject.document.ts";
+import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
-  DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE,
-  DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE,
-  DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE,
-  DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE,
-  DOCUMENT_BINDING_UNSUPPORTED_OPERATION_ERROR_CODE,
-  DocumentLiveTreeBindingError,
-} from "../src/api/liveproject/liveproject.document.error.ts";
+  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+  DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
+  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
+  DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+  DocumentReflectError,
+} from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
@@ -57,7 +57,7 @@ function mount(root: HsonNode): FakeElement {
 
 check("nested raw insertion projects elements, QUID-less nodes, wrappers, and text", () => {
   const map = element(`<main @0000000000000401 <a @0000000000000402/> <b/> "tail"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<c @0000000000000403 "inside"/>`));
   map.document.content.insert(path(0), 2, projected_element(`<d/>`));
@@ -72,13 +72,13 @@ check("nested raw insertion projects elements, QUID-less nodes, wrappers, and te
   create_livetree(insertedQless).adoptRoots(binding.tree.hostRootNode()).attrs.set("bound", "yes");
   assert.equal(map.document.attrs.get(path(0, 2), "bound"), "yes");
   assert.equal(binding.sourceRevision, 4);
-  assert.equal(binding.diagnostics().projectionTransactions, 4);
+  assert.equal(binding.diagnostics().updatesApplied, 4);
   binding.dispose();
 });
 
 check("remove unregisters deleted content and reindexes shifted QUID-less paths", () => {
   const map = element(`<main @0000000000000404 <a/> <b/> <c/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const removed = raw_node(binding.tree.node, [0, 1]);
   const shifted = raw_node(binding.tree.node, [0, 2]);
@@ -93,7 +93,7 @@ check("remove unregisters deleted content and reindexes shifted QUID-less paths"
 
 check("forward and backward moves preserve projected node, DOM, and local identity", () => {
   const map = element(`<main @0000000000000405 <a/> <b @0000000000000406/> <c/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const moved = raw_node(binding.tree.node, [0, 1]);
   const movedDom = get_el_for_node(moved) as unknown as FakeElement;
@@ -113,7 +113,7 @@ check("forward and backward moves preserve projected node, DOM, and local identi
 
 check("replace preserves compatible same-QUID roots and replaces incompatible roots", () => {
   const map = element(`<main @0000000000000407 <b @0000000000000408 "old"/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const original = raw_node(binding.tree.node, [0, 0]);
   const originalDom = get_el_for_node(original);
@@ -132,7 +132,7 @@ check("replace preserves compatible same-QUID roots and replaces incompatible ro
 
 check("replace projects text-wrapper/node transitions and primitive leaves at exact raw slots", () => {
   const map = element(`<main @0000000000000413 "old"/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   map.document.content.replace(path(0), 0, projected_element(`<span/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "span");
@@ -149,11 +149,11 @@ check("replace projects text-wrapper/node transitions and primitive leaves at ex
 check("foreign global QUID ownership rejects insertion before projected mutation", () => {
   create_livetree(projected_element(`<aside @0000000000000414/>`));
   const map = element(`<main @0000000000000415 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const before = structuredClone(binding.tree.node);
   map.document.content.insert(path(0), 1, projected_element(`<aside @0000000000000414/>`));
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
   assert.deepEqual(binding.tree.node, before);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
@@ -161,7 +161,7 @@ check("foreign global QUID ownership rejects insertion before projected mutation
 
 check("mixed sequential replay projects structural and attrs operations once", () => {
   const map = element(`<main @0000000000000409 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   mount(binding.tree.node);
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
@@ -179,14 +179,14 @@ check("mixed sequential replay projects structural and attrs operations once", (
   assert.equal(inserted.$_tag, "b");
   assert.equal(inserted.$_attrs?.mixed, 1);
   assert.equal(binding.sourceRevision, 1);
-  assert.equal(binding.diagnostics().projectionTransactions, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
   assert.equal(observations.length, 1);
   binding.dispose();
 });
 
 check("bound public structural and text APIs reject until disposal", () => {
   const map = element(`<main @0000000000000410 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const branch = create_livetree(projected_element(`<b/>`));
   const before = structuredClone(binding.tree.node);
   for (const mutation of [
@@ -196,9 +196,9 @@ check("bound public structural and text APIs reject until disposal", () => {
     () => binding.tree.removeChildren(),
     () => binding.tree.text.overwrite("blocked"),
   ]) {
-    assert.throws(mutation, (cause) => cause instanceof DocumentLiveTreeBindingError
-      && (cause.code === DOCUMENT_BINDING_UNSUPPORTED_OPERATION_ERROR_CODE
-        || cause.code === DOCUMENT_BINDING_DELEGATION_UNSUPPORTED_ERROR_CODE));
+    assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
+      && (cause.code === DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE
+        || cause.code === DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE));
   }
   assert.deepEqual(binding.tree.node, before);
   binding.dispose();
@@ -208,35 +208,35 @@ check("bound public structural and text APIs reject until disposal", () => {
 
 check("structural DOM failure preserves canonical commit and fails observer-side", () => {
   const map = element(`<main @0000000000000411 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
   const commit = map.document.content.insert(path(0), 1, projected_element(`<b/>`));
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 1);
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_STRUCTURAL_PROJECTION_FAILED_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
-  assert.throws(() => binding.tree.empty(), DocumentLiveTreeBindingError);
+  assert.throws(() => binding.tree.empty(), DocumentReflectError);
   binding.dispose();
 });
 
 check("incompatible snapshot restore remains observer-isolated", () => {
   const map = element(`<main @0000000000000416/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const replacement = element(`<article @0000000000000417/>`);
   map.restore(replacement.capture());
   assert.equal(map.element.node().$_tag, "article");
   assert.equal(binding.tree.node.$_tag, "main");
   assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE);
+  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
 });
 
 check("disposal stops projection and restores unbound structural behavior", () => {
   const map = element(`<main @0000000000000412 <a/>/>`);
-  const binding = bind_document_livetree(map);
+  const binding = hsonReflect(map);
   const retained = binding.tree.node;
   binding.dispose();
   map.document.content.insert(path(0), 1, projected_element(`<b/>`));
@@ -251,4 +251,4 @@ check("disposal stops projection and restores unbound structural behavior", () =
 });
 
 process.stdout.write(`# ${checks} document LiveTree structural binding checks passed\n`);
-emit_hson_live_test_completion("livetree.document-structure", checks, checks, 0);
+emit_hson_live_test_completion("reflect.document-structure", checks, checks, 0);

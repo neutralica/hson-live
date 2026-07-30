@@ -3,7 +3,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { hson } from "../src/index.ts";
 import {
-  _bind_document_livetree_for_runtime_test,
+  _reflect_document_for_runtime_test,
   _append_livetree_branches_atomic,
   _create_livetree_for_runtime_test,
   _create_livetree_runtime_test_handle,
@@ -519,11 +519,11 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(rootElement.getAttribute("hson:quid"), null);
 });
 
-check("LiveProject document and keyed reconciliation preserve clean projection markup", () => {
+check("Reflect document and collection synchronization preserve clean projection markup", () => {
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap("<main <span/>/>");
-  const binding = _bind_document_livetree_for_runtime_test(runtime, map);
+  const binding = _reflect_document_for_runtime_test(runtime, map);
   const documentRoot = projectInto(runtime, binding.tree, document);
   map.document.content.insert(
     Object.freeze({ kind: "path", path: Object.freeze([]) }),
@@ -543,7 +543,7 @@ check("LiveProject document and keyed reconciliation preserve clean projection m
   const source = hson.liveMap.fromJson({
     items: [{ id: "a" }, { id: "b" }],
   });
-  const projection = hson.liveProject.keyedCollection<{ id: string }>({
+  const projection = hson.reflect.collection<{ id: string }>({
     source: source.at(["items"]) as never,
     host,
     key: (item) => item.id,
@@ -558,13 +558,13 @@ check("LiveProject document and keyed reconciliation preserve clean projection m
   host.remove();
 });
 
-check("LiveProject projects equal persisted QUIDs in separate runtimes", () => {
+check("Reflect projects equal persisted QUIDs in separate runtimes", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const leftMap = elementMap(`<main @${SAME_QUID}/>`);
   const rightMap = elementMap(`<main @${SAME_QUID}/>`);
-  const leftBinding = _bind_document_livetree_for_runtime_test(left, leftMap);
-  const rightBinding = _bind_document_livetree_for_runtime_test(right, rightMap);
+  const leftBinding = _reflect_document_for_runtime_test(left, leftMap);
+  const rightBinding = _reflect_document_for_runtime_test(right, rightMap);
   assert.equal(leftBinding.tree.quid, SAME_QUID);
   assert.equal(rightBinding.tree.quid, SAME_QUID);
   leftBinding.dispose();
@@ -575,13 +575,13 @@ check("LiveProject projects equal persisted QUIDs in separate runtimes", () => {
   rightBinding.tree.remove();
 });
 
-check("LiveProject same-runtime duplicate projection still rejects", () => {
+check("Reflect same-runtime duplicate projection still rejects", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const left = elementMap(`<main @${SAME_QUID}/>`);
   const right = elementMap(`<main @${SAME_QUID}/>`);
-  const binding = _bind_document_livetree_for_runtime_test(runtime, left);
+  const binding = _reflect_document_for_runtime_test(runtime, left);
   assert.throws(
-    () => _bind_document_livetree_for_runtime_test(runtime, right),
+    () => _reflect_document_for_runtime_test(runtime, right),
     /Initial LiveTree projection construction failed/,
   );
   binding.dispose();
@@ -590,7 +590,7 @@ check("LiveProject same-runtime duplicate projection still rejects", () => {
 
 check("binding disposal and later tree destruction are separate and idempotent", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const binding = _bind_document_livetree_for_runtime_test(
+  const binding = _reflect_document_for_runtime_test(
     runtime,
     elementMap(`<main <span/>/>`),
   );
@@ -605,7 +605,7 @@ check("binding disposal and later tree destruction are separate and idempotent",
 check("borrowed tree destruction stops its bridge and later binding disposal is safe", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = elementMap(`<main @${SAME_QUID} <span/>/>`);
-  const binding = _bind_document_livetree_for_runtime_test(runtime, map);
+  const binding = _reflect_document_for_runtime_test(runtime, map);
   assert.equal(binding.tree.remove(), 1);
   assert.equal(binding.status, "disposed");
   assert.equal(map.element.node().$_tag, "main");

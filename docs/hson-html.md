@@ -119,7 +119,8 @@ The parser canonicalizes them:
   `$_attrs`; unknown `hson:*` names reject.
 - Private transit names are rejected at public ingress and never enter the
   canonical graph.
-- Every `data-*` attribute is routed to `$_attrs` as application data.
+- Every `data-*` attribute is routed to `$_attrs` as application data,
+  including the literal name `data--attrmap`.
 - other attribute whitespace is normalized.
 - empty values and values equal to the attribute name are treated as presence
   attributes and stored canonically.
@@ -127,19 +128,28 @@ The parser canonicalizes them:
 As a result, attribute presence is preserved more reliably than exact source
 value spelling. Attribute order is not semantically significant after parsing.
 
-For XML-backed string parsing, literal `hson:*` candidate names are encoded
-after quote normalization and before the generic XML-hostile-name pass. The
-dedicated codec uses deterministic private XML-safe names, rejects authored
-private names, and decodes only while attributes are admitted into the graph.
-Decoded candidates still pass through the exact metadata registry, so an
-encoded `hson:unknown` rejects. Direct `Element` ingestion skips this lexical
-codec and shares the same semantic admission layer.
+Raw HTML-string duplicates are resolved while their original names are still
+visible. Names compare case-insensitively. Ordinary attributes use last-wins
+values and retain the position and spelling of their first occurrence.
+Repeated `class` declarations merge tokens in encounter order and remove
+repeated tokens. Repeated registered or candidate `hson:*` metadata
+declarations reject. An existing `Element` has already lost raw duplicate
+tokens and therefore begins at the post-token semantic boundary.
+
+For XML-backed string parsing, canonical-valid ordinary names that are unsafe
+for XML transit, such as `a:b`, are encoded into deterministic, injective,
+self-decoding private names. They are decoded before canonical attribute
+admission; the temporary spelling never enters `$_attrs`. Invalid canonical
+names reject rather than being made valid by transport. Literal `hson:*`
+candidates use their separate metadata codec and still pass through the exact
+registry, so `hson:unknown` rejects. Authored names in either private transit
+domain reject on string, `Element`, raw-node, codec, and serializer boundaries.
 
 The string preflight order is comment stripping, flag expansion, text/entity
-normalization, SVG namespace handling, quote normalization, HSON metadata-name
-transit encoding, generic XML-hostile-name encoding, XML parsing, attribute
-enumeration, HSON transit decoding, canonical graph construction, and invariant
-validation.
+normalization, SVG namespace handling, quote normalization, duplicate
+resolution plus ordinary-name transit encoding, HSON metadata-name transit
+encoding, XML parsing, attribute enumeration, both transit decoders, canonical
+graph construction, and invariant validation.
 
 ---
 

@@ -13,6 +13,7 @@ import {
   HSON_META_QUID,
   HSON_META_MARKUP_PREFIX,
   HSON_META_TRANSIT_PREFIX,
+  _TRANSIT_PREFIX,
 } from "./constants.js";
 import { validate_hson_node_quid } from "./hson-node-quid.js";
 import { _throw_transform_err } from "./errors.js";
@@ -77,6 +78,7 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
   if (!isVSN(n.$_tag) && n.$_attrs) {
     for (const key of Object.keys(n.$_attrs)) {
+      const lowerKey = key.toLowerCase();
       const metadataCandidate = hson_metadata_candidate_key(key);
       if (metadataCandidate !== undefined) {
         const policy = hson_metadata_policy(n.$_tag, metadataCandidate);
@@ -89,8 +91,11 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         );
         if (cfg.throwOnFirst) return;
       }
-      if (key.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      if (lowerKey.startsWith(HSON_META_TRANSIT_PREFIX)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private HSON metadata transit name is forbidden`); if (cfg.throwOnFirst) return;
+      }
+      if (lowerKey.startsWith(_TRANSIT_PREFIX)) {
+        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private ordinary-attribute transit name is forbidden`); if (cfg.throwOnFirst) return;
       }
       if (!is_valid_hson_attribute_name(key)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid HSON attribute name`); if (cfg.throwOnFirst) return;
