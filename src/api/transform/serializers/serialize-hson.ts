@@ -23,6 +23,7 @@ import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import type { HsonString } from "../transform.types.js";
 
 type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
 type HsonLayout = "readable" | "compact";
@@ -528,7 +529,7 @@ function emitNode(
 export function serialize_hson(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-): string {
+): HsonString {
   if (!is_Node(root)) {
     _throw_transform_err(
       "serialize-hson: root must be a HsonNode",
@@ -549,5 +550,5 @@ export function serialize_hson(
     },
     guard: cycleGuard(),
   };
-  return emitNode(normalizedRoot, 0, undefined, ctx).trim();
+  return emitNode(normalizedRoot, 0, undefined, ctx).trim() as HsonString;
 }

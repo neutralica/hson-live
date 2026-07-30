@@ -26,6 +26,24 @@ check("the transform facade exposes all five synchronous constructors", () => {
   ]);
 });
 
+check("Worker-safe Transform produces readable, compact, and no-QUID HSON", () => {
+  const node = hsonTransform
+    .fromHson(`<worker @0000000000000001 "ready"/>`)
+    .toNode();
+  assert.equal(
+    hsonTransform.fromNode(node).toHson().serialize(),
+    `<worker @0000000000000001 "ready"/>`,
+  );
+  assert.equal(
+    hsonTransform.fromNode(node).toHson().noBreak().serialize(),
+    `<worker @0000000000000001 "ready"/>`,
+  );
+  assert.equal(
+    hsonTransform.fromNode(node).toHson().noQuid().serialize(),
+    `<worker "ready"/>`,
+  );
+});
+
 check("trusted HTML parses without browser globals", () => {
   assert.equal("document" in globalThis, false);
   const node = hsonTransform

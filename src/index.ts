@@ -1,6 +1,6 @@
 // index.ts
 
-export { hson, type HsonFacade } from "./hson.js";
+export { hson, hsonString, type HsonFacade } from "./hson.js";
 export { LiveTree } from "./api/livetree/livetree.js";
 export {
     LIVETREE_ALREADY_ATTACHED_ERROR_CODE,

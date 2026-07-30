@@ -2,7 +2,7 @@
 
 # hson-live
 ## Transform API
-Updated: 2026-07-13
+Updated: 2026-07-30
 
 The transform API is exposed directly on `hson` through the public source
 constructors:
@@ -36,6 +36,44 @@ canonically reserialized with `.toHson().serialize()`.
 
 Use this API when the goal is serialized HTML, JSON, HSON, or a structured JSON
 or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
+
+---
+
+## Normalized HSON String
+
+`hson.string(source)` parses HSON source and returns its normalized official
+serialization as an `HsonString`:
+
+```ts
+import { hson } from "hson-live";
+import type { HsonString } from "hson-live/transform";
+
+const normalized: HsonString = hson.string(
+  `<p "first"<em "middle"/>"last"/>`,
+);
+```
+
+The equivalent named producer is exported as `hsonString(source)` from both
+`hson-live` and `hson-live/transform`. `hson.string` references that same
+function. The named Transform export imports only the HSON parser, serializer,
+and their required canonical graph boundaries; it does not initialize browser,
+LiveTree, LiveMap, or LiveHost surfaces.
+
+The returned spelling may differ from the source because the method reparses
+the source into canonical `HsonNode` state and serializes that graph with the
+default HSON options. It does not preserve original formatting, whitespace,
+line breaks, quoting, shorthand, comments, or other source-level spelling.
+Invalid input throws the existing parser, normalization, or invariant error.
+
+The result is a TypeScript-branded primitive string, not a security,
+authentication, sanitization, or trust check. The compile-time brand is
+normally lost across untyped transport or storage. A receiver should treat
+transported text as `string`; it may pass that text through `hson.string()`
+again when it needs a branded, normalized value.
+
+`hson.string()` always reparses and serializes, including when its argument is
+already an `HsonString`. It exposes no formatting options and uses default
+serializer behavior, including QUID preservation.
 
 ---
 
@@ -154,10 +192,35 @@ shapes, except where a node shape is intentionally represented by the format.
 
 Chooses HSON output.
 
-- `serialize()` returns HSON text.
+- `serialize()` returns `HsonString`, a primitive HSON string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
+
+### `HsonString`
+
+`HsonString` is a TypeScript-only branded primitive string returned by official
+HSON serialization APIs. Import it as a type from `hson-live/transform`.
+
+It is assignable to `string`, but an arbitrary `string` is not assignable to
+`HsonString`. The brand records compile-time producer provenance only: it adds
+no runtime marker, wrapper, prefix, property, or other change to the serialized
+text. It is not a security, trust, validation-token, sanitization,
+authentication, or cryptographic guarantee.
+
+Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage,
+environment variables, process boundaries, and third-party APIs typed as plain
+strings normally erase the brand. Receivers accept transported HSON text as an
+ordinary `string` and parse it normally. Parsing arbitrary text produces
+canonical `HsonNode` graph state after success; it does not brand the input
+text.
+
+Readable, compact (`noBreak`), and `noQuid` HSON serialization all return
+`HsonString`. The type does not imply that those options produce identical
+bytes, preserve source spelling, whitespace, quoting, comments, or formatting,
+or preserve JavaScript object identity for shared references. Graph carriers
+outside the serializable HSON-text domain, including an empty `_hson_root`,
+remain rejected and therefore do not produce an `HsonString`.
 
 ### `.sanitizeBEWARE()`
 
@@ -259,7 +322,7 @@ Returns a string for the chosen output:
 
 - after `.toHtml()` - HTML string
 - after `.toJson()` - JSON string
-- after `.toHson()` - HSON string
+- after `.toHson()` - `HsonString`
 
 ### `.value()`
 

@@ -6,6 +6,7 @@ import { HsonNode } from "../core/types.js";
 import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
 import { HtmlCreateHelper } from "./livetree.types.js";
+import type { HsonString } from "../api/transform/transform.types.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.
@@ -317,7 +318,7 @@ export interface OutputConstructor_2 {
   /** Return the canonical normalized graph without serializing and reparsing. */
   toNode(): HsonNode;
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & JsonValueConstructor_4;
-  toHson(): HsonOptionsConstructor_3 & SerializeConstructor_4;
+  toHson(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & SerializeConstructor_4;
   /**
    * 🔥 HTML-style sanitization applied *after* source selection.
@@ -447,9 +448,9 @@ export type PublicFrameOptions<K extends OutputRenderFormats> =
 
 /** Composable HSON-only option/finalizer methods. */
 export interface HsonOptionsConstructor_3 {
-  withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & SerializeConstructor_4;
-  noBreak(): HsonOptionsConstructor_3 & SerializeConstructor_4;
-  noQuid(): HsonOptionsConstructor_3 & SerializeConstructor_4;
+  withOptions(opts: FrameOptions): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
+  noBreak(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
+  noQuid(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
 }
 
 
@@ -473,6 +474,10 @@ export interface HsonOptionsConstructor_3 {
  ***************/
 export interface SerializeConstructor_4 {
   serialize(): string;
+}
+
+export interface HsonSerializeConstructor_4 {
+  serialize(): HsonString;
 }
 
 export interface JsonValueConstructor_4 extends SerializeConstructor_4 {

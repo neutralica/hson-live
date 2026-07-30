@@ -3,6 +3,7 @@ import type {
   TransformFrameOptions,
   TransformFrameRender,
   TransformHsonOptions,
+  TransformHsonSerialize,
   TransformJsonValue,
   TransformOutputOptions,
   TransformRenderFormat,
@@ -17,7 +18,7 @@ type HtmlOptionFinalizer =
   TransformOutputOptions<(typeof $RENDER)["HTML"]> & TransformSerialize;
 
 type HsonOptionFinalizer =
-  TransformHsonOptions & TransformSerialize;
+  TransformHsonOptions & TransformHsonSerialize;
 
 function with_frame_options<K extends TransformRenderFormat>(
   render: TransformFrameRender<K>,

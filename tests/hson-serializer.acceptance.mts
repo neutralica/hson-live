@@ -1,7 +1,7 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 
-import { hson } from "../src/hson.ts";
+import { hson, hsonString } from "../src/hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
@@ -42,6 +42,74 @@ function elementWithAttrs(attrs: NonNullable<HsonNode["$_attrs"]>): HsonNode {
 function onlyElement(node: HsonNode): HsonNode {
   return (node.$_content[0] as HsonNode).$_content[0] as HsonNode;
 }
+
+check("official HSON serialization remains an exact primitive string", () => {
+  const node = parse(`<panel "ready"/>`);
+  const direct = serialize_hson(node);
+  const fluent = hson.fromNode(node).toHson().serialize();
+  assert.equal(typeof direct, "string");
+  assert.equal(direct, `<panel "ready"/>`);
+  assert.equal(fluent, direct);
+  assert.deepEqual(parse(fluent), node);
+});
+
+check("hson.string returns canonical valid HSON as a primitive string", () => {
+  const normalized = hson.string(`<panel "ready"/>`);
+  const named = hsonString(`<panel "ready"/>`);
+  assert.equal(hson.string, hsonString);
+  assert.equal(typeof normalized, "string");
+  assert.equal(normalized, `<panel "ready"/>`);
+  assert.equal(named, normalized);
+});
+
+check("hson.string normalizes irregular and compact source to default readable output", () => {
+  assert.equal(hson.string(`<tag count=2/>`), `<tag count="2"/>`);
+  assert.equal(
+    hson.string(`<p "first"<em "middle"/>"last"/>`),
+    `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+  );
+});
+
+check("hson.string preserves canonical QUID metadata through default serialization", () => {
+  const normalized = hson.string(
+    `<panel class="x" @4k7m2v9d1r6x8qwc hidden "Content"/>`,
+  );
+  assert.equal(
+    normalized,
+    `<panel @4k7m2v9d1r6x8qwc class="x" hidden "Content"/>`,
+  );
+  assert.equal(onlyElement(parse(normalized)).$_meta?.["quid"], "4k7m2v9d1r6x8qwc");
+});
+
+check("hson.string preserves negative zero and empty element/object modes", () => {
+  const negativeZero = hson.string(`<value -0>`);
+  const negativeZeroNode = parse(negativeZero);
+  const negativeZeroLeaf = ((((negativeZeroNode.$_content[0] as HsonNode)
+    .$_content[0] as HsonNode).$_content[0] as HsonNode)
+    .$_content[0] as HsonNode);
+  assert.equal(negativeZero, `<value -0>`);
+  assert.equal(Object.is(negativeZeroLeaf.$_content[0], -0), true);
+  assert.equal(hson.string(`<tag/>`), `<tag/>`);
+  assert.equal(hson.string(`<>`), `<>`);
+});
+
+check("hson.string is idempotent and reparses to the first canonical graph", () => {
+  const source = `<p id="x" "first"<em "middle"/>"last"/>`;
+  const firstGraph = parse(source);
+  const normalized = hson.string(source);
+  assert.equal(hson.string(normalized), normalized);
+  assert.equal(canonical_hson_graph_equal(parse(normalized), firstGraph), true);
+});
+
+check("hson.string retains existing syntax, name, metadata, and number rejection", () => {
+  assert.throws(() => hson.string(`<tag "unterminated/>`), /unterminated/i);
+  assert.throws(() => hson.string(`<tag bad^name="x"/>`), /unexpected (?:character|token)|invalid/i);
+  assert.throws(
+    () => hson.string(`<_hson_obj @0000000000000000>`),
+    /persisted QUID|metadata|_hson_obj/i,
+  );
+  assert.throws(() => hson.string(`<value NaN>`), /invariant|number|NaN/i);
+});
 
 check("@quid parses into metadata and serializes immediately after the tag", () => {
   const node = parse(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden "Content"/>`);

@@ -52,7 +52,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 85,
+      executableChecks: 92,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({

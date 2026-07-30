@@ -1,6 +1,19 @@
 import type { $RENDER } from "../../core/constants.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
+declare const HSON_STRING_BRAND: unique symbol;
+
+/**
+ * A primitive string produced by an official HSON serializer after successful
+ * canonical graph validation and serialization.
+ *
+ * This TypeScript-only brand has no runtime marker and is not a trust or
+ * security guarantee.
+ */
+export type HsonString = string & {
+  readonly [HSON_STRING_BRAND]: true;
+};
+
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];
 export type TransformOutputRenderFormat =
   | (typeof $RENDER)["JSON"]
@@ -29,6 +42,10 @@ export interface TransformSerialize {
   serialize(): string;
 }
 
+export interface TransformHsonSerialize {
+  serialize(): HsonString;
+}
+
 export interface TransformJsonValue extends TransformSerialize {
   value(): JsonValue;
 }
@@ -41,9 +58,9 @@ export interface TransformOutputOptions<K extends TransformOutputRenderFormat> {
 }
 
 export interface TransformHsonOptions {
-  withOptions(options: TransformFrameOptions): TransformHsonOptions & TransformSerialize;
-  noBreak(): TransformHsonOptions & TransformSerialize;
-  noQuid(): TransformHsonOptions & TransformSerialize;
+  withOptions(options: TransformFrameOptions): TransformHsonOptions & TransformHsonSerialize;
+  noBreak(): TransformHsonOptions & TransformHsonSerialize;
+  noQuid(): TransformHsonOptions & TransformHsonSerialize;
 }
 
 export type TransformRender<K extends TransformOutputRenderFormat> =
@@ -59,7 +76,7 @@ export type TransformRender<K extends TransformOutputRenderFormat> =
 export interface TransformOutput {
   toNode(): HsonNode;
   toJson(): TransformOutputOptions<(typeof $RENDER)["JSON"]> & TransformJsonValue;
-  toHson(): TransformHsonOptions & TransformSerialize;
+  toHson(): TransformHsonOptions & TransformHsonSerialize;
   toHtml(): TransformOutputOptions<(typeof $RENDER)["HTML"]> & TransformSerialize;
   sanitizeBEWARE(): TransformOutput;
 }

@@ -6,6 +6,7 @@ import { serialize_hson } from "../serializers/serialize-hson.js";
 import type { JsonValue } from "../../../core/types.js";
 import type {
   TransformFrameRender,
+  TransformHsonSerialize,
   TransformJsonValue,
   TransformOutputRenderFormat,
   TransformSerialize,
@@ -41,15 +42,10 @@ function clone_json_value(value: JsonValue): JsonValue {
  * @param context - Render context containing the frame and chosen format.
  * @returns Stage-4 terminal render API.
  */
-function serialize_render(context: TransformFrameRender<TransformOutputRenderFormat | (typeof $RENDER)["HSON"]>): string {
+function serialize_render(context: TransformFrameRender<TransformOutputRenderFormat>): string {
   const { frame, output } = context;
 
   switch (output) {
-    case $RENDER.HSON:
-      return serialize_hson(frame.node, {
-        noBreak: frame.options?.noBreak ?? false,
-        noQuid: frame.options?.noQuid ?? false,
-      });
     case $RENDER.JSON:
       if (frame.json === undefined) throw new Error("serialize(): frame is missing JSON data");
       return make_string(frame.json);
@@ -62,8 +58,13 @@ function serialize_render(context: TransformFrameRender<TransformOutputRenderFor
 /** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
 export function construct_hson_render_4(
   context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
-): TransformSerialize {
-  return { serialize: () => serialize_render(context) };
+): TransformHsonSerialize {
+  return {
+    serialize: () => serialize_hson(context.frame.node, {
+      noBreak: context.frame.options?.noBreak ?? false,
+      noQuid: context.frame.options?.noQuid ?? false,
+    }),
+  };
 }
 
 export function construct_html_render_4(
