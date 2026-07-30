@@ -14,6 +14,7 @@ import {
   VAL_TAG,
   _DATA_INDEX,
   _DATA_QUID,
+  _META_DATA_PREFIX,
   _TRANSIT_PREFIX,
 } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
@@ -103,6 +104,11 @@ function attributes_from_element(
 
     if (lower === _DATA_QUID) {
       quid = value;
+      continue;
+    }
+
+    if (lower.startsWith(_META_DATA_PREFIX)) {
+      (meta ??= {})[key] = value;
       continue;
     }
 
@@ -339,9 +345,12 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
 
 function standalone_svg_node(element: Element): HsonNode {
   const attrs: HsonAttrs = {};
+  let meta: HsonMeta | undefined;
   let quid: string | undefined;
   for (const [name, value] of Object.entries(element.attribs)) {
-    if (name.toLowerCase() === _DATA_QUID) quid = value;
+    const lower = name.toLowerCase();
+    if (lower === _DATA_QUID) quid = value;
+    else if (lower.startsWith(_META_DATA_PREFIX)) (meta ??= {})[name] = value;
     else attrs[name] = value;
   }
   if (quid !== undefined && element.name.startsWith(HSON_SYS_PREFIX)) {
@@ -363,6 +372,7 @@ function standalone_svg_node(element: Element): HsonNode {
   const node = CREATE_NODE({
     $_tag: element.name,
     $_attrs: attrs,
+    $_meta: meta,
     $_content: children,
   });
   if (quid !== undefined) {

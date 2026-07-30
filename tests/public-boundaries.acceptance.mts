@@ -127,7 +127,7 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
 
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
   const node = hson.fromHson(
-    `<button id="primary" data-_quid="0000000000000001" data-_custom="kept" "hello"/>`,
+    `<button id="primary" data-user="kept" data-_quid="0000000000000001" "hello"/>`,
   ).toNode();
   const map = hson.liveMap.fromNode(node);
 

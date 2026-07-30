@@ -20,6 +20,8 @@ export function serialize_primitive_hson(prim: Primitive): string {
       return JSON.stringify(prim);
     }
   
+    if (typeof prim === "number" && Object.is(prim, -0)) return "-0";
+
     /* if it's bool/num/null, serialize it as a raw literal */
     return String(prim);
   }

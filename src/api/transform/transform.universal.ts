@@ -9,6 +9,8 @@ import type {
   TransformOutput,
 } from "./transform.types.js";
 import { scan_ingested_hson_node_quids } from "./utils/hson-utils/quid-ingress.js";
+import { normalize_hson_graph } from "../../core/normalize-hson-graph.js";
+import { assert_invariants } from "../../core/assert-invariants.js";
 
 function frame_meta(origin: string, unsafe: boolean): Record<string, unknown> {
   return {
@@ -22,10 +24,11 @@ export function transform_from_json(
   input: string | JsonValue,
   unsafe = true,
 ): TransformOutput {
+  const node = parse_json(input);
   const raw = typeof input === "string" ? input : JSON.stringify(input);
   const frame: TransformFrame = {
     input: raw,
-    node: parse_json(raw),
+    node,
     meta: frame_meta("json", unsafe),
   };
   return construct_output_2(frame);
@@ -61,10 +64,12 @@ export function transform_from_node(
   input: HsonNode,
   unsafe = true,
 ): TransformOutput {
-  scan_ingested_hson_node_quids(input, "fromNode");
+  const node = normalize_hson_graph(input, "fromNode");
+  scan_ingested_hson_node_quids(node, "fromNode");
+  assert_invariants(node, "fromNode");
   const frame: TransformFrame = {
-    input: JSON.stringify(input),
-    node: input,
+    input: JSON.stringify(node),
+    node,
     meta: frame_meta("node", unsafe),
   };
   return construct_output_2(frame);

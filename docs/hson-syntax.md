@@ -43,14 +43,13 @@ occur.
 
 ## Names
 
-Bare names match:
+Bare header names use an ASCII, case-sensitive grammar:
 
 ```text
-[A-Za-z_][A-Za-z0-9_-]*
+[A-Za-z_:][A-Za-z0-9:._-]*
 ```
 
-The parser also accepts `:` and `.` in unquoted tag names. Keys outside the
-serializer's bare-name set are emitted between backticks:
+Tag/property names outside that bare grammar are emitted between backticks:
 
 ```hson
 <`display name` "Ada">
@@ -116,9 +115,10 @@ graph's structured style map.
 
 For example, permissive input `<tag count=2/>` parses as `{ count: "2" }` and
 canonical reserialization produces `<tag count="2"/>`. Canonical HSON always
-quotes ordinary valued attributes, including programmatic number, boolean, and
-null values after `String(...)` conversion. This differs from primitive content,
-which retains primitive typing.
+quotes ordinary valued attributes. Permissive node ingress converts
+programmatic number, boolean, and null values to strings before they enter the
+canonical graph. This differs from primitive content, which retains primitive
+typing.
 
 A bare attribute is a presence flag:
 
@@ -132,9 +132,11 @@ flag; for example, programmatic `{ disabled: true }` serializes as the ordinary
 valued attribute `disabled="true"`, not as a flag. Input
 `disabled="disabled"` is normalized to the canonical flag representation.
 
-Names beginning `data-_` are routed to `$_meta`; other names go to `$_attrs`.
-Metadata is serialized in attribute position when the graph/output route
-retains it.
+Names beginning `data-_` are routed to the reserved `$_meta` namespace; all
+other names, including `data-user`, `data-theme`, and `data-id`, go to
+`$_attrs`. Reserved metadata is exact-allowlist and default-deny: satisfying
+the unquoted name grammar does not define a field. Backtick quoting never
+applies to attribute or metadata names.
 
 ---
 
@@ -231,10 +233,23 @@ indentation but retains conventional spaces between a tag name, attributes,
 flags, and content. Both layouts are emitted structurally rather than by
 rewriting whitespace in an already serialized string.
 
-`noQuid()` removes only `data-_quid` from ordinary metadata-bearing nodes. It
-preserves custom `data-_...` metadata and never mutates the graph or identity
-registry. Metadata attached directly to melted `_hson_*` VSN nodes was already
-outside the current HSON wire representation and remains so.
+`noQuid()` removes only the defined `data-_quid` field from eligible standard
+tags and never mutates the graph or identity registry. Structural VSN metadata
+is restricted to the operational
+`data-_index` on `_hson_ii`; it is omitted because array order carries the same
+information and parsing regenerates it. `_hson_root`, `_hson_elem`,
+`_hson_obj`, `_hson_arr`, `_hson_str`, and `_hson_val` accept no metadata.
+Every other `data-_...` field—including `data-_root`, `data-_cluster`,
+`data-_text`, and `data-_custom`—is undefined and rejected on every node kind;
+it is never silently stripped. Adding a reserved field requires an explicit
+future field/node-kind contract.
+
+An empty `_hson_root` is a documented runtime-only exception. LiveMap uses it
+as an empty-fragment carrier and LiveHost may transport that graph state, but
+the HSON text serializer rejects it. It never emits `<>` (the empty-object
+syntax), `{}`, or another ambiguous substitute. A future design may add
+unambiguous syntax, migrate those runtime carriers, or distinguish the
+serializable graph type from the broader runtime carrier type.
 
 ---
 

@@ -12,6 +12,7 @@ import { make_string } from "../../../core/stringify.js";
 import { parse_style_string } from "../utils/attrs-utils/parse-style.js";
 import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
 import { assert_user_key_allowed } from "../utils/json-utils/key-prefix-guard.js";
 
 /**
@@ -488,6 +489,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
         $_meta: rootMeta,
         $_content: [node],
     });
-    assert_invariants(root, "root");
-    return root;
+    const normalized = normalize_hson_graph(root, "parse_json");
+    assert_invariants(normalized, "parse_json");
+    return normalized;
 }

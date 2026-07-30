@@ -52,13 +52,56 @@ empty storage container for inspection.
   attributes. Lifecycle and representation tests retain a few direct literals
   specifically to exercise malformed or explicitly empty compatibility shapes.
 
-## Invariants
+## Invariants and permissive Transform ingress
 
-Invariant validation accepts absent containers and empty plain-object
-containers. It rejects non-plain node objects, missing/non-array `$_content`,
-array/null/class-instance containers, malformed attribute or metadata values,
-illegal metadata keys, legacy `$_meta.attrs`/`flags`, and populated attrs on VSN
-nodes.
+Runtime invariant validation accepts absent or empty plain-object optional
+containers because LiveMap, LiveHost, and cross-format projections may carry
+broader runtime shapes. Transform node ingress recognizes absent,
+`undefined`, `{}`, and legacy empty `[]` as equivalent permissive spellings and
+returns a detached canonical graph with the property omitted. It also converts
+non-style ordinary attribute primitives to strings and maps a standard tag's
+noncanonical `$_content: []` shorthand to one empty `_hson_elem`.
+
+Invariant validation rejects non-plain node objects, missing/non-array
+`$_content`, non-empty array/null/class-instance containers, malformed
+attribute or metadata values, illegal header names, legacy
+`$_meta.attrs`/`flags`, populated attrs on VSN nodes, cycles, and non-finite
+HSON numeric values. Shared acyclic references are allowed; HSON serialization
+emits each occurrence by value and does not preserve JavaScript reference
+identity.
+
+Structural VSN metadata is allowlisted rather than being a general user-data
+channel. `_hson_ii` may carry the string-valued operational
+`data-_index`; other structural VSN metadata is invalid. Array serialization
+uses child order, omits the redundant index metadata, and parsing regenerates
+sequential indexes.
+
+| Node category | Valid `$_meta` keys |
+| --- | --- |
+| Eligible standard tag | `data-_quid`, with the canonical QUID placement and value contract |
+| `_hson_ii` | `data-_index`, with its existing string index contract |
+| `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, `_hson_val` | None |
+
+The complete `data-_` prefix is reserved metadata. Classification into
+`$_meta` does not grant validity: keys are authorized by the exact table above,
+and every unknown reserved key is rejected rather than removed. Other
+`data-*` names are ordinary attributes stored in `$_attrs`. In particular,
+`data-_custom`, `data-_root`, `data-_cluster`, and `data-_text` have no defined
+meaning.
+
+### Deferred empty-root exception
+
+An empty `_hson_root` remains a valid runtime fragment carrier for LiveMap and
+LiveHost. It is outside the currently serializable HSON-text domain:
+`serialize_hson()` rejects it and does not substitute `<>`, `{}`, or another
+ambiguous spelling.
+
+The future architecture must choose, separately, among:
+
+- adding unambiguous HSON syntax for an empty fragment/root;
+- migrating LiveMap and LiveHost away from the empty-root carrier; or
+- separating the serializable HSON graph type from the broader runtime carrier
+  type.
 
 ## Measurements
 

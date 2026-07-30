@@ -1,6 +1,11 @@
 // parse_html_attrs.ts
 
-import { _DATA_INDEX, _DATA_QUID, _TRANSIT_PREFIX } from "../../../../core/constants.js";
+import {
+  _DATA_INDEX,
+  _DATA_QUID,
+  _META_DATA_PREFIX,
+  _TRANSIT_PREFIX,
+} from "../../../../core/constants.js";
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
 import { normalize_attr_ws } from "../attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
@@ -79,6 +84,11 @@ export function parse_html_attrs(el: Element): {
 
     if (key === _DATA_QUID) {
       quid = v;
+      continue;
+    }
+
+    if (key.startsWith(_META_DATA_PREFIX)) {
+      (meta ??= {})[key] = v;
       continue;
     }
 

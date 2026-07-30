@@ -156,7 +156,7 @@ await check("document.attrs.dropMany ignores absent and duplicate names in one h
 });
 
 await check("document.attrs.clear preserves persisted metadata and compacts attrs once", async () => {
-  const initial = `<main id="drop" style="color: red" data-_quid="0000000000000021" data-_custom="kept"/>`;
+  const initial = `<main id="drop" style="color: red" data-_quid="0000000000000021"/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attrs-clear" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
@@ -167,9 +167,7 @@ await check("document.attrs.clear preserves persisted metadata and compacts attr
     verify() {
       const node = host.map.element.node();
       assert.equal(node.$_attrs, undefined);
-      assert.deepEqual(node.$_meta, {
-        "data-_quid": "0000000000000021", "data-_custom": "kept",
-      });
+      assert.deepEqual(node.$_meta, { "data-_quid": "0000000000000021" });
       assert.equal(host.map.document.byQuid("0000000000000021")?.$_tag, "main");
     },
   });

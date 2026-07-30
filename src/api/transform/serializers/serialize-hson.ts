@@ -14,8 +14,11 @@ import {
 } from "../../../core/constants.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
+import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { is_persisted_quid } from "../../../core/persisted-quid.js";
+import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
+import { hson_metadata_policy } from "../../../core/hson-metadata.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
 import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js";
@@ -76,6 +79,7 @@ function escape_hson_quoted_attr_value(value: string): string {
  * graph clone: only the metadata map for the current ordinary node is copied.
  */
 function effectiveMeta(
+  nodeTag: string,
   meta: Readonly<HsonMeta> | undefined,
   noQuid: boolean,
 ): Readonly<Record<string, string>> | undefined {
@@ -83,9 +87,10 @@ function effectiveMeta(
 
   const out: Record<string, string> = {};
   for (const key of Object.keys(meta)) {
-    if (!key.startsWith(_META_DATA_PREFIX)) {
+    const policy = hson_metadata_policy(nodeTag, key);
+    if (!policy.valid) {
       _throw_transform_err(
-        `serialize-hson: illegal meta key "${key}" (only "${_META_DATA_PREFIX}*" allowed)`,
+        `serialize-hson: metadata key "${key}" is invalid on <${nodeTag}>: ${policy.reason}`,
         "serialize_hson",
       );
     }
@@ -106,14 +111,24 @@ function effectiveMeta(
 }
 
 function serializeAttribute(name: string, value: unknown): string {
+  if (!is_valid_hson_attribute_name(name)) {
+    _throw_transform_err(
+      `serialize-hson: invalid attribute name "${name}"`,
+      "serialize_hson.serializeAttribute",
+    );
+  }
   if (name === "style" && value && typeof value === "object" && !Array.isArray(value)) {
     const css = serialize_style(value as Record<string, string>);
     return `${name}="${escape_hson_quoted_attr_value(css)}"`;
   }
 
-  // TODO(attribute-type): HsonAttrs still permits non-string programmatic
-  // values for compatibility; canonical HSON stringifies them on the wire.
-  const serializedValue = escape_hson_quoted_attr_value(String(value));
+  if (typeof value !== "string") {
+    _throw_transform_err(
+      `serialize-hson: canonical ordinary attribute "${name}" must be a string`,
+      "serialize_hson.serializeAttribute",
+    );
+  }
+  const serializedValue = escape_hson_quoted_attr_value(value);
   return `${name}="${serializedValue}"`;
 }
 
@@ -172,7 +187,13 @@ function emitLeaf(node: HsonNode, depth: number, ctx: SerializeContext): string 
       "serialize_hson.emitLeaf",
     );
   }
-  return indent(ctx, depth) + String(value);
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    _throw_transform_err(
+      `serialize-hson: invalid HSON number ${String(value)}; numbers must be finite`,
+      "serialize_hson.emitLeaf",
+    );
+  }
+  return indent(ctx, depth) + (Object.is(value, -0) ? "-0" : String(value));
 }
 
 function arrayItemNode(wrapper: HsonNode, ctx: SerializeContext): HsonNode {
@@ -252,46 +273,53 @@ function emitObjectProperty(
 ): string {
   ctx.guard.enter(property);
   try {
-    const pad = indent(ctx, depth);
-    const key = serialize_hson_tag_name(property.$_tag);
-    const content = property.$_content;
-    if (content.length === 0) return `${pad}<${key} />`;
-
-    const value = content[0];
-    if (!is_Node(value)) {
-      _throw_transform_err(
-        "serialize-hson: object property content must be a node",
-        "serialize_hson.emitObjectProperty",
-      );
-    }
-
-    const rendered = emitNode(
-      value,
-      ctx.options.layout === "readable" ? depth + 1 : 0,
-      OBJ_TAG,
-      ctx,
-    );
-    const raw = rendered.trim();
-    const scalarObjectWrapper =
-      value.$_tag === OBJ_TAG
-      && value.$_content.length === 1
-      && is_Node(value.$_content[0])
-      && (value.$_content[0].$_tag === STR_TAG || value.$_content[0].$_tag === VAL_TAG);
-    const structuredValue =
-      (value.$_tag === OBJ_TAG || value.$_tag === ARR_TAG)
-      && value.$_content.length !== 0
-      && !scalarObjectWrapper;
-
-    if (
-      ctx.options.layout === "compact"
-      || (!structuredValue && !raw.includes("\n"))
-    ) {
-      return `${pad}<${key} ${raw}>`;
-    }
-    return `${pad}<${key}\n${rendered}\n${pad}>`;
+    return emitStandardNode(property, depth, ctx);
   } finally {
     ctx.guard.leave(property);
   }
+}
+
+function objectRequiresExplicitSyntax(node: HsonNode): boolean {
+  return node.$_content.some((property) =>
+    is_Node(property)
+    && property.$_content.length === 1
+    && is_Node(property.$_content[0])
+    && property.$_content[0].$_tag === ELEM_TAG
+  );
+}
+
+function elementRequiresExplicitSyntax(node: HsonNode): boolean {
+  if (node.$_content.length === 0) return true;
+  return node.$_content.every((child) =>
+    is_Node(child)
+    && child.$_tag !== STR_TAG
+    && child.$_content.length === 1
+    && is_Node(child.$_content[0])
+    && child.$_content[0].$_tag !== ELEM_TAG
+  );
+}
+
+function emitExplicitElement(
+  node: HsonNode,
+  depth: number,
+  ctx: SerializeContext,
+): string {
+  const pad = indent(ctx, depth);
+  if (node.$_content.length === 0) return `${pad}<${ELEM_TAG}/>`;
+  const childDepth = ctx.options.layout === "readable" ? depth + 1 : 0;
+  const rendered = node.$_content.map((child) => {
+    if (!is_Node(child)) {
+      _throw_transform_err(
+        "serialize-hson: non-node in _hson_elem.$_content",
+        "serialize_hson.emitExplicitElement",
+      );
+    }
+    return emitNode(child, childDepth, ELEM_TAG, ctx);
+  });
+  if (ctx.options.layout === "compact") {
+    return `<${ELEM_TAG} ${rendered.join(" ")}/>`;
+  }
+  return `${pad}<${ELEM_TAG}\n${rendered.join("\n")}\n${pad}/>`;
 }
 
 function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): string {
@@ -405,7 +433,7 @@ function emitStandardNode(
 ): string {
   const pad = indent(ctx, depth);
   const tag = serialize_hson_tag_name(node.$_tag);
-  const meta = effectiveMeta(node.$_meta, ctx.options.noQuid);
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
   const quid = meta?.[_DATA_QUID];
   if (quid !== undefined && !is_persisted_quid(quid)) {
     _throw_transform_err(`serialize-hson: invalid data-_quid`, "serialize_hson");
@@ -423,7 +451,9 @@ function emitStandardNode(
 
   const childDepth = ctx.options.layout === "readable" ? depth + 1 : 0;
   const rendered = children.map((child) =>
-    emitNode(child, childDepth, cluster, ctx)
+    child.$_tag === OBJ_TAG && objectRequiresExplicitSyntax(child)
+      ? emitAnonymousObject(child, childDepth, ctx)
+      : emitNode(child, childDepth, cluster, ctx)
   );
 
   if (ctx.options.layout === "compact") {
@@ -453,6 +483,12 @@ function emitRoot(node: HsonNode, ctx: SerializeContext): string {
       "serialize-hson: _hson_root child must be _hson_obj | _hson_elem | _hson_arr",
       "serialize_hson.emitRoot",
     );
+  }
+  if (cluster.$_tag === OBJ_TAG && objectRequiresExplicitSyntax(cluster)) {
+    return emitAnonymousObject(cluster, 0, ctx).trim();
+  }
+  if (cluster.$_tag === ELEM_TAG && elementRequiresExplicitSyntax(cluster)) {
+    return emitExplicitElement(cluster, 0, ctx).trim();
   }
   return emitNode(cluster, 0, cluster.$_tag as ParentCluster, ctx).trim();
 }
@@ -508,10 +544,12 @@ export function serialize_hson(
     );
   }
 
+  const normalizedRoot = normalize_hson_graph(root, "serialize_hson");
+
   // Egress is a cold canonical boundary: validate every supplied identity,
   // while deliberately allowing equal valid claims on distinct graph nodes.
-  collect_hson_node_quid_claims(root);
-  assert_invariants(root, "serialize_hson");
+  collect_hson_node_quid_claims(normalizedRoot);
+  assert_invariants(normalizedRoot, "serialize_hson");
   const ctx: SerializeContext = {
     options: {
       layout: inputOptions.noBreak ? "compact" : "readable",
@@ -519,5 +557,5 @@ export function serialize_hson(
     },
     guard: cycleGuard(),
   };
-  return emitNode(root, 0, undefined, ctx).trim();
+  return emitNode(normalizedRoot, 0, undefined, ctx).trim();
 }

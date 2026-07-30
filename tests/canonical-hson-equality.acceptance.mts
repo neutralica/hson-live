@@ -89,7 +89,7 @@ check("primitive values remain type-sensitive without coercion", () => {
   assert.equal(canonical_hson_graph_equal(graph(""), graph(" ")), false);
 });
 
-check("attribute key order is irrelevant while key sets, values, and types remain exact", () => {
+check("attribute key order is irrelevant and permissive primitive values normalize to strings", () => {
   const left = document(node("div", [], { count: 0, enabled: false }));
   const reordered = document(node("div", [], { enabled: false, count: 0 }));
   const changedKey = document(node("div", [], { enabled: false, total: 0 }));
@@ -99,32 +99,20 @@ check("attribute key order is irrelevant while key sets, values, and types remai
   assert.equal(canonical_hson_graph_equal(left, reordered), true);
   assert.equal(canonical_hson_graph_equal(left, changedKey), false);
   assert.equal(canonical_hson_graph_equal(left, changedValue), false);
-  assert.equal(canonical_hson_graph_equal(left, changedType), false);
+  assert.equal(canonical_hson_graph_equal(left, changedType), true);
   assert.equal(canonical_hson_graph_equal(left, missing), false);
 });
 
-check("metadata key order is irrelevant and all metadata participates", () => {
+check("defined QUID metadata participates in equality", () => {
   const left = document(node("div", [], undefined, {
-    "data-_quid": "0000000000000001",
-    "data-_custom": "kept",
-  }));
-  const reordered = document(node("div", [], undefined, {
-    "data-_custom": "kept",
     "data-_quid": "0000000000000001",
   }));
   const changedQuid = document(node("div", [], undefined, {
     "data-_quid": "0000000000000002",
-    "data-_custom": "kept",
   }));
-  const missingQuid = document(node("div", [], undefined, { "data-_custom": "kept" }));
-  const changedOther = document(node("div", [], undefined, {
-    "data-_quid": "0000000000000001",
-    "data-_custom": "changed",
-  }));
-  assert.equal(canonical_hson_graph_equal(left, reordered), true);
+  const missingQuid = document(node("div"));
   assert.equal(canonical_hson_graph_equal(left, changedQuid), false);
   assert.equal(canonical_hson_graph_equal(left, missingQuid), false);
-  assert.equal(canonical_hson_graph_equal(left, changedOther), false);
 });
 
 check("structured style is record-ordered while raw style strings remain exact", () => {
@@ -144,12 +132,12 @@ check("ordered object-property content is not treated as an unordered record", (
   assert.equal(canonical_hson_graph_equal(left, reordered), false);
 });
 
-check("absent attrs and metadata differ from explicitly empty records", () => {
+check("absent attrs and metadata equal permissive empty optional records", () => {
   const absent = document(node("div"));
   const emptyAttrs = document(node("div", [], {}));
   const emptyMeta = document(node("div", [], undefined, {}));
-  assert.equal(canonical_hson_graph_equal(absent, emptyAttrs), false);
-  assert.equal(canonical_hson_graph_equal(absent, emptyMeta), false);
+  assert.equal(canonical_hson_graph_equal(absent, emptyAttrs), true);
+  assert.equal(canonical_hson_graph_equal(absent, emptyMeta), true);
 });
 
 check("nested records are key-order-insensitive, arrays ordered, and records differ from arrays", () => {
@@ -166,17 +154,22 @@ check("nested records are key-order-insensitive, arrays ordered, and records dif
   const arrayRoot = arrayValue.$_content[0];
   if (typeof arrayRoot !== "object" || arrayRoot === null) throw new Error("Expected root node.");
   Reflect.set(arrayRoot, "$_attrs", { style: ["x", "y"] });
-  assert.equal(canonical_hson_graph_equal(recordValue, arrayValue), false);
+  assert.throws(
+    () => canonical_hson_graph_equal(recordValue, arrayValue),
+    /malformed attribute value.*style must use the canonical inline-style value domain/,
+  );
 });
 
-check("numeric edge behavior matches strict equality", () => {
+check("numeric equality distinguishes negative zero and rejects non-finite values", () => {
   const graph = (value: number): HsonNode => document(node("value", [node("_hson_val", [value])]));
-  const sameNaNGraph = graph(Number.NaN);
-  assert.equal(canonical_hson_graph_equal(sameNaNGraph, sameNaNGraph), true);
-  assert.equal(canonical_hson_graph_equal(graph(Number.NaN), graph(Number.NaN)), false);
-  assert.equal(canonical_hson_graph_equal(graph(Infinity), graph(Infinity)), true);
-  assert.equal(canonical_hson_graph_equal(graph(-Infinity), graph(-Infinity)), true);
-  assert.equal(canonical_hson_graph_equal(graph(+0), graph(-0)), true);
+  for (const invalid of [Number.NaN, Infinity, -Infinity]) {
+    assert.throws(
+      () => canonical_hson_graph_equal(graph(invalid), graph(invalid)),
+      /invalid HSON number .*numbers must be finite/,
+    );
+  }
+  assert.equal(canonical_hson_graph_equal(graph(+0), graph(-0)), false);
+  assert.equal(canonical_hson_graph_equal(graph(-0), graph(-0)), true);
 });
 
 check("comparison does not mutate key order, content, attrs, metadata, or style", () => {
@@ -184,7 +177,7 @@ check("comparison does not mutate key order, content, attrs, metadata, or style"
     "main",
     [node("b"), node("a")],
     { title: "x", style: { zIndex: "1", color: "red" } },
-    { "data-_custom": "kept", "data-_quid": "0000000000000003" },
+    { "data-_quid": "0000000000000003" },
   ));
   const right = structuredClone(left);
   const beforeLeft = structuredClone(left);

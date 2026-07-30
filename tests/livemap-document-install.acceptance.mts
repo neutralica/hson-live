@@ -98,7 +98,7 @@ check("fragment install preserves canonical document varieties", () => {
     })(),
     fragment(`"text only"`),
     fragment(`<div data-_quid="0000000000000003"/> <div data-_quid="0000000000000004"/>`),
-    fragment(`"before" <section class="x" style="color: red" data-_quid="0000000000000005" data-_custom="kept" <em data-_quid="0000000000000006" "middle"/>/> "after"`),
+    fragment(`"before" <section class="x" style="color: red" data-user="kept" data-_quid="0000000000000005" <em data-_quid="0000000000000006" "middle"/>/> "after"`),
   ];
   for (const source of sources) {
     const target = fragment(`"target"`);
@@ -226,7 +226,7 @@ check("install and recapture preserve completely unquidded document graphs", () 
 
 check("installed ownership and graph commit payload are recursively detached", () => {
   const sourceNode = hson.fromHson(
-    `<main id="original" data-_quid="0000000000000001" data-_custom="meta" <p data-_quid="0000000000000002" "x"/>/>`,
+    `<main id="original" data-user="meta" data-_quid="0000000000000001" <p data-_quid="0000000000000002" "x"/>/>`,
   ).toNode();
   const main = nodes(sourceNode).find((node) => node.$_tag === "main");
   if (main !== undefined) main.$_attrs = { ...main.$_attrs, style: { color: "red" } };

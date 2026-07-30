@@ -185,18 +185,31 @@ function replace_style_with_nested_rule(value: JsonValue): JsonValue {
   return copy;
 }
 
+function add_root_structural_metadata(value: JsonValue): JsonValue {
+  const copy: JsonValue = structuredClone(value);
+  if (!is_record(copy) || !is_record(copy.root)) throw new Error("Expected encoded root.");
+  copy.root.meta = {
+    presence: "present",
+    entries: [{
+      key: "data-_root",
+      value: { type: "string", value: "invalid" },
+    }],
+  };
+  return copy;
+}
+
 check("element capture round-trips with detached nested identity and typed document data", () => {
   const capture = element_capture(node(
     "main",
     [node("_hson_elem", [
       node("_hson_str", ["before"]),
-      node("section", [node("_hson_elem", [node("_hson_str", ["inside"])])], { hidden: false }, {
-        "data-_quid": "0000000000000002",
-        "data-_custom": "nested",
-      }),
+      node("section", [node("_hson_elem", [node("_hson_str", ["inside"])])], {
+        "data-user": "nested",
+        hidden: false,
+      }, { "data-_quid": "0000000000000002" }),
     ])],
-    { count: 0, title: "0", enabled: true },
-    { "data-_quid": "0000000000000001", "data-_custom": "root" },
+    { count: 0, "data-theme": "dark", title: "0", enabled: true },
+    { "data-_quid": "0000000000000001" },
   ));
   const { encoded, decoded } = round_trip(capture);
   assert.equal(encoded.format, "view-state");
@@ -250,23 +263,23 @@ check("typed attrs and raw style strings retain exact types", () => {
   assert.equal(root.$_attrs?.missing, null);
 });
 
-check("supported metadata string values retain type-like spellings exactly", () => {
-  const capture = element_capture(node("div", [], undefined, {
-    "data-_zero": "0",
-    "data-_false": "false",
-    "data-_null": "null",
-    "data-_empty": "",
+check("ordinary data attribute string values retain type-like spellings exactly", () => {
+  const capture = element_capture(node("div", [], {
+    "data-zero": "0",
+    "data-false": "false",
+    "data-null": "null",
+    "data-empty": "",
   }));
   const { decoded } = round_trip(capture);
   const cluster = decoded.root.$_content[0];
   if (typeof cluster !== "object" || cluster === null) throw new Error("Expected cluster.");
   const root = cluster.$_content[0];
   if (typeof root !== "object" || root === null) throw new Error("Expected element.");
-  assert.deepEqual(root.$_meta, {
-    "data-_empty": "",
-    "data-_false": "false",
-    "data-_null": "null",
-    "data-_zero": "0",
+  assert.deepEqual(root.$_attrs, {
+    "data-empty": "",
+    "data-false": "false",
+    "data-null": "null",
+    "data-zero": "0",
   });
 });
 
@@ -307,22 +320,57 @@ check("nested inline stylesheet structures fail canonical graph validation", () 
   assert.equal(error.message.includes(invalidEncoding.payload), false);
 });
 
-check("metadata on canonical wrappers survives without melting", () => {
-  const text = node("_hson_str", ["value"], undefined, { "data-_text": "kept" });
-  const capture = fragment_capture(
-    [text, node("span")],
-    4,
-    { "data-_root": "kept" },
-    { "data-_cluster": "kept" },
-  );
+check("view-state preserves defined QUID metadata and ordinary data attributes exactly", () => {
+  const capture = fragment_capture([
+    node("_hson_str", ["before"]),
+    node("span", [], { "data-user": "kept" }, { "data-_quid": "0000000000000007" }),
+  ], 4);
   const { decoded } = round_trip(capture);
-  assert.deepEqual(decoded.root.$_meta, { "data-_root": "kept" });
   const cluster = decoded.root.$_content[0];
   if (typeof cluster !== "object" || cluster === null) throw new Error("Expected cluster.");
-  assert.deepEqual(cluster.$_meta, { "data-_cluster": "kept" });
-  const decodedText = cluster.$_content[0];
-  if (typeof decodedText !== "object" || decodedText === null) throw new Error("Expected text wrapper.");
-  assert.deepEqual(decodedText.$_meta, { "data-_text": "kept" });
+  const span = cluster.$_content[1];
+  if (typeof span !== "object" || span === null) throw new Error("Expected span.");
+  assert.deepEqual(span.$_attrs, { "data-user": "kept" });
+  assert.deepEqual(span.$_meta, { "data-_quid": "0000000000000007" });
+});
+
+for (const [tag, key, content] of [
+  ["_hson_root", "data-_root", []],
+  ["_hson_elem", "data-_cluster", []],
+  ["_hson_str", "data-_text", ["value"]],
+  ["_hson_elem", "data-_custom", []],
+] as const) {
+  check(`${key} is rejected on ${tag} with its exact graph path`, () => {
+    const invalid = tag === "_hson_root"
+      ? node(tag, [...content], undefined, { [key]: "invalid" })
+      : node("_hson_root", [node("_hson_elem", [
+        node("section", [node("_hson_elem", [
+          node(tag, [...content], undefined, { [key]: "invalid" }),
+        ])]),
+      ])]);
+    const error = expect_codec_error(
+      () => encode_view_state_snapshot(fragment_capture([invalid])),
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+    );
+    const diagnostic = String(error.cause);
+    assert.match(diagnostic, new RegExp(`${tag}.*${key}|${key}.*${tag}`));
+    assert.match(diagnostic, /not defined for structural VSN/);
+  });
+}
+
+check("snapshot decoding rejects unsupported structural metadata", () => {
+  const valid = encode_view_state_snapshot(fragment_capture([
+    node("_hson_str", ["before"]),
+    node("span"),
+  ]));
+  const invalid = encoding_with_payload(
+    add_root_structural_metadata(decoded_payload_value(valid)),
+  );
+  const error = expect_codec_error(
+    () => decode_view_state_snapshot(invalid),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+  );
+  assert.match(String(error.cause), /_hson_root.*data-_root|data-_root.*_hson_root/);
 });
 
 check("persisted QUIDs round-trip and invalid identity is rejected", () => {
@@ -344,7 +392,7 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   );
 });
 
-check("absent and explicitly empty attrs and metadata remain distinct", () => {
+check("view-state preserves empty optional records while canonical equality normalizes them", () => {
   const absent = round_trip(element_capture(node("div"))).decoded;
   const emptyAttrs = round_trip(element_capture(node("div", [], {}))).decoded;
   const emptyMeta = round_trip(element_capture(node("div", [], undefined, {}))).decoded;
@@ -361,26 +409,24 @@ check("absent and explicitly empty attrs and metadata remain distinct", () => {
   assert.equal(Object.hasOwn(rootOf(absent), "$_meta"), false);
   assert.equal(Object.hasOwn(rootOf(emptyMeta), "$_meta"), true);
   assert.deepEqual(rootOf(emptyMeta).$_meta, {});
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyAttrs.root), false);
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), false);
+  assert.equal(canonical_hson_graph_equal(absent.root, emptyAttrs.root), true);
+  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), true);
 });
 
 check("record insertion order does not affect deterministic payload text", () => {
   const left = element_capture(node("div", [], {
     z: "last",
     a: 0,
+    "data-z": "last",
+    "data-a": "first",
     style: { zIndex: 1, color: "red", width: { value: 2, unit: "px" } },
-  }, {
-    "data-_z": "last",
-    "data-_a": "first",
   }), 11);
   const right = element_capture(node("div", [], {
     style: { width: { unit: "px", value: 2 }, color: "red", zIndex: 1 },
+    "data-a": "first",
+    "data-z": "last",
     a: 0,
     z: "last",
-  }, {
-    "data-_a": "first",
-    "data-_z": "last",
   }), 11);
   assert.equal(canonical_hson_graph_equal(left.root, right.root), true);
   assert.equal(
@@ -556,13 +602,13 @@ check("UTF-8 payload bytes, depth, and node-count limits are enforced", () => {
 check("encoding does not mutate source structure or insertion order", () => {
   const capture = element_capture(node("main", [node("_hson_elem", [node("span")])], {
     z: "last",
+    "data-z": "last",
+    "data-a": "first",
     style: { zIndex: 1, color: "red" },
     a: "first",
   }, {
-    "data-_z": "last",
     "data-_quid": "0000000000000006",
-    "data-_a": "first",
-  }), 20, { "data-_root": "kept" }, { "data-_cluster": "kept" });
+  }), 20);
   const before = structuredClone(capture);
   const root = capture.root.$_content[0];
   if (typeof root !== "object" || root === null) throw new Error("Expected cluster.");

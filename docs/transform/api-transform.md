@@ -205,8 +205,9 @@ type FrameOptions = {
 Readable, two-space-indented HSON is the default. `noBreak` selects canonical
 compact HSON without cosmetic newlines or indentation while retaining
 conventional spaces between tag/header/content terms. `noQuid` omits only the
-persisted `data-_quid` metadata key. It does not remove `data-_index` or custom
-`data-_...` metadata, and it does not alter live identity registration.
+persisted `data-_quid` metadata key and does not alter live identity
+registration. `data-_index` is the separate operational field on `_hson_ii`;
+all other reserved `data-_...` fields are undefined and rejected.
 
 Ordinary HSON attributes have string-valued wire semantics in either layout.
 The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while

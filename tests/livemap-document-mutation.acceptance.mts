@@ -149,7 +149,7 @@ check("attribute endpoints reject primitives, wrappers, unquidded and foreign id
 });
 
 check("attrs.set creates and replaces one canonical attribute with no-op equality", () => {
-  const map = element(`<main id="old" title="kept" style="color: red" data-_quid="0000000000000001" data-_custom="meta" "text"/>`);
+  const map = element(`<main id="old" title="kept" style="color: red" data-user="meta" data-_quid="0000000000000001" "text"/>`);
   const beforeContent = map.element.node().$_content;
   const first = map.document.attrs.set(path(), "id", "new");
   assert.deepEqual(first, {
@@ -161,8 +161,9 @@ check("attrs.set creates and replaces one canonical attribute with no-op equalit
   const node = map.element.node();
   assert.equal(node.$_attrs?.id, "new");
   assert.equal(node.$_attrs?.title, "kept");
+  assert.equal(node.$_attrs?.["data-user"], "meta");
   assert.deepEqual(node.$_content, beforeContent);
-  assert.deepEqual(node.$_meta, { "data-_quid": "0000000000000001", "data-_custom": "meta" });
+  assert.deepEqual(node.$_meta, { "data-_quid": "0000000000000001" });
 
   assert.deepEqual(map.document.attrs.set(path(), "id", "new"), {
     changed: false, prevRev: 1, rev: 1, ops: [],
@@ -297,7 +298,7 @@ check("attrs.dropMany validates all names, ignores absence and duplicates, and c
 });
 
 check("attrs.clear preserves metadata, identity, tag and content with compact no-op semantics", () => {
-  const map = element(`<main id="old" style="color: red" data-_quid="0000000000000023" data-_custom="kept" "text"/>`);
+  const map = element(`<main id="old" style="color: red" data-_quid="0000000000000023" "text"/>`);
   const beforeContent = map.element.node().$_content;
   const commit = map.document.attrs.clear(path());
   assert.equal(commit.changed, true);
@@ -306,10 +307,7 @@ check("attrs.clear preserves metadata, identity, tag and content with compact no
   const node = map.element.node();
   assert.equal(node.$_tag, "main");
   assert.deepEqual(node.$_content, beforeContent);
-  assert.deepEqual(node.$_meta, {
-    "data-_quid": "0000000000000023",
-    "data-_custom": "kept",
-  });
+  assert.deepEqual(node.$_meta, { "data-_quid": "0000000000000023" });
   assert.equal(Object.prototype.hasOwnProperty.call(node, "$_attrs"), false);
   assert.equal(map.document.byQuid("0000000000000023")?.$_tag, "main");
   assert.deepEqual(map.document.attrs.clear(path()), {

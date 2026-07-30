@@ -1,16 +1,32 @@
 import type { HsonNode } from "./types.js";
+import { normalize_hson_graph } from "./normalize-hson-graph.js";
 
 /**
- * Compare already-valid, acyclic canonical HSON graphs without normalization.
+ * Compare HSON graphs after applying the canonical permissive-ingress
+ * normalization.
  * Arrays and content remain ordered; record key order is irrelevant; absent
- * fields differ from present empty records; all metadata, including persisted
- * QUIDs, participates. This helper neither validates nor mutates its inputs.
+ * optional records equal permissive empty spellings; all populated metadata,
+ * including persisted QUIDs, participates. This helper does not mutate its
+ * inputs and is not an authoritative graph-admission boundary.
  */
 export function canonical_hson_graph_equal(left: HsonNode, right: HsonNode): boolean {
-  return canonical_value_equal(left, right);
+  const normalizedLeft = normalize_hson_graph(left, "canonical_hson_graph_equal.left");
+  const normalizedRight = normalize_hson_graph(right, "canonical_hson_graph_equal.right");
+  return canonical_value_equal(
+    normalizedLeft,
+    normalizedRight,
+  );
 }
 
 function canonical_value_equal(left: unknown, right: unknown): boolean {
+  if (typeof left === "number" || typeof right === "number") {
+    if ((typeof left === "number" && !Number.isFinite(left))
+      || (typeof right === "number" && !Number.isFinite(right))) {
+      const invalid = typeof left === "number" && !Number.isFinite(left) ? left : right;
+      throw new Error(`[HSON equality] invalid HSON number ${String(invalid)}; numbers must be finite`);
+    }
+    if (typeof left === "number" && typeof right === "number") return Object.is(left, right);
+  }
   if (left === right) return true;
   if (left === null || right === null || typeof left !== typeof right) return false;
   if (typeof left !== "object" || typeof right !== "object") return false;

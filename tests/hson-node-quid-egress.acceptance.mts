@@ -153,7 +153,7 @@ check("SVG and XML-like egress preserve namespace and unrelated attributes", () 
 check("noQuid is output-only and normal serialization remains repeatable", () => {
   const child = element("span", [], Q2);
   const root = element("main", [child], Q1);
-  root.$_meta = { [_DATA_QUID]: Q1, "data-_custom": "keep" };
+  root.$_attrs = { "data-user": "keep" };
   const tree = new LiveTree(root);
   const projection = new AttributeProjection();
   projection.setAttribute(_DATA_QUID, Q1);
@@ -164,7 +164,7 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
     const filtered = hson.fromNode(root).toHson().noBreak().noQuid().serialize();
     assert.equal(occurrences(normal, "@"), 2);
     assert.doesNotMatch(filtered, /@[0-9a-z]{16}/);
-    assert.match(filtered, /data-_custom="keep"/);
+    assert.match(filtered, /data-user="keep"/);
     assert.deepEqual(root, before);
     assert.equal(projection.getAttribute(_DATA_QUID), Q1);
     assert.equal(get_node_by_quid(Q1), root);
@@ -237,10 +237,10 @@ check("fragment shapes remain stable across one-root, multi-root, text and mixed
   );
 });
 
-check("JSON projection validates HsonNode identity without changing output shapes", () => {
+check("JSON projection validates identity after canonical empty-element normalization", () => {
   const canonical = element("record", [], Q1);
   assert.deepEqual(hson.fromNode(canonical).toJson().value(), {
-    record: "",
+    record: { _hson_elem: [] },
     $_meta: { [_DATA_QUID]: Q1 },
   });
   assert.deepEqual(hson.fromJson({ a: 1, nested: [true, null] }).toJson().value(), {

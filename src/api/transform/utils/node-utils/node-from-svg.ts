@@ -1,8 +1,14 @@
 // node-from-svg.ts
 
 import { HsonNode } from "../../../../core/types.js";
-import { HSON_SYS_PREFIX, STR_TAG, _DATA_QUID } from "../../../../core/constants.js";
+import {
+  HSON_SYS_PREFIX,
+  STR_TAG,
+  _DATA_QUID,
+  _META_DATA_PREFIX,
+} from "../../../../core/constants.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
+import { assert_invariants } from "../../../../core/assert-invariants.js";
 import {
   assign_ingested_hson_node_quid,
   scan_ingested_hson_node_quids,
@@ -53,16 +59,20 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
 export function node_from_svg(el: Element): HsonNode {
   const root = convert_svg_element(el);
   scan_ingested_hson_node_quids(root, "node_from_svg");
+  assert_invariants(root, "node_from_svg");
   return root;
 }
 
 function convert_svg_element(el: Element): HsonNode {
   const tag = el.tagName; 
   const attrs: Record<string, string> = {};
+  const meta: Record<string, string> = {};
   let quid: string | undefined;
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes[i];
-    if (a.name.toLowerCase() === _DATA_QUID) quid = a.value;
+    const lower = a.name.toLowerCase();
+    if (lower === _DATA_QUID) quid = a.value;
+    else if (lower.startsWith(_META_DATA_PREFIX)) meta[a.name] = a.value;
     else attrs[a.name] = a.value;
   }
   if (quid !== undefined && tag.startsWith(HSON_SYS_PREFIX)) {
@@ -78,6 +88,7 @@ function convert_svg_element(el: Element): HsonNode {
   const node = CREATE_NODE({
     $_tag: tag,
     $_attrs: attrs,
+    $_meta: meta,
     $_content: kids.length ? kids : [],
   });
   if (quid !== undefined) {

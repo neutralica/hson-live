@@ -378,6 +378,22 @@ check("HTML data-_quid becomes protected metadata and unrelated data attributes 
   assert.equal(get_node_by_quid(Q1), undefined);
 });
 
+check("HTML routes unknown data-_ metadata to default-deny validation", () => {
+  for (const parse of [
+    () => hsonTransform.fromTrustedHtml(`<main><span data-_custom="invalid"/></main>`),
+    () => hsonTransform.fromUntrustedHtml(`<main><span data-_custom="invalid"/></main>`),
+    () => hsonTransform.fromTrustedHtml(`<svg><path data-_custom="invalid"/></svg>`),
+  ]) {
+    assert.throws(
+      parse,
+      (cause) => cause instanceof Error
+        && (cause.message.includes(`tag:span`) || cause.message.includes(`tag:path`))
+        && cause.message.includes(`@meta:"data-_custom"`)
+        && cause.message.includes(`not defined for standard tag`),
+    );
+  }
+});
+
 check("trusted and untrusted HTML reject malformed protected metadata through the shared rule", () => {
   for (const parse of [
     () => hsonTransform.fromTrustedHtml(`<main data-_quid="bad"/>`),
@@ -469,6 +485,26 @@ check("SVG DOM ingestion applies the same metadata route without changing namesp
     const parsedPath = must_tag(root, "path");
     assert.equal(parsedPath.$_meta?.[_DATA_QUID], Q2);
     assert.equal(parsedPath.$_attrs?.["stroke-width"], "2");
+  });
+});
+
+check("SVG DOM ingestion classifies unknown data-_ fields as rejected metadata", () => {
+  with_dom_node_constants(() => {
+    assert.throws(
+      () => node_from_svg(dom_element({
+        tag: "svg",
+        namespace: SVG_NS,
+        children: [dom_element({
+          tag: "path",
+          namespace: SVG_NS,
+          attrs: [{ name: "data-_custom", value: "invalid" }],
+        }) as unknown as Record<string, unknown>],
+      })),
+      (cause) => cause instanceof Error
+        && cause.message.includes(`/tag:svg/tag:path`)
+        && cause.message.includes(`@meta:"data-_custom"`)
+        && cause.message.includes(`not defined for standard tag "path"`),
+    );
   });
 });
 

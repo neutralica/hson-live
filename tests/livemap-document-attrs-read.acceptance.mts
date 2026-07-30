@@ -100,7 +100,7 @@ check("has tests own-key presence without truthiness", () => {
 });
 
 check("keys is lexical, public-only, fresh, and does not create absent storage", () => {
-  const map = element(`<main data-_quid="0000000000000102" data-_custom="system"/>`);
+  const map = element(`<main data-_quid="0000000000000102"/>`);
   assert.equal(map.element.node().$_attrs, undefined);
   const first = map.document.attrs.keys(path());
   assert.deepEqual(first, []);
@@ -113,7 +113,6 @@ check("keys is lexical, public-only, fresh, and does not create absent storage",
   assert.deepEqual(keys, ["alpha", "style", "zeta"]);
   assert.notEqual(keys, again);
   assert.equal(keys.includes("data-_quid"), false);
-  assert.equal(keys.includes("data-_custom"), false);
   assert.equal(Reflect.set(keys as string[], 0, "changed"), false);
   assert.deepEqual(map.document.attrs.keys(path()), ["alpha", "style", "zeta"]);
 });

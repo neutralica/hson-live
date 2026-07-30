@@ -463,17 +463,17 @@ check("ambient Document changes do not clear an existing isolated runtime rule m
   tree.remove();
 });
 
-check("a user-authored former scope spelling remains ordinary data content", () => {
+check("a similar user-authored non-reserved scope spelling remains ordinary data content", () => {
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const value = node();
-  value.$_attrs = { "data-_hson-style-scope": "user-value" };
+  value.$_attrs = { "data-hson-style-scope": "user-value" };
   const tree = runtimeTree(runtime, value);
   const element = projectInto(runtime, tree, document);
-  assert.equal(element.getAttribute("data-_hson-style-scope"), "user-value");
-  assert.equal(tree.node.$_attrs?.["data-_hson-style-scope"], "user-value");
+  assert.equal(element.getAttribute("data-hson-style-scope"), "user-value");
+  assert.equal(tree.node.$_attrs?.["data-hson-style-scope"], "user-value");
   tree.remove();
-  assert.equal(element.getAttribute("data-_hson-style-scope"), "user-value");
+  assert.equal(element.getAttribute("data-hson-style-scope"), "user-value");
 });
 
 check("creation, handles, append, batch, detach, reinsert, clone, restoration, and destruction add no runtime markup", () => {

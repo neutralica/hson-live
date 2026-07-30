@@ -52,7 +52,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 74,
+      executableChecks: 85,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
@@ -72,7 +72,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-ingress",
       repositoryModule: "tests/hson-node-quid-ingress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 29,
+      executableChecks: 31,
       collections: ["quid", "ingress", "externally-discoverable"],
     }),
     launcher({
@@ -102,7 +102,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:view-state-snapshot-codec",
       repositoryModule: "tests/view-state-snapshot-codec.acceptance.mts",
       runtime: "node",
-      executableChecks: 19,
+      executableChecks: 24,
       collections: ["document", "snapshot", "codec"],
     }),
     launcher({

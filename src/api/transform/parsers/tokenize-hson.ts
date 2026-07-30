@@ -11,11 +11,13 @@ import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
 import type { ArraySymbol, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
+import {
+  is_hson_bare_name_char,
+  is_hson_bare_name_start,
+} from "../../../core/hson-name.js";
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
-const BARE_NAME_START = /[A-Za-z_:]/;
-const BARE_NAME_CHAR = /[A-Za-z0-9:._-]/;
 
 /**
  * Tokenize HSON with one absolute, newline-agnostic source cursor.
@@ -154,7 +156,7 @@ class HsonScanner {
         continue;
       }
 
-      if (BARE_NAME_START.test(ch)) {
+      if (is_hson_bare_name_start(ch)) {
         const namePos = this.position();
         const name = this.scanBareName("attribute or flag");
         const nameEnd = this.previousPosition();
@@ -508,12 +510,12 @@ class HsonScanner {
   private scanBareName(where: string): string {
     const start = this.position();
     const first = this.peek();
-    if (!BARE_NAME_START.test(first)) {
+    if (!is_hson_bare_name_start(first)) {
       this.fail(`malformed ${where}: expected a bare name or backtick-quoted name`, start);
     }
 
     let out = this.consume();
-    while (!this.atEnd() && BARE_NAME_CHAR.test(this.peek())) out += this.consume();
+    while (!this.atEnd() && is_hson_bare_name_char(this.peek())) out += this.consume();
     return out;
   }
 

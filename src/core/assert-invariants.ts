@@ -3,6 +3,7 @@
 import {
   ARR_TAG,
   ELEM_TAG,
+  EVERY_VSN,
   HSON_SYS_PREFIX,
   II_TAG,
   OBJ_TAG,
@@ -10,6 +11,7 @@ import {
   STR_TAG,
   VAL_TAG,
   _DATA_INDEX,
+  _DATA_QUID,
   _META_DATA_PREFIX,
 } from "./constants.js";
 import { validate_hson_node_quid } from "./hson-node-quid.js";
@@ -17,6 +19,8 @@ import { _throw_transform_err } from "./errors.js";
 import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
 import { make_string } from "./stringify.js";
+import { is_valid_hson_attribute_name } from "./hson-name.js";
+import { hson_metadata_policy } from "./hson-metadata.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
@@ -34,21 +38,51 @@ export function assert_invariants(root: HsonNode, fn = "[source fn not given]", 
 function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, errs: string[]): void {
   const here = path + seg(n.$_tag);
 
+  if (n.$_tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(n.$_tag)) {
+    push(errs, cfg, `${here}: unknown VSN-like tag "${n.$_tag}"`); if (cfg.throwOnFirst) return;
+  }
+
   if (n.$_meta) {
-    for (const k of Object.keys(n.$_meta as HsonMeta)) {
-      if (!k.startsWith(_META_DATA_PREFIX)) {
-        push(errs, cfg, `${here}@meta:${k}: illegal meta key (only "${_META_DATA_PREFIX}*" allowed)`); if (cfg.throwOnFirst) return;
+    if (Object.hasOwn(n.$_meta, "data-_quid")) {
+      try {
+        validate_hson_node_quid(n);
+      } catch {
+        push(errs, cfg, `${here}: data-_quid must be a canonical persisted QUID on an eligible standard tag`); if (cfg.throwOnFirst) return;
       }
     }
-    try {
-      validate_hson_node_quid(n);
-    } catch {
-      push(errs, cfg, `${here}: data-_quid must be a canonical persisted QUID on an ordinary element`); if (cfg.throwOnFirst) return;
+    for (const k of Object.keys(n.$_meta as HsonMeta)) {
+      const policy = hson_metadata_policy(n.$_tag, k);
+      if (!policy.valid) {
+        push(
+          errs,
+          cfg,
+          `${here}@meta:${JSON.stringify(k)}: ${policy.reason}`,
+        );
+        if (cfg.throwOnFirst) return;
+      }
     }
   }
 
   if (isVSN(n.$_tag) && n.$_attrs && Object.keys(n.$_attrs as HsonAttrs).length) {
     push(errs, cfg, `${here}: VSN "${n.$_tag}" must not have $_attrs`); if (cfg.throwOnFirst) return;
+  }
+  if (!isVSN(n.$_tag) && n.$_attrs) {
+    for (const key of Object.keys(n.$_attrs)) {
+      if (key.startsWith(_META_DATA_PREFIX)) {
+        const policy = hson_metadata_policy(n.$_tag, key);
+        push(
+          errs,
+          cfg,
+          policy.valid
+            ? `${here}@attrs:${JSON.stringify(key)}: reserved metadata must be stored in $_meta`
+            : `${here}@attrs:${JSON.stringify(key)}: ${policy.reason}`,
+        );
+        if (cfg.throwOnFirst) return;
+      }
+      if (!is_valid_hson_attribute_name(key)) {
+        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid HSON attribute name`); if (cfg.throwOnFirst) return;
+      }
+    }
   }
 
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
@@ -62,6 +96,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
       if (n.$_tag === VAL_TAG && typeof v === "string") {
         push(errs, cfg, `${here}: _hson_val payload must be non-string primitive`); if (cfg.throwOnFirst) return;
+      }
+      if (n.$_tag === VAL_TAG && typeof v === "number" && !Number.isFinite(v)) {
+        push(errs, cfg, `${here}/$_content[0]: invalid HSON number ${String(v)}; numbers must be finite`); if (cfg.throwOnFirst) return;
       }
     }
     return;
@@ -210,12 +247,25 @@ function is_plain_record(value: unknown): value is Record<string, unknown> {
 }
 
 export function assertNewShapeQuick(n: unknown, where: string): void {
-  const stack: unknown[] = [n];
+  type Frame =
+    | { kind: "enter"; value: unknown; path: string }
+    | { kind: "leave"; value: object };
+  const stack: Frame[] = [{ kind: "enter", value: n, path: "" }];
+  const active = new WeakMap<object, string>();
+  const complete = new WeakSet<object>();
 
   while (stack.length) {
-    const node = stack.pop();
+    const frame = stack.pop();
+    if (!frame) break;
+    if (frame.kind === "leave") {
+      active.delete(frame.value);
+      complete.add(frame.value);
+      continue;
+    }
+
+    const node = frame.value;
     if (!is_plain_record(node)) {
-      throw new Error(`[NEW-only] node must be a plain object in ${where}`);
+      throw new Error(`[NEW-only] node must be a plain object in ${where} at ${frame.path || "/"}`);
     }
 
     const tag = node.$_tag;
@@ -226,6 +276,14 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     if (!Array.isArray(node.$_content)) {
       throw new Error(`[NEW-only] node <${tag}> must carry an array $_content in ${where}`);
     }
+    const here = `${frame.path}/${tag}`;
+    const origin = active.get(node);
+    if (origin !== undefined) {
+      throw new Error(`[NEW-only] cycle detected in ${where} at ${here} (reference returns to ${origin})`);
+    }
+    if (complete.has(node)) continue;
+    active.set(node, here);
+    stack.push({ kind: "leave", value: node });
 
     const hasMeta = Object.hasOwn(node, "$_meta");
     const hasAttrs = Object.hasOwn(node, "$_attrs");
@@ -247,13 +305,11 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
   Found $_meta.attrs or $_meta.flags`);
     }
 
-    if (meta) {
-      for (const [k, value] of Object.entries(meta)) {
-        if (!k.startsWith(_META_DATA_PREFIX)) {
-          throw new Error(`[NEW-only] illegal meta key "${k}" in ${where} at <${tag}> (only "data-_*" allowed)`);
-        }
-        if (typeof value !== "string") {
-          throw new Error(`[NEW-only] metadata value for "${k}" must be a string in ${where} at <${tag}>`);
+    if (meta && typeof tag === "string") {
+      for (const [key, value] of Object.entries(meta)) {
+        const policy = hson_metadata_policy(tag, key);
+        if (policy.valid && key !== _DATA_QUID && typeof value !== "string") {
+          throw new Error(`[NEW-only] metadata value for "${key}" must be a string in ${where} at <${tag}>`);
         }
       }
     }
@@ -275,9 +331,10 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     const content = node.$_content;
     if (tag === STR_TAG || tag === VAL_TAG) continue;
 
-    for (const child of content) {
+    for (let index = content.length - 1; index >= 0; index--) {
+      const child = content[index];
       if (typeof child === "object" && child !== null) {
-        stack.push(child);
+        stack.push({ kind: "enter", value: child, path: `${here}/$_content[${index}]` });
       }
     }
   }

@@ -18,6 +18,8 @@ import {
   SVG_NS,
 } from "../utils/node-utils/node-from-svg.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
+import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
+import { assert_invariants } from "../../../core/assert-invariants.js";
 
 /**
  * Per-call HTML parsing options for `construct_source_1.fromHtml()`.
@@ -133,10 +135,9 @@ export function construct_source_1(
      *   sanitization, you must opt into that later (Node → HTML → DOMPurify → Node).
      */
     fromJson(input: string | JsonValue): OutputConstructor_2 {
+      const node: HsonNode = parse_json(input);
       const raw: string =
         typeof input === "string" ? input : JSON.stringify(input);
-
-      const node: HsonNode = parse_json(raw);
 
       const frame: TransformFrame = {
         input: raw,
@@ -217,10 +218,12 @@ export function construct_source_1(
      * should already be reflected in how it was constructed.
      */
     fromNode(input: HsonNode): OutputConstructor_2 {
-      scan_ingested_hson_node_quids(input, "fromNode");
+      const node = normalize_hson_graph(input, "fromNode");
+      scan_ingested_hson_node_quids(node, "fromNode");
+      assert_invariants(node, "fromNode");
       const frame: TransformFrame = {
-        input: JSON.stringify(input),
-        node: input,
+        input: JSON.stringify(node),
+        node,
         meta: {
           origin: "node",
           unsafePipeline: pipelineOptions.unsafe,

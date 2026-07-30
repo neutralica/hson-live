@@ -201,7 +201,7 @@ check("QUID-bearing VSN metadata is rejected and never repaired or relocated", (
 
 check("ordinary-node assignment, stable ensure, and deliberate removal are canonical", () => {
   for (const tag of ["main", "property", "svg", "custom-element"]) {
-    const value = node(tag, [], { "data-_custom": "kept" });
+    const value = node(tag);
     const supplied = q(1300 + tag.length);
     assert.equal(assign_hson_node_quid(value, supplied), supplied);
     assert.equal(read_hson_node_quid(value), supplied);
@@ -209,7 +209,7 @@ check("ordinary-node assignment, stable ensure, and deliberate removal are canon
     assert.equal(ensure_hson_node_quid(value), supplied);
     assert.equal(remove_hson_node_quid(value), supplied);
     assert.equal(read_hson_node_quid(value), undefined);
-    assert.deepEqual(value.$_meta, { "data-_custom": "kept" });
+    assert.equal(value.$_meta, undefined);
   }
 
   const minted = node("fresh");

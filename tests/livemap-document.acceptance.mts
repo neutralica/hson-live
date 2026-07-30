@@ -56,7 +56,7 @@ function mutate_graph(root: HsonNode): void {
   if (main !== undefined) {
     main.$_tag = "changed-main";
     main.$_attrs = { id: "changed", style: { color: "purple", ":hover": { color: "orange" } } };
-    main.$_meta = { "data-_quid": "0000000000000011", "data-_custom": "changed" };
+    main.$_meta = { "data-_quid": "0000000000000011" };
     main.$_content.push({ $_tag: "added", $_content: [] });
   }
   root.$_content.push({ $_tag: "detached", $_content: [] });
@@ -108,7 +108,7 @@ check("malformed and unsupported canonical roots are rejected with causes", () =
 
 check("fromNode takes detached ownership of the complete canonical graph", () => {
   const source = hson.fromHson(
-    `<main id="original" style="color: red" data-_quid="0000000000000001" data-_custom="kept" <p data-_quid="0000000000000002" "x"/>/>`,
+    `<main id="original" style="color: red" data-user="kept" data-_quid="0000000000000001" <p data-_quid="0000000000000002" "x"/>/>`,
   ).toNode();
   const sourceMain = find_nodes(source, "main")[0];
   if (sourceMain !== undefined) {
