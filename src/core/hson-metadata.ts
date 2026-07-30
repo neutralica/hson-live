@@ -44,6 +44,8 @@ const DEFINITIONS = {
     allowedNodeKinds: ARRAY_ITEM_WRAPPER_NODE_KINDS,
     valueMode: "valued",
     hsonProjection: "array-order",
+    // Sibling-dependent spelling, uniqueness, contiguity, and position checks
+    // are centralized in hson-array-indexes.ts.
     validateValue: (value: unknown): value is string => typeof value === "string",
   }),
 } satisfies Record<HsonMetadataKey, HsonMetadataDefinition>;

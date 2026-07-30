@@ -71,15 +71,18 @@ emits each occurrence by value and does not preserve JavaScript reference
 identity.
 
 Structural VSN metadata is allowlisted rather than being a general user-data
-channel. `_hson_ii` may carry the string-valued operational
-`index`; other structural VSN metadata is invalid. Array serialization
-uses child order, omits the redundant index metadata, and parsing regenerates
-sequential indexes.
+channel. `_hson_ii` must carry canonical string ordering metadata at `index`;
+other structural VSN metadata is invalid. Wrapper-bearing admission accepts
+only the exact complete sibling set `"0"` through
+`String(wrapperCount - 1)`, sorts a valid permutation, and rejects every
+malformed or contradictory set. Canonical physical order and index order must
+then agree. Native JSON and HSON arrays generate sequential indexes from their
+intrinsic source order.
 
 | Node category | Valid `$_meta` keys |
 | --- | --- |
 | Eligible standard tag | `$_meta.quid`, projected as `hson:quid`, with the canonical QUID placement and value contract |
-| `_hson_ii` | `$_meta.index`, projected as `hson:index`, with its existing string index contract |
+| `_hson_ii` | Required `$_meta.index`, projected as `hson:index`, using exact canonical zero-based decimal spelling |
 | `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, `_hson_val` | None |
 
 Metadata validity is authorized only by the exact table above. Unknown

@@ -275,20 +275,16 @@ function write_object_property(parent: HsonNode, key: string, value: JsonValue):
  * deterministic replacement and avoids deciding append/sparse-array behavior.
  */
 function write_array_index(parent: HsonNode, index: number, value: JsonValue, path: LivePath): void {
-  if (!Number.isInteger(index) || index < 0) {
+  if (!Number.isInteger(index) || index < 0 || index >= parent.$_content.length) {
     throw new Error(`LiveMap editor cannot set invalid array index: ${format_live_path(path)}`);
   }
 
-  const existingIndex = parent.$_content.findIndex((child) => {
-    if (!is_Node(child) || child.$_tag !== II_TAG) return false;
-    return child.$_meta?.[HSON_META_INDEX] === String(index);
-  });
-
-  if (existingIndex === -1) {
+  const existing = parent.$_content[index];
+  if (!is_Node(existing) || existing.$_tag !== II_TAG) {
     throw new Error(`LiveMap editor cannot append or insert array indexes yet: ${format_live_path(path)}`);
   }
 
-  parent.$_content[existingIndex] = make_array_item_wrapper(index, value);
+  parent.$_content[index] = make_array_item_wrapper(index, value);
 }
 
 /**
@@ -350,7 +346,7 @@ export function node_to_json_value(node: HsonNode): JsonValue {
  * Find the child wrapper for one projected path segment.
  *
  * Object paths use string keys and find user-tag wrappers. Array paths use
- * numeric indexes and find `_hson_ii` wrappers by `index` metadata.
+ * numeric indexes and read the canonical `_hson_ii` physical position.
  */
 function find_child_wrapper(parentValueNode: HsonNode, part: LivePathPart): HsonNode | undefined {
   if (parentValueNode.$_tag === OBJ_TAG && typeof part === "string") {
@@ -358,10 +354,9 @@ function find_child_wrapper(parentValueNode: HsonNode, part: LivePathPart): Hson
   }
 
   if (parentValueNode.$_tag === ARR_TAG && typeof part === "number") {
-    return parentValueNode.$_content.find((child) => {
-      if (!is_Node(child) || child.$_tag !== II_TAG) return false;
-      return child.$_meta?.[HSON_META_INDEX] === String(part);
-    }) as HsonNode | undefined;
+    if (!Number.isInteger(part) || part < 0) return undefined;
+    const child = parentValueNode.$_content[part];
+    return is_Node(child) && child.$_tag === II_TAG ? child : undefined;
   }
 
   return undefined;
@@ -464,29 +459,25 @@ function object_node_to_value(node: HsonNode): JsonValue {
 /**
  * Project an array-shaped value node to a JSON array.
  *
- * Array item wrappers are sorted by their `index` metadata. Invalid,
- * missing, or negative indexes are ignored for now rather than repaired here.
+ * Canonical admission has already ordered and validated every array item
+ * wrapper, so projection follows physical order without reinterpreting index.
  */
 function array_node_to_value(node: HsonNode): JsonValue[] {
-  const indexed: Array<Readonly<{ index: number; value: JsonValue }>> = [];
+  const values: JsonValue[] = [];
 
   for (const child of node.$_content) {
-    if (!is_Node(child) || child.$_tag !== II_TAG) continue;
-
-    const rawIndex = child.$_meta?.[HSON_META_INDEX];
-    if (rawIndex === undefined) continue;
-
-    const index = Number(rawIndex);
-    if (!Number.isInteger(index) || index < 0) continue;
+    if (!is_Node(child) || child.$_tag !== II_TAG) {
+      throw new Error("LiveMap encountered a noncanonical array child.");
+    }
 
     const payload = unwrap_value_payload(child);
-    if (payload === undefined) continue;
-
-    indexed.push({ index, value: node_to_json_value(payload) });
+    if (payload === undefined) {
+      throw new Error("LiveMap encountered a noncanonical array item payload.");
+    }
+    values.push(node_to_json_value(payload));
   }
 
-  indexed.sort((a, b) => a.index - b.index);
-  return indexed.map((entry) => entry.value);
+  return values;
 }
 
 /**

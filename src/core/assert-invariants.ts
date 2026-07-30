@@ -10,7 +10,6 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-  HSON_META_INDEX,
   HSON_META_QUID,
   HSON_META_MARKUP_PREFIX,
   HSON_META_TRANSIT_PREFIX,
@@ -26,6 +25,7 @@ import {
   hson_metadata_policy,
   hson_metadata_value_is_valid,
 } from "./hson-metadata.js";
+import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
@@ -120,8 +120,6 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   if (n.$_tag === II_TAG) {
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _hson_ii must appear directly under _hson_arr`); if (cfg.throwOnFirst) return; }
     if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _hson_ii must not have $_attrs`); if (cfg.throwOnFirst) return; }
-    const idx = n.$_meta?.[HSON_META_INDEX];
-    if (typeof idx !== "string") { push(errs, cfg, `${here}: _hson_ii must carry "${HSON_META_INDEX}" as a string in $_meta`); if (cfg.throwOnFirst) return; }
 
     const cc = n.$_content;
     if (cc.length !== 1) { push(errs, cfg, `${here}: _hson_ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
@@ -131,6 +129,14 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   if (n.$_tag === ARR_TAG) {
     const kids = n.$_content;
+    const indexAnalysis = analyze_hson_array_indexes(kids);
+    if (!indexAnalysis.valid) {
+      push(errs, cfg, `${here}: ${indexAnalysis.reason}`);
+      if (cfg.throwOnFirst) return;
+    } else if (indexAnalysis.reordered) {
+      push(errs, cfg, `${here}: physical _hson_ii order must match canonical index order`);
+      if (cfg.throwOnFirst) return;
+    }
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];
       const childPath = `${path}/_hson_arr/[${i}]`;

@@ -65,9 +65,12 @@ _hson_arr
    └─ _hson_val (true)
 ```
 
-The array serializer uses the physical `_hson_ii` order in `$_content`.
-`index` is required structural metadata and is checked for presence and
-string type, but it is not used to sort or reorder items.
+JSON source order is intrinsic, so parsing creates wrappers in source order
+with indexes `"0"` through `String(length - 1)`. For wrapper-bearing ingress,
+`index` is required semantic ordering metadata: a valid permutation is sorted
+at admission, while malformed, duplicate, missing, noncontiguous, or
+out-of-range strings reject. Canonical graph state always has physical wrapper
+order equal to index order.
 
 Array items can be scalars, arrays, or objects. Objects in HSON array syntax use
 an anonymous object wrapper because an array item has no property name:

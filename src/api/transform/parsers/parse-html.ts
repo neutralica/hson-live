@@ -31,6 +31,7 @@ import {
     assign_ingested_hson_node_quid,
     scan_ingested_hson_node_quids,
 } from "../utils/hson-utils/quid-ingress.js";
+import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 
 
 
@@ -282,7 +283,10 @@ export function parse_html(input: string | Element): HsonNode {
         inputElement = input;
     }
     const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit);
-    const final = wrap_as_root(actualContentRootNode);
+    const final = normalize_hson_array_index_order(
+        wrap_as_root(actualContentRootNode),
+        "parse-html",
+    );
 
     scan_ingested_hson_node_quids(final, "parse-html");
     assert_invariants(final, "parse-html");

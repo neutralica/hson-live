@@ -537,6 +537,7 @@ export function serialize_hson(
     );
   }
 
+  assert_invariants(root, "serialize_hson");
   const normalizedRoot = normalize_hson_graph(root, "serialize_hson");
 
   // Egress is a cold canonical boundary: validate every supplied identity,

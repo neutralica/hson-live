@@ -78,11 +78,18 @@ Each `_hson_ii`:
 - appears directly under `_hson_arr`;
 - has exactly one node child;
 - has no attributes; and
-- carries string metadata at `index`.
+- carries required canonical decimal string metadata at `index`.
 
-Array serialization follows the physical order of `_hson_ii` nodes in
-`$_content`. `index` is required and validated, but changing only that
-metadata does not reorder the emitted array.
+Wrapper-bearing inputs use `index` as semantic ordering metadata during
+admission. The complete sibling set must be the exact strings `"0"` through
+`String(wrapperCount - 1)`: no gaps, duplicates, signs, leading zeros,
+fractions, exponents, nonnumeric text, or out-of-range values are valid. A
+valid physical permutation is sorted by index without mutating caller input.
+
+Canonical graph state then requires physical wrapper order to match semantic
+array order and every wrapper index to equal `String(physicalPosition)`.
+Serializers follow that canonical physical order and reject noncanonical graph
+input rather than repairing it at egress.
 
 ### `_hson_str` and `_hson_val`
 

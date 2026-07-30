@@ -1,10 +1,12 @@
 import {
+  ARR_TAG,
   ELEM_OBJ_ARR,
   ELEM_TAG,
   EVERY_VSN,
   OBJ_TAG,
   VAL_TAG,
 } from "./constants.js";
+import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
@@ -120,11 +122,19 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
       if (entries.length > 0) result.$_attrs = Object.fromEntries(entries);
     }
 
-    const content = value.$_content.map((child, index) =>
+    let content = value.$_content.map((child, index) =>
       is_plain_record(child)
         ? visit(child, `${here}/$_content[${index}]`, tag)
         : child
     );
+    if (tag === ARR_TAG) {
+      const analysis = analyze_hson_array_indexes(content);
+      if (!analysis.valid) return fail(where, here, analysis.reason);
+      if (analysis.reordered) {
+        changed = true;
+        content = [...analysis.canonical];
+      }
+    }
     if (!EVERY_VSN.includes(tag)) {
       if (content.length === 1
         && is_plain_record(content[0])

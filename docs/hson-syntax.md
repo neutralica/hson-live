@@ -176,9 +176,11 @@ The parser also accepts `[` and `]`, including `[]`; serialization uses `«` and
 arrays, named nodes, or anonymous objects. Commas separate top-level items.
 
 Internally, an array is `_hson_arr` with ordered `_hson_ii` children. Each item
-receives `index`, but emitted order follows the physical child order, not
-a sort of that metadata. `_hson_ii` wrappers and their indexes melt from HSON
-text; parsing rebuilds sequential `index` values from physical array order.
+receives a canonical decimal string `index`. Wrapper-bearing inputs are sorted
+by a valid complete index permutation during admission; canonical physical
+order and index order must then agree. `_hson_ii` wrappers and their indexes
+melt from ordinary HSON array text because HSON array order is intrinsic;
+parsing rebuilds sequential indexes from source order.
 
 ---
 

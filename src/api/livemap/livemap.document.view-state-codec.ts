@@ -1,4 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
+import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import {
@@ -93,7 +94,17 @@ export function encode_view_state_snapshot(
   validate_capture_header(capture);
   const limits = codec_limits(options);
   validate_canonical_document(capture.root, capture.mode);
+  return Object.freeze({
+    format: FORMAT,
+    formatVersion: FORMAT_VERSION,
+    payload: encode_view_state_payload(capture, limits),
+  });
+}
 
+function encode_view_state_payload(
+  capture: DocumentLiveMapCapture,
+  limits: CodecLimits,
+): string {
   const budget: Budget = { nodes: 0 };
   const payloadValue: CodecPayload = {
     captureKind: CAPTURE_KIND,
@@ -114,7 +125,7 @@ export function encode_view_state_snapshot(
     );
   }
   assert_payload_size(payload, limits);
-  return Object.freeze({ format: FORMAT, formatVersion: FORMAT_VERSION, payload });
+  return payload;
 }
 
 /** @internal Decode one canonical compact HSON payload into a detached document capture. */
@@ -149,22 +160,44 @@ export function decode_view_state_snapshot(
   }
 
   const payload = decode_payload(representation, limits);
-  const capture: DocumentLiveMapCapture = Object.freeze({
+  const decodedInput: DocumentLiveMapCapture = {
     kind: CAPTURE_KIND,
     version: CAPTURE_VERSION,
     mode: payload.mode,
     rev: payload.revision,
     root: payload.root,
-  });
-  validate_canonical_document(capture.root, capture.mode);
-
-  const canonical = encode_view_state_snapshot(capture, limits);
-  if (canonical.payload !== encoded.payload) {
+  };
+  const deterministicInputPayload = encode_view_state_payload(
+    decodedInput,
+    limits,
+  );
+  if (deterministicInputPayload !== encoded.payload) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
       "View-state snapshot payload is not the deterministic version 2 representation.",
     );
   }
+  let normalizedRoot: HsonNode;
+  try {
+    normalizedRoot = normalize_hson_array_index_order(
+      payload.root,
+      "decode_view_state_snapshot",
+    );
+  } catch (cause) {
+    throw codec_error(
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+      "View-state snapshot graph is invalid.",
+      cause,
+    );
+  }
+  const capture: DocumentLiveMapCapture = Object.freeze({
+    kind: CAPTURE_KIND,
+    version: CAPTURE_VERSION,
+    mode: payload.mode,
+    rev: payload.revision,
+    root: normalizedRoot,
+  });
+  validate_canonical_document(capture.root, capture.mode);
   return capture;
 }
 
@@ -227,7 +260,16 @@ export function decode_exact_hson_value(
       "Exact HSON value payload is not deterministic.",
     );
   }
-  return value;
+  if (!is_Node(value)) return value;
+  try {
+    return normalize_hson_array_index_order(value, "decode_exact_hson_value");
+  } catch (cause) {
+    throw codec_error(
+      "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+      "Exact HSON graph content is invalid.",
+      cause,
+    );
+  }
 }
 
 function encode_value(

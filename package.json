@@ -77,6 +77,7 @@
     "test:hson-node-quid-egress": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid-egress.acceptance.mts",
     "test:diagnostics-inventory": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/diagnostics-inventory.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",
+    "test:hson-array-index": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-array-index.acceptance.mts",
     "test:canonical-hson-equality": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-hson-equality.acceptance.mts",
     "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",
     "test:livehost-graph-content-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-graph-content-codec.acceptance.mts",

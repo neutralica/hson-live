@@ -30,6 +30,7 @@ import {
   assign_ingested_hson_node_quid,
   scan_ingested_hson_node_quids,
 } from "../utils/hson-utils/quid-ingress.js";
+import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
 
 const ALLOWED_ATTRS = new Set([
   "href",
@@ -434,7 +435,8 @@ export function parse_html_string(input: string, sanitize: boolean): HsonNode {
       input.slice(0, 200),
     );
   }
-  scan_ingested_hson_node_quids(root, "parse-html-string");
-  assert_invariants(root, "parse-html-string");
-  return root;
+  const normalized = normalize_hson_array_index_order(root, "parse-html-string");
+  scan_ingested_hson_node_quids(normalized, "parse-html-string");
+  assert_invariants(normalized, "parse-html-string");
+  return normalized;
 }

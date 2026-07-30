@@ -122,8 +122,9 @@ truthful and deterministic.
 - Centralized metadata projection, node eligibility, validation, and
   per-format behavior.
 
-- Kept array index metadata string-valued and preserved physical wrapper order
-  as the Transform serialization authority.
+- Kept array index metadata string-valued. Wrapper-bearing admission orders a
+  valid complete permutation by index; canonical physical wrapper order and
+  positional indexes then agree for every Transform serializer.
 
 - Added private, reversible XML-transit encoding for `hson:*` attribute names.
 

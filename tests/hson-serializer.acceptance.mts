@@ -405,7 +405,7 @@ check("parsed noQuid graph equals the graph with only QUID fields removed", () =
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
 
-check("array index metadata is rebuilt from physical order", () => {
+check("native HSON array order regenerates canonical positional indexes", () => {
   const node = parse(`«"a","b",<<name "Ada">>»`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   const reparsed = parse(wire);
@@ -688,7 +688,7 @@ check("unknown reserved standard-tag metadata is default-deny at every HSON boun
   );
 });
 
-check("index is valid only as a string on _hson_ii", () => {
+check("index is string-valued only on _hson_ii and canonical position is enforced", () => {
   assert.throws(
     () => parse(`<tag hson:index="3"/>`),
     /metadata "index" is not defined for node "tag"/,

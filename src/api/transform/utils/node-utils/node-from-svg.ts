@@ -16,6 +16,7 @@ import {
   scan_ingested_hson_node_quids,
 } from "../hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
+import { normalize_hson_array_index_order } from "../../../../core/hson-array-indexes.js";
 
 
 //  tiny helper once, reuse everywhere
@@ -60,7 +61,7 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * @returns An `HsonNode` representing `el` and its SVG subtree.
  */
 export function node_from_svg(el: Element): HsonNode {
-  const root = convert_svg_element(el);
+  const root = normalize_hson_array_index_order(convert_svg_element(el), "node_from_svg");
   scan_ingested_hson_node_quids(root, "node_from_svg");
   assert_invariants(root, "node_from_svg");
   return root;

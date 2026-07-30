@@ -36,6 +36,7 @@ import {
   type LiveMapDocumentMutationController,
 } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.js";
+import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -45,7 +46,10 @@ export type PreparedLiveMapRoot = Readonly<{
 
 /** Clone, validate, classify, and establish document identity before ownership. */
 export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
-  const root = clone_live_root(input);
+  const root = normalize_hson_array_index_order(
+    clone_live_root(input),
+    "prepare_livemap_root",
+  );
   const identity = index_livemap_document_elements(root);
   const mode = classify_live_root_mode(root);
 

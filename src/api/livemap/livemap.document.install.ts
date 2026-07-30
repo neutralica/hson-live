@@ -15,6 +15,7 @@ import {
   index_livemap_document_elements,
   type LiveMapDocumentIdentityIndex,
 } from "./livemap.document.identity.js";
+import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 
 export type PreparedDocumentInstall = Readonly<{
   mode: DocumentLiveMapMode;
@@ -103,7 +104,10 @@ export function prepare_document_install(
   let root: HsonNode;
   let observedMode;
   try {
-    root = clone_live_root(capture.root);
+    root = normalize_hson_array_index_order(
+      clone_live_root(capture.root),
+      "prepare_document_install",
+    );
     observedMode = classify_live_root_mode(root);
   } catch (cause) {
     throw new LiveMapDocumentInstallError("capture root is malformed", { cause });
