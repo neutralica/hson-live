@@ -32,6 +32,19 @@ async function collect_marked_test_modules(directory: string): Promise<void> {
     }
   }
 }
+
+async function collect_typescript_sources(directory: string): Promise<string[]> {
+  const paths: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      paths.push(...await collect_typescript_sources(path));
+    } else if (entry.isFile() && entry.name.endsWith(".ts")) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
 await collect_marked_test_modules(join(repositoryRoot, "tests"));
 markedModules.sort();
 
@@ -124,6 +137,46 @@ await assert.rejects(
   access(join(repositoryRoot, "dist", "api", "livemap", "livemap.quid.d.ts")),
   "the removed LiveMap pseudo-QUID declaration module must not be built",
 );
+
+const sourcePaths = await collect_typescript_sources(join(repositoryRoot, "src"));
+const productionSource = (
+  await Promise.all(sourcePaths.map((path) => readFile(path, "utf8")))
+).join("\n");
+assert.equal(
+  productionSource.includes("construct_tree") ||
+    productionSource.includes("construct-tree"),
+  false,
+  "the obsolete LiveTree construction engine must not remain reachable in source",
+);
+assert.equal(
+  productionSource.includes("graft_body"),
+  false,
+  "the obsolete graft_body compatibility alias must not remain reachable",
+);
+await assert.rejects(
+  access(join(repositoryRoot, "dist", "api", "livetree", "creation", "construct-tree.js")),
+  "the obsolete LiveTree construction runtime module must not be built",
+);
+await assert.rejects(
+  access(join(repositoryRoot, "dist", "api", "livetree", "creation", "construct-tree.d.ts")),
+  "the obsolete LiveTree construction declaration module must not be built",
+);
+const constructorDeclarations = await readFile(
+  join(repositoryRoot, "dist", "types", "constructor.types.d.ts"),
+  "utf8",
+);
+for (const symbol of [
+  "TreeConstructor_Source",
+  "DomQuerySourceConstructor",
+  "DomQueryLiveTreeConstructor",
+  "LiveTreeConstructor_3",
+]) {
+  assert.equal(
+    constructorDeclarations.includes(symbol),
+    false,
+    `built declarations must not retain obsolete constructor symbol ${symbol}`,
+  );
+}
 
 console.log(JSON.stringify({
   externallyDiscoverableSuites: externallyDiscoverable.length,

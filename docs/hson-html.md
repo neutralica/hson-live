@@ -188,15 +188,22 @@ Malformed input that remains invalid after those repairs throws a transform
 error. These repairs are parsing conveniences, not sanitization. Only
 `fromUntrustedHtml` applies DOMPurify; `fromTrustedHtml` does not.
 
-When a constructor receives an `Element`, the public transform constructor
-currently snapshots `innerHTML`, so the supplied element itself is not the
-result root. The DOM boundary cannot recover duplicate source attributes that
-were already collapsed, but surviving `hson:*` candidates use the same
-metadata registry as string input.
+When a constructor receives an `Element`, the supplied element is the source
+root. Its attributes, metadata, and descendants are included in the canonical
+graph; it is not treated as an `innerHTML` snapshot. Equivalent string and
+Element sources normalize to canonically equal graphs where the DOM boundary
+has not already erased a distinction. That boundary cannot recover duplicate
+source attributes, original HTML casing, source quoting or whitespace, or
+namespace detail not represented by the received DOM.
+
+The Transform `queryDOM(selector)` and `queryBody()` helpers are intentionally
+different: they snapshot selected children or body children through
+`innerHTML`. LiveTree `queryDom(selector).graft()` and `queryBody().graft()`
+instead treat the selected Element itself as the managed root.
 
 Untrusted HTML sanitization and canonical graph validation are separate
 stages. Sanitization removes unsafe markup behavior without silently deleting
-HSON metadata candidates. Valid descendant QUIDs may therefore survive as
+HSON metadata candidates. Valid descendant QUIDs are therefore preserved as
 canonical identity; malformed, unknown, misplaced, or duplicate metadata
 rejects. Ordinary `data-*` attributes remain application data.
 

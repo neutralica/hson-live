@@ -154,12 +154,19 @@ one source format are too strong.
 ## Identity
 
 A QUID is optional live identity used by LiveTree for DOM lookup, managed CSS,
-and handle continuity. It is assigned lazily where live behavior needs it.
+and handle continuity. Supplied identity is preserved; absent identity is
+assigned lazily where live behavior needs it.
 QUIDs are not a universal transform round-trip guarantee:
 
-- valid supplied QUIDs may enter a cold canonical graph, while active LiveTree
-  ownership separately enforces uniqueness;
-- cloned LiveTree branches receive fresh QUIDs; and
+- valid supplied root and descendant QUIDs are preserved in cold canonical
+  graphs after syntax, eligibility, and placement validation;
+- duplicate valid values may remain cold, while active LiveTree admission
+  claims identity and enforces uniqueness atomically;
+- detach, movement, and reattachment preserve QUID identity;
+- cloned LiveTree branches receive fresh QUIDs;
+- terminal destruction releases active QUID ownership;
+- HSON `.noQuid()` filters output only and does not mutate graph identity or
+  runtime ownership; and
 - transform/canonicalization operations may rebuild or normalize graphs.
 
 Application data should not depend on QUID spelling or persistence outside the

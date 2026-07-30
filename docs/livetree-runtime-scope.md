@@ -52,9 +52,9 @@ The process-global registry is implemented by
 ### Creation, admission, and handle-return paths
 
 - Standalone roots: `new LiveTree()`, `create_livetree()`,
-  `make_detached_livetree_create()`, `make_branch_from_node()`, and
-  `construct_tree()`.
-- DOM roots: `graft()`, `graft_body()`, and facade query/body graft helpers.
+  `make_detached_livetree_create()`, `make_branch_from_node()`, and the current
+  `livetree.facade.ts` source constructors.
+- DOM roots: `graft()` and facade query/body graft helpers.
 - Descendants: `wrap_in_tree()`, every `ContentManager` selection,
   `find()` / `findAll()`, DOM reverse lookup, DOM point lookup, and creation
   helpers.
@@ -185,7 +185,7 @@ High priority after the Node LiveHost refactor and before SSR:
   `transform/constructors/construct-output-2.ts`.
 - materialization profiler module activation state.
 - ambient document assumptions in transform query/body constructors,
-  `livetree.facade.ts`, `construct-tree.ts`, `safe-mount.safe.ts`,
+  `livetree.facade.ts`, `safe-mount.safe.ts`,
   LiveInspect active-element lookup, text-node helper fallbacks, inline
   document-root style inspection, and default canvas DPR.
 - `CssManager.api()` truly global stylesheet policy across multiple runtime

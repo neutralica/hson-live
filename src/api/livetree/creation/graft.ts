@@ -112,19 +112,6 @@ export function graft(
   return graft_node_into_element(targetElement, nodeToRender, runtime);
 }
 
-/**
- * Legacy compatibility alias.
- *
- * Body is no longer treated specially here; it is grafted with the same
- * semantics as any other queried element.
- */
-export function graft_body(
-  element: HTMLElement,
-  options: { unsafe: boolean } = { unsafe: false },
-): LiveTree {
-  return graft(element, options);
-}
-
 function sync_root_attrs_to_element(
   node: HsonNode,
   el: HTMLElement,

@@ -5,7 +5,6 @@ import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
 import { HsonNode } from "../core/types.js";
 import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
-import { HtmlCreateHelper } from "./livetree.types.js";
 import type { HsonString } from "../api/transform/transform.types.js";
 
 /**
@@ -169,6 +168,12 @@ export interface SourceConstructor_1 {
      * Accepts an HTML string or `Element` and produces the stage-1 frame used
      * by the transformer pipeline.
      *
+     * A supplied `Element` is the source root: the resulting graph includes
+     * that element, its attributes and metadata, and its descendants. It is
+     * not an `innerHTML` snapshot. The DOM has already normalized attribute
+     * casing and namespaces and collapsed duplicate source attributes, so
+     * those lexical distinctions cannot be recovered from an `Element`.
+     *
      * SAFE pipeline (`pipelineOptions.unsafe === false`):
      * - `options.sanitize !== false` → sanitize and parse via `parse_external_html`
      * - `options.sanitize === false` → parse raw HTML via `parse_html`
@@ -228,47 +233,6 @@ export interface SourceConstructor_1 {
   queryBody(): OutputConstructor_2;
 }
 
-/***************
- * TreeConstructor_Source
- *
- * Direct `LiveTree` construction facade.
- *
- * Source-format semantics are the same as `SourceConstructor_1`; see that
- * interface for the detailed parsing / trust / normalization behavior of
- * `fromTrustedHtml`, `fromUntrustedHtml`, `fromJson`, `fromHson`, and `fromNode`.
- *
- * The difference here is the return type:
- * - source constructors return detached `LiveTree` branches directly
- * - DOM query constructors return `GraftConstructor`, whose `.graft()`
- *   binds an existing DOM subtree into LiveTree
- *
- * Use this interface when the goal is `LiveTree`, not the transform pipeline.
- ***************/
-export interface TreeConstructor_Source {
-  fromTrustedHtml(input: string | Element): LiveTree;
-  fromUntrustedHtml(input: string | Element): LiveTree;
-  fromJson(input: string | JsonValue): LiveTree;
-  fromHson(input: string): LiveTree;
-  fromNode(input: HsonNode): LiveTree;
-  queryDom(selector: string): GraftConstructor;
-  queryBody(): GraftConstructor;
-  create: HtmlCreateHelper
-}
-
-/***************
- * DomQuerySourceConstructor
- *
- * Source constructor using legacy DOM query methods. Typically used by
- * `hson.queryDOM(...)` and friends.
- *
- *  - liveTree()
- *      Returns a DomQueryLiveTreeConstructor2 for performing the
- *      actual graft into the DOM.
- ***************/
-export interface DomQuerySourceConstructor {
-  liveTree: DomQueryLiveTreeConstructor;
-}
-
 /******************************************************************************
  * Output Selection – Step 2
  ******************************************************************************/
@@ -296,10 +260,6 @@ export interface DomQuerySourceConstructor {
  *
  *  - toHtml()
  *      Choose serialization-only HTML output.
- *
- *  - liveTree()
- *      Project directly into a LiveTree constructor instead of
- *      serializing. Returns LiveTreeConstructor_3.
  *
  *  - sanitizeBEWARE()
  *      Special case: take the current frame.node:
@@ -370,44 +330,17 @@ export interface FrameRender<K extends RenderFormats> {
 /***************
  * GraftConstructor
  *
- * Returned by DOM-targeteing source constructors (`queryDom`, `queryBody`).
+ * Returned by DOM-targeting source constructors (`queryDom`, `queryBody`).
  *
  *  - graft()
- *      Parses the target DOM element’s content into a HsonNode tree,
- *      replaces that element’s contents with the HSON-controlled view,
- *      and returns the controlling LiveTree instance.
+ *      Parses the selected target element itself as the source root,
+ *      re-projects its descendants as the HSON-controlled view, and returns
+ *      the controlling LiveTree instance for that same root element.
  ***************/
 export interface GraftConstructor {
   graft(): LiveTree;
 }
 
-
-/***************
- * LiveTreeConstructor_3
- *
- * Returned by `OutputConstructor_2.liveTree()` when the caller wants
- * to bypass string serialization and go straight to LiveTree.
- *
- *  - asBranch()
- *      Builds a LiveTree projection rooted at the current frame’s node.
- ***************/
-export interface LiveTreeConstructor_3 {
-  asBranch(): LiveTree;
-}
-
-
-/***************
- * DomQueryLiveTreeConstructor
- *
- * Result of `DomQuerySourceConstructor.liveTree()`.
- *
- *  - graft()
- *      Performs the DOM replacement and returns the LiveTree that
- *      now controls that DOM subtree.
- ***************/
-export interface DomQueryLiveTreeConstructor {
-  graft(): LiveTree;
-}
 
 /******************************************************************************
  * Options – Step 3

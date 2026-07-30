@@ -83,7 +83,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-ingress",
       repositoryModule: "tests/hson-node-quid-ingress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 31,
+      executableChecks: 32,
       collections: ["quid", "ingress", "externally-discoverable"],
     }),
     launcher({

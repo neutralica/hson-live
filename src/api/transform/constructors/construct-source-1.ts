@@ -74,6 +74,9 @@ export function construct_source_1(
       input: string | Element,
       options: HtmlSourceOptions = { sanitize: true }
     ): OutputConstructor_2 {
+      // An Element is the source root. `outerHTML` is needed only when the
+      // untrusted browser sanitizer must cross its string-based security
+      // boundary; trusted HTML and direct SVG Elements retain the DOM object.
       const isElementInput = typeof input !== "string";
       const raw = isElementInput ? input.outerHTML : input;
       const trimmed = raw.trimStart();
@@ -244,9 +247,9 @@ export function construct_source_1(
      *     - if `pipelineOptions.unsafe === true` → no sanitization,
      *     - if `pipelineOptions.unsafe === false` → sanitize by default.
      *
-     * In the public facade:
-     * - `hson.queryDOM(...)` uses `{ unsafe: true }` → no sanitization
-     *   for page snapshots (trusted).
+     * This Transform-only helper intentionally snapshots children. It is
+     * distinct from `hson.liveTree.queryDom(...).graft()`, which treats the
+     * selected Element itself as the managed root.
      *
      * A missing selector throws a structured transform error.
      */
@@ -275,8 +278,9 @@ export function construct_source_1(
      * - Delegates to `.fromHtml(body.innerHTML)` using the *current* pipeline’s
      *   safe/unsafe mode (same as `queryDOM`).
      *
-     * - `hson.queryBody()` uses `{ unsafe: true }`, so body snapshots are
-     *   treated as trusted and never sanitized.
+     * This Transform-only helper intentionally snapshots body children. It is
+     * distinct from `hson.liveTree.queryBody().graft()`, which treats the body
+     * Element itself as the managed root.
      */
     queryBody(): OutputConstructor_2 {
       const body = document.body as HTMLElement | null;

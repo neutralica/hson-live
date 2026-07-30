@@ -77,6 +77,12 @@ The `from*` facade unwraps `_hson_root` only when its sole child is an
 current node is `_hson_root`. `fromNode` retains the supplied node graph; it
 does not clone it.
 
+A direct HTML or SVG `Element` is the source root, not an `innerHTML` snapshot.
+Its attributes, metadata, and descendants enter the graph. `queryDom` and
+`queryBody` likewise graft the selected Element itself. This differs from the
+lower-level Transform `queryDOM`/`queryBody` snapshot helpers, which
+intentionally parse only selected children/body content.
+
 ---
 
 ## Core LiveTree
@@ -126,6 +132,14 @@ LiveTree; any future document adapter is covered by the same protection policy.
 Reusable detach intentionally retains runtime registrations rather than
 suspending them. Observers, timers, and subscriptions that are not already
 lifecycle-owned may continue while the retained element is off-document.
+
+Valid supplied QUIDs are preserved in cold canonical graphs. Cold parsing
+validates syntax, eligibility, and placement without claiming active runtime
+ownership; established duplicate valid values may therefore remain cold.
+Activation claims QUIDs and enforces uniqueness atomically. Detach and
+reattachment retain identity, `cloneBranch()` assigns fresh identity throughout
+the clone, terminal removal releases active ownership, and serializer
+`.noQuid()` filters output without changing the graph or runtime.
 
 `removeSelf()` is a deprecated terminal alias for `remove()`. `removeChildren()`
 is deprecated but temporarily retains its specialized legacy behavior: it

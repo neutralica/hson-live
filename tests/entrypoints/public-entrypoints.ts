@@ -17,6 +17,8 @@ import {
   LiveTree,
   type LiveTreeLifecycleResult,
 } from "hson-live/livetree";
+// @ts-expect-error The obsolete construction engine is not a public export.
+import { construct_tree } from "hson-live/livetree";
 import {
   hsonLiveMap as mapSubpath,
   make_livemap_core,
@@ -45,6 +47,7 @@ void LiveTree;
 void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
+void construct_tree;
 void bareHsonString;
 
 const reflectFacade: ReflectFacade = reflectSubpath;

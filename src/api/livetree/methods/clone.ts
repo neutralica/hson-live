@@ -32,8 +32,8 @@ function clone_branch_inner(
   if (has_own_entries(src.$_meta)) {
     dst.$_meta = { ...src.$_meta };
 
-    // CHANGED: identity is not structural clone data. Remove the source quid
-    // before ensure_quid() runs so the clone is always reminted.
+    // Identity is not structural clone data. Remove the source QUID before
+    // ensure_quid() runs so every eligible clone node receives fresh identity.
     delete dst.$_meta[HSON_META_QUID];
     prune_empty_node_meta(dst);
   }

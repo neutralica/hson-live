@@ -87,14 +87,16 @@ const body = hson.liveTree.queryBody().graft();
 
 Grafting parses the selected DOM subtree, replaces it with a managed
 projection, and returns the controlling LiveTree. The public LiveTree facade
-spells the method `queryDom`, not `queryDOM`.
+spells the method `queryDom`, not `queryDOM`. The selected Element itself is
+the managed source root.
 
 When an HTML source constructor receives an `Element`, it snapshots that
-element's `innerHTML`; it does not adopt the element itself. Untrusted input
-passes through its sanitizer, but syntactic HSON metadata candidates remain
-subject to the canonical metadata registry afterward. A valid supplied
-descendant QUID may survive as cold graph identity; malformed or unknown
-metadata rejects.
+element as the source root, including its attributes, metadata, and
+descendants. It does not reinterpret the input as child-only `innerHTML`.
+Untrusted input passes through its sanitizer, but syntactic HSON metadata
+candidates remain subject to the canonical metadata registry afterward.
+Valid supplied root and descendant QUIDs are preserved as cold graph identity;
+malformed or unknown metadata rejects.
 
 ### Detached creation
 
@@ -111,12 +113,18 @@ QUIDs connect an HSON node to its managed DOM and CSS state. They are internal
 live identity, serialized in managed HTML as `hson:quid` when needed for DOM
 lookup and stylesheet scoping.
 
-Identity is stable while a node remains in its live graph, but it is not a
-source-format preservation guarantee:
+Identity is stable through movement, detach, and reattachment, but it is not a
+security credential or a byte-for-byte source preservation guarantee:
 
-- supplied valid QUIDs remain cold until a graph becomes live, when existing
-  uniqueness and ownership rules are enforced atomically;
+- supplied valid QUIDs are preserved in cold canonical graphs; duplicate valid
+  values may coexist cold under the established Transform contract;
+- when a graph becomes live, active uniqueness and ownership are enforced
+  atomically without partial registry claims;
+- detach retains identity and reattachment keeps the same QUID;
 - `cloneBranch()` issues fresh QUIDs;
+- terminal destruction releases active QUID ownership;
+- `.noQuid()` filters output only and does not mutate the source graph, release
+  ownership, or change lifecycle state;
 - parse/serialize cycles may normalize source spelling and structure; and
 - ordinary transform APIs are graph conversions, not LiveTree identity
   persistence APIs.

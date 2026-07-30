@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { parseDocument } from "htmlparser2";
 import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
+import { UNSAFE_TRANSFORM_SOURCE } from "../src/api/transform/transform.browser.ts";
 import { hsonLiveMap } from "../src/api/livemap/livemap.facade.ts";
 import { hsonLiveTree } from "../src/api/livetree/livetree.facade.ts";
 import { make_branch_from_node } from "../src/api/livetree/creation/create-branch.ts";
@@ -697,6 +698,43 @@ check("browser HTML string and Element inputs preserve the supplied root and equ
     const reparsedArrayElement = hson.fromTrustedHtml(browser_source_element(arrayWire)).toNode();
     assert.equal(must_tag(reparsedArray, "_hson_ii").$_meta?.[HSON_META_INDEX], "0");
     assert.deepEqual(reparsedArrayElement, reparsedArray);
+  });
+});
+
+check("Transform queryDOM and queryBody remain intentional child-only snapshot helpers", () => {
+  with_browser_ingress_dom(() => {
+    const selected = browser_source_element(
+      `<section hson:quid="${Q4}" data-root="selected">`
+      + `<span hson:quid="${Q5}" data-child="kept">value</span>`
+      + `</section>`,
+    );
+    const body = browser_source_element(
+      `<body hson:quid="${Q4}"><article hson:quid="${Q6}">body</article></body>`,
+    );
+    const selectedBefore = selected.outerHTML;
+    const bodyBefore = body.outerHTML;
+    const currentDocument = globalThis.document as Document & {
+      body: Element;
+      querySelector(selector: string): Element | null;
+    };
+    currentDocument.body = body as HTMLElement;
+    currentDocument.querySelector = (selector: string): Element | null =>
+      selector === "#selected" ? selected : null;
+
+    const selectedSnapshot = UNSAFE_TRANSFORM_SOURCE.queryDOM("#selected").toNode();
+    assert.equal(nodes(selectedSnapshot).some((node) => node.$_tag === "section"), false);
+    assert.equal(read_hson_node_quid(must_tag(selectedSnapshot, "span")), Q5);
+    assert.equal(must_tag(selectedSnapshot, "span").$_attrs?.["data-child"], "kept");
+
+    const bodySnapshot = UNSAFE_TRANSFORM_SOURCE.queryBody().toNode();
+    assert.equal(nodes(bodySnapshot).some((node) => node.$_tag === "body"), false);
+    assert.equal(read_hson_node_quid(must_tag(bodySnapshot, "article")), Q6);
+
+    assert.equal(selected.outerHTML, selectedBefore);
+    assert.equal(body.outerHTML, bodyBefore);
+    assert.equal(get_node_by_quid(Q4), undefined);
+    assert.equal(get_node_by_quid(Q5), undefined);
+    assert.equal(get_node_by_quid(Q6), undefined);
   });
 });
 

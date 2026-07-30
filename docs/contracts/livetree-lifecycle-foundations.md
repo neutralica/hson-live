@@ -26,6 +26,12 @@ Public Patch 2 vocabulary:
 - deprecated `removeSelf()` aliases `remove()`; deprecated `removeChildren()`
   retains only its specialized legacy semantic-element filter.
 
+QUID identity follows those lifecycle boundaries. Valid supplied QUIDs remain
+cold during Transform parsing and are claimed only when a graph becomes
+actively owned. Detach and reattachment preserve the claim, cloning creates
+fresh identity, and terminal removal releases it. HSON `.noQuid()` is an output
+filter only; it does not mutate the graph or its active ownership.
+
 Patch 3 makes the lifecycle registry the canonical owner of continuing runtime
 resources created for a LiveTree QUID:
 

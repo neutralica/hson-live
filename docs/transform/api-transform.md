@@ -108,8 +108,8 @@ Parses external HTML through the safe HTML path.
 - Applies source-aware duplicate/reserved-name checks, sanitizes unsafe markup
   behavior with DOMPurify, then performs canonical node conversion.
 - Accepts a string or an existing `Element`.
-- If an `Element` is supplied, the current implementation snapshots its
-  `innerHTML`.
+- A supplied `Element` is the source root. The canonical graph includes that
+  element itself, its attributes and metadata, and its descendants.
 - Syntactic `hson:*` candidates remain observable after sanitization and are
   admitted or rejected by the same metadata registry used for trusted input.
 - A valid descendant `hson:quid` is preserved as graph identity. Malformed,
@@ -129,9 +129,17 @@ Parses trusted HTML through the unsafe/raw HTML path.
 
 - No sanitization is applied.
 - Accepts a string or an existing `Element`.
-- An `Element` input is also treated as an `innerHTML` snapshot, not as the
-  root element itself.
+- A supplied `Element` is the source root, not an `innerHTML` snapshot.
 - SVG markup is allowed on this path.
+
+String and Element inputs that represent the same element normalize to
+canonically equal graphs. An Element has already crossed a lossy DOM boundary:
+duplicate source attributes may have collapsed, HTML casing is normalized,
+namespace information is whatever the DOM exposes, and original quoting,
+whitespace, and lexical spelling cannot be recovered. Direct trusted Element
+parsing does not stringify and reparse the Element. The untrusted browser path
+may serialize the complete source root only to cross the DOMPurify security
+boundary before canonical parsing.
 
 For raw HTML strings, ordinary attribute names compare case-insensitively for
 duplicate detection. The last ordinary value wins, repeated `class`
@@ -386,8 +394,14 @@ hson.liveTree.create.div()
 The `from*` LiveTree methods return detached branches. The DOM query methods
 return a graft handle; calling `.graft()` parses the selected live DOM subtree,
 re-projects it as managed LiveTree DOM, and returns the controlling `LiveTree`.
+The selected Element itself is the graft root.
 
 Use `queryDom`, not `queryDOM`, on the public `hson.liveTree` facade.
+
+The lower-level Transform `queryDOM(selector)` and `queryBody()` methods are
+intentionally child/body snapshot operations: they parse the selected
+element's `innerHTML`. They are distinct from direct `fromHtml(Element)` and
+from LiveTree grafting.
 
 ---
 
