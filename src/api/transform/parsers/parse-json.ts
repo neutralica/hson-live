@@ -1,11 +1,11 @@
 // parse-json.ts
 
-import { is_Primitive, is_Object, is_string } from "../../../core/value-guards.js";
+import { is_Primitive, is_string } from "../../../core/value-guards.js";
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../../core/types.js";
-import { JsonObj, JsonValue, Primitive } from "../../../core/types.js";
+import { JsonValue, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
 import { make_string } from "../../../core/stringify.js";
@@ -36,7 +36,7 @@ import { assert_user_key_allowed } from "../utils/json-utils/key-prefix-guard.js
 function getTag(value: JsonValue): string {
     // 1) Collections first (so they aren't misclassified as "not string")
     if (Array.isArray(value)) return ARR_TAG;            // _hson_arr
-    if (is_Object(value)) return OBJ_TAG;              // _hson_obj
+    if (is_plain_record(value)) return OBJ_TAG;        // _hson_obj
 
     // 2) Scalars
     if (typeof value === "string") return STR_TAG;       // _hson_str
@@ -56,6 +56,93 @@ const JSON_ELEMENT_META_KEYS = new Set<string>([
 const FORBIDDEN_JSON_VSN = new Set([
     OBJ_TAG, ARR_TAG, II_TAG, STR_TAG, VAL_TAG,
 ] as string[]); // $_attrs is HTML-source only
+
+function is_plain_record(value: unknown): value is Record<string, unknown> {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
+/**
+ * Detach the complete parsed-value input before normalization can rewrite it.
+ *
+ * Shared acyclic references are copied by value rather than preserving caller
+ * identity. Active references are rejected so cycles fail at a deterministic
+ * JSON-ingress boundary instead of overflowing recursive conversion.
+ */
+function detach_json_input(input: unknown): JsonValue {
+    const active = new WeakMap<object, string>();
+
+    const visit = (value: unknown, path: string): unknown => {
+        if (value === undefined || value === null
+            || typeof value === "string"
+            || typeof value === "number"
+            || typeof value === "boolean") {
+            return value;
+        }
+
+        if (typeof value !== "object") {
+            _throw_transform_err(
+                `unsupported parsed JSON value at ${path}`,
+                "parse_json",
+                `received ${typeof value}`,
+            );
+        }
+
+        const origin = active.get(value);
+        if (origin !== undefined) {
+            _throw_transform_err(
+                `cycle detected in parsed JSON input at ${path}`,
+                "parse_json",
+                `reference returns to ${origin}`,
+            );
+        }
+
+        active.set(value, path);
+        if (Array.isArray(value)) {
+            const detached = value.map((item, index) => visit(item, `${path}[${index}]`));
+            active.delete(value);
+            return detached;
+        }
+        if (!is_plain_record(value)) {
+            active.delete(value);
+            _throw_transform_err(
+                `parsed JSON object at ${path} must be a plain object`,
+                "parse_json",
+            );
+        }
+
+        const detached: Record<string, unknown> = Object.create(null);
+        for (const key of Object.keys(value)) {
+            detached[key] = visit(value[key], `${path}.${key}`);
+        }
+        active.delete(value);
+        return detached;
+    };
+
+    const detached = visit(input, "$");
+    if (detached === undefined) {
+        _throw_transform_err("invalid value provided", "parse_json", "top-level undefined");
+    }
+    return detached as JsonValue;
+}
+
+function optional_json_record(
+    value: unknown,
+    field: typeof ATTRS_KEY | typeof META_KEY,
+    where: string,
+    allowLegacyEmptyArray: boolean,
+): Record<string, unknown> | undefined {
+    if (value === undefined) return undefined;
+    if (Array.isArray(value)) {
+        if (allowLegacyEmptyArray && value.length === 0) return undefined;
+        _throw_transform_err(`${field} must be a plain object when present`, "parse_json", where);
+    }
+    if (!is_plain_record(value)) {
+        _throw_transform_err(`${field} must be a plain object when present`, "parse_json", where);
+    }
+    return Object.keys(value).length === 0 ? undefined : { ...value };
+}
 
 /**
  * Return the keys of an object that do not start with `"_-"`.
@@ -244,22 +331,36 @@ export function nodeFromJson(
             _throw_transform_err("object expected for OBJ_TAG parent", "parse_json", make_string(srcJson));
         }
         const obj = srcJson as Record<string, unknown>;
-        // A) HARD-CODED ROOT: { _hson_root: <cluster-or-primitive> } (exclusive)
+        // A) HARD-CODED ROOT: { _hson_root: <cluster-or-primitive>, $_meta?: ... }
 
         if (Object.prototype.hasOwnProperty.call(obj, ROOT_TAG)) {
-            const siblings = Object.keys(obj).filter((key) => key !== ROOT_TAG);
+            const siblings = Object.keys(obj).filter((key) => key !== ROOT_TAG && key !== META_KEY);
             if (siblings.length > 0) {
                 _throw_transform_err(
-                    "'_hson_root' object must not have siblings",
+                    "'_hson_root' object may not have ordinary siblings",
                     "parse_json",
                     make_string(obj)
                 );
             }
+            const rootMeta = Object.prototype.hasOwnProperty.call(obj, META_KEY)
+                ? optional_json_record(
+                    obj[META_KEY],
+                    META_KEY,
+                    `at ${ROOT_TAG}`,
+                    false,
+                ) as HsonMeta | undefined
+                : undefined;
             // Parse the root payload
             const rootPayload = obj[ROOT_TAG] as JsonValue;
             if (rootPayload === undefined) {
                 // Empty _hson_root (allowed) → no children
-                return { node: CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] }) };
+                return {
+                    node: CREATE_NODE({
+                        $_tag: ROOT_TAG,
+                        $_meta: rootMeta,
+                        $_content: [],
+                    }),
+                };
             }
             const childTag = getTag(rootPayload);
             const child = nodeFromJson(rootPayload, childTag).node;
@@ -270,7 +371,13 @@ export function nodeFromJson(
                 ? CREATE_NODE({ $_tag: ELEM_TAG, $_content: [child] })
                 : child;
 
-            return { node: CREATE_NODE({ $_tag: ROOT_TAG, $_content: [clusterChild] }) };
+            return {
+                node: CREATE_NODE({
+                    $_tag: ROOT_TAG,
+                    $_meta: rootMeta,
+                    $_content: [clusterChild],
+                }),
+            };
         }
 
         // B) ELEMENT HANDLING { _hson_elem: [...] } 
@@ -305,28 +412,36 @@ export function nodeFromJson(
                     const tagName = tagKeys[0];
 
                     // hoist attributes/meta if present
-                    const maybeAttrs = elObj[ATTRS_KEY];
-                    const maybeMeta = elObj[META_KEY];
-                    const hoistedAttrs = (maybeAttrs && typeof maybeAttrs === "object" && !Array.isArray(maybeAttrs))
-                        ? (maybeAttrs as HsonAttrs)
+                    const hoistedAttrs = Object.prototype.hasOwnProperty.call(elObj, ATTRS_KEY)
+                        ? optional_json_record(
+                            elObj[ATTRS_KEY],
+                            ATTRS_KEY,
+                            `at "_hson_elem"[${ix}]`,
+                            true,
+                        ) as HsonAttrs | undefined
                         : undefined;
-                    const hoistedMeta = (maybeMeta && typeof maybeMeta === "object" && !Array.isArray(maybeMeta))
-                        ? (maybeMeta as HsonMeta)
+                    const hoistedMeta = Object.prototype.hasOwnProperty.call(elObj, META_KEY)
+                        ? optional_json_record(
+                            elObj[META_KEY],
+                            META_KEY,
+                            `at "_hson_elem"[${ix}]`,
+                            true,
+                        ) as HsonMeta | undefined
                         : undefined;
 
                     if (hoistedAttrs && Object.prototype.hasOwnProperty.call(hoistedAttrs, "style")) {
-                        const sv = (hoistedAttrs as any).style;
+                        const sv = hoistedAttrs.style;
 
                         if (sv && typeof sv === "object" && !Array.isArray(sv)) {
                             // JSON gave a style object ⇒ canonicalize 
                             const css = serialize_style(sv as Record<string, string>);      // kebab/trim/sort
-                            (hoistedAttrs as any).style = parse_style_string(css);        // lower→camel done here
+                            hoistedAttrs.style = parse_style_string(css);        // lower→camel done here
                         } else if (typeof sv === "string") {
                             // JSON gave style as text ⇒ parse to canonical object
-                            (hoistedAttrs as any).style = parse_style_string(sv);
+                            hoistedAttrs.style = parse_style_string(sv);
                         } else {
                             // null/undefined ⇒ drop
-                            delete (hoistedAttrs as any).style;
+                            delete hoistedAttrs.style;
                         }
                     }
 
@@ -424,17 +539,19 @@ export function nodeFromJson(
  * Input handling:
  * - If `input` is a string, it is parsed with `JSON.parse`. Any parse
  *   error is wrapped and rethrown via `_throw_transform_err`.
- * - If `input` is already a `JsonValue`, it is used as-is.
+ * - The parsed or supplied value is detached recursively before conversion.
+ *   Caller records and arrays are never normalized in place or retained by
+ *   the canonical graph.
+ * - Cyclic and non-JSON object values reject deterministically.
  *
- * Explicit `_hson_root` unwrapping:
- * - If the top-level value is an object of the form:
- *     `{ "_hson_root": <payload>, "$_meta"?: { ... } }`
- *   then:
- *   - `jsonToProcess` is set to `<payload>`.
- *   - `$_meta` is ignored. Structural roots carry no metadata.
+ * Explicit `_hson_root` handling:
+ * - A top-level `{ "_hson_root": <payload>, "$_meta"?: ... }` is constructed
+ *   as a root node rather than unwrapped.
+ * - Empty `$_meta` is normalized away; populated or malformed root metadata
+ *   reaches canonical validation and rejects.
  *
  * Conversion:
- * - Delegates to `nodeFromJson(jsonToProcess, getTag(jsonToProcess))`
+ * - Delegates to `nodeFromJson(parsed, getTag(parsed))`
  *   to build the main HSON subtree.
  * - Wraps the resulting node in a `_hson_root` wrapper:
  *   - `$_tag: ROOT_TAG`
@@ -450,31 +567,20 @@ export function nodeFromJson(
  * @see assert_invariants
  */
 export function parse_json(input: string | JsonValue): HsonNode {
-    let parsed: JsonValue;
+    let source: unknown;
     try {
-        parsed = typeof input === "string" ? JSON.parse(input) : input;
+        source = typeof input === "string" ? JSON.parse(input) : input;
     } catch (e) {
         _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
     }
-
-    // Unwrap the explicit root object form. Structural roots carry no metadata.
-    let jsonToProcess: JsonValue = parsed;
-    if (is_Object(parsed)) {
-        const obj = parsed as JsonObj;
-        const keys = Object.keys(obj).filter(k => k !== "$_meta");
-        if (keys.length === 1 && keys[0] === ROOT_TAG) {
-            jsonToProcess = obj[ROOT_TAG] as JsonValue;
-        }
-    }
-
-
-    // ------------------------------------------------------------------------------
-
-    const { node } = nodeFromJson(jsonToProcess, getTag(jsonToProcess));
-    const root = CREATE_NODE({
-        $_tag: ROOT_TAG,
-        $_content: [node],
-    });
+    const parsed = detach_json_input(source);
+    const { node } = nodeFromJson(parsed, getTag(parsed));
+    const root = node.$_tag === ROOT_TAG
+        ? node
+        : CREATE_NODE({
+            $_tag: ROOT_TAG,
+            $_content: [node],
+        });
     const normalized = normalize_hson_graph(root, "parse_json");
     assert_invariants(normalized, "parse_json");
     return normalized;

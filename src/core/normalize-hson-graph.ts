@@ -4,6 +4,7 @@ import {
   ELEM_TAG,
   EVERY_VSN,
   OBJ_TAG,
+  ROOT_TAG,
   VAL_TAG,
 } from "./constants.js";
 import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
@@ -75,6 +76,9 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
     const result: HsonNode = { $_tag: tag, $_content: [] };
 
     const hasMeta = Object.hasOwn(value, "$_meta");
+    if (tag === ROOT_TAG && hasMeta && Array.isArray(value.$_meta)) {
+      return fail(where, here, "$_meta must be a plain object when present");
+    }
     const meta = hasMeta
       ? optional_record(value.$_meta, "$_meta", where, here)
       : undefined;

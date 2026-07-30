@@ -57,6 +57,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
+      id: "transform.json-ingress",
+      subject: "Transform",
+      displayName: "Detached JSON ingress and root metadata",
+      packageScript: "test:json-ingress",
+      repositoryModule: "tests/json-ingress.acceptance.mts",
+      runtime: "node",
+      executableChecks: 14,
+      collections: ["json", "ingress", "canonical-graph", "externally-discoverable"],
+    }),
+    launcher({
       id: "core.hson-node-quid",
       subject: "Transform",
       displayName: "Canonical HsonNode QUID primitives",

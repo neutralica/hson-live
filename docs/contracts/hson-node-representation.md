@@ -70,6 +70,12 @@ HSON numeric values. Shared acyclic references are allowed; HSON serialization
 emits each occurrence by value and does not preserve JavaScript reference
 identity.
 
+The legacy empty-array optional-container spelling does not apply to
+`_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty
+plain object. Populated or malformed root metadata rejects and is never ignored
+or filtered. The empty-root runtime carrier remains a separate content-shape
+exception and does not permit root metadata.
+
 Structural VSN metadata is allowlisted rather than being a general user-data
 channel. `_hson_ii` must carry canonical string ordering metadata at `index`;
 other structural VSN metadata is invalid. Wrapper-bearing admission accepts

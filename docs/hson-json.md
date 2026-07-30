@@ -7,6 +7,10 @@ Updated: 2026-07-13
 This section describes how JSON values map to `HsonNode` and back. JSON input
 accepts either a JSON string or an already parsed `JsonValue`.
 
+Parsed values are detached recursively before normalization. JSON ingestion
+does not mutate caller-owned records or arrays and the resulting canonical
+graph does not retain mutable aliases into the supplied value.
+
 ---
 
 ## Root and cluster model
@@ -21,6 +25,11 @@ cluster:
 JSON property names become ordinary `$_tag` values. The `_hson_` prefix is
 reserved for structural keys and is rejected in ordinary user JSON, apart from
 the parser's explicit structural `_hson_elem` interchange form.
+
+The explicit `_hson_root` interchange form may omit `$_meta` or use a neutral
+empty optional record. Populated or malformed root metadata is invalid and
+rejects rather than being ignored. The empty `_hson_root` runtime carrier is a
+separate exception and remains outside direct HSON-text serialization.
 
 ---
 

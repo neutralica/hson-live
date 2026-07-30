@@ -81,6 +81,7 @@
     "test:hson-node-quid-egress": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid-egress.acceptance.mts",
     "test:diagnostics-inventory": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/diagnostics-inventory.acceptance.mts",
     "test:hson-serializer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-serializer.acceptance.mts",
+    "test:json-ingress": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/json-ingress.acceptance.mts",
     "test:hson-array-index": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-array-index.acceptance.mts",
     "test:hson-attribute-transport": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-attribute-transport.acceptance.mts",
     "test:canonical-hson-equality": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-hson-equality.acceptance.mts",

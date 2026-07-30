@@ -150,6 +150,12 @@ Parses JSON data into HSON nodes.
 
 - Accepts a JSON string or an already parsed JSON value.
 - Does not sanitize.
+- Detaches caller-owned records and arrays before normalization. Parsing never
+  mutates the supplied value or retains mutable aliases into canonical graph
+  state.
+- Metadata on an explicit `_hson_root` is invalid and rejects; it is not
+  ignored or filtered. An empty runtime `_hson_root` remains a separate
+  runtime-carrier exception outside direct HSON-text serialization.
 - Preserves JSON values. Object keys are emitted in sorted canonical order by
   the JSON serializer; source key order is not retained in serialized output.
 
