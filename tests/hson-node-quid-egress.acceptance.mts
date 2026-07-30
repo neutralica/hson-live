@@ -6,9 +6,10 @@ import { LiveTree } from "../src/api/livetree/livetree.ts";
 import {
   destroy_subtree_quids,
   get_node_by_quid,
+  HSON_QUID_MARKUP_NAME,
 } from "../src/api/livetree/quid/data-quid.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
-import { _DATA_QUID } from "../src/core/constants.ts";
+import { HSON_META_QUID } from "../src/core/constants.ts";
 import { read_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
@@ -29,7 +30,7 @@ function element(
 ): HsonNode {
   return quid === undefined
     ? { $_tag: tag, $_content: content }
-    : { $_tag: tag, $_content: content, $_meta: { [_DATA_QUID]: quid } };
+    : { $_tag: tag, $_content: content, $_meta: { [HSON_META_QUID]: quid } };
 }
 
 function fragment(content: HsonNode["$_content"]): HsonNode {
@@ -72,14 +73,14 @@ check("HSON egress preserves canonical identity and rejects malformed spelling",
       () => hson.fromNode(malformed).toHson().serialize(),
       /Invalid persisted QUID/,
     );
-    assert.equal(malformed.$_meta?.[_DATA_QUID], invalid);
+    assert.equal(malformed.$_meta?.[HSON_META_QUID], invalid);
   }
 });
 
 check("HSON egress rejects QUID-bearing VSNs before emission", () => {
   const invalid = {
     $_tag: "_hson_elem",
-    $_meta: { [_DATA_QUID]: Q1 },
+    $_meta: { [HSON_META_QUID]: Q1 },
     $_content: [element("p")],
   } satisfies HsonNode;
   const before = structuredClone(invalid);
@@ -100,13 +101,24 @@ check("cold HSON egress preserves duplicate canonical values without mutation", 
 
 check("HTML egress emits protected QUID metadata exactly once", () => {
   const graph = element("button", [], Q1);
-  graph.$_attrs = { id: "save", "data-kind": "action" };
+  graph.$_attrs = {
+    id: "save",
+    "data-kind": "action",
+    "data-_quid": "application",
+    "data-_index": "ordinary",
+  };
   const wire = hson.fromNode(graph).toHtml().serialize();
   assert.equal(
     wire,
-    `<button data-_quid="${Q1}" data-kind="action" id="save"></button>`,
+    `<button data-_index="ordinary" data-_quid="application" data-kind="action" hson:quid="${Q1}" id="save"></button>`,
   );
-  assert.equal(occurrences(wire, "data-_quid="), 1);
+  assert.equal(occurrences(wire, "hson:quid="), 1);
+  assert.doesNotMatch(wire, /_hson_meta_attr_v2_/);
+
+  const arrayWire = hson.fromJson([{}]).toHtml().serialize();
+  assert.match(arrayWire, /hson:index="0"/);
+  assert.doesNotMatch(arrayWire, /data-_index/);
+  assert.doesNotMatch(arrayWire, /_hson_meta_attr_v2_/);
 });
 
 check("HTML egress rejects malformed and VSN-hosted identity", () => {
@@ -116,7 +128,7 @@ check("HTML egress rejects malformed and VSN-hosted identity", () => {
   );
   const invalid = {
     $_tag: "_hson_future",
-    $_meta: { [_DATA_QUID]: Q1 },
+    $_meta: { [HSON_META_QUID]: Q1 },
     $_content: [],
   } satisfies HsonNode;
   assert.throws(
@@ -128,7 +140,7 @@ check("HTML egress rejects malformed and VSN-hosted identity", () => {
 check("cold HTML fragments serialize duplicate valid identity faithfully", () => {
   const graph = fragment([element("div", [], Q1), element("span", [], Q1)]);
   const wire = hson.fromNode(graph).toHtml().serialize();
-  assert.equal(occurrences(wire, `data-_quid="${Q1}"`), 2);
+  assert.equal(occurrences(wire, `hson:quid="${Q1}"`), 2);
 });
 
 check("SVG and XML-like egress preserve namespace and unrelated attributes", () => {
@@ -136,17 +148,17 @@ check("SVG and XML-like egress preserve namespace and unrelated attributes", () 
   svg.$_attrs = { viewBox: "0 0 10 10", "aria-label": "shape" };
   const before = structuredClone(svg);
   const wire = hson.fromNode(svg).toHtml().serialize();
-  assert.match(wire, new RegExp(`^<svg [^>]*data-_quid="${Q1}"`));
+  assert.match(wire, new RegExp(`^<svg [^>]*hson:quid="${Q1}"`));
   assert.match(wire, /xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   assert.match(wire, /viewBox="0 0 10 10"/);
-  assert.match(wire, new RegExp(`<g data-_quid="${Q2}"></g>`));
+  assert.match(wire, new RegExp(`<g hson:quid="${Q2}"></g>`));
   assert.deepEqual(svg, before);
 
   const xml = element("catalog", [element("entry", [], Q2)], Q1);
   xml.$_attrs = { "data-kind": "xml" };
   assert.equal(
     hson.fromNode(xml).toHtml().serialize(),
-    `<catalog data-_quid="${Q1}" data-kind="xml"><entry data-_quid="${Q2}"></entry></catalog>`,
+    `<catalog data-kind="xml" hson:quid="${Q1}"><entry hson:quid="${Q2}"></entry></catalog>`,
   );
 });
 
@@ -156,7 +168,7 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
   root.$_attrs = { "data-user": "keep" };
   const tree = new LiveTree(root);
   const projection = new AttributeProjection();
-  projection.setAttribute(_DATA_QUID, Q1);
+  projection.setAttribute(HSON_QUID_MARKUP_NAME, Q1);
   link_node_to_el(root, projection as unknown as Element);
   const before = structuredClone(root);
   try {
@@ -166,7 +178,7 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
     assert.doesNotMatch(filtered, /@[0-9a-z]{16}/);
     assert.match(filtered, /data-user="keep"/);
     assert.deepEqual(root, before);
-    assert.equal(projection.getAttribute(_DATA_QUID), Q1);
+    assert.equal(projection.getAttribute(HSON_QUID_MARKUP_NAME), Q1);
     assert.equal(get_node_by_quid(Q1), root);
     assert.equal(get_node_by_quid(Q2), child);
     assert.equal(hson.fromNode(root).toHson().noBreak().serialize(), normal);
@@ -199,19 +211,19 @@ check("LiveTree graph-backed markup validates exactly the emitted scope", () => 
   try {
     assert.equal(
       tree.content.markup.innerHTML,
-      `<em data-_quid="${Q2}"></em>`,
+      `<em hson:quid="${Q2}"></em>`,
     );
     assert.equal(
       tree.content.markup.outerHTML,
-      `<section data-_quid="${Q1}"><em data-_quid="${Q2}"></em></section>`,
+      `<section hson:quid="${Q1}"><em hson:quid="${Q2}"></em></section>`,
     );
-    assert.equal(unrelated.$_meta?.[_DATA_QUID], "not-canonical");
+    assert.equal(unrelated.$_meta?.[HSON_META_QUID], "not-canonical");
 
-    child.$_meta = { [_DATA_QUID]: "not-canonical" };
+    child.$_meta = { [HSON_META_QUID]: "not-canonical" };
     assert.throws(() => tree.content.markup.innerHTML, /Invalid persisted QUID/);
     assert.throws(() => tree.content.markup.outerHTML, /Invalid persisted QUID/);
   } finally {
-    child.$_meta = { [_DATA_QUID]: Q2 };
+    child.$_meta = { [HSON_META_QUID]: Q2 };
     destroy_subtree_quids(root);
   }
 });
@@ -225,15 +237,15 @@ check("fragment shapes remain stable across one-root, multi-root, text and mixed
     element("strong", [{ $_tag: "_hson_str", $_content: ["middle"] }], Q1),
     { $_tag: "_hson_str", $_content: ["after"] },
   ]);
-  assert.equal(hson.fromNode(one).toHtml().serialize(), `<p data-_quid="${Q1}"></p>`);
+  assert.equal(hson.fromNode(one).toHtml().serialize(), `<p hson:quid="${Q1}"></p>`);
   assert.equal(
     hson.fromNode(many).toHtml().serialize(),
-    `<p data-_quid="${Q1}"></p>\n<hr data-_quid="${Q2}"></hr>`,
+    `<p hson:quid="${Q1}"></p>\n<hr hson:quid="${Q2}"></hr>`,
   );
   assert.equal(hson.fromNode(text).toHtml().serialize(), "text");
   assert.equal(
     hson.fromNode(mixed).toHtml().serialize(),
-    `before\n<strong data-_quid="${Q1}">middle</strong>\nafter`,
+    `before\n<strong hson:quid="${Q1}">middle</strong>\nafter`,
   );
 });
 
@@ -241,7 +253,7 @@ check("JSON projection validates identity after canonical empty-element normaliz
   const canonical = element("record", [], Q1);
   assert.deepEqual(hson.fromNode(canonical).toJson().value(), {
     record: { _hson_elem: [] },
-    $_meta: { [_DATA_QUID]: Q1 },
+    $_meta: { [HSON_META_QUID]: Q1 },
   });
   assert.deepEqual(hson.fromJson({ a: 1, nested: [true, null] }).toJson().value(), {
     a: 1,

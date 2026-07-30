@@ -85,7 +85,7 @@ export function prepare_document_install(
   if (capture.kind !== "hson-document") {
     throw new LiveMapDocumentInstallError(`unsupported capture kind ${JSON.stringify(capture.kind)}`);
   }
-  if (capture.version !== 1) {
+  if (capture.version !== 2) {
     throw new LiveMapDocumentInstallError(`unsupported capture version ${String(capture.version)}`);
   }
   if (capture.mode !== "element" && capture.mode !== "fragment") {

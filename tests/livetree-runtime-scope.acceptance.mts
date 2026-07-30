@@ -58,7 +58,7 @@ function projectInto(
 }
 
 function assertCleanProjection(root: StyleNode, authoredAttrs: readonly string[] = []): void {
-  const allowed = new Set(["data-_quid", ...authoredAttrs]);
+  const allowed = new Set(["hson:quid", ...authoredAttrs]);
   for (const element of [root, ...root.walk()].filter((item) => !item.tagName.startsWith("#"))) {
     assert.equal(element.tagName.startsWith("hson-_runtime"), false);
     for (const name of element.getAttributeNames()) {
@@ -179,9 +179,9 @@ class StyleDocument {
   createDocumentFragment(): StyleNode { return new StyleNode("#fragment", this); }
   querySelector<T extends StyleNode>(selector: string): T | null {
     if (selector === "hson-_style#css-manager") return (this.host as T | undefined) ?? null;
-    const quid = selector.match(/^\[data-_quid="([^"]+)"\]$/)?.[1];
+    const quid = selector.match(/^\[hson\\:quid="([^"]+)"\]$/)?.[1];
     if (quid !== undefined) {
-      const found = this.elements().find((element) => element.getAttribute("data-_quid") === quid);
+      const found = this.elements().find((element) => element.getAttribute("hson:quid") === quid);
       return (found as T | undefined) ?? null;
     }
     return null;
@@ -316,8 +316,8 @@ check("one runtime supports many LiveTrees and ordinary QUID selectors in one Do
   rightTree.css.set.color("blue");
   const texts = document.styleTexts();
   assert.equal(texts.length, 1);
-  assert.match(texts[0] ?? "", new RegExp(`\\[data-_quid="${leftTree.quid}"\\]`));
-  assert.match(texts[0] ?? "", new RegExp(`\\[data-_quid="${rightTree.quid}"\\]`));
+  assert.match(texts[0] ?? "", new RegExp(`\\[hson\\\\:quid="${leftTree.quid}"\\]`));
+  assert.match(texts[0] ?? "", new RegExp(`\\[hson\\\\:quid="${rightTree.quid}"\\]`));
   assertCleanProjection(leftElement);
   assertCleanProjection(rightElement);
   leftTree.remove();
@@ -512,11 +512,11 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   const restored = runtimeTree(runtime, node("section", restoredQuid));
   const restoredElement = projectInto(runtime, restored, document);
   assertCleanProjection(restoredElement);
-  assert.equal(originalElement.getAttribute("data-_quid"), null);
+  assert.equal(originalElement.getAttribute("hson:quid"), null);
   restored.remove();
 
   root.remove();
-  assert.equal(rootElement.getAttribute("data-_quid"), null);
+  assert.equal(rootElement.getAttribute("hson:quid"), null);
 });
 
 check("LiveProject document and keyed reconciliation preserve clean projection markup", () => {
@@ -561,8 +561,8 @@ check("LiveProject document and keyed reconciliation preserve clean projection m
 check("LiveProject projects equal persisted QUIDs in separate runtimes", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
-  const leftMap = elementMap(`<main data-_quid="${SAME_QUID}"/>`);
-  const rightMap = elementMap(`<main data-_quid="${SAME_QUID}"/>`);
+  const leftMap = elementMap(`<main @${SAME_QUID}/>`);
+  const rightMap = elementMap(`<main @${SAME_QUID}/>`);
   const leftBinding = _bind_document_livetree_for_runtime_test(left, leftMap);
   const rightBinding = _bind_document_livetree_for_runtime_test(right, rightMap);
   assert.equal(leftBinding.tree.quid, SAME_QUID);
@@ -577,8 +577,8 @@ check("LiveProject projects equal persisted QUIDs in separate runtimes", () => {
 
 check("LiveProject same-runtime duplicate projection still rejects", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const left = elementMap(`<main data-_quid="${SAME_QUID}"/>`);
-  const right = elementMap(`<main data-_quid="${SAME_QUID}"/>`);
+  const left = elementMap(`<main @${SAME_QUID}/>`);
+  const right = elementMap(`<main @${SAME_QUID}/>`);
   const binding = _bind_document_livetree_for_runtime_test(runtime, left);
   assert.throws(
     () => _bind_document_livetree_for_runtime_test(runtime, right),
@@ -604,7 +604,7 @@ check("binding disposal and later tree destruction are separate and idempotent",
 
 check("borrowed tree destruction stops its bridge and later binding disposal is safe", () => {
   const runtime = _create_livetree_runtime_test_handle();
-  const map = elementMap(`<main data-_quid="${SAME_QUID}" <span/>/>`);
+  const map = elementMap(`<main @${SAME_QUID} <span/>/>`);
   const binding = _bind_document_livetree_for_runtime_test(runtime, map);
   assert.equal(binding.tree.remove(), 1);
   assert.equal(binding.status, "disposed");
@@ -614,9 +614,9 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
 });
 
 check("ordinary public LiveTree calls retain one compatibility runtime", () => {
-  const first = hson.liveTree.fromHson(`<main data-_quid="0000000000000rt2"/>`);
+  const first = hson.liveTree.fromHson(`<main @0000000000000rt2/>`);
   assert.throws(
-    () => hson.liveTree.fromHson(`<aside data-_quid="0000000000000rt2"/>`),
+    () => hson.liveTree.fromHson(`<aside @0000000000000rt2/>`),
     /Duplicate QUID/,
   );
   first.remove();

@@ -92,7 +92,8 @@ graph. Only `debug.node(path)` exposes intentionally live graph access.
 Document roots are now classified separately as `element` or `fragment` and do
 not expose the projected data surface. Their `element` or `fragment` capability
 returns detached canonical nodes/content, and their revision-coupled capture is
-discriminated by `kind: "hson-document"` and `version: 1`. Document maps now
+discriminated by `kind: "hson-document"` and `version: 2`. Version-1 captures
+reject explicitly as unsupported. Document maps now
 support same-mode `install(capture)` plus three local incremental canonical
 operations. The capability syntax follows LiveTree/LiveMap namespaces:
 `element.attrs.set(...)`, `element.attrs.drop(...)`, and
@@ -267,7 +268,8 @@ Incremental document operations use a shared discriminated path-or-QUID target.
 Numeric document paths traverse physical canonical `$_content`; they are not
 projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only
 through the current map's sparse index. Attribute mutation is restricted to
-ordinary elements and cannot edit `data-_` metadata. Content replacement swaps
+ordinary elements and cannot edit `hson:*` metadata. Every `data-*` name is an
+ordinary application attribute. Content replacement swaps
 one existing slot, clones caller input, validates the complete candidate graph
 and sparse identity, and atomically replaces owned root/index state. Its commit
 operations are `set-attr`, `remove-attr`, and `replace-content`, never
@@ -457,7 +459,7 @@ The system distinguishes:
   and
 - a host/session identifier, which belongs to replication lifecycle.
 
-Document-map persisted `data-_quid` identity is sparse and indexed within the
+Document-map persisted `$_meta.quid` identity is sparse and indexed within the
 document map. Existing valid QUIDs are preserved, ordinary elements without
 QUIDs remain positional and unquidded, and duplicate present QUIDs are rejected.
 Construction, reads, capture, and installation never mint identity.

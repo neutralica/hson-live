@@ -33,8 +33,9 @@ containers are omitted by the node factory; empty content is `[]`.
 - `$_content` is physically ordered. Except for primitive VSN payloads, its
   entries must be nodes rather than raw primitives.
 - `$_attrs` stores HTML-derived attributes and serializable inline style.
-- `$_meta` stores internal `data-_*` metadata such as array indexes and QUIDs.
-  Invariant checking rejects metadata keys outside that prefix.
+- `$_meta` stores exact registered metadata: optional `quid` on ordinary
+  elements and required string `index` on `_hson_ii`. Invariant checking
+  rejects every other key.
 
 Cycles are invalid. The representation is structurally a rooted ordered tree,
 even when application-level handles refer to its nodes from elsewhere.
@@ -77,10 +78,10 @@ Each `_hson_ii`:
 - appears directly under `_hson_arr`;
 - has exactly one node child;
 - has no attributes; and
-- carries string metadata at `data-_index`.
+- carries string metadata at `index`.
 
 Array serialization follows the physical order of `_hson_ii` nodes in
-`$_content`. `data-_index` is required and validated, but changing only that
+`$_content`. `index` is required and validated, but changing only that
 metadata does not reorder the emitted array.
 
 ### `_hson_str` and `_hson_val`
@@ -118,10 +119,10 @@ canonical HSON serialization quotes every non-flag ordinary value after
 their separate existing CSS-string normalization behavior.
 
 Metadata is structural support, not semantic JSON/HTML content. QUID identity
-is stored as `$_meta["data-_quid"]`; array index metadata uses
-`$_meta["data-_index"]`.
+is stored as `$_meta["quid"]`; array index metadata uses
+`$_meta["index"]`.
 
-HSON `noQuid` output filters only persisted `data-_quid`. Array indexes are
+HSON `noQuid` output filters only persisted `quid`. Array indexes are
 implicit in textual item order and rebuilt during parsing. Metadata attached
 directly to melted structural VSN nodes is not represented on the current HSON
 wire; this is a pre-existing limitation rather than a general metadata filter.
@@ -149,7 +150,7 @@ A QUID is optional live identity used by LiveTree for DOM lookup, managed CSS,
 and handle continuity. It is assigned lazily where live behavior needs it.
 QUIDs are not a universal transform round-trip guarantee:
 
-- plain transform `Element` ingestion strips descendant `data-_quid` values;
+- plain transform `Element` ingestion strips descendant `hson:quid` values;
   the current LiveTree `Element` constructor does not apply that explicit step;
 - cloned LiveTree branches receive fresh QUIDs; and
 - transform/canonicalization operations may rebuild or normalize graphs.
@@ -165,7 +166,7 @@ Current invariant validation enforces, among other rules:
 
 - valid VSN placement and payload cardinality;
 - no attributes on VSNs;
-- only `data-_*` metadata keys;
+- only the exact registered metadata keys on their allowed node kinds;
 - one cluster child under `_hson_root`;
 - unique ordinary property tags under `_hson_obj`;
 - `_hson_ii`-only children under `_hson_arr`; and

@@ -52,9 +52,12 @@ export const $HSON_FRAME = {
 } as const;
 
 export const _HSON_ = "_hson_";
-export const _META_DATA_PREFIX = "data-_";
-export const _DATA_INDEX = "data-_index";
-export const _DATA_QUID = "data-_quid";
+export const HSON_META_MARKUP_PREFIX = "hson:" as const;
+export const HSON_META_INDEX = "index" as const;
+export const HSON_META_QUID = "quid" as const;
 
-export const _TRANSIT_PREFIX = "data--";
+/** Private XML-only spelling used while literal `hson:*` names cross DOMParser. */
+export const HSON_META_TRANSIT_PREFIX = "_hson_meta_attr_v2_" as const;
+
+export const _TRANSIT_PREFIX = "_hson_attr_transit_v1_";
 export const _TRANSIT_ATTRS = `${_TRANSIT_PREFIX}attrmap`;

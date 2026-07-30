@@ -25,7 +25,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function element(source = `<main data-_quid="0000000000001001"/>`) {
+function element(source = `<main @0000000000001001/>`) {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error("expected element map");
   return map;
@@ -265,7 +265,7 @@ await check("checkpoint failure preserves the prior durable chain and host healt
 await check("persistent store unload and checkpoint-plus-tail reload preserve exact authority", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
-  const map = element(`<main data-_quid="0000000000001010"/>`);
+  const map = element(`<main @0000000000001010/>`);
   const created = await store.create("persistent-reload", { map, authority: "exclusive" });
   assert.equal(created.ok, true);
   const host = created.value;
@@ -277,7 +277,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
     style: { width: { value: 2, unit: "px" } },
   }));
   await host.checkpoint();
-  const inserted = element(`<section data-_quid="0000000000001011" style="display:block"/>`).element.node();
+  const inserted = element(`<section @0000000000001011 style="display:block"/>`).element.node();
   await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
   const persistedTail = adapter.state("persistent-reload").commits[0];
   assert.equal(JSON.stringify(persistedTail).includes("$_tag"), false);
@@ -350,15 +350,15 @@ await check("restored authority serves legacy HSON modern view-state and replay 
   const store = create_livehost_persistent_store(adapter);
   const created = await store.create("recovery-after-load", { map: element(), authority: "exclusive" });
   const host = created.value;
-  await host.mutate((draft) => draft.document.attrs.set(root, "one", 1));
+  await host.mutate((draft) => draft.document.attrs.set(root, "one", "1"));
   await host.checkpoint();
-  await host.mutate((draft) => draft.document.attrs.set(root, "two", 2));
+  await host.mutate((draft) => draft.document.attrs.set(root, "two", "2"));
   await store.unload("recovery-after-load");
   const loaded = (await store.load("recovery-after-load")).value;
 
   for (const [id, capabilities] of [
     ["legacy", undefined],
-    ["modern", { hson: true, viewStateVersions: [1] }],
+    ["modern", { hson: true, viewStateVersions: [2] }],
   ]) {
     const pair = socket_pair();
     loaded.connect(pair.server);
@@ -370,7 +370,7 @@ await check("restored authority serves legacy HSON modern view-state and replay 
     }));
     const snapshot = pair.serverSent.find((message) => message.type === "recovery-snapshot")?.snapshot;
     if (capabilities === undefined) assert.equal(typeof snapshot.hson, "string");
-    else assert.deepEqual({ format: snapshot.format, formatVersion: snapshot.formatVersion }, { format: "view-state", formatVersion: 1 });
+    else assert.deepEqual({ format: snapshot.format, formatVersion: snapshot.formatVersion }, { format: "view-state", formatVersion: 2 });
   }
 
   const replayPair = socket_pair();
@@ -381,7 +381,7 @@ await check("restored authority serves legacy HSON modern view-state and replay 
     logicalMapId: loaded.stream.logicalMapId,
     incarnationId: loaded.stream.incarnationId,
     lastAppliedRev: 1,
-    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
   }));
   assert.equal(replayPair.serverSent.find((message) => message.type === "recovery-plan")?.outcome, "replay");
   assert.deepEqual(replayPair.serverSent.filter((message) => message.type === "recovery-commit").map((message) => message.commit.rev), [2]);
@@ -459,7 +459,7 @@ await check("corrupt persisted envelopes and tails reject without partial regist
     (state) => { state.checkpoint.incarnationId = ""; },
     (state) => { state.checkpoint.mapKind = "projected-data"; },
     (state) => { state.checkpoint.snapshot.format = "unknown"; },
-    (state) => { state.checkpoint.snapshot.formatVersion = 2; },
+    (state) => { state.checkpoint.snapshot.formatVersion = 1; },
     (state) => { state.checkpoint.snapshot.payload = "not valid view state"; },
     (state) => { state.checkpoint.rev = 1; },
     (state) => { state.checkpoint.mode = "fragment"; },

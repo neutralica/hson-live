@@ -287,7 +287,7 @@ export type DocumentLiveMapCapture<
   TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
 > = Readonly<{
   kind: "hson-document";
-  version: 1;
+  version: 2;
   mode: TMode;
   rev: number;
   root: HsonNode;

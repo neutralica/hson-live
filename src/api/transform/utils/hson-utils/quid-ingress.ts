@@ -12,10 +12,10 @@ function throw_quid_ingress_error(
   boundary: string,
 ): never {
   const description = cause.code === "MALFORMED_QUID"
-    ? "data-_quid must be a canonical persisted QUID"
+    ? "quid must be a canonical persisted QUID"
     : cause.code === "INELIGIBLE_QUID"
       ? "persisted QUID on an ineligible HSON structural node"
-      : `duplicate data-_quid "${String(cause.value)}" (Duplicate QUID claim)`;
+      : `duplicate quid "${String(cause.value)}" (Duplicate QUID claim)`;
   _throw_transform_err(
     `${description}: ${cause.message}`,
     boundary,

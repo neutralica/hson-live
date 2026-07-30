@@ -1,4 +1,4 @@
-import { ELEM_TAG, ROOT_TAG, _DATA_QUID } from "../../core/constants.js";
+import { ELEM_TAG, ROOT_TAG, HSON_META_QUID } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import type { DocumentLiveMapMode } from "../../types/livemap.types.js";
@@ -52,7 +52,7 @@ export function plan_document_root_convergence(
       "Compatible root convergence requires the same ordinary-element tag.",
     );
   }
-  const nextCanonicalRootQuid = canonicalElement.$_meta?.[_DATA_QUID];
+  const nextCanonicalRootQuid = canonicalElement.$_meta?.[HSON_META_QUID];
   if (priorCanonicalRootQuid !== nextCanonicalRootQuid) {
     throw new DocumentLiveTreeBindingError(
       DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE,

@@ -53,20 +53,20 @@ but need not produce a node graph with the original property order.
 ## Arrays
 
 An array maps to `_hson_arr`. Every item is wrapped by `_hson_ii`, which holds
-exactly one node and string metadata at `data-_index`:
+exactly one node and string metadata at `index`:
 
 ```text
 _hson_arr
-├─ _hson_ii { data-_index: "0" }
+├─ _hson_ii { index: "0" }
 │  └─ _hson_val (1)
-├─ _hson_ii { data-_index: "1" }
+├─ _hson_ii { index: "1" }
 │  └─ _hson_str ("x")
-└─ _hson_ii { data-_index: "2" }
+└─ _hson_ii { index: "2" }
    └─ _hson_val (true)
 ```
 
 The array serializer uses the physical `_hson_ii` order in `$_content`.
-`data-_index` is required structural metadata and is checked for presence and
+`index` is required structural metadata and is checked for presence and
 string type, but it is not used to sort or reorder items.
 
 Array items can be scalars, arrays, or objects. Objects in HSON array syntax use

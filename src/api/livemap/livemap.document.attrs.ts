@@ -1,4 +1,4 @@
-import { _META_DATA_PREFIX } from "../../core/constants.js";
+import { HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import {
   decode_public_attrs,
   decode_public_attr_value,
@@ -104,7 +104,7 @@ function resolve_attr_query(
 }
 
 function normalize_read_attr_name(input: unknown, operation: LiveMapDocumentOperation): string {
-  if (typeof input === "string" && input.startsWith(_META_DATA_PREFIX)) {
+  if (typeof input === "string" && input.startsWith(HSON_META_MARKUP_PREFIX)) {
     throw new LiveMapDocumentMutationError(
       "PROTECTED_DOCUMENT_METADATA",
       operation,

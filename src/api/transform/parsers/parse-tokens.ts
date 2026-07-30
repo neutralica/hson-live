@@ -1,9 +1,9 @@
 // parse-tokens.ts
 
-import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX, _DATA_QUID } from "../../../core/constants.js";
+import { STR_TAG, VAL_TAG, ARR_TAG, OBJ_TAG, ELEM_TAG, ROOT_TAG, II_TAG, HSON_SYS_PREFIX } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../token.types.js";
-import { _DATA_INDEX } from "../../../core/constants.js";
+import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonNode, NodeContent } from "../../../core/types.js";
 import { Tokens, CloseKind, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../token.types.js";
 import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
@@ -51,7 +51,7 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *   shaping content into `_hson_elem` or `_hson_obj` clusters based on the tag’s
  *   close kind (`CLOSE_KIND.elem` vs `CLOSE_KIND.obj`).
  * - Uses `readArray` to parse `ARR_OPEN`…`ARR_CLOSE` sequences into
- *   `_hson_arr` nodes full of `_hson_ii` children, each tagged with `data-_index`.
+ *   `_hson_arr` nodes full of `_hson_ii` children, each tagged with `index`.
  * - Handles shorthand empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
  *   top-level and inside arrays.
  * - Converts `TEXT` tokens into primitive leaves:
@@ -132,18 +132,8 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
         const open = tok as TokenOpen;
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
-        const legacyQuidDeclared = open.rawAttrs.some((attr) => attr.name === _DATA_QUID);
-        const legacyQuid = meta[_DATA_QUID];
-        delete meta[_DATA_QUID];
-        if (open.quid !== undefined) {
-            if (legacyQuidDeclared) {
-                _throw_transform_err(`conflicting persisted QUID declarations on <${open.tag}>`, "parse_tokens");
-            }
-        }
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
-        if (legacyQuidDeclared) {
-            assign_ingested_hson_node_quid(node, legacyQuid, "parse_tokens");
-        } else if (open.quid !== undefined) {
+        if (open.quid !== undefined) {
             assign_ingested_hson_node_quid(node, open.quid.value, "parse_tokens");
         }
 
@@ -327,7 +317,7 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
             childNode = unwrap_root_obj(childNode);
             items.push((CREATE_NODE({
                 $_tag: II_TAG,
-                $_meta: { [_DATA_INDEX]: String(idx) },
+                $_meta: { [HSON_META_INDEX]: String(idx) },
                 $_content: [childNode],
             })));
             idx++;

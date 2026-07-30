@@ -1,5 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, STR_TAG, _META_DATA_PREFIX } from "../../core/constants.js";
+import { ELEM_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
@@ -578,7 +578,7 @@ function require_existing_content_index(
 }
 
 function normalize_attr_name(input: unknown, operation: DocumentOperation): string {
-  if (typeof input === "string" && input.startsWith(_META_DATA_PREFIX)) {
+  if (typeof input === "string" && input.startsWith(HSON_META_MARKUP_PREFIX)) {
     throw mutation_error("PROTECTED_DOCUMENT_METADATA", operation, "system metadata cannot be mutated through ordinary attrs");
   }
   if (!is_public_document_attr_name(input)) {

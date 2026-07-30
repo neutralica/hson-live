@@ -53,7 +53,7 @@ function mount(root: HsonNode): FakeElement {
 }
 
 check("bound text.set delegates one replacement while preserving element content", () => {
-  const map = element(`<main data-_quid="0000000000000501" "old" <b data-_quid="0000000000000502"/>/>`);
+  const map = element(`<main @0000000000000501 "old" <b @0000000000000502/>/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   const preserved = raw_node(binding.tree.node, [0, 1]);
@@ -82,7 +82,7 @@ check("bound text.set delegates one replacement while preserving element content
 });
 
 check("text.set inserts one canonical text slot when the bucket has no text", () => {
-  const map = element(`<main data-_quid="0000000000000503" <b/>/>`);
+  const map = element(`<main @0000000000000503 <b/>/>`);
   const binding = bind_document_livetree(map);
   mount(binding.tree.node);
   binding.tree.text.set("first");
@@ -94,7 +94,7 @@ check("text.set inserts one canonical text slot when the bucket has no text", ()
 });
 
 check("text.add and text.insert map to exact raw _hson_elem insertion slots", () => {
-  const map = element(`<main data-_quid="0000000000000504" "a" <b/>/>`);
+  const map = element(`<main @0000000000000504 "a" <b/>/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   const observations: LiveMapCommitObservation[] = [];
@@ -112,7 +112,7 @@ check("text.add and text.insert map to exact raw _hson_elem insertion slots", ()
   assert.equal(binding.diagnostics().projectionTransactions, 2);
   binding.dispose();
 
-  const empty = element(`<main data-_quid="0000000000000505"/>`);
+  const empty = element(`<main @0000000000000505/>`);
   const emptyBinding = bind_document_livetree(empty);
   emptyBinding.tree.text.add(null);
   assert.equal(raw_node(empty.element.node(), [0, 0]).$_content[0], "");
@@ -121,7 +121,7 @@ check("text.add and text.insert map to exact raw _hson_elem insertion slots", ()
 });
 
 check("empty delegates only zero-or-one physical content slots", () => {
-  const map = element(`<main data-_quid="0000000000000506" <section data-_quid="0000000000000507" "inside"/>/>`);
+  const map = element(`<main @0000000000000506 <section @0000000000000507 "inside"/>/>`);
   const binding = bind_document_livetree(map);
   mount(binding.tree.node);
   const sectionNode = raw_node(binding.tree.node, [0, 0]);
@@ -149,7 +149,7 @@ check("empty delegates only zero-or-one physical content slots", () => {
 });
 
 check("nested remove and removeSelf delegate one raw parent-slot removal", () => {
-  const map = element(`<main data-_quid="0000000000000508" <a data-_quid="0000000000000509"/> <b/> <c/>/>`);
+  const map = element(`<main @0000000000000508 <a @0000000000000509/> <b/> <c/>/>`);
   const binding = bind_document_livetree(map);
   mount(binding.tree.node);
   const aNode = raw_node(binding.tree.node, [0, 0]);
@@ -174,7 +174,7 @@ check("nested remove and removeSelf delegate one raw parent-slot removal", () =>
 });
 
 check("replayed path changes are used by later text delegation", () => {
-  const map = element(`<main data-_quid="0000000000000510" <a "left"/> <b "right"/>/>`);
+  const map = element(`<main @0000000000000510 <a "left"/> <b "right"/>/>`);
   const binding = bind_document_livetree(map);
   const bNode = raw_node(binding.tree.node, [0, 1]);
   const bTree = create_livetree(bNode).adoptRoots(binding.tree.hostRootNode());
@@ -192,7 +192,7 @@ check("replayed path changes are used by later text delegation", () => {
 });
 
 check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
-  const map = element(`<main data-_quid="0000000000000511" "one" "two"/>`);
+  const map = element(`<main @0000000000000511 "one" "two"/>`);
   map.document.content.insert(path(), 1, projected_element(`<aside/>`));
   const binding = bind_document_livetree(map);
   const branch = create_livetree(projected_element(`<aside/>`));
@@ -218,7 +218,7 @@ check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
 });
 
 check("projection failure after delegated canonical success fails without escaping", () => {
-  const map = element(`<main data-_quid="0000000000000512"/>`);
+  const map = element(`<main @0000000000000512/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;

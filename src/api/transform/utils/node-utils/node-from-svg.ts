@@ -1,18 +1,21 @@
 // node-from-svg.ts
 
-import { HsonNode } from "../../../../core/types.js";
+import { HsonMeta, HsonNode } from "../../../../core/types.js";
 import {
   HSON_SYS_PREFIX,
   STR_TAG,
-  _DATA_QUID,
-  _META_DATA_PREFIX,
+  HSON_META_QUID,
+  HSON_META_MARKUP_PREFIX,
+  HSON_META_TRANSIT_PREFIX,
 } from "../../../../core/constants.js";
+import { admit_hson_metadata_markup } from "../../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../../core/factories.js";
 import { assert_invariants } from "../../../../core/assert-invariants.js";
 import {
   assign_ingested_hson_node_quid,
   scan_ingested_hson_node_quids,
 } from "../hson-utils/quid-ingress.js";
+import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 
 //  tiny helper once, reuse everywhere
@@ -41,7 +44,7 @@ export const is_svg_markup = (s: string) => /^<\s*svg[\s>]/i.test(s);
  * - Tag names are normalized to lowercase for stable serialization (`<viewBox>` attributes remain verbatim).
  *
  * Attribute handling:
- * - Routes `data-_quid` through canonical protected metadata assignment.
+ * - Routes `quid` through canonical protected metadata assignment.
  * - Copies every other attribute as-is into `$_attrs` (no normalization or filtering).
  * - This preserves SVG-specific casing and names like `viewBox`, `stroke-width`, and `xlink:href`.
  *
@@ -66,14 +69,27 @@ export function node_from_svg(el: Element): HsonNode {
 function convert_svg_element(el: Element): HsonNode {
   const tag = el.tagName; 
   const attrs: Record<string, string> = {};
-  const meta: Record<string, string> = {};
+  const meta: HsonMeta = {};
   let quid: string | undefined;
   for (let i = 0; i < el.attributes.length; i++) {
     const a = el.attributes[i];
-    const lower = a.name.toLowerCase();
-    if (lower === _DATA_QUID) quid = a.value;
-    else if (lower.startsWith(_META_DATA_PREFIX)) meta[a.name] = a.value;
-    else attrs[a.name] = a.value;
+    const name = a.name;
+    if (name.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        "node_from_svg",
+      );
+    }
+    if (name.startsWith(HSON_META_MARKUP_PREFIX)) {
+      const admission = admit_hson_metadata_markup(tag, name, a.value);
+      if (!admission.valid) {
+        _throw_transform_err(admission.reason, "node_from_svg");
+      }
+      if (admission.key === HSON_META_QUID) quid = admission.value;
+      else meta[admission.key] = admission.value;
+    } else {
+      attrs[name] = a.value;
+    }
   }
   if (quid !== undefined && tag.startsWith(HSON_SYS_PREFIX)) {
     assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "node_from_svg");

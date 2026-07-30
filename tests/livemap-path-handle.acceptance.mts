@@ -97,6 +97,7 @@ check("path-handle creation never mints canonical node identity", () => {
   void Reflect.get(map.proxy(["nested"]), "value").$_;
 
   assert.equal(JSON.stringify(map.root()).includes("data-_quid"), false);
+  assert.equal(JSON.stringify(map.root()).includes('"quid"'), false);
 });
 
 check("arbitrary string quid targets receive explicit bridge disposal only", () => {

@@ -105,10 +105,10 @@ check("attribute key order is irrelevant and permissive primitive values normali
 
 check("defined QUID metadata participates in equality", () => {
   const left = document(node("div", [], undefined, {
-    "data-_quid": "0000000000000001",
+    quid: "0000000000000001",
   }));
   const changedQuid = document(node("div", [], undefined, {
-    "data-_quid": "0000000000000002",
+    quid: "0000000000000002",
   }));
   const missingQuid = document(node("div"));
   assert.equal(canonical_hson_graph_equal(left, changedQuid), false);
@@ -177,7 +177,7 @@ check("comparison does not mutate key order, content, attrs, metadata, or style"
     "main",
     [node("b"), node("a")],
     { title: "x", style: { zIndex: "1", color: "red" } },
-    { "data-_quid": "0000000000000003" },
+    { quid: "0000000000000003" },
   ));
   const right = structuredClone(left);
   const beforeLeft = structuredClone(left);

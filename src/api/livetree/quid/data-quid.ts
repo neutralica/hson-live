@@ -1,7 +1,8 @@
 // data-quid.ts
 
 import { HsonNode } from '../../../core/types.js';
-import { _DATA_QUID } from '../../../core/constants.js';
+import { HSON_META_QUID } from '../../../core/constants.js';
+import { HSON_METADATA_REGISTRY } from '../../../core/hson-metadata.js';
 import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 import { record_livetree_materialization } from '../debug/materialization-profile.js';
@@ -146,7 +147,7 @@ export function admit_livetree_quid_graph(
  * associated with a node, if any.
  *
  * Sources:
- * - n.$_meta["data-_quid"] if present,
+ * - n.$_meta["quid"] if present,
  * - otherwise the NODE_TO_QUID registry.
  *
  * Returns `undefined` if the node has never
@@ -178,7 +179,7 @@ export function get_quid(
  *     node → QUID  (WeakMap)
  * - Rejects any QUID that is already claimed by another node.
  * - If `persist` (default true), writes the QUID
- *   into n.$_meta["data-_quid"] so it survives
+ *   into n.$_meta["quid"] so it survives
  *   serialization.
  *
  * Returns the node’s QUID.
@@ -258,7 +259,9 @@ export function reindex_quid(
   runtime.quidToNode.set(q, n);
 }
 
-export { _DATA_QUID };
+export { HSON_META_QUID };
+export const HSON_QUID_MARKUP_NAME =
+  HSON_METADATA_REGISTRY[HSON_META_QUID].markupName;
 
 /***************************************
  * drop_quid
@@ -273,7 +276,7 @@ export { _DATA_QUID };
  *   n.$_meta so future serialization does not
  *   embed identity.
  * - If `stripDomAttr`, removes the DOM-side
- *   `[data-_quid]` attribute if the node is
+ *   `hson:quid` attribute if the node is
  *   currently mounted.
  *
  * Used when explicitly destroying or resetting identity ownership.
@@ -287,7 +290,7 @@ export function drop_quid(
   opts?: { scrubMeta?: boolean; stripDomAttr?: boolean },
   runtime: LiveTreeRuntime = runtime_for_operation(n),
 ): void {
-  const hasMetadataQuid = n.$_meta?.[_DATA_QUID] !== undefined;
+  const hasMetadataQuid = n.$_meta?.[HSON_META_QUID] !== undefined;
   const registryQuid = runtime.nodeToQuid.get(n);
   if (hasMetadataQuid || registryQuid !== undefined) {
     assert_hson_node_quid_eligible(n, "drop");
@@ -314,7 +317,7 @@ export function drop_quid(
   // optional: strip DOM attribute if mounted
   if (opts?.stripDomAttr) {
     const el = get_el_for_node(n);
-    el?.removeAttribute(_DATA_QUID);
+    el?.removeAttribute(HSON_QUID_MARKUP_NAME);
   }
 }
 
@@ -338,8 +341,8 @@ export function destroy_subtree_quids(
 
   for (const node of nodes) {
     const q = get_quid(node, runtime);
-    const hadMeta = node.$_meta !== undefined && _DATA_QUID in node.$_meta;
-    const hadDomAttr = get_el_for_node(node)?.hasAttribute(_DATA_QUID) ?? false;
+    const hadMeta = node.$_meta !== undefined && HSON_META_QUID in node.$_meta;
+    const hadDomAttr = get_el_for_node(node)?.hasAttribute(HSON_QUID_MARKUP_NAME) ?? false;
 
     drop_quid(node, { scrubMeta: true, stripDomAttr: true }, runtime);
 
@@ -382,5 +385,5 @@ export function remint_quid(
 }
 
 export function get_el_if_quid(el: Element): string | undefined {
-  return el.getAttribute(_DATA_QUID) ?? undefined;
+  return el.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
 }

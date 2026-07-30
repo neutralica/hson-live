@@ -404,7 +404,7 @@ await check("gap stops later application and preserves last valid state", async 
 
 await check("client rejects unsupported snapshot negotiation acknowledgments", async () => {
   for (const [label, snapshotEncoding, expectedCode] of [
-    ["unsupported-version", { format: "view-state", formatVersion: 2 }, "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED"],
+    ["unsupported-version", { format: "view-state", formatVersion: 1 }, "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED"],
     ["unsupported-format", { format: "future-format" }, "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID"],
     ["missing-acknowledgment", undefined, "LIVEHOST_SNAPSHOT_NEGOTIATION_MISSING"],
   ]) {
@@ -499,8 +499,8 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
 
 await check("client rejects mismatched snapshot formats and out-of-order replay without applying twice", async () => {
   for (const [label, snapshotEncoding, snapshot] of [
-    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", formatVersion: 1, payload: "<invalid>" }],
-    ["ack-view-state-body-hson", { format: "view-state", formatVersion: 1 }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
+    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", formatVersion: 2, payload: "<invalid>" }],
+    ["ack-view-state-body-hson", { format: "view-state", formatVersion: 2 }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
   ]) {
     const fixture = begin_scripted_projected_recovery(label);
     fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding });

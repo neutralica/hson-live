@@ -50,8 +50,8 @@ After `toHson()`, readable HSON is the default and these HSON options compose:
 ```
 
 `noBreak` produces canonical compact HSON. `noQuid` filters only persisted
-`data-_quid` from output; it does not mutate the graph, touch the identity
-registry, or remove array `data-_index` metadata. HSON serialization is delayed
+`quid` from output; it does not mutate the graph, touch the identity
+registry, or remove array `index` metadata. HSON serialization is delayed
 until `serialize()` so options selected after `toHson()` take effect. The former
 `spaced`, `linted`, and `lineLength` options are not part of this surface.
 
@@ -446,9 +446,9 @@ the structured `LiveTreeAttributeError` code `LIVETREE_ATTRIBUTE_NOT_FOUND`
 when a valid public name is absent.
 
 Structured reads are recursively detached and frozen. `attrs.keys()` returns a
-fresh frozen list in lexical order and excludes flags, `$_meta`, persisted QUID
-identity, and every system-owned `data-_` projection. Ordinary attrs reject
-malformed and protected names.
+fresh frozen list in lexical order and excludes flags, `$_meta`, and persisted
+QUID identity. Ordinary attrs reject malformed and protected `hson:*` names;
+every `data-*` name remains application-owned.
 
 `attrs.set()` never deletes: `false` and `null` are canonical stored values,
 while `undefined` is rejected. Use `attrs.drop()` for explicit single-name

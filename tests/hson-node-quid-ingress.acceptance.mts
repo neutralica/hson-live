@@ -14,7 +14,7 @@ import {
   HsonNodeQuidValidationError,
   read_hson_node_quid,
 } from "../src/core/hson-node-quid.ts";
-import { _DATA_QUID } from "../src/core/constants.ts";
+import { HSON_META_INDEX, HSON_META_QUID } from "../src/core/constants.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import {
   destroy_subtree_quids,
@@ -32,6 +32,7 @@ const Q3 = "0000000000000003";
 const Q4 = "0000000000000004";
 const Q5 = "0000000000000005";
 const Q6 = "0000000000000006";
+const QUID_ATTR = "hson:quid";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -71,7 +72,7 @@ function element(tag: string, quid?: string, children: HsonNode[] = []): HsonNod
   return {
     $_tag: tag,
     $_content: [{ $_tag: "_hson_elem", $_content: children }],
-    ...(quid === undefined ? {} : { $_meta: { [_DATA_QUID]: quid } }),
+    ...(quid === undefined ? {} : { $_meta: { [HSON_META_QUID]: quid } }),
   };
 }
 
@@ -281,9 +282,9 @@ function with_browser_ingress_dom(fn: () => void): void {
             querySelectorAll(): Array<{ removeAttribute(name: string): void }> {
               return [{
                 removeAttribute(name: string): void {
-                  if (name !== _DATA_QUID) return;
+                  if (name !== QUID_ATTR) return;
                   markup = markup.replace(
-                    /\sdata-_quid=(?:"[^"]*"|'[^']*')/gi,
+                    /\shson:quid=(?:"[^"]*"|'[^']*')/gi,
                     "",
                   );
                 },
@@ -305,14 +306,11 @@ function with_browser_ingress_dom(fn: () => void): void {
   }
 }
 
-check("HSON canonical @quid and supported legacy spelling attach protected metadata", () => {
+check("HSON canonical @quid attaches protected metadata", () => {
   const canonical = must_tag(parse_hson(`<main @${Q1}/>`), "main");
-  const legacy = must_tag(parse_hson(`<main data-_quid="${Q1}"/>`), "main");
-  for (const node of [canonical, legacy]) {
-    assert.equal(read_hson_node_quid(node), Q1);
-    assert.equal(node.$_attrs?.[_DATA_QUID], undefined);
-    assert.equal(node.$_meta?.[_DATA_QUID], Q1);
-  }
+  assert.equal(read_hson_node_quid(canonical), Q1);
+  assert.equal(canonical.$_attrs?.[HSON_META_QUID], undefined);
+  assert.equal(canonical.$_meta?.[HSON_META_QUID], Q1);
 });
 
 check("HSON rejects malformed length, alphabet, and uppercase without normalization", () => {
@@ -321,10 +319,7 @@ check("HSON rejects malformed length, alphabet, and uppercase without normalizat
     "000000000000000i",
     "000000000000000A",
   ]) {
-    assert_validation_code(
-      () => parse_hson(`<main data-_quid="${malformed}"/>`),
-      "MALFORMED_QUID",
-    );
+    assert.throws(() => parse_hson(`<main @${malformed}/>`), /invalid persisted QUID/);
   }
 });
 
@@ -367,50 +362,58 @@ check("HSON accepts distinct or absent identity and parsing stays cold", () => {
   assert.equal(get_node_by_quid(Q2), undefined);
 });
 
-check("HTML data-_quid becomes protected metadata and unrelated data attributes remain ordinary", () => {
+check("HTML hson:quid becomes metadata while hson-foo and every data-* spelling remain ordinary", () => {
   const root = hsonTransform
-    .fromTrustedHtml(`<main data-_quid="${Q1}" data-user="kept"/>`)
+    .fromTrustedHtml(`<main hson:quid="${Q1}" hson-foo="ordinary" data-_quid="application" data-_index="also-application" data-user="kept"/>`)
     .toNode();
   const main = must_tag(root, "main");
-  assert.equal(main.$_meta?.[_DATA_QUID], Q1);
-  assert.equal(main.$_attrs?.[_DATA_QUID], undefined);
+  assert.equal(main.$_meta?.[HSON_META_QUID], Q1);
+  assert.equal(main.$_attrs?.[HSON_META_QUID], undefined);
+  assert.equal(main.$_attrs?.["data-_quid"], "application");
+  assert.equal(main.$_attrs?.["data-_index"], "also-application");
   assert.equal(main.$_attrs?.["data-user"], "kept");
+  assert.equal(main.$_attrs?.["hson-foo"], "ordinary");
   assert.equal(get_node_by_quid(Q1), undefined);
+
+  const untrusted = hsonTransform
+    .fromUntrustedHtml(`<main data-_quid="application" data-_index="ordinary"/>`)
+    .toNode();
+  assert.equal(must_tag(untrusted, "main").$_attrs?.["data-_quid"], "application");
+  assert.equal(must_tag(untrusted, "main").$_attrs?.["data-_index"], "ordinary");
 });
 
-check("HTML routes unknown data-_ metadata to default-deny validation", () => {
+check("HTML rejects unknown hson:* metadata while data-_custom remains ordinary", () => {
   for (const parse of [
-    () => hsonTransform.fromTrustedHtml(`<main><span data-_custom="invalid"/></main>`),
-    () => hsonTransform.fromUntrustedHtml(`<main><span data-_custom="invalid"/></main>`),
-    () => hsonTransform.fromTrustedHtml(`<svg><path data-_custom="invalid"/></svg>`),
+    () => hsonTransform.fromTrustedHtml(`<main><span hson:unknown="invalid"/></main>`),
+    () => hsonTransform.fromUntrustedHtml(`<main><span hson:unknown="invalid"/></main>`),
+    () => hsonTransform.fromTrustedHtml(`<svg><path hson:unknown="invalid"/></svg>`),
+    () => hsonTransform.fromTrustedHtml(`<main _hson_meta_attr_v2_71756964="${Q1}"/>`),
   ]) {
-    assert.throws(
-      parse,
-      (cause) => cause instanceof Error
-        && (cause.message.includes(`tag:span`) || cause.message.includes(`tag:path`))
-        && cause.message.includes(`@meta:"data-_custom"`)
-        && cause.message.includes(`not defined for standard tag`),
-    );
+    assert.throws(parse, /unknown HSON metadata markup name "hson:unknown"|externally authored private HSON metadata transit name/);
   }
+  const ordinary = hsonTransform.fromTrustedHtml(
+    `<main data-_custom="ordinary"/>`,
+  ).toNode();
+  assert.equal(must_tag(ordinary, "main").$_attrs?.["data-_custom"], "ordinary");
 });
 
 check("trusted and untrusted HTML reject malformed protected metadata through the shared rule", () => {
   for (const parse of [
-    () => hsonTransform.fromTrustedHtml(`<main data-_quid="bad"/>`),
-    () => hsonTransform.fromUntrustedHtml(`<main data-_quid="bad"/>`),
+    () => hsonTransform.fromTrustedHtml(`<main hson:quid="bad"/>`),
+    () => hsonTransform.fromUntrustedHtml(`<main hson:quid="bad"/>`),
   ]) {
-    assert_validation_code(parse, "MALFORMED_QUID");
+    assert.throws(parse, /invalid value for HSON metadata "hson:quid"/);
   }
 });
 
 check("HTML cold transforms preserve sibling and nested duplicate canonical claims", () => {
   const sibling = hsonTransform.fromTrustedHtml(
-    `<main data-_quid="${Q1}"/><aside data-_quid="${Q1}"/>`,
+    `<main hson:quid="${Q1}"/><aside hson:quid="${Q1}"/>`,
   ).toNode();
   assert.equal(read_hson_node_quid(must_tag(sibling, "main")), Q1);
   assert.equal(read_hson_node_quid(must_tag(sibling, "aside")), Q1);
   const nested = hsonTransform.fromTrustedHtml(
-    `<main data-_quid="${Q1}"><aside data-_quid="${Q1}"/></main>`,
+    `<main hson:quid="${Q1}"><aside hson:quid="${Q1}"/></main>`,
   ).toNode();
   assert.equal(read_hson_node_quid(must_tag(nested, "main")), Q1);
   assert.equal(read_hson_node_quid(must_tag(nested, "aside")), Q1);
@@ -420,38 +423,38 @@ check("HTML cold transforms preserve sibling and nested duplicate canonical clai
 check("HTML accepts distinct claims through both trust facades", () => {
   for (const source of [
     hsonTransform.fromTrustedHtml(
-      `<main data-_quid="${Q1}"/><aside data-_quid="${Q2}"/>`,
+      `<main hson:quid="${Q1}"/><aside hson:quid="${Q2}"/>`,
     ),
     hsonTransform.fromUntrustedHtml(
-      `<main data-_quid="${Q1}"/><aside data-_quid="${Q2}"/>`,
+      `<main hson:quid="${Q1}"/><aside hson:quid="${Q2}"/>`,
     ),
   ]) {
-    assert.equal(must_tag(source.toNode(), "main").$_meta?.[_DATA_QUID], Q1);
-    assert.equal(must_tag(source.toNode(), "aside").$_meta?.[_DATA_QUID], Q2);
+    assert.equal(must_tag(source.toNode(), "main").$_meta?.[HSON_META_QUID], Q1);
+    assert.equal(must_tag(source.toNode(), "aside").$_meta?.[HSON_META_QUID], Q2);
   }
 });
 
 check("standalone SVG text preserves protected QUID metadata and ordinary SVG attributes", () => {
   const svg = hsonTransform
     .fromTrustedHtml(
-      `<svg data-_quid="${Q1}" viewBox="0 0 10 10" xmlns:xlink="http://www.w3.org/1999/xlink"><path stroke-width="2"/></svg>`,
+      `<svg hson:quid="${Q1}" viewBox="0 0 10 10" xmlns:xlink="http://www.w3.org/1999/xlink"><path stroke-width="2"/></svg>`,
     )
     .toNode();
   assert.equal(svg.$_tag, "svg");
-  assert.equal(svg.$_meta?.[_DATA_QUID], Q1);
-  assert.equal(svg.$_attrs?.[_DATA_QUID], undefined);
+  assert.equal(svg.$_meta?.[HSON_META_QUID], Q1);
+  assert.equal(svg.$_attrs?.[HSON_META_QUID], undefined);
   assert.equal(svg.$_attrs?.viewBox, "0 0 10 10");
   assert.equal(svg.$_attrs?.["xmlns:xlink"], "http://www.w3.org/1999/xlink");
   assert.equal(must_tag(svg, "path").$_attrs?.["stroke-width"], "2");
 });
 
 check("standalone SVG text rejects malformed identity and preserves duplicate canonical claims", () => {
-  assert_validation_code(
-    () => hsonTransform.fromTrustedHtml(`<svg data-_quid="bad"/>`),
-    "MALFORMED_QUID",
+  assert.throws(
+    () => hsonTransform.fromTrustedHtml(`<svg hson:quid="bad"/>`),
+    /invalid value for HSON metadata "hson:quid"/,
   );
   const duplicate = hsonTransform.fromTrustedHtml(
-    `<svg><path data-_quid="${Q1}"/><circle data-_quid="${Q1}"/></svg>`,
+    `<svg><path hson:quid="${Q1}"/><circle hson:quid="${Q1}"/></svg>`,
   ).toNode();
   assert.equal(read_hson_node_quid(must_tag(duplicate, "path")), Q1);
   assert.equal(read_hson_node_quid(must_tag(duplicate, "circle")), Q1);
@@ -463,7 +466,7 @@ check("SVG DOM ingestion applies the same metadata route without changing namesp
       tag: "path",
       namespace: SVG_NS,
       attrs: [
-        { name: _DATA_QUID, value: Q2 },
+        { name: QUID_ATTR, value: Q2 },
         { name: "stroke-width", value: "2" },
       ],
     });
@@ -471,24 +474,24 @@ check("SVG DOM ingestion applies the same metadata route without changing namesp
       tag: "svg",
       namespace: SVG_NS,
       attrs: [
-        { name: _DATA_QUID, value: Q1 },
+        { name: QUID_ATTR, value: Q1 },
         { name: "viewBox", value: "0 0 10 10" },
         { name: "xmlns:xlink", value: "http://www.w3.org/1999/xlink" },
       ],
       children: [path as unknown as Record<string, unknown>, text_node(" ")],
     });
     const root = node_from_svg(svg);
-    assert.equal(root.$_meta?.[_DATA_QUID], Q1);
-    assert.equal(root.$_attrs?.[_DATA_QUID], undefined);
+    assert.equal(root.$_meta?.[HSON_META_QUID], Q1);
+    assert.equal(root.$_attrs?.[HSON_META_QUID], undefined);
     assert.equal(root.$_attrs?.viewBox, "0 0 10 10");
     assert.equal(root.$_attrs?.["xmlns:xlink"], "http://www.w3.org/1999/xlink");
     const parsedPath = must_tag(root, "path");
-    assert.equal(parsedPath.$_meta?.[_DATA_QUID], Q2);
+    assert.equal(parsedPath.$_meta?.[HSON_META_QUID], Q2);
     assert.equal(parsedPath.$_attrs?.["stroke-width"], "2");
   });
 });
 
-check("SVG DOM ingestion classifies unknown data-_ fields as rejected metadata", () => {
+check("SVG DOM ingestion rejects unknown hson:* and preserves data-* as ordinary", () => {
   with_dom_node_constants(() => {
     assert.throws(
       () => node_from_svg(dom_element({
@@ -497,34 +500,45 @@ check("SVG DOM ingestion classifies unknown data-_ fields as rejected metadata",
         children: [dom_element({
           tag: "path",
           namespace: SVG_NS,
-          attrs: [{ name: "data-_custom", value: "invalid" }],
+          attrs: [{ name: "hson:unknown", value: "invalid" }],
         }) as unknown as Record<string, unknown>],
       })),
-      (cause) => cause instanceof Error
-        && cause.message.includes(`/tag:svg/tag:path`)
-        && cause.message.includes(`@meta:"data-_custom"`)
-        && cause.message.includes(`not defined for standard tag "path"`),
+      /unknown HSON metadata markup name "hson:unknown"/,
     );
+    assert.throws(
+      () => node_from_svg(dom_element({
+        tag: "svg",
+        namespace: SVG_NS,
+        attrs: [{ name: "_hson_meta_attr_v2_71756964", value: Q1 }],
+      })),
+      /private HSON metadata transit name/,
+    );
+    const ordinary = node_from_svg(dom_element({
+      tag: "svg",
+      namespace: SVG_NS,
+      attrs: [{ name: "data-_custom", value: "ordinary" }],
+    }));
+    assert.equal(ordinary.$_attrs?.["data-_custom"], "ordinary");
   });
 });
 
 check("SVG DOM ingestion rejects malformed placement and preserves duplicate canonical identity", () => {
   with_dom_node_constants(() => {
-    assert_validation_code(
+    assert.throws(
       () => node_from_svg(dom_element({
         tag: "svg",
         namespace: SVG_NS,
-        attrs: [{ name: _DATA_QUID, value: "bad" }],
+        attrs: [{ name: QUID_ATTR, value: "bad" }],
       })),
-      "MALFORMED_QUID",
+      /invalid value for HSON metadata "hson:quid"/,
     );
-    assert_validation_code(
+    assert.throws(
       () => node_from_svg(dom_element({
         tag: "_hson_future",
         namespace: SVG_NS,
-        attrs: [{ name: _DATA_QUID, value: Q1 }],
+        attrs: [{ name: QUID_ATTR, value: Q1 }],
       })),
-      "INELIGIBLE_QUID",
+      /metadata "quid" is not defined for node "_hson_future"/,
     );
     const duplicate = dom_element({
       tag: "svg",
@@ -533,12 +547,12 @@ check("SVG DOM ingestion rejects malformed placement and preserves duplicate can
         dom_element({
           tag: "path",
           namespace: SVG_NS,
-          attrs: [{ name: _DATA_QUID, value: Q1 }],
+          attrs: [{ name: QUID_ATTR, value: Q1 }],
         }) as unknown as Record<string, unknown>,
         dom_element({
           tag: "circle",
           namespace: SVG_NS,
-          attrs: [{ name: _DATA_QUID, value: Q1 }],
+          attrs: [{ name: QUID_ATTR, value: Q1 }],
         }) as unknown as Record<string, unknown>,
       ],
     });
@@ -550,39 +564,39 @@ check("SVG DOM ingestion rejects malformed placement and preserves duplicate can
 
 check("DOM/XML element ingestion shares HTML protected metadata and completed scan rules", () => {
   with_dom_node_constants(() => {
-    assert_validation_code(
+    assert.throws(
       () => parse_html(dom_element({
         tag: "_hson_future",
-        attrs: [{ name: _DATA_QUID, value: Q1 }],
+        attrs: [{ name: QUID_ATTR, value: Q1 }],
       })),
-      "INELIGIBLE_QUID",
+      /metadata "quid" is not defined for node "_hson_future"/,
     );
     const child = dom_element({
       tag: "entry",
       attrs: [
-        { name: _DATA_QUID, value: Q2 },
+        { name: QUID_ATTR, value: Q2 },
         { name: "data-user", value: "kept" },
       ],
     });
     const input = dom_element({
       tag: "catalog",
-      attrs: [{ name: _DATA_QUID, value: Q1 }],
+      attrs: [{ name: QUID_ATTR, value: Q1 }],
       children: [child as unknown as Record<string, unknown>],
     });
     const root = parse_html(input);
-    assert.equal(must_tag(root, "catalog").$_meta?.[_DATA_QUID], Q1);
+    assert.equal(must_tag(root, "catalog").$_meta?.[HSON_META_QUID], Q1);
     const entry = must_tag(root, "entry");
-    assert.equal(entry.$_meta?.[_DATA_QUID], Q2);
-    assert.equal(entry.$_attrs?.[_DATA_QUID], undefined);
+    assert.equal(entry.$_meta?.[HSON_META_QUID], Q2);
+    assert.equal(entry.$_attrs?.[HSON_META_QUID], undefined);
     assert.equal(entry.$_attrs?.["data-user"], "kept");
 
     const duplicate = dom_element({
       tag: "catalog",
-      attrs: [{ name: _DATA_QUID, value: Q1 }],
+      attrs: [{ name: QUID_ATTR, value: Q1 }],
       children: [
         dom_element({
           tag: "entry",
-          attrs: [{ name: _DATA_QUID, value: Q1 }],
+          attrs: [{ name: QUID_ATTR, value: Q1 }],
         }) as unknown as Record<string, unknown>,
       ],
     });
@@ -595,27 +609,31 @@ check("DOM/XML element ingestion shares HTML protected metadata and completed sc
 check("all public transform graph facades agree on valid and malformed metadata", () => {
   const validNodes = [
     hsonTransform.fromHson(`<main @${Q1}/>`).toNode(),
-    hsonTransform.fromTrustedHtml(`<main data-_quid="${Q1}"/>`).toNode(),
-    hsonTransform.fromUntrustedHtml(`<main data-_quid="${Q1}"/>`).toNode(),
+    hsonTransform.fromTrustedHtml(`<main hson:quid="${Q1}"/>`).toNode(),
+    hsonTransform.fromUntrustedHtml(`<main hson:quid="${Q1}"/>`).toNode(),
     hsonTransform.fromNode(document_root(element("main", Q1))).toNode(),
   ];
   for (const root of validNodes) {
-    assert.equal(must_tag(root, "main").$_meta?.[_DATA_QUID], Q1);
+    assert.equal(must_tag(root, "main").$_meta?.[HSON_META_QUID], Q1);
   }
 
+  assert.throws(
+    () => hsonTransform.fromHson(`<main @bad/>`).toNode(),
+    /invalid persisted QUID/,
+  );
   for (const invalid of [
-    () => hsonTransform.fromHson(`<main data-_quid="bad"/>`).toNode(),
-    () => hsonTransform.fromTrustedHtml(`<main data-_quid="bad"/>`).toNode(),
-    () => hsonTransform.fromUntrustedHtml(`<main data-_quid="bad"/>`).toNode(),
+    () => hsonTransform.fromTrustedHtml(`<main hson:quid="bad"/>`).toNode(),
+    () => hsonTransform.fromUntrustedHtml(`<main hson:quid="bad"/>`).toNode(),
+  ]) assert.throws(invalid, /invalid value for HSON metadata "hson:quid"/);
+  assert_validation_code(
     () => hsonTransform.fromNode(document_root(element("main", "bad"))).toNode(),
-  ]) {
-    assert_validation_code(invalid, "MALFORMED_QUID");
-  }
+    "MALFORMED_QUID",
+  );
 });
 
 check("raw validated fromNode rejects VSN placement but preserves duplicate canonical claims", () => {
   const invalidVsn = document_root(element("main", Q1));
-  invalidVsn.$_meta = { [_DATA_QUID]: Q2 };
+  invalidVsn.$_meta = { [HSON_META_QUID]: Q2 };
   const beforeVsn = structuredClone(invalidVsn);
   assert_validation_code(
     () => hsonTransform.fromNode(invalidVsn),
@@ -642,8 +660,8 @@ check("raw validated fromNode rejects VSN placement but preserves duplicate cano
 check("browser HTML string and Element inputs preserve the supplied root and equivalent nested cold identity", () => {
   with_browser_ingress_dom(() => {
     const markup =
-      `<button data-_quid="${Q4}" data-user="kept">`
-      + `<span data-_quid="${Q5}" aria-label="child">Save</span>`
+      `<button hson:quid="${Q4}" data-_quid="application" data-user="kept">`
+      + `<span hson:quid="${Q5}" aria-label="child">Save</span>`
       + `</button>`;
     const sourceElement = browser_source_element(markup);
     const sourceBefore = sourceElement.outerHTML;
@@ -663,23 +681,30 @@ check("browser HTML string and Element inputs preserve the supplied root and equ
       const span = must_tag(graph, "span");
       assert.equal(read_hson_node_quid(button), Q4);
       assert.equal(read_hson_node_quid(span), Q5);
-      assert.equal(button.$_attrs?.[_DATA_QUID], undefined);
-      assert.equal(span.$_attrs?.[_DATA_QUID], undefined);
+      assert.equal(button.$_attrs?.[HSON_META_QUID], undefined);
+      assert.equal(span.$_attrs?.[HSON_META_QUID], undefined);
       assert.equal(button.$_attrs?.["data-user"], "kept");
+      assert.equal(button.$_attrs?.["data-_quid"], "application");
       assert.equal(span.$_attrs?.["aria-label"], "child");
     }
     assert.deepEqual(fromElement, fromString);
     assert.equal(sourceElement.outerHTML, sourceBefore);
     assert.equal(get_node_by_quid(Q4), undefined);
     assert.equal(get_node_by_quid(Q5), undefined);
+
+    const arrayWire = hson.fromJson([{}]).toHtml().serialize();
+    const reparsedArray = hson.fromTrustedHtml(arrayWire).toNode();
+    const reparsedArrayElement = hson.fromTrustedHtml(browser_source_element(arrayWire)).toNode();
+    assert.equal(must_tag(reparsedArray, "_hson_ii").$_meta?.[HSON_META_INDEX], "0");
+    assert.deepEqual(reparsedArrayElement, reparsedArray);
   });
 });
 
 check("browser SVG string and Element inputs preserve the supplied SVG root and equivalent protected identity", () => {
   with_browser_ingress_dom(() => {
     const markup =
-      `<svg data-_quid="${Q4}" viewBox="0 0 10 10">`
-      + `<path data-_quid="${Q5}" stroke-width="2"/>`
+      `<svg hson:quid="${Q4}" viewBox="0 0 10 10">`
+      + `<path hson:quid="${Q5}" stroke-width="2"/>`
       + `</svg>`;
     const sourceElement = browser_source_element(markup);
     const sourceBefore = sourceElement.outerHTML;
@@ -690,8 +715,8 @@ check("browser SVG string and Element inputs preserve the supplied SVG root and 
     assert.equal(fromElement.$_tag, "svg");
     assert.equal(read_hson_node_quid(fromElement), Q4);
     assert.equal(read_hson_node_quid(must_tag(fromElement, "path")), Q5);
-    assert.equal(fromElement.$_attrs?.[_DATA_QUID], undefined);
-    assert.equal(must_tag(fromElement, "path").$_attrs?.[_DATA_QUID], undefined);
+    assert.equal(fromElement.$_attrs?.[HSON_META_QUID], undefined);
+    assert.equal(must_tag(fromElement, "path").$_attrs?.[HSON_META_QUID], undefined);
     assert.equal(fromElement.$_attrs?.viewBox, "0 0 10 10");
     assert.equal(must_tag(fromElement, "path").$_attrs?.["stroke-width"], "2");
     assert.equal(sourceElement.outerHTML, sourceBefore);
@@ -703,8 +728,8 @@ check("browser SVG string and Element inputs preserve the supplied SVG root and 
 check("XML-shaped Element input retains its supplied root and matches equivalent string structure", () => {
   with_browser_ingress_dom(() => {
     const markup =
-      `<Catalog data-_quid="${Q4}" data-kind="root">`
-      + `<Entry data-_quid="${Q5}" key="A">value</Entry>`
+      `<Catalog hson:quid="${Q4}" data-kind="root">`
+      + `<Entry hson:quid="${Q5}" key="A">value</Entry>`
       + `</Catalog>`;
     const sourceElement = browser_source_element(markup);
     const sourceBefore = sourceElement.outerHTML;
@@ -723,8 +748,8 @@ check("XML-shaped Element input retains its supplied root and matches equivalent
 check("cold duplicate HTML string and Element graphs are equivalent but LiveTree admission rejects atomically", () => {
   with_browser_ingress_dom(() => {
     const markup =
-      `<section><button data-_quid="${Q6}">A</button>`
-      + `<button data-_quid="${Q6}">B</button></section>`;
+      `<section><button hson:quid="${Q6}">A</button>`
+      + `<button hson:quid="${Q6}">B</button></section>`;
     const sourceElement = browser_source_element(markup);
     const sourceBefore = sourceElement.outerHTML;
     const fromString = hson.fromTrustedHtml(markup).toNode();
@@ -839,7 +864,7 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
 check("cold Element identity is claimed unchanged while absent identity is minted on materialization", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
-      `<button data-_quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
     );
     const parsed = hson.fromTrustedHtml(source).toNode();
     assert.equal(read_hson_node_quid(must_tag(parsed, "button")), Q4);
@@ -872,10 +897,10 @@ check("cold Element identity is claimed unchanged while absent identity is minte
 check("actively owned Element identity rejects a second owner without mutation or remint", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
-      `<button data-_quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
     );
     const owner = hsonLiveTree.fromTrustedHtml(
-      `<button data-_quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
     );
     const ownerBefore = structuredClone(owner.node);
     const sourceBefore = source.innerHTML;
@@ -903,7 +928,7 @@ check("actively owned Element identity rejects a second owner without mutation o
 check("cloneBranch keeps fresh identity semantics independently of Element ingestion", () => {
   with_browser_ingress_dom(() => {
     const source = hsonLiveTree.fromTrustedHtml(
-      `<button data-_quid="${Q4}"><span data-_quid="${Q5}">Save</span></button>`,
+      `<button hson:quid="${Q4}"><span hson:quid="${Q5}">Save</span></button>`,
     );
     const clone = source.cloneBranch();
     try {
@@ -966,7 +991,7 @@ check("LiveMap raw installation validates all modes, remains cold, and leaves so
       && validation_cause(error)?.code === "DUPLICATE_QUID",
   );
   const invalidVsn = document_root(element("main", Q3));
-  must_tag(invalidVsn, "_hson_elem").$_meta = { [_DATA_QUID]: Q1 };
+  must_tag(invalidVsn, "_hson_elem").$_meta = { [HSON_META_QUID]: Q1 };
   assert.throws(
     () => hsonLiveMap.fromNode(invalidVsn),
     (error) => error instanceof Error

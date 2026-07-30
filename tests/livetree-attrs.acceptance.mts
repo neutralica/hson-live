@@ -12,6 +12,7 @@ import type { LiveTree } from "../src/api/livetree/livetree.ts";
 import { link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
 
 let checks = 0;
+const QUID_ATTR = "hson:quid";
 function check(name: string, fn: () => void): void {
   fn();
   checks += 1;
@@ -44,7 +45,7 @@ function tree(source = `<main/>`): LiveTree {
 
 function mount(treeValue: LiveTree): AttributeProjection {
   const element = new AttributeProjection();
-  element.setAttribute("data-_quid", treeValue.quid);
+  element.setAttribute(QUID_ATTR, treeValue.quid);
   link_node_to_el(treeValue.node, element as unknown as Element);
   return element;
 }
@@ -96,7 +97,7 @@ check("canonical reads preserve primitives and detach structured style", () => {
 });
 
 check("keys is lexical, fresh, frozen, and excludes flags and metadata", () => {
-  const value = tree(`<button disabled data-_quid="0000000000000201"/>`);
+  const value = tree(`<button disabled @0000000000000201/>`);
   value.attrs.setMany({ zeta: 1, alpha: 2, style: { color: "red" } });
   const first = value.attrs.keys();
   const second = value.attrs.keys();
@@ -104,7 +105,7 @@ check("keys is lexical, fresh, frozen, and excludes flags and metadata", () => {
   assert.notEqual(first, second);
   assert.equal(Object.isFrozen(first), true);
   assert.equal(first.includes("disabled"), false);
-  assert.equal(first.includes("data-_quid"), false);
+  assert.equal(first.includes(QUID_ATTR), false);
   assert.equal(Reflect.set(first as string[], 0, "changed"), false);
   assert.deepEqual(value.attrs.keys(), ["alpha", "style", "zeta"]);
 });
@@ -123,7 +124,9 @@ check("must.get has stable frozen identity and one structured absence error", ()
       && cause.quid === value.quid,
   );
   errorCode(() => value.attrs.must.get("bad name"), LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, "must.get");
-  errorCode(() => value.attrs.must.get("data-_quid"), LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, "must.get");
+  errorCode(() => value.attrs.must.get(QUID_ATTR), LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, "must.get");
+  value.attrs.set("data-_quid", "ordinary");
+  assert.equal(value.attrs.must.get("data-_quid"), "ordinary");
 });
 
 check("set stores false, null, zero, and empty string while undefined is rejected", () => {
@@ -164,7 +167,7 @@ check("set validates names, style, and protected metadata before graph or DOM mu
   element.setAttribute("id", "before");
   for (const [name, attrValue, code] of [
     ["bad name", "x", LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE],
-    ["data-_quid", "x", LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE],
+    [QUID_ATTR, "x", LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE],
     ["style", { _hover: { color: "blue" } }, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE],
     ["count", Number.NaN, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE],
   ] as const) {
@@ -245,7 +248,7 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
 });
 
 check("drop and dropMany remove only explicit ordinary names atomically", () => {
-  const value = tree(`<main id="one" title="two" class="three" data-_quid="0000000000000202"/>`);
+  const value = tree(`<main id="one" title="two" class="three" @0000000000000202/>`);
   const element = mount(value);
   for (const [name, attrValue] of Object.entries(value.node.$_attrs ?? {})) {
     element.setAttribute(name, String(attrValue));
@@ -258,21 +261,21 @@ check("drop and dropMany remove only explicit ordinary names atomically", () => 
   assert.deepEqual(value.attrs.keys(), ["class"]);
   assert.equal(element.getAttribute("id"), null);
   assert.equal(element.getAttribute("title"), null);
-  assert.equal(element.getAttribute("data-_quid"), value.quid);
+  assert.equal(element.getAttribute(QUID_ATTR), value.quid);
 
   const before = snapshot(value, element);
   errorCode(
-    () => Reflect.apply(value.attrs.dropMany, value.attrs, [["class", "data-_quid"]]),
+    () => Reflect.apply(value.attrs.dropMany, value.attrs, [["class", QUID_ATTR]]),
     LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
     "dropMany",
   );
   assert.deepEqual(snapshot(value, element), before);
   errorCode(() => value.attrs.drop("bad name"), LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, "drop");
-  errorCode(() => value.attrs.drop("data-_index"), LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, "drop");
+  errorCode(() => value.attrs.drop("hson:index"), LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, "drop");
 });
 
 check("clear preserves flags, identity, metadata, tag, and content", () => {
-  const value = tree(`<button disabled id="ordinary" data-_quid="0000000000000203" "content"/>`);
+  const value = tree(`<button disabled id="ordinary" @0000000000000203 "content"/>`);
   const element = mount(value);
   element.setAttribute("disabled", "disabled");
   element.setAttribute("id", "ordinary");
@@ -285,7 +288,7 @@ check("clear preserves flags, identity, metadata, tag, and content", () => {
   assert.equal(value.node.$_attrs?.disabled, "disabled");
   assert.equal(element.getAttribute("disabled"), "disabled");
   assert.equal(element.getAttribute("id"), null);
-  assert.equal(element.getAttribute("data-_quid"), value.quid);
+  assert.equal(element.getAttribute(QUID_ATTR), value.quid);
   assert.equal(value.node.$_tag, beforeTag);
   assert.deepEqual(value.node.$_content, beforeContent);
   assert.deepEqual(value.node.$_meta, beforeMeta);

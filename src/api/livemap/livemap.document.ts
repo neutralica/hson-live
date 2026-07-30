@@ -183,7 +183,7 @@ function make_document_livemap(
       },
       capture: (): DocumentLiveMapCapture<"element"> => Object.freeze({
         kind: "hson-document",
-        version: 1,
+        version: 2,
         mode: "element",
         rev: core.rev,
         root: core.root(),
@@ -204,7 +204,7 @@ function make_document_livemap(
     },
     capture: (): DocumentLiveMapCapture<"fragment"> => Object.freeze({
       kind: "hson-document",
-      version: 1,
+      version: 2,
       mode: "fragment",
       rev: core.rev,
       root: core.root(),

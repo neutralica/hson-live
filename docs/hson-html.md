@@ -115,14 +115,31 @@ The parser canonicalizes them:
   string.
 - `xmlns`, `xmlns:*`, and `xml:*` namespace plumbing is dropped.
 - SVG `xlink:href` is mapped to `href` when no `href` is already present.
-- `data-_index` and `data-_quid` are routed to `$_meta`, not `$_attrs`.
-- transit-only `data--*` attributes are dropped.
+- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not
+  `$_attrs`; unknown `hson:*` names reject.
+- Private transit names are rejected at public ingress and never enter the
+  canonical graph.
+- Every `data-*` attribute is routed to `$_attrs` as application data.
 - other attribute whitespace is normalized.
 - empty values and values equal to the attribute name are treated as presence
   attributes and stored canonically.
 
 As a result, attribute presence is preserved more reliably than exact source
 value spelling. Attribute order is not semantically significant after parsing.
+
+For XML-backed string parsing, literal `hson:*` candidate names are encoded
+after quote normalization and before the generic XML-hostile-name pass. The
+dedicated codec uses deterministic private XML-safe names, rejects authored
+private names, and decodes only while attributes are admitted into the graph.
+Decoded candidates still pass through the exact metadata registry, so an
+encoded `hson:unknown` rejects. Direct `Element` ingestion skips this lexical
+codec and shares the same semantic admission layer.
+
+The string preflight order is comment stripping, flag expansion, text/entity
+normalization, SVG namespace handling, quote normalization, HSON metadata-name
+transit encoding, generic XML-hostile-name encoding, XML parsing, attribute
+enumeration, HSON transit decoding, canonical graph construction, and invariant
+validation.
 
 ---
 
@@ -163,7 +180,7 @@ error. These repairs are parsing conveniences, not sanitization. Only
 
 When a constructor receives an `Element`, the public transform constructor
 currently snapshots `innerHTML`, so the supplied element itself is not the
-result root. Descendant `data-_quid` values are stripped during ingestion.
+result root. Descendant `hson:quid` values are stripped during ingestion.
 
 ---
 

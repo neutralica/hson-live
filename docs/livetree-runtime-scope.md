@@ -119,7 +119,7 @@ separate caller decision.
 - LiveProject structural DOM insertion uses ambient `document` for text nodes.
 - `CssManager` is one singleton bound to the current ambient document; a
   document swap clears all rule and manager state.
-- QUID selectors are unqualified `[data-_quid="…"]` selectors.
+- QUID selectors are unqualified `[hson\:quid="…"]` selectors.
 - CSS animation DOM lookup queries the ambient document.
 - listener `.document` / `.window` targets use ambient globals rather than the
   mounted element’s owner document.
@@ -259,7 +259,7 @@ animation lookup. Binding subscriptions, listeners, tree events, resize
 observers, miscellaneous cleanup, and keyed-renderer cleanup register against
 the tree's runtime.
 
-QUID rules retain the established `[data-_quid="…"]` selector. Isolation comes
+QUID rules use the canonical `[hson\:quid="…"]` selector. Isolation comes
 from physical `Document` ownership, not selector qualification: a weak
 exact-object guard allows one active LiveTree runtime to claim a `Document` and
 rejects a second runtime before projection or style-host mutation. Repeated

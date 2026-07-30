@@ -120,7 +120,7 @@ function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, head
     headRev,
     outcome: "snapshot",
     reason: "incarnation_mismatch",
-    snapshotEncoding: { format: "view-state", formatVersion: 1 },
+    snapshotEncoding: { format: "view-state", formatVersion: 2 },
   }));
   return { pair, client, promise, requestId: request.id };
 }
@@ -131,7 +131,7 @@ async function expect_scripted_snapshot_failure(snapshotBody, expectedCode, forb
   const logicalMapId = snapshotBody.logicalMapId ?? `view-state-failure-${scriptedFailureId}`;
   const incarnationId = snapshotBody.incarnationId ?? `view-state-failure-incarnation-${scriptedFailureId}`;
   const headRev = snapshotBody.rev ?? 0;
-  const mirror = element(`<aside data-_quid="0000000000000050"/>`);
+  const mirror = element(`<aside @0000000000000050/>`);
   const before = mirror.capture();
   const { pair, client, promise, requestId } = begin_scripted_snapshot_recovery(
     mirror,
@@ -225,7 +225,7 @@ await check("state and existing-map constructor forms are mutually exclusive at 
 });
 
 await check("existing element authority publishes detached graph history and replays to an element mirror", async () => {
-  const initial = `<main data-_quid="0000000000000001" <p data-_quid="0000000000000002" "old"/>/>`;
+  const initial = `<main @0000000000000001 <p @0000000000000002 "old"/>/>`;
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-replay" });
   const sourceCommit = authority.document.attrs.set({ kind: "quid", quid: "0000000000000002" }, "title", "kept");
@@ -247,10 +247,10 @@ await check("existing element authority publishes detached graph history and rep
 });
 
 await check("node-bearing fragment history is detached and incremental replay preserves QUID lookup", async () => {
-  const initial = `<section data-_quid="0000000000000003" "old"/> "tail"`;
+  const initial = `<section @0000000000000003 "old"/> "tail"`;
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-replay" });
-  const replacement = element(`<article data-_quid="0000000000000004" "new"/>`).element.node();
+  const replacement = element(`<article @0000000000000004 "new"/>`).element.node();
   const sourceCommit = authority.document.content.replace(root, 0, replacement);
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
@@ -278,7 +278,7 @@ await check("insert-content history detaches canonical nodes from source commits
   const initial = `<a/> <c/>`;
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-insert-history" });
-  const content = element(`<b data-_quid="000000000000001h"/>`).element.node();
+  const content = element(`<b @000000000000001h/>`).element.node();
   const sourceCommit = authority.document.content.insert(root, 1, content);
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
@@ -297,10 +297,10 @@ await check("insert-content history detaches canonical nodes from source commits
 });
 
 await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {
-  const authority = element(`<main data-_quid="0000000000000005" <p data-_quid="0000000000000006"/>/>`);
+  const authority = element(`<main @0000000000000005 <p @0000000000000006/>/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-snapshot" });
   authority.document.attrs.set(root, "class", "ready");
-  const mirror = element(`<aside data-_quid="0000000000000007"/>`);
+  const mirror = element(`<aside @0000000000000007/>`);
   const { client } = attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map, mirror);
@@ -312,7 +312,7 @@ await check("element snapshot recovery restores exact revision, mode, and persis
 });
 
 await check("fragment snapshot recovery reconstructs fragment mode without JSON projection", async () => {
-  const authority = fragment(`"lead" <section data-_quid="0000000000000008"/>`);
+  const authority = fragment(`"lead" <section @0000000000000008/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-snapshot" });
   const mirror = fragment(`<div/> "old"`);
   const { client, pair } = attach(host, mirror);
@@ -323,10 +323,10 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   const messages = pair.serverSent.map(JSON.parse);
   const plan = messages.find((message) => message.type === "recovery-plan");
   const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
-  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
   assert.equal(snapshot?.mode, "fragment");
   assert.equal(snapshot?.format, "view-state");
-  assert.equal(snapshot?.formatVersion, 1);
+  assert.equal(snapshot?.formatVersion, 2);
   assert.equal(typeof snapshot?.payload, "string");
   assert.equal("hson" in snapshot, false);
   assert.equal("value" in snapshot, false);
@@ -355,7 +355,7 @@ await check("an old client without capabilities receives the established HSON sn
 });
 
 await check("HSON-only and unsupported future view-state advertisements select HSON explicitly", async () => {
-  const authority = element(`<main data-_quid="0000000000000040"/>`);
+  const authority = element(`<main @0000000000000040/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "hson-capability-selection" });
   for (const [id, capabilities] of [
     ["hson-only", { hson: true }],
@@ -387,7 +387,7 @@ await check("snapshot capabilities cannot change during one connection", async (
     type: "recover",
     id: "changed-selection",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
   }));
   const messages = pair.serverSent.map(JSON.parse);
   assert.deepEqual(
@@ -400,7 +400,7 @@ await check("snapshot capabilities cannot change during one connection", async (
 });
 
 await check("concurrent recovery is rejected without a second material sequence", async () => {
-  const authority = element(`<main data-_quid="0000000000000048"/>`);
+  const authority = element(`<main @0000000000000048/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "concurrent-recovery" });
   const pair = socket_pair();
   host.connect(pair.server);
@@ -412,14 +412,14 @@ await check("concurrent recovery is rejected without a second material sequence"
       type: "recover",
       id: "concurrent-recovery",
       logicalMapId: host.stream.logicalMapId,
-      snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+      snapshotCapabilities: { hson: true, viewStateVersions: [2] },
     }));
   });
   pair.client.send(JSON.stringify({
     type: "recover",
     id: "first-recovery",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
   }));
   const messages = pair.serverSent.map(JSON.parse);
   assert.equal(messages.filter((message) => message.type === "recovery-plan").length, 1);
@@ -432,7 +432,7 @@ await check("concurrent recovery is rejected without a second material sequence"
 });
 
 await check("completed request IDs reject while a new same-capability resync remains deliberate", async () => {
-  const authority = element(`<main data-_quid="0000000000000047"/>`);
+  const authority = element(`<main @0000000000000047/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "completed-recovery" });
   const pair = socket_pair();
   host.connect(pair.server);
@@ -440,7 +440,7 @@ await check("completed request IDs reject while a new same-capability resync rem
     type: "recover",
     id: "completed-request",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [1] },
+    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
   };
   pair.client.send(JSON.stringify(request));
   pair.client.send(JSON.stringify(request));
@@ -481,9 +481,9 @@ await check("malformed snapshot capability advertisements reject without documen
 });
 
 await check("view-state negotiation is acknowledged for replay-only recovery", async () => {
-  const authority = element(`<main data-_quid="0000000000000049"/>`);
+  const authority = element(`<main @0000000000000049/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "view-state-replay-only" });
-  const mirror = element(`<main data-_quid="0000000000000049"/>`);
+  const mirror = element(`<main @0000000000000049/>`);
   authority.document.attrs.set(root, "title", "replayed");
   const { client, pair } = attach(host, mirror, {
     incarnationId: host.stream.incarnationId,
@@ -492,14 +492,14 @@ await check("view-state negotiation is acknowledged for replay-only recovery", a
   assert.equal((await client.recovery.recover()).strategy, "replay");
   const messages = pair.serverSent.map(JSON.parse);
   const plan = messages.find((message) => message.type === "recovery-plan");
-  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
   assert.equal(messages.some((message) => message.type === "recovery-snapshot"), false);
   assert.equal(messages.filter((message) => message.type === "recovery-commit").length, 1);
   assert.equal(client.map.rev, authority.rev);
 });
 
 await check("snapshot negotiation is isolated across simultaneous connections and reconnect", async () => {
-  const authority = element(`<main data-_quid="000000000000004a" <span/>/>`);
+  const authority = element(`<main @000000000000004a <span/>/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "snapshot-selection-isolation" });
   const oldConnection = raw_recovery(host, "old-connection", undefined);
   const modernMirror = element(`<aside/>`);
@@ -513,7 +513,7 @@ await check("snapshot negotiation is isolated across simultaneous connections an
   const modernSnapshot = modernMessages.find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal("snapshotEncoding" in oldPlan, false);
   assert.equal(typeof oldSnapshot.hson, "string");
-  assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state", formatVersion: 1 });
+  assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
   assert.equal(modernSnapshot.format, "view-state");
   assert.equal(canonical_hson_graph_equal(modernConnection.client.map.capture().root, authority.capture().root), true);
   const oldRecovered = hson.liveMap.fromHson(oldSnapshot.hson);
@@ -532,7 +532,7 @@ await check("snapshot negotiation is isolated across simultaneous connections an
 
 await check("view-state element snapshot recovery preserves typed document state exactly", async () => {
   const logicalMapId = "view-state-element-snapshot";
-  const authority = element(`<main data-_quid="0000000000000041" <span data-_quid="0000000000000042"/>/>`);
+  const authority = element(`<main @0000000000000041 <span @0000000000000042/>/>`);
   authority.document.attrs.replace(root, {
     count: 0,
     enabled: false,
@@ -548,7 +548,7 @@ await check("view-state element snapshot recovery preserves typed document state
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal(snapshot.format, "view-state");
-  assert.equal(snapshot.formatVersion, 1);
+  assert.equal(snapshot.formatVersion, 2);
   assert.equal(typeof snapshot.payload, "string");
   assert.equal("hson" in snapshot, false);
   assert.equal(snapshot.logicalMapId, host.stream.logicalMapId);
@@ -565,7 +565,7 @@ await check("view-state element snapshot recovery preserves typed document state
   assert.equal(restored.$_attrs.missing, null);
   assert.equal(restored.$_attrs.empty, "");
   assert.deepEqual(restored.$_attrs.style.width, { unit: "px", value: 2 });
-  assert.equal(restored.$_meta["data-_quid"], "0000000000000041");
+  assert.equal(restored.$_meta["quid"], "0000000000000041");
 });
 
 await check("view-state empty-fragment snapshot recovery preserves an otherwise unserializable root", async () => {
@@ -590,7 +590,7 @@ await check("view-state empty-fragment snapshot recovery preserves an otherwise 
 
 await check("view-state snapshot recovery applies the existing JSON replay tail afterward", async () => {
   const logicalMapId = "view-state-snapshot-tail";
-  const authority = element(`<main data-_quid="0000000000000043"/>`);
+  const authority = element(`<main @0000000000000043/>`);
   authority.document.attrs.set(root, "count", 1);
   const host = hson.liveHost.create({ map: authority, logicalMapId, incarnationId: "view-state-snapshot-tail-incarnation" });
   const mirror = element(`<aside/>`);
@@ -634,7 +634,7 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
 });
 
 await check("view-state snapshot mode and revision mismatches fail before restore", async () => {
-  const source = element(`<main data-_quid="0000000000000044"/>`);
+  const source = element(`<main @0000000000000044/>`);
   source.document.attrs.set(root, "private-title", "mode-revision-secret");
   const capture = source.capture();
   const encoded = encode_view_state_snapshot(capture);
@@ -658,12 +658,12 @@ await check("view-state snapshot envelope discrimination rejects unsupported and
   const common = { rev: capture.rev, mode: capture.mode };
 
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", formatVersion: 2, payload: encoded.payload },
+    { ...common, format: "view-state", formatVersion: 1, payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "unknown-view-state-format", formatVersion: 1, payload: encoded.payload },
+    { ...common, format: "unknown-view-state-format", formatVersion: 2, payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     [encoded.payload],
   );
@@ -677,7 +677,7 @@ await check("view-state snapshot envelope discrimination rejects unsupported and
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", formatVersion: 1 },
+    { ...common, format: "view-state", formatVersion: 2 },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
@@ -686,7 +686,7 @@ await check("view-state snapshot envelope discrimination rejects unsupported and
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", formatVersion: 1, payload: 42 },
+    { ...common, format: "view-state", formatVersion: 2, payload: 42 },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
 });
@@ -698,7 +698,7 @@ await check("view-state codec failures are translated without payload disclosure
       rev: 0,
       mode: "element",
       format: "view-state",
-      formatVersion: 1,
+      formatVersion: 2,
       payload: privatePayload,
     },
     "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED",
@@ -726,7 +726,7 @@ await check("negotiated view-state encoding failure sends neither snapshot nor H
   assert.throws(
     () => host.recovery.plan_with_snapshot_encoding(
       { logicalMapId: host.stream.logicalMapId },
-      { format: "view-state", formatVersion: 1 },
+      { format: "view-state", formatVersion: 2 },
     ),
     (error) => {
       planningError = error;
@@ -767,7 +767,7 @@ await check("unsupported internal snapshot encoding rejects before material cons
 });
 
 await check("document history gap falls back to a same-mode snapshot", async () => {
-  const initial = `<main data-_quid="0000000000000009"/>`;
+  const initial = `<main @0000000000000009/>`;
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-gap", history: { maxCommits: 1 } });
   const mirror = element(initial);
@@ -857,14 +857,14 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
 
 await check("hosted document action carries action causation into commit publication without attrs", async () => {
   const events = [];
-  const authority = element(`<main data-_quid="0000000000000031"/>`);
+  const authority = element(`<main @0000000000000031/>`);
   const host = hson.liveHost.create({
     map: authority,
     logicalMapId: "document-action-trace",
     incarnationId: "document-action-incarnation",
     trace: { emit(event) { events.push(event); } },
   });
-  const mirror = element(`<main data-_quid="0000000000000031"/>`);
+  const mirror = element(`<main @0000000000000031/>`);
   const client = await attach(host, mirror).client;
   const result = await client.action("document.attrs.set", {
     target: root,

@@ -1,14 +1,22 @@
 // parse_html_attrs.ts
 
 import {
-  _DATA_INDEX,
-  _DATA_QUID,
-  _META_DATA_PREFIX,
+  HSON_META_MARKUP_PREFIX,
+  HSON_META_QUID,
+  HSON_META_TRANSIT_PREFIX,
   _TRANSIT_PREFIX,
 } from "../../../../core/constants.js";
+import {
+  admit_hson_metadata_markup,
+} from "../../../../core/hson-metadata.js";
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
 import { normalize_attr_ws } from "../attrs-utils/normalize_attrs_ws.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
+import {
+  decode_hson_metadata_transit_name,
+  is_hson_metadata_transit_name,
+} from "../html-preflights/hson-metadata-transit.js";
+import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -37,7 +45,9 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
  * - Returns `attrs` for user-visible attributes, optional `meta` for reserved
  *   structural metadata, and protected QUID input separately for canonical
  *   attachment by the caller.
- * - Drops internal transit-only attributes (`data--*`) used during preprocessing.
+ * - Decodes dedicated HSON metadata transit names only for the string parser
+ *   path and rejects externally authored private names.
+ * - Drops internal generic transit-only attributes used during preprocessing.
  * - Normalizes style into a structured object via `parse_style_string`.
  * - Ignores XML namespace noise (`xmlns`, `xmlns:*`, `xml:*`) so HTML/SVG/XML
  *   sources don’t leak parser plumbing into HSON.
@@ -57,7 +67,11 @@ const isPresenceAttr = (key: string, name: string, value: string): boolean => {
  * @returns Parsed ordinary attributes plus optional structural metadata and a
  *          separately captured protected QUID value.
  */
-export function parse_html_attrs(el: Element): {
+export function parse_html_attrs(
+  el: Element,
+  nodeTag: string,
+  options: Readonly<{ allowHsonTransit?: boolean }> = {},
+): {
   attrs: HsonAttrs;
   meta?: HsonMeta;
   quid?: string;
@@ -73,23 +87,50 @@ export function parse_html_attrs(el: Element): {
     const key = attrKeyForElement(el, name);
     const v = a.value ?? "";
 
-    // A) strip transit-only hints outright
+    // A) decode dedicated HSON metadata transit or admit a literal DOM name.
+    let metadataMarkupName: string | undefined;
+    if (is_hson_metadata_transit_name(key)) {
+      if (!options.allowHsonTransit) {
+        _throw_transform_err(
+          `externally authored private HSON metadata transit name "${key}" is forbidden`,
+          "parse-html-attrs",
+        );
+      }
+      metadataMarkupName = decode_hson_metadata_transit_name(key);
+      if (metadataMarkupName === undefined) {
+        _throw_transform_err(
+          `malformed private HSON metadata transit name "${key}"`,
+          "parse-html-attrs",
+        );
+      }
+    } else if (key.startsWith(HSON_META_MARKUP_PREFIX)) {
+      metadataMarkupName = key;
+    }
+
+    if (metadataMarkupName !== undefined) {
+      const admission = admit_hson_metadata_markup(
+        nodeTag,
+        metadataMarkupName,
+        v,
+      );
+      if (!admission.valid) {
+        _throw_transform_err(
+          admission.reason,
+          "parse-html-attrs",
+        );
+      }
+      if (admission.key === HSON_META_QUID) quid = admission.value;
+      else (meta ??= {})[admission.key] = admission.value;
+      continue;
+    }
+
+    // B) generic parser transit remains internal.
     if (key.startsWith(_TRANSIT_PREFIX)) continue;
-
-    // B) $_meta-on-wire (reserved)
-    if (key === _DATA_INDEX) {
-      (meta ??= {})[_DATA_INDEX] = v;
-      continue;
-    }
-
-    if (key === _DATA_QUID) {
-      quid = v;
-      continue;
-    }
-
-    if (key.startsWith(_META_DATA_PREFIX)) {
-      (meta ??= {})[key] = v;
-      continue;
+    if (key.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private HSON metadata transit name "${key}" is forbidden`,
+        "parse-html-attrs",
+      );
     }
 
     // C) style → structured object

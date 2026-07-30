@@ -97,7 +97,7 @@ function form_el_for_node(node: HsonNode): FormEl | null {
 
 // optional strictness helper 
 function throw_missing_el(node: HsonNode, source: string): never {
-  const quid = node.$_meta?._quid ?? "<no-quid>";
+  const quid = node.$_meta?.quid ?? "<no-quid>";
   _throw_transform_err(
     `missing element for node (tag=${node.$_tag}, quid=${quid})`,
     source,

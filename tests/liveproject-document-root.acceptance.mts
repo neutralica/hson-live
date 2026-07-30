@@ -51,7 +51,7 @@ function mount(root: HsonNode): FakeElement {
 }
 
 check("compatible install retains tree, root, DOM, and bounded descendant identity", () => {
-  const map = element(`<main data-_quid="0000000000000501" class="old" <p data-_quid="0000000000000502" "old"/> <i/>/>`);
+  const map = element(`<main @0000000000000501 class="old" <p @0000000000000502 "old"/> <i/>/>`);
   const binding = bind_document_livetree(map);
   const tree = binding.tree;
   const root = tree.node;
@@ -60,7 +60,7 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
   const paragraphDom = get_el_for_node(paragraph);
   const marker = { retained: true };
   Reflect.set(rootDom, "marker", marker);
-  const replacement = element(`<main data-_quid="0000000000000501" class="new" <p data-_quid="0000000000000502" "next"/> <strong/>/>`);
+  const replacement = element(`<main @0000000000000501 class="new" <p @0000000000000502 "next"/> <strong/>/>`);
 
   const commit = map.install(replacement.capture());
 
@@ -87,23 +87,23 @@ check("QUID-less compatible root retains projection-local identity without mutat
   const map = element(`<main class="old"/>`);
   const binding = bind_document_livetree(map);
   const root = binding.tree.node;
-  const projectionQuid = root.$_meta?.["data-_quid"];
+  const projectionQuid = root.$_meta?.["quid"];
   assert.equal(typeof projectionQuid, "string");
   const replacement = element(`<main class="next" "text"/>`);
   map.install(replacement.capture());
   assert.equal(binding.status, "active");
   assert.equal(binding.tree.node, root);
-  assert.equal(root.$_meta?.["data-_quid"], projectionQuid);
-  assert.equal(map.element.node().$_meta?.["data-_quid"], undefined);
+  assert.equal(root.$_meta?.["quid"], projectionQuid);
+  assert.equal(map.element.node().$_meta?.["quid"], undefined);
   binding.dispose();
 });
 
 check("replayed compatible replace-root uses one convergence transaction", () => {
-  const source = element(`<main data-_quid="0000000000000503"/>`);
-  const target = element(`<main data-_quid="0000000000000503"/>`);
+  const source = element(`<main @0000000000000503/>`);
+  const target = element(`<main @0000000000000503/>`);
   const binding = bind_document_livetree(target);
   const root = binding.tree.node;
-  const replacement = element(`<main data-_quid="0000000000000503" title="replayed" <b/>/>`);
+  const replacement = element(`<main @0000000000000503 title="replayed" <b/>/>`);
   const commit = source.install(replacement.capture());
   target.replay(commit);
   assert.equal(binding.tree.node, root);
@@ -114,7 +114,7 @@ check("replayed compatible replace-root uses one convergence transaction", () =>
 });
 
 check("canonical-equivalent install performs no convergence", () => {
-  const map = element(`<main data-_quid="0000000000000504" class="same"/>`);
+  const map = element(`<main @0000000000000504 class="same"/>`);
   const binding = bind_document_livetree(map);
   const root = binding.tree.node;
   const commit = map.install(map.capture());
@@ -126,29 +126,29 @@ check("canonical-equivalent install performs no convergence", () => {
 });
 
 check("tag and persisted root-QUID transitions fail closed", () => {
-  const tagMap = element(`<main data-_quid="0000000000000505"/>`);
+  const tagMap = element(`<main @0000000000000505/>`);
   const tagBinding = bind_document_livetree(tagMap);
   const tagRoot = structuredClone(tagBinding.tree.node);
-  tagMap.install(element(`<article data-_quid="0000000000000505"/>`).capture());
+  tagMap.install(element(`<article @0000000000000505/>`).capture());
   assert.equal(tagBinding.failure?.code, DOCUMENT_BINDING_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.deepEqual(tagBinding.tree.node, tagRoot);
   tagBinding.dispose();
 
-  const quidMap = element(`<main data-_quid="0000000000000506"/>`);
+  const quidMap = element(`<main @0000000000000506/>`);
   const quidBinding = bind_document_livetree(quidMap);
   const quidRoot = structuredClone(quidBinding.tree.node);
-  quidMap.install(element(`<main data-_quid="0000000000000507"/>`).capture());
+  quidMap.install(element(`<main @0000000000000507/>`).capture());
   assert.equal(quidBinding.failure?.code, DOCUMENT_BINDING_ROOT_QUID_CONFLICT_ERROR_CODE);
   assert.deepEqual(quidBinding.tree.node, quidRoot);
   quidBinding.dispose();
 });
 
 check("descendant QUID collision fails before projected mutation", () => {
-  create_livetree(element(`<aside data-_quid="0000000000000508"/>`).element.node());
-  const map = element(`<main data-_quid="0000000000000509" <a/>/>`);
+  create_livetree(element(`<aside @0000000000000508/>`).element.node());
+  const map = element(`<main @0000000000000509 <a/>/>`);
   const binding = bind_document_livetree(map);
   const before = structuredClone(binding.tree.node);
-  map.install(element(`<main data-_quid="0000000000000509" <aside data-_quid="0000000000000508"/>/>`).capture());
+  map.install(element(`<main @0000000000000509 <aside @0000000000000508/>/>`).capture());
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_BINDING_QUID_COLLISION_ERROR_CODE);
   assert.deepEqual(binding.tree.node, before);
@@ -157,11 +157,11 @@ check("descendant QUID collision fails before projected mutation", () => {
 });
 
 check("mounted root DOM failure preserves canonical install and fails observer-side", () => {
-  const map = element(`<main data-_quid="0000000000000510" <a/>/>`);
+  const map = element(`<main @0000000000000510 <a/>/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
-  const commit = map.install(element(`<main data-_quid="0000000000000510" title="canonical" <b/>/>`).capture());
+  const commit = map.install(element(`<main @0000000000000510 title="canonical" <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
   assert.equal(binding.status, "failed");
@@ -172,14 +172,14 @@ check("mounted root DOM failure preserves canonical install and fails observer-s
 });
 
 check("reentrant observation during root DOM convergence fails closed", () => {
-  const map = element(`<main data-_quid="0000000000000511" <a/>/>`);
+  const map = element(`<main @0000000000000511 <a/>/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   rootDom.beforeReplace = () => {
     rootDom.beforeReplace = undefined;
     map.document.attrs.set(path(), "reentrant", true);
   };
-  const commit = map.install(element(`<main data-_quid="0000000000000511" <b/>/>`).capture());
+  const commit = map.install(element(`<main @0000000000000511 <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 2);
   assert.equal(map.document.attrs.get(path(), "reentrant"), true);

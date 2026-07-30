@@ -1,5 +1,5 @@
 import { SVG_TAGS } from "../../../core/all-html-tags.js";
-import { _META_DATA_PREFIX } from "../../../core/constants.js";
+import { HSON_META_MARKUP_PREFIX } from "../../../core/constants.js";
 import { clone_node } from "../../../core/clone-node.js";
 import {
   canonical_public_attrs_equal,
@@ -250,7 +250,7 @@ function normalize_attr_name(tree: LiveTree, input: unknown, operation: string):
     throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE, operation, undefined, "name must be a string");
   }
   const key = canonical_attr_key(tree, input);
-  if (key.startsWith(_META_DATA_PREFIX)) {
+  if (key.startsWith(HSON_META_MARKUP_PREFIX)) {
     throw attr_error(tree, LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, operation, key, "system metadata is protected");
   }
   if (!is_public_attr_name(key)) {

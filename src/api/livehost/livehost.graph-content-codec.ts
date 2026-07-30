@@ -12,7 +12,7 @@ import { index_livemap_document_elements } from "../livemap/livemap.document.ide
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 
 const FORMAT = "hson-graph" as const;
-const FORMAT_VERSION = 1 as const;
+const FORMAT_VERSION = 2 as const;
 
 export type LiveHostGraphContentCodecErrorCode =
   | "LIVEHOST_GRAPH_CONTENT_FORMAT_UNKNOWN"

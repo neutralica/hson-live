@@ -40,7 +40,7 @@ function replaceAttrsCommit(rev: number, target: unknown, attrs: unknown): unkno
 }
 
 check("document mutations publish their exact canonical commit once", () => {
-  const map = element(`<main data-_quid="0000000000000001"/>`);
+  const map = element(`<main @0000000000000001/>`);
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
   const commit = map.document.attrs.set(rootTarget, "id", "main");
@@ -112,8 +112,8 @@ check("projected restore swaps state and exact revision with only a snapshot eve
 });
 
 check("ordered element graph commits replay atomically without echo", () => {
-  const source = element(`<main data-_quid="0000000000000002" <p data-_quid="0000000000000003" "old"/>/>`);
-  const target = element(`<main data-_quid="0000000000000002" <p data-_quid="0000000000000003" "old"/>/>`);
+  const source = element(`<main @0000000000000002 <p @0000000000000003 "old"/>/>`);
+  const target = element(`<main @0000000000000002 <p @0000000000000003 "old"/>/>`);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
   const first = source.document.attrs.set(rootTarget, "class", "ready");
@@ -129,8 +129,8 @@ check("ordered element graph commits replay atomically without echo", () => {
 });
 
 check("fragment graph replay preserves canonical snapshot and identity", () => {
-  const source = fragment(`<section data-_quid="0000000000000004" "old"/> "tail"`);
-  const target = fragment(`<section data-_quid="0000000000000004" "old"/> "tail"`);
+  const source = fragment(`<section @0000000000000004 "old"/> "tail"`);
+  const target = fragment(`<section @0000000000000004 "old"/> "tail"`);
   const commit = source.document.attrs.set({ kind: "quid", quid: "0000000000000004" }, "title", "kept");
   target.replay(commit);
   assert.deepEqual(target.capture(), source.capture());
@@ -138,7 +138,7 @@ check("fragment graph replay preserves canonical snapshot and identity", () => {
 });
 
 check("replace-attrs planning is detached and leaves authority state untouched", () => {
-  const map = element(`<main id="before" data-_quid="000000000000001f"/>`);
+  const map = element(`<main id="before" @000000000000001f/>`);
   const attrs = { id: "after", style: { color: "red" } };
   const before = map.capture();
   const prepared = prepare_document_graph_operation(map.root(), map.mode, {
@@ -160,7 +160,7 @@ check("replace-attrs planning is detached and leaves authority state untouched",
 });
 
 check("replace-attrs replays one detached final-state bag on path and QUID targets", () => {
-  const map = element(`<main id="before" title="old" data-_quid="0000000000000020"/>`);
+  const map = element(`<main id="before" title="old" @0000000000000020/>`);
   const attrs = {
     title: "after",
     empty: "",
@@ -187,7 +187,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
     title: "after",
   });
   assert.equal(map.document.byQuid("0000000000000020")?.$_tag, "main");
-  assert.equal(map.element.node().$_meta?.["data-_quid"], "0000000000000020");
+  assert.equal(map.element.node().$_meta?.["quid"], "0000000000000020");
   assert.notEqual(replayed.ops[0]?.op === "replace-attrs" && replayed.ops[0].attrs, attrs);
 
   attrs.title = "caller-mutated";
@@ -195,7 +195,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
   assert.equal(map.element.node().$_attrs?.title, "after");
   assert.equal(map.element.node().$_attrs?.style?.color, "red");
 
-  const fragmentMap = fragment(`<section id="old" data-_quid="0000000000000021"/> "tail"`);
+  const fragmentMap = fragment(`<section id="old" @0000000000000021/> "tail"`);
   Reflect.apply(fragmentMap.replay, fragmentMap, [replaceAttrsCommit(
     0,
     { kind: "quid", quid: "0000000000000021" },
@@ -205,7 +205,7 @@ check("replace-attrs replays one detached final-state bag on path and QUID targe
 });
 
 check("replace-attrs clears compactly and canonical equality ignores key order", () => {
-  const cleared = element(`<main id="old" title="old" data-_quid="0000000000000022"/>`);
+  const cleared = element(`<main id="old" title="old" @0000000000000022/>`);
   Reflect.apply(cleared.replay, cleared, [replaceAttrsCommit(0, rootTarget, {})]);
   assert.equal(Object.prototype.hasOwnProperty.call(cleared.element.node(), "$_attrs"), false);
   assert.equal(cleared.document.byQuid("0000000000000022")?.$_tag, "main");
@@ -230,9 +230,9 @@ check("replace-attrs rejects invalid bags, protected metadata, and invalid targe
   const cyclicStyle: Record<string, unknown> = {};
   cyclicStyle.self = cyclicStyle;
   const invalidAttrs = [
-    { "data-_quid": "0000000000000024" },
-    { "data-_index": "0" },
-    { "data-_custom": "x" },
+    { "hson:quid": "0000000000000024" },
+    { "hson:index": "0" },
+    { "hson:unknown": "x" },
     { "": "empty-name" },
     { "bad name": "malformed-name" },
     { bad: undefined },
@@ -243,7 +243,7 @@ check("replace-attrs rejects invalid bags, protected metadata, and invalid targe
     { style: cyclicStyle },
   ];
   for (const attrs of invalidAttrs) {
-    const map = element(`<main id="kept" data-_quid="0000000000000023"/>`);
+    const map = element(`<main id="kept" @0000000000000023/>`);
     const before = map.capture();
     assert.throws(() => Reflect.apply(map.replay, map, [replaceAttrsCommit(0, rootTarget, attrs)]));
     assert.deepEqual(map.capture(), before);
@@ -263,7 +263,7 @@ check("replace-attrs rejects invalid bags, protected metadata, and invalid targe
 });
 
 check("all four public bulk attrs methods replay through the one replace-attrs path", () => {
-  const initial = `<main id="old" title="kept" data-_quid="0000000000000025"/>`;
+  const initial = `<main id="old" title="kept" @0000000000000025/>`;
   const source = element(initial);
   const target = element(initial);
   const commits = [
@@ -278,16 +278,16 @@ check("all four public bulk attrs methods replay through the one replace-attrs p
   assert.deepEqual(target.capture(), source.capture());
   assert.equal(target.rev, 4);
   assert.equal(target.document.byQuid("0000000000000025")?.$_tag, "main");
-  assert.equal(target.document.byQuid("0000000000000025")?.$_meta?.["data-_quid"], "0000000000000025");
+  assert.equal(target.document.byQuid("0000000000000025")?.$_meta?.["quid"], "0000000000000025");
 });
 
 check("insert, remove and final-position move replay through the single graph planner", () => {
-  const initial = `<a/> <b/> <c data-_quid="000000000000001c"/>`;
+  const initial = `<a/> <b/> <c @000000000000001c/>`;
   const source = fragment(initial);
   const target = fragment(initial);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
-  const inserted = element(`<d data-_quid="000000000000001d"/>`).element.node();
+  const inserted = element(`<d @000000000000001d/>`).element.node();
   const commits = [
     source.document.content.insert(rootTarget, 1, inserted),
     source.document.content.move(rootTarget, 1, 3),
@@ -330,9 +330,9 @@ check("malformed structural graph operations reject atomically", () => {
 });
 
 check("replace-root graph commit replays with canonical mode and QUID identity", () => {
-  const sourceState = element(`<article data-_quid="0000000000000009"/>`);
-  const source = element(`<main data-_quid="000000000000000a"/>`);
-  const target = element(`<main data-_quid="000000000000000a"/>`);
+  const sourceState = element(`<article @0000000000000009/>`);
+  const source = element(`<main @000000000000000a/>`);
+  const target = element(`<main @000000000000000a/>`);
   const commit = source.install(sourceState.capture());
   target.replay(commit);
   assert.deepEqual(target.capture(), source.capture());
@@ -341,7 +341,7 @@ check("replace-root graph commit replays with canonical mode and QUID identity",
 });
 
 check("malformed and out-of-order graph replay leave state unchanged", () => {
-  const target = element(`<main data-_quid="0000000000000005"/>`);
+  const target = element(`<main @0000000000000005/>`);
   const before = target.capture();
   const malformed = {
     changed: true,
@@ -352,7 +352,7 @@ check("malformed and out-of-order graph replay leave state unchanged", () => {
   assert.throws(() => Reflect.apply(target.replay, target, [malformed]));
   assert.deepEqual(target.capture(), before);
 
-  const source = element(`<main data-_quid="0000000000000005"/>`);
+  const source = element(`<main @0000000000000005/>`);
   const commit = source.document.attrs.set(rootTarget, "id", "x");
   target.replay(commit);
   assert.throws(() => target.replay(commit), /revision mismatch/);
@@ -360,10 +360,10 @@ check("malformed and out-of-order graph replay leave state unchanged", () => {
 });
 
 check("snapshot restore swaps mode-compatible root, QUID index, and exact revision", () => {
-  const source = element(`<article data-_quid="0000000000000006" <em data-_quid="0000000000000007"/>/>`);
+  const source = element(`<article @0000000000000006 <em @0000000000000007/>/>`);
   source.document.attrs.set(rootTarget, "id", "one");
   source.document.attrs.set(rootTarget, "title", "two");
-  const target = element(`<aside data-_quid="0000000000000008"/>`);
+  const target = element(`<aside @0000000000000008/>`);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
   target.restore(source.capture());

@@ -1,6 +1,6 @@
 // project-live-tree.ts
 import { Primitive } from "../../../core/types.js";
-import { ensure_quid } from "../quid/data-quid.js";
+import { ensure_quid, HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { HsonNode } from "../../../core/types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
@@ -8,7 +8,6 @@ import { is_Node } from "../../../core/node-guards.js";
 import { get_el_for_node, link_node_to_el } from "../utils/node-map-helpers.js";
 import { canon_to_css_prop, normalize_css_key } from "../../transform/utils/attrs-utils/normalize-css.js";
 import {
-  _DATA_QUID,
   ARR_TAG,
   ELEM_TAG,
   HSON_SYS_PREFIX,
@@ -172,9 +171,9 @@ export function project_livetree(
 
   // reflect QUID onto DOM
   if (ns === "svg") {
-    el.setAttribute(_DATA_QUID, quid);
+    el.setAttribute(HSON_QUID_MARKUP_NAME, quid);
   } else {
-    set_attrs_safe(el as HTMLElement, _DATA_QUID, quid);
+    set_attrs_safe(el as HTMLElement, HSON_QUID_MARKUP_NAME, quid);
   }
   // reflect $_attrs
   const a = n.$_attrs;

@@ -1,4 +1,4 @@
-import { ELEM_TAG, STR_TAG, VAL_TAG, _DATA_QUID } from "../../core/constants.js";
+import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID } from "../../core/constants.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
@@ -22,6 +22,7 @@ import {
   type DocumentBoundTextMutation,
 } from "../livetree/lifecycle/document-binding-state.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
+import { HSON_QUID_MARKUP_NAME } from "../livetree/quid/data-quid.js";
 import {
   assert_node_element_link,
   get_el_for_node,
@@ -290,7 +291,7 @@ export function bind_document_livetree_in_runtime(
     const path = Object.freeze([...canonicalPath]);
     const pathKey = path_key(path);
     const persistedQuid = persistedQuidsByPath.get(pathKey);
-    if (persistedQuid !== undefined && node.$_meta?.[_DATA_QUID] !== persistedQuid) {
+    if (persistedQuid !== undefined && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentLiveTreeBindingError(
         DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE,
         "Projected element did not preserve its canonical persisted QUID.",
@@ -602,7 +603,7 @@ function collect_persisted_quids(root: HsonNode): ReadonlyMap<string, string> {
   const result = new Map<string, string>();
   const walk = (node: HsonNode, path: readonly number[]): void => {
     if (is_ordinary_element_node(node)) {
-      const quid = node.$_meta?.[_DATA_QUID];
+      const quid = node.$_meta?.[HSON_META_QUID];
       if (quid !== undefined) {
         if (!is_persisted_quid(quid)) {
           throw new DocumentLiveTreeBindingError(
@@ -663,7 +664,7 @@ function validate_registration(
     );
   }
   if (registration.persistedQuid !== undefined
-    && registration.node.$_meta?.[_DATA_QUID] !== registration.persistedQuid) {
+    && registration.node.$_meta?.[HSON_META_QUID] !== registration.persistedQuid) {
     throw new DocumentLiveTreeBindingError(
       DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE,
       "Projected element no longer carries its expected persisted QUID.",
@@ -703,7 +704,7 @@ function validate_registration(
     );
   }
   if (registration.persistedQuid !== undefined
-    && element.getAttribute(_DATA_QUID) !== registration.persistedQuid) {
+    && element.getAttribute(HSON_QUID_MARKUP_NAME) !== registration.persistedQuid) {
     throw new DocumentLiveTreeBindingError(
       DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE,
       "Mounted projected element does not carry its expected persisted QUID.",
@@ -743,7 +744,7 @@ function validate_dom_attrs(
     }
   }
   for (const name of element.getAttributeNames()) {
-    if (name === _DATA_QUID) continue;
+    if (name === HSON_QUID_MARKUP_NAME) continue;
     if (!expectedNames.has(name)) {
       throw new DocumentLiveTreeBindingError(
         DOCUMENT_BINDING_PROJECTION_FAILED_ERROR_CODE,

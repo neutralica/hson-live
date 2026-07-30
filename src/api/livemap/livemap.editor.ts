@@ -4,7 +4,7 @@
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/livemap.types.js";
-import { _DATA_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
+import { HSON_META_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
 import { json_values_equal } from "./livemap-helpers.js";
@@ -281,7 +281,7 @@ function write_array_index(parent: HsonNode, index: number, value: JsonValue, pa
 
   const existingIndex = parent.$_content.findIndex((child) => {
     if (!is_Node(child) || child.$_tag !== II_TAG) return false;
-    return child.$_meta?.[_DATA_INDEX] === String(index);
+    return child.$_meta?.[HSON_META_INDEX] === String(index);
   });
 
   if (existingIndex === -1) {
@@ -350,7 +350,7 @@ export function node_to_json_value(node: HsonNode): JsonValue {
  * Find the child wrapper for one projected path segment.
  *
  * Object paths use string keys and find user-tag wrappers. Array paths use
- * numeric indexes and find `_hson_ii` wrappers by `data-_index` metadata.
+ * numeric indexes and find `_hson_ii` wrappers by `index` metadata.
  */
 function find_child_wrapper(parentValueNode: HsonNode, part: LivePathPart): HsonNode | undefined {
   if (parentValueNode.$_tag === OBJ_TAG && typeof part === "string") {
@@ -360,7 +360,7 @@ function find_child_wrapper(parentValueNode: HsonNode, part: LivePathPart): Hson
   if (parentValueNode.$_tag === ARR_TAG && typeof part === "number") {
     return parentValueNode.$_content.find((child) => {
       if (!is_Node(child) || child.$_tag !== II_TAG) return false;
-      return child.$_meta?.[_DATA_INDEX] === String(part);
+      return child.$_meta?.[HSON_META_INDEX] === String(part);
     }) as HsonNode | undefined;
   }
 
@@ -464,7 +464,7 @@ function object_node_to_value(node: HsonNode): JsonValue {
 /**
  * Project an array-shaped value node to a JSON array.
  *
- * Array item wrappers are sorted by their `data-_index` metadata. Invalid,
+ * Array item wrappers are sorted by their `index` metadata. Invalid,
  * missing, or negative indexes are ignored for now rather than repaired here.
  */
 function array_node_to_value(node: HsonNode): JsonValue[] {
@@ -473,7 +473,7 @@ function array_node_to_value(node: HsonNode): JsonValue[] {
   for (const child of node.$_content) {
     if (!is_Node(child) || child.$_tag !== II_TAG) continue;
 
-    const rawIndex = child.$_meta?.[_DATA_INDEX];
+    const rawIndex = child.$_meta?.[HSON_META_INDEX];
     if (rawIndex === undefined) continue;
 
     const index = Number(rawIndex);
@@ -505,14 +505,14 @@ function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
 /**
  * Create the `_hson_ii` wrapper for an array item.
  *
- * The item index is stored in `data-_index`, matching the canonical HSON array
+ * The item index is stored in `index`, matching the canonical HSON array
  * representation used by the parser/serializer pipeline.
  */
 function make_array_item_wrapper(index: number, value: JsonValue): HsonNode {
   return CREATE_NODE({
     $_tag: II_TAG,
     $_content: [json_value_to_node(value)],
-    $_meta: { [_DATA_INDEX]: String(index) },
+    $_meta: { [HSON_META_INDEX]: String(index) },
   });
 }
 
@@ -545,7 +545,7 @@ function json_object_to_node(value: Readonly<Record<string, JsonValue>>): HsonNo
 /**
  * Convert a JSON array into an `_hson_arr` value node.
  *
- * Each entry becomes an `_hson_ii` wrapper with `data-_index` metadata and one
+ * Each entry becomes an `_hson_ii` wrapper with `index` metadata and one
  * value payload child.
  */
 function json_array_to_node(value: readonly JsonValue[]): HsonNode {
@@ -554,7 +554,7 @@ function json_array_to_node(value: readonly JsonValue[]): HsonNode {
     value.map((entry, index) => CREATE_NODE({
       $_tag: II_TAG,
       $_content: [json_value_to_node(entry)],
-      $_meta: { [_DATA_INDEX]: String(index) },
+      $_meta: { [HSON_META_INDEX]: String(index) },
     })),
   );
 }

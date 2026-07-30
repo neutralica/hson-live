@@ -17,7 +17,7 @@ import {
  * Recursively detach an HSON node and its descendants from the live DOM.
  *
  * This is a detach operation, not an identity-destroy operation. The branch keeps
- * its HSON nodes and any claimed `data-_quid` ownership so it can remain a valid
+ * its HSON nodes and any claimed `quid` ownership so it can remain a valid
  * unmounted branch and may be grafted again later.
  *
  * Walk order:

@@ -22,7 +22,7 @@ function data(value = 0): LiveMap {
   return hson.liveMap.fromJson({ value, sibling: "kept" });
 }
 
-function element(source = `<main data-_quid="0000000000000001" <p data-_quid="0000000000000002" "old"/>/>`): ElementLiveMap {
+function element(source = `<main @0000000000000001 <p @0000000000000002 "old"/>/>`): ElementLiveMap {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error(`expected element, observed ${map.mode}`);
   return map;
@@ -123,8 +123,8 @@ check("document preparation preserves root, identity, typed attrs and observatio
 });
 
 check("document install prepares and accepts one exact replace-root transition", () => {
-  const map = element(`<main data-_quid="0000000000000001"/>`);
-  const replacement = element(`<main data-_quid="0000000000000001" <section data-_quid="0000000000000003"/>/>`);
+  const map = element(`<main @0000000000000001/>`);
+  const replacement = element(`<main @0000000000000001 <section @0000000000000003/>/>`);
   const authority = get_livemap_staged_authority(map);
   const transition = authority.prepare((draft) => draft.install(replacement.capture()));
   assert.equal(map.document.byQuid("0000000000000003"), undefined);
@@ -192,7 +192,7 @@ check("restore, replay, schema changes and unsafe graph divergence invalidate ca
     "title",
     "pending",
   ));
-  const restoredSource = element(`<main data-_quid="0000000000000001" <p data-_quid="0000000000000002" title="restored"/>/>`);
+  const restoredSource = element(`<main @0000000000000001 <p @0000000000000002 title="restored"/>/>`);
   restoredDocument.restore({ ...restoredSource.capture(), rev: 8 });
   transitionCode(() => restoredDocumentAuthority.accept(beforeDocumentRestore), "LIVEMAP_TRANSITION_STALE");
 

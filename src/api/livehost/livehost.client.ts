@@ -81,7 +81,7 @@ let nextActionStatusId = 0;
 
 const CLIENT_SNAPSHOT_CAPABILITIES: LiveHostSnapshotCapabilities = Object.freeze({
   hson: true,
-  viewStateVersions: Object.freeze([1]),
+  viewStateVersions: Object.freeze([2]),
 });
 
 function make_reload_safe_id(prefix: string): string {
@@ -141,7 +141,7 @@ function encode_client_message<TActions extends LiveHostActionPayloads>(message:
   } catch {
     // Preserve the established asynchronous structured action rejection path
     // without ever falling back to a raw node-shaped wire payload.
-    encodedContent = { format: "hson-graph", formatVersion: 1, payload: "" } as const;
+    encodedContent = { format: "hson-graph", formatVersion: 2, payload: "" } as const;
   }
   return JSON.stringify({
     ...message,

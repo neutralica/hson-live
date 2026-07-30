@@ -3,7 +3,7 @@
 import { is_Primitive, is_Object, is_string } from "../../../core/value-guards.js";
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
-import { _DATA_INDEX, _META_DATA_PREFIX } from "../../../core/constants.js";
+import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../../core/types.js";
 import { JsonObj, JsonValue, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
@@ -125,7 +125,7 @@ function assertNoForbiddenVSNKeysInJSON(obj: Record<string, unknown>, where: str
  *    - For each item:
  *      - Computes the child tag with `getTag(val)`.
  *      - Recursively calls `nodeFromJson(val, childTag)` to get a child node.
- *      - Wraps the child in an `<_hson_ii>` node with `$_meta.data-_index` equal
+ *      - Wraps the child in an `<_hson_ii>` node with `$_meta.index` equal
  *        to the array index.
  *    - Returns `<_hson_arr>` containing the `_hson_ii` children.
  *
@@ -221,7 +221,7 @@ export function nodeFromJson(
         }
     }
 
-    // ---- 1) Array branch (_hson_arr → _hson_ii[data-_index]) ----
+    // ---- 1) Array branch (_hson_arr → _hson_ii[index]) ----
     if (parentTag === ARR_TAG) {
         if (!Array.isArray(srcJson)) {
             _throw_transform_err("array expected for ARR_TAG parent", "parse_json", make_string(srcJson));
@@ -231,7 +231,7 @@ export function nodeFromJson(
             const child = nodeFromJson(val, childTag).node;
             return CREATE_NODE({
                 $_tag: II_TAG,
-                $_meta: { "data-_index": String(ix) },
+                $_meta: { [HSON_META_INDEX]: String(ix) },
                 $_content: [child]
             });
         });
@@ -426,23 +426,18 @@ export function nodeFromJson(
  *   error is wrapped and rethrown via `_throw_transform_err`.
  * - If `input` is already a `JsonValue`, it is used as-is.
  *
- * Legacy `_hson_root` unwrapping:
+ * Explicit `_hson_root` unwrapping:
  * - If the top-level value is an object of the form:
- *     `{ "_hson_root: <payload>, "$_meta"?: { ... } }`
+ *     `{ "_hson_root": <payload>, "$_meta"?: { ... } }`
  *   then:
  *   - `jsonToProcess` is set to `<payload>`.
- *   - Any `$_meta` entries whose keys begin with the data-meta prefix
- *     (`data-_*`) are copied into `rootMeta` and attached to the final
- *     `_hson_root` node.
- * - All other keys (including non-`data-_*` meta) are ignored for the
- *   purposes of root metadata.
+ *   - `$_meta` is ignored. Structural roots carry no metadata.
  *
  * Conversion:
  * - Delegates to `nodeFromJson(jsonToProcess, getTag(jsonToProcess))`
  *   to build the main HSON subtree.
  * - Wraps the resulting node in a `_hson_root` wrapper:
  *   - `$_tag: ROOT_TAG`
- *   - `$_meta: rootMeta` (if any data-meta was preserved)
  *   - `$_content: [node]`
  * - Runs `assert_invariants` on the final root to ensure structural
  *   correctness.
@@ -462,21 +457,13 @@ export function parse_json(input: string | JsonValue): HsonNode {
         _throw_transform_err(`invalid JSON input ${make_string(input)}`, "parse-json", String(e));
     }
 
-    // unwrap legacy {_hson_root: ...} but keep data-* meta (unchanged)
+    // Unwrap the explicit root object form. Structural roots carry no metadata.
     let jsonToProcess: JsonValue = parsed;
-    let rootMeta: HsonMeta | undefined;
     if (is_Object(parsed)) {
         const obj = parsed as JsonObj;
         const keys = Object.keys(obj).filter(k => k !== "$_meta");
         if (keys.length === 1 && keys[0] === ROOT_TAG) {
             jsonToProcess = obj[ROOT_TAG] as JsonValue;
-            if (obj.$_meta && is_Object(obj.$_meta)) {
-                const filtered: HsonMeta = {};
-                for (const [k, v] of Object.entries(obj.$_meta)) {
-                    if (k.startsWith(_META_DATA_PREFIX)) (filtered as any)[k] = v;
-                }
-                if (Object.keys(filtered).length) rootMeta = filtered;
-            }
         }
     }
 
@@ -486,7 +473,6 @@ export function parse_json(input: string | JsonValue): HsonNode {
     const { node } = nodeFromJson(jsonToProcess, getTag(jsonToProcess));
     const root = CREATE_NODE({
         $_tag: ROOT_TAG,
-        $_meta: rootMeta,
         $_content: [node],
     });
     const normalized = normalize_hson_graph(root, "parse_json");

@@ -300,7 +300,7 @@ function validate_persisted_state(
     if (snapshot === undefined
       || !exact_keys(snapshot, ["format", "formatVersion", "payload"])
       || snapshot.format !== "view-state"
-      || snapshot.formatVersion !== 1
+      || snapshot.formatVersion !== 2
       || typeof snapshot.payload !== "string") throw invalid_state();
 
     const checkpoint = checkpointValue as unknown as LiveHostPersistedDocumentCheckpoint;

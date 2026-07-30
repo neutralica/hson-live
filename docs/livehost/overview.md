@@ -274,7 +274,7 @@ or a complete reset when the client’s incarnation is incompatible.
 Document clients may negotiate supported snapshot formats. Current document recovery can use:
 
 * legacy HSON snapshots;
-* exact view-state version 1 snapshots;
+* exact view-state version 2 snapshots (version 1 rejects as unsupported);
 * ordered canonical replay after the snapshot cut.
 
 Persistence format and client recovery format are intentionally separate.

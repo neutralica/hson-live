@@ -67,7 +67,7 @@ function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
     && "kind" in value
     && value.kind === "hson-document"
     && "version" in value
-    && value.version === 1
+    && value.version === 2
     && "mode" in value
     && (value.mode === "element" || value.mode === "fragment")
     && "rev" in value

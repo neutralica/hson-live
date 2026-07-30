@@ -25,7 +25,7 @@ export type LiveHostHsonSnapshotEnvelope = LiveHostSnapshotEnvelope;
 /** @internal Incoming exact document-state snapshot body. */
 export type LiveHostViewStateSnapshotEnvelope = LiveHostSnapshotCommonFields & Readonly<{
   format: "view-state";
-  formatVersion: 1;
+  formatVersion: 2;
   payload: string;
 }>;
 
@@ -37,7 +37,7 @@ export type LiveHostValidatedSnapshotEnvelope =
 /** Closed host-side document snapshot wire selection. */
 export type LiveHostDocumentSnapshotEncoding =
   | Readonly<{ format: "hson" }>
-  | Readonly<{ format: "view-state"; formatVersion: 1 }>;
+  | Readonly<{ format: "view-state"; formatVersion: 2 }>;
 
 /** @internal Outbound document snapshot body selected from one capture. */
 export type LiveHostOutboundDocumentSnapshotEnvelope =
@@ -99,7 +99,7 @@ function is_view_state_encoding(value: unknown): value is Extract<
     && "format" in value
     && value.format === "view-state"
     && "formatVersion" in value
-    && value.formatVersion === 1
+    && value.formatVersion === 2
     && Object.keys(value).length === 2;
 }
 

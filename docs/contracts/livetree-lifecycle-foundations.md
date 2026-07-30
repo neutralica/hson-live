@@ -9,7 +9,7 @@ uses them for the public lifecycle contract described below.
   QUID-owned CSS/keyframes, lifecycle disposables, and node-element mappings are
   released while graph structure and QUID identity remain.
 - `destroy_subtree_quids(root)` removes registry ownership, persisted
-  `data-_quid` metadata, and mapped DOM identity attributes recursively.
+  `quid` metadata, and mapped DOM identity attributes recursively.
 - `dispose_node_deep(root)` composes runtime teardown, bounded reentrant
   disposable draining, recursive QUID destruction, and shared weak node-keyed
   disposed state. Parent graph unlinking is intentionally a caller concern.

@@ -1,7 +1,7 @@
 // clone.ts
 
 import { HsonNode } from "../../../core/types.js";
-import { _DATA_QUID, ensure_quid, get_quid } from "../quid/data-quid.js";
+import { HSON_META_QUID, ensure_quid, get_quid } from "../quid/data-quid.js";
 import { LiveTree } from "../livetree.js";
 import { make_branch_from_node } from "../creation/create-branch.js";
 import { has_own_entries, prune_empty_node_meta } from "../../../core/node-storage.js";
@@ -34,7 +34,7 @@ function clone_branch_inner(
 
     // CHANGED: identity is not structural clone data. Remove the source quid
     // before ensure_quid() runs so the clone is always reminted.
-    delete dst.$_meta[_DATA_QUID];
+    delete dst.$_meta[HSON_META_QUID];
     prune_empty_node_meta(dst);
   }
 

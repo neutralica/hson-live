@@ -157,7 +157,7 @@ export function matchMeta(node: HsonNode, query: HsonQuery): boolean {
   const qMeta = query.meta as Record<string, unknown>;
 
   for (const [k, qv] of Object.entries(qMeta)) {
-    const nv = nm?.[k];
+    const nv = (nm as Readonly<Record<string, unknown>> | undefined)?.[k];
     if (isRegExp(qv)) {
       if (typeof nv !== "string" || !qv.test(nv)) return false;
     } else if (nv !== qv) {

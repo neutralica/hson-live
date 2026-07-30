@@ -5,6 +5,7 @@ import createDOMPurify, {
   type UponSanitizeAttributeHookEvent,
   type WindowLike,
 } from "dompurify";
+import { HSON_META_MARKUP_PREFIX } from "../core/constants.js";
 
 export type SanitizerLike = Pick<DOMPurify, "sanitize">;
 
@@ -202,6 +203,25 @@ function buildAddTags(html: string, ownerDocument: Document): string[] {
   return [...new Set([...disc])];
 }
 
+function discoverHsonMetadataAttrs(
+  html: string,
+  ownerDocument: Document,
+): string[] {
+  const template = ownerDocument.createElement("template");
+  template.innerHTML = html;
+  const names = new Set<string>();
+  const walk = (node: Node): void => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      for (const name of (node as Element).getAttributeNames()) {
+        if (name.startsWith(HSON_META_MARKUP_PREFIX)) names.add(name);
+      }
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
+  };
+  walk(template.content);
+  return [...names];
+}
+
 /***********************************************
  * sanitize_external
  *
@@ -303,11 +323,13 @@ export function sanitize_external(html: string): string {
   const targetWindow = window;
   const sanitizer = make_sanitizer(targetWindow);
   const ADD_TAGS = buildAddTags(html, targetWindow.document);
+  const ADD_ATTR = discoverHsonMetadataAttrs(html, targetWindow.document);
 
   return sanitizer.sanitize(html, {
     ALLOWED_TAGS: [...ALLOWED_TAGS],
     ALLOWED_ATTR: [...ALLOWED_ATTR],
     ADD_TAGS,
+    ADD_ATTR,
     FORBID_TAGS: Array.from(FORBID_TAGS_HARD),        // ensure the hard block wins
     FORBID_ATTR: ["style", "srcdoc"],                 // remove "on*" (no globbing)
     ALLOWED_URI_REGEXP: ALLOWED_URI_REGEX,

@@ -398,7 +398,7 @@ function decode_snapshot(
       code: "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     });
   }
-  if (value.formatVersion !== 1) {
+  if (value.formatVersion !== 2) {
     return fail("LiveHost view-state snapshot format version is unsupported.", {
       code: "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
     });

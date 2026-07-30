@@ -1,6 +1,6 @@
 // stringify.ts
 
-import { _DATA_INDEX, _DATA_QUID } from "./constants.js";
+import { HSON_META_INDEX, HSON_META_QUID } from "./constants.js";
 import { is_Node } from "./node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode } from "./types.js";
 
@@ -69,10 +69,11 @@ function orderStyleObject(s: Record<string, unknown>) {
 
 function orderMeta(m: HsonMeta) {
   const out: any = {};
-  const priority = [_DATA_QUID, _DATA_INDEX];
+  const priority = [HSON_META_QUID, HSON_META_INDEX];
+  const prioritySet = new Set<string>(priority);
   const keys = [
     ...priority.filter(k => k in (m as any)),
-    ...Object.keys(m).sort().filter(k => !priority.includes(k)),
+    ...Object.keys(m).sort().filter(k => !prioritySet.has(k)),
   ];
   for (const k of keys) out[k] = (m as any)[k];
   return out;

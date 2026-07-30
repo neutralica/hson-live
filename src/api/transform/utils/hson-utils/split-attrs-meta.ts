@@ -1,7 +1,6 @@
 // split-attrs-meta.ts
 
 import { HsonAttrs, HsonMeta } from "../../../../core/types.js";
-import { _META_DATA_PREFIX } from "../../../../core/constants.js";
 import type { RawAttr } from "../../token.types.js";
 import { parse_style_string } from "../attrs-utils/parse-style.js";
 import { unescape_hson_string } from "./unescape-hson.js";
@@ -36,12 +35,8 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  *   - `name` (attribute key),
  *   - optional `value` as `{ text, quoted }`.
  *
- * Routing rules:
- * - Meta keys:
- *   - Only keys starting with `data-_` (via `_META_DATA_PREFIX`) are stored in `$_meta`.
- *   - Meta values are decoded using HSON quoting rules (no HTML entity decoding).
- * - Attribute keys:
- *   - Everything else is stored in `$_attrs`.
+ * HSON metadata uses dedicated grammar (`@<quid>` and structural array order).
+ * Attribute tokens are therefore always ordinary `$_attrs`.
  *
  * Value semantics (HSON edge, not HTML):
  * - Quoted values are HSON string literals and are decoded via `decode_hson_value`.
@@ -68,7 +63,7 @@ function decode_hson_value(text: string, quoted: boolean | undefined): string {
  * @param raw - Tokenizer-emitted raw attribute list for one open tag.
  * @returns An object containing:
  *   - `attrs`: normalized `HsonAttrs` (including parsed `style` when present),
- *   - `meta`: normalized `HsonMeta` containing only `data-_...` keys.
+ *   - `meta`: empty; retained in the return shape for parser composition.
  *******/
 export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: HsonMeta } {
   const attrs: HsonAttrs = {};
@@ -76,17 +71,6 @@ export function split_attrs_meta(raw: RawAttr[]): { attrs: HsonAttrs; meta: Hson
 
   for (const ra of raw) {
     const k: string = ra.name;
-
-    // Route meta: ONLY data-_* goes to $_meta (HSON edge — no HTML entities here)
-    if (k.startsWith(_META_DATA_PREFIX)) {
-      // decode quoted HSON once before storing
-      if (ra.value) {
-        const val: string = decode_hson_value(ra.value.text, ra.value.quoted);
-        meta[k] = val;
-      }
-      // Bare meta keys are unusual; ignoring is fine.
-      continue;
-    }
 
     // style → decode (if quoted) → parse to object
     if (k === "style") {

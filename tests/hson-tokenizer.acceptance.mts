@@ -25,6 +25,7 @@ function token_summary(tokens: readonly Tokens[]) {
         return {
           kind: token.kind,
           tag: token.tag,
+          ...(token.quid ? { quid: token.quid.value } : {}),
           attrs: token.rawAttrs.map((attr) => ({
             name: attr.name,
             ...(attr.value ? { value: attr.value } : {}),
@@ -131,13 +132,13 @@ const legacy_cases = [
   },
   {
     name: "quoted key attributes flags and metadata",
-    source: `<\`display name\` data-_quid="0000000000000001" count=2 enabled=true missing=null disabled "Ada"/>`,
+    source: `<\`display name\` @0000000000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
     expected: [
       {
         kind: "OPEN",
         tag: "display name",
+        quid: "0000000000000001",
         attrs: [
-          { name: "data-_quid", value: { text: "0000000000000001", quoted: true } },
           { name: "count", value: { text: "2", quoted: false } },
           { name: "enabled", value: { text: "true", quoted: false } },
           { name: "missing", value: { text: "null", quoted: false } },

@@ -133,7 +133,7 @@ Inline style differences:
 `LiveTree.css` writes stylesheet rules scoped to the tree's QUID:
 
 ```css
-[data-_quid="..."] { opacity: 0.5; }
+[hson\:quid="..."] { opacity: 0.5; }
 ```
 
 Usage:

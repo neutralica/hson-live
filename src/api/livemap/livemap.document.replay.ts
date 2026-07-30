@@ -52,7 +52,7 @@ export function replay_livemap_document_commit(
       }
       const prepared = prepare_document_install({
         kind: "hson-document",
-        version: 1,
+        version: 2,
         mode: rawOperation.mode,
         rev: envelope.rev,
         root: rawOperation.root,

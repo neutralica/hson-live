@@ -1,6 +1,6 @@
 // node-guards.ts
 
-import { HSON_SYS_PREFIX, II_TAG, STR_TAG, VAL_TAG, _DATA_INDEX } from "./constants.js";
+import { HSON_SYS_PREFIX, II_TAG, STR_TAG, VAL_TAG, HSON_META_INDEX } from "./constants.js";
 import type { HsonNode } from "./types.js";
 import { is_Primitive } from "./value-guards.js";
 
@@ -38,6 +38,6 @@ export function is_indexed(node: HsonNode): boolean {
     node.$_tag === II_TAG &&
     Array.isArray(node.$_content) &&
     node.$_content.length === 1 &&
-    typeof node.$_meta?.[_DATA_INDEX] === "string"
+    typeof node.$_meta?.[HSON_META_INDEX] === "string"
   );
 }

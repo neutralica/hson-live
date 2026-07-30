@@ -97,7 +97,7 @@ export type LiveHostWireValue =
 /** Versioned exact HSON-backed representation used for graph content at LiveHost boundaries. */
 export type LiveHostEncodedGraphContent = Readonly<{
   format: "hson-graph";
-  formatVersion: 1;
+  formatVersion: 2;
   payload: string;
 }>;
 
@@ -1399,7 +1399,7 @@ export type LiveHostPersistedMapKind = "document" | "projected-data";
 
 export type LiveHostPersistedViewState = Readonly<{
   format: "view-state";
-  formatVersion: 1;
+  formatVersion: 2;
   payload: string;
 }>;
 

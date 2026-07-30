@@ -71,7 +71,7 @@ Parses external HTML through the safe HTML path.
 - Accepts a string or an existing `Element`.
 - If an `Element` is supplied, the current implementation snapshots its
   `innerHTML`.
-- Descendant `data-_quid` attributes are stripped during ingestion.
+- Descendant `hson:quid` attributes are stripped during ingestion.
 - External SVG markup is rejected on this safe path.
 
 This is the default choice for user-authored or third-party HTML.
@@ -205,9 +205,9 @@ type FrameOptions = {
 Readable, two-space-indented HSON is the default. `noBreak` selects canonical
 compact HSON without cosmetic newlines or indentation while retaining
 conventional spaces between tag/header/content terms. `noQuid` omits only the
-persisted `data-_quid` metadata key and does not alter live identity
-registration. `data-_index` is the separate operational field on `_hson_ii`;
-all other reserved `data-_...` fields are undefined and rejected.
+persisted `quid` metadata key and does not alter live identity
+registration. `index` is the separate operational field on `_hson_ii`.
+Every `data-*` spelling is an ordinary application attribute.
 
 Ordinary HSON attributes have string-valued wire semantics in either layout.
 The parser accepts both `count=2` and `count="2"` as `{ count: "2" }`, while
@@ -219,7 +219,7 @@ graph. Presence flags are the distinct exact-equality form
 ### Persisted QUID declarations
 
 HSON has one identity-specific header declaration: `@quid`. It maps only to
-canonical `$_meta["data-_quid"]`; it is neither HTML `id`, a selector, nor a
+canonical `$_meta["quid"]`; it is neither HTML `id`, a selector, nor a
 request to generate identity. Persisted QUIDs are random 80-bit identifiers:
 exactly 16 lowercase Base32 characters from
 `0123456789abcdefghjkmnpqrstvwxyz`. They are generated from 10 secure random
@@ -231,11 +231,11 @@ bytes; there is no normalization, fallback format, quoted form, or `@@` form.
 
 Parsing accepts one declaration anywhere in an opening header before inline
 content; serialization is canonical and writes it immediately after the tag.
-`@` after content, duplicate declarations, and a declaration combined with the
-legacy `data-_quid="..."` metadata spelling are errors. The legacy spelling
-remains readable only when its value is canonical, and serializes as `@quid`. Only ordinary
-elements may carry persisted identity, and duplicate values across a document
-remain a LiveMap graph-invariant error. HTML continues to use `data-_quid`.
+`@` after content and duplicate declarations are errors. Attribute tokens,
+including `data-_quid`, are ordinary HSON attributes and never metadata. Only
+ordinary elements may carry persisted identity, and duplicate values across a
+document remain a LiveMap graph-invariant error. HTML and SVG use
+`hson:quid`.
 
 Options compose and are idempotent:
 

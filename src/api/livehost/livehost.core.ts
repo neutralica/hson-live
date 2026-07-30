@@ -76,9 +76,9 @@ const exclusiveHostAuthorities = new WeakMap<object, ReturnType<typeof make_live
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
-const VIEW_STATE_V1_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({
+const VIEW_STATE_V2_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({
   format: "view-state",
-  formatVersion: 1,
+  formatVersion: 2,
 });
 
 type LiveHostConnectionRecoveryState =
@@ -111,8 +111,8 @@ function select_snapshot_encoding(
   capabilities: LiveHostSnapshotCapabilities | undefined,
   documentMode: boolean,
 ): LiveHostDocumentSnapshotEncoding {
-  return documentMode && capabilities?.viewStateVersions?.includes(1) === true
-    ? VIEW_STATE_V1_SNAPSHOT_ENCODING
+  return documentMode && capabilities?.viewStateVersions?.includes(2) === true
+    ? VIEW_STATE_V2_SNAPSHOT_ENCODING
     : HSON_SNAPSHOT_ENCODING;
 }
 

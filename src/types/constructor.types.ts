@@ -434,7 +434,7 @@ export interface OptionsConstructor_3<K extends OutputRenderFormats> {
 /**
  * Active HSON serialization preferences. Readable output is the default;
  * `noBreak` selects canonical compact layout and `noQuid` filters only the
- * persisted `data-_quid` metadata key from HSON output.
+ * persisted `quid` metadata key from HSON output.
  */
 export interface FrameOptions {
   noBreak?: boolean;

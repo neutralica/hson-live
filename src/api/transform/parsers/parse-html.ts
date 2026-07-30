@@ -20,6 +20,7 @@ import { escape_attr_angles } from "../../../safety/escape_angles.js";
 import { dedupe_attrs_html } from "../../../safety/dedupe-attrs.js";
 import { quote_unquoted_attrs } from "../utils/html-preflights/quoted-unquoted.js";
 import { mangle_illegal_attrs } from "../utils/html-preflights/mangle-illegal-attrs.js";
+import { encode_hson_metadata_transit } from "../utils/html-preflights/hson-metadata-transit.js";
 import { namespace_svg } from "../utils/html-preflights/namespace-svg.js";
 import { is_indexed } from "../../../core/node-guards.js";
 import { Primitive } from "../../../core/types.js";
@@ -76,9 +77,12 @@ function snip_context(s: string, at: number, radius = 80): string {
  * 1. Strip HTML comments (`strip_html_comments`).
  * 2. Expand boolean/flag attributes (`expand_flags`).
  * 3. Escape text + expand entities (`escape_text`, `expand_entities`).
- * 4. Namespace SVG and sanitize attributes (`namespace_svg`, `mangle_illegal_attrs`).
- * 5. Attempt XML parse via `DOMParser("application/xml")`.
- * 6. On parse errors, apply gated repairs in order:
+ * 4. Add required SVG namespace handling (`namespace_svg`).
+ * 5. Normalize unquoted attribute values (`quote_unquoted_attrs`).
+ * 6. Encode syntactic `hson:*` names with the dedicated private transit codec.
+ * 7. Encode remaining XML-hostile names (`mangle_illegal_attrs`).
+ * 8. Attempt XML parse via `DOMParser("application/xml")`.
+ * 9. On parse errors, apply gated repairs in order:
  *    - Deduplicate attributes (`dedupe_attrs_html`) for duplicate-attr errors.
  *    - Patch bare ampersands (`amp_fix`) for entity errors.
  *    - Quote unquoted attrs (`quote_unquoted_attrs`) and re-amp-fix.
@@ -87,10 +91,9 @@ function snip_context(s: string, at: number, radius = 80): string {
  *    - Balance optional end tags (`optional_endtag_preflight`).
  *    - If the error is “extra content”, wrap in `<_hson_root>…</_hson_root>` and retry,
  *      optionally re-running void expansion on the wrapped source.
- * 7. If parsing still fails, throw a transform error with context.
- * 8. Convert `documentElement` via `convert`.
- * 9. Wrap the converted tree via `wrap_as_hson_root to ensure a `_hson_root` node.
- * 10. Validate invariants with `assert_invariants`.
+ * 10. If parsing still fails, throw a transform error with context.
+ * 11. Enumerate attributes, decode HSON transit names, and construct the graph.
+ * 12. Wrap as `_hson_root` and validate with `assert_invariants`.
  *
  * @param input - Raw HTML/XML string or an existing `Element` subtree.
  * @returns A `_hson_root`-wrapped `HsonNode` tree ready for downstream use.
@@ -100,6 +103,7 @@ function snip_context(s: string, at: number, radius = 80): string {
  */
 export function parse_html(input: string | Element): HsonNode {
     let inputElement: Element;
+    const allowHsonTransit = typeof input === "string";
     if (typeof input === "string") {
         const stripped = strip_html_comments(input);
         const bools = expand_flags(stripped);
@@ -113,7 +117,8 @@ export function parse_html(input: string | Element): HsonNode {
         // - expand void HTML tags: <input ...> → <input ... />
         const svgSafe = namespace_svg(ents);
         const quoted = quote_unquoted_attrs(svgSafe);
-        const mangled = mangle_illegal_attrs(quoted);
+        const hsonTransitSafe = encode_hson_metadata_transit(quoted);
+        const mangled = mangle_illegal_attrs(hsonTransitSafe);
         const voidSafe = expand_void_tags(mangled);
         // Make quoted attribute values XML-safe before the first parse.
         // Firefox rejects bare `&` in quoted attrs such as url('a&b.png'), even
@@ -276,7 +281,7 @@ export function parse_html(input: string | Element): HsonNode {
     } else {
         inputElement = input;
     }
-    const actualContentRootNode = convert(inputElement);
+    const actualContentRootNode = convert(inputElement, undefined, allowHsonTransit);
     const final = wrap_as_root(actualContentRootNode);
 
     scan_ingested_hson_node_quids(final, "parse-html");
@@ -326,7 +331,11 @@ export function parse_html(input: string | Element): HsonNode {
  * @see elementToNode
  * @see parse_html_attrs
  */
-function convert(el: Element, parentTag?: string): HsonNode {
+function convert(
+    el: Element,
+    parentTag?: string,
+    allowHsonTransit = false,
+): HsonNode {
     const baseTag = el.tagName;
     const tagLower = baseTag.toLowerCase();
     const encoded = tagLower.startsWith(HTML_KEY_PREFIX);
@@ -337,7 +346,11 @@ function convert(el: Element, parentTag?: string): HsonNode {
             "parse-html"
         );
     }
-    const { attrs: sortedAcc, meta: metaAcc, quid } = parse_html_attrs(el);
+    const { attrs: sortedAcc, meta: metaAcc, quid } = parse_html_attrs(
+        el,
+        dec,
+        { allowHsonTransit },
+    );
     const finish = (node: HsonNode): HsonNode => {
         if (quid !== undefined) {
             assign_ingested_hson_node_quid(node, quid, "parse-html");
@@ -394,7 +407,7 @@ function convert(el: Element, parentTag?: string): HsonNode {
 
     // Build children (DOM → HSON)
     const childNodes: HsonNode[] = [];
-    const children = elementToNode(el.childNodes, dec);
+    const children = elementToNode(el.childNodes, dec, allowHsonTransit);
 
     for (const child of children) {
         if (is_Primitive(child)) {
@@ -574,12 +587,13 @@ function wrap_as_root(node: HsonNode): HsonNode {
 function elementToNode(
     els: NodeListOf<ChildNode>,
     parentTag: string, // already lowercased
+    allowHsonTransit: boolean,
 ): (HsonNode | Primitive)[] {
     const contents: (HsonNode | Primitive)[] = [];
 
     for (const item of Array.from(els)) {
         if (item.nodeType === Node.ELEMENT_NODE) {
-            contents.push(convert(item as Element, parentTag));
+            contents.push(convert(item as Element, parentTag, allowHsonTransit));
             continue;
         }
 

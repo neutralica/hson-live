@@ -329,7 +329,7 @@ check("persistent append and checkpoint work are reported as authority activity"
     },
     async replaceCheckpoint() {},
   };
-  const map = hson.liveMap.fromHson(`<main data-_quid="0000000000002001"/>`);
+  const map = hson.liveMap.fromHson(`<main @0000000000002001/>`);
   if (map.mode !== "element") throw new Error("expected element map");
   const host = await create_persistent_livehost({
     map,

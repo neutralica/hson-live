@@ -1,4 +1,4 @@
-import { _DATA_QUID } from "./constants.js";
+import { HSON_META_QUID } from "./constants.js";
 import { is_Node, is_ordinary_element_node } from "./node-guards.js";
 import { ensure_node_meta, prune_empty_node_meta } from "./node-storage.js";
 import type { HsonNode } from "./types.js";
@@ -90,7 +90,7 @@ export function assert_hson_node_quid_eligible(
   throw new HsonNodeQuidValidationError(
     "INELIGIBLE_QUID",
     `Cannot ${operation} QUID metadata on ineligible HSON structural node "${node.$_tag}".`,
-    { node, value: node.$_meta?.[_DATA_QUID] },
+    { node, value: node.$_meta?.[HSON_META_QUID] },
   );
 }
 
@@ -99,7 +99,7 @@ export function assert_hson_node_quid_eligible(
  * registry. Clean VSNs report absence; QUID-bearing VSNs reject.
  */
 export function read_hson_node_quid(node: HsonNode): PersistedQuid | undefined {
-  const value = node.$_meta?.[_DATA_QUID];
+  const value = node.$_meta?.[HSON_META_QUID];
   if (value === undefined) return undefined;
   assert_hson_node_quid_eligible(node, "read");
   if (!is_persisted_quid(value)) {
@@ -134,7 +134,7 @@ export function assign_hson_node_quid(
       { node, value: quid },
     );
   }
-  ensure_node_meta(node)[_DATA_QUID] = quid;
+  ensure_node_meta(node)[HSON_META_QUID] = quid;
   return quid;
 }
 
@@ -152,7 +152,7 @@ export function remove_hson_node_quid(node: HsonNode): PersistedQuid | undefined
   const existing = read_hson_node_quid(node);
   if (existing === undefined) return undefined;
   if (node.$_meta !== undefined) {
-    delete node.$_meta[_DATA_QUID];
+    delete node.$_meta[HSON_META_QUID];
     prune_empty_node_meta(node);
   }
   return existing;

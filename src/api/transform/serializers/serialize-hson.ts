@@ -9,8 +9,7 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-  _DATA_QUID,
-  _META_DATA_PREFIX,
+  HSON_META_QUID,
 } from "../../../core/constants.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
@@ -96,15 +95,17 @@ function effectiveMeta(
     }
 
     const value = (meta as Readonly<Record<string, unknown>>)[key];
-    if (typeof value !== "string") {
+    if (!policy.definition.validateValue(value)) {
       _throw_transform_err(
-        `serialize-hson: meta "${key}" must be a string`,
+        `serialize-hson: invalid value for metadata "${key}"`,
         "serialize_hson",
       );
     }
 
-    if (noQuid && key === _DATA_QUID) continue;
-    out[key] = value;
+    if (noQuid && key === HSON_META_QUID) continue;
+    if (policy.definition.hsonProjection === "quid-sigil") {
+      out[key] = value;
+    }
   }
 
   return Object.keys(out).length === 0 ? undefined : out;
@@ -139,7 +140,6 @@ function compareKeys([left]: readonly [string, unknown], [right]: readonly [stri
 /** Sort ordinary attributes canonically; flags remain after valued entries. */
 function emitAttrsAndMeta(
   attrs: Readonly<HsonAttrs> | undefined,
-  meta: Readonly<Record<string, string>> | undefined,
 ): string {
   const entries = Object.entries(attrs ?? {});
   const valued = entries
@@ -152,13 +152,6 @@ function emitAttrsAndMeta(
   const terms: string[] = [];
   for (const [key, value] of valued) terms.push(serializeAttribute(key, value));
   for (const [key] of flags) terms.push(key);
-  for (const key of Object.keys(meta ?? {}).sort()) {
-    const value = meta?.[key];
-    if (value !== undefined) {
-      terms.push(`${key}="${escape_hson_quoted_attr_value(value)}"`);
-    }
-  }
-
   return terms.length === 0 ? "" : ` ${terms.join(" ")}`;
 }
 
@@ -434,12 +427,11 @@ function emitStandardNode(
   const pad = indent(ctx, depth);
   const tag = serialize_hson_tag_name(node.$_tag);
   const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
-  const quid = meta?.[_DATA_QUID];
+  const quid = meta?.[HSON_META_QUID];
   if (quid !== undefined && !is_persisted_quid(quid)) {
-    _throw_transform_err(`serialize-hson: invalid data-_quid`, "serialize_hson");
+    _throw_transform_err(`serialize-hson: invalid quid`, "serialize_hson");
   }
-  const ordinaryMeta = meta && Object.fromEntries(Object.entries(meta).filter(([key]) => key !== _DATA_QUID));
-  const header = `<${tag}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs, ordinaryMeta)}`;
+  const header = `<${tag}${quid === undefined ? "" : ` @${quid}`}${emitAttrsAndMeta(node.$_attrs)}`;
   const { children, closer, cluster } = standardContent(node);
 
   if (children.length === 0) return `${pad}${header}${closer}`;

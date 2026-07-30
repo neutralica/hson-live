@@ -82,7 +82,7 @@ boundary instead of the incidental JSON object layout of `HsonNode`:
 ```ts
 type LiveHostEncodedGraphContent = Readonly<{
   format: "hson-graph";
-  formatVersion: 1;
+  formatVersion: 2;
   payload: string;
 }>;
 ```
@@ -335,7 +335,7 @@ HSON envelope contains:
 ```ts
 type LiveHostBootstrapPackageV1 = Readonly<{
   format: "hson-livehost-bootstrap";
-  formatVersion: 1;
+  formatVersion: 2;
   authoritySelector: string; // application transport routing only
   logicalMapId: string;      // canonical recovery identity
   incarnationId: string;     // one concrete authority history
@@ -433,7 +433,7 @@ interface LiveHostPersistenceAdapter {
 ```
 
 `create_persistent_livehost` first durably replaces the exact initial
-view-state-v1 checkpoint. Each later graph commit is prepared, durably appended,
+view-state-v2 checkpoint. Each later graph commit is prepared, durably appended,
 then made visible; append failure prevents acceptance/publication. Exact repeated
 appends for the same map/incarnation/revision must be idempotent and conflicting
 repeats must reject. `checkpoint()` atomically replaces the checkpoint and

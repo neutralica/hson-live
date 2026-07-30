@@ -1,6 +1,9 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, JsonValue, Primitive } from "../../core/types.js";
+import {
+  is_hson_metadata_key,
+} from "../../core/hson-metadata.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
@@ -17,9 +20,9 @@ import {
 } from "./livemap.document.view-state-codec.error.js";
 
 const FORMAT = "view-state" as const;
-const FORMAT_VERSION = 1 as const;
+const FORMAT_VERSION = 2 as const;
 const CAPTURE_KIND = "hson-document" as const;
-const CAPTURE_VERSION = 1 as const;
+const CAPTURE_VERSION = 2 as const;
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
 const DEFAULT_MAX_DEPTH = 256;
@@ -74,7 +77,7 @@ type CodecPayload = Readonly<{
 
 type ExactValuePayload = Readonly<{
   valueKind: "canonical-graph-content";
-  valueVersion: 1;
+  valueVersion: 2;
   value: CodecValue;
 }>;
 
@@ -159,7 +162,7 @@ export function decode_view_state_snapshot(
   if (canonical.payload !== encoded.payload) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
-      "View-state snapshot payload is not the deterministic version 1 representation.",
+      "View-state snapshot payload is not the deterministic version 2 representation.",
     );
   }
   return capture;
@@ -176,7 +179,7 @@ export function encode_exact_hson_value(
   const limits = codec_limits(options);
   const payloadValue: ExactValuePayload = {
     valueKind: "canonical-graph-content",
-    valueVersion: 1,
+    valueVersion: 2,
     value: encode_value(value, 1, { nodes: 0 }, limits),
   };
   let payload: string;
@@ -212,7 +215,7 @@ export function decode_exact_hson_value(
   }
   const representation = json_value_from_node(parsedNode);
   const record = exact_record(representation, ["valueKind", "valueVersion", "value"]);
-  if (record.valueKind !== "canonical-graph-content" || record.valueVersion !== 1) {
+  if (record.valueKind !== "canonical-graph-content" || record.valueVersion !== 2) {
     throw invalid_representation();
   }
   const value = decode_value(record.value, 1, { nodes: 0 }, limits);
@@ -457,7 +460,9 @@ function decode_attrs(value: Record<string, unknown>): HsonAttrs {
 function decode_meta(value: Record<string, unknown>): HsonMeta {
   const meta: HsonMeta = {};
   for (const [key, item] of Object.entries(value)) {
-    if (typeof item !== "string") throw invalid_representation();
+    if (!is_hson_metadata_key(key) || typeof item !== "string") {
+      throw invalid_representation();
+    }
     meta[key] = item;
   }
   return meta;

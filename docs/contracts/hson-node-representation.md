@@ -72,22 +72,20 @@ identity.
 
 Structural VSN metadata is allowlisted rather than being a general user-data
 channel. `_hson_ii` may carry the string-valued operational
-`data-_index`; other structural VSN metadata is invalid. Array serialization
+`index`; other structural VSN metadata is invalid. Array serialization
 uses child order, omits the redundant index metadata, and parsing regenerates
 sequential indexes.
 
 | Node category | Valid `$_meta` keys |
 | --- | --- |
-| Eligible standard tag | `data-_quid`, with the canonical QUID placement and value contract |
-| `_hson_ii` | `data-_index`, with its existing string index contract |
+| Eligible standard tag | `$_meta.quid`, projected as `hson:quid`, with the canonical QUID placement and value contract |
+| `_hson_ii` | `$_meta.index`, projected as `hson:index`, with its existing string index contract |
 | `_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`, `_hson_val` | None |
 
-The complete `data-_` prefix is reserved metadata. Classification into
-`$_meta` does not grant validity: keys are authorized by the exact table above,
-and every unknown reserved key is rejected rather than removed. Other
-`data-*` names are ordinary attributes stored in `$_attrs`. In particular,
-`data-_custom`, `data-_root`, `data-_cluster`, and `data-_text` have no defined
-meaning.
+Metadata validity is authorized only by the exact table above. Unknown
+`$_meta` keys and unknown `hson:*` markup names reject. Every `data-*` name,
+including names beginning with `data-_`, is an ordinary application attribute
+stored in `$_attrs`.
 
 ### Deferred empty-root exception
 

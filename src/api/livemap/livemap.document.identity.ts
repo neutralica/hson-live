@@ -36,7 +36,7 @@ export function index_livemap_document_elements(root: HsonNode): LiveMapDocument
     if (cause.code === "DUPLICATE_QUID" && cause.conflictingNode !== undefined) {
       throw new LiveMapDocumentIdentityError(
         "DUPLICATE_QUID",
-        `LiveMap document contains duplicate data-_quid "${String(cause.value)}" on <${cause.conflictingNode.$_tag}> at ${cause.conflictingPath ?? "<unknown>"} and <${cause.node.$_tag}> at ${cause.path ?? "<unknown>"}.`,
+        `LiveMap document contains duplicate quid "${String(cause.value)}" on <${cause.conflictingNode.$_tag}> at ${cause.conflictingPath ?? "<unknown>"} and <${cause.node.$_tag}> at ${cause.path ?? "<unknown>"}.`,
         cause,
       );
     }
@@ -45,8 +45,8 @@ export function index_livemap_document_elements(root: HsonNode): LiveMapDocument
     throw new LiveMapDocumentIdentityError(
       "MALFORMED_QUID",
       cause.code === "INELIGIBLE_QUID"
-        ? `LiveMap cannot own a malformed canonical HSON root: node <${cause.node.$_tag}> is ineligible for data-_quid.`
-        : `LiveMap cannot own a malformed canonical HSON root: element <${cause.node.$_tag}> has an invalid ${malformedKind} data-_quid.`,
+        ? `LiveMap cannot own a malformed canonical HSON root: node <${cause.node.$_tag}> is ineligible for quid.`
+        : `LiveMap cannot own a malformed canonical HSON root: element <${cause.node.$_tag}> has an invalid ${malformedKind} quid.`,
       cause,
     );
   }

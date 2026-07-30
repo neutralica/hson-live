@@ -92,7 +92,7 @@ spells the method `queryDom`, not `queryDOM`.
 When an HTML source constructor receives an `Element`, it snapshots that
 element's `innerHTML`; it does not adopt the element itself. Unlike the plain
 transform constructor, the current LiveTree constructor does not explicitly
-strip descendant `data-_quid` attributes before parsing. Untrusted input still
+strip descendant `hson:quid` attributes before parsing. Untrusted input still
 passes through its sanitizer, but callers should not supply runtime identity in
 source markup.
 
@@ -108,7 +108,7 @@ namespace semantics.
 ## Identity and projection
 
 QUIDs connect an HSON node to its managed DOM and CSS state. They are internal
-live identity, serialized in managed HTML as `data-_quid` when needed for DOM
+live identity, serialized in managed HTML as `hson:quid` when needed for DOM
 lookup and stylesheet scoping.
 
 Identity is stable while a node remains in its live graph, but it is not a
@@ -160,7 +160,7 @@ Appending an already attached branch is rejected; explicit detach/attach is the
 reparenting protocol.
 
 Terminal disposal recursively releases QUID registry ownership and persisted
-`data-_quid`, removes listeners and QUID-scoped CSS, drains registered
+`hson:quid`, removes listeners and QUID-scoped CSS, drains registered
 disposables, drops node-element mappings, and marks every node disposed. Only
 `isDisposed` and repeated `remove()` are safe lifecycle surfaces afterward;
 meaningful reads and mutations throw the stable `LiveTreeDisposedError`.

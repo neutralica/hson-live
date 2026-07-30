@@ -72,8 +72,8 @@ function raw_node(root: HsonNode, path: readonly number[]): HsonNode {
 
 function mount(node: HsonNode): AttributeProjection {
   const projected = new AttributeProjection();
-  const quid = node.$_meta?.["data-_quid"];
-  if (quid !== undefined) projected.values.set("data-_quid", quid);
+  const quid = node.$_meta?.["quid"];
+  if (quid !== undefined) projected.values.set("hson:quid", quid);
   for (const [name, value] of Object.entries(node.$_attrs ?? {})) {
     projected.values.set(name, String(value));
   }
@@ -86,7 +86,7 @@ function path(...segments: number[]) {
 }
 
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {
-  const map = element(`<main id="root" data-_quid="0000000000000301" <section data-_quid="0000000000000302" <span/>/>/>`);
+  const map = element(`<main id="root" @0000000000000301 <section @0000000000000302 <span/>/>/>`);
   const canonicalRead = map.element.node();
   const binding = bind_document_livetree(map);
   assert.notEqual(binding.tree.node, canonicalRead);
@@ -98,7 +98,7 @@ check("initial binding owns a detached graph and indexes raw canonical paths", (
 });
 
 check("canonical attrs project by raw path and QUID into graph and mounted DOM", () => {
-  const map = element(`<main id="root" data-_quid="0000000000000303" <section data-_quid="0000000000000304" <span/>/>/>`);
+  const map = element(`<main id="root" @0000000000000303 <section @0000000000000304 <span/>/>/>`);
   const binding = bind_document_livetree(map);
   const rootDom = mount(binding.tree.node);
   const sectionNode = raw_node(binding.tree.node, [0, 0]);
@@ -127,7 +127,7 @@ check("canonical attrs project by raw path and QUID into graph and mounted DOM",
 });
 
 check("bound attrs and convenience managers delegate without feedback", () => {
-  const map = element(`<main data-_quid="0000000000000305"/>`);
+  const map = element(`<main @0000000000000305/>`);
   const binding = bind_document_livetree(map);
   const dom = mount(binding.tree.node);
   const observations: LiveMapCommitObservation[] = [];
@@ -166,7 +166,7 @@ check("bound attrs and convenience managers delegate without feedback", () => {
 });
 
 check("multi-operation attrs replay is one projection transaction", () => {
-  const map = element(`<main data-_quid="0000000000000306"/>`);
+  const map = element(`<main @0000000000000306/>`);
   const binding = bind_document_livetree(map);
   mount(binding.tree.node);
   const replayed = map.replay({
@@ -185,10 +185,10 @@ check("multi-operation attrs replay is one projection transaction", () => {
 });
 
 check("unsupported root replacement fails closed without escaping canonical mutation", () => {
-  const map = element(`<main data-_quid="0000000000000307" "before"/>`);
+  const map = element(`<main @0000000000000307 "before"/>`);
   const binding = bind_document_livetree(map);
   const before = structuredClone(binding.tree.node);
-  const replacement = element(`<article data-_quid="0000000000000316"/>`);
+  const replacement = element(`<article @0000000000000316/>`);
   const commit = map.install(replacement.capture());
   assert.equal(commit.changed, true);
   assert.equal(map.element.node().$_tag, "article");
@@ -206,7 +206,7 @@ check("unsupported root replacement fails closed without escaping canonical muta
 });
 
 check("projection failure is isolated from the committed map mutation", () => {
-  const map = element(`<main data-_quid="0000000000000308"/>`);
+  const map = element(`<main @0000000000000308/>`);
   const binding = bind_document_livetree(map);
   const dom = mount(binding.tree.node);
   dom.failOn = "boom";
@@ -220,7 +220,7 @@ check("projection failure is isolated from the committed map mutation", () => {
 });
 
 check("a previously mounted node losing its DOM mapping fails closed", () => {
-  const map = element(`<main data-_quid="0000000000000312"/>`);
+  const map = element(`<main @0000000000000312/>`);
   const binding = bind_document_livetree(map);
   mount(binding.tree.node);
   map.document.attrs.set(path(), "first", "projected");
@@ -233,16 +233,16 @@ check("a previously mounted node losing its DOM mapping fails closed", () => {
 });
 
 check("projected path and persisted-QUID divergence fail closed", () => {
-  const quidMap = element(`<main data-_quid="0000000000000313"/>`);
+  const quidMap = element(`<main @0000000000000313/>`);
   const quidBinding = bind_document_livetree(quidMap);
   if (quidBinding.tree.node.$_meta === undefined) throw new Error("Expected projected metadata");
-  quidBinding.tree.node.$_meta["data-_quid"] = "0000000000000314";
+  quidBinding.tree.node.$_meta["quid"] = "0000000000000314";
   quidMap.document.attrs.set(path(), "canonical", "retained");
   assert.equal(quidBinding.status, "failed");
   assert.equal(quidBinding.failure?.code, DOCUMENT_BINDING_QUID_MISMATCH_ERROR_CODE);
   quidBinding.dispose();
 
-  const pathMap = element(`<main data-_quid="0000000000000315" <span/>/>`);
+  const pathMap = element(`<main @0000000000000315 <span/>/>`);
   const pathBinding = bind_document_livetree(pathMap);
   pathBinding.tree.node.$_content.length = 0;
   pathMap.document.attrs.set(path(0, 0), "canonical", "retained");
@@ -252,7 +252,7 @@ check("projected path and persisted-QUID divergence fail closed", () => {
 });
 
 check("cardinality and disposal preserve authority boundaries", () => {
-  const map = element(`<main data-_quid="0000000000000309"/>`);
+  const map = element(`<main @0000000000000309/>`);
   const binding = bind_document_livetree(map);
   const dom = mount(binding.tree.node);
   assert.throws(
@@ -279,8 +279,8 @@ check("cardinality and disposal preserve authority boundaries", () => {
 });
 
 check("different maps keep binding revision and failure state isolated", () => {
-  const left = element(`<main data-_quid="0000000000000310"/>`);
-  const right = element(`<main data-_quid="0000000000000311"/>`);
+  const left = element(`<main @0000000000000310/>`);
+  const right = element(`<main @0000000000000311/>`);
   const leftBinding = bind_document_livetree(left);
   const rightBinding = bind_document_livetree(right);
   left.document.attrs.set(path(), "side", "left");

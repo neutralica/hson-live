@@ -8,7 +8,7 @@ import { project_livetree } from "./project-live-tree.js";
 import { LiveTree } from "../livetree.js";
 import { link_node_to_el, get_node_for_el } from "../utils/node-map-helpers.js";
 import {
-  _DATA_QUID,
+  HSON_QUID_MARKUP_NAME,
   admit_livetree_quid_graph,
   get_quid,
 } from "../quid/data-quid.js";
@@ -134,13 +134,13 @@ function sync_root_attrs_to_element(
   if (quid === undefined) {
     throw new Error("graft root was not admitted into its LiveTree runtime.");
   }
-  set_attrs_safe(el, _DATA_QUID, quid);
+  set_attrs_safe(el, HSON_QUID_MARKUP_NAME, quid);
 
   const attrs = node.$_attrs;
 
   // clear stale attrs first
   for (const name of el.getAttributeNames()) {
-    if (name === _DATA_QUID) continue;
+    if (name === HSON_QUID_MARKUP_NAME) continue;
     if (attrs === undefined || !(name in attrs)) {
       el.removeAttribute(name);
     }

@@ -50,13 +50,13 @@ function assert_fully_detached(left: HsonNode, right: HsonNode): void {
 
 function mutate_graph(root: HsonNode): void {
   root.$_tag = "mutated-root";
-  root.$_meta = { "data-_quid": "0000000000000010" };
+  root.$_meta = { quid: "0000000000000010" };
   const nodes = find_nodes(root, "main");
   const main = nodes[0];
   if (main !== undefined) {
     main.$_tag = "changed-main";
     main.$_attrs = { id: "changed", style: { color: "purple", ":hover": { color: "orange" } } };
-    main.$_meta = { "data-_quid": "0000000000000011" };
+    main.$_meta = { quid: "0000000000000011" };
     main.$_content.push({ $_tag: "added", $_content: [] });
   }
   root.$_content.push({ $_tag: "detached", $_content: [] });
@@ -69,7 +69,7 @@ function mutate_content(content: readonly NodeContent[number][]): void {
     firstNode.$_tag = "changed";
     firstNode.$_content.push({ $_tag: "nested-change", $_content: [] });
     firstNode.$_attrs = { id: "changed" };
-    firstNode.$_meta = { "data-_quid": "0000000000000011" };
+    firstNode.$_meta = { quid: "0000000000000011" };
   }
   mutable.push({ $_tag: "changed-content", $_content: [] });
 }
@@ -108,7 +108,7 @@ check("malformed and unsupported canonical roots are rejected with causes", () =
 
 check("fromNode takes detached ownership of the complete canonical graph", () => {
   const source = hson.fromHson(
-    `<main id="original" style="color: red" data-user="kept" data-_quid="0000000000000001" <p data-_quid="0000000000000002" "x"/>/>`,
+    `<main id="original" style="color: red" data-user="kept" @0000000000000001 <p @0000000000000002 "x"/>/>`,
   ).toNode();
   const sourceMain = find_nodes(source, "main")[0];
   if (sourceMain !== undefined) {
@@ -137,14 +137,14 @@ check("data fromNode construction also takes detached ownership", () => {
   source.$_tag = "changed";
   source.$_content.length = 0;
   source.$_attrs = { style: { color: "red" } };
-  source.$_meta = { "data-_quid": "0000000000000012" };
+  source.$_meta = { quid: "0000000000000012" };
   assert.deepEqual(map.root(), baseline);
   assert.deepEqual(map.snap(), { user: { name: "Ada" }, values: [1, 2] });
 });
 
 check("element reads and captures are recursively detached", () => {
   const map = hson.liveMap.fromHson(
-    `<main id="original" style="color: red" data-_quid="0000000000000001" <p data-_quid="0000000000000002" "x"/>/>`,
+    `<main id="original" style="color: red" @0000000000000001 <p @0000000000000002 "x"/>/>`,
   );
   assert.equal(map.mode, "element");
   const baseline = map.root();
@@ -155,7 +155,7 @@ check("element reads and captures are recursively detached", () => {
   const content = map.document.content();
 
   assert.equal(capture.kind, "hson-document");
-  assert.equal(capture.version, 1);
+  assert.equal(capture.version, 2);
   assert.equal(capture.mode, "element");
   assert.equal(capture.rev, beforeRev);
   assert_fully_detached(rootCopy, capture.root);
@@ -170,7 +170,7 @@ check("element reads and captures are recursively detached", () => {
 
 check("fragment reads preserve repeated siblings and mixed content in order", () => {
   const map = hson.liveMap.fromHson(
-    `"before" <div id="a" data-_quid="0000000000000003" "one"/> <div id="b" data-_quid="0000000000000004" "two"/> "after"`,
+    `"before" <div id="a" @0000000000000003 "one"/> <div id="b" @0000000000000004 "two"/> "after"`,
   );
   assert.equal(map.mode, "fragment");
   const baseline = map.root();
@@ -181,7 +181,7 @@ check("fragment reads preserve repeated siblings and mixed content in order", ()
   ]);
   const divs = content.filter((item): item is HsonNode => is_node(item) && item.$_tag === "div");
   assert.deepEqual(divs.map((node) => node.$_attrs?.id), ["a", "b"]);
-  assert.deepEqual(divs.map((node) => node.$_meta?.["data-_quid"]), ["0000000000000003", "0000000000000004"]);
+  assert.deepEqual(divs.map((node) => node.$_meta?.["quid"]), ["0000000000000003", "0000000000000004"]);
 
   mutate_content(content);
   assert.deepEqual(map.root(), baseline);
@@ -190,16 +190,16 @@ check("fragment reads preserve repeated siblings and mixed content in order", ()
 
 check("document identity is sparse and preserves only explicitly persisted QUIDs", () => {
   const map = hson.liveMap.fromHson(
-    `<main data-_quid="0000000000000001" <p "one"/> <p data-_quid="0000000000000005" "two"/>/>`,
+    `<main @0000000000000001 <p "one"/> <p @0000000000000005 "two"/>/>`,
   );
   assert.equal(map.mode, "element");
   const first = map.root();
   const second = map.root();
   const main = find_nodes(first, "main")[0];
   const paragraphs = find_nodes(first, "p");
-  assert.equal(main?.$_meta?.["data-_quid"], "0000000000000001");
-  assert.equal(paragraphs[1]?.$_meta?.["data-_quid"], "0000000000000005");
-  assert.equal(paragraphs[0]?.$_meta?.["data-_quid"], undefined);
+  assert.equal(main?.$_meta?.["quid"], "0000000000000001");
+  assert.equal(paragraphs[1]?.$_meta?.["quid"], "0000000000000005");
+  assert.equal(paragraphs[0]?.$_meta?.["quid"], undefined);
   assert.deepEqual(second, first);
   assert.deepEqual(map.capture().root, first);
   assert.equal(map.document.byQuid("0000000000000001")?.$_tag, "main");
@@ -216,7 +216,7 @@ check("unquidded construction and every detached read preserve identity absence"
   const reads = [map.root(), map.capture().root, map.element.node(), ...map.document.content().filter(is_node)];
   for (const root of reads) {
     for (const node of find_nodes(root, "main").concat(find_nodes(root, "p"))) {
-      assert.equal(node.$_meta?.["data-_quid"], undefined);
+      assert.equal(node.$_meta?.["quid"], undefined);
     }
   }
   assert.deepEqual(source, sourceBefore);
@@ -227,24 +227,24 @@ check("unquidded construction and every detached read preserve identity absence"
   assert.equal(fragment.mode, "fragment");
   for (const read of [fragment.root(), fragment.capture().root, ...fragment.document.content().filter(is_node)]) {
     for (const tag of ["div", "span"]) {
-      for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["data-_quid"], undefined);
+      for (const node of find_nodes(read, tag)) assert.equal(node.$_meta?.["quid"], undefined);
     }
   }
   assert.equal(fragment.rev, 0);
 });
 
-check("duplicate and empty persisted document QUIDs are rejected", () => {
+check("duplicate and malformed persisted document QUIDs are rejected", () => {
   assert.throws(
-    () => hson.liveMap.fromHson(`<div data-_quid="0000000000000006"/> <span data-_quid="0000000000000006"/>`),
-    /duplicate data-_quid "0000000000000006"/,
+    () => hson.liveMap.fromHson(`<div @0000000000000006/> <span @0000000000000006/>`),
+    /duplicate quid "0000000000000006"/,
   );
   assert.throws(
-    () => hson.liveMap.fromHson(`<div data-_quid=""/>`),
-    /data-_quid must be a canonical persisted QUID/,
+    () => hson.liveMap.fromHson(`<div @/>`),
+    /missing persisted QUID value after "@"/,
   );
   const malformed = hson.fromHson(`<div/>`).toNode();
   const div = find_nodes(malformed, "div")[0];
-  if (div !== undefined) div.$_meta = { "data-_quid": 42 as unknown as string };
+  if (div !== undefined) div.$_meta = { quid: 42 as unknown as string };
   assert.throws(
     () => hson.liveMap.fromNode(malformed),
     /malformed canonical HSON root/,
@@ -323,7 +323,7 @@ check("first changed operations advance from zero to one exactly once", () => {
 });
 
 check("unsafe debug node mutation remains live and revision-bypassing", () => {
-  const map = hson.liveMap.fromHson(`<main data-_quid="0000000000000001" "x"/>`);
+  const map = hson.liveMap.fromHson(`<main @0000000000000001 "x"/>`);
   assert.equal(map.mode, "element");
   const beforeRev = map.rev;
   map.debug.node(["main"]).setAttr("class", "unsafe");

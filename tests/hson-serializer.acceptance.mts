@@ -7,7 +7,7 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
-import type { HsonNode } from "../src/core/types.ts";
+import type { HsonMeta, HsonNode } from "../src/core/types.ts";
 
 let checks = 0;
 
@@ -46,17 +46,17 @@ function onlyElement(node: HsonNode): HsonNode {
 check("@quid parses into metadata and serializes immediately after the tag", () => {
   const node = parse(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden "Content"/>`);
   const panel = onlyElement(node);
-  assert.equal(panel.$_meta?.["data-_quid"], "4k7m2v9d1r6x8qwc");
+  assert.equal(panel.$_meta?.["quid"], "4k7m2v9d1r6x8qwc");
   assert.equal(compact(node), `<panel @4k7m2v9d1r6x8qwc class="settings" hidden "Content"/>`);
-  assert.equal(compact(parse(`<panel data-_quid="0000000000000000"/>`)), `<panel @0000000000000000/>`);
-  assert.throws(() => parse(`<panel @0000000000000000 data-_quid="0000000000000000"/>`), /conflicting persisted QUID/);
+  assert.equal(compact(parse(`<panel @0000000000000000/>`)), `<panel @0000000000000000/>`);
+  assert.throws(() => parse(`<panel @0000000000000000 @0000000000000000/>`), /duplicate persisted QUID/);
 });
 
 function clone_without_quids(node: HsonNode): HsonNode {
   const clone = structuredClone(node);
   const visit = (current: HsonNode): void => {
     if (current.$_meta) {
-      delete current.$_meta["data-_quid"];
+      delete current.$_meta["quid"];
       if (Object.keys(current.$_meta).length === 0) delete current.$_meta;
     }
     for (const child of current.$_content) {
@@ -272,17 +272,17 @@ check("quoted names and escaped string content snapshot", () => {
 });
 
 check("noQuid filters only the exact persisted QUID key", () => {
-  const node = parse(`<tag data-_quid="0000000000000001" data-user="keep" "value"/>`);
+  const node = parse(`<tag @0000000000000001 data-user="keep" "value"/>`);
   const plain = readable(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
   assert.match(plain, /@0000000000000001/);
-  assert.doesNotMatch(filtered, /data-_quid/);
+  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{16}/);
   assert.match(filtered, /data-user="keep"/);
   assert.notEqual(plain, filtered);
 });
 
 check("noBreak and noQuid compose in either order", () => {
-  const node = parse(`<p data-_quid="0000000000000002" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @0000000000000002 "first" <em "middle"/> "last"/>`);
   const left = hson.fromNode(node).toHson().noBreak().noQuid().serialize();
   const right = hson.fromNode(node).toHson().noQuid().noBreak().serialize();
   assert.equal(left, right);
@@ -290,7 +290,7 @@ check("noBreak and noQuid compose in either order", () => {
 });
 
 check("withOptions composes with convenience methods", () => {
-  const node = parse(`<p data-_quid="0000000000000003" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @0000000000000003 "first" <em "middle"/> "last"/>`);
   const expected = `<p "first" <em "middle"/> "last"/>`;
   assert.equal(
     hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize(),
@@ -307,7 +307,7 @@ check("withOptions composes with convenience methods", () => {
 });
 
 check("repeated options are idempotent", () => {
-  const node = parse(`<tag data-_quid="0000000000000004" "value"/>`);
+  const node = parse(`<tag @0000000000000004 "value"/>`);
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noBreak().noQuid().noQuid().serialize(),
     `<tag "value"/>`,
@@ -315,36 +315,36 @@ check("repeated options are idempotent", () => {
 });
 
 check("noQuid does not mutate or contaminate the source graph", () => {
-  const node = parse(`<tag data-_quid="0000000000000005" data-user="keep" "value"/>`);
+  const node = parse(`<tag @0000000000000005 data-user="keep" "value"/>`);
   const before = structuredClone(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(node, before);
-  assert.doesNotMatch(filtered, /data-_quid/);
+  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{16}/);
   assert.match(readable(node), /@0000000000000005/);
 });
 
 check("noQuid does not register imported identity", () => {
   const quid = "0000000000000006";
-  const node = parse(`<tag data-_quid="${quid}" "value"/>`);
+  const node = parse(`<tag @${quid} "value"/>`);
   assert.equal(get_node_by_quid(quid), undefined);
   hson.fromNode(node).toHson().noQuid().serialize();
   assert.equal(get_node_by_quid(quid), undefined);
 });
 
 check("parsed noQuid graph equals the graph with only QUID fields removed", () => {
-  const node = parse(`<p data-_quid="0000000000000007" data-user="keep" "first" <em data-_quid="0000000000000008" "middle"/>/>`);
+  const node = parse(`<p @0000000000000007 data-user="keep" "first" <em @0000000000000008 "middle"/>/>`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
 
-check("array data-_index is rebuilt from physical order", () => {
+check("array index metadata is rebuilt from physical order", () => {
   const node = parse(`«"a","b",<<name "Ada">>»`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   const reparsed = parse(wire);
   assert.deepEqual(reparsed, node);
   const array = reparsed.$_content[0] as HsonNode;
   assert.deepEqual(
-    array.$_content.map((item) => (item as HsonNode).$_meta?.["data-_index"]),
+    array.$_content.map((item) => (item as HsonNode).$_meta?.["index"]),
     ["0", "1", "2"],
   );
 });
@@ -459,7 +459,7 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
     enabled: true,
   });
   onlyElement(node).$_meta = {
-    "data-_quid": "0000000000000009",
+    quid: "0000000000000009",
   };
   const builder = () => hson.fromNode(node).toHson();
   const plain = `<tag @0000000000000009 count="2" data-user="keep" enabled="true" disabled/>`;
@@ -475,7 +475,7 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
 });
 
 check("quoted ordinary attributes are unchanged for structured block content", () => {
-  const node = parse(`<p data-_quid="000000000000000a" "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @000000000000000a "first" <em "middle"/> "last"/>`);
   onlyElement(node).$_attrs = { count: 2, disabled: "disabled" };
   assert.equal(
     readable(node),
@@ -542,11 +542,15 @@ check("unsupported structural VSN metadata is rejected with its VSN and path", (
         : tag === "_hson_val"
           ? [1]
           : [];
-    const node = { $_tag: tag, $_meta: { "data-_custom": "lost" }, $_content: content } as HsonNode;
+    const node = {
+      $_tag: tag,
+      $_meta: { "data-_custom": "lost" } as unknown as HsonMeta,
+      $_content: content,
+    } as HsonNode;
     assert.throws(
       () => assert_invariants(node, "structural metadata acceptance"),
       (cause) => cause instanceof Error
-        && cause.message.includes(`reserved metadata key is not defined for structural VSN "${tag}"`)
+        && cause.message.includes(`unknown canonical metadata key`)
         && cause.message.includes(`@meta:"data-_custom"`)
         && cause.message.includes(`/${tag}`),
     );
@@ -554,13 +558,13 @@ check("unsupported structural VSN metadata is rejected with its VSN and path", (
 
   const item: HsonNode = {
     $_tag: "_hson_ii",
-    $_meta: { "data-_index": "0", "data-_custom": "lost" },
+    $_meta: { index: "0", "data-_custom": "lost" } as unknown as HsonMeta,
     $_content: [{ $_tag: "_hson_str", $_content: ["value"] }],
   };
   const array: HsonNode = { $_tag: "_hson_arr", $_content: [item] };
   assert.throws(
     () => assert_invariants(array, "structural metadata acceptance"),
-    /_hson_ii.*data-_custom.*not defined for structural VSN "_hson_ii"/,
+    /_hson_ii.*data-_custom.*unknown canonical metadata key/,
   );
 });
 
@@ -575,7 +579,7 @@ check("unknown reserved standard-tag metadata is default-deny at every HSON boun
           $_tag: "_hson_elem",
           $_content: [{
             $_tag: "span",
-            $_meta: { "data-_custom": "invalid" },
+            $_meta: { "data-_custom": "invalid" } as unknown as HsonMeta,
             $_content: [{ $_tag: "_hson_elem", $_content: [] }],
           }],
         }],
@@ -585,42 +589,50 @@ check("unknown reserved standard-tag metadata is default-deny at every HSON boun
   for (const operation of [
     () => hson.fromNode(node).toNode(),
     () => serialize_hson(node),
-    () => parse(`<section <span data-_custom="invalid"/>/>`),
   ]) {
     assert.throws(
       operation,
       (cause) => cause instanceof Error
         && cause.message.includes(`/tag:section/_hson_elem/[0]/tag:span`)
         && cause.message.includes(`@meta:"data-_custom"`)
-      && cause.message.includes(`not defined for standard tag "span"`),
+      && cause.message.includes(`unknown canonical metadata key`),
     );
   }
 
   assert.throws(
+    () => parse(`<section <span hson:unknown="invalid"/>/>`),
+    /@attrs:"hson:unknown".*unknown canonical metadata key/,
+  );
+  assert.deepEqual(
+    onlyElement(parse(`<section data-_custom="ordinary"/>`)).$_attrs,
+    { "data-_custom": "ordinary" },
+  );
+
+  assert.throws(
     () => hson.fromNode({
       $_tag: "section",
-      $_attrs: { "data-_custom": "invalid" },
+      $_attrs: { "hson:unknown": "invalid" },
       $_content: [],
     }).toNode(),
     (cause) => cause instanceof Error
-      && cause.message.includes(`/tag:section@attrs:"data-_custom"`)
-      && cause.message.includes(`not defined for standard tag "section"`),
+      && cause.message.includes(`/tag:section@attrs:"hson:unknown"`)
+      && cause.message.includes(`unknown canonical metadata key`),
   );
 });
 
-check("data-_index is valid only as a string on _hson_ii", () => {
+check("index is valid only as a string on _hson_ii", () => {
   assert.throws(
-    () => parse(`<tag data-_index="3"/>`),
-    /data-_index.*not defined for standard tag "tag"/,
+    () => parse(`<tag hson:index="3"/>`),
+    /metadata "index" is not defined for node "tag"/,
   );
   const invalidValue = parse(`«"value"»`);
   const array = invalidValue.$_content[0] as HsonNode;
   const item = array.$_content[0] as HsonNode;
   if (!item.$_meta) throw new Error("Expected array index metadata.");
-  Reflect.set(item.$_meta, "data-_index", 0);
+  Reflect.set(item.$_meta, "index", 0);
   assert.throws(
     () => serialize_hson(invalidValue),
-    /metadata value for "data-_index" must be a string/,
+    /invalid metadata value for "index"/,
   );
 });
 
@@ -629,13 +641,13 @@ check("direct HSON serialization never silently omits unsupported structural met
     $_tag: "_hson_root",
     $_content: [{
       $_tag: "_hson_elem",
-      $_meta: { "data-_custom": "lost" },
+      $_meta: { "data-_custom": "lost" } as unknown as HsonMeta,
       $_content: [{ $_tag: "span", $_content: [] }],
     }],
   };
   assert.throws(
     () => serialize_hson(node),
-    /_hson_elem.*data-_custom.*not defined for structural VSN "_hson_elem"/,
+    /_hson_elem.*data-_custom.*unknown canonical metadata key/,
   );
 });
 
@@ -745,14 +757,14 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
       $_tag: "_hson_elem",
       $_content: [{
         $_tag: "tag",
-        $_meta: { "data-_bad key": "value" },
+        $_meta: { "data-_bad key": "value" } as unknown as HsonMeta,
         $_content: [{ $_tag: "_hson_elem", $_content: [] }],
       }],
     }],
   };
   assert.throws(
     () => hson.fromNode(badMeta).toNode(),
-    /@meta:"data-_bad key": the key is not a valid unquoted HSON metadata name/,
+    /@meta:"data-_bad key": unknown canonical metadata key/,
   );
   assert.equal(compact(parse(`<tag data-item-id="42" aria-label="Example" internal_flag/>`)),
     `<tag aria-label="Example" data-item-id="42" internal_flag/>`);

@@ -8,7 +8,10 @@ import { KeyframesManager, KeyframesInput } from "../../../types/keyframes.types
 import { camel_to_kebab } from "../../transform/utils/attrs-utils/camel_to_kebab.js";
 import { LiveTree } from "../livetree.js";
 import { apply_animation, bind_anim_api } from "../methods/anim.js";
-import { _DATA_QUID } from "../quid/data-quid.js";
+import {
+  HSON_QUID_MARKUP_NAME,
+} from "../quid/data-quid.js";
+import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import { manage_property } from "./at-property-builder.js";
 import { GlobalCss, render_rule } from "./global-css.js";
 import { manage_keyframes } from "./keyframes-manager.js";
@@ -101,11 +104,14 @@ export function render_css_value(v: CssValue): string {
  * - dev snapshots / debugging output.
  *
  * @param quid QUID to target.
- * @returns A selector string of the form `[data-_quid="..."]` (or whatever `_DATA_QUID` encodes).
+ * @returns A selector string of the form `[hson\:quid="..."]`.
  */
 export function selector_for_quid(quid: string): string {
-  // SINGLE place where we define how a QUID maps to a CSS selector
-  return `[${_DATA_QUID}="${quid}"]`;
+  if (!is_persisted_quid(quid)) {
+    throw new Error(`Cannot construct a QUID selector for "${quid}".`);
+  }
+  const escapedName = HSON_QUID_MARKUP_NAME.replace(/:/g, "\\:");
+  return `[${escapedName}="${quid}"]`;
 }
 
 /**
@@ -145,7 +151,7 @@ function canon_to_css_prop(propCanon: string): string {
  * registered projection document.
  * Each QUID maps to one selector (via `selectorForQuid`), producing blocks like:
  *
- *   [data-_quid="…"] { opacity: 0.5; transform: translate(…); }
+ *   [hson\:quid="…"] { opacity: 0.5; transform: translate(…); }
  *
  * Integration points:
  * - `css_for_quids()` creates a `CssHandle` by wiring a `StyleSetter` to this manager.
@@ -309,7 +315,7 @@ export class CssManager {
  *
  * QUID rule format:
  * - Each QUID **must** emit exactly one selector block:
- *   `[data-_quid="..."] { prop: value; ... }`
+ *   `[hson\:quid="..."] { prop: value; ... }`
  * - Properties are stored internally as *canonical* keys (camelCase, kebab-case,
  *   or `--custom-prop`) and are converted to emitted CSS property names via
  *   `canon_to_css_prop()`.
@@ -329,7 +335,7 @@ export class CssManager {
     // INVARIANT:
     // Each QUID MUST emit exactly one selector block.
     // rulesByQuid is Map<quid, Map<prop, string>> and MUST be folded
-    // into a single `[data-_quid="..."] { ... }` block.
+    // into a single `[hson\:quid="..."] { ... }` block.
     // Do NOT emit per-property selector blocks.
     //
     // Boundary: rulesByQuid stores final rendered strings only (no objects).

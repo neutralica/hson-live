@@ -26,7 +26,7 @@ function deferred_gates() {
   };
 }
 
-function element(source = `<main data-_quid="0000000000000001"/>`) {
+function element(source = `<main @0000000000000001/>`) {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error("expected element map");
   return map;

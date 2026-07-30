@@ -10,9 +10,10 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-  _DATA_INDEX,
-  _DATA_QUID,
-  _META_DATA_PREFIX,
+  HSON_META_INDEX,
+  HSON_META_QUID,
+  HSON_META_MARKUP_PREFIX,
+  HSON_META_TRANSIT_PREFIX,
 } from "./constants.js";
 import { validate_hson_node_quid } from "./hson-node-quid.js";
 import { _throw_transform_err } from "./errors.js";
@@ -20,7 +21,11 @@ import { is_valid_inline_style } from "./inline-style.js";
 import { is_Node } from "./node-guards.js";
 import { make_string } from "./stringify.js";
 import { is_valid_hson_attribute_name } from "./hson-name.js";
-import { hson_metadata_policy } from "./hson-metadata.js";
+import {
+  hson_metadata_candidate_key,
+  hson_metadata_policy,
+  hson_metadata_value_is_valid,
+} from "./hson-metadata.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
@@ -43,11 +48,11 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
 
   if (n.$_meta) {
-    if (Object.hasOwn(n.$_meta, "data-_quid")) {
+    if (Object.hasOwn(n.$_meta, HSON_META_QUID)) {
       try {
         validate_hson_node_quid(n);
       } catch {
-        push(errs, cfg, `${here}: data-_quid must be a canonical persisted QUID on an eligible standard tag`); if (cfg.throwOnFirst) return;
+        push(errs, cfg, `${here}: quid must be a canonical persisted QUID on an eligible standard tag`); if (cfg.throwOnFirst) return;
       }
     }
     for (const k of Object.keys(n.$_meta as HsonMeta)) {
@@ -60,6 +65,10 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
         );
         if (cfg.throwOnFirst) return;
       }
+      const value = (n.$_meta as Readonly<Record<string, unknown>>)[k];
+      if (!hson_metadata_value_is_valid(k, value)) {
+        push(errs, cfg, `${here}@meta:${JSON.stringify(k)}: invalid metadata value`); if (cfg.throwOnFirst) return;
+      }
     }
   }
 
@@ -68,8 +77,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   }
   if (!isVSN(n.$_tag) && n.$_attrs) {
     for (const key of Object.keys(n.$_attrs)) {
-      if (key.startsWith(_META_DATA_PREFIX)) {
-        const policy = hson_metadata_policy(n.$_tag, key);
+      const metadataCandidate = hson_metadata_candidate_key(key);
+      if (metadataCandidate !== undefined) {
+        const policy = hson_metadata_policy(n.$_tag, metadataCandidate);
         push(
           errs,
           cfg,
@@ -78,6 +88,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
             : `${here}@attrs:${JSON.stringify(key)}: ${policy.reason}`,
         );
         if (cfg.throwOnFirst) return;
+      }
+      if (key.startsWith(HSON_META_TRANSIT_PREFIX)) {
+        push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: private HSON metadata transit name is forbidden`); if (cfg.throwOnFirst) return;
       }
       if (!is_valid_hson_attribute_name(key)) {
         push(errs, cfg, `${here}@attrs:${JSON.stringify(key)}: invalid HSON attribute name`); if (cfg.throwOnFirst) return;
@@ -107,8 +120,8 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
   if (n.$_tag === II_TAG) {
     if (parentTag !== ARR_TAG) { push(errs, cfg, `${here}: _hson_ii must appear directly under _hson_arr`); if (cfg.throwOnFirst) return; }
     if (n.$_attrs && Object.keys(n.$_attrs).length) { push(errs, cfg, `${here}: _hson_ii must not have $_attrs`); if (cfg.throwOnFirst) return; }
-    const idx = n.$_meta?.[`${_META_DATA_PREFIX}index`] ?? n.$_meta?.[_DATA_INDEX];
-    if (typeof idx !== "string") { push(errs, cfg, `${here}: _hson_ii must carry "${_META_DATA_PREFIX}index" as a string in $_meta`); if (cfg.throwOnFirst) return; }
+    const idx = n.$_meta?.[HSON_META_INDEX];
+    if (typeof idx !== "string") { push(errs, cfg, `${here}: _hson_ii must carry "${HSON_META_INDEX}" as a string in $_meta`); if (cfg.throwOnFirst) return; }
 
     const cc = n.$_content;
     if (cc.length !== 1) { push(errs, cfg, `${here}: _hson_ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
@@ -308,8 +321,8 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     if (meta && typeof tag === "string") {
       for (const [key, value] of Object.entries(meta)) {
         const policy = hson_metadata_policy(tag, key);
-        if (policy.valid && key !== _DATA_QUID && typeof value !== "string") {
-          throw new Error(`[NEW-only] metadata value for "${key}" must be a string in ${where} at <${tag}>`);
+        if (policy.valid && !policy.definition.validateValue(value)) {
+          throw new Error(`[NEW-only] invalid metadata value for "${key}" in ${where} at <${tag}>`);
         }
       }
     }

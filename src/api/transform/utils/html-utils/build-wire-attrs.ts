@@ -1,7 +1,10 @@
 // build-wire-attrs.ts
 
 
-import { _META_DATA_PREFIX } from "../../../../core/constants.js";
+import {
+  hson_metadata_policy,
+  hson_metadata_value_is_valid,
+} from "../../../../core/hson-metadata.js";
 import { HsonNode } from "../../../../core/types.js";
 import { serialize_style } from "../attrs-utils/serialize-style.js";
 
@@ -18,15 +21,12 @@ import { serialize_style } from "../attrs-utils/serialize-style.js";
  *     - If `style` is an object (your `StyleObject` shape), it is serialized to
  *       CSS text via `serialize_style(...)`.
  *     - If `style` is already a string, it is passed through unchanged.
- * - Meta attributes (`n.$_meta`) are *not* generally exposed.
- *   - Only keys beginning with the `_META_DATA_PREFIX` (e.g. `"data-_"`) are
- *     included, and the key is preserved exactly.
+ * - Exact registered metadata is projected through its owned markup spelling.
  *
  * Notes / invariants:
  * - This function does not validate attribute names or escape values; it assumes
  *   earlier stages enforced the “safe” boundary (or you are building trusted DOM).
- * - It intentionally ignores non-`data-_` meta so internal bookkeeping doesn’t
- *   leak into rendered markup.
+ * - Unknown or misplaced metadata rejects instead of leaking or being dropped.
  *
  * @param n - Source HSON node whose `$_attrs` and `$_meta` will be projected onto
  *            a DOM attribute dictionary.
@@ -56,11 +56,18 @@ export function build_wire_attrs(n: HsonNode): Record<string, string> {
     }
   }
 
-  // 2) meta: only keys that start with 'data-_', keep EXACT key
+  // 2) exact registered metadata projected to its markup spelling
   const m = n.$_meta;
   if (m) {
     for (const [k, v] of Object.entries(m)) {
-      if (k.startsWith(_META_DATA_PREFIX)) out[k] = String(v);
+      const policy = hson_metadata_policy(n.$_tag, k);
+      if (!policy.valid) {
+        throw new Error(`Invalid HSON metadata "${k}" on <${n.$_tag}>: ${policy.reason}`);
+      }
+      if (!hson_metadata_value_is_valid(k, v)) {
+        throw new Error(`Invalid value for HSON metadata "${k}" on <${n.$_tag}>.`);
+      }
+      out[policy.definition.markupName] = v;
     }
   }
 

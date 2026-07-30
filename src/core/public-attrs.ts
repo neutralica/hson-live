@@ -1,4 +1,7 @@
-import { _META_DATA_PREFIX } from "./constants.js";
+import {
+  HSON_META_MARKUP_PREFIX,
+  HSON_META_TRANSIT_PREFIX,
+} from "./constants.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { CssMap } from "./style.types.js";
 import type {
@@ -12,7 +15,8 @@ const HSON_ATTR_NAME = /^[A-Za-z_:][A-Za-z0-9:._-]*$/;
 export function is_public_attr_name(value: unknown): value is string {
   return typeof value === "string"
     && HSON_ATTR_NAME.test(value)
-    && !value.startsWith(_META_DATA_PREFIX);
+    && !value.startsWith(HSON_META_MARKUP_PREFIX)
+    && !value.startsWith(HSON_META_TRANSIT_PREFIX);
 }
 
 export function decode_public_attr_value(

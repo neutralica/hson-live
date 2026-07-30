@@ -2,7 +2,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
-import { EVERY_VSN, _DATA_INDEX, _DATA_QUID } from "../src/core/constants.ts";
+import { EVERY_VSN, HSON_META_INDEX, HSON_META_QUID } from "../src/core/constants.ts";
 
 const originalCryptoDescriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
 let moduleScopeRandomCalls = 0;
@@ -158,7 +158,7 @@ check("secure minting uses exactly ten bytes, stays lowercase, and fails without
 
 check("all current and future-prefix VSNs are cleanly readable but reject mutation", () => {
   for (const tag of [...EVERY_VSN, "_hson_future"]) {
-    const value = node(tag, [], tag === "_hson_ii" ? { [_DATA_INDEX]: "0" } : undefined);
+    const value = node(tag, [], tag === "_hson_ii" ? { [HSON_META_INDEX]: "0" } : undefined);
     const before = structuredClone(value);
     assert.equal(read_hson_node_quid(value), undefined);
     assert.equal(has_hson_node_quid(value), false);
@@ -181,7 +181,7 @@ check("all current and future-prefix VSNs are cleanly readable but reject mutati
 check("QUID-bearing VSN metadata is rejected and never repaired or relocated", () => {
   for (const [index, tag] of [...EVERY_VSN, "_hson_future"].entries()) {
     const persisted = q(1100 + index);
-    const value = node(tag, [], { [_DATA_QUID]: persisted });
+    const value = node(tag, [], { [HSON_META_QUID]: persisted });
     for (const operation of [
       () => read_hson_node_quid(value),
       () => validate_hson_node_quid(value),
@@ -194,7 +194,7 @@ check("QUID-bearing VSN metadata is rejected and never repaired or relocated", (
         (cause) => cause instanceof HsonNodeQuidValidationError
           && cause.code === "INELIGIBLE_QUID",
       );
-      assert.equal(value.$_meta?.[_DATA_QUID], persisted);
+      assert.equal(value.$_meta?.[HSON_META_QUID], persisted);
     }
   }
 });
@@ -228,26 +228,26 @@ check("malformed assignment and removal reject before metadata mutation", () => 
   );
   assert.equal(clean.$_meta, undefined);
 
-  const malformed = node("main", [], { [_DATA_QUID]: "not-canonical" });
+  const malformed = node("main", [], { [HSON_META_QUID]: "not-canonical" });
   assert.throws(
     () => remove_hson_node_quid(malformed),
     (cause) => cause instanceof HsonNodeQuidValidationError
       && cause.code === "MALFORMED_QUID",
   );
-  assert.equal(malformed.$_meta?.[_DATA_QUID], "not-canonical");
+  assert.equal(malformed.$_meta?.[HSON_META_QUID], "not-canonical");
 });
 
 check("graph scan rejects sibling and ancestor-descendant duplicate claims deterministically", () => {
   const siblingQ = q(1400);
-  const left = node("left", [], { [_DATA_QUID]: siblingQ });
-  const right = node("right", [], { [_DATA_QUID]: siblingQ });
+  const left = node("left", [], { [HSON_META_QUID]: siblingQ });
+  const right = node("right", [], { [HSON_META_QUID]: siblingQ });
   const siblingError = duplicateError(() => scan_hson_node_quids(node("root", [left, right])));
   assert.equal(siblingError.conflictingNode, left);
   assert.equal(siblingError.node, right);
 
   const nestedQ = q(1401);
-  const descendant = node("descendant", [], { [_DATA_QUID]: nestedQ });
-  const ancestor = node("ancestor", [descendant], { [_DATA_QUID]: nestedQ });
+  const descendant = node("descendant", [], { [HSON_META_QUID]: nestedQ });
+  const ancestor = node("ancestor", [descendant], { [HSON_META_QUID]: nestedQ });
   const nestedError = duplicateError(() => scan_hson_node_quids(ancestor));
   assert.equal(nestedError.conflictingNode, ancestor);
   assert.equal(nestedError.node, descendant);
@@ -255,8 +255,8 @@ check("graph scan rejects sibling and ancestor-descendant duplicate claims deter
 
 check("canonical claim collection preserves duplicate values without registration", () => {
   const duplicateQ = q(1450);
-  const left = node("left", [], { [_DATA_QUID]: duplicateQ });
-  const right = node("right", [], { [_DATA_QUID]: duplicateQ });
+  const left = node("left", [], { [HSON_META_QUID]: duplicateQ });
+  const right = node("right", [], { [HSON_META_QUID]: duplicateQ });
   const claims = collect_hson_node_quid_claims(node("root", [left, right]));
   assert.equal(claims.length, 2);
   assert.deepEqual(claims.map((claim) => claim.quid), [duplicateQ, duplicateQ]);
@@ -268,8 +268,8 @@ check("graph scan rejects duplicates in document, data-object, and array-contain
   const documentQ = q(1500);
   const document = node("_hson_root", [
     node("_hson_elem", [
-      node("article", [], { [_DATA_QUID]: documentQ }),
-      node("aside", [], { [_DATA_QUID]: documentQ }),
+      node("article", [], { [HSON_META_QUID]: documentQ }),
+      node("aside", [], { [HSON_META_QUID]: documentQ }),
     ]),
   ]);
   duplicateError(() => scan_hson_node_quids(document));
@@ -277,8 +277,8 @@ check("graph scan rejects duplicates in document, data-object, and array-contain
   const objectQ = q(1501);
   const dataObject = node("_hson_root", [
     node("_hson_obj", [
-      node("first", [], { [_DATA_QUID]: objectQ }),
-      node("second", [], { [_DATA_QUID]: objectQ }),
+      node("first", [], { [HSON_META_QUID]: objectQ }),
+      node("second", [], { [HSON_META_QUID]: objectQ }),
     ]),
   ]);
   duplicateError(() => scan_hson_node_quids(dataObject));
@@ -286,8 +286,8 @@ check("graph scan rejects duplicates in document, data-object, and array-contain
   const arrayQ = q(1502);
   const dataArray = node("_hson_root", [
     node("_hson_arr", [
-      node("_hson_ii", [node("first-item", [], { [_DATA_QUID]: arrayQ })], { [_DATA_INDEX]: "0" }),
-      node("_hson_ii", [node("second-item", [], { [_DATA_QUID]: arrayQ })], { [_DATA_INDEX]: "1" }),
+      node("_hson_ii", [node("first-item", [], { [HSON_META_QUID]: arrayQ })], { [HSON_META_INDEX]: "0" }),
+      node("_hson_ii", [node("second-item", [], { [HSON_META_QUID]: arrayQ })], { [HSON_META_INDEX]: "1" }),
     ]),
   ]);
   duplicateError(() => scan_hson_node_quids(dataArray));
@@ -295,50 +295,50 @@ check("graph scan rejects duplicates in document, data-object, and array-contain
 
 check("graph identity is object-based, graph-local, non-registering, and duplicate-distinct", () => {
   const sharedQ = q(1600);
-  const shared = node("shared", [], { [_DATA_QUID]: sharedQ });
+  const shared = node("shared", [], { [HSON_META_QUID]: sharedQ });
   const repeatedReference = node("root", [shared, shared]);
   const repeatedIndex = scan_hson_node_quids(repeatedReference);
   assert.equal(repeatedIndex.size, 1);
   assert.equal(repeatedIndex.get(sharedQ), shared);
 
   const coldQ = q(1601);
-  const cold = node("cold", [], { [_DATA_QUID]: coldQ });
+  const cold = node("cold", [], { [HSON_META_QUID]: coldQ });
   assert.equal(scan_hson_node_quids(cold).get(coldQ), cold);
   assert.equal(get_node_by_quid(coldQ), undefined);
 
   const separateQ = q(1602);
   assert.equal(
-    scan_hson_node_quids(node("one", [], { [_DATA_QUID]: separateQ })).has(separateQ),
+    scan_hson_node_quids(node("one", [], { [HSON_META_QUID]: separateQ })).has(separateQ),
     true,
   );
   assert.equal(
-    scan_hson_node_quids(node("two", [], { [_DATA_QUID]: separateQ })).has(separateQ),
+    scan_hson_node_quids(node("two", [], { [HSON_META_QUID]: separateQ })).has(separateQ),
     true,
   );
   duplicateError(() => scan_hson_node_quids(node("combined", [
-    node("one", [], { [_DATA_QUID]: separateQ }),
-    node("two", [], { [_DATA_QUID]: separateQ }),
+    node("one", [], { [HSON_META_QUID]: separateQ }),
+    node("two", [], { [HSON_META_QUID]: separateQ }),
   ])));
 });
 
 check("LiveTree and LiveMap accept the same valid QUID and reject the same malformed values", () => {
   const valid = q(1700);
-  const treeNode = node("main", [], { [_DATA_QUID]: valid });
+  const treeNode = node("main", [], { [HSON_META_QUID]: valid });
   assert.equal(ensure_quid(treeNode), valid);
 
-  const mapNode = node("main", [], { [_DATA_QUID]: valid });
+  const mapNode = node("main", [], { [HSON_META_QUID]: valid });
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
   assert.equal(index_livemap_document_elements(mapGraph).get(valid), mapNode);
 
   for (const malformed of ["", "short", "000000000000000I", "000000000000000-"]) {
-    const malformedTreeNode = node("tree-bad", [], { [_DATA_QUID]: malformed });
+    const malformedTreeNode = node("tree-bad", [], { [HSON_META_QUID]: malformed });
     assert.throws(
       () => ensure_quid(malformedTreeNode),
       (cause) => cause instanceof HsonNodeQuidValidationError
         && cause.code === "MALFORMED_QUID",
     );
 
-    const malformedMapNode = node("map-bad", [], { [_DATA_QUID]: malformed });
+    const malformedMapNode = node("map-bad", [], { [HSON_META_QUID]: malformed });
     assert.throws(
       () => index_livemap_document_elements(
         node("_hson_root", [node("_hson_elem", [malformedMapNode])]),
@@ -351,7 +351,7 @@ check("LiveTree and LiveMap accept the same valid QUID and reject the same malfo
 
 check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplicates", () => {
   const vsnQ = q(1800);
-  const invalidVsn = node("_hson_future", [], { [_DATA_QUID]: vsnQ });
+  const invalidVsn = node("_hson_future", [], { [HSON_META_QUID]: vsnQ });
   assert.throws(
     () => get_quid(invalidVsn),
     (cause) => cause instanceof HsonNodeQuidValidationError
@@ -365,8 +365,8 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
 
   const duplicateQ = q(1801);
   const treeSource = node("tree-root", [
-    node("a", [], { [_DATA_QUID]: duplicateQ }),
-    node("b", [], { [_DATA_QUID]: duplicateQ }),
+    node("a", [], { [HSON_META_QUID]: duplicateQ }),
+    node("b", [], { [HSON_META_QUID]: duplicateQ }),
   ]);
   assert.throws(
     () => new LiveTree(treeSource),
@@ -374,8 +374,8 @@ check("LiveTree and LiveMap both reject QUID-bearing VSNs and graph-local duplic
   );
 
   const mapSource = node("_hson_root", [node("_hson_elem", [
-    node("a", [], { [_DATA_QUID]: duplicateQ }),
-    node("b", [], { [_DATA_QUID]: duplicateQ }),
+    node("a", [], { [HSON_META_QUID]: duplicateQ }),
+    node("b", [], { [HSON_META_QUID]: duplicateQ }),
   ])]);
   assert.throws(
     () => index_livemap_document_elements(mapSource),
@@ -388,12 +388,12 @@ check("LiveMap remains non-minting while LiveTree retains canonical minting", ()
   const mapNode = node("unquidded");
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
   assert.equal(index_livemap_document_elements(mapGraph).size, 0);
-  assert.equal(mapNode.$_meta?.[_DATA_QUID], undefined);
+  assert.equal(mapNode.$_meta?.[HSON_META_QUID], undefined);
 
   const treeNode = node("minted");
   const minted = ensure_quid(treeNode);
   assert.match(minted, /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
-  assert.equal(treeNode.$_meta?.[_DATA_QUID], minted);
+  assert.equal(treeNode.$_meta?.[HSON_META_QUID], minted);
   assert.equal(get_node_by_quid(minted), treeNode);
 });
 

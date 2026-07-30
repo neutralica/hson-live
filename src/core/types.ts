@@ -1,6 +1,6 @@
 // types.ts
 
-import type { _DATA_INDEX, _DATA_QUID } from "./constants.js";
+import type { HSON_META_INDEX, HSON_META_QUID } from "./constants.js";
 import type { PersistedQuid } from "./persisted-quid.js";
 
 export type Primitive = string | boolean | number | null;
@@ -39,7 +39,7 @@ export interface HsonAttrs {
 export type AttrValue = Primitive | undefined;
 export type AttrMap = Readonly<Record<string, AttrValue>>;
 
-export type HsonMeta = {
-  [_DATA_INDEX]?: string;
-  [_DATA_QUID]?: PersistedQuid;
-} & Record<string, string>;
+export interface HsonMeta {
+  [HSON_META_INDEX]?: string;
+  [HSON_META_QUID]?: PersistedQuid;
+}

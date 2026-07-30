@@ -6,7 +6,7 @@ import {
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-  _DATA_QUID,
+  HSON_META_QUID,
 } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
@@ -228,7 +228,7 @@ function shadow_existing(
 
 function shadow_fresh(content: HsonNode | Primitive, parent?: ShadowNode): ShadowContent {
   if (!is_Node(content)) return content;
-  const persistedQuid = is_ordinary_element_node(content) ? content.$_meta?.[_DATA_QUID] : undefined;
+  const persistedQuid = is_ordinary_element_node(content) ? content.$_meta?.[HSON_META_QUID] : undefined;
   const shadow: ShadowNode = {
     node: content,
     fresh: true,
@@ -259,7 +259,7 @@ function plan_replacement(
   }
   const currentQuid = current.persistedQuid;
   const replacementQuid = is_ordinary_element_node(replacement)
-    ? replacement.$_meta?.[_DATA_QUID]
+    ? replacement.$_meta?.[HSON_META_QUID]
     : undefined;
   if (currentQuid === undefined || replacementQuid === undefined || currentQuid !== replacementQuid) {
     return shadow_fresh(replacement, parent);
@@ -395,7 +395,7 @@ function flatten_dom_item(
 function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode): void {
   if (shadow.node.$_tag !== canonical.$_tag) throw content_mismatch();
   if (!canonical_public_attrs_equal(shadow.attrs, must_attrs(canonical.$_attrs ?? {}))) throw content_mismatch();
-  const canonicalQuid = is_ordinary_element_node(canonical) ? canonical.$_meta?.[_DATA_QUID] : undefined;
+  const canonicalQuid = is_ordinary_element_node(canonical) ? canonical.$_meta?.[HSON_META_QUID] : undefined;
   if (shadow.persistedQuid !== canonicalQuid) throw content_mismatch();
   if (shadow.content.length !== canonical.$_content.length) throw content_mismatch();
   for (let index = 0; index < shadow.content.length; index += 1) {

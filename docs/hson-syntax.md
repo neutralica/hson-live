@@ -132,11 +132,10 @@ flag; for example, programmatic `{ disabled: true }` serializes as the ordinary
 valued attribute `disabled="true"`, not as a flag. Input
 `disabled="disabled"` is normalized to the canonical flag representation.
 
-Names beginning `data-_` are routed to the reserved `$_meta` namespace; all
-other names, including `data-user`, `data-theme`, and `data-id`, go to
-`$_attrs`. Reserved metadata is exact-allowlist and default-deny: satisfying
-the unquoted name grammar does not define a field. Backtick quoting never
-applies to attribute or metadata names.
+All attribute names, including every `data-*` spelling, go to `$_attrs`.
+Structural metadata is declared only through its dedicated syntax: `@quid` in
+HSON and registered `hson:*` names in HTML/SVG. Metadata is exact-allowlist and
+default-deny. Backtick quoting never applies to attribute or metadata names.
 
 ---
 
@@ -177,9 +176,9 @@ The parser also accepts `[` and `]`, including `[]`; serialization uses `«` and
 arrays, named nodes, or anonymous objects. Commas separate top-level items.
 
 Internally, an array is `_hson_arr` with ordered `_hson_ii` children. Each item
-receives `data-_index`, but emitted order follows the physical child order, not
+receives `index`, but emitted order follows the physical child order, not
 a sort of that metadata. `_hson_ii` wrappers and their indexes melt from HSON
-text; parsing rebuilds sequential `data-_index` values from physical array order.
+text; parsing rebuilds sequential `index` values from physical array order.
 
 ---
 
@@ -233,16 +232,15 @@ indentation but retains conventional spaces between a tag name, attributes,
 flags, and content. Both layouts are emitted structurally rather than by
 rewriting whitespace in an already serialized string.
 
-`noQuid()` removes only the defined `data-_quid` field from eligible standard
+`noQuid()` removes only the defined `quid` field from eligible standard
 tags and never mutates the graph or identity registry. Structural VSN metadata
 is restricted to the operational
-`data-_index` on `_hson_ii`; it is omitted because array order carries the same
+`index` on `_hson_ii`; it is omitted because array order carries the same
 information and parsing regenerates it. `_hson_root`, `_hson_elem`,
 `_hson_obj`, `_hson_arr`, `_hson_str`, and `_hson_val` accept no metadata.
-Every other `data-_...` field—including `data-_root`, `data-_cluster`,
-`data-_text`, and `data-_custom`—is undefined and rejected on every node kind;
-it is never silently stripped. Adding a reserved field requires an explicit
-future field/node-kind contract.
+Every other `$_meta` key is undefined and rejected on every node kind; it is
+never silently stripped. Adding metadata requires an explicit future
+field/node-kind contract in the registry.
 
 An empty `_hson_root` is a documented runtime-only exception. LiveMap uses it
 as an empty-fragment carrier and LiveHost may transport that graph state, but

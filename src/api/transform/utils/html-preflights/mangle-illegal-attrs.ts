@@ -344,7 +344,8 @@ function is_ws(ch: string): boolean {
 //  *   - Otherwise it is replaced with an ASCII-safe name derived from the
 //  *     original, using `_xHHHH_` escape sequences for disallowed characters.
 //  * - If *any* attributes on a tag were rewritten, appends a transit attribute
-//  *   (e.g. `data--attrmap`) whose value is a JSON string of the mapping.
+//  *   (for example `_hson_attr_transit_v1_attrmap`) whose value is a JSON
+//  *   string of the mapping.
 //  *
 //  * Important constraints / assumptions:
 //  * - This expects attribute values to already be *quoted* when present

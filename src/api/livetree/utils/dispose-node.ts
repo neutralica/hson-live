@@ -1,4 +1,3 @@
-import { _DATA_QUID } from "../../../core/constants.js";
 import type { HsonNode } from "../../../core/types.js";
 import {
   disposables_drain_for_owners,
@@ -6,6 +5,7 @@ import {
 import {
   destroy_subtree_quids,
   get_quid,
+  HSON_QUID_MARKUP_NAME,
 } from "../quid/data-quid.js";
 import { mark_livetree_nodes_disposed } from "../livetree-state.js";
 import { detach_node_deep } from "./detach-node.js";
@@ -63,7 +63,7 @@ export function dispose_node_deep(
   // `detach_node_deep` has already removed node-element mappings, so retain the
   // pre-teardown elements long enough to scrub identity attributes as well.
   for (const element of mappedElements) {
-    element.removeAttribute(_DATA_QUID);
+    element.removeAttribute(HSON_QUID_MARKUP_NAME);
   }
 
   mark_livetree_nodes_disposed(nodes, formerQuids);

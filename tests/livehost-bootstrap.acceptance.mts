@@ -229,7 +229,7 @@ check("malformed graph and duplicate document QUIDs reject", () => {
     mode: "fragment",
     state: {
       format: "hson",
-      payload: `<div data-_quid="0000000000000001"/> <span data-_quid="0000000000000001"/>`,
+      payload: `<div @0000000000000001/> <span @0000000000000001/>`,
     },
   });
   assert.equal(error_code(() => install_livehost_bootstrap(duplicate)), "LIVEHOST_BOOTSTRAP_STATE_INVALID");

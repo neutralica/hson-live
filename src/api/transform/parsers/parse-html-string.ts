@@ -6,17 +6,18 @@ import {
   ELEM_TAG,
   EVERY_VSN,
   HSON_SYS_PREFIX,
+  HSON_META_MARKUP_PREFIX,
+  HSON_META_QUID,
+  HSON_META_TRANSIT_PREFIX,
   HTML_KEY_PREFIX,
   II_TAG,
   OBJ_TAG,
   ROOT_TAG,
   STR_TAG,
   VAL_TAG,
-  _DATA_INDEX,
-  _DATA_QUID,
-  _META_DATA_PREFIX,
   _TRANSIT_PREFIX,
 } from "../../../core/constants.js";
+import { admit_hson_metadata_markup } from "../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { is_indexed } from "../../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
@@ -72,6 +73,7 @@ const URI_ATTR = /^(?:href|src|xlink:href|poster)$/i;
 function sanitized_attribute(name: string, value: string): boolean {
   const lower = name.toLowerCase();
   if (lower === "style" || lower === "srcdoc" || lower.startsWith("on")) return false;
+  if (lower.startsWith(HSON_META_MARKUP_PREFIX)) return true;
   if (!ALLOWED_ATTRS.has(lower) && !lower.startsWith("data-")) return false;
   if (URI_ATTR.test(lower)) return ALLOWED_URI.test(value);
   if (lower !== "srcset") return true;
@@ -83,6 +85,7 @@ function sanitized_attribute(name: string, value: string): boolean {
 
 function attributes_from_element(
   element: Element,
+  nodeTag: string,
   sanitize: boolean,
   svg: boolean,
 ): { attrs: HsonAttrs; meta?: HsonMeta; quid?: string } {
@@ -93,22 +96,23 @@ function attributes_from_element(
   for (const [authoredName, value] of Object.entries(element.attribs)) {
     const lower = authoredName.toLowerCase();
     const key = svg ? authoredName : lower;
+    if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private HSON metadata transit name "${authoredName}" is forbidden`,
+        "parse-html-string",
+      );
+    }
     if (sanitize && !sanitized_attribute(lower, value)) continue;
     if (lower.startsWith(_TRANSIT_PREFIX)) continue;
     if (lower === "xmlns" || lower.startsWith("xmlns:") || lower.startsWith("xml:")) continue;
 
-    if (lower === _DATA_INDEX) {
-      (meta ??= {})[_DATA_INDEX] = value;
-      continue;
-    }
-
-    if (lower === _DATA_QUID) {
-      quid = value;
-      continue;
-    }
-
-    if (lower.startsWith(_META_DATA_PREFIX)) {
-      (meta ??= {})[key] = value;
+    if (lower.startsWith(HSON_META_MARKUP_PREFIX)) {
+      const admission = admit_hson_metadata_markup(nodeTag, lower, value);
+      if (!admission.valid) {
+        _throw_transform_err(admission.reason, "parse-html-string");
+      }
+      if (admission.key === HSON_META_QUID) quid = admission.value;
+      else (meta ??= {})[admission.key] = admission.value;
       continue;
     }
 
@@ -200,7 +204,7 @@ function element_to_hson(
       "parse-html-string",
     );
   }
-  const { attrs, meta, quid } = attributes_from_element(element, sanitize, svg);
+  const { attrs, meta, quid } = attributes_from_element(element, tag, sanitize, svg);
   if (tag === STR_TAG) {
     if (quid !== undefined) {
       assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: tag }), quid, "parse-html-string");
@@ -349,9 +353,22 @@ function standalone_svg_node(element: Element): HsonNode {
   let quid: string | undefined;
   for (const [name, value] of Object.entries(element.attribs)) {
     const lower = name.toLowerCase();
-    if (lower === _DATA_QUID) quid = value;
-    else if (lower.startsWith(_META_DATA_PREFIX)) (meta ??= {})[name] = value;
-    else attrs[name] = value;
+    if (lower.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      _throw_transform_err(
+        `externally authored private HSON metadata transit name "${name}" is forbidden`,
+        "parse-html-string",
+      );
+    }
+    if (lower.startsWith(HSON_META_MARKUP_PREFIX)) {
+      const admission = admit_hson_metadata_markup(element.name, lower, value);
+      if (!admission.valid) {
+        _throw_transform_err(admission.reason, "parse-html-string");
+      }
+      if (admission.key === HSON_META_QUID) quid = admission.value;
+      else (meta ??= {})[admission.key] = admission.value;
+    } else {
+      attrs[name] = value;
+    }
   }
   if (quid !== undefined && element.name.startsWith(HSON_SYS_PREFIX)) {
     assign_ingested_hson_node_quid(

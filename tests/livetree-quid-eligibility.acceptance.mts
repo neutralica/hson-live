@@ -2,7 +2,7 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import type { HsonNode } from "../src/core/types.ts";
-import { EVERY_VSN, _DATA_INDEX, _DATA_QUID } from "../src/core/constants.ts";
+import { EVERY_VSN, HSON_META_INDEX, HSON_META_QUID } from "../src/core/constants.ts";
 import {
   drop_quid,
   destroy_subtree_quids,
@@ -45,7 +45,7 @@ function withoutQuids(value: HsonNode): HsonNode {
   const copy = structuredClone(value);
   const visit = (current: HsonNode): void => {
     if (current.$_meta !== undefined) {
-      delete current.$_meta[_DATA_QUID];
+      delete current.$_meta[HSON_META_QUID];
       if (Object.keys(current.$_meta).length === 0) delete current.$_meta;
     }
     for (const child of current.$_content) {
@@ -60,7 +60,7 @@ const vsnTags = [...EVERY_VSN, "_hson_future"];
 
 check("every current and future-prefix clean VSN reads as absent and rejects identity operations", () => {
   for (const tag of vsnTags) {
-    const value = node(tag, [], tag === "_hson_ii" ? { [_DATA_INDEX]: "0" } : undefined);
+    const value = node(tag, [], tag === "_hson_ii" ? { [HSON_META_INDEX]: "0" } : undefined);
     const before = structuredClone(value);
 
     assert.equal(get_quid(value), undefined, `${tag} read`);
@@ -81,7 +81,7 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
     const ordinaryBeforeInvalid = node(`before-${index}`);
     const source = node(`root-${index}`, [ordinaryBeforeInvalid, invalid]);
     const tree = new LiveTree(source);
-    invalid.$_meta = { [_DATA_QUID]: q };
+    invalid.$_meta = { [HSON_META_QUID]: q };
 
     for (const operation of [
       () => get_quid(invalid),
@@ -93,7 +93,7 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
       () => tree.cloneBranch(),
     ]) {
       assertEligibilityError(operation, tag);
-      assert.equal(invalid.$_meta?.[_DATA_QUID], q, `${tag} metadata retained`);
+      assert.equal(invalid.$_meta?.[HSON_META_QUID], q, `${tag} metadata retained`);
       assert.equal(get_node_by_quid(q), undefined, `${tag} registry unchanged`);
       assert.equal(get_quid(ordinaryBeforeInvalid), undefined, `${tag} no partial clone registration`);
     }
@@ -101,15 +101,15 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
 });
 
 check("subtree destruction preflights invalid VSN identity before any cleanup", () => {
-  const ordinary = node("kept", [], { [_DATA_QUID]: "0000000000000200" });
+  const ordinary = node("kept", [], { [HSON_META_QUID]: "0000000000000200" });
   ensure_quid(ordinary);
-  const invalid = node("_hson_elem", [], { [_DATA_QUID]: "0000000000000201" });
+  const invalid = node("_hson_elem", [], { [HSON_META_QUID]: "0000000000000201" });
   const root = node("destroy-root", [ordinary, invalid]);
 
   assertEligibilityError(() => destroy_subtree_quids(root), "_hson_elem");
-  assert.equal(ordinary.$_meta?.[_DATA_QUID], "0000000000000200");
+  assert.equal(ordinary.$_meta?.[HSON_META_QUID], "0000000000000200");
   assert.equal(get_node_by_quid("0000000000000200"), ordinary);
-  assert.equal(invalid.$_meta?.[_DATA_QUID], "0000000000000201");
+  assert.equal(invalid.$_meta?.[HSON_META_QUID], "0000000000000201");
   assert.equal(get_node_by_quid("0000000000000201"), undefined);
 });
 
@@ -126,9 +126,9 @@ check("ordinary nodes retain canonical generation, stable ensure, descendant eli
   assert.equal(ensure_quid(root), rootQuid);
   assert.equal(ensure_quid(section), sectionQuid);
 
-  const collision = node("aside", [], { [_DATA_QUID]: rootQuid });
+  const collision = node("aside", [], { [HSON_META_QUID]: rootQuid });
   assert.throws(() => ensure_quid(collision), /Duplicate QUID/);
-  assert.equal(collision.$_meta?.[_DATA_QUID], rootQuid);
+  assert.equal(collision.$_meta?.[HSON_META_QUID], rootQuid);
   assert.equal(get_node_by_quid(rootQuid), root);
 });
 
@@ -139,7 +139,7 @@ check("a registered node changed into a VSN cannot operationally expose its prio
 
   assertEligibilityError(() => get_quid(value), "_hson_future");
   assertEligibilityError(() => get_node_by_quid(q), "_hson_future");
-  assert.equal(value.$_meta?.[_DATA_QUID], q);
+  assert.equal(value.$_meta?.[HSON_META_QUID], q);
 });
 
 check("clone remints every ordinary node and leaves nested VSN wrappers unquidded", () => {
@@ -153,7 +153,7 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
       node("property", [node("_hson_str", ["value"])]),
     ]),
     node("_hson_arr", [
-      node("_hson_ii", [node("article")], { [_DATA_INDEX]: "0" }),
+      node("_hson_ii", [node("article")], { [HSON_META_INDEX]: "0" }),
     ]),
     node("_hson_val", [false]),
   ]);
@@ -192,7 +192,7 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
   }
   for (const value of vsnClone) {
     assert.equal(get_quid(value), undefined);
-    assert.equal(value.$_meta?.[_DATA_QUID], undefined);
+    assert.equal(value.$_meta?.[HSON_META_QUID], undefined);
   }
   assert.deepEqual(withoutQuids(clone), withoutQuids(source));
 });
