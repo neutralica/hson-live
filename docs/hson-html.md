@@ -190,7 +190,15 @@ error. These repairs are parsing conveniences, not sanitization. Only
 
 When a constructor receives an `Element`, the public transform constructor
 currently snapshots `innerHTML`, so the supplied element itself is not the
-result root. Descendant `hson:quid` values are stripped during ingestion.
+result root. The DOM boundary cannot recover duplicate source attributes that
+were already collapsed, but surviving `hson:*` candidates use the same
+metadata registry as string input.
+
+Untrusted HTML sanitization and canonical graph validation are separate
+stages. Sanitization removes unsafe markup behavior without silently deleting
+HSON metadata candidates. Valid descendant QUIDs may therefore survive as
+canonical identity; malformed, unknown, misplaced, or duplicate metadata
+rejects. Ordinary `data-*` attributes remain application data.
 
 ---
 

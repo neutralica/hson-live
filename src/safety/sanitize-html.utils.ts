@@ -1,11 +1,16 @@
 // sanitize-html.utils.ts
 
 import createDOMPurify, {
+  type Config,
   type DOMPurify,
   type UponSanitizeAttributeHookEvent,
   type WindowLike,
 } from "dompurify";
-import { HSON_META_MARKUP_PREFIX } from "../core/constants.js";
+import {
+  HSON_META_TRANSIT_PREFIX,
+  _TRANSIT_PREFIX,
+} from "../core/constants.js";
+import { hson_metadata_candidate_key } from "../core/hson-metadata.js";
 
 export type SanitizerLike = Pick<DOMPurify, "sanitize">;
 
@@ -168,6 +173,14 @@ function discoverTags(html: string, ownerDocument: Document): Set<string> {
   return seen;
 }
 
+function discoverXmlElements(html: string, ownerDocument: Document): Element[] {
+  const Parser = ownerDocument.defaultView?.DOMParser;
+  if (Parser === undefined) return [];
+  const parsed = new Parser().parseFromString(html, "application/xml");
+  if (parsed.querySelector("parsererror") !== null) return [];
+  return Array.from(parsed.getElementsByTagName("*"));
+}
+
 /***********************************************
  * buildAddTags
  *
@@ -203,17 +216,37 @@ function buildAddTags(html: string, ownerDocument: Document): string[] {
   return [...new Set([...disc])];
 }
 
+function buildXmlAddTags(html: string, ownerDocument: Document): string[] {
+  return [
+    ...new Set(
+      discoverXmlElements(html, ownerDocument)
+        .map((element) => element.tagName.toLowerCase())
+        .filter((tag) => !FORBID_TAGS_HARD.has(tag)),
+    ),
+  ];
+}
+
 function discoverHsonMetadataAttrs(
   html: string,
   ownerDocument: Document,
+  xmlShaped: boolean,
 ): string[] {
+  if (xmlShaped) {
+    return [
+      ...new Set(
+        discoverXmlElements(html, ownerDocument)
+          .flatMap((element) => element.getAttributeNames())
+          .filter((name) => name.startsWith(HSON_META_TRANSIT_PREFIX)),
+      ),
+    ];
+  }
   const template = ownerDocument.createElement("template");
   template.innerHTML = html;
   const names = new Set<string>();
   const walk = (node: Node): void => {
     if (node.nodeType === Node.ELEMENT_NODE) {
       for (const name of (node as Element).getAttributeNames()) {
-        if (name.startsWith(HSON_META_MARKUP_PREFIX)) names.add(name);
+        if (hson_metadata_candidate_key(name) !== undefined) names.add(name);
       }
     }
     for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
@@ -241,6 +274,8 @@ function discoverHsonMetadataAttrs(
  *
  * Attribute policy:
  *   - `ALLOWED_ATTR` defines the base attribute allowlist.
+ *   - Syntactic `hson:*` candidates found in the source are added only so the
+ *     canonical metadata registry can validate them after sanitization.
  *   - `FORBID_ATTR: ["style", "srcdoc"]` forbids inline
  *     styles and srcdoc frames outright.
  *   - `ALLOW_DATA_ATTR: true` allows all `data-*` attributes.
@@ -260,8 +295,8 @@ function discoverHsonMetadataAttrs(
  *       - normalized according to the above policies.
  *
  * Notes:
- *   - `KEEP_CONTENT: false` means content inside forbidden
- *     elements (e.g. <script>) is discarded with the tags.
+ *   - Hard-forbidden elements (e.g. `<script>`) and their content are removed.
+ *     Ordinary text under admitted elements remains intact.
  *   - `WHOLE_DOCUMENT: false` treats the input as a fragment
  *     rather than a full HTML document.
  *
@@ -282,6 +317,18 @@ export function make_sanitizer(targetWindow: Window): SanitizerLike {
   ) => {
     const name = event.attrName;
     const value = event.attrValue;
+
+    // DOMPurify applies ALLOWED_URI_REGEXP to namespaced-looking attributes.
+    // HSON metadata is not a URL domain, so retain every syntactic candidate
+    // for the canonical registry to accept or reject after sanitization.
+    if (
+      hson_metadata_candidate_key(name) !== undefined
+      || name.toLowerCase().startsWith(HSON_META_TRANSIT_PREFIX)
+      || name.toLowerCase().startsWith(_TRANSIT_PREFIX)
+    ) {
+      event.forceKeepAttr = true;
+      return;
+    }
 
     // Drop all inline styles explicitly (DOMPurify also blocks by FORBID_ATTR)
     if (name === "style") { event.keepAttr = false; return; }
@@ -316,16 +363,22 @@ export function make_sanitizer(targetWindow: Window): SanitizerLike {
   return sanitizer;
 }
 
-export function sanitize_external(html: string): string {
+export function sanitize_external(
+  html: string,
+  options: Readonly<{ xmlShaped?: boolean }> = {},
+): string {
   if (typeof window === "undefined") {
     throw new Error("[hson-live] untrusted HTML sanitization requires a Window.");
   }
   const targetWindow = window;
   const sanitizer = make_sanitizer(targetWindow);
-  const ADD_TAGS = buildAddTags(html, targetWindow.document);
-  const ADD_ATTR = discoverHsonMetadataAttrs(html, targetWindow.document);
+  const xmlShaped = options.xmlShaped === true;
+  const ADD_TAGS = xmlShaped
+    ? buildXmlAddTags(html, targetWindow.document)
+    : buildAddTags(html, targetWindow.document);
+  const ADD_ATTR = discoverHsonMetadataAttrs(html, targetWindow.document, xmlShaped);
 
-  return sanitizer.sanitize(html, {
+  const config: Config = {
     ALLOWED_TAGS: [...ALLOWED_TAGS],
     ALLOWED_ATTR: [...ALLOWED_ATTR],
     ADD_TAGS,
@@ -334,7 +387,9 @@ export function sanitize_external(html: string): string {
     FORBID_ATTR: ["style", "srcdoc"],                 // remove "on*" (no globbing)
     ALLOWED_URI_REGEXP: ALLOWED_URI_REGEX,
     ALLOW_DATA_ATTR: true,                            // replaces "data-*"
-    KEEP_CONTENT: false,
+    KEEP_CONTENT: true,
     WHOLE_DOCUMENT: false,
-  });
+    ...(xmlShaped ? { PARSER_MEDIA_TYPE: "application/xhtml+xml" } : {}),
+  };
+  return sanitizer.sanitize(html, config);
 }

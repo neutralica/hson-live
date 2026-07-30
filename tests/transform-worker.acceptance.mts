@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
+const Q1 = "0000000000000001";
+
 let checks = 0;
 function check(name: string, fn: () => void): void {
   fn();
@@ -72,6 +74,93 @@ check("untrusted HTML is sanitized without browser globals", () => {
     assert.equal(current.$_attrs?.onclick, undefined);
     if (current.$_tag === "a") assert.equal(current.$_attrs?.href, undefined);
   });
+});
+
+check("untrusted Worker parsing preserves valid HSON identity while removing unsafe behavior", () => {
+  const node = hsonTransform
+    .fromUntrustedHtml(
+      `<main><span hson:quid="${Q1}" data-_quid="application" onclick="run()">ready</span></main>`,
+    )
+    .toNode();
+  let span: HsonNode | undefined;
+  walk(node, (current) => {
+    if (current.$_tag === "span") span = current;
+  });
+  assert.equal(span?.$_meta?.quid, Q1);
+  assert.equal(span?.$_attrs?.["data-_quid"], "application");
+  assert.equal(span?.$_attrs?.onclick, undefined);
+});
+
+check("untrusted Worker parsing routes malformed and unknown metadata to canonical admission", () => {
+  for (const [source, reason] of [
+    [`<main hson:quid="bad"/>`, /invalid value for HSON metadata "hson:quid"/],
+    [`<main hson:unknown="value"/>`, /unknown HSON metadata markup name "hson:unknown"/],
+    [`<main hson:index="0"/>`, /metadata "index" is not defined for node "main"/],
+  ] as const) {
+    assert.throws(() => hsonTransform.fromUntrustedHtml(source), reason);
+  }
+});
+
+check("untrusted Worker parsing admits valid wrapper metadata and rejects malformed indexes", () => {
+  const node = hsonTransform
+    .fromUntrustedHtml(
+      `<_hson_arr><_hson_ii hson:index="0"><span>A</span></_hson_ii></_hson_arr>`,
+    )
+    .toNode();
+  let wrapper: HsonNode | undefined;
+  walk(node, (current) => {
+    if (current.$_tag === "_hson_ii") wrapper = current;
+  });
+  assert.equal(wrapper?.$_meta?.index, "0");
+  assert.throws(
+    () => hsonTransform.fromUntrustedHtml(
+      `<_hson_arr><_hson_ii hson:index="banana"><span>A</span></_hson_ii></_hson_arr>`,
+    ),
+    /not an exact canonical index/,
+  );
+});
+
+check("untrusted Worker parsing rejects metadata duplicates before htmlparser2", () => {
+  for (const source of [
+    `<main hson:quid="${Q1}" hson:quid="0000000000000002"/>`,
+    `<main HSON:QUID="${Q1}" hson:quid="0000000000000002"/>`,
+    `<_hson_arr><_hson_ii hson:index="0" hson:index="1"/></_hson_arr>`,
+  ]) {
+    assert.throws(
+      () => hsonTransform.fromUntrustedHtml(source),
+      /duplicate HSON metadata attribute/,
+    );
+  }
+});
+
+check("untrusted Worker parsing rejects both authored private transit domains", () => {
+  for (const source of [
+    `<main _hson_meta_attr_v2_71756964="${Q1}"/>`,
+    `<main _HSON_META_ATTR_V2_authored="value"/>`,
+    `<main _hson_attr_transit_v1_613a62="value"/>`,
+    `<main _HSON_ATTR_TRANSIT_V1_authored="value"/>`,
+  ]) {
+    assert.throws(
+      () => hsonTransform.fromUntrustedHtml(source),
+      /externally authored private (?:HSON metadata|ordinary-attribute) transit name/,
+    );
+  }
+});
+
+check("untrusted Worker parsing keeps data-* application-owned", () => {
+  const node = hsonTransform.fromUntrustedHtml(
+    `<main data-_quid="q" data-_index="i" data--attrmap="map" hson-foo="ordinary"/>`,
+  ).toNode();
+  let main: HsonNode | undefined;
+  walk(node, (current) => {
+    if (current.$_tag === "main") main = current;
+  });
+  assert.deepEqual(main?.$_attrs, {
+    "data-_quid": "q",
+    "data-_index": "i",
+    "data--attrmap": "map",
+  });
+  assert.equal(main?.$_meta, undefined);
 });
 
 check("trusted standalone SVG preserves the established direct-node shape", () => {

@@ -105,14 +105,23 @@ values stored in `node.$_tag`.
 
 Parses external HTML through the safe HTML path.
 
-- Sanitizes with DOMPurify before node conversion.
+- Applies source-aware duplicate/reserved-name checks, sanitizes unsafe markup
+  behavior with DOMPurify, then performs canonical node conversion.
 - Accepts a string or an existing `Element`.
 - If an `Element` is supplied, the current implementation snapshots its
   `innerHTML`.
-- Descendant `hson:quid` attributes are stripped during ingestion.
+- Syntactic `hson:*` candidates remain observable after sanitization and are
+  admitted or rejected by the same metadata registry used for trusted input.
+- A valid descendant `hson:quid` is preserved as graph identity. Malformed,
+  unknown, misplaced, or duplicate metadata rejects rather than disappearing.
+- `data-*` remains application-owned and is never reinterpreted as HSON
+  metadata.
 - External SVG markup is rejected on this safe path.
 
 This is the default choice for user-authored or third-party HTML.
+QUID identity is not trust, authorization, authentication, or execution
+capability. Existing live-graph uniqueness and ownership checks still apply
+when a cold parsed graph becomes active.
 
 ### `hson.fromTrustedHtml(input: string | Element)`
 

@@ -90,11 +90,11 @@ projection, and returns the controlling LiveTree. The public LiveTree facade
 spells the method `queryDom`, not `queryDOM`.
 
 When an HTML source constructor receives an `Element`, it snapshots that
-element's `innerHTML`; it does not adopt the element itself. Unlike the plain
-transform constructor, the current LiveTree constructor does not explicitly
-strip descendant `hson:quid` attributes before parsing. Untrusted input still
-passes through its sanitizer, but callers should not supply runtime identity in
-source markup.
+element's `innerHTML`; it does not adopt the element itself. Untrusted input
+passes through its sanitizer, but syntactic HSON metadata candidates remain
+subject to the canonical metadata registry afterward. A valid supplied
+descendant QUID may survive as cold graph identity; malformed or unknown
+metadata rejects.
 
 ### Detached creation
 
@@ -114,12 +114,15 @@ lookup and stylesheet scoping.
 Identity is stable while a node remains in its live graph, but it is not a
 source-format preservation guarantee:
 
-- plain transform `Element` ingestion strips descendant QUIDs, while current
-  LiveTree `Element` ingestion does not apply that explicit stripping step;
+- supplied valid QUIDs remain cold until a graph becomes live, when existing
+  uniqueness and ownership rules are enforced atomically;
 - `cloneBranch()` issues fresh QUIDs;
 - parse/serialize cycles may normalize source spelling and structure; and
 - ordinary transform APIs are graph conversions, not LiveTree identity
   persistence APIs.
+
+QUID is graph identity, not trust, authorization, authentication, or execution
+capability. Sanitization and active identity ownership are separate boundaries.
 
 `hostRootNode()` exposes the graph root used by a handle. `adoptRoots(root)`
 rebinds that context and is mainly relevant when attaching or moving branches.

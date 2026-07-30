@@ -157,8 +157,8 @@ A QUID is optional live identity used by LiveTree for DOM lookup, managed CSS,
 and handle continuity. It is assigned lazily where live behavior needs it.
 QUIDs are not a universal transform round-trip guarantee:
 
-- plain transform `Element` ingestion strips descendant `hson:quid` values;
-  the current LiveTree `Element` constructor does not apply that explicit step;
+- valid supplied QUIDs may enter a cold canonical graph, while active LiveTree
+  ownership separately enforces uniqueness;
 - cloned LiveTree branches receive fresh QUIDs; and
 - transform/canonicalization operations may rebuild or normalize graphs.
 

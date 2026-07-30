@@ -6,7 +6,6 @@ import {
   ELEM_TAG,
   EVERY_VSN,
   HSON_SYS_PREFIX,
-  HSON_META_MARKUP_PREFIX,
   HSON_META_QUID,
   HSON_META_TRANSIT_PREFIX,
   HTML_KEY_PREFIX,
@@ -17,7 +16,10 @@ import {
   VAL_TAG,
   _TRANSIT_PREFIX,
 } from "../../../core/constants.js";
-import { admit_hson_metadata_markup } from "../../../core/hson-metadata.js";
+import {
+  admit_hson_metadata_markup,
+  hson_metadata_candidate_key,
+} from "../../../core/hson-metadata.js";
 import { CREATE_NODE } from "../../../core/factories.js";
 import { is_indexed } from "../../../core/node-guards.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "../../../core/types.js";
@@ -76,7 +78,7 @@ const URI_ATTR = /^(?:href|src|xlink:href|poster)$/i;
 function sanitized_attribute(name: string, value: string): boolean {
   const lower = name.toLowerCase();
   if (lower === "style" || lower === "srcdoc" || lower.startsWith("on")) return false;
-  if (lower.startsWith(HSON_META_MARKUP_PREFIX)) return true;
+  if (hson_metadata_candidate_key(lower) !== undefined) return true;
   if (!ALLOWED_ATTRS.has(lower) && !lower.startsWith("data-")) return false;
   if (URI_ATTR.test(lower)) return ALLOWED_URI.test(value);
   if (lower !== "srcset") return true;
@@ -114,7 +116,7 @@ function attributes_from_element(
     if (sanitize && !sanitized_attribute(lower, value)) continue;
     if (lower === "xmlns" || lower.startsWith("xmlns:") || lower.startsWith("xml:")) continue;
 
-    if (lower.startsWith(HSON_META_MARKUP_PREFIX)) {
+    if (hson_metadata_candidate_key(lower) !== undefined) {
       const admission = admit_hson_metadata_markup(nodeTag, lower, value);
       if (!admission.valid) {
         _throw_transform_err(admission.reason, "parse-html-string");
@@ -380,7 +382,7 @@ function standalone_svg_node(element: Element): HsonNode {
         "parse-html-string",
       );
     }
-    if (lower.startsWith(HSON_META_MARKUP_PREFIX)) {
+    if (hson_metadata_candidate_key(lower) !== undefined) {
       const admission = admit_hson_metadata_markup(element.name, lower, value);
       if (!admission.valid) {
         _throw_transform_err(admission.reason, "parse-html-string");
@@ -437,11 +439,13 @@ function root_is_empty(root: HsonNode): boolean {
  */
 export function parse_html_string(input: string, sanitize: boolean): HsonNode {
   const normalizedInput = normalize_html_source_attributes(input);
+  const xmlShaped = /<\/?_hson_(?:arr|ii)(?=[\s/>])/i.test(normalizedInput);
   const document = parseDocument(normalizedInput, {
     decodeEntities: true,
     lowerCaseAttributeNames: false,
     lowerCaseTags: false,
     recognizeSelfClosing: true,
+    xmlMode: xmlShaped,
   });
   let root: HsonNode | undefined;
   if (!sanitize && /^<\s*svg[\s>]/i.test(normalizedInput.trimStart())) {

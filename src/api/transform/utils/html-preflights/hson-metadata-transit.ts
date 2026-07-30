@@ -72,6 +72,27 @@ export function encode_hson_metadata_transit(src: string): string {
   return output;
 }
 
+/**
+ * Restore metadata transit spellings produced internally before an XML-shaped
+ * sanitizer pass. Caller-authored transit names must already have been
+ * rejected by the source-aware attribute boundary.
+ */
+export function decode_hson_metadata_transit(src: string): string {
+  let output = "";
+  let cursor = 0;
+  while (cursor < src.length) {
+    const lt = src.indexOf("<", cursor);
+    if (lt < 0) return output + src.slice(cursor);
+    output += src.slice(cursor, lt);
+    const end = find_tag_end(src, lt);
+    if (end < 0) return output + src.slice(lt);
+    const tag = src.slice(lt, end + 1);
+    output += is_start_tag(tag) ? decode_start_tag(tag) : tag;
+    cursor = end + 1;
+  }
+  return output;
+}
+
 function find_tag_end(source: string, start: number): number {
   let quote: "'" | '"' | undefined;
   for (let index = start + 1; index < source.length; index += 1) {
@@ -122,6 +143,66 @@ function encode_start_tag(tag: string): string {
     output += name.startsWith(HSON_META_MARKUP_PREFIX)
       ? hson_metadata_transit_name(name)
       : name;
+
+    while (index < tag.length && /\s/.test(tag[index] ?? "")) {
+      output += tag[index];
+      index += 1;
+    }
+    if (tag[index] !== "=") continue;
+    output += "=";
+    index += 1;
+    while (index < tag.length && /\s/.test(tag[index] ?? "")) {
+      output += tag[index];
+      index += 1;
+    }
+    const quote = tag[index];
+    if (quote === "'" || quote === '"') {
+      const valueStart = index;
+      index += 1;
+      while (index < tag.length && tag[index] !== quote) index += 1;
+      if (index < tag.length) index += 1;
+      output += tag.slice(valueStart, index);
+      continue;
+    }
+    const valueStart = index;
+    while (index < tag.length && !/[\s>]/.test(tag[index] ?? "")) index += 1;
+    output += tag.slice(valueStart, index);
+  }
+  return output;
+}
+
+function decode_start_tag(tag: string): string {
+  let index = 1;
+  while (/\s/.test(tag[index] ?? "")) index += 1;
+  while (index < tag.length && !/[\s/>]/.test(tag[index] ?? "")) index += 1;
+  let output = tag.slice(0, index);
+
+  while (index < tag.length) {
+    const char = tag[index];
+    if (char === ">" || (char === "/" && tag[index + 1] === ">")) {
+      return output + tag.slice(index);
+    }
+    if (/\s/.test(char ?? "")) {
+      output += char;
+      index += 1;
+      continue;
+    }
+
+    const nameStart = index;
+    while (index < tag.length && !/[\s=/>]/.test(tag[index] ?? "")) index += 1;
+    const name = tag.slice(nameStart, index);
+    if (name.startsWith(HSON_META_TRANSIT_PREFIX)) {
+      const decoded = decode_hson_metadata_transit_name(name);
+      if (decoded === undefined) {
+        _throw_transform_err(
+          `malformed private HSON metadata transit name "${name}"`,
+          "hson-metadata-transit",
+        );
+      }
+      output += decoded;
+    } else {
+      output += name;
+    }
 
     while (index < tag.length && /\s/.test(tag[index] ?? "")) {
       output += tag[index];
