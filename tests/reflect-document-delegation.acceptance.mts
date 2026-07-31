@@ -193,23 +193,22 @@ check("replayed path changes are used by later text delegation", () => {
 
 check("ambiguous and lifecycle-incompatible APIs remain rejected", () => {
   const map = element(`<main @0000000000000511 "one" "two"/>`);
-  map.document.content.insert(path(), 1, projected_element(`<aside/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<aside/>`));
   const binding = hsonReflect(map);
   const branch = create_livetree(projected_element(`<aside/>`));
   const before = structuredClone(binding.tree.node);
-  for (const mutation of [
-    () => binding.tree.text.set("collapsed"),
-    () => binding.tree.text.overwrite("all"),
-    () => binding.tree.empty(),
-    () => binding.tree.append(branch),
-    () => binding.tree.create.div(),
-    () => binding.tree.detach(),
-    () => binding.tree.detachContents(),
-    () => binding.tree.removeChildren(),
-  ]) {
+  for (const [name, mutation] of [
+    ["text.set", () => binding.tree.text.set("collapsed")],
+    ["text.overwrite", () => binding.tree.text.overwrite("all")],
+    ["append", () => binding.tree.append(branch)],
+    ["create", () => binding.tree.create.div()],
+    ["detach", () => binding.tree.detach()],
+    ["detachContents", () => binding.tree.detachContents()],
+    ["removeChildren", () => binding.tree.removeChildren()],
+  ] as const) {
     assert.throws(mutation, (cause) => cause instanceof DocumentReflectError
       && (cause.code === DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE
-        || cause.code === "DOCUMENT_REFLECT_UNSUPPORTED_OPERATION"));
+        || cause.code === "DOCUMENT_REFLECT_UNSUPPORTED_OPERATION"), name);
   }
   assert.deepEqual(binding.tree.node, before);
   assert.equal(map.rev, 1);

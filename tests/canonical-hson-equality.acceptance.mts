@@ -81,7 +81,7 @@ check("content and nested arrays remain ordered", () => {
 
 check("primitive values remain type-sensitive without coercion", () => {
   const graph = (value: string | number | boolean | null): HsonNode =>
-    document(node("value", [node(typeof value === "string" ? "_hson_str" : "_hson_val", [value])]));
+    node(typeof value === "string" ? "_hson_str" : "_hson_val", [value]);
   assert.equal(canonical_hson_graph_equal(graph(0), graph("0")), false);
   assert.equal(canonical_hson_graph_equal(graph(false), graph("false")), false);
   assert.equal(canonical_hson_graph_equal(graph(null), graph("null")), false);
@@ -161,7 +161,7 @@ check("nested records are key-order-insensitive, arrays ordered, and records dif
 });
 
 check("numeric equality distinguishes negative zero and rejects non-finite values", () => {
-  const graph = (value: number): HsonNode => document(node("value", [node("_hson_val", [value])]));
+  const graph = (value: number): HsonNode => node("_hson_val", [value]);
   for (const invalid of [Number.NaN, Infinity, -Infinity]) {
     assert.throws(
       () => canonical_hson_graph_equal(graph(invalid), graph(invalid)),

@@ -27,6 +27,7 @@ import {
   hson_metadata_value_is_valid,
 } from "./hson-metadata.js";
 import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
+import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
@@ -103,6 +104,36 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     }
   }
 
+  if (!isVSN(n.$_tag)) {
+    const structure = classify_ordinary_hson_structure(n);
+    if (structure.kind === "invalid") {
+      push(errs, cfg, `${here}: ${structure.reason}`); if (cfg.throwOnFirst) return;
+      return;
+    }
+    if (structure.kind === "legacy-empty-element-wrapper") {
+      push(errs, cfg, `${here}: empty _hson_elem is not valid retained canonical state; use $_content: []`); if (cfg.throwOnFirst) return;
+      return;
+    }
+    if (parentTag === ELEM_TAG && structure.kind !== "empty-element" && structure.kind !== "element") {
+      push(errs, cfg, `${here}: element branch requires recursively element-structured ordinary nodes (found ${structure.kind})`); if (cfg.throwOnFirst) return;
+      return;
+    }
+    if (parentTag === OBJ_TAG
+      && structure.kind !== "object"
+      && structure.kind !== "object-scalar"
+      && structure.kind !== "array") {
+      push(errs, cfg, `${here}: object property must retain an object scalar, _hson_obj, or _hson_arr relationship (found ${structure.kind})`); if (cfg.throwOnFirst) return;
+      return;
+    }
+    if (parentTag === II_TAG) {
+      push(errs, cfg, `${here}: ordinary node must be wrapped by _hson_obj before array membership`); if (cfg.throwOnFirst) return;
+      return;
+    }
+    if (structure.kind === "empty-element") return;
+    walk(structure.cluster, here, n.$_tag, cfg, errs);
+    return;
+  }
+
   if (n.$_tag === STR_TAG || n.$_tag === VAL_TAG) {
     const c = n.$_content ?? [];
     if (c.length !== 1) {
@@ -112,11 +143,21 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       if (n.$_tag === STR_TAG && typeof v !== "string") {
         push(errs, cfg, `${here}: _hson_str payload must be string`); if (cfg.throwOnFirst) return;
       }
-      if (n.$_tag === VAL_TAG && typeof v === "string") {
-        push(errs, cfg, `${here}: _hson_val payload must be non-string primitive`); if (cfg.throwOnFirst) return;
-      }
-      if (n.$_tag === VAL_TAG && typeof v === "number" && !Number.isFinite(v)) {
-        push(errs, cfg, `${here}/$_content[0]: invalid HSON number ${String(v)}; numbers must be finite`); if (cfg.throwOnFirst) return;
+      if (n.$_tag === VAL_TAG) {
+        if (typeof v === "number" && !Number.isFinite(v)) {
+          push(errs, cfg, `${here}/$_content[0]: invalid HSON number ${String(v)}; numbers must be finite`); if (cfg.throwOnFirst) return;
+        }
+        const validPayload = v === null
+          || typeof v === "boolean"
+          || (typeof v === "number" && Number.isFinite(v));
+        if (!validPayload) {
+          push(
+            errs,
+            cfg,
+            `${here}/$_content[0]: _hson_val payload must be a finite number, boolean, or null (found ${String(v)})`,
+          );
+          if (cfg.throwOnFirst) return;
+        }
       }
     }
     return;
@@ -130,6 +171,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     if (cc.length !== 1) { push(errs, cfg, `${here}: _hson_ii must contain exactly one child node`); if (cfg.throwOnFirst) return; }
     const only = cc[0];
     if (!is_Node(only)) { push(errs, cfg, `${here}: _hson_ii child must be a node (found primitive/null)`); if (cfg.throwOnFirst) return; }
+    if (is_Node(only) && !isVSN(only.$_tag)) {
+      push(errs, cfg, `${here}: direct ordinary _hson_ii child must be wrapped by _hson_obj`); if (cfg.throwOnFirst) return;
+    }
   }
 
   if (n.$_tag === ARR_TAG) {
@@ -157,6 +201,11 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
 
   if (n.$_tag === ELEM_TAG) {
     const kids = n.$_content;
+
+    if (kids.length === 0) {
+      push(errs, cfg, `${here}: empty _hson_elem is not valid retained canonical state`);
+      return;
+    }
 
     for (let i = 0; i < kids.length; i++) {
       const k = kids[i];

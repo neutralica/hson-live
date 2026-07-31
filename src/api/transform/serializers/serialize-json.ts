@@ -139,7 +139,9 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
  *   - Build a property object of the shape:
  *       `{ [tag]: <payload>, $_attrs?, $_meta? }`
  *   - Content:
- *       - No children  → `{ [tag]: "" }` (empty string payload)
+ *       - No children  → `{ [tag]: { _hson_elem: [] } }`, preserving the
+ *         established element-mode VSN projection after empty ordinary nodes
+ *         stopped retaining an empty wrapper internally
  *       - One child    → `{ [tag]: jsonFromNode(child) }`
  *       - Multiple children → error (a standard tag is not allowed to have
  *         multiple content clusters at this stage).
@@ -254,7 +256,7 @@ function jsonFromNode(node: HsonNode): JsonValue {
 
             let tempJson: JsonObj = {};
             if (node.$_content && node.$_content.length === 0) {
-                tempJson = { [node.$_tag]: '' };
+                tempJson = { [node.$_tag]: { [ELEM_TAG]: [] } };
             } else if (node.$_content && node.$_content.length === 1) {
                 const recursed = jsonFromNode(node.$_content[0] as HsonNode);
                 tempJson = { [node.$_tag]: recursed };

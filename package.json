@@ -76,6 +76,7 @@
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
+    "test:hson-structural-mode": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-structural-mode.acceptance.mts",
     "test:hson-node-quid": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid.acceptance.mts",
     "test:hson-node-quid-ingress": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid-ingress.acceptance.mts",
     "test:hson-node-quid-egress": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-node-quid-egress.acceptance.mts",

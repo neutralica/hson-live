@@ -3,11 +3,15 @@ import {
   ELEM_OBJ_ARR,
   ELEM_TAG,
   EVERY_VSN,
+  II_TAG,
   OBJ_TAG,
   ROOT_TAG,
+  STR_TAG,
   VAL_TAG,
 } from "./constants.js";
 import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
+import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
+import { is_Node } from "./node-guards.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
@@ -55,7 +59,12 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
   const complete = new WeakMap<object, HsonNode>();
   let changed = false;
 
-  const visit = (value: unknown, path: string, parentTag: string | null): HsonNode => {
+  const visit = (
+    value: unknown,
+    path: string,
+    parentTag: string | null,
+    requiredMode?: "element" | "object",
+  ): HsonNode => {
     if (!is_plain_record(value)) return fail(where, path, "node must be a plain object");
 
     const origin = active.get(value);
@@ -126,9 +135,16 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
       if (entries.length > 0) result.$_attrs = Object.fromEntries(entries);
     }
 
+    const childRequiredMode = tag === ELEM_TAG
+      ? "element"
+      : tag === OBJ_TAG
+        ? "object"
+        : !EVERY_VSN.includes(tag)
+          ? requiredMode
+          : undefined;
     let content = value.$_content.map((child, index) =>
       is_plain_record(child)
-        ? visit(child, `${here}/$_content[${index}]`, tag)
+        ? visit(child, `${here}/$_content[${index}]`, tag, childRequiredMode)
         : child
     );
     if (tag === ARR_TAG) {
@@ -139,22 +155,70 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
         content = [...analysis.canonical];
       }
     }
+    if (tag === II_TAG && content.length === 1 && is_Node(content[0]) && !EVERY_VSN.includes(content[0].$_tag)) {
+      return fail(where, here, "direct ordinary _hson_ii child must be wrapped by _hson_obj");
+    }
     if (!EVERY_VSN.includes(tag)) {
-      if (content.length === 1
-        && is_plain_record(content[0])
-        && typeof content[0].$_tag === "string"
+      if (content.length === 0) {
+        result.$_content = [];
+      } else if (content.length === 1
+        && is_Node(content[0])
         && ELEM_OBJ_ARR.includes(content[0].$_tag)) {
-        result.$_content = content as Array<HsonNode | Primitive>;
-      } else {
+        if (content[0].$_tag === ELEM_TAG && content[0].$_content.length === 0) {
+          changed = true;
+          result.$_content = [];
+        } else {
+          result.$_content = content as Array<HsonNode | Primitive>;
+        }
+      } else if (content.length === 1
+        && is_Node(content[0])
+        && (content[0].$_tag === STR_TAG || content[0].$_tag === VAL_TAG)) {
+        if (requiredMode === "element" && content[0].$_tag === VAL_TAG) {
+          return fail(where, here, "ordinary node content crosses its element parent branch");
+        }
         changed = true;
-        const needsObjectMode = content.length > 0
-          && (parentTag === OBJ_TAG
-            || content.some((child) => is_plain_record(child) && child.$_tag === VAL_TAG));
         result.$_content = [{
-          $_tag: needsObjectMode ? OBJ_TAG : ELEM_TAG,
+          $_tag: requiredMode === "element" ? ELEM_TAG : OBJ_TAG,
+          $_content: content as Array<HsonNode | Primitive>,
+        }];
+      } else {
+        if (content.some((child) => !is_Node(child))) {
+          return fail(where, here, "ordinary node must place primitive payloads inside a structural wrapper");
+        }
+        if (content.some((child) => is_Node(child) && ELEM_OBJ_ARR.includes(child.$_tag))) {
+          return fail(where, here, "ordinary node has contradictory or redundant structural wrappers");
+        }
+
+        const childModes = content.flatMap<"element" | "object">((child) => {
+          if (!is_Node(child)) return [];
+          // String leaves are valid in both element mixed content and object
+          // scalar relationships; the containing branch supplies the mode.
+          if (child.$_tag === STR_TAG) return [];
+          if (child.$_tag === VAL_TAG) return ["object"];
+          if (EVERY_VSN.includes(child.$_tag)) return [];
+          const structure = classify_ordinary_hson_structure(child);
+          if (structure.kind === "empty-element" || structure.kind === "element") return ["element"];
+          if (structure.kind === "object" || structure.kind === "object-scalar" || structure.kind === "array") return ["object"];
+          return [];
+        });
+        const hasElement = childModes.includes("element");
+        const hasObject = childModes.includes("object");
+        if (hasElement && hasObject) {
+          return fail(where, here, "ordinary node content mixes element and object structural modes");
+        }
+        const inferredMode = requiredMode ?? (hasObject ? "object" : "element");
+        if ((requiredMode === "element" && hasObject) || (requiredMode === "object" && hasElement)) {
+          return fail(where, here, `ordinary node content crosses its ${requiredMode} parent branch`);
+        }
+        changed = true;
+        result.$_content = [{
+          $_tag: inferredMode === "object" ? OBJ_TAG : ELEM_TAG,
           $_content: content as Array<HsonNode | Primitive>,
         }];
       }
+
+      const structure = classify_ordinary_hson_structure(result);
+      if (structure.kind === "invalid") return fail(where, here, structure.reason);
     } else {
       result.$_content = content as Array<HsonNode | Primitive>;
     }

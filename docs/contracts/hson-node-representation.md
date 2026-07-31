@@ -59,8 +59,11 @@ containers because LiveMap, LiveHost, and cross-format projections may carry
 broader runtime shapes. Transform node ingress recognizes absent,
 `undefined`, `{}`, and legacy empty `[]` as equivalent permissive spellings and
 returns a detached canonical graph with the property omitted. It also converts
-non-style ordinary attribute primitives to strings and maps a standard tag's
-noncanonical `$_content: []` shorthand to one empty `_hson_elem`.
+non-style ordinary attribute primitives to strings. An ordinary node with
+`$_content: []` is the canonical empty element form. The one authorized legacy
+structural normalization maps an ordinary node whose sole relationship is an
+empty `_hson_elem` to `$_content: []`, without mutating the caller. Empty
+`_hson_obj` and `_hson_arr` clusters remain explicit and distinct.
 
 Invariant validation rejects non-plain node objects, missing/non-array
 `$_content`, non-empty array/null/class-instance containers, malformed
@@ -69,6 +72,12 @@ attribute or metadata values, illegal header names, legacy
 HSON numeric values. Shared acyclic references are allowed; HSON serialization
 emits each occurrence by value and does not preserve JavaScript reference
 identity.
+
+Element and object structural modes apply recursively to their full branches.
+Contradictory wrappers, cross-mode ordinary children, empty retained
+`_hson_elem` nodes, and direct ordinary children beneath `_hson_ii` reject at
+admission. Direct HSON serialization validates before normalization and never
+uses the narrow legacy empty-element normalization to repair malformed egress.
 
 The legacy empty-array optional-container spelling does not apply to
 `_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty

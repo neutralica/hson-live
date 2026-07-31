@@ -1,5 +1,4 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, ROOT_TAG } from "../../core/constants.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentContent } from "../../types/livemap.types.js";
@@ -107,18 +106,9 @@ function validate_content(content: HsonNode | Primitive): void {
       "LiveHost graph content primitive is invalid.",
     );
   }
-  const validationRoot: HsonNode = content.$_tag === ROOT_TAG
-    ? content
-    : {
-      $_tag: ROOT_TAG,
-      $_content: [{
-        $_tag: ELEM_TAG,
-        $_content: [{ $_tag: "livehost-content", $_content: [content] }],
-      }],
-    };
   try {
-    assert_invariants(validationRoot, "livehost graph-content codec");
-    index_livemap_document_elements(validationRoot);
+    assert_invariants(content, "livehost graph-content codec");
+    index_livemap_document_elements(content);
   } catch (cause) {
     throw graph_error(
       "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID",

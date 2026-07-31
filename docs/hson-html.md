@@ -34,9 +34,10 @@ does not become a literal HTML tag. Its direct children may be only
 `_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or
 array clusters, and array items cannot appear directly inside it.
 
-Empty and void elements use an empty `_hson_elem` cluster. Voidness is inferred
-from tag semantics during HTML serialization; the source spelling `<img>`,
-`<img/>`, or an expanded repair form is not retained.
+Empty and void elements use canonical ordinary `$_content: []`; an empty
+`_hson_elem` is not retained. Voidness is inferred from tag semantics during
+HTML serialization; the source spelling `<img>`, `<img/>`, or an expanded
+repair form is not retained.
 
 ---
 

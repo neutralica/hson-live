@@ -60,15 +60,26 @@ an empty `_hson_obj` serializes as `<>`.
 
 Represents a JSON object cluster. Direct children are property nodes. Ordinary
 property tags must be unique, must not carry attributes, and cannot be a direct
-`_hson_elem` child. Object property order has no JSON semantic meaning and the
-JSON serializer canonicalizes it.
+`_hson_elem` child. Every ordinary property must remain recursively
+object-structured through its established scalar, nested-object, or array
+value relationship; an empty element-shaped property is not an empty object.
+Object property order has no JSON semantic meaning and the JSON serializer
+canonicalizes it.
 
 ### `_hson_elem`
 
 Represents ordered HTML element content. Its direct children may be
 `_hson_str` leaves or ordinary element nodes. Raw primitives, `_hson_val`,
 `_hson_obj`, `_hson_arr`, and `_hson_ii` are forbidden directly inside it.
-This restriction keeps untyped HTML text separate from typed JSON structure.
+Ordinary descendants must themselves be empty or recursively
+element-structured. This restriction keeps untyped HTML text separate from
+typed JSON structure.
+
+An empty ordinary element is represented by `$_content: []`. A retained empty
+`_hson_elem` is invalid canonical state. Node ingress has one narrow legacy
+normalization: when an empty `_hson_elem` is the sole relationship beneath an
+ordinary node, it is elided without mutating the caller. Empty `_hson_obj` and
+`_hson_arr` nodes remain valid and distinct.
 
 ### `_hson_arr` and `_hson_ii`
 
@@ -79,6 +90,9 @@ Each `_hson_ii`:
 - has exactly one node child;
 - has no attributes; and
 - carries required canonical decimal string metadata at `index`.
+
+An ordinary array-item object must therefore sit beneath an `_hson_obj` child
+of `_hson_ii`; an ordinary node directly beneath `_hson_ii` is invalid.
 
 Wrapper-bearing inputs use `index` as semantic ordering metadata during
 admission. The complete sibling set must be the exact strings `"0"` through
@@ -96,8 +110,7 @@ input rather than repairing it at egress.
 These are the only nodes allowed to contain raw primitive payloads:
 
 - `_hson_str` contains exactly one string;
-- `_hson_val` contains exactly one non-string primitive: number, boolean, or
-  `null`.
+- `_hson_val` contains exactly one finite number, boolean, or `null`.
 
 Neither may carry attributes. The distinction preserves JSON primitive types
 when values cross an untyped text/markup representation.

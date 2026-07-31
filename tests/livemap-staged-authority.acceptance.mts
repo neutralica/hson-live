@@ -182,7 +182,11 @@ check("restore, replay, schema changes and unsafe graph divergence invalidate ca
   const debugAuthority = get_livemap_staged_authority(debugMap);
   const beforeDebug = debugAuthority.prepare((draft) => draft.set(["value"], 1));
   const live = debugMap.debug.node(["value"]).must();
-  live.$_content[0] = 9;
+  const scalarCluster = live.$_content[0];
+  if (typeof scalarCluster !== "object" || scalarCluster === null) throw new Error("expected scalar object cluster");
+  const scalar = scalarCluster.$_content[0];
+  if (typeof scalar !== "object" || scalar === null) throw new Error("expected scalar value node");
+  scalar.$_content[0] = 9;
   transitionCode(() => debugAuthority.accept(beforeDebug), "LIVEMAP_TRANSITION_STALE");
 
   const restoredDocument = element();

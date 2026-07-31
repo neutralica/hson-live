@@ -463,7 +463,7 @@ check("content.insert supports beginning, middle, append, empty, primitive and c
   assert.equal(map.document.byQuid("0000000000000011")?.$_tag, "c");
 
   const empty = element(`<main/>`);
-  const emptyCommit = empty.document.content.insert(path(0), 0, "only");
+  const emptyCommit = empty.document.content.insert(path(), 0, contentCluster(`<span "only"/>`));
   assert.equal(emptyCommit.changed, true);
   assert.equal(mustNode(empty.element.node().$_content[0], "expected empty cluster").$_content.length, 1);
 });
@@ -492,18 +492,19 @@ check("content.remove supports every existing slot, QUID targets and mode-safe o
     { domain: "graph", op: "remove-content", target, index: 0 },
   ]);
   assert.equal(map.document.content.remove(target, 1).changed, true);
-  assert.equal(map.document.content.remove(target, 0).changed, true);
+  assert.equal(map.document.content.remove(path(), 0).changed, true);
   assert.equal(map.document.byQuid("0000000000000016"), undefined);
-  assert.equal(mustNode(map.element.node().$_content[0], "expected emptied cluster").$_content.length, 0);
+  assert.equal(map.element.node().$_content.length, 0);
 
   const fragmentOnly = fragment(`"only"`);
-  assert.equal(fragmentOnly.document.content.remove(path(), 0).changed, true);
+  const fragmentBefore = fragmentOnly.capture();
+  errorCode(() => fragmentOnly.document.content.remove(path(), 0), "INVALID_DOCUMENT_REPLACEMENT");
   assert.equal(fragmentOnly.mode, "fragment");
-  assert.equal(fragmentOnly.document.content().length, 0);
+  assert.deepEqual(fragmentOnly.capture(), fragmentBefore);
 
   const byQuid = element(`<main @0000000000000017/>`);
-  byQuid.document.content.insert(quid("0000000000000017"), 1, contentCluster(`<aside/>`));
-  assert.equal(byQuid.document.content.remove(quid("0000000000000017"), 1).changed, true);
+  byQuid.document.content.insert(quid("0000000000000017"), 0, contentCluster(`<aside "x"/>`));
+  assert.equal(byQuid.document.content.remove(quid("0000000000000017"), 0).changed, true);
   for (const index of [-1, 0.5, 1, 9]) {
     errorCode(() => fragmentOnly.document.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
@@ -529,8 +530,8 @@ check("content.move uses final-position semantics and preserves QUID identity", 
   assert.equal(backward.document.byQuid("0000000000000019")?.$_tag, "d");
 
   const byQuid = element(`<main @000000000000001a/>`);
-  byQuid.document.content.insert(quid("000000000000001a"), 1, contentCluster(`<aside "x"/>`));
-  assert.equal(byQuid.document.content.move(quid("000000000000001a"), 0, 1).changed, true);
+  byQuid.document.content.insert(quid("000000000000001a"), 0, contentCluster(`<aside "x"/>`));
+  assert.equal(byQuid.document.content.move(quid("000000000000001a"), 0, 0).changed, false);
 });
 
 check("same-position move is a complete no-op and invalid move indexes are atomic", () => {

@@ -72,7 +72,9 @@ function document_root(...children: HsonNode[]): HsonNode {
 function element(tag: string, quid?: string, children: HsonNode[] = []): HsonNode {
   return {
     $_tag: tag,
-    $_content: [{ $_tag: "_hson_elem", $_content: children }],
+    $_content: children.length === 0
+      ? []
+      : [{ $_tag: "_hson_elem", $_content: children }],
     ...(quid === undefined ? {} : { $_meta: { [HSON_META_QUID]: quid } }),
   };
 }
@@ -1053,7 +1055,10 @@ check("failed document capture installation is atomic", () => {
   if (source.mode !== "element") throw new Error("expected element LiveMap");
   const invalidCapture = structuredClone(source.capture());
   const section = must_tag(invalidCapture.root, "section");
-  section.$_content.push(element("aside", Q2));
+  section.$_content = [{
+    $_tag: "_hson_elem",
+    $_content: [element("aside", Q2)],
+  }];
   const before = target.capture();
   assert.throws(
     () => target.install(invalidCapture),

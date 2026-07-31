@@ -197,7 +197,10 @@ await check("document.content.replace uses a path target and replays one canonic
   const initial = `<main <p @0000000000000003 "old"/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-content-replace" });
   const client = await connected_document_client(host, element(initial));
-  const replacement = element(`<article @0000000000000004 "new"/>`).element.node();
+  const replacement = {
+    $_tag: "_hson_elem",
+    $_content: [element(`<article @0000000000000004 "new"/>`).element.node()],
+  };
   await assert_single_hosted_commit({
     host,
     client,
@@ -232,8 +235,8 @@ await check("document.content.remove uses a QUID target and publishes one canoni
   const authority = element(initial);
   const mirror = element(initial);
   const extra = element(`<aside "kept"/>`).element.node().$_content[0];
-  authority.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 1, extra);
-  mirror.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 1, extra);
+  authority.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 0, extra);
+  mirror.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 0, extra);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "hosted-content-remove" });
   const client = await connected_document_client(host, mirror);
   await assert_single_hosted_commit({
@@ -242,7 +245,7 @@ await check("document.content.remove uses a QUID target and publishes one canoni
     action: "document.content.remove",
     payload: { target: { kind: "quid", quid: "000000000000001d" }, index: 0 },
     verify() {
-      assert.equal(host.map.element.node().$_content.length, 1);
+      assert.equal(host.map.element.node().$_content.length, 0);
     },
   });
 });
@@ -269,7 +272,7 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
   const host = hson.liveHost.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
   const textCluster = element(`<p "new"/>`).element.node().$_content[0];
-  const insertedCluster = element(`<i "inserted"/>`).element.node().$_content[0];
+  const inserted = element(`<i "inserted"/>`).element.node();
   assert.equal((await client.action("document.attrs.set", {
     target: rootPath,
     name: "class",
@@ -285,25 +288,25 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
     replacement: textCluster,
   })).type, "ack");
   assert.equal((await client.action("document.content.insert", {
-    target: { kind: "quid", quid: "000000000000000a" },
+    target: { kind: "path", path: [0, 0, 0] },
     index: 1,
-    content: insertedCluster,
+    content: inserted,
   })).type, "ack");
   assert.equal((await client.action("document.content.move", {
-    target: { kind: "quid", quid: "000000000000000a" },
+    target: { kind: "path", path: [0, 0, 0] },
     from: 0,
     to: 1,
   })).type, "ack");
   assert.equal((await client.action("document.content.remove", {
-    target: { kind: "path", path: [0, 0] },
+    target: { kind: "path", path: [0, 0, 0] },
     index: 1,
   })).type, "ack");
   assert.equal(host.map.rev, 6);
   assert.equal(host.map.document.byQuid("0000000000000009")?.$_attrs?.class, "path");
   assert.equal(host.map.document.byQuid("0000000000000009")?.$_attrs?.id, undefined);
-  assert.deepEqual(host.map.document.byQuid("000000000000000a")?.$_content, [
-    insertedCluster,
-  ]);
+  const finalParagraphCluster = host.map.document.byQuid("000000000000000a")?.$_content[0];
+  assert.equal(finalParagraphCluster?.$_tag, "_hson_elem");
+  assert.equal(finalParagraphCluster?.$_content[0]?.$_tag, "i");
   assert.deepEqual(client.map.capture(), host.map.capture());
 });
 

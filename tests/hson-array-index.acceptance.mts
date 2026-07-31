@@ -12,7 +12,6 @@ import { serialize_json } from "../src/api/transform/serializers/serialize-json.
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import {
   decode_exact_hson_value,
-  decode_view_state_snapshot,
   encode_exact_hson_value,
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
@@ -28,14 +27,17 @@ function check(name: string, fn: () => void): void {
 }
 
 function value(tag: string): HsonNode {
-  return { $_tag: tag, $_content: [] };
+  return {
+    $_tag: tag,
+    $_content: [{ $_tag: "_hson_obj", $_content: [] }],
+  };
 }
 
 function item(index: string | undefined, tag: string): HsonNode {
   return {
     $_tag: "_hson_ii",
     ...(index === undefined ? {} : { $_meta: { index } }),
-    $_content: [value(tag)],
+    $_content: [{ $_tag: "_hson_obj", $_content: [value(tag)] }],
   };
 }
 
@@ -70,6 +72,11 @@ function payload_tags(root: HsonNode): string[] {
     assert.ok(is_Node(wrapper));
     const payload = wrapper.$_content[0];
     assert.ok(is_Node(payload));
+    if (payload.$_tag === "_hson_obj" && payload.$_content.length === 1) {
+      const property = payload.$_content[0];
+      assert.ok(is_Node(property));
+      return property.$_tag;
+    }
     return payload.$_tag;
   });
 }
@@ -200,8 +207,8 @@ check("index metadata on the wrong node kind rejects", () => {
 check("browser string and direct Element ingress use hson:index semantic order", () => {
   const markup =
     `<_hson_arr>`
-    + `<_hson_ii hson:index="1"><b/></_hson_ii>`
-    + `<_hson_ii hson:index="0"><a/></_hson_ii>`
+    + `<_hson_ii hson:index="1"><_hson_obj><b><_hson_obj/></b></_hson_obj></_hson_ii>`
+    + `<_hson_ii hson:index="0"><_hson_obj><a><_hson_obj/></a></_hson_obj></_hson_ii>`
     + `</_hson_arr>`;
   with_browser_parser(() => {
     const fromString = parse_html(markup);
@@ -212,14 +219,12 @@ check("browser string and direct Element ingress use hson:index semantic order",
   });
 });
 
-check("direct SVG/XML-shaped ingress canonicalizes explicit wrapper order", () => {
+check("direct XML-shaped structural ingress canonicalizes explicit wrapper order", () => {
   const markup =
-    `<svg>`
-    + `<_hson_arr>`
-    + `<_hson_ii hson:index="1"><b/></_hson_ii>`
-    + `<_hson_ii hson:index="0"><a/></_hson_ii>`
-    + `</_hson_arr>`
-    + `</svg>`;
+    `<_hson_arr>`
+    + `<_hson_ii hson:index="1"><_hson_obj><b><_hson_obj/></b></_hson_obj></_hson_ii>`
+    + `<_hson_ii hson:index="0"><_hson_obj><a><_hson_obj/></a></_hson_obj></_hson_ii>`
+    + `</_hson_arr>`;
   const element = parser_document(markup).documentElement;
   prepare_parser_element(
     element as unknown as Record<string, unknown>,
@@ -355,7 +360,7 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   );
 });
 
-check("version-2 view-state decoding canonicalizes wrapper permutations deterministically", () => {
+check("version-2 document snapshots reject array structure inside an element branch", () => {
   const capture = {
     kind: "hson-document" as const,
     version: 2 as const,
@@ -375,32 +380,10 @@ check("version-2 view-state decoding canonicalizes wrapper permutations determin
       }],
     } satisfies HsonNode,
   };
-  const encoded = encode_view_state_snapshot(capture);
-  const zero =
-    `<key "index"><value <type "string"><value "0">>>`;
-  const one =
-    `<key "index"><value <type "string"><value "1">>>`;
-  assert.match(encoded.payload, new RegExp(zero.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(encoded.payload, new RegExp(one.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  const reversedPayload = encoded.payload
-    .replace(zero, "__HSON_INDEX_ZERO__")
-    .replace(one, zero)
-    .replace("__HSON_INDEX_ZERO__", one);
-  const decoded = decode_view_state_snapshot({
-    ...encoded,
-    payload: reversedPayload,
-  });
-  assert.deepEqual(indexes(decoded.root), ["0", "1"]);
-  assert.deepEqual(
-    array_node(decoded.root).$_content.map((wrapper) => {
-      assert.ok(is_Node(wrapper));
-      const payload = wrapper.$_content[0];
-      assert.ok(is_Node(payload));
-      return payload.$_content[0];
-    }),
-    ["b", "a"],
+  assert.throws(
+    () => encode_view_state_snapshot(capture),
+    /View-state snapshot graph is invalid/,
   );
-  assert.notEqual(encode_view_state_snapshot(decoded).payload, reversedPayload);
 });
 
 check("canonical invariant requires physical order to equal index order", () => {

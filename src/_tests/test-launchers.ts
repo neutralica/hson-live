@@ -59,6 +59,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
+      id: "transform.hson-structural-mode",
+      subject: "Transform",
+      displayName: "HSON canonical structural mode",
+      packageScript: "test:hson-structural-mode",
+      repositoryModule: "tests/hson-structural-mode.acceptance.mts",
+      runtime: "node",
+      executableChecks: 42,
+      collections: ["hson", "parsing", "canonical-graph", "structural-mode"],
+    }),
+    launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
       displayName: "HSON serializer",

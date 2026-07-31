@@ -436,7 +436,7 @@ const boundaryCases: ReadonlyArray<readonly [string, string]> = [
   [`<tag attr="value"/>`, `<tag attr="value"/>`],
   [`<tag attr="value" flag/>`, `<tag attr="value" flag/>`],
   [`<tag flag "text"/>`, `<tag flag "text"/>`],
-  [`<wrapper <tag flag 2>/>`, `<wrapper <tag flag 2>/>`],
+  [`<wrapper <tag flag "2"/>/>`, `<wrapper <tag flag "2"/>/>`],
   [`<p "text" <child/>/>`, `<p "text" <child/>/>`],
   [`<tag 1 <child "value">>`, `<tag 1 <child "value">>`],
   [`<p <a/> <b/>/>`, `<p <a/> <b/>/>`],
@@ -764,7 +764,7 @@ check("permissive node ingress normalizes empty storage and ordinary attributes 
   const tag = onlyElement(normalized);
   assert.deepEqual(tag.$_attrs, { count: "2", enabled: "true", missing: "null" });
   assert.equal(Object.hasOwn(tag, "$_meta"), false);
-  assert.deepEqual(tag.$_content, [{ $_tag: "_hson_elem", $_content: [] }]);
+  assert.deepEqual(tag.$_content, []);
   assert.equal(compact(normalized), `<tag count="2" enabled="true" missing="null"/>`);
 
   const emptyAttrs: HsonNode = {
@@ -786,7 +786,7 @@ check("empty _hson_elem and empty _hson_obj remain distinct canonical standard-t
   assert.equal(compact(obj), `<tag <>>`);
 });
 
-check("object properties and roots retain explicit element mode when melting would be ambiguous", () => {
+check("object properties and roots reject invalid retained element mode", () => {
   const objectWithElementProperty: HsonNode = {
     $_tag: "_hson_root",
     $_content: [{
@@ -794,18 +794,19 @@ check("object properties and roots retain explicit element mode when melting wou
       $_content: [{ $_tag: "empty", $_content: [] }],
     }],
   };
-  const normalized = hson.fromNode(objectWithElementProperty).toNode();
-  const wire = compact(normalized);
-  assert.equal(wire, `<<empty/>>`);
-  assert.equal(canonical_hson_graph_equal(parse(wire), normalized), true);
+  assert.throws(
+    () => hson.fromNode(objectWithElementProperty).toNode(),
+    /object property must retain/,
+  );
 
   const emptyElementRoot: HsonNode = {
     $_tag: "_hson_root",
     $_content: [{ $_tag: "_hson_elem", $_content: [] }],
   };
-  const emptyWire = compact(emptyElementRoot);
-  assert.equal(emptyWire, `<_hson_elem/>`);
-  assert.equal(canonical_hson_graph_equal(parse(emptyWire), emptyElementRoot), true);
+  assert.throws(
+    () => serialize_hson(emptyElementRoot),
+    /empty _hson_elem is not valid retained canonical state/,
+  );
 });
 
 check("attribute and metadata names use the tokenizer's unquoted name grammar", () => {

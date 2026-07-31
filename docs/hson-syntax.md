@@ -33,11 +33,14 @@ The space before `/>` is optional. A construct may be inline or multiline:
 />
 ```
 
-The parser accepts element and object closers in the same input. Multiple
-top-level nodes with mixed closer kinds are rooted as element mode. This is
-accepted behavior, although canonical output can normalize a mixed construct
-to its containing cluster mode; it is not an error merely because both symbols
-occur.
+Closer semantics apply to the complete containing branch. Multiple top-level
+nodes group beneath `_hson_elem` when every closer is element-mode, or beneath
+`_hson_obj` when every closer is object-mode. A sequence that mixes the two
+modes, such as `<a/><b 2>`, rejects instead of defaulting to element mode.
+
+The same rule is recursive: `<wrapper <child/>/>` and
+`<record <field 2>>` are coherent, while object-shaped children beneath an
+element branch and element-shaped properties beneath an object branch reject.
 
 ---
 
@@ -96,6 +99,10 @@ keeps one primitive content node inline and expands complex mixed content.
 Internally, strings become `_hson_str`; non-string primitives become
 `_hson_val`. Those leaf VSNs normally melt into literal syntax when HSON is
 serialized.
+
+Element mixed content means strings interleaved with recursively
+element-structured ordinary children. It does not permit object or array
+relationships inside the same `_hson_elem` branch.
 
 ---
 

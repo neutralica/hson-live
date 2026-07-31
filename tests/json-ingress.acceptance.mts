@@ -216,26 +216,36 @@ check("arrays, nested objects, metadata, data attrs, and empty records are detac
 
 check("successful parse isolates later mutations in both directions", () => {
   const input = {
-    _hson_elem: [{
-      div: { nested: [1, 2] },
+    div: {
+      nested: [1, 2],
       $_attrs: { title: "original", style: { color: " red " } },
-    }],
+    },
   } as unknown as JsonValue;
   const result = parse_json(input);
   const snapshot = structuredClone(result);
   const inputRecord = input as unknown as {
-    _hson_elem: Array<{ $_attrs: { title: string; style: { color: string } }; div: { nested: number[] } }>;
+    div: { $_attrs: { title: string; style: { color: string } }; nested: number[] };
   };
-  inputRecord._hson_elem[0].$_attrs.title = "changed";
-  inputRecord._hson_elem[0].$_attrs.style.color = "blue";
-  inputRecord._hson_elem[0].div.nested.push(3);
+  inputRecord.div.$_attrs.title = "changed";
+  inputRecord.div.$_attrs.style.color = "blue";
+  inputRecord.div.nested.push(3);
   assert.deepEqual(result, snapshot);
 
   const div = only_standard(result, "div");
   if (div.$_attrs) div.$_attrs.title = "result-only";
-  div.$_content.push({ $_tag: "_hson_elem", $_content: [] });
-  assert.equal(inputRecord._hson_elem[0].$_attrs.title, "changed");
-  assert.deepEqual(inputRecord._hson_elem[0].div.nested, [1, 2, 3]);
+  const divObject = div.$_content[0];
+  assert.ok(is_Node(divObject));
+  const nested = divObject.$_content[0];
+  assert.ok(is_Node(nested));
+  const array = nested.$_content[0];
+  assert.ok(is_Node(array));
+  const firstItem = array.$_content[0];
+  assert.ok(is_Node(firstItem));
+  const firstValue = firstItem.$_content[0];
+  assert.ok(is_Node(firstValue));
+  firstValue.$_content[0] = 99;
+  assert.equal(inputRecord.div.$_attrs.title, "changed");
+  assert.deepEqual(inputRecord.div.nested, [1, 2, 3]);
 });
 
 check("rejected style and metadata inputs remain unchanged", () => {

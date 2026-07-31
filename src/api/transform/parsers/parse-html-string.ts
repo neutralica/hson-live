@@ -320,8 +320,9 @@ function element_to_hson(
     _throw_transform_err("_hson_elem tag found in html", "parse-html-string");
   }
 
-  const content =
-    childNodes.length === 1 &&
+  const content = childNodes.length === 0
+    ? []
+    : childNodes.length === 1 &&
     (childNodes[0].$_tag === OBJ_TAG ||
       childNodes[0].$_tag === ARR_TAG ||
       childNodes[0].$_tag === ELEM_TAG)
@@ -343,6 +344,8 @@ function root_from_children(children: ChildNode[], sanitize: boolean): HsonNode 
       ? CREATE_NODE({ $_tag: STR_TAG, $_content: [value] })
       : value,
   );
+
+  if (nodes.length === 0) return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [] });
 
   if (
     nodes.length === 1 &&
@@ -415,7 +418,9 @@ function standalone_svg_node(element: Element): HsonNode {
     $_tag: element.name,
     $_attrs: attrs,
     $_meta: meta,
-    $_content: children,
+    $_content: children.length === 0
+      ? []
+      : [CREATE_NODE({ $_tag: ELEM_TAG, $_content: children })],
   });
   if (quid !== undefined) {
     assign_ingested_hson_node_quid(node, quid, "parse-html-string");
@@ -424,6 +429,7 @@ function standalone_svg_node(element: Element): HsonNode {
 }
 
 function root_is_empty(root: HsonNode): boolean {
+  if (root.$_tag === ROOT_TAG && root.$_content.length === 0) return true;
   const only = root.$_content[0];
   return (
     typeof only === "object" &&

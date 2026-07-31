@@ -2,6 +2,9 @@
 
 import { HsonMeta, HsonNode } from "../../../../core/types.js";
 import {
+  ELEM_TAG,
+  ELEM_OBJ_ARR,
+  EVERY_VSN,
   HSON_SYS_PREFIX,
   STR_TAG,
   HSON_META_QUID,
@@ -118,7 +121,13 @@ function convert_svg_element(el: Element): HsonNode {
     $_tag: tag,
     $_attrs: attrs,
     $_meta: meta,
-    $_content: kids.length ? kids : [],
+    $_content: EVERY_VSN.includes(tag)
+      ? kids
+      : kids.length === 0
+        ? []
+        : kids.length === 1 && ELEM_OBJ_ARR.includes(kids[0].$_tag)
+          ? kids
+          : [CREATE_NODE({ $_tag: ELEM_TAG, $_content: kids })],
   });
   if (quid !== undefined) {
     assign_ingested_hson_node_quid(node, quid, "node_from_svg");

@@ -104,7 +104,7 @@ check("untrusted Worker parsing routes malformed and unknown metadata to canonic
 check("untrusted Worker parsing admits valid wrapper metadata and rejects malformed indexes", () => {
   const node = hsonTransform
     .fromUntrustedHtml(
-      `<_hson_arr><_hson_ii hson:index="0"><span>A</span></_hson_ii></_hson_arr>`,
+      `<_hson_arr><_hson_ii hson:index="0"><_hson_val>1</_hson_val></_hson_ii></_hson_arr>`,
     )
     .toNode();
   let wrapper: HsonNode | undefined;
@@ -114,7 +114,7 @@ check("untrusted Worker parsing admits valid wrapper metadata and rejects malfor
   assert.equal(wrapper?.$_meta?.index, "0");
   assert.throws(
     () => hsonTransform.fromUntrustedHtml(
-      `<_hson_arr><_hson_ii hson:index="banana"><span>A</span></_hson_ii></_hson_arr>`,
+      `<_hson_arr><_hson_ii hson:index="banana"><_hson_val>1</_hson_val></_hson_ii></_hson_arr>`,
     ),
     /not an exact canonical index/,
   );
@@ -169,7 +169,12 @@ check("trusted standalone SVG preserves the established direct-node shape", () =
     .toNode();
   assert.equal(node.$_tag, "svg");
   assert.equal(node.$_attrs?.viewBox, "0 0 10 10");
-  const path = node.$_content[0];
+  const cluster = node.$_content[0];
+  assert.equal(typeof cluster, "object");
+  assert.notEqual(cluster, null);
+  if (typeof cluster !== "object" || cluster === null) throw new Error("missing SVG element cluster");
+  assert.equal(cluster.$_tag, "_hson_elem");
+  const path = cluster.$_content[0];
   assert.equal(typeof path, "object");
   assert.notEqual(path, null);
   if (typeof path !== "object" || path === null) throw new Error("missing SVG path");

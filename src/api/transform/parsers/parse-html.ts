@@ -488,14 +488,12 @@ function convert(
     // ---------- Default: normal HTML element ----------
 
     if (childNodes.length === 0) {
-        // Void element, stay in element mode with empty cluster
+        // Empty and void ordinary elements use canonical empty content.
         return finish(CREATE_NODE({
             $_tag: dec,
             $_attrs: sortedAcc,
             $_meta: metaAcc && Object.keys(metaAcc).length ? metaAcc : undefined,
-            $_content: [
-                CREATE_NODE({ $_tag: ELEM_TAG, $_content: [] })
-            ]
+            $_content: [],
         }));
     }
 

@@ -526,7 +526,7 @@ check("Reflect document and collection synchronization preserve clean projection
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const documentRoot = projectInto(runtime, binding.tree, document);
   map.document.content.insert(
-    Object.freeze({ kind: "path", path: Object.freeze([]) }),
+    Object.freeze({ kind: "path", path: Object.freeze([0]) }),
     1,
     node("em"),
   );

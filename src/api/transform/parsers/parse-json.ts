@@ -448,7 +448,11 @@ export function nodeFromJson(
                     // Build the tag’s child (0..1) from the tag payload (scalar or cluster)
                     const rawChildren = elObj[tagName] as JsonValue;
                     let tagKids: HsonNode[] = [];
-                    if (rawChildren !== undefined) {
+                    // The established JSON element projection uses an empty
+                    // string for an ordinary empty element. In this explicit
+                    // element context it is structural absence, not an object
+                    // scalar relationship.
+                    if (rawChildren !== undefined && rawChildren !== "") {
                         const kidTag = getTag(rawChildren);
                         const kidNode = nodeFromJson(rawChildren, kidTag).node;
                         tagKids = [kidNode];
