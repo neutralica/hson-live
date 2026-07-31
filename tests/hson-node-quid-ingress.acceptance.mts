@@ -107,6 +107,39 @@ function assert_validation_code(
   return cause;
 }
 
+function assert_authored_reserved_name_failure(
+  fn: () => unknown,
+  name: string,
+  position: Readonly<{ line: number; col: number; index: number }>,
+): void {
+  let observed: unknown;
+  try {
+    fn();
+  } catch (error) {
+    observed = error;
+  }
+  assert.ok(observed instanceof Error, "expected authored reserved name to reject");
+  assert.ok(
+    observed.message.includes("[authored-reserved-name]"),
+    `expected authored-reserved-name classification behind: ${observed.message}`,
+  );
+  assert.ok(
+    observed.message.includes(`authored HSON name "${name}"`),
+    `expected rejected authored name behind: ${observed.message}`,
+  );
+  assert.ok(
+    observed.message.includes(
+      `at ${position.line}:${position.col} (index ${position.index})`,
+    ),
+    `expected authored source position behind: ${observed.message}`,
+  );
+  assert.equal(
+    validation_cause(observed),
+    undefined,
+    "authored reserved names must reject at lexical admission before shared validation",
+  );
+}
+
 type DomAttr = Readonly<{ name: string; value: string }>;
 type DomElementInput = Readonly<{
   tag: string;
@@ -326,7 +359,7 @@ check("HSON rejects malformed length, alphabet, and uppercase without normalizat
   }
 });
 
-check("HSON rejects QUID annotations on every expressible current VSN form", () => {
+check("HSON rejects authored reserved names with QUIDs at lexical admission", () => {
   for (const tag of [
     "_hson_root",
     "_hson_obj",
@@ -336,11 +369,11 @@ check("HSON rejects QUID annotations on every expressible current VSN form", () 
     "_hson_str",
     "_hson_val",
   ]) {
-    const cause = assert_validation_code(
+    assert_authored_reserved_name_failure(
       () => parse_hson(`<${tag} @${Q1}/>`),
-      "INELIGIBLE_QUID",
+      tag,
+      { line: 1, col: 2, index: 1 },
     );
-    assert.equal(cause.node.$_tag, tag);
   }
 });
 
