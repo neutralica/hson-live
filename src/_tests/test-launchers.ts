@@ -12,6 +12,13 @@ export type HsonLiveTestRuntime =
   | "node-real-websocket"
   | "node-real-websocket-process";
 
+/**
+ * Every registered launcher must emit exactly one terminal completion record
+ * whose executed count equals its manifested executableChecks value.
+ */
+export const HSON_LIVE_TEST_COMPLETION_REQUIREMENT =
+  "exact-declared-check-count" as const;
+
 export type HsonLiveTestLauncher = Readonly<{
   id: string;
   subject: HsonLiveTestSubject;
@@ -21,6 +28,11 @@ export type HsonLiveTestLauncher = Readonly<{
   runtime: HsonLiveTestRuntime;
   executableChecks: number;
   collections: readonly string[];
+}>;
+
+export type HsonLiveNonLauncherTestScript = Readonly<{
+  packageScript: `test:${string}`;
+  reason: string;
 }>;
 
 function launcher(
@@ -417,3 +429,35 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["authority", "lifecycle", "eviction", "capacity", "restart", "externally-discoverable"],
     }),
   ]);
+
+/**
+ * Package test scripts intentionally outside the external launcher contract.
+ * Every other test:* script must have exactly one hson_live_test_launchers entry.
+ */
+export const hson_live_non_launcher_test_scripts:
+readonly HsonLiveNonLauncherTestScript[] = Object.freeze([
+  Object.freeze({
+    packageScript: "test:diagnostics-inventory",
+    reason: "Validates the launcher manifest itself and would recurse if launched externally.",
+  }),
+  Object.freeze({
+    packageScript: "test:hson-array-index",
+    reason: "Command-only Transform integration journey; not an externally selectable launcher.",
+  }),
+  Object.freeze({
+    packageScript: "test:hson-attribute-transport",
+    reason: "Command-only Transform integration journey; not an externally selectable launcher.",
+  }),
+  Object.freeze({
+    packageScript: "test:livehost-graph-content-codec",
+    reason: "Command-only LiveHost integration journey; not an externally selectable launcher.",
+  }),
+  Object.freeze({
+    packageScript: "test:root-compatibility",
+    reason: "Production artifact compatibility certification; not an external semantic launcher.",
+  }),
+  Object.freeze({
+    packageScript: "test:transform-worker",
+    reason: "Worker entrypoint integration journey; not an externally selectable launcher.",
+  }),
+]);
