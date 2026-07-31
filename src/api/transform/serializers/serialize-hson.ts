@@ -13,7 +13,6 @@ import {
 } from "../../../core/constants.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
-import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
 import { is_Node } from "../../../core/node-guards.js";
 import { is_persisted_quid } from "../../../core/persisted-quid.js";
 import { is_valid_hson_attribute_name } from "../../../core/hson-name.js";
@@ -36,6 +35,7 @@ type HsonSerializeInputOptions = Readonly<{
 type HsonSerializeOptions = Readonly<{
   layout: HsonLayout;
   noQuid: boolean;
+  ownedElementTextFragment: boolean;
 }>;
 
 type SerializeContext = Readonly<{
@@ -212,22 +212,6 @@ function arrayItemNode(wrapper: HsonNode, ctx: SerializeContext): HsonNode {
   }
 }
 
-function emitAnonymousObject(
-  object: HsonNode,
-  depth: number,
-  ctx: SerializeContext,
-): string {
-  const pad = indent(ctx, depth);
-  if (object.$_content.length === 0) return `${pad}<>`;
-
-  if (ctx.options.layout === "compact") {
-    return `<${emitNode(object, 0, OBJ_TAG, ctx)}>`;
-  }
-
-  const body = emitNode(object, depth + 1, OBJ_TAG, ctx);
-  return `${pad}<\n${body}\n${pad}>`;
-}
-
 function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string {
   const pad = indent(ctx, depth);
   const wrappers = node.$_content;
@@ -241,13 +225,6 @@ function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string
       );
     }
     const item = arrayItemNode(wrapper, ctx);
-    if (item.$_tag === OBJ_TAG) {
-      return emitAnonymousObject(
-        item,
-        ctx.options.layout === "readable" ? depth + 1 : 0,
-        ctx,
-      );
-    }
     return emitNode(
       item,
       ctx.options.layout === "readable" ? depth + 1 : 0,
@@ -260,14 +237,45 @@ function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string
   return `${pad}«\n${rendered.join(",\n")}\n${pad}»`;
 }
 
-function emitObjectProperty(
+function emitObjectMember(
   property: HsonNode,
   depth: number,
   ctx: SerializeContext,
 ): string {
   ctx.guard.enter(property);
   try {
-    return emitStandardNode(property, depth, ctx);
+    const pad = indent(ctx, depth);
+    if (property.$_attrs && Object.keys(property.$_attrs).length !== 0) {
+      _throw_transform_err(
+        `serialize-hson: object member <${property.$_tag}> cannot carry attributes or flags`,
+        "serialize_hson.emitObjectMember",
+      );
+    }
+    if (property.$_meta && Object.keys(property.$_meta).length !== 0) {
+      _throw_transform_err(
+        `serialize-hson: object member <${property.$_tag}> cannot carry metadata or a QUID`,
+        "serialize_hson.emitObjectMember",
+      );
+    }
+    if (property.$_content.length !== 1 || !is_Node(property.$_content[0])) {
+      _throw_transform_err(
+        `serialize-hson: object member <${property.$_tag}> must own exactly one canonical value`,
+        "serialize_hson.emitObjectMember",
+      );
+    }
+
+    const relationship = property.$_content[0];
+    let semanticValue = relationship;
+    if (
+      relationship.$_tag === OBJ_TAG
+      && relationship.$_content.length === 1
+      && is_Node(relationship.$_content[0])
+      && (relationship.$_content[0].$_tag === STR_TAG || relationship.$_content[0].$_tag === VAL_TAG)
+    ) {
+      semanticValue = relationship.$_content[0];
+    }
+    const value = emitNode(semanticValue, depth, OBJ_TAG, ctx).trimStart();
+    return `${pad}${serialize_hson_tag_name(property.$_tag)} ${value}`;
   } finally {
     ctx.guard.leave(property);
   }
@@ -283,14 +291,15 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
   }
   if (node.$_content.length === 0) return `${pad}<>`;
 
-  // JSON scalar properties use a one-child _hson_obj value wrapper. The
-  // wrapper melts, leaving the primitive literal as the property's value.
   if (
     node.$_content.length === 1
     && is_Node(node.$_content[0])
     && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)
   ) {
-    return emitNode(node.$_content[0], depth, OBJ_TAG, ctx);
+    _throw_transform_err(
+      "serialize-hson: detached scalar _hson_obj carrier is not a canonical semantic object value",
+      "serialize_hson.emitObject",
+    );
   }
 
   const rendered = node.$_content.map((property) => {
@@ -300,25 +309,45 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
         "serialize_hson.emitObject",
       );
     }
-    if (property.$_tag === STR_TAG || property.$_tag === VAL_TAG) {
-      return emitNode(property, depth, OBJ_TAG, ctx);
+    if (EVERY_VSN.includes(property.$_tag)) {
+      _throw_transform_err(
+        `serialize-hson: _hson_obj must contain ordinary named members, found ${property.$_tag}`,
+        "serialize_hson.emitObject",
+      );
     }
-    return emitObjectProperty(property, depth, ctx);
+    return emitObjectMember(property, ctx.options.layout === "readable" ? depth + 1 : 0, ctx);
   });
 
-  if (ctx.options.layout === "readable") return rendered.join("\n");
-  return rendered.reduce((out, term) => {
-    if (!out) return term;
-    const separator = out.endsWith(">") && term.startsWith("<") ? "" : " ";
-    return out + separator + term;
-  }, "");
+  if (ctx.options.layout === "readable") {
+    if (rendered.length === 1 && !rendered[0].includes("\n")) {
+      return `${pad}<${rendered[0].trimStart()}>`;
+    }
+    return `${pad}<\n${rendered.join("\n")}\n${pad}>`;
+  }
+  return `<${rendered.join(" ")}>`;
 }
 
-function emitElementCluster(node: HsonNode, depth: number, ctx: SerializeContext): string {
+function emitElementCluster(
+  node: HsonNode,
+  depth: number,
+  isRootSemanticValue: boolean,
+  ctx: SerializeContext,
+): string {
   if (node.$_attrs && Object.keys(node.$_attrs).length !== 0) {
     _throw_transform_err(
       "serialize-hson: _hson_elem may not carry $_attrs",
       "serialize_hson.emitElement",
+    );
+  }
+  if (
+    !(ctx.options.ownedElementTextFragment && isRootSemanticValue)
+    && node.$_content.length === 1
+    && is_Node(node.$_content[0])
+    && (node.$_content[0].$_tag === STR_TAG || node.$_content[0].$_tag === VAL_TAG)
+  ) {
+    _throw_transform_err(
+      "serialize-hson: detached scalar _hson_elem carrier is not a canonical semantic element value",
+      "serialize_hson.emitElementCluster",
     );
   }
   return node.$_content.map((child) => {
@@ -440,7 +469,9 @@ function emitNode(
     }
     if (node.$_tag === ARR_TAG) return emitArray(node, depth, ctx);
     if (node.$_tag === OBJ_TAG) return emitObject(node, depth, ctx);
-    if (node.$_tag === ELEM_TAG) return emitElementCluster(node, depth, ctx);
+    if (node.$_tag === ELEM_TAG) {
+      return emitElementCluster(node, depth, parentCluster === undefined, ctx);
+    }
     return emitStandardNode(node, depth, ctx);
   } finally {
     ctx.guard.leave(node);
@@ -448,9 +479,10 @@ function emitNode(
 }
 
 /** Serialize a canonical HSON graph in readable (default) or compact layout. */
-export function serialize_hson(
+function serialize_hson_with_ownership(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
+  ownedElementTextFragment = false,
 ): HsonString {
   if (!is_Node(root)) {
     _throw_transform_err(
@@ -466,18 +498,32 @@ export function serialize_hson(
   }
 
   assert_invariants(root, "serialize_hson");
-  const normalizedRoot = normalize_hson_graph(root, "serialize_hson");
-
   // Egress is a cold canonical boundary: validate every supplied identity,
   // while deliberately allowing equal valid claims on distinct graph nodes.
-  collect_hson_node_quid_claims(normalizedRoot);
-  assert_invariants(normalizedRoot, "serialize_hson");
+  collect_hson_node_quid_claims(root);
   const ctx: SerializeContext = {
     options: {
       layout: inputOptions.noBreak ? "compact" : "readable",
       noQuid: inputOptions.noQuid ?? false,
+      ownedElementTextFragment,
     },
     guard: cycleGuard(),
   };
-  return emitNode(normalizedRoot, 0, undefined, ctx).trim() as HsonString;
+  return emitNode(root, 0, undefined, ctx).trim() as HsonString;
+}
+
+/** Serialize an ordinary detached semantic value; malformed carriers reject. */
+export function serialize_hson(
+  root: HsonNode,
+  inputOptions: HsonSerializeInputOptions = {},
+): HsonString {
+  return serialize_hson_with_ownership(root, inputOptions, false);
+}
+
+/** @internal LiveMap/LiveHost ownership evidence for a root-owned text fragment. */
+export function serialize_hson_owned_element_text_fragment(
+  root: HsonNode,
+  inputOptions: HsonSerializeInputOptions = {},
+): HsonString {
+  return serialize_hson_with_ownership(root, inputOptions, true);
 }

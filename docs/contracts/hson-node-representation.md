@@ -78,19 +78,26 @@ Contradictory wrappers, cross-mode ordinary children, empty retained
 `_hson_elem` nodes, and direct ordinary children beneath `_hson_ii` reject at
 admission. Direct HSON serialization validates before normalization and never
 uses the narrow legacy empty-element normalization to repair malformed egress.
-It does not compensate for structural crossings with explicit VSN syntax:
-valid `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_str`, and `_hson_val`
-semantic values serialize through ordinary HSON notation, while every
-`_hson_root` rejects. Reparse plus exact root detachment must be canonically
-graph-equal to the supplied non-root value, including order, negative zero,
-array indexes, metadata, QUIDs, and structural mode.
+It does not compensate for structural crossings with explicit VSN syntax.
+Every admitted HSON-serializable semantic value reparses, detaches, and compares
+canonically equal, including order, negative zero, array indexes, element QUIDs,
+and structural mode. `_hson_root`, object-member metadata, cross-mode arrays,
+and detached scalar carrier clusters are outside that serialization domain and
+reject rather than projecting lossily.
 
 Serializer projection is intentionally lossy only for implementation
 scaffolding that HSON syntax reconstructs: `_hson_ii` wrappers and their
 `index` metadata are represented by array position, and structural VSN names
 are represented by notation rather than literal tags. Ordinary attributes and
-eligible QUID metadata retain their semantic values. `noQuid()` omits only the
-QUID projection and never mutates its source graph.
+eligible element QUID metadata retain their semantic values. `noQuid()` omits
+only that element projection, never mutates its source graph, and cannot
+legalize object metadata.
+
+Transform `fromNode()` is a detached semantic admission boundary. It collapses
+an unowned `_hson_obj([scalar])` or `_hson_elem([scalar])` to the scalar while
+preserving object-member scalar carriers, element text clusters, established
+root-owned text fragments, and every array cluster. Root detachment itself
+remains exact. Direct serialization rejects an unadmitted detached carrier.
 
 The legacy empty-array optional-container spelling does not apply to
 `_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty

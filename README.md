@@ -37,10 +37,10 @@ JSON expresses structure through objects, arrays, keys, and values:
 The equivalent data can be expressed in HSON:
 
 ```hson
-<profile
-  <name "Ada">
-  <active true>
->
+<profile <
+  name "Ada"
+  active true
+>>
 ```
 
 HTML expresses structure through elements, attributes, and ordered content:
@@ -56,9 +56,9 @@ The same markup structure can be expressed in HSON:
 
 ```hson
 <article class="note"
-  <h1 "Hello">
-  <p "A document represented as a graph.">
->
+  <h1 "Hello"/>
+  <p "A document represented as a graph."/>
+/>
 ```
 
 Both forms parse into the same canonical node model.
@@ -70,13 +70,15 @@ HSON can represent:
 - JSON objects and arrays;
 - strings, numbers, booleans, and null;
 - HTML, XML, and SVG elements;
-- attributes and metadata;
+- element attributes and eligible element metadata;
 - ordered and mixed markup content;
 - document fragments;
 - namespaces and structural wrapper nodes;
 - stable identity for eligible live document nodes.
 
-Round trips are deterministic within the supported transformation contracts. Ordering, value distinctions, mixed content, attributes, metadata, and document structure are preserved rather than reconstructed heuristically.
+Round trips are deterministic within each supported transformation contract.
+Authored HSON object members do not carry metadata; eligible element metadata
+retains its separate element-mode contract.
 
 ---
 

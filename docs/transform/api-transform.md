@@ -2,7 +2,7 @@
 
 # hson-live
 ## Transform API
-Updated: 2026-07-30
+Updated: 2026-07-31
 
 The transform API is exposed directly on `hson` through the public source
 constructors:
@@ -189,8 +189,11 @@ Parses HSON text into HSON nodes.
 Starts the transform pipeline from an existing HSON node graph.
 
 - Does not sanitize.
-- Does not clone the node.
-- Assumes the caller is providing a valid current-shape `HsonNode`.
+- Normalizes permissive graph spellings without mutating the caller. If no
+  normalization is needed the original graph reference is retained.
+- Treats the supplied node as a detached semantic value: an unowned
+  scalar-only `_hson_obj` or `_hson_elem` carrier collapses to its scalar,
+  while owned carriers and arrays remain structural.
 
 ---
 
@@ -207,10 +210,11 @@ All transform sources return a common normalized-source surface with:
 ```
 
 `.toNode()` directly returns the normalized canonical graph. It does not
-serialize to HSON and parse that text again. For `fromNode(node)`, it returns
-the original graph reference. HSON source is the specific exception at the
-attachment boundary: its cached frame stores and repeatedly returns the exact
-detached semantic child of the internal parser root.
+serialize to HSON and parse that text again. `fromNode(node)` returns the
+admitted graph, which remains the original reference when normalization made
+no change. HSON source is the specific exception at the attachment boundary:
+its cached frame stores and repeatedly returns the exact detached semantic
+child of the internal parser root.
 
 ### `.toHtml()`
 
@@ -238,16 +242,22 @@ Chooses HSON output.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
-- Every admitted non-root semantic value is emitted without literal structural
+- Every admitted HSON-serializable semantic value is emitted without literal structural
   VSN names, raw metadata containers, or array-index metadata. Parsing that
   output, detaching the parser root, and comparing canonically reconstructs the
-  original graph. `noQuid()` applies the same rule after removing only QUID
-  metadata from the expected projection.
+  original graph. Object-member metadata is outside this domain and rejects.
+  `noQuid()` applies the same rule after removing only eligible element QUID
+  metadata from the expected projection; it cannot legalize object metadata.
 - Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`
   use the same canonical serializer. `noBreak` changes layout only.
 - Direct or fluent HSON serialization of any caller-supplied `_hson_root`
   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the
   HSON parser root are explicitly detached by their source pipeline first.
+- `fromNode()` treats its input as a detached semantic value. Redundant detached
+  scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before
+  output, while owned object-member carriers, element text clusters, and arrays
+  remain intact. Direct serialization rejects a detached carrier that bypassed
+  admission.
 
 ### `HsonString`
 

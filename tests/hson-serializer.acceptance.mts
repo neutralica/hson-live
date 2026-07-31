@@ -4,11 +4,15 @@ import assert from "node:assert/strict";
 import { hson, hsonString } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
-import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import {
+  serialize_hson,
+  serialize_hson_owned_element_text_fragment,
+} from "../src/api/transform/serializers/serialize-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
 import { TOKEN_KIND } from "../src/api/transform/token.types.ts";
@@ -259,10 +263,10 @@ check("fromHson.toNode preserves malformed-input errors", () => {
   );
 });
 
-check("bare Phillip remains invalid under the unchanged header grammar", () => {
+check("bare Phillip remains invalid as an unquoted object value", () => {
   assert.throws(
     () => hson.fromHson(`<name Phillip>`).toNode(),
-    /OBJ002.*_hson_obj children must not have \$_attrs/s,
+    /invalid bare object value "Phillip".*quote string values/,
   );
 });
 
@@ -358,7 +362,7 @@ check("ordinary quoted attribute escaping is canonical", () => {
 
 check("nested object property readable snapshot", () => {
   const node = parse(`<parent <child "value">>`);
-  assert.equal(readable(node), `<parent\n  <child "value">\n>`);
+  assert.equal(readable(node), `<parent <child "value">>`);
 });
 
 check("nested object property compact snapshot", () => {
@@ -367,13 +371,13 @@ check("nested object property compact snapshot", () => {
 });
 
 check("array readable snapshot", () => {
-  const node = parse(`«1,"two",<<name "Ada"><active true>>,[3,4]»`);
-  assert.equal(readable(node), `«\n  1,\n  "two",\n  <\n    <name "Ada">\n    <active true>\n  >,\n  «\n    3,\n    4\n  »\n»`);
+  const node = parse(`«1,"two",<name "Ada" active true>,[3,4]»`);
+  assert.equal(readable(node), `«\n  1,\n  "two",\n  <\n    name "Ada"\n    active true\n  >,\n  «\n    3,\n    4\n  »\n»`);
 });
 
 check("array compact snapshot", () => {
-  const node = parse(`«1,"two",<<name "Ada"><active true>>,[3,4]»`);
-  assert.equal(compact(node), `«1,"two",<<name "Ada"><active true>>,«3,4»»`);
+  const node = parse(`«1,"two",<name "Ada" active true>,[3,4]»`);
+  assert.equal(compact(node), `«1,"two",<name "Ada" active true>,«3,4»»`);
 });
 
 check("empty object and array snapshots", () => {
@@ -457,7 +461,7 @@ check("parsed noQuid graph equals the graph with only QUID fields removed", () =
 });
 
 check("native HSON array order regenerates canonical positional indexes", () => {
-  const node = parse(`«"a","b",<<name "Ada">>»`);
+  const node = parse(`«"a","b",<name "Ada">»`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   const reparsed = parse(wire);
   assert.deepEqual(reparsed, node);
@@ -488,11 +492,11 @@ const boundaryCases: ReadonlyArray<readonly [string, string]> = [
   [`<tag flag "text"/>`, `<tag flag "text"/>`],
   [`<wrapper <tag flag "2"/>/>`, `<wrapper <tag flag "2"/>/>`],
   [`<p "text" <child/>/>`, `<p "text" <child/>/>`],
-  [`<tag 1 <child "value">>`, `<tag 1 <child "value">>`],
+  [`<tag 1 child "value">`, `<tag 1 child "value">`],
   [`<p <a/> <b/>/>`, `<p <a/> <b/>/>`],
   [`<a <b <c "x"/>/>/>`, `<a <b <c "x"/>/>/>`],
   [`<a <b <c "x">>>`, `<a <b <c "x">>>`],
-  [`«<<name "Ada"><active true>>»`, `«<<name "Ada"><active true>>»`],
+  [`«<name "Ada" active true>»`, `«<name "Ada" active true>»`],
   [`«[1,2],[3,[4]]»`, `««1,2»,«3,«4»»»`],
   [`<\`tag name\` "text"/>`, `<\`tag name\` "text"/>`],
   [`<empty <>>`, `<empty <>>`],
@@ -509,7 +513,7 @@ const equivalenceSources = [
   `<tag attr="value" flag "content"/>`,
   `<p "first" <em "middle"/> "last"/>`,
   `<parent <child "value">>`,
-  `«1,"two",<<name "Ada"><active true>>,[3,4]»`,
+  `«1,"two",<name "Ada" active true>,[3,4]»`,
   `<\`quoted key\` data-user="meta" "a\\\"b\\\\c\\tline\\nnext"/>`,
   `<>`,
   `[]`,
@@ -990,10 +994,10 @@ check("canonical closure covers every primitive HSON value without wrapper inven
 check("canonical closure covers empty, scalar, nested, array-valued, and ordered objects", () => {
   const fixtures = [
     parse(`<>`),
-    parse(`<name "Ada"><age 42><active true>`),
-    parse(`<person <name "Ada"><address <city "Chicago">>>`),
-    parse(`<items «1,"two",<<name "Ada">>»>`),
-    parse(`<z 3><a 1><m 2>`),
+    parse(`<name "Ada" age 42 active true>`),
+    parse(`<person <name "Ada" address <city "Chicago">>>`),
+    parse(`<items «1,"two",<name "Ada">»>`),
+    parse(`<z 3 a 1 m 2>`),
   ];
   for (const node of fixtures) assert_hson_closure(node);
   assert.deepEqual(
@@ -1002,13 +1006,13 @@ check("canonical closure covers empty, scalar, nested, array-valued, and ordered
   );
 });
 
-check("canonical closure covers arrays, reconstructed indexes, nesting, objects, and QUIDs", () => {
+check("canonical closure covers arrays, reconstructed indexes, nesting, and objects", () => {
   const fixtures = [
     parse(`«»`),
     parse(`«0,-0,true,false,null,"text"»`),
-    parse(`«<<name "Ada">>,<<name "Lin">>»`),
+    parse(`«<name "Ada">,<name "Lin">»`),
     parse(`««1,2»,«3,«4»»»`),
-    parse(`«<<item @0000000000000011 "one">>,<<item @0000000000000012 "two">>»`),
+    parse(`«<item "one">,<item "two">»`),
   ];
   for (const node of fixtures) {
     const source = assert_hson_closure(node);
@@ -1050,24 +1054,28 @@ check("canonical closure preserves ordinary attributes, structured style, and QU
 });
 
 check("direct and fluent serializers have equivalent closure for every HSON option", () => {
-  const node = parse(`<p @0000000000000016 class="copy" "first" <em "middle"/> "last"/>`);
-  const cases = [
-    { options: {}, fluent: () => hson.fromNode(node).toHson().serialize() },
-    { options: { noBreak: true }, fluent: () => hson.fromNode(node).toHson().noBreak().serialize() },
-    { options: { noQuid: true }, fluent: () => hson.fromNode(node).toHson().noQuid().serialize() },
-    {
-      options: { noBreak: true, noQuid: true },
-      fluent: () => hson.fromNode(node).toHson().noBreak().noQuid().serialize(),
-    },
-  ] as const;
-  for (const entry of cases) {
-    const direct = serialize_hson(node, entry.options);
-    assert.equal(entry.fluent(), direct);
-    assert_wire_closure(
-      node,
-      direct,
-      "noQuid" in entry.options && entry.options.noQuid ? clone_without_quids(node) : node,
-    );
+  for (const node of [
+    parse(`<record <name "Ada" active true> items «1,2»>`),
+    parse(`<p @0000000000000016 class="copy" "first" <em "middle"/> "last"/>`),
+  ]) {
+    const cases = [
+      { options: {}, fluent: () => hson.fromNode(node).toHson().serialize() },
+      { options: { noBreak: true }, fluent: () => hson.fromNode(node).toHson().noBreak().serialize() },
+      { options: { noQuid: true }, fluent: () => hson.fromNode(node).toHson().noQuid().serialize() },
+      {
+        options: { noBreak: true, noQuid: true },
+        fluent: () => hson.fromNode(node).toHson().noBreak().noQuid().serialize(),
+      },
+    ] as const;
+    for (const entry of cases) {
+      const direct = serialize_hson(node, entry.options);
+      assert.equal(entry.fluent(), direct);
+      assert_wire_closure(
+        node,
+        direct,
+        "noQuid" in entry.options && entry.options.noQuid ? clone_without_quids(node) : node,
+      );
+    }
   }
 });
 
@@ -1126,14 +1134,104 @@ check("invalid roots and malformed structural crossings fail before compatibilit
   assert.throws(() => serialize_hson(crossing), /object property must retain/);
 });
 
+check("object member metadata and QUIDs are outside the HSON serialization domain", () => {
+  const member: HsonNode = {
+    $_tag: "member",
+    $_meta: { quid: "0000000000000001" },
+    $_content: [{
+      $_tag: "_hson_obj",
+      $_content: [{ $_tag: "_hson_str", $_content: ["value"] }],
+    }],
+  };
+  const node: HsonNode = {
+    $_tag: "_hson_obj",
+    $_content: [member],
+  };
+  assert.throws(() => serialize_hson(node), /object member <member> cannot carry metadata or a QUID/);
+  assert.throws(
+    () => serialize_hson(node, { noQuid: true }),
+    /object member <member> cannot carry metadata or a QUID/,
+  );
+
+  const unknownMetadata = structuredClone(node);
+  (unknownMetadata.$_content[0] as HsonNode).$_meta = { custom: "value" } as unknown as HsonMeta;
+  assert.throws(() => serialize_hson(unknownMetadata), /unknown canonical metadata key/);
+  assert.throws(() => serialize_hson(unknownMetadata, { noQuid: true }), /unknown canonical metadata key/);
+
+  const attributed = structuredClone(node);
+  delete (attributed.$_content[0] as HsonNode).$_meta;
+  (attributed.$_content[0] as HsonNode).$_attrs = { title: "value", hidden: "hidden" };
+  assert.throws(() => serialize_hson(attributed), /must not have \$_attrs|cannot carry attributes or flags/);
+});
+
+check("detached scalar carriers normalize at node admission and reject at direct egress", () => {
+  for (const [tag, leaf] of [
+    ["_hson_obj", { $_tag: "_hson_str", $_content: ["value"] }],
+    ["_hson_obj", { $_tag: "_hson_val", $_content: [2] }],
+    ["_hson_elem", { $_tag: "_hson_str", $_content: ["value"] }],
+    ["_hson_elem", { $_tag: "_hson_val", $_content: [2] }],
+  ] satisfies ReadonlyArray<readonly ["_hson_obj" | "_hson_elem", HsonNode]>) {
+    const carrier: HsonNode = {
+      $_tag: tag,
+      $_content: [leaf],
+    };
+    const admitted = hson.fromNode(carrier).toNode();
+    assert.deepEqual(admitted, leaf);
+    assert.throws(() => serialize_hson(carrier), /detached scalar .* carrier|_hson_elem cannot contain _hson_val/);
+  }
+
+  for (const carrierTag of ["_hson_obj", "_hson_elem"] as const) {
+    const arrayCarrier: HsonNode = {
+      $_tag: "_hson_arr",
+      $_content: [{
+        $_tag: "_hson_ii",
+        $_meta: { index: "0" },
+        $_content: [{
+          $_tag: carrierTag,
+          $_content: [{ $_tag: "_hson_str", $_content: ["value"] }],
+        }],
+      }],
+    };
+    const admittedArray = hson.fromNode(arrayCarrier).toNode();
+    assert.equal(admittedArray.$_tag, "_hson_arr");
+    assert.equal(((admittedArray.$_content[0] as HsonNode).$_content[0] as HsonNode).$_tag, "_hson_str");
+  }
+});
+
+check("owned scalar relationship, element text, and root-fragment carriers remain intact", () => {
+  const object = parse_json({ member: "value" });
+  const admittedObject = hson.fromNode(detach_hson_root_value(object)).toNode();
+  const member = admittedObject.$_content[0] as HsonNode;
+  assert.equal((member.$_content[0] as HsonNode).$_tag, "_hson_obj");
+
+  const element = parse(`<p "value"/>`);
+  const admittedElement = hson.fromNode(element).toNode();
+  const ordinary = admittedElement.$_content[0] as HsonNode;
+  assert.equal((ordinary.$_content[0] as HsonNode).$_tag, "_hson_elem");
+
+  const rootOwnedFragment: HsonNode = {
+    $_tag: "_hson_elem",
+    $_content: [{ $_tag: "_hson_str", $_content: ["text only"] }],
+  };
+  const wire = serialize_hson_owned_element_text_fragment(rootOwnedFragment, { noBreak: true });
+  assert.equal(wire, `"text only"`);
+  const rebuilt = detach_hson_root_value(parse_hson(wire, { allowTopLevelTextFragment: true }));
+  assert.equal(canonical_hson_graph_equal(rebuilt, rootOwnedFragment), true);
+});
+
 check("direct, universal Worker-safe, and browser facade HSON paths serialize identically", () => {
-  const node = parse(`<main @0000000000000018 class="shell" <span "ready"/>/>`);
-  const direct = serialize_hson(node);
-  const universal = hsonTransform.fromNode(node).toHson().serialize();
-  const browserFacade = hson.fromNode(node).toHson().serialize();
-  assert.equal(universal, direct);
-  assert.equal(browserFacade, direct);
-  assert_wire_closure(node, direct);
+  for (const node of [
+    parse(`<record <name "Ada" active true> items «1,2»>`),
+    parse(`«<name "Ada">,<name "Lin">»`),
+    parse(`<main @0000000000000018 class="shell" <span "ready"/>/>`),
+  ]) {
+    const direct = serialize_hson(node);
+    const universal = hsonTransform.fromNode(node).toHson().serialize();
+    const browserFacade = hson.fromNode(node).toHson().serialize();
+    assert.equal(universal, direct);
+    assert.equal(browserFacade, direct);
+    assert_wire_closure(node, direct);
+  }
 });
 
 check("serialization is deterministic across repeated calls", () => {

@@ -116,7 +116,7 @@ check("empty anonymous object detaches as _hson_obj", () => {
 });
 
 check("populated top-level object detaches as one _hson_obj", () => {
-  const value = publicNode(`<a 1><b 2>`);
+  const value = publicNode(`<a 1 b 2>`);
   assert.equal(value.$_tag, "_hson_obj");
   assert.deepEqual(value.$_content.map((child) => (child as HsonNode).$_tag), ["a", "b"]);
 });
@@ -143,7 +143,7 @@ check("primitive array detaches with canonical indexed membership", () => {
 });
 
 check("object array retains object-wrapped membership", () => {
-  const value = publicNode(`«<<name "Ada">>»`);
+  const value = publicNode(`«<name "Ada">»`);
   const item = value.$_content[0] as HsonNode;
   assert.equal((item.$_content[0] as HsonNode).$_tag, "_hson_obj");
 });
@@ -176,8 +176,8 @@ check("single tagged object-side input detaches only _hson_root", () => {
   assert.equal((value.$_content[0] as HsonNode).$_tag, "a");
 });
 
-check("multiple tagged object-side inputs retain one _hson_obj", () => {
-  const value = publicNode(`<a 1><b 2>`);
+check("multiple object members retain one _hson_obj", () => {
+  const value = publicNode(`<a 1 b 2>`);
   assert.equal(value.$_tag, "_hson_obj");
   assert.equal(value.$_content.length, 2);
 });
@@ -253,7 +253,7 @@ check("primitive HSON source exposes no root through any public terminal", () =>
 });
 
 check("object HSON source exposes no root through any public terminal", () => {
-  assertNoPublicRoot(`<a 1><b 2>`);
+  assertNoPublicRoot(`<a 1 b 2>`);
 });
 
 check("array HSON source exposes no root through any public terminal", () => {
@@ -419,7 +419,7 @@ check("repeated HSON canonicalization is stable", () => {
 check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => {
   assert.throws(() => publicNode(`<a/><b 2>`), /mixed top-level structural modes/);
   assert.equal(publicNode(`<a/><b/>`).$_tag, "_hson_elem");
-  assert.equal(publicNode(`<a 1><b 2>`).$_tag, "_hson_obj");
+  assert.equal(publicNode(`<a 1 b 2>`).$_tag, "_hson_obj");
 });
 
 check("valid QUID metadata survives root detachment and HSON output", () => {

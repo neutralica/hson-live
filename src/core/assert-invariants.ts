@@ -174,6 +174,9 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
     if (is_Node(only) && !isVSN(only.$_tag)) {
       push(errs, cfg, `${here}: direct ordinary _hson_ii child must be wrapped by _hson_obj`); if (cfg.throwOnFirst) return;
     }
+    if (is_Node(only) && only.$_tag === ELEM_TAG) {
+      push(errs, cfg, `${here}: _hson_arr cannot contain an element-mode value; arrays cannot cross object/element structural modes`); if (cfg.throwOnFirst) return;
+    }
   }
 
   if (n.$_tag === ARR_TAG) {

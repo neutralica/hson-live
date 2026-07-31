@@ -91,6 +91,28 @@ check("HSON egress rejects QUID-bearing VSNs before emission", () => {
   assert.deepEqual(invalid, before);
 });
 
+check("HSON egress rejects object-member QUIDs even with noQuid", () => {
+  const graph: HsonNode = {
+    $_tag: "_hson_obj",
+    $_content: [{
+      $_tag: "member",
+      $_meta: { [HSON_META_QUID]: Q1 },
+      $_content: [{
+        $_tag: "_hson_obj",
+        $_content: [{ $_tag: "_hson_str", $_content: ["value"] }],
+      }],
+    }],
+  };
+  assert.throws(
+    () => hson.fromNode(graph).toHson().serialize(),
+    /object member <member> cannot carry metadata or a QUID/,
+  );
+  assert.throws(
+    () => hson.fromNode(graph).toHson().noQuid().serialize(),
+    /object member <member> cannot carry metadata or a QUID/,
+  );
+});
+
 check("cold HSON egress preserves duplicate canonical values without mutation", () => {
   const graph = fragment([element("div", [], Q1), element("span", [], Q1)]);
   const before = structuredClone(graph);

@@ -81,15 +81,15 @@ at admission, while malformed, duplicate, missing, noncontiguous, or
 out-of-range strings reject. Canonical graph state always has physical wrapper
 order equal to index order.
 
-Array items can be scalars, arrays, or objects. Objects in HSON array syntax use
-an anonymous object wrapper because an array item has no property name:
+Array items can be scalars, arrays, or objects. An object item uses the same one
+angle-pair object value syntax as an object anywhere else:
 
 ```hson
 <people
   «
     <
-      <name "Jo">
-      <age 31>
+      name "Jo"
+      age 31
     >
   »
 >

@@ -126,13 +126,14 @@ when values cross an untyped text/markup representation.
 ## Attributes and metadata
 
 Attributes are data attached to an ordinary node; they are not child nodes.
-VSNs cannot have attributes. Source parsers may normalize attribute names and
-values according to their source format, so source attribute order and exact
-spelling are not graph invariants.
+VSNs cannot have attributes. Authored HSON attributes and presence flags belong
+only to element mode; object members cannot author either. Other source parsers
+may normalize attribute names and values according to their source format, so
+source attribute order and exact spelling are not graph invariants.
 
-HSON presence flags use the canonical string-equals-key representation, for
-example `{ disabled: "disabled" }`, and serialize as bare `disabled`. LiveTree
-keeps those flags in its separate `flags` namespace. Ordinary `attrs.set`
+HSON element presence flags use the canonical string-equals-key representation,
+for example `{ disabled: "disabled" }`, and serialize as bare `disabled`.
+LiveTree keeps those flags in its separate `flags` namespace. Ordinary `attrs.set`
 stores canonical boolean and null values; deletion is explicit through
 `attrs.drop`, and `undefined` is rejected.
 
@@ -148,10 +149,11 @@ Metadata is structural support, not semantic JSON/HTML content. QUID identity
 is stored as `$_meta["quid"]`; array index metadata uses
 `$_meta["index"]`.
 
-HSON `noQuid` output filters only persisted `quid`. Array indexes are
-implicit in textual item order and rebuilt during parsing. Metadata attached
-directly to melted structural VSN nodes is not represented on the current HSON
-wire; this is a pre-existing limitation rather than a general metadata filter.
+Authored HSON persists QUIDs only on element nodes. Object-member QUIDs and any
+other object-member metadata are outside the HSON serialization domain and
+reject rather than being silently omitted; `noQuid` does not legalize such an
+object graph. For element output, `noQuid` filters only persisted `quid`.
+Array indexes are implicit in textual item order and rebuilt during parsing.
 
 ---
 

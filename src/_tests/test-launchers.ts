@@ -55,7 +55,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
-      executableChecks: 107,
+      executableChecks: 114,
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
@@ -65,7 +65,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-structural-mode",
       repositoryModule: "tests/hson-structural-mode.acceptance.mts",
       runtime: "node",
-      executableChecks: 42,
+      executableChecks: 43,
       collections: ["hson", "parsing", "canonical-graph", "structural-mode"],
     }),
     launcher({
@@ -85,7 +85,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 102,
+      executableChecks: 105,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
@@ -115,7 +115,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-ingress",
       repositoryModule: "tests/hson-node-quid-ingress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 32,
+      executableChecks: 33,
       collections: ["quid", "ingress", "externally-discoverable"],
     }),
     launcher({
@@ -125,7 +125,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-egress",
       repositoryModule: "tests/hson-node-quid-egress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 12,
+      executableChecks: 13,
       collections: ["quid", "egress", "serialization", "externally-discoverable"],
     }),
     launcher({

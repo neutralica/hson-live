@@ -8,7 +8,7 @@ import {
   CREATE_TEXT_TOKEN,
 } from "../token-factories.js";
 import { ARR_SYMBOL, CLOSE_KIND } from "../token.types.js";
-import type { ArraySymbol, Position, RawAttr, Tokens } from "../token.types.js";
+import type { ArraySymbol, CloseKind, Position, RawAttr, Tokens } from "../token.types.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_persisted_quid } from "../../../core/hson-node-quid.js";
 import {
@@ -24,8 +24,9 @@ const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
  * Tokenize HSON with one absolute, newline-agnostic source cursor.
  *
  * Physical line boundaries are ordinary whitespace except inside a quoted
- * string and after `//`. Nested tags, arrays, and anonymous objects recurse
- * through this scanner without slicing or rebasing the source.
+ * string and after `//`. Nested elements, object values, and arrays recurse
+ * through this scanner without slicing or rebasing the source. Each complete
+ * angle construct is closer-classified before its body is lowered.
  */
 export function tokenize_hson(hson: string, depth = 0): Tokens[] {
   if (depth < 0 || depth >= MAX_NESTING) {
@@ -79,14 +80,28 @@ class HsonScanner {
     }
   }
 
-  /** Scan `<tag ...>`, `<>`, or an anonymous object `< <child ...> >`. */
+  /**
+   * Scan one complete angle construct. The matching closer is discovered from
+   * raw source before the body is interpreted so object member names can never
+   * be mistaken for element flags or attributes.
+   */
   private scanAngle(depth: number): void {
     this.assertNesting(depth);
     const openPos = this.position();
+    const closeKind = this.classifyAngleCloser(openPos);
     this.consumeExpected("<");
 
-    // Preserve the existing token distinction: only the adjacent spelling
-    // `<>` is EMPTY_OBJ. A layout-separated `< ... >` is an anonymous object.
+    if (closeKind === CLOSE_KIND.obj) {
+      this.scanObjectAfterOpen(openPos, depth);
+      return;
+    }
+
+    this.scanElementAfterOpen(openPos, depth);
+  }
+
+  /** Lower `name value` object members to the existing canonical token shape. */
+  private scanObjectAfterOpen(openPos: Position, depth: number): void {
+    // Preserve the compact empty-object token used by existing parser APIs.
     if (this.peek() === ">") {
       this.consumeExpected(">");
       this.tokens.push(CREATE_EMPTY_OBJ_TOKEN("<>", undefined, openPos));
@@ -94,12 +109,112 @@ class HsonScanner {
     }
 
     this.skipTrivia();
-    if (this.atEnd()) this.fail(`unterminated angle construct`, openPos);
+    if (this.atEnd()) this.fail(`unterminated object`, openPos);
 
-    if (this.peek() === "<" || this.peek() === ">") {
-      this.scanAnonymousObject(openPos, depth + 1);
+    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos));
+    if (this.peek() === ">") {
+      const closePos = this.position();
+      this.consumeExpected(">");
+      this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
       return;
     }
+
+    const declarations = new Map<string, Position>();
+    while (true) {
+      const namePos = this.position();
+      if (this.peek() === "@") {
+        this.fail(`object members cannot author persisted QUID declarations`, namePos);
+      }
+      if (this.peek() === "<") {
+        this.fail(`legacy doubled object syntax is not supported; expected an object member name`, namePos);
+      }
+      if (this.startsWith("/>")) {
+        this.fail(`objects must close with ">", not "/>"`, namePos);
+      }
+      if (this.peek() === ">") {
+        this.fail(`unexpected object closer; expected an object member name`, namePos);
+      }
+
+      const name = this.peek() === "`"
+        ? this.scanQuotedTagName()
+        : this.scanBareName("object member name");
+      assert_authored_hson_source_name(name, namePos);
+      const first = declarations.get(name);
+      if (first !== undefined) {
+        this.fail(
+          `[duplicate-object-member] duplicate HSON object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
+          namePos,
+        );
+      }
+      declarations.set(name, namePos);
+
+      if (!this.skipTrivia()) {
+        this.fail(`required trivia is missing between object member name and value`, this.position());
+      }
+      if (this.atEnd() || this.peek() === ">") {
+        this.fail(`object member "${name}" is missing its value`, namePos);
+      }
+      if (this.peek() === "@") {
+        this.fail(`object members cannot author persisted QUID declarations`, this.position());
+      }
+
+      this.tokens.push(CREATE_OPEN_TOKEN(name, [], namePos));
+      this.scanObjectMemberValue(depth + 1, name);
+      this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, this.previousPosition()));
+
+      const separated = this.skipTrivia();
+      if (this.atEnd()) this.fail(`unterminated object`, openPos);
+      if (this.peek() === ">") {
+        const closePos = this.position();
+        this.consumeExpected(">");
+        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+        return;
+      }
+      if (!separated) {
+        this.fail(`required trivia is missing between sibling object members`, this.position());
+      }
+    }
+  }
+
+  private scanObjectMemberValue(depth: number, memberName: string): void {
+    this.assertNesting(depth);
+    const ch = this.peek();
+    if (ch === `"`) {
+      const pos = this.position();
+      this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      return;
+    }
+    if (ch === "<") {
+      const pos = this.position();
+      if (this.classifyAngleCloser(pos) !== CLOSE_KIND.obj) {
+        this.fail(`object member "${memberName}" cannot contain an element-mode value`, pos);
+      }
+      this.scanAngle(depth);
+      return;
+    }
+    if (ch === "«" || ch === "[") {
+      this.scanArray(depth);
+      return;
+    }
+    if (ch === "'") {
+      this.fail(`unsupported quote delimiter (use double quotes only)`);
+    }
+    if (ch === "`") {
+      this.fail(`backticks are only valid for object member or element names`);
+    }
+
+    const pos = this.position();
+    const raw = this.scanBareToken();
+    if (!isPrimitiveLiteral(raw)) {
+      this.fail(`invalid bare object value "${raw}" for member "${memberName}"; quote string values`, pos);
+    }
+    this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+  }
+
+  /** Existing named element syntax, selected only after a matching `/>`. */
+  private scanElementAfterOpen(openPos: Position, depth: number): void {
+    this.skipTrivia();
+    if (this.atEnd()) this.fail(`unterminated angle construct`, openPos);
 
     if (this.startsWith("/>")) {
       this.fail(`missing tag name before "/>"`, openPos);
@@ -133,14 +248,6 @@ class HsonScanner {
         this.consumeExpected("/");
         this.consumeExpected(">");
         this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.elem, closePos));
-        return;
-      }
-
-      if (this.peek() === ">") {
-        emitOpen();
-        const closePos = this.position();
-        this.consumeExpected(">");
-        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
         return;
       }
 
@@ -215,6 +322,10 @@ class HsonScanner {
       }
 
       if (ch === "<") {
+        const childPos = this.position();
+        if (this.classifyAngleCloser(childPos) !== CLOSE_KIND.elem) {
+          this.fail(`structural mode crossing: element <${tag}> cannot contain an object-mode value`, childPos);
+        }
         contentStarted = true;
         emitOpen();
         this.scanAngle(depth + 1);
@@ -243,48 +354,7 @@ class HsonScanner {
         this.fail(`unexpected bare token in <${tag}> content: "${raw}"${suffix}`, invalidPos);
       }
 
-      this.fail(`unexpected token "${ch}" in <${tag}> header`);
-    }
-  }
-
-  /** The first `<` is the object wrapper; the next `<` starts its first child. */
-  private scanAnonymousObject(openPos: Position, depth: number): void {
-    this.assertNesting(depth);
-    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos));
-
-    while (true) {
-      this.skipTrivia();
-      if (this.atEnd()) this.fail(`unterminated implicit object`, openPos);
-
-      if (this.peek() === ">") {
-        const closePos = this.position();
-        this.consumeExpected(">");
-        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
-        return;
-      }
-
-      if (this.startsWith("/>")) {
-        this.fail(`implicit objects must close with ">", not "/>"`);
-      }
-
-      const ch = this.peek();
-      if (ch === "<") {
-        this.scanAngle(depth);
-      } else if (ch === "«" || ch === "[") {
-        this.scanArray(depth);
-      } else if (ch === `"`) {
-        const pos = this.position();
-        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
-      } else if (ch === "'") {
-        this.fail(`unsupported quote delimiter (use double quotes only)`);
-      } else {
-        const pos = this.position();
-        const raw = this.scanBareToken();
-        if (!isPrimitiveLiteral(raw)) {
-          this.fail(`unexpected bare token in implicit object: "${raw}"`, pos);
-        }
-        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
-      }
+      this.fail(`unexpected token "${ch}" in <${tag}> element header`);
     }
   }
 
@@ -612,10 +682,152 @@ class HsonScanner {
     return out;
   }
 
-  private skipTrivia(): void {
+  /** Discover this angle's matching closer without changing the source cursor. */
+  private classifyAngleCloser(openPos: Position): CloseKind {
+    const stack: Array<"<" | "[" | "«"> = ["<"];
+    let cursor = this.index + 1;
+    let quoted: `"` | "`" | undefined;
+    let quoteStart = -1;
+    let expectAttributeValue = false;
+    let unquotedAttributeValue = false;
+
+    while (cursor < this.source.length) {
+      const ch = this.source[cursor];
+      const next = this.source[cursor + 1];
+
+      if (quoted !== undefined) {
+        if (ch === "\\") {
+          if (cursor + 1 >= this.source.length || next === "\n" || next === "\r") {
+            this.fail(
+              quoted === `"`
+                ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
+                : `[invalid-name-escape] invalid escape termination in backtick HSON name`,
+              this.positionAt(cursor),
+            );
+          }
+          cursor += 2;
+          continue;
+        }
+        if (ch === quoted) {
+          quoted = undefined;
+          quoteStart = -1;
+        }
+        cursor += 1;
+        continue;
+      }
+
+      // Element attributes retain the existing permissive unquoted value
+      // grammar, including literal slash runs such as `href=foo//bar`. A
+      // `//` inside that lexical value is not comment trivia.
+      if (unquotedAttributeValue) {
+        if (ch === "/" && next === ">") {
+          unquotedAttributeValue = false;
+        } else if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === "[" || ch === "]" || ch === "«" || ch === "»") {
+          unquotedAttributeValue = false;
+        } else {
+          cursor += 1;
+          continue;
+        }
+      }
+
+      if (expectAttributeValue) {
+        if (/\s/.test(ch)) {
+          cursor += 1;
+          continue;
+        }
+        if (ch === "/" && next === "/") {
+          cursor += 2;
+          while (cursor < this.source.length && this.source[cursor] !== "\n" && this.source[cursor] !== "\r") {
+            cursor += 1;
+          }
+          continue;
+        }
+        if (ch !== `"` && ch !== "`" && ch !== "<" && ch !== ">") {
+          expectAttributeValue = false;
+          unquotedAttributeValue = true;
+          cursor += 1;
+          continue;
+        }
+        expectAttributeValue = false;
+      }
+
+      if (ch === `"` || ch === "`") {
+        quoted = ch;
+        quoteStart = cursor;
+        cursor += 1;
+        continue;
+      }
+
+      if (ch === "/" && next === "/") {
+        cursor += 2;
+        while (cursor < this.source.length && this.source[cursor] !== "\n" && this.source[cursor] !== "\r") {
+          cursor += 1;
+        }
+        continue;
+      }
+
+      if (ch === "=") {
+        expectAttributeValue = true;
+        cursor += 1;
+        continue;
+      }
+
+      if (ch === "<") {
+        expectAttributeValue = false;
+        unquotedAttributeValue = false;
+        stack.push("<");
+        cursor += 1;
+        continue;
+      }
+      if (ch === "[") {
+        stack.push("[");
+        cursor += 1;
+        continue;
+      }
+      if (ch === "«") {
+        stack.push("«");
+        cursor += 1;
+        continue;
+      }
+      if (ch === "/" && next === ">" && stack.at(-1) === "<") {
+        expectAttributeValue = false;
+        unquotedAttributeValue = false;
+        stack.pop();
+        if (stack.length === 0) return CLOSE_KIND.elem;
+        cursor += 2;
+        continue;
+      }
+      if (ch === ">" && stack.at(-1) === "<") {
+        expectAttributeValue = false;
+        unquotedAttributeValue = false;
+        stack.pop();
+        if (stack.length === 0) return CLOSE_KIND.obj;
+        cursor += 1;
+        continue;
+      }
+      if (ch === "]" && stack.at(-1) === "[") {
+        stack.pop();
+        cursor += 1;
+        continue;
+      }
+      if (ch === "»" && stack.at(-1) === "«") {
+        stack.pop();
+        cursor += 1;
+        continue;
+      }
+      cursor += 1;
+    }
+
+    if (quoted === `"`) this.fail(`unterminated quoted string`, this.positionAt(quoteStart));
+    if (quoted === "`") this.fail(`unterminated quoted tag name`, this.positionAt(quoteStart));
+    this.fail(`unterminated angle construct`, openPos);
+  }
+
+  private skipTrivia(): boolean {
+    const start = this.index;
     while (true) {
       while (!this.atEnd() && /\s/.test(this.peek())) this.consume();
-      if (!this.startsWith("//")) return;
+      if (!this.startsWith("//")) return this.index !== start;
 
       this.consumeExpected("/");
       this.consumeExpected("/");
@@ -650,6 +862,27 @@ class HsonScanner {
 
   private position(): Position {
     return { line: this.line, col: this.col, index: this.index };
+  }
+
+  private positionAt(index: number): Position {
+    let line = 1;
+    let col = 1;
+    let cursor = 0;
+    while (cursor < index) {
+      const ch = this.source[cursor];
+      if (ch === "\r") {
+        if (this.source[cursor + 1] === "\n") cursor += 1;
+        line += 1;
+        col = 1;
+      } else if (ch === "\n") {
+        line += 1;
+        col = 1;
+      } else {
+        col += 1;
+      }
+      cursor += 1;
+    }
+    return { line, col, index };
   }
 
   private previousPosition(): Position {

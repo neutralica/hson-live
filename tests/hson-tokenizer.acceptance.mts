@@ -82,6 +82,109 @@ function assert_authored_rejection(
   );
 }
 
+check("object-value grammar covers empty, one, multiple, nested, array, and array-item objects", () => {
+  const fixtures: ReadonlyArray<readonly [string, JsonValue]> = [
+    [`<>`, {}],
+    [`<a "1">`, { a: "1" }],
+    [`<a "1" b "2">`, { a: "1", b: "2" }],
+    [`<a <b "2" c "3"> d false>`, { a: { b: "2", c: "3" }, d: false }],
+    [`<a «1,2» b null>`, { a: [1, 2], b: null }],
+    [`«<a "1" b "2">»`, [{ a: "1", b: "2" }]],
+  ];
+  for (const [source, json] of fixtures) {
+    assert.deepEqual(parse_hson(source), parse_json(json));
+  }
+});
+
+check("object member names and physical-line comments use required trivia", () => {
+  const source = `<true "literal-looking"\n  \`unusual name\`// name/value separator\n  "value"\n  a// name/value separator\n  true\n  b false>`;
+  assert.deepEqual(parse_hson(source), parse_json({
+    true: "literal-looking",
+    "unusual name": "value",
+    a: true,
+    b: false,
+  }));
+  assert.throws(() => parse_hson(`<a"1">`), /trivia.*name.*value|separator/i);
+  assert.throws(() => parse_hson(`<a "1"b "2">`), /trivia.*member|separator/i);
+  assert.throws(() => parse_hson(`<a\/\* comment \*\/"1">`), /block|unexpected|trivia/i);
+});
+
+check("object members require one complete value and reject object headers", () => {
+  for (const source of [
+    `<a>`,
+    `<a "1" b>`,
+    `<a bare>`,
+    `<a flag "value">`,
+    `<a title="value" "content">`,
+    `<a @0000000000000001 1>`,
+  ]) {
+    assert.throws(
+      () => parse_hson(source),
+      (cause) => cause instanceof Error && /at \d+:\d+ \(index \d+\)/.test(cause.message),
+      source,
+    );
+  }
+});
+
+check("legacy property-angle and anonymous-object aliases reject", () => {
+  for (const source of [
+    `<a 1><b 2>`,
+    `<<a 1>>`,
+    `«<<a 1><b 2>>»`,
+    `<record <a 1><b 2>>`,
+  ]) {
+    assert.throws(
+      () => parse_hson(source),
+      (cause) => cause instanceof Error && /at \d+:\d+ \(index \d+\)/.test(cause.message),
+      source,
+    );
+  }
+});
+
+check("object pairs stay stable across member cardinality and layout", () => {
+  const compactSources = [`<>`, `<b "2">`, `<a "1" b "2">`];
+  const readableSources = [
+    `<\n>`,
+    `<\n  b "2"\n>`,
+    `<\n  a "1"\n  b "2"\n>`,
+  ];
+  for (let index = 0; index < compactSources.length; index += 1) {
+    assert.deepEqual(parse_hson(readableSources[index]), parse_hson(compactSources[index]));
+  }
+});
+
+check("object duplicate tracking is case-sensitive and reports both positions", () => {
+  assert.throws(
+    () => parse_hson(`<a 1 a 2>`),
+    /\[duplicate-object-member\].*first declared at 1:2 \(index 1\).*at 1:6 \(index 5\)/,
+  );
+  assert.deepEqual(parse_hson(`<a 1 A 2>`), parse_json({ a: 1, A: 2 }));
+});
+
+check("element grammar and canonical graph remain unchanged", () => {
+  const fixtures: ReadonlyArray<readonly [string, string]> = [
+    [`<a/>`, `<a/>`],
+    [`<a "text"/>`, `<a "text"/>`],
+    [`<a flag/>`, `<a flag/>`],
+    [`<a title="value"/>`, `<a title="value"/>`],
+    [`<a href=foo//bar/>`, `<a href="foo//bar"/>`],
+    [`<a href=// layout\nfoo//bar/>`, `<a href="foo//bar"/>`],
+    [`<a <b/>/>`, `<a\n  <b/>\n/>`],
+    [
+      `<a @0000000000000001 style="color: red" "before" <b/> "after"/>`,
+      `<a @0000000000000001 style="color: red"\n  "before"\n  <b/>\n  "after"\n/>`,
+    ],
+    [`<a/><b/>`, `<a/>\n<b/>`],
+  ];
+  for (const [source, expected] of fixtures) {
+    const before = parse_hson(source);
+    assert.deepEqual(parse_tokens(tokenize_hson(source)), before);
+    const wire = serialize_hson(detach_hson_root_value(before));
+    assert.equal(wire, expected);
+    assert.deepEqual(parse_hson(wire), before);
+  }
+});
+
 check("header @quid is represented separately from ordinary attributes", () => {
   const open = tokenize_hson(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden/>`)[0];
   assert.equal(open.kind, "OPEN");
@@ -105,15 +208,15 @@ check("persisted QUIDs use the canonical 80-bit Base32 contract", () => {
   }
 });
 
-const legacy_cases = [
+const token_cases = [
   {
-    name: "canonical multiline object",
-    source: `<author
-  <name "Ada">
-  <age 42>
+    name: "canonical multiline object members",
+    source: `<
+  name "Ada"
+  age 42
 >`,
     expected: [
-      { kind: "OPEN", tag: "author", attrs: [] },
+      { kind: "OPEN", tag: "_hson_obj", attrs: [] },
       { kind: "OPEN", tag: "name", attrs: [] },
       { kind: "TEXT", raw: `"Ada"`, quoted: true },
       { kind: "CLOSE", close: "obj" },
@@ -141,17 +244,18 @@ const legacy_cases = [
     ],
   },
   {
-    name: "nested arrays and anonymous object item",
+    name: "nested arrays and object item",
     source: `<items
   «
     1,
     [true, null],
     <
-      <name "Ada">
+      name "Ada"
     >
   »
 >`,
     expected: [
+      { kind: "OPEN", tag: "_hson_obj", attrs: [] },
       { kind: "OPEN", tag: "items", attrs: [] },
       { kind: "ARR_OPEN", symbol: "guillemet" },
       { kind: "TEXT", raw: "1" },
@@ -165,6 +269,7 @@ const legacy_cases = [
       { kind: "CLOSE", close: "obj" },
       { kind: "CLOSE", close: "obj" },
       { kind: "ARR_CLOSE", symbol: "guillemet" },
+      { kind: "CLOSE", close: "obj" },
       { kind: "CLOSE", close: "obj" },
     ],
   },
@@ -223,8 +328,8 @@ second"
   },
 ];
 
-for (const fixture of legacy_cases) {
-  check(`legacy tokens: ${fixture.name}`, () => {
+for (const fixture of token_cases) {
+  check(`canonical tokens: ${fixture.name}`, () => {
     const tokens = tokenize_hson(fixture.source);
     assert.deepEqual(token_summary(tokens), fixture.expected);
     assert.deepEqual(parse_tokens(tokens), parse_hson(fixture.source));
@@ -236,7 +341,7 @@ const required_valid = [
   `<tag attr="value" flag"content"/>`,
   `<tag attr="value" flag "content" />`,
   `<tag count=2/>`,
-  `<a 1><b 2>`,
+  `<a 1 b 2>`,
   `<parent <child "value"/>/>`,
   `<\`this is always a tag\`
   attribute="long value"
@@ -245,10 +350,9 @@ const required_valid = [
 />`,
   `<p "first" <em "middle"/> "last"/>`,
   `<
-  tag
-  "content"
+  tag "content"
 >`,
-  `[1, «true, [null, "deep"]», <<name "Ada"><age 31>>]`,
+  `[1, «true, [null, "deep"]», <name "Ada" age 31>]`,
   `<p // comment after tag name
     "first" // comment after content
     <em // comment in child header
@@ -281,7 +385,7 @@ check("required interleaved content token order", () => {
   ]);
 });
 
-check("empty-object and anonymous-object angle forms remain distinct tokens", () => {
+check("compact and layout-separated empty objects retain canonical tokens", () => {
   assert.deepEqual(token_summary(tokenize_hson(`<>`)), [
     { kind: "EMPTY_OBJ", raw: "<>" },
   ]);
@@ -289,23 +393,19 @@ check("empty-object and anonymous-object angle forms remain distinct tokens", ()
     { kind: "OPEN", tag: "_hson_obj", attrs: [] },
     { kind: "CLOSE", close: "obj" },
   ]);
-  assert.deepEqual(token_summary(tokenize_hson(`<<a 1>>`)), [
-    { kind: "OPEN", tag: "_hson_obj", attrs: [] },
-    { kind: "OPEN", tag: "a", attrs: [] },
-    { kind: "TEXT", raw: "1" },
-    { kind: "CLOSE", close: "obj" },
-    { kind: "CLOSE", close: "obj" },
-  ]);
+  assert.throws(() => tokenize_hson(`<<a 1>>`), /legacy doubled object syntax/);
 });
 
 const equivalent_layouts = [
   [
-    `<a
-  <b 1>
-  <c 2>
->
-<d 3>`,
-    `<a<b 1><c 2>><d 3>`,
+    `<
+  a <
+    b 1
+    c 2
+  >
+  d 3
+>`,
+    `<a <b 1 c 2> d 3>`,
   ],
   [
     `<p
@@ -321,17 +421,16 @@ const equivalent_layouts = [
     1,
     [true, null],
     <
-      <name "Ada">
-      <age 31>
+      name "Ada"
+      age 31
     >
   »
 >`,
-    `<items «1,[true,null],<<name "Ada"><age 31>>»>`,
+    `<items «1,[true,null],<name "Ada" age 31>»>`,
   ],
   [
     `<
-  tag
-  "content"
+  tag "content"
 >`,
     `<tag "content">`,
   ],
@@ -366,7 +465,9 @@ check("CRLF and nested constructs retain absolute token starts", () => {
     { kind: "TEXT", pos: { line: 2, col: 3, index: 6 } },
     { kind: "CLOSE", pos: { line: 4, col: 1, index: 14 } },
     { kind: "OPEN", pos: { line: 5, col: 1, index: 18 } },
+    { kind: "OPEN", pos: { line: 5, col: 2, index: 19 } },
     { kind: "TEXT", pos: { line: 5, col: 4, index: 21 } },
+    { kind: "CLOSE", pos: { line: 5, col: 4, index: 21 } },
     { kind: "CLOSE", pos: { line: 5, col: 5, index: 22 } },
   ]);
   const text = tokens[1];
@@ -389,7 +490,9 @@ check("comments quoted tags and nested arrays share absolute positions", () => {
   assert.deepEqual(tokens.map((token) => ({ kind: token.kind, pos: token.pos })), [
     { kind: "ARR_OPEN", pos: { line: 2, col: 1, index: 6 } },
     { kind: "OPEN", pos: { line: 2, col: 2, index: 7 } },
+    { kind: "OPEN", pos: { line: 2, col: 3, index: 8 } },
     { kind: "TEXT", pos: { line: 2, col: 9, index: 14 } },
+    { kind: "CLOSE", pos: { line: 2, col: 9, index: 14 } },
     { kind: "CLOSE", pos: { line: 2, col: 10, index: 15 } },
     { kind: "ARR_OPEN", pos: { line: 2, col: 12, index: 17 } },
     { kind: "TEXT", pos: { line: 2, col: 13, index: 18 } },
@@ -464,7 +567,7 @@ check("authored reserved nested form rejects at its nested source position", () 
 });
 
 check("authored reserved property position rejects", () => {
-  assert_authored_rejection(`<<_hson_obj 1>>`, "[authored-reserved-name]", "_hson_obj");
+  assert_authored_rejection(`<_hson_obj 1>`, "[authored-reserved-name]", "_hson_obj");
 });
 
 check("authored reserved tag position rejects", () => {

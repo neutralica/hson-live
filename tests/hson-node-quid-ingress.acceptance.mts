@@ -349,6 +349,13 @@ check("HSON canonical @quid attaches protected metadata", () => {
   assert.equal(canonical.$_meta?.[HSON_META_QUID], Q1);
 });
 
+check("HSON object members reject authored QUID syntax", () => {
+  assert.throws(
+    () => parse_hson(`<member @${Q1} "value">`),
+    /object members cannot author persisted QUID declarations.*1:9 \(index 8\)/,
+  );
+});
+
 check("HSON rejects malformed length, alphabet, and uppercase without normalization", () => {
   for (const malformed of [
     "000000000000001",

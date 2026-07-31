@@ -66,10 +66,10 @@ check("parser groups a uniform top-level element sequence", () => {
   assert.equal(compact(`<a/><b/>`), `<a/> <b/>`);
 });
 
-check("parser groups a uniform top-level object sequence", () => {
-  const parsed = parse(`<a 1><b 2>`);
+check("parser retains one complete top-level object value", () => {
+  const parsed = parse(`<a 1 b 2>`);
   assert.equal(parsed.$_tag, "_hson_obj");
-  assert.equal(compact(`<a 1><b 2>`), `<a 1><b 2>`);
+  assert.equal(compact(`<a 1 b 2>`), `<a 1 b 2>`);
 });
 
 check("parser retains an element child beneath an element parent", () => {
@@ -108,7 +108,7 @@ check("parser rejects mixed top-level object then element mode", () => {
 });
 
 check("parser rejects an object child beneath an element parent", () => {
-  assert.throws(() => parse(`<wrapper <child 2>/>`), /structural mode crossing.*child.*1:10/);
+  assert.throws(() => parse(`<wrapper <child 2>/>`), /structural mode crossing.*wrapper.*object-mode.*1:10/);
 });
 
 check("parser rejects an array-valued child beneath an element parent", () => {
@@ -116,15 +116,15 @@ check("parser rejects an array-valued child beneath an element parent", () => {
 });
 
 check("parser rejects an element child beneath an object parent", () => {
-  assert.throws(() => parse(`<record <field/>>`), /structural mode crossing.*field/);
+  assert.throws(() => parse(`<record <field/>>`), /cannot contain an element-mode value/);
 });
 
 check("parser rejects a deeper recursive element-to-object crossing", () => {
-  assert.throws(() => parse(`<outer <middle <field 2>/>/>`), /structural mode crossing.*middle.*field/);
+  assert.throws(() => parse(`<outer <middle <field 2>/>/>`), /structural mode crossing.*middle.*object-mode/);
 });
 
 check("parser rejects a deeper recursive object-to-element crossing", () => {
-  assert.throws(() => parse(`<outer <middle <leaf/>>>`), /structural mode crossing.*middle.*leaf/);
+  assert.throws(() => parse(`<outer <middle <leaf/>>>`), /cannot contain an element-mode value/);
 });
 
 check("canonical admission accepts an empty ordinary element node", () => {
@@ -228,6 +228,15 @@ check("array items reject direct ordinary node children", () => {
   rejectsEveryBoundary(root(arr(item("0", node("property", [obj()])))), /ordinary.*_hson_ii|_hson_ii.*ordinary/);
 });
 
+check("arrays reject element-mode values recursively", () => {
+  assert.throws(() => parse(`«<child/>»`), /_hson_arr cannot contain an element-mode value/);
+  assert.throws(() => parse(`<items ««<child/>»»>`), /_hson_arr cannot contain an element-mode value/);
+  const direct = root(arr(item("0", elem(node("child")))));
+  rejectsEveryBoundary(direct, /_hson_arr cannot contain an element-mode value/);
+  const nested = root(arr(item("0", arr(item("0", elem(node("child")))))));
+  rejectsEveryBoundary(nested, /_hson_arr cannot contain an element-mode value/);
+});
+
 check("array items reject empty membership wrappers", () => {
   rejectsEveryBoundary(root(arr(item("0"))), /_hson_ii must contain exactly one child node/);
 });
@@ -259,8 +268,8 @@ check("value leaves reject every payload outside the exact primitive domain", ()
 check("valid structural source order does not affect unanimous grouping", () => {
   assert.equal(parse(`<a/><b/>`).$_tag, "_hson_elem");
   assert.equal(parse(`<b/><a/>`).$_tag, "_hson_elem");
-  assert.equal(parse(`<a 1><b 2>`).$_tag, "_hson_obj");
-  assert.equal(parse(`<b 2><a 1>`).$_tag, "_hson_obj");
+  assert.equal(parse(`<a 1 b 2>`).$_tag, "_hson_obj");
+  assert.equal(parse(`<b 2 a 1>`).$_tag, "_hson_obj");
 });
 
 check("JSON scalar, nested-object, and array relationships remain canonical", () => {

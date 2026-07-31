@@ -4,9 +4,9 @@
 ## Serialized Syntax
 Updated: 2026-07-31
 
-HSON is the textual serialization of an HSON node graph. It resembles markup,
-but one construct contains a node's name, attributes, and content; there is no
-repeated closing tag name.
+HSON is the textual serialization of an HSON node graph. Object values and
+elements deliberately use asymmetric angle syntax and neither repeats a closing
+name.
 
 ---
 
@@ -14,14 +14,14 @@ repeated closing tag name.
 
 ```hson
 <tag attrs? content? />
-<property attrs? content? >
+<object-member-name value ... >
 ```
 
 The closer selects cluster semantics:
 
-- `/>` produces element semantics and an `_hson_elem` content cluster;
-- `>` produces object semantics and an `_hson_obj` or `_hson_arr` content
-  cluster.
+- `/>` selects the existing named-element grammar and `_hson_elem` semantics;
+- `>` selects the object grammar. One angle pair represents one complete
+  semantic `_hson_obj` value.
 
 The space before `/>` is optional. A construct may be inline or multiline:
 
@@ -33,14 +33,14 @@ The space before `/>` is optional. A construct may be inline or multiline:
 />
 ```
 
-Closer semantics apply to the complete containing branch. Multiple top-level
-nodes group beneath `_hson_elem` when every closer is element-mode, or beneath
-`_hson_obj` when every closer is object-mode. A sequence that mixes the two
-modes, such as `<a/><b 2>`, rejects instead of defaulting to element mode.
+Multiple top-level element nodes remain an `_hson_elem` fragment. Multiple
+top-level object values do not merge: one object pair must contain all sibling
+members. A sequence that mixes object and element values, such as `<a/><b 2>`,
+also rejects.
 
 The same rule is recursive: `<wrapper <child/>/>` and
-`<record <field 2>>` are coherent, while object-shaped children beneath an
-element branch and element-shaped properties beneath an object branch reject.
+`<record <field 2>>` are coherent, while object values beneath an element
+branch and element values beneath an object or array branch reject.
 
 ---
 
@@ -52,23 +52,23 @@ Bare header names use an ASCII, case-sensitive grammar:
 [A-Za-z_:][A-Za-z0-9:._-]*
 ```
 
-Tag/property names outside that bare grammar are emitted between backticks:
+Element and object-member names outside that bare grammar are emitted between
+backticks:
 
 ```hson
-<`display name` "Ada">
-<`a.b` 1>
+<`display name` "Ada" `a b` 1>
 ```
 
 Backtick names use a restricted escape grammar. Only escaped backticks,
 backslashes, `\n`, `\r`, and `\t` are accepted. JSON-only escapes such as
 `\uXXXX`, `\b`, `\f`, and `\/`, as well as unknown escapes, reject. A literal
-forward slash needs no escape. Backticks are for tag/property names only; text
-and quoted attribute values use double quotes.
+forward slash needs no escape. Backticks are for element or object-member names
+only; text and quoted attribute values use double quotes.
 
 The `_hson_` prefix is reserved for structural nodes and cannot be authored as
-an ordinary user tag/property name. This applies to bare and backtick spellings,
+an ordinary user element/member name. This applies to bare and backtick spellings,
 to known VSN names such as `_hson_obj`, and to future `_hson_*` names. Parser
-synthesis may still create those internal names for anonymous objects, arrays,
+synthesis may still create those internal names for objects, arrays,
 primitive leaves, clusters, and the attachment root.
 
 ---
@@ -129,9 +129,9 @@ relationships inside the same `_hson_elem` branch.
 
 ---
 
-## Attributes, flags, and metadata
+## Element attributes, flags, and metadata
 
-Attributes appear after the tag name:
+Attributes and flags appear only after an element name:
 
 ```hson
 <article id="post-042" class="entry featured"/>
@@ -177,6 +177,9 @@ All attribute names, including every `data-*` spelling, go to `$_attrs`.
 Structural metadata is declared only through its dedicated syntax: `@quid` in
 HSON and registered `hson:*` names in HTML/SVG. Metadata is exact-allowlist and
 default-deny. Backtick quoting never applies to attribute or metadata names.
+Object members cannot author QUIDs, metadata, attributes, or flags. An
+object-structured ordinary node carrying metadata is outside the
+HSON-serializable domain; serialization rejects it even under `noQuid()`.
 
 ---
 
@@ -214,7 +217,9 @@ Canonical arrays use guillemets and comma-separated items:
 
 The parser also accepts `[` and `]`, including `[]`; serialization uses `«` and
 `»`. Arrays may be inline or multiline and may contain primitives, nested
-arrays, named nodes, or anonymous objects. Commas separate top-level items.
+arrays, or object values. Commas separate top-level items. An array does not
+collapse when it has one item and cannot bridge an object branch to
+element-mode content.
 
 Internally, an array is `_hson_arr` with ordered `_hson_ii` children. Each item
 receives a canonical decimal string `index`. Wrapper-bearing inputs are sorted
@@ -225,35 +230,62 @@ parsing rebuilds sequential indexes from source order.
 
 ---
 
-## Objects and empty objects
+## Objects
 
-Object properties use `>`:
+One object angle pair contains repeated punctuation-free `name value` members:
 
 ```hson
-<author
-  <handle "Neutralica">
-  <roles
-    « "author", "maintainer" »
+<
+  author <
+    handle "Neutralica"
+    roles « "author", "maintainer" »
   >
 >
 ```
 
-The exact token `<>` represents an empty object. A lone `<` can open the
-parser's implicit anonymous-object form, used particularly for object items in
-arrays:
+The grammar is:
+
+```text
+object-value :=
+  "<" trivia*
+  (object-member (required-trivia object-member)*)?
+  trivia* ">"
+
+object-member := source-name required-trivia object-member-value
+
+object-member-value :=
+    quoted-string | number | true | false | null
+  | object-value | array-value
+```
+
+Trivia is whitespace or a `//` physical-line comment. At least one trivia unit
+is required between a member name and value and between sibling members; the
+amount and indentation are not semantic. Block comments remain unsupported.
+Object members use no colon and no comma. Arrays retain commas.
+
+The exact token `<>` represents an empty object. The same pair remains the
+object boundary at zero, one, or many members. An object array item uses that
+pair directly:
 
 ```hson
 <people
   «
     <
-      <name "Jo">
-      <age 31>
+      name "Jo"
+      age 31
     >
   »
 >
 ```
 
-Ordinary object property names must be unique after parsing.
+Ordinary member names are case-sensitive and must be unique. A member must own
+exactly one value. Thus `<a>` is invalid and an empty object value is written
+`<a <>>`.
+
+The former property-angle and anonymous-wrapper grammar has been removed.
+Adjacent root properties (`<a 1><b 2>`), doubled objects (`<<a 1>>`), and
+doubled array objects (`«<<a 1>>»`) are invalid rather than compatibility
+aliases.
 
 ---
 
@@ -267,18 +299,18 @@ parser-owned root before HSON output. A root supplied through `fromNode()` is
 not silently unwrapped. VSNs remain explicit in the IR and can appear literally
 in cross-format HTML/JSON where scaffolding is required to preserve structure.
 
-HSON output itself is VSN-free. Objects use ordinary property and anonymous
-object notation, arrays use array notation while their `_hson_ii` indexes are
+HSON output itself is VSN-free. Every semantic object value uses one object
+angle pair, arrays use array notation while their `_hson_ii` indexes are
 reconstructed from order, strings and scalar values use primitive notation,
 and element clusters use ordinary element-mode tags and fragments. The
 serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index
-metadata as HSON source. Persisted QUID metadata is the defined exception to
-metadata elision and is represented by the `@quid` header sigil.
+metadata as HSON source. Persisted QUID metadata is represented by the `@quid`
+header sigil only for eligible element nodes. Object-member metadata rejects.
 
 The canonical closure rule is semantic rather than byte-oriented:
 
 ```text
-valid non-root canonical HsonNode
+admitted HSON-serializable semantic value
   -> serialize_hson(node)
   -> parse_hson(output)
   -> detach_hson_root_value()
@@ -299,8 +331,9 @@ indentation but retains conventional spaces between a tag name, attributes,
 flags, and content. Both layouts are emitted structurally rather than by
 rewriting whitespace in an already serialized string.
 
-`noQuid()` removes only the defined `quid` field from eligible standard
-tags and never mutates the graph or identity registry. Structural VSN metadata
+`noQuid()` removes only the defined `quid` field from eligible element nodes
+and never mutates the graph or identity registry. It does not legalize object
+metadata. Structural VSN metadata
 is restricted to the operational
 `index` on `_hson_ii`; it is omitted because array order carries the same
 information and parsing regenerates it. `_hson_root`, `_hson_elem`,

@@ -82,11 +82,11 @@ export type CloseKind = 'obj' | 'elem';
 export type ArraySymbol = 'guillemet' | 'bracket';
 
 /*******
- * Opening tag or object-key token.
+ * Opening structural token.
  *
- * Emitted for element opens and object property entries.
- * Carries fully tokenized raw attributes but no semantic
- * interpretation beyond structure.
+ * Emitted directly for element opens. Object values are lowered after closer
+ * classification into a synthetic `_hson_obj` open plus one ordinary open per
+ * member. Only element opens may carry raw attributes or a QUID.
  *******/
 export type TokenOpen = {
   kind: typeof TOKEN_KIND.OPEN; 

@@ -5,10 +5,9 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { TOKEN_KIND, CLOSE_KIND, TokenEmptyObj } from "../token.types.js";
 import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonNode, NodeContent } from "../../../core/types.js";
-import { Tokens, CloseKind, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../token.types.js";
+import { Tokens, CloseKind, Position, TokenOpen, TokenClose, TokenArrayOpen, TokenArrayClose, TokenKind, TokenText } from "../token.types.js";
 import { coerce } from "../utils/primitive-utils/coerce-string.utils.js";
 import { _snip } from "../utils/sys-utils/snip.utils.js";
-import { unwrap_root_obj } from "../utils/json-utils/unwrap-root-obj.js";
 import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_string } from "../../../core/value-guards.js";
@@ -51,12 +50,12 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *
  * High-level behavior:
  * - Walks the token array once, maintaining an index (`ix`) into `$tokens`.
- * - Uses `readTag` to parse element/VSN tags (`OPEN`…`CLOSE`) into nodes,
- *   shaping content into `_hson_elem` or `_hson_obj` clusters based on the tag’s
- *   close kind (`CLOSE_KIND.elem` vs `CLOSE_KIND.obj`).
+ * - Uses `readTag` to assemble the scanner's lowered element and object-member
+ *   token sequences (`OPEN`…`CLOSE`) into nodes. Angle closer classification
+ *   and object-member grammar have already been resolved by the scanner.
  * - Uses `readArray` to parse `ARR_OPEN`…`ARR_CLOSE` sequences into
  *   `_hson_arr` nodes full of `_hson_ii` children, each tagged with `index`.
- * - Handles shorthand empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
+ * - Handles empty objects (`EMPTY_OBJ`, i.e. `<>`) both at
  *   top-level and inside arrays.
  * - Converts `TEXT` tokens into primitive leaves:
  *   - quoted text → `JSON.parse(raw)` to decode string literals
@@ -69,13 +68,14 @@ export const make_leaf = (v: Primitive): HsonNode =>
  * - If the sole top-level node is already `<_hson_root>`, return it directly.
  * - Otherwise, synthesize a `_hson_root` node according to the top-level shape:
  *   - A single cluster node (`_hson_obj`, `_hson_arr`, `_hson_elem`) is wrapped as-is.
- *   - A single standard tag is wrapped in `_hson_obj` or `_hson_elem` depending on
- *     its recorded close kind.
+ *   - A single standard element is wrapped in `_hson_elem` according to its
+ *     recorded close kind.
  *   - A sole primitive leaf is attached directly beneath `_hson_root`.
  *   - No nodes at all remain an internal empty-root parser state; `parse_hson`
  *     rejects trivia-only source before that state can become a source result.
- *   - Multiple top-level nodes are wrapped in `_hson_obj` or `_hson_elem` only
- *     when their close kinds are unanimous; mixed structural modes reject.
+ *   - Multiple top-level elements form an element fragment. Multiple top-level
+ *     object values reject because one object angle pair owns the full member
+ *     collection; mixed structural modes also reject.
  *
  * Error handling:
  * - Any unexpected token kind in a given context (inside tags, arrays,
@@ -87,11 +87,11 @@ export const make_leaf = (v: Primitive): HsonNode =>
  * @returns A `_hson_root`-wrapped `HsonNode` representing the parsed HSON tree.
  * @see tokenize_hson
  * @see make_leaf
- * @see unwrap_root_obj
  */
 export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {}): HsonNode {
     const nodes: HsonNode[] = [];
     const topCloseKinds: CloseKind[] = [];
+    const topPositions: Position[] = [];
 
     let ix = 0;
     const N = tokens.length;
@@ -162,7 +162,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             open: TokenOpen;
         }>> = [];
         let sawNestedArray = false;
-        let sawEmptyObjShorthand = false; // <-- NEW
+        let sawEmptyObject = false;
 
         // --- gather children
         while (ix < N) {
@@ -174,10 +174,10 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                 break;
             }
 
-            //  empty object shorthand "<>"
+            //  empty object "<>"
             if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
                 _take(TOKEN_KIND.EMPTY_OBJ);
-                sawEmptyObjShorthand = true;
+                sawEmptyObject = true;
                 continue;
             }
 
@@ -227,7 +227,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                     "parse_tokens.structural-mode",
                 );
             }
-            if (closeKind === CLOSE_KIND.elem && (sawNestedArray || sawEmptyObjShorthand)) {
+            if (closeKind === CLOSE_KIND.elem && (sawNestedArray || sawEmptyObject)) {
                 _throw_transform_err(
                     `structural mode crossing: element branch <${open.tag}> cannot contain object/array structure at ${open.pos.line}:${open.pos.col}`,
                     "parse_tokens.structural-mode",
@@ -238,7 +238,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         // ---------- <_hson_root>: choose cluster by its own closer; never mix modes ----------
         if (open.tag === ROOT_TAG) {
             //  explicit "<>" under root => single empty _hson_obj cluster
-            if (sawEmptyObjShorthand) {
+            if (sawEmptyObject) {
                 node.$_content = [CREATE_NODE({ $_tag: OBJ_TAG })];
                 return { node, closeKind, open };
             }
@@ -336,19 +336,20 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                 childNode = make_leaf(prim); // ← was: nodes.push(...); continue;
 
             } else if (t.kind === TOKEN_KIND.OPEN) {
-                childNode = readTag().node;
+                const child = readTag();
+                if (child.closeKind === CLOSE_KIND.elem) {
+                    _throw_transform_err(
+                        `_hson_arr cannot contain an element-mode value at ${child.open.pos.line}:${child.open.pos.col}; arrays cannot cross object/element structural modes`,
+                        "parse_tokens.structural-mode",
+                    );
+                }
+                childNode = child.node;
             } else if (t.kind === TOKEN_KIND.ARR_OPEN) {
                 childNode = readArray();
             } else {
                 _throw_transform_err(`unexpected ${t.kind} in array`, "parse_tokens");
             }
 
-            const passThruVSNs = new Set<string>([OBJ_TAG, ARR_TAG, ELEM_TAG, STR_TAG, VAL_TAG]);
-            if (!passThruVSNs.has(childNode.$_tag)) {
-                // standard tag → wrap in _hson_obj to honor always-wrap in JSON-mode
-                childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_content: [childNode] });
-            }
-            childNode = unwrap_root_obj(childNode);
             items.push((CREATE_NODE({
                 $_tag: II_TAG,
                 $_meta: { [HSON_META_INDEX]: String(idx) },
@@ -366,18 +367,21 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
 
         if (t.kind === TOKEN_KIND.OPEN) {
             // mark top-level so we record the closer
-            const { node, closeKind } = readTag();
+            const { node, closeKind, open } = readTag();
             nodes.push(node);
             topCloseKinds.push(closeKind); // <-- record
+            topPositions.push(open.pos);
             continue;
         }
         if (t.kind === TOKEN_KIND.ARR_OPEN) {
+            topPositions.push(t.pos);
             nodes.push(readArray());
             topCloseKinds.push("obj"); // arrays are object-closer at top
             continue;
         }
         if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
-            _take(TOKEN_KIND.EMPTY_OBJ);
+            const empty = _take(TOKEN_KIND.EMPTY_OBJ);
+            topPositions.push(empty.pos);
             nodes.push(CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] }));
             topCloseKinds.push("obj");
             continue;
@@ -387,6 +391,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
             nodes.push(make_leaf(prim));
             topCloseKinds.push("elem");
+            topPositions.push(tt.pos);
             continue;
         }
 
@@ -447,16 +452,25 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         const allObj = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.obj);
         const allElem = topCloseKinds.length > 0 && topCloseKinds.every(k => k === CLOSE_KIND.elem);
         if (!allObj && !allElem) {
+            const firstKind = topCloseKinds[0];
+            const conflictIndex = topCloseKinds.findIndex((kind) => kind !== firstKind);
+            const conflict = topPositions[conflictIndex];
             _throw_transform_err(
-                `mixed top-level structural modes are invalid (${topCloseKinds.join(", ")})`,
+                `mixed top-level structural modes are invalid (${topCloseKinds.join(", ")})${conflict === undefined ? "" : ` at ${conflict.line}:${conflict.col} (index ${conflict.index})`}`,
                 "parse_tokens.structural-mode",
             );
         }
-        const clusterTag = allObj ? OBJ_TAG : ELEM_TAG;
+        if (allObj) {
+            const second = topPositions[1] ?? topPositions[0];
+            _throw_transform_err(
+                `multiple top-level object values are invalid; one object angle pair must contain every member${second === undefined ? "" : ` at ${second.line}:${second.col} (index ${second.index})`}`,
+                "parse_tokens.root-shaping",
+            );
+        }
 
         return CREATE_NODE({
             $_tag: ROOT_TAG,
-            $_content: [CREATE_NODE({ $_tag: clusterTag, $_content: kids })],
+            $_content: [CREATE_NODE({ $_tag: ELEM_TAG, $_content: kids })],
         });
     }
 

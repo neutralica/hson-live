@@ -6,7 +6,7 @@ import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js"
  * Admit one decoded name that was explicitly authored in HSON source.
  *
  * Parser-synthesized structural names do not cross this boundary. That keeps
- * anonymous-object and array construction free to use canonical VSN tags while
+ * object-value and array construction free to use canonical VSN tags while
  * making the same spellings unavailable as public source names.
  */
 export function assert_authored_hson_source_name(
