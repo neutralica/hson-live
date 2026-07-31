@@ -78,6 +78,19 @@ Contradictory wrappers, cross-mode ordinary children, empty retained
 `_hson_elem` nodes, and direct ordinary children beneath `_hson_ii` reject at
 admission. Direct HSON serialization validates before normalization and never
 uses the narrow legacy empty-element normalization to repair malformed egress.
+It does not compensate for structural crossings with explicit VSN syntax:
+valid `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_str`, and `_hson_val`
+semantic values serialize through ordinary HSON notation, while every
+`_hson_root` rejects. Reparse plus exact root detachment must be canonically
+graph-equal to the supplied non-root value, including order, negative zero,
+array indexes, metadata, QUIDs, and structural mode.
+
+Serializer projection is intentionally lossy only for implementation
+scaffolding that HSON syntax reconstructs: `_hson_ii` wrappers and their
+`index` metadata are represented by array position, and structural VSN names
+are represented by notation rather than literal tags. Ordinary attributes and
+eligible QUID metadata retain their semantic values. `noQuid()` omits only the
+QUID projection and never mutates its source graph.
 
 The legacy empty-array optional-container spelling does not apply to
 `_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty

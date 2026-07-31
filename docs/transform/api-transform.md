@@ -238,6 +238,13 @@ Chooses HSON output.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
+- Every admitted non-root semantic value is emitted without literal structural
+  VSN names, raw metadata containers, or array-index metadata. Parsing that
+  output, detaching the parser root, and comparing canonically reconstructs the
+  original graph. `noQuid()` applies the same rule after removing only QUID
+  metadata from the expected projection.
+- Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`
+  use the same canonical serializer. `noBreak` changes layout only.
 - Direct or fluent HSON serialization of any caller-supplied `_hson_root`
   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the
   HSON parser root are explicitly detached by their source pipeline first.

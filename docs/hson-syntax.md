@@ -267,6 +267,27 @@ parser-owned root before HSON output. A root supplied through `fromNode()` is
 not silently unwrapped. VSNs remain explicit in the IR and can appear literally
 in cross-format HTML/JSON where scaffolding is required to preserve structure.
 
+HSON output itself is VSN-free. Objects use ordinary property and anonymous
+object notation, arrays use array notation while their `_hson_ii` indexes are
+reconstructed from order, strings and scalar values use primitive notation,
+and element clusters use ordinary element-mode tags and fragments. The
+serializer never writes `_hson_*` tag spellings, `$_meta`, or array-index
+metadata as HSON source. Persisted QUID metadata is the defined exception to
+metadata elision and is represented by the `@quid` header sigil.
+
+The canonical closure rule is semantic rather than byte-oriented:
+
+```text
+valid non-root canonical HsonNode
+  -> serialize_hson(node)
+  -> parse_hson(output)
+  -> detach_hson_root_value()
+  -> canonical_hson_graph_equal(node, detached)
+```
+
+Readable and compact layouts can differ in whitespace, and canonical spelling
+can differ from authored input, but both must reconstruct the same graph.
+
 Canonical HSON is not a preservation of authored layout. The serializer can
 change indentation, line breaks, array delimiters, key quoting, attribute
 spelling, and compact/expanded node form while preserving the represented

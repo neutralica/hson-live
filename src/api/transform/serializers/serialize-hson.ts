@@ -273,49 +273,6 @@ function emitObjectProperty(
   }
 }
 
-function objectRequiresExplicitSyntax(node: HsonNode): boolean {
-  return node.$_content.some((property) =>
-    is_Node(property)
-    && property.$_content.length === 1
-    && is_Node(property.$_content[0])
-    && property.$_content[0].$_tag === ELEM_TAG
-  );
-}
-
-function elementRequiresExplicitSyntax(node: HsonNode): boolean {
-  if (node.$_content.length === 0) return true;
-  return node.$_content.every((child) =>
-    is_Node(child)
-    && child.$_tag !== STR_TAG
-    && child.$_content.length === 1
-    && is_Node(child.$_content[0])
-    && child.$_content[0].$_tag !== ELEM_TAG
-  );
-}
-
-function emitExplicitElement(
-  node: HsonNode,
-  depth: number,
-  ctx: SerializeContext,
-): string {
-  const pad = indent(ctx, depth);
-  if (node.$_content.length === 0) return `${pad}<${ELEM_TAG}/>`;
-  const childDepth = ctx.options.layout === "readable" ? depth + 1 : 0;
-  const rendered = node.$_content.map((child) => {
-    if (!is_Node(child)) {
-      _throw_transform_err(
-        "serialize-hson: non-node in _hson_elem.$_content",
-        "serialize_hson.emitExplicitElement",
-      );
-    }
-    return emitNode(child, childDepth, ELEM_TAG, ctx);
-  });
-  if (ctx.options.layout === "compact") {
-    return `<${ELEM_TAG} ${rendered.join(" ")}/>`;
-  }
-  return `${pad}<${ELEM_TAG}\n${rendered.join("\n")}\n${pad}/>`;
-}
-
 function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): string {
   const pad = indent(ctx, depth);
   if (node.$_attrs && Object.keys(node.$_attrs).length !== 0) {
@@ -443,11 +400,7 @@ function emitStandardNode(
   }
 
   const childDepth = ctx.options.layout === "readable" ? depth + 1 : 0;
-  const rendered = children.map((child) =>
-    child.$_tag === OBJ_TAG && objectRequiresExplicitSyntax(child)
-      ? emitAnonymousObject(child, childDepth, ctx)
-      : emitNode(child, childDepth, cluster, ctx)
-  );
+  const rendered = children.map((child) => emitNode(child, childDepth, cluster, ctx));
 
   if (ctx.options.layout === "compact") {
     return `${header} ${rendered.join(childSeparator(ctx, cluster))}${closer}`;
