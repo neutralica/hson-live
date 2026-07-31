@@ -6,6 +6,7 @@ import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
 import type { HsonMeta, HsonNode } from "../src/core/types.ts";
 
@@ -31,16 +32,14 @@ function compact(node: HsonNode): string {
 
 function elementWithAttrs(attrs: NonNullable<HsonNode["$_attrs"]>): HsonNode {
   return {
-    $_tag: "_hson_root",
-    $_content: [{
-      $_tag: "_hson_elem",
-      $_content: [{ $_tag: "tag", $_attrs: attrs, $_content: [] }],
-    }],
+    $_tag: "_hson_elem",
+    $_content: [{ $_tag: "tag", $_attrs: attrs, $_content: [] }],
   };
 }
 
 function onlyElement(node: HsonNode): HsonNode {
-  return (node.$_content[0] as HsonNode).$_content[0] as HsonNode;
+  assert.equal(node.$_tag, "_hson_elem");
+  return node.$_content[0] as HsonNode;
 }
 
 check("official HSON serialization remains an exact primitive string", () => {
@@ -84,9 +83,8 @@ check("hson.string preserves canonical QUID metadata through default serializati
 check("hson.string preserves negative zero and empty element/object modes", () => {
   const negativeZero = hson.string(`<value -0>`);
   const negativeZeroNode = parse(negativeZero);
-  const negativeZeroLeaf = ((((negativeZeroNode.$_content[0] as HsonNode)
-    .$_content[0] as HsonNode).$_content[0] as HsonNode)
-    .$_content[0] as HsonNode);
+  const negativeZeroLeaf = (((negativeZeroNode.$_content[0] as HsonNode)
+    .$_content[0] as HsonNode).$_content[0] as HsonNode);
   assert.equal(negativeZero, `<value -0>`);
   assert.equal(Object.is(negativeZeroLeaf.$_content[0], -0), true);
   assert.equal(hson.string(`<tag/>`), `<tag/>`);
@@ -135,18 +133,15 @@ function clone_without_quids(node: HsonNode): HsonNode {
   return clone;
 }
 
-check("fromHson.toNode returns the canonical graph directly", () => {
+check("fromHson.toNode returns the detached semantic graph directly", () => {
   const node = hson.fromHson(`<name "Phillip">`).toNode();
   assert.deepEqual(node, {
-    $_tag: "_hson_root",
+    $_tag: "_hson_obj",
     $_content: [{
-      $_tag: "_hson_obj",
+      $_tag: "name",
       $_content: [{
-        $_tag: "name",
-        $_content: [{
-          $_tag: "_hson_obj",
-          $_content: [{ $_tag: "_hson_str", $_content: ["Phillip"] }],
-        }],
+        $_tag: "_hson_obj",
+        $_content: [{ $_tag: "_hson_str", $_content: ["Phillip"] }],
       }],
     }],
   });
@@ -165,7 +160,10 @@ check("HSON source supports direct nodes and HSON reserialization without parse"
 check("normalized JSON and node sources expose direct canonical nodes", () => {
   const jsonSource = hson.fromJson({ name: "Ada", active: true });
   const jsonNode = jsonSource.toNode();
-  assert.deepEqual(hson.fromHson(jsonSource.toHson().serialize()).toNode(), jsonNode);
+  assert.deepEqual(
+    hson.fromHson(jsonSource.toHson().serialize()).toNode(),
+    detach_hson_root_value(jsonNode),
+  );
 
   const nodeSource = hson.fromNode(jsonNode);
   assert.equal(nodeSource.toNode(), jsonNode);
@@ -192,11 +190,10 @@ check("fromHson.toNode accepts equivalent multiline and compact HSON", () => {
 
 check("fromHson.toNode preserves arrays and string-valued attributes", () => {
   const arrayNode = hson.fromHson(`«1,[true,null]»`).toNode();
-  const array = arrayNode.$_content[0] as HsonNode;
   const elementNode = hson.fromHson(`<tag count=2 disabled "value"/>`).toNode();
-  const tag = (elementNode.$_content[0] as HsonNode).$_content[0] as HsonNode;
+  const tag = elementNode.$_content[0] as HsonNode;
   assert.deepEqual(tag.$_attrs, { count: "2", disabled: "disabled" });
-  assert.equal(array.$_content.length, 2);
+  assert.equal(arrayNode.$_content.length, 2);
 });
 
 check("fromHson.toNode preserves malformed-input errors", () => {
@@ -224,8 +221,7 @@ check("compact serializer output reparses through fromHson.toNode", () => {
 check("HSON serialization is lazy after toHson", () => {
   const node = parse(`<tag "before"/>`);
   const builder = hson.fromNode(node).toHson();
-  const rootCluster = node.$_content[0] as HsonNode;
-  const tag = rootCluster.$_content[0] as HsonNode;
+  const tag = node.$_content[0] as HsonNode;
   const cluster = tag.$_content[0] as HsonNode;
   const leaf = cluster.$_content[0] as HsonNode;
   leaf.$_content[0] = "after";
@@ -410,22 +406,21 @@ check("native HSON array order regenerates canonical positional indexes", () => 
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   const reparsed = parse(wire);
   assert.deepEqual(reparsed, node);
-  const array = reparsed.$_content[0] as HsonNode;
   assert.deepEqual(
-    array.$_content.map((item) => (item as HsonNode).$_meta?.["index"]),
+    reparsed.$_content.map((item) => (item as HsonNode).$_meta?.["index"]),
     ["0", "1", "2"],
   );
 });
 
-check("empty literal root fails with a stable error", () => {
+check("empty literal root fails at the root egress boundary", () => {
   const emptyRoot: HsonNode = { $_tag: "_hson_root", $_content: [] };
   assert.throws(
     () => readable(emptyRoot),
-    /serialize-hson: empty _hson_root cannot be serialized/,
+    /_hson_root is an internal attachment carrier/,
   );
 });
 
-check("root containing an empty object remains representable", () => {
+check("detached empty object remains representable", () => {
   const node = parse(`<>`);
   assert.equal(readable(node), `<>`);
 });
@@ -557,19 +552,16 @@ check("quoted ordinary attributes are unchanged for structured block content", (
 
 check("structured style serialization remains normalized and string-valued", () => {
   const node: HsonNode = {
-    $_tag: "_hson_root",
+    $_tag: "_hson_elem",
     $_content: [{
-      $_tag: "_hson_elem",
-      $_content: [{
-        $_tag: "tag",
-        $_attrs: { style: { width: { value: 2, unit: "px" }, marginTop: 2, color: "red" } },
-        $_content: [],
-      }],
+      $_tag: "tag",
+      $_attrs: { style: { width: { value: 2, unit: "px" }, marginTop: 2, color: "red" } },
+      $_content: [],
     }],
   };
   const wire = readable(node);
   assert.equal(wire, `<tag style="color: red; margin-top: 2; width: 2px"/>`);
-  const reparsedTag = (parse(wire).$_content[0] as HsonNode).$_content[0] as HsonNode;
+  const reparsedTag = parse(wire).$_content[0] as HsonNode;
   assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2", width: "2px" });
 });
 
@@ -638,17 +630,17 @@ check("unsupported structural VSN metadata is rejected with its VSN and path", (
 
 check("unknown reserved standard-tag metadata is default-deny at every HSON boundary", () => {
   const node: HsonNode = {
-    $_tag: "_hson_root",
+    $_tag: "_hson_elem",
     $_content: [{
-      $_tag: "_hson_elem",
+      $_tag: "section",
       $_content: [{
-        $_tag: "section",
+        $_tag: "_hson_elem",
         $_content: [{
-          $_tag: "_hson_elem",
+          $_tag: "span",
+          $_meta: { "data-_custom": "invalid" } as unknown as HsonMeta,
           $_content: [{
-            $_tag: "span",
-            $_meta: { "data-_custom": "invalid" } as unknown as HsonMeta,
-            $_content: [{ $_tag: "_hson_elem", $_content: [] }],
+            $_tag: "_hson_elem",
+            $_content: [],
           }],
         }],
       }],
@@ -694,8 +686,7 @@ check("index is string-valued only on _hson_ii and canonical position is enforce
     /metadata "index" is not defined for node "tag"/,
   );
   const invalidValue = parse(`«"value"»`);
-  const array = invalidValue.$_content[0] as HsonNode;
-  const item = array.$_content[0] as HsonNode;
+  const item = invalidValue.$_content[0] as HsonNode;
   if (!item.$_meta) throw new Error("Expected array index metadata.");
   Reflect.set(item.$_meta, "index", 0);
   assert.throws(
@@ -706,16 +697,16 @@ check("index is string-valued only on _hson_ii and canonical position is enforce
 
 check("direct HSON serialization never silently omits unsupported structural metadata", () => {
   const node: HsonNode = {
-    $_tag: "_hson_root",
+    $_tag: "_hson_elem",
     $_content: [{
-      $_tag: "_hson_elem",
+      $_tag: "span",
       $_meta: { "data-_custom": "lost" } as unknown as HsonMeta,
-      $_content: [{ $_tag: "span", $_content: [] }],
+      $_content: [],
     }],
   };
   assert.throws(
     () => serialize_hson(node),
-    /_hson_elem.*data-_custom.*unknown canonical metadata key/,
+    /span.*data-_custom.*unknown canonical metadata key/,
   );
 });
 
@@ -761,11 +752,12 @@ check("permissive node ingress normalizes empty storage and ordinary attributes 
   const before = structuredClone(source);
   const normalized = hson.fromNode(source).toNode();
   assert.deepEqual(source, before);
-  const tag = onlyElement(normalized);
+  const semantic = normalized.$_content[0] as HsonNode;
+  const tag = onlyElement(semantic);
   assert.deepEqual(tag.$_attrs, { count: "2", enabled: "true", missing: "null" });
   assert.equal(Object.hasOwn(tag, "$_meta"), false);
   assert.deepEqual(tag.$_content, []);
-  assert.equal(compact(normalized), `<tag count="2" enabled="true" missing="null"/>`);
+  assert.equal(compact(semantic), `<tag count="2" enabled="true" missing="null"/>`);
 
   const emptyAttrs: HsonNode = {
     $_tag: "_hson_root",
@@ -775,7 +767,8 @@ check("permissive node ingress normalizes empty storage and ordinary attributes 
     }],
   };
   assert.doesNotThrow(() => assert_invariants(emptyAttrs, "runtime carrier storage"));
-  assert.equal(Object.hasOwn(onlyElement(hson.fromNode(emptyAttrs).toNode()), "$_attrs"), false);
+  const emptySemantic = hson.fromNode(emptyAttrs).toNode().$_content[0] as HsonNode;
+  assert.equal(Object.hasOwn(onlyElement(emptySemantic), "$_attrs"), false);
 });
 
 check("empty _hson_elem and empty _hson_obj remain distinct canonical standard-tag states", () => {
@@ -804,7 +797,7 @@ check("object properties and roots reject invalid retained element mode", () => 
     $_content: [{ $_tag: "_hson_elem", $_content: [] }],
   };
   assert.throws(
-    () => serialize_hson(emptyElementRoot),
+    () => serialize_hson(emptyElementRoot.$_content[0] as HsonNode),
     /empty _hson_elem is not valid retained canonical state/,
   );
 });
@@ -854,19 +847,19 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
 check("finite HSON numbers round-trip and negative zero retains identity", () => {
   for (const value of [0, -0, 1.5, Number.MAX_VALUE, Number.MIN_VALUE]) {
     const node: HsonNode = {
-      $_tag: "_hson_root",
+      $_tag: "_hson_obj",
       $_content: [{
-        $_tag: "_hson_obj",
+        $_tag: "value",
         $_content: [{
-          $_tag: "value",
-          $_content: [{ $_tag: "_hson_obj", $_content: [{ $_tag: "_hson_val", $_content: [value] }] }],
+          $_tag: "_hson_obj",
+          $_content: [{ $_tag: "_hson_val", $_content: [value] }],
         }],
       }],
     };
     const wire = compact(node);
     const reparsed = parse(wire);
-    const leaf = (((reparsed.$_content[0] as HsonNode).$_content[0] as HsonNode)
-      .$_content[0] as HsonNode).$_content[0] as HsonNode;
+    const leaf = ((reparsed.$_content[0] as HsonNode).$_content[0] as HsonNode)
+      .$_content[0] as HsonNode;
     assert.equal(Object.is(leaf.$_content[0], value), true);
   }
 });
@@ -874,12 +867,12 @@ check("finite HSON numbers round-trip and negative zero retains identity", () =>
 check("non-finite HSON numbers fail node, JSON, and direct serializer admission", () => {
   for (const value of [Number.NaN, Infinity, -Infinity]) {
     const node: HsonNode = {
-      $_tag: "_hson_root",
+      $_tag: "_hson_obj",
       $_content: [{
-        $_tag: "_hson_obj",
+        $_tag: "nested",
         $_content: [{
-          $_tag: "nested",
-          $_content: [{ $_tag: "_hson_obj", $_content: [{ $_tag: "_hson_val", $_content: [value] }] }],
+          $_tag: "_hson_obj",
+          $_content: [{ $_tag: "_hson_val", $_content: [value] }],
         }],
       }],
     };
@@ -907,14 +900,14 @@ check("cycles fail deterministically while shared acyclic references serialize b
   );
 
   const shared: HsonNode = { $_tag: "child", $_content: [] };
-  const root: HsonNode = {
-    $_tag: "_hson_root",
-    $_content: [{ $_tag: "_hson_elem", $_content: [shared, shared] }],
+  const fragment: HsonNode = {
+    $_tag: "_hson_elem",
+    $_content: [shared, shared],
   };
-  const wire = compact(root);
+  const wire = compact(fragment);
   assert.equal(wire, `<child/> <child/>`);
   const reparsed = parse(wire);
-  const children = (reparsed.$_content[0] as HsonNode).$_content;
+  const children = reparsed.$_content;
   assert.equal(children.length, 2);
   assert.notEqual(children[0], children[1]);
 });
@@ -931,8 +924,9 @@ check("representative 500-property document serializes and reparses in both layo
     { index, enabled: index % 2 === 0, values: [index, `value-${index}`, null] },
   ]));
   const node = hson.fromJson(payload).toNode();
-  assert.deepEqual(parse(readable(node)), node);
-  assert.deepEqual(parse(compact(node)), node);
+  const semantic = detach_hson_root_value(node);
+  assert.deepEqual(parse(readable(semantic)), semantic);
+  assert.deepEqual(parse(compact(semantic)), semantic);
 });
 
 process.stdout.write(`# ${checks} HSON serializer checks passed\n`);

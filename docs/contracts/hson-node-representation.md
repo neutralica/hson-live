@@ -105,12 +105,14 @@ Metadata validity is authorized only by the exact table above. Unknown
 including names beginning with `data-_`, is an ordinary application attribute
 stored in `$_attrs`.
 
-### Deferred empty-root exception
+### Internal root boundary
 
 An empty `_hson_root` remains a valid runtime fragment carrier for LiveMap and
-LiveHost. It is outside the currently serializable HSON-text domain:
-`serialize_hson()` rejects it and does not substitute `<>`, `{}`, or another
-ambiguous spelling.
+LiveHost. Populated roots also remain meaningful internal attachment carriers.
+Neither is transported HSON: `serialize_hson()` rejects every `_hson_root` and
+does not substitute, melt, or silently unwrap it. HSON-source public terminals
+detach exactly one validated semantic child before target projection, while
+canonical equality remains root-sensitive.
 
 The future architecture must choose, separately, among:
 

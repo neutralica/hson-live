@@ -9,6 +9,7 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
@@ -116,7 +117,10 @@ function encode_view_state_payload(
 
   let payload: string;
   try {
-    payload = serialize_hson(parse_json(codec_json_value(payloadValue)), { noBreak: true });
+    payload = serialize_hson(
+      detach_hson_root_value(parse_json(codec_json_value(payloadValue))),
+      { noBreak: true },
+    );
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
@@ -217,7 +221,10 @@ export function encode_exact_hson_value(
   };
   let payload: string;
   try {
-    payload = serialize_hson(parse_json(payloadValue as JsonValue), { noBreak: true });
+    payload = serialize_hson(
+      detach_hson_root_value(parse_json(payloadValue as JsonValue)),
+      { noBreak: true },
+    );
   } catch (cause) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",

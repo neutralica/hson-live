@@ -11,6 +11,8 @@ import type {
   TransformOutputRenderFormat,
   TransformSerialize,
 } from "../transform.types.js";
+import { ROOT_TAG } from "../../../core/constants.js";
+import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
 
 function clone_json_value(value: JsonValue): JsonValue {
   if (Array.isArray(value)) return value.map(clone_json_value);
@@ -60,10 +62,19 @@ export function construct_hson_render_4(
   context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
 ): TransformHsonSerialize {
   return {
-    serialize: () => serialize_hson(context.frame.node, {
-      noBreak: context.frame.options?.noBreak ?? false,
-      noQuid: context.frame.options?.noQuid ?? false,
-    }),
+    serialize: () => {
+      const origin = context.frame.meta?.origin;
+      const parserOwnsRoot = origin === "json"
+        || origin === "html"
+        || origin === "html-sanitized-from-node";
+      const node = parserOwnsRoot && context.frame.node.$_tag === ROOT_TAG
+        ? detach_hson_root_value(context.frame.node)
+        : context.frame.node;
+      return serialize_hson(node, {
+        noBreak: context.frame.options?.noBreak ?? false,
+        noQuid: context.frame.options?.noQuid ?? false,
+      });
+    },
   };
 }
 

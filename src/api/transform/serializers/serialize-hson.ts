@@ -456,36 +456,6 @@ function emitStandardNode(
   return `${pad}${header}\n${rendered.join("\n")}\n${pad}${closer}`;
 }
 
-function emitRoot(node: HsonNode, ctx: SerializeContext): string {
-  if (node.$_content.length === 0) {
-    _throw_transform_err(
-      "serialize-hson: empty _hson_root cannot be serialized",
-      "serialize_hson.emitRoot",
-    );
-  }
-  if (node.$_content.length !== 1 || !is_Node(node.$_content[0])) {
-    _throw_transform_err(
-      "serialize-hson: _hson_root must contain exactly one cluster child",
-      "serialize_hson.emitRoot",
-    );
-  }
-
-  const cluster = node.$_content[0];
-  if (!ELEM_OBJ_ARR.includes(cluster.$_tag)) {
-    _throw_transform_err(
-      "serialize-hson: _hson_root child must be _hson_obj | _hson_elem | _hson_arr",
-      "serialize_hson.emitRoot",
-    );
-  }
-  if (cluster.$_tag === OBJ_TAG && objectRequiresExplicitSyntax(cluster)) {
-    return emitAnonymousObject(cluster, 0, ctx).trim();
-  }
-  if (cluster.$_tag === ELEM_TAG && elementRequiresExplicitSyntax(cluster)) {
-    return emitExplicitElement(cluster, 0, ctx).trim();
-  }
-  return emitNode(cluster, 0, cluster.$_tag as ParentCluster, ctx).trim();
-}
-
 /** One structural recursive emitter shared by readable and compact layouts. */
 function emitNode(
   node: HsonNode,
@@ -516,7 +486,6 @@ function emitNode(
       return emitNode(content[0], depth, parentCluster, ctx);
     }
     if (node.$_tag === ARR_TAG) return emitArray(node, depth, ctx);
-    if (node.$_tag === ROOT_TAG) return emitRoot(node, ctx);
     if (node.$_tag === OBJ_TAG) return emitObject(node, depth, ctx);
     if (node.$_tag === ELEM_TAG) return emitElementCluster(node, depth, ctx);
     return emitStandardNode(node, depth, ctx);
@@ -534,6 +503,12 @@ export function serialize_hson(
     _throw_transform_err(
       "serialize-hson: root must be a HsonNode",
       "serialize-hson",
+    );
+  }
+  if (root.$_tag === ROOT_TAG) {
+    _throw_transform_err(
+      "serialize-hson: _hson_root is an internal attachment carrier and cannot be serialized",
+      "serialize_hson",
     );
   }
 

@@ -2,7 +2,7 @@
 
 # HSON Spec[0]
 ## Serialized Syntax
-Updated: 2026-07-13
+Updated: 2026-07-31
 
 HSON is the textual serialization of an HSON node graph. It resembles markup,
 but one construct contains a node's name, attributes, and content; there is no
@@ -82,6 +82,22 @@ optional exponent:
 <enabled true>
 <missing null>
 ```
+
+A complete HSON document may also be one bare primitive:
+
+```hson
+"hello"
+42
+-0
+true
+false
+null
+```
+
+The parser attaches that value directly beneath its internal `_hson_root` as
+`_hson_str` or `_hson_val`. Public `fromHson().toNode()` detaches exactly that
+leaf; it does not imply `_hson_elem` or `_hson_obj`. A bare name such as
+`value` is not a string and remains invalid.
 
 Only double quotes are supported for quoted text. JSON-style escapes are
 decoded. Single quotes and backticks are rejected as text delimiters.
@@ -225,10 +241,13 @@ Ordinary object property names must be unique after parsing.
 
 ## Canonicalization and VSNs
 
-Serialization usually melts `_hson_root`, `_hson_obj`, `_hson_elem`,
-`_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` into syntax. These VSNs
-remain explicit in the IR and can appear literally in cross-format HTML/JSON
-where scaffolding is required to preserve structure.
+Serialization melts semantic `_hson_obj`, `_hson_elem`, `_hson_arr`,
+`_hson_ii`, `_hson_str`, and `_hson_val` nodes into syntax. `_hson_root` is
+different: it is an internal attachment carrier and every root rejects direct
+HSON serialization. HSON, JSON, and HTML source pipelines detach their
+parser-owned root before HSON output. A root supplied through `fromNode()` is
+not silently unwrapped. VSNs remain explicit in the IR and can appear literally
+in cross-format HTML/JSON where scaffolding is required to preserve structure.
 
 Canonical HSON is not a preservation of authored layout. The serializer can
 change indentation, line breaks, array delimiters, key quoting, attribute
@@ -251,12 +270,9 @@ Every other `$_meta` key is undefined and rejected on every node kind; it is
 never silently stripped. Adding metadata requires an explicit future
 field/node-kind contract in the registry.
 
-An empty `_hson_root` is a documented runtime-only exception. LiveMap uses it
-as an empty-fragment carrier and LiveHost may transport that graph state, but
-the HSON text serializer rejects it. It never emits `<>` (the empty-object
-syntax), `{}`, or another ambiguous substitute. A future design may add
-unambiguous syntax, migrate those runtime carriers, or distinguish the
-serializable graph type from the broader runtime carrier type.
+An empty `_hson_root` remains a documented runtime-only exception for internal
+systems, but it has no HSON text form. Like every populated root, it rejects at
+HSON egress and is never substituted with `<>`, `{}`, or another value.
 
 ---
 
@@ -265,5 +281,9 @@ serializable graph type from the broader runtime carrier type.
 HSON has its own tokenizer and parser; it is not parsed as HTML or XML. The
 HTML transform path is separately XML-backed and has different repair,
 attribute, entity, and sanitization behavior.
+
+Empty, whitespace-only, and comment-only HSON source has no semantic value and
+rejects. Explicit empty values use `""`, `<>`, or `«»` (`[]` is accepted and
+canonicalizes to `«»`).
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

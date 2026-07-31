@@ -11,6 +11,7 @@ import type {
 import { scan_ingested_hson_node_quids } from "./utils/hson-utils/quid-ingress.js";
 import { normalize_hson_graph } from "../../core/normalize-hson-graph.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
+import { detach_hson_root_value } from "./utils/node-utils/detach-hson-root-value.js";
 
 function frame_meta(origin: string, unsafe: boolean): Record<string, unknown> {
   return {
@@ -42,9 +43,10 @@ export function transform_from_hson(
 
   const getFrame = (): TransformFrame => {
     if (frame) return frame;
+    const parserRoot = parse_hson(input);
     frame = {
       input,
-      node: parse_hson(input),
+      node: detach_hson_root_value(parserRoot),
       meta: frame_meta("hson-text", unsafe),
     };
     return frame;

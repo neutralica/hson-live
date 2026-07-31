@@ -64,6 +64,9 @@ the source into canonical `HsonNode` state and serializes that graph with the
 default HSON options. It does not preserve original formatting, whitespace,
 line breaks, quoting, shorthand, comments, or other source-level spelling.
 Invalid input throws the existing parser, normalization, or invariant error.
+Internally the function parses one `_hson_root`, detaches its exact one semantic
+child, serializes that non-root node, and applies the `HsonString` brand only
+after successful serialization.
 
 The result is a TypeScript-branded primitive string, not a security,
 authentication, sanitization, or trust check. The compile-time brand is
@@ -172,7 +175,12 @@ Parses JSON data into HSON nodes.
 Parses HSON text into HSON nodes.
 
 - Does not sanitize.
-- `.toNode()` parses and directly returns the canonical `HsonNode`.
+- The parser internally creates one `_hson_root` attachment carrier.
+- `.toNode()` returns exactly its one semantic child and never returns
+  `_hson_root`. Meaningful `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`,
+  and `_hson_val` nodes remain intact.
+- Bare quoted strings, finite numbers, booleans, and `null` are complete HSON
+  values. Empty, whitespace-only, and comment-only source rejects.
 - `.toJson()`, `.toHson()`, `.toHtml()`, and `.sanitizeBEWARE()` remain
   available for conversion and canonical reserialization.
 
@@ -200,7 +208,9 @@ All transform sources return a common normalized-source surface with:
 
 `.toNode()` directly returns the normalized canonical graph. It does not
 serialize to HSON and parse that text again. For `fromNode(node)`, it returns
-the original graph reference.
+the original graph reference. HSON source is the specific exception at the
+attachment boundary: its cached frame stores and repeatedly returns the exact
+detached semantic child of the internal parser root.
 
 ### `.toHtml()`
 
@@ -228,6 +238,9 @@ Chooses HSON output.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been
   accumulated. The source graph is not cloned or mutated.
+- Direct or fluent HSON serialization of any caller-supplied `_hson_root`
+  rejects before layout and QUID options. Parser-owned JSON/HTML roots and the
+  HSON parser root are explicitly detached by their source pipeline first.
 
 ### `HsonString`
 
@@ -251,8 +264,8 @@ Readable, compact (`noBreak`), and `noQuid` HSON serialization all return
 `HsonString`. The type does not imply that those options produce identical
 bytes, preserve source spelling, whitespace, quoting, comments, or formatting,
 or preserve JavaScript object identity for shared references. Graph carriers
-outside the serializable HSON-text domain, including an empty `_hson_root`,
-remain rejected and therefore do not produce an `HsonString`.
+outside the serializable HSON-text domain, including every empty or populated
+`_hson_root`, remain rejected and therefore do not produce an `HsonString`.
 
 ### `.sanitizeBEWARE()`
 

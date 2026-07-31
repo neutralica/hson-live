@@ -236,7 +236,10 @@ check("empty fragment root uses a non-empty parseable codec payload", () => {
   const { encoded, decoded } = round_trip(capture);
   assert.notEqual(encoded.payload.length, 0);
   assert.deepEqual(decoded.root.$_content, []);
-  assert.throws(() => hson.fromNode(capture.root).toHson().noBreak().serialize(), /empty _hson_root/);
+  assert.throws(
+    () => hson.fromNode(capture.root).toHson().noBreak().serialize(),
+    /_hson_root is an internal attachment carrier/,
+  );
 });
 
 check("typed attrs and raw style strings retain exact types", () => {

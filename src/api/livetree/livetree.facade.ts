@@ -6,6 +6,7 @@ import { make_branch_from_node } from "./creation/create-branch.js";
 import { graft } from "./creation/graft.js";
 import { make_detached_livetree_create } from "./creation/make-detached-livetree.js";
 import { LiveTree } from "./livetree.js";
+import { parse_hson } from "../transform/parsers/parse-hson.js";
 
 /** Canonical browser-oriented LiveTree construction facade. */
 export const hsonLiveTree = {
@@ -26,7 +27,9 @@ export const hsonLiveTree = {
   },
   fromHson(input: string): LiveTree {
     return make_branch_from_node(
-      UNSAFE_TRANSFORM_SOURCE.fromHson(input).toNode(),
+      // LiveTree retains its established parser-root construction contract;
+      // public Transform HSON terminals detach that carrier.
+      parse_hson(input),
       { quidGraphValidated: true },
     );
   },

@@ -12,6 +12,7 @@ import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-st
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 /** @internal Common outer recovery fields shared by both accepted snapshot bodies. */
 export type LiveHostSnapshotCommonFields = Pick<
@@ -125,7 +126,7 @@ export function encode_livehost_document_snapshot(
       ...common,
       rev: capture.rev,
       mode: capture.mode,
-      hson: serialize_hson(capture.root, { noBreak: true }),
+      hson: serialize_hson(detach_hson_root_value(capture.root), { noBreak: true }),
     });
   }
   if (!is_view_state_encoding(encoding)) {
@@ -159,7 +160,10 @@ export function decode_livehost_document_snapshot(
   snapshot: LiveHostValidatedSnapshotEnvelope,
 ): DocumentLiveMapCapture {
   if ("hson" in snapshot) {
-    const staged = make_classified_livemap(parse_hson(snapshot.hson));
+    const staged = make_classified_livemap(parse_hson(
+      snapshot.hson,
+      { allowTopLevelTextFragment: true },
+    ));
     if (staged.mode !== "element" && staged.mode !== "fragment") {
       throw new Error("LiveHost HSON document snapshot reconstructed a non-document root.");
     }

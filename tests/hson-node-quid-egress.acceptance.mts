@@ -35,8 +35,8 @@ function element(
 
 function fragment(content: HsonNode["$_content"]): HsonNode {
   return {
-    $_tag: "_hson_root",
-    $_content: [{ $_tag: "_hson_elem", $_content: content }],
+    $_tag: "_hson_elem",
+    $_content: content,
   };
 }
 

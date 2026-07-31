@@ -37,6 +37,7 @@ import {
 } from "./livehost.document-snapshot.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
 const DEFAULT_MAX_TAIL_BYTES = 1 * 1_024 * 1_024;
@@ -416,7 +417,10 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               incarnationId: stream.incarnationId,
               rev: capture.rev,
               mode: map.mode,
-              hson: serialize_hson(parse_json(clone_json_value(capture.value)), { noBreak: true }),
+              hson: serialize_hson(
+                detach_hson_root_value(parse_json(clone_json_value(capture.value))),
+                { noBreak: true },
+              ),
             });
           }
           encoded_bytes(snapshotBody);

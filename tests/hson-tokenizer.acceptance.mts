@@ -4,6 +4,7 @@ import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { encode_persisted_quid, is_persisted_quid } from "../src/core/persisted-quid.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -373,7 +374,7 @@ const round_trip_payloads: readonly JsonValue[] = [
 for (const payload of round_trip_payloads) {
   check(`canonical serialize/parse graph round trip: ${JSON.stringify(payload)}`, () => {
     const original = parse_json(payload);
-    const wire = serialize_hson(original);
+    const wire = serialize_hson(detach_hson_root_value(original));
     assert.deepEqual(parse_hson(wire), original);
   });
 }
@@ -384,7 +385,7 @@ check("representative large canonical payload round trips", () => {
     { index, enabled: index % 2 === 0, values: [index, `value-${index}`, null] },
   ]));
   const original = parse_json(payload);
-  const wire = serialize_hson(original);
+  const wire = serialize_hson(detach_hson_root_value(original));
   assert.deepEqual(parse_hson(wire), original);
 });
 

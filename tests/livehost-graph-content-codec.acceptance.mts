@@ -26,9 +26,8 @@ check("exact graph payload round-trips nested nodes, typed attributes, structure
   const source = hson.fromHson(
     `<main @0000000000000001 <input @0000000000000002 checked=false/>/>`,
   ).toNode();
-  const cluster = source.$_content[0];
-  if (!is_Node(cluster)) throw new Error("Expected cluster");
-  const main = cluster.$_content[0];
+  assert.equal(source.$_tag, "_hson_elem");
+  const main = source.$_content[0];
   if (!is_Node(main)) throw new Error("Expected main");
   main.$_attrs = { style: { color: "red", width: { value: 2, unit: "px" } } };
   const encoded = encode_livehost_graph_content(source);

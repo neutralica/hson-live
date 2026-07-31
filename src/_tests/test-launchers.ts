@@ -69,6 +69,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "parsing", "canonical-graph", "structural-mode"],
     }),
     launcher({
+      id: "transform.hson-root-boundary",
+      subject: "Transform",
+      displayName: "HSON root detachment and source shaping",
+      packageScript: "test:hson-root-boundary",
+      repositoryModule: "tests/hson-root-boundary.acceptance.mts",
+      runtime: "node",
+      executableChecks: 75,
+      collections: ["hson", "parsing", "root-boundary", "source-shaping"],
+    }),
+    launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
       displayName: "HSON serializer",

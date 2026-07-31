@@ -3,9 +3,10 @@
 
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { HsonNode } from "../../../core/types.js";
-import { parse_tokens } from "./parse-tokens.js";
+import { parse_tokens, type ParseTokensOptions } from "./parse-tokens.js";
 import { tokenize_hson } from "./tokenize-hson.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
+import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 
 
 /**
@@ -26,9 +27,15 @@ import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.
  * @see parse_tokens
  * @see assert_invariants
  */
-export function parse_hson(str: string): HsonNode {
+export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonNode {
     const newTokens = tokenize_hson(str);
-    const newNode = parse_tokens(newTokens)
+    if (newTokens.length === 0) {
+        _throw_transform_err(
+            "empty, whitespace-only, or comment-only HSON source has no semantic value",
+            "parse_hson",
+        );
+    }
+    const newNode = parse_tokens(newTokens, options)
     scan_ingested_hson_node_quids(newNode, "parse_hson");
     assert_invariants(newNode, 'parse hson');
     return newNode;

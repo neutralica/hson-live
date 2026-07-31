@@ -10,6 +10,7 @@ import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import {
   decode_exact_hson_value,
   encode_exact_hson_value,
@@ -273,10 +274,11 @@ check("Transform serializers consume canonical order and reject noncanonical egr
   ]);
   const scalarCanonical = hsonTransform.fromNode(scalarReversed).toNode();
   assert.deepEqual(JSON.parse(serialize_json(scalarCanonical)), ["a", "b"]);
-  const hsonWire = serialize_hson(scalarCanonical);
+  const scalarValue = detach_hson_root_value(scalarCanonical);
+  const hsonWire = serialize_hson(scalarValue);
   assert.match(hsonWire, /"a"[\s\S]*"b"/);
   assert.equal(
-    canonical_hson_graph_equal(hsonTransform.fromHson(hsonWire).toNode(), scalarCanonical),
+    canonical_hson_graph_equal(hsonTransform.fromHson(hsonWire).toNode(), scalarValue),
     true,
   );
   const elementCanonical = hsonTransform.fromNode(reversed).toNode();

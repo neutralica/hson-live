@@ -15,6 +15,10 @@ import { is_string } from "../../../core/value-guards.js";
 import { Primitive } from "../../../core/types.js";
 import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
 
+export type ParseTokensOptions = Readonly<{
+    /** Internal LiveMap/LiveHost compatibility for persisted document fragments. */
+    allowTopLevelTextFragment?: boolean;
+}>;
 
 
 /**
@@ -67,7 +71,9 @@ export const make_leaf = (v: Primitive): HsonNode =>
  *   - A single cluster node (`_hson_obj`, `_hson_arr`, `_hson_elem`) is wrapped as-is.
  *   - A single standard tag is wrapped in `_hson_obj` or `_hson_elem` depending on
  *     its recorded close kind.
- *   - No nodes at all produce a `_hson_root` with an empty `_hson_obj` cluster.
+ *   - A sole primitive leaf is attached directly beneath `_hson_root`.
+ *   - No nodes at all remain an internal empty-root parser state; `parse_hson`
+ *     rejects trivia-only source before that state can become a source result.
  *   - Multiple top-level nodes are wrapped in `_hson_obj` or `_hson_elem` only
  *     when their close kinds are unanimous; mixed structural modes reject.
  *
@@ -83,7 +89,7 @@ export const make_leaf = (v: Primitive): HsonNode =>
  * @see make_leaf
  * @see unwrap_root_obj
  */
-export function parse_tokens(tokens: Tokens[]): HsonNode {
+export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {}): HsonNode {
     const nodes: HsonNode[] = [];
     const topCloseKinds: CloseKind[] = [];
 
@@ -397,8 +403,14 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
 
         // 0) single <_hson_root> already (kept earlier) — nothing to do
 
-        // 1) already a single cluster → keep as-is
-        if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG || kids[0].$_tag === ELEM_TAG)) {
+        // 1) one complete semantic cluster or primitive → keep as-is
+        if (kids.length === 1 && (
+            kids[0].$_tag === OBJ_TAG
+            || kids[0].$_tag === ARR_TAG
+            || kids[0].$_tag === ELEM_TAG
+            || (kids[0].$_tag === STR_TAG && !options.allowTopLevelTextFragment)
+            || kids[0].$_tag === VAL_TAG
+        )) {
             const child = kids[0];
             return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [child] });
         }
@@ -418,6 +430,17 @@ export function parse_tokens(tokens: Tokens[]): HsonNode {
                 $_tag: ROOT_TAG,
                 $_content: [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] })],
             });
+        }
+
+        // A complete bare primitive is one semantic value. Primitive leaves
+        // cannot participate in a top-level structural fragment.
+        const containsValueLeaf = kids.some((child) => child.$_tag === VAL_TAG);
+        const containsStringLeaf = kids.some((child) => child.$_tag === STR_TAG);
+        if (containsValueLeaf || (containsStringLeaf && !options.allowTopLevelTextFragment)) {
+            _throw_transform_err(
+                "a top-level primitive must be the sole semantic HSON value",
+                "parse_tokens.root-shaping",
+            );
         }
 
         // 4) multiple top-level nodes require one unanimous structural mode.

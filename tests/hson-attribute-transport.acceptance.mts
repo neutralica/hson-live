@@ -5,6 +5,7 @@ import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { node_from_svg } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
 import {
   decode_ordinary_attr_transit_name,
@@ -363,9 +364,10 @@ check("transport-sensitive attrs satisfy parse/serialize/parse closure", () => {
 
 check("transport-sensitive attrs retain canonical equality through HSON text", () => {
   const first = worker(`<main a:b="1" a__COLON__b="2" data--attrmap="owned"/>`);
-  const hsonText = hsonTransform.fromNode(first).toHson().serialize();
+  const semantic = detach_hson_root_value(first);
+  const hsonText = hsonTransform.fromNode(semantic).toHson().serialize();
   const reparsed = hsonTransform.fromHson(hsonText).toNode();
-  assert.equal(canonical_hson_graph_equal(first, reparsed), true);
+  assert.equal(canonical_hson_graph_equal(semantic, reparsed), true);
   assert.equal(must_tag(reparsed, "main").$_attrs?.["a:b"], "1");
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
 });

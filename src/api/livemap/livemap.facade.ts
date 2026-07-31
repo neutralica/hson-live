@@ -1,6 +1,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap } from "../../types/livemap.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
+import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import {
   define_livemap_schema,
@@ -43,7 +44,10 @@ function fromJson(input: string | JsonValue): LiveMap {
 }
 
 function fromHson(input: string): ClassifiedLiveMap {
-  return make_classified_livemap(hsonTransform.fromHson(input).toNode());
+  // LiveMap owns a document/data root carrier. Public Transform detaches its
+  // HSON source result, so this subsystem consumes the parser-owned root
+  // directly without changing LiveMap's established root contract.
+  return make_classified_livemap(parse_hson(input, { allowTopLevelTextFragment: true }));
 }
 
 function fromNode(node: HsonNode): ClassifiedLiveMap {

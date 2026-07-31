@@ -17,6 +17,7 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 import { create_livehost_client } from "./livehost.client.js";
 import { decode_livehost_document_snapshot } from "./livehost.document-snapshot.js";
 
@@ -235,7 +236,7 @@ function map_from_snapshot(
 ): ClassifiedLiveMap {
   let root;
   try {
-    root = parse_hson(snapshot.hson);
+    root = parse_hson(snapshot.hson, { allowTopLevelTextFragment: true });
   } catch (cause) {
     throw new LiveHostBootstrapError(
       "LIVEHOST_BOOTSTRAP_STATE_INVALID",
@@ -400,7 +401,10 @@ export function encode_livehost_bootstrap(
       },
     },
   };
-  const encoded = serialize_hson(parse_json(representation), { noBreak: true });
+  const encoded = serialize_hson(
+    detach_hson_root_value(parse_json(representation)),
+    { noBreak: true },
+  );
   const maxBytes = limit(options.maxBytes, DEFAULT_LIVEHOST_BOOTSTRAP_MAX_BYTES, "byte limit");
   if (textEncoder.encode(encoded).byteLength > maxBytes) {
     throw new LiveHostBootstrapError(

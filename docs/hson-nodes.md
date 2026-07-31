@@ -2,7 +2,7 @@
 
 # HSON Spec[1]
 ## Nodes, Structure, and Invariants
-Updated: 2026-07-13
+Updated: 2026-07-31
 
 HSON transformations normalize through one ordered tree representation,
 `HsonNode`. The graph preserves the semantic structure needed to project JSON,
@@ -49,12 +49,18 @@ underscore names are not reserved by this rule.
 
 ### `_hson_root`
 
-The transform root contains zero or one child. A present child must be exactly
-one of `_hson_obj`, `_hson_elem`, or `_hson_arr`. Some public facades unwrap a
-root/element pair for convenience, but JSON/object/array LiveTrees can retain
-the root wrapper. A literal zero-child root satisfies the graph invariant but
-has no HSON wire form and therefore fails HSON serialization. A root containing
-an empty `_hson_obj` serializes as `<>`.
+`_hson_root` is an internal attachment carrier. It contains zero or one child;
+a present child must be exactly one of `_hson_obj`, `_hson_elem`, `_hson_arr`,
+`_hson_str`, or `_hson_val`. `parse_hson()` uses one root while building and
+validating HSON source, but public `fromHson().toNode()` returns the root's one
+semantic child. It removes no further structural node.
+
+The root remains significant to canonical equality and to generic graph
+validation. It is not equality-transparent and is not a semantic value. Every
+root, empty or populated, rejects at the HSON serializer boundary. Internal
+JSON/HTML parser frames and HSON-source frames explicitly detach their owned
+root before HSON output; a caller-supplied root is never melted by the HSON
+serializer.
 
 ### `_hson_obj`
 
@@ -194,10 +200,15 @@ Current invariant validation enforces, among other rules:
 - valid VSN placement and payload cardinality;
 - no attributes on VSNs;
 - only the exact registered metadata keys on their allowed node kinds;
-- one cluster child under `_hson_root`;
+- zero or one valid semantic VSN child under internal `_hson_root`;
 - unique ordinary property tags under `_hson_obj`;
 - `_hson_ii`-only children under `_hson_arr`; and
 - `_hson_str`/ordinary-element-only children under `_hson_elem`.
+
+For successful nonempty HSON source, the internal root has exactly one child.
+Empty, whitespace-only, and comment-only HSON source rejects rather than
+creating an empty object. Bare strings detach as `_hson_str`; bare finite
+numbers, booleans, and `null` detach as `_hson_val`.
 
 The useful round-trip promise is semantic equivalence within the target
 format: values, relevant structure, and content order survive where the target

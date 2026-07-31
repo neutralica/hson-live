@@ -1,0 +1,448 @@
+import assert from "node:assert/strict";
+
+import { hson, hsonString } from "../src/hson.ts";
+import { hsonTransform } from "../src/api/transform/index.ts";
+import { construct_source_1 } from "../src/api/transform/constructors/construct-source-1.ts";
+import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode, Primitive } from "../src/core/types.ts";
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+
+let checks = 0;
+
+function check(name: string, fn: () => void): void {
+  fn();
+  checks += 1;
+  process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+function node(tag: string, content: HsonNode["$_content"] = []): HsonNode {
+  return { $_tag: tag, $_content: content };
+}
+
+function root(value?: HsonNode): HsonNode {
+  return node("_hson_root", value === undefined ? [] : [value]);
+}
+
+function publicNode(source: string): HsonNode {
+  return hson.fromHson(source).toNode();
+}
+
+function assertBare(
+  source: string,
+  tag: "_hson_str" | "_hson_val",
+  payload: Primitive,
+  canonical: string,
+): void {
+  const internal = parse_hson(source);
+  assert.equal(internal.$_tag, "_hson_root");
+  assert.equal(internal.$_content.length, 1);
+  const internalValue = internal.$_content[0] as HsonNode;
+  assert.equal(internalValue.$_tag, tag);
+  assert.equal(Object.is(internalValue.$_content[0], payload), true);
+
+  const value = publicNode(source);
+  assert.equal(value.$_tag, tag);
+  assert.equal(Object.is(value.$_content[0], payload), true);
+  assert.notEqual(value.$_tag, "_hson_root");
+  assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical);
+  assert.equal(hsonString(source), canonical);
+  assert.deepEqual(publicNode(canonical), value);
+}
+
+function assertNoPublicRoot(source: string): void {
+  const transform = hson.fromHson(source);
+  assert.notEqual(transform.toNode().$_tag, "_hson_root");
+  assert.doesNotMatch(transform.toHson().serialize(), /_hson_root/);
+  assert.doesNotMatch(JSON.stringify(transform.toJson().value()), /_hson_root/);
+  assert.doesNotMatch(transform.toHtml().serialize(), /_hson_root/);
+}
+
+function assertRootEgressRejects(value: HsonNode): void {
+  const pattern = /_hson_root is an internal attachment carrier/;
+  assert.throws(() => serialize_hson(value), pattern);
+  assert.throws(() => hson.fromNode(value).toHson().serialize(), pattern);
+}
+
+check("bare empty string attaches as one _hson_str semantic value", () => {
+  assertBare(`""`, "_hson_str", "", `""`);
+});
+
+check("bare nonempty string attaches as one _hson_str semantic value", () => {
+  assertBare(`"hello"`, "_hson_str", "hello", `"hello"`);
+});
+
+check("bare escaped string preserves its decoded payload and canonical spelling", () => {
+  assertBare(`"a\\n\\\"b"`, "_hson_str", `a\n"b`, `"a\\n\\\"b"`);
+});
+
+check("bare zero attaches as one _hson_val semantic value", () => {
+  assertBare(`0`, "_hson_val", 0, `0`);
+});
+
+check("bare negative zero retains exact numeric identity", () => {
+  assertBare(`-0`, "_hson_val", -0, `-0`);
+});
+
+check("bare positive integer attaches as one _hson_val semantic value", () => {
+  assertBare(`42`, "_hson_val", 42, `42`);
+});
+
+check("bare negative number attaches as one _hson_val semantic value", () => {
+  assertBare(`-12.5`, "_hson_val", -12.5, `-12.5`);
+});
+
+check("accepted exponent input canonicalizes as a finite _hson_val", () => {
+  assertBare(`1e3`, "_hson_val", 1000, `1000`);
+});
+
+check("bare true attaches as one _hson_val semantic value", () => {
+  assertBare(`true`, "_hson_val", true, `true`);
+});
+
+check("bare false attaches as one _hson_val semantic value", () => {
+  assertBare(`false`, "_hson_val", false, `false`);
+});
+
+check("bare null attaches as one _hson_val semantic value", () => {
+  assertBare(`null`, "_hson_val", null, `null`);
+});
+
+check("empty anonymous object detaches as _hson_obj", () => {
+  assert.equal(publicNode(`<>`).$_tag, "_hson_obj");
+  assert.deepEqual(publicNode(`<>`).$_content, []);
+});
+
+check("populated top-level object detaches as one _hson_obj", () => {
+  const value = publicNode(`<a 1><b 2>`);
+  assert.equal(value.$_tag, "_hson_obj");
+  assert.deepEqual(value.$_content.map((child) => (child as HsonNode).$_tag), ["a", "b"]);
+});
+
+check("nested top-level object retains nested object structure", () => {
+  const value = publicNode(`<record <field 2>>`);
+  assert.equal(value.$_tag, "_hson_obj");
+  assert.equal((value.$_content[0] as HsonNode).$_tag, "record");
+});
+
+check("empty guillemet array detaches as _hson_arr", () => {
+  assert.deepEqual(publicNode(`«»`), node("_hson_arr"));
+});
+
+check("empty bracket array detaches as _hson_arr and canonicalizes to guillemets", () => {
+  assert.deepEqual(publicNode(`[]`), node("_hson_arr"));
+  assert.equal(hsonString(`[]`), `«»`);
+});
+
+check("primitive array detaches with canonical indexed membership", () => {
+  const value = publicNode(`«1,"two",false,null»`);
+  assert.equal(value.$_tag, "_hson_arr");
+  assert.deepEqual(value.$_content.map((item) => (item as HsonNode).$_meta?.index), ["0", "1", "2", "3"]);
+});
+
+check("object array retains object-wrapped membership", () => {
+  const value = publicNode(`«<<name "Ada">>»`);
+  const item = value.$_content[0] as HsonNode;
+  assert.equal((item.$_content[0] as HsonNode).$_tag, "_hson_obj");
+});
+
+check("nested array retains array-valued membership", () => {
+  const value = publicNode(`«[1,2],«3»»`);
+  const first = value.$_content[0] as HsonNode;
+  assert.equal((first.$_content[0] as HsonNode).$_tag, "_hson_arr");
+});
+
+check("established trailing-comma array syntax remains valid", () => {
+  assert.equal(hson.fromHson(`«1,2,»`).toHson().noBreak().serialize(), `«1,2»`);
+});
+
+check("single tagged element-side input detaches only _hson_root", () => {
+  const value = publicNode(`<a/>`);
+  assert.equal(value.$_tag, "_hson_elem");
+  assert.equal((value.$_content[0] as HsonNode).$_tag, "a");
+});
+
+check("multiple tagged element-side inputs retain one _hson_elem fragment", () => {
+  const value = publicNode(`<a/><b/>`);
+  assert.equal(value.$_tag, "_hson_elem");
+  assert.deepEqual(value.$_content.map((child) => (child as HsonNode).$_tag), ["a", "b"]);
+});
+
+check("single tagged object-side input detaches only _hson_root", () => {
+  const value = publicNode(`<a 1>`);
+  assert.equal(value.$_tag, "_hson_obj");
+  assert.equal((value.$_content[0] as HsonNode).$_tag, "a");
+});
+
+check("multiple tagged object-side inputs retain one _hson_obj", () => {
+  const value = publicNode(`<a 1><b 2>`);
+  assert.equal(value.$_tag, "_hson_obj");
+  assert.equal(value.$_content.length, 2);
+});
+
+check("tagged element text remains beneath the ordinary element branch", () => {
+  const value = publicNode(`<p "text"/>`);
+  const ordinary = value.$_content[0] as HsonNode;
+  assert.equal((ordinary.$_content[0] as HsonNode).$_tag, "_hson_elem");
+});
+
+check("tagged nested element content retains meaningful _hson_elem wrappers", () => {
+  const value = publicNode(`<p <em "text"/>/>`);
+  const ordinary = value.$_content[0] as HsonNode;
+  assert.equal((ordinary.$_content[0] as HsonNode).$_tag, "_hson_elem");
+});
+
+check("tagged object scalar property retains its object-side relationship", () => {
+  const value = publicNode(`<record <field 2>>`);
+  assert.equal(value.$_tag, "_hson_obj");
+  assert.deepEqual(hson.fromNode(value).toJson().value(), { record: { field: 2 } });
+});
+
+check("tagged nested object property retains object semantics", () => {
+  assert.deepEqual(
+    hson.fromHson(`<record <nested <field 2>>>`).toJson().value(),
+    { record: { nested: { field: 2 } } },
+  );
+});
+
+check("tagged array-valued property retains array semantics", () => {
+  assert.deepEqual(
+    hson.fromHson(`<record <items «1,2»>>`).toJson().value(),
+    { record: { items: [1, 2] } },
+  );
+});
+
+check("zero-length HSON source rejects", () => {
+  assert.throws(() => publicNode(``), /has no semantic value/);
+});
+
+check("space-only HSON source rejects", () => {
+  assert.throws(() => publicNode(`   `), /has no semantic value/);
+});
+
+check("tab-only HSON source rejects", () => {
+  assert.throws(() => publicNode(`\t\t`), /has no semantic value/);
+});
+
+check("LF-only HSON source rejects", () => {
+  assert.throws(() => publicNode(`\n\n`), /has no semantic value/);
+});
+
+check("CRLF-only HSON source rejects", () => {
+  assert.throws(() => publicNode(`\r\n\r\n`), /has no semantic value/);
+});
+
+check("comment-only HSON source rejects", () => {
+  assert.throws(() => publicNode(`// comment`), /has no semantic value/);
+});
+
+check("mixed whitespace and comment-only HSON source rejects", () => {
+  assert.throws(() => publicNode(` \t// comment\r\n  `), /has no semantic value/);
+});
+
+check("explicit empty string object and array remain valid empty values", () => {
+  assert.deepEqual([publicNode(`""`).$_tag, publicNode(`<>`).$_tag, publicNode(`«»`).$_tag], [
+    "_hson_str", "_hson_obj", "_hson_arr",
+  ]);
+});
+
+check("primitive HSON source exposes no root through any public terminal", () => {
+  assertNoPublicRoot(`42`);
+});
+
+check("object HSON source exposes no root through any public terminal", () => {
+  assertNoPublicRoot(`<a 1><b 2>`);
+});
+
+check("array HSON source exposes no root through any public terminal", () => {
+  assertNoPublicRoot(`«1,2»`);
+});
+
+check("element HSON source exposes no root through any public terminal", () => {
+  assertNoPublicRoot(`<a/>`);
+});
+
+check("object-side tagged HSON exposes no root through any public terminal", () => {
+  assertNoPublicRoot(`<record <field 2>>`);
+});
+
+check("browser umbrella and universal Transform share exact HSON detachment", () => {
+  assert.equal(hson.fromHson, hsonTransform.fromHson);
+  assert.deepEqual(hson.fromHson(`<a/>`).toNode(), hsonTransform.fromHson(`<a/>`).toNode());
+});
+
+check("browser-capable source constructor detaches its internal HSON root", () => {
+  const browserSource = construct_source_1({ unsafe: true });
+  assert.equal(browserSource.fromHson(`42`).toNode().$_tag, "_hson_val");
+  assert.equal(browserSource.fromHson(`<a/>`).toNode().$_tag, "_hson_elem");
+});
+
+check("Worker-safe Transform returns the same bare primitive shape", () => {
+  const value = hsonTransform.fromHson(`-0`).toNode();
+  assert.equal(value.$_tag, "_hson_val");
+  assert.equal(Object.is(value.$_content[0], -0), true);
+});
+
+check("valid one-child root detachment returns the exact child identity", () => {
+  const child = node("_hson_obj");
+  assert.equal(detach_hson_root_value(root(child)), child);
+});
+
+check("exact detachment preserves child metadata content and root input", () => {
+  const child = node("_hson_elem", [{
+    $_tag: "main",
+    $_meta: { quid: "0000000000000001" },
+    $_content: [],
+  }]);
+  const attached = root(child);
+  const before = structuredClone(attached);
+  const detached = detach_hson_root_value(attached);
+  assert.equal(detached, child);
+  assert.deepEqual(attached, before);
+});
+
+check("exact detachment rejects an empty root", () => {
+  assert.throws(() => detach_hson_root_value(root()), /exactly one semantic node; observed 0/);
+});
+
+check("exact detachment rejects a multi-child root", () => {
+  const attached = node("_hson_root", [node("_hson_obj"), node("_hson_arr")]);
+  assert.throws(() => detach_hson_root_value(attached), /exactly one semantic node; observed 2/);
+});
+
+check("exact detachment rejects nonnode root content", () => {
+  const attached = node("_hson_root", [42]);
+  assert.throws(() => detach_hson_root_value(attached), /semantic content must be a HsonNode/);
+});
+
+check("exact detachment rejects nonroot input", () => {
+  assert.throws(() => detach_hson_root_value(node("_hson_obj")), /expected an internal _hson_root/);
+});
+
+check("exact detachment rejects malformed semantic content", () => {
+  const malformed = root(node("ordinary"));
+  assert.throws(() => detach_hson_root_value(malformed), /_hson_root child must be one of/);
+});
+
+check("exact detachment does not unwrap a meaningful element cluster", () => {
+  const semantic = node("_hson_elem", [node("a")]);
+  assert.equal(detach_hson_root_value(root(semantic)), semantic);
+  assert.equal(detach_hson_root_value(root(semantic)).$_tag, "_hson_elem");
+});
+
+check("exact detachment does not unwrap meaningful primitive VSNs", () => {
+  for (const semantic of [node("_hson_str", ["x"]), node("_hson_val", [2])]) {
+    assert.equal(detach_hson_root_value(root(semantic)), semantic);
+  }
+});
+
+check("empty root rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root());
+});
+
+check("root containing string rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root(node("_hson_str", ["x"])));
+});
+
+check("root containing scalar rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root(node("_hson_val", [2])));
+});
+
+check("root containing object rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root(node("_hson_obj")));
+});
+
+check("root containing array rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root(node("_hson_arr")));
+});
+
+check("root containing element fragment rejects direct and fluent HSON egress", () => {
+  assertRootEgressRejects(root(node("_hson_elem", [node("a")])));
+});
+
+check("root rejection precedes every readable compact and QUID option combination", () => {
+  const attached = root(node("_hson_elem", [node("a")]));
+  for (const options of [{}, { noBreak: true }, { noQuid: true }, { noBreak: true, noQuid: true }]) {
+    assert.throws(() => serialize_hson(attached, options), /internal attachment carrier/);
+  }
+});
+
+check("HSON-source reserialization succeeds because its parser root was detached", () => {
+  assert.equal(hson.fromHson(`<a/>`).toHson().serialize(), `<a/>`);
+  assert.equal(hson.fromHson(`42`).toHson().serialize(), `42`);
+});
+
+check("JSON and HTML parser-owned roots still convert to HSON through explicit detachment", () => {
+  assert.equal(hson.fromJson({ a: 1 }).toHson().noBreak().serialize(), `<a 1>`);
+  assert.equal(hsonTransform.fromTrustedHtml(`<a></a>`).toHson().noBreak().serialize(), `<a/>`);
+});
+
+check("HSON source frame caches one detached semantic node identity", () => {
+  const source = hson.fromHson(`<a/>`);
+  assert.equal(source.toNode(), source.toNode());
+  assert.equal(source.toNode().$_tag, "_hson_elem");
+});
+
+check("detached semantic nodes retain no observable parent pointer", () => {
+  const value = publicNode(`<a/>`) as HsonNode & Record<string, unknown>;
+  assert.equal(Object.hasOwn(value, "parent"), false);
+  assert.equal(Object.hasOwn(value, "$_parent"), false);
+});
+
+check("hson.string and hsonString remain the same branded producer function", () => {
+  assert.equal(hson.string, hsonString);
+  assert.equal(typeof hsonString(`42`), "string");
+});
+
+check("hsonString canonicalizes every bare primitive category", () => {
+  assert.deepEqual(
+    [`"x"`, `0`, `-0`, `true`, `false`, `null`].map(hsonString),
+    [`"x"`, `0`, `-0`, `true`, `false`, `null`],
+  );
+});
+
+check("hsonString canonicalizes tagged HSON after exact root detachment", () => {
+  assert.equal(hsonString(`<a/><b/>`), `<a/>\n<b/>`);
+});
+
+check("hsonString rejects empty source before branding", () => {
+  assert.throws(() => hsonString(``), /has no semantic value/);
+});
+
+check("repeated HSON canonicalization is stable", () => {
+  const first = hsonString(`<p "first"<em "middle"/>"last"/>`);
+  assert.equal(hsonString(first), first);
+});
+
+check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => {
+  assert.throws(() => publicNode(`<a/><b 2>`), /mixed top-level structural modes/);
+  assert.equal(publicNode(`<a/><b/>`).$_tag, "_hson_elem");
+  assert.equal(publicNode(`<a 1><b 2>`).$_tag, "_hson_obj");
+});
+
+check("valid QUID metadata survives root detachment and HSON output", () => {
+  const value = publicNode(`<main @0000000000000001/>`);
+  assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "0000000000000001");
+  assert.match(hson.fromNode(value).toHson().serialize(), /@0000000000000001/);
+});
+
+check("array indexes survive detachment and reconstruction", () => {
+  const value = publicNode(`«"a","b"»`);
+  assert.deepEqual(value.$_content.map((item) => (item as HsonNode).$_meta?.index), ["0", "1"]);
+  assert.deepEqual(publicNode(hson.fromNode(value).toHson().serialize()), value);
+});
+
+check("canonical equality remains root-sensitive", () => {
+  const semantic = node("_hson_obj");
+  assert.equal(canonical_hson_graph_equal(root(semantic), semantic), false);
+});
+
+check("top-level primitive fragments and arbitrary bare names remain invalid", () => {
+  assert.throws(() => publicNode(`"x" <a/>`), /top-level primitive must be the sole/);
+  assert.throws(() => publicNode(`value`), /unexpected bare token/);
+});
+
+process.stdout.write(`# ${checks} HSON root-boundary checks passed\n`);
+emit_hson_live_test_completion("transform.hson-root-boundary", checks, checks, 0);

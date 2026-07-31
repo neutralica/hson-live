@@ -243,8 +243,12 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       const only = kids[0] as HsonNode | Primitive;
       if (!is_Node(only)) {
         push(errs, cfg, `${here}: _hson_root child must be a node; found: primitive (${only})`); if (cfg.throwOnFirst) return;
-      } else if (!(only.$_tag === OBJ_TAG || only.$_tag === ELEM_TAG || only.$_tag === ARR_TAG)) {
-        push(errs, cfg, `${here}: _hson_root child must be one of _hson_obj/_hson_elem/_hson_arr`); if (cfg.throwOnFirst) return;
+      } else if (!(only.$_tag === OBJ_TAG
+        || only.$_tag === ELEM_TAG
+        || only.$_tag === ARR_TAG
+        || only.$_tag === STR_TAG
+        || only.$_tag === VAL_TAG)) {
+        push(errs, cfg, `${here}: _hson_root child must be one of _hson_obj/_hson_elem/_hson_arr/_hson_str/_hson_val`); if (cfg.throwOnFirst) return;
       }
     }
   }

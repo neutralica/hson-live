@@ -54,18 +54,21 @@ function compact(source: string): string {
 function rejectsEveryBoundary(candidate: HsonNode, pattern: RegExp): void {
   assert.throws(() => assert_invariants(candidate, "structural-mode regression"), pattern);
   assert.throws(() => hson.fromNode(candidate).toNode(), pattern);
-  assert.throws(() => serialize_hson(candidate), pattern);
+  const serializerCandidate = candidate.$_tag === "_hson_root"
+    ? candidate.$_content[0] as HsonNode
+    : candidate;
+  assert.throws(() => serialize_hson(serializerCandidate), pattern);
 }
 
 check("parser groups a uniform top-level element sequence", () => {
   const parsed = parse(`<a/><b/>`);
-  assert.equal((parsed.$_content[0] as HsonNode).$_tag, "_hson_elem");
+  assert.equal(parsed.$_tag, "_hson_elem");
   assert.equal(compact(`<a/><b/>`), `<a/> <b/>`);
 });
 
 check("parser groups a uniform top-level object sequence", () => {
   const parsed = parse(`<a 1><b 2>`);
-  assert.equal((parsed.$_content[0] as HsonNode).$_tag, "_hson_obj");
+  assert.equal(parsed.$_tag, "_hson_obj");
   assert.equal(compact(`<a 1><b 2>`), `<a 1><b 2>`);
 });
 
@@ -135,8 +138,8 @@ check("canonical admission accepts one nonempty element relationship", () => {
 check("canonical admission preserves empty object and empty array clusters", () => {
   assert.doesNotThrow(() => assert_invariants(root(obj()), "empty object"));
   assert.doesNotThrow(() => assert_invariants(root(arr()), "empty array"));
-  assert.equal(serialize_hson(root(obj())), `<>`);
-  assert.equal(serialize_hson(root(arr())), `«»`);
+  assert.equal(serialize_hson(obj()), `<>`);
+  assert.equal(serialize_hson(arr()), `«»`);
 });
 
 check("canonical admission accepts a recursively nested element branch", () => {
@@ -254,10 +257,10 @@ check("value leaves reject every payload outside the exact primitive domain", ()
 });
 
 check("valid structural source order does not affect unanimous grouping", () => {
-  assert.equal((parse(`<a/><b/>`).$_content[0] as HsonNode).$_tag, "_hson_elem");
-  assert.equal((parse(`<b/><a/>`).$_content[0] as HsonNode).$_tag, "_hson_elem");
-  assert.equal((parse(`<a 1><b 2>`).$_content[0] as HsonNode).$_tag, "_hson_obj");
-  assert.equal((parse(`<b 2><a 1>`).$_content[0] as HsonNode).$_tag, "_hson_obj");
+  assert.equal(parse(`<a/><b/>`).$_tag, "_hson_elem");
+  assert.equal(parse(`<b/><a/>`).$_tag, "_hson_elem");
+  assert.equal(parse(`<a 1><b 2>`).$_tag, "_hson_obj");
+  assert.equal(parse(`<b 2><a 1>`).$_tag, "_hson_obj");
 });
 
 check("JSON scalar, nested-object, and array relationships remain canonical", () => {
@@ -266,7 +269,7 @@ check("JSON scalar, nested-object, and array relationships remain canonical", ()
 });
 
 check("direct serialization never emits a literal empty element wrapper", () => {
-  assert.throws(() => serialize_hson(root(elem())), /empty _hson_elem/);
+  assert.throws(() => serialize_hson(elem()), /empty _hson_elem/);
 });
 
 process.stdout.write(`# ${checks} structural-mode checks passed\n`);
