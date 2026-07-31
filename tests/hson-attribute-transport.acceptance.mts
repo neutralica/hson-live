@@ -1,10 +1,13 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
+import {
+  assertCanonicalSerializedClosure,
+  assert_canonical_oracle_graph_equal,
+} from "../src/_tests/transform-oracle.ts";
 import { parseDocument } from "htmlparser2";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
-import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { node_from_svg } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
 import {
@@ -145,6 +148,17 @@ function browser(source: string): HsonNode {
   return with_browser_parser(() => parse_html(source));
 }
 
+function assert_worker_browser_equal(caseId: string, workerNode: HsonNode, browserNode: HsonNode): void {
+  assert_canonical_oracle_graph_equal({
+    launcher: "hson.attribute-transport",
+    caseId,
+    operation: "worker-browser-parity",
+    expected: workerNode,
+    actual: browserNode,
+    classification: "cross-runtime-divergence",
+  });
+}
+
 function assert_rejects_both(source: string, pattern: RegExp): void {
   assert.throws(() => worker(source), pattern);
   assert.throws(() => browser(source), pattern);
@@ -173,7 +187,7 @@ check("browser and Worker preserve distinct colonized and lookalike ordinary nam
     assert.equal(node.$_attrs?.["hson-foo"], "ordinary");
     assert.equal(Object.keys(node.$_attrs ?? {}).some((key) => key.startsWith("_hson_")), false);
   }
-  assert.equal(canonical_hson_graph_equal(workerNode, browserNode), true);
+  assert_worker_browser_equal("colonized-name-parity", workerNode, browserNode);
 });
 
 check("data--attrmap is ordinary application data", () => {
@@ -316,7 +330,7 @@ check("nested SVG xlink alias and case behavior agree across browser and Worker"
     assert.equal(link.$_attrs?.href, "/x");
     assert.equal(link.$_attrs?.["xlink:href"], undefined);
   }
-  assert.equal(canonical_hson_graph_equal(workerNode, browserNode), true);
+  assert_worker_browser_equal("svg-alias-parity", workerNode, browserNode);
 });
 
 check("HTML metadata spelling follows case-insensitive HTML name semantics", () => {
@@ -325,7 +339,7 @@ check("HTML metadata spelling follows case-insensitive HTML name semantics", () 
   const browserNode = browser(source);
   assert.equal(must_tag(workerNode, "main").$_meta?.quid, Q1);
   assert.equal(must_tag(browserNode, "main").$_meta?.quid, Q1);
-  assert.equal(canonical_hson_graph_equal(workerNode, browserNode), true);
+  assert_worker_browser_equal("metadata-case-parity", workerNode, browserNode);
 });
 
 check("standalone SVG and direct SVG Element use the same xlink alias rule", () => {
@@ -358,7 +372,13 @@ check("transport-sensitive attrs satisfy parse/serialize/parse closure", () => {
     assert.equal(wire.includes("_hson_attr_transit_v1_"), false);
     assert.equal(wire.includes("_hson_meta_attr_v2_"), false);
     const second = parse(wire);
-    assert.equal(canonical_hson_graph_equal(first, second), true);
+    assert_canonical_oracle_graph_equal({
+      launcher: "hson.attribute-transport",
+      caseId: "html-transport-closure",
+      operation: "parse-serialize-parse",
+      expected: first,
+      actual: second,
+    });
   }
 });
 
@@ -367,7 +387,12 @@ check("transport-sensitive attrs retain canonical equality through HSON text", (
   const semantic = detach_hson_root_value(first);
   const hsonText = hsonTransform.fromNode(semantic).toHson().serialize();
   const reparsed = hsonTransform.fromHson(hsonText).toNode();
-  assert.equal(canonical_hson_graph_equal(semantic, reparsed), true);
+  assertCanonicalSerializedClosure({
+    launcher: "hson.attribute-transport",
+    caseId: "hson-attribute-transport-closure",
+    node: semantic,
+    serialized: hsonText,
+  });
   assert.equal(must_tag(reparsed, "main").$_attrs?.["a:b"], "1");
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
 });

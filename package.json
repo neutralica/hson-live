@@ -66,7 +66,11 @@
       "types": "./dist/_tests/test-launchers.d.ts",
       "import": "./dist/_tests/test-launchers.js"
     },
-    "./diagnostics/test-exports": "./dist/_tests/test-exports.js"
+    "./diagnostics/test-exports": "./dist/_tests/test-exports.js",
+    "./diagnostics/transform-test-oracle": {
+      "types": "./dist/_tests/transform-oracle.d.ts",
+      "import": "./dist/_tests/transform-oracle.js"
+    }
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -87,6 +91,7 @@
     "test:hson-array-index": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-array-index.acceptance.mts",
     "test:hson-attribute-transport": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-attribute-transport.acceptance.mts",
     "test:canonical-hson-equality": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-hson-equality.acceptance.mts",
+    "test:transform-oracle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-oracle.acceptance.mts",
     "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",
     "test:livehost-graph-content-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-graph-content-codec.acceptance.mts",
     "test:public-boundaries": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/public-boundaries.acceptance.mts",

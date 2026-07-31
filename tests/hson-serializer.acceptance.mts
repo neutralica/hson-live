@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 
 import { hson, hsonString } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
+import {
+  assertCanonicalClosure,
+  assertCanonicalSerializedClosure,
+} from "../src/_tests/transform-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
@@ -70,23 +74,27 @@ function assert_wire_closure(
   expected: HsonNode = original,
 ): HsonNode {
   assert_vsn_free_wire(source);
-  const reparsed = parse_serialized_value(source);
-  assert.equal(
-    canonical_hson_graph_equal(expected, reparsed),
-    true,
-    `canonical closure failed for ${source}`,
-  );
+  const reparsed = assertCanonicalSerializedClosure({
+    launcher: "transform.hson-serializer",
+    caseId: "serializer-wire-closure",
+    node: original,
+    serialized: source,
+    expectedNode: expected,
+    ingress: "canonical-node",
+  });
   assert.equal(reparsed.$_tag === "_hson_root", false, "detached closure leaked a root carrier");
   return reparsed;
 }
 
 function assert_hson_closure(node: HsonNode): string {
-  const before = structuredClone(node);
-  assert_invariants(node, "HSON closure fixture");
-  const source = serialize_hson(node);
-  assert_wire_closure(node, source);
-  assert.deepEqual(node, before, "serialization mutated its canonical input");
-  return source;
+  const result = assertCanonicalClosure({
+    launcher: "transform.hson-serializer",
+    caseId: `serializer-closure:${node.$_tag}`,
+    ingress: "canonical-node",
+    node,
+  });
+  assert_vsn_free_wire(result.serialized);
+  return result.serialized;
 }
 
 function elementWithAttrs(attrs: NonNullable<HsonNode["$_attrs"]>): HsonNode {
@@ -825,7 +833,10 @@ check("permissive node ingress normalizes empty storage and ordinary attributes 
       $_content: [{ $_tag: "empty", $_attrs: {}, $_content: [] }],
     }],
   };
-  assert.doesNotThrow(() => assert_invariants(emptyAttrs, "runtime carrier storage"));
+  assert.throws(
+    () => assert_invariants(emptyAttrs, "runtime carrier storage"),
+    (error) => error instanceof Error && "code" in error && error.code === "HSON_EMPTY_ATTRIBUTES",
+  );
   const emptySemantic = hson.fromNode(emptyAttrs).toNode().$_content[0] as HsonNode;
   assert.equal(Object.hasOwn(onlyElement(emptySemantic), "$_attrs"), false);
 });

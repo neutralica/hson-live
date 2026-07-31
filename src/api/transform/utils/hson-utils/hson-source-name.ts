@@ -18,5 +18,12 @@ export function assert_authored_hson_source_name(
   _throw_transform_err(
     `[authored-reserved-name] authored HSON name "${name}" is reserved for internal structural nodes at ${pos.line}:${pos.col} (index ${pos.index})`,
     "tokenize-hson.authored-name",
+    undefined,
+    undefined,
+    {
+      code: "authored-reserved-name",
+      stage: "tokenization",
+      source: { index: pos.index, line: pos.line, column: pos.col },
+    },
   );
 }

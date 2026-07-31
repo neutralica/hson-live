@@ -31,19 +31,49 @@ import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
+type InvariantIssue = Readonly<{
+  message: string;
+  code?: string;
+  path?: string;
+}>;
 
 export function assert_invariants(root: HsonNode, fn = "[source fn not given]", cfg: DevCfg = { throwOnFirst: true }): void {
-  const errs: string[] = [];
+  const errs: InvariantIssue[] = [];
   assertNewShapeQuick(root, fn);
   walk(root, "", root.$_tag, cfg, errs);
   if (errs.length) {
-    const msg = errs.slice(0, 12).join("\n  - ");
-    _throw_transform_err(`invariant violation(s):\n  - ${msg}`, fn, make_string(root));
+    const msg = errs.slice(0, 12).map((issue) => issue.message).join("\n  - ");
+    const first = errs[0];
+    _throw_transform_err(
+      `invariant violation(s):\n  - ${msg}`,
+      fn,
+      make_string(root),
+      undefined,
+      {
+        code: first?.code ?? "HSON_CANONICAL_INVARIANT_VIOLATION",
+        stage: "canonical-invariant-admission",
+        ...(first?.path === undefined ? {} : { path: first.path }),
+      },
+    );
   }
 }
 
-function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, errs: string[]): void {
+function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, errs: InvariantIssue[]): void {
   const here = path + seg(n.$_tag);
+
+  if (
+    Object.hasOwn(n, "$_attrs")
+    && is_plain_record(n.$_attrs)
+    && Object.keys(n.$_attrs).length === 0
+  ) {
+    push(
+      errs,
+      cfg,
+      `${here}: empty $_attrs is not canonical; omit the attribute container`,
+      { code: "HSON_EMPTY_ATTRIBUTES", path: `${here}/$_attrs` },
+    );
+    if (cfg.throwOnFirst) return;
+  }
 
   if (n.$_tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(n.$_tag)) {
     push(errs, cfg, `${here}: unknown VSN-like tag "${n.$_tag}"`); if (cfg.throwOnFirst) return;
@@ -122,7 +152,14 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       && structure.kind !== "object"
       && structure.kind !== "object-scalar"
       && structure.kind !== "array") {
-      push(errs, cfg, `${here}: object property must retain an object scalar, _hson_obj, or _hson_arr relationship (found ${structure.kind})`); if (cfg.throwOnFirst) return;
+      push(
+        errs,
+        cfg,
+        `${here}: object property must retain an object scalar, _hson_obj, or _hson_arr relationship (found ${structure.kind})`,
+        structure.kind === "element"
+          ? { code: "HSON_OBJECT_ELEMENT_STRUCTURAL_CROSSING", path: here }
+          : undefined,
+      ); if (cfg.throwOnFirst) return;
       return;
     }
     if (parentTag === II_TAG) {
@@ -276,7 +313,12 @@ function walk(n: HsonNode, path: string, parentTag: string | null, cfg: DevCfg, 
       }
 
       if (p.$_tag === ELEM_TAG) {
-        push(errs, cfg, `${pHere}: [ERR: OBJ004] _hson_elem is not allowed directly under _hson_obj`);
+        push(
+          errs,
+          cfg,
+          `${pHere}: [ERR: OBJ004] _hson_elem is not allowed directly under _hson_obj`,
+          { code: "OBJ004", path: pHere },
+        );
         if (cfg.throwOnFirst) return;
       }
 
@@ -316,8 +358,13 @@ function seg(t: string) {
   return t.startsWith(HSON_SYS_PREFIX) ? `/${t}` : `/tag:${t}`;
 }
 
-function push(errs: string[], _cfg: DevCfg, s: string) {
-  errs.push(s);
+function push(
+  errs: InvariantIssue[],
+  _cfg: DevCfg,
+  s: string,
+  details?: Readonly<{ code?: string; path?: string }>,
+) {
+  errs.push({ message: s, ...details });
 }
 
 function is_plain_record(value: unknown): value is Record<string, unknown> {

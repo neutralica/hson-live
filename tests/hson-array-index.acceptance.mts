@@ -5,7 +5,10 @@ import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { node_from_svg, SVG_NS } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
-import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import {
+  canonical_hson_graph_difference,
+  canonical_hson_graph_equal,
+} from "../src/core/canonical-hson-equal.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
@@ -295,14 +298,12 @@ check("Transform serializers consume canonical order and reject noncanonical egr
   }
 });
 
-check("canonical equality normalizes valid physical permutations", () => {
-  assert.equal(canonical_hson_graph_equal(reversed, ordered), true);
-  assert.throws(() =>
-    canonical_hson_graph_equal(
-      array_root([item("0", "a"), item("0", "b")]),
-      ordered,
-    )
-  );
+check("canonical equality is strict while array admission owns physical index reconstruction", () => {
+  assert.equal(canonical_hson_graph_equal(reversed, ordered), false);
+  assert.equal(canonical_hson_graph_difference(reversed, ordered)?.kind, "content-ordering");
+  const admitted = hsonTransform.fromNode(reversed).toNode();
+  assert.equal(canonical_hson_graph_equal(admitted, ordered), true);
+  assert.throws(() => hsonTransform.fromNode(array_root([item("0", "a"), item("0", "b")])).toNode());
 });
 
 check("LiveMap projection and every numeric path follow canonical physical order", () => {

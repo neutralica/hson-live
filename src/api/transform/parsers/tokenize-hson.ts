@@ -123,10 +123,18 @@ class HsonScanner {
     while (true) {
       const namePos = this.position();
       if (this.peek() === "@") {
-        this.fail(`object members cannot author persisted QUID declarations`, namePos);
+        this.fail(
+          `object members cannot author persisted QUID declarations`,
+          namePos,
+          "HSON_OBJECT_QUID_FORBIDDEN",
+        );
       }
       if (this.peek() === "<") {
-        this.fail(`legacy doubled object syntax is not supported; expected an object member name`, namePos);
+        this.fail(
+          `legacy doubled object syntax is not supported; expected an object member name`,
+          namePos,
+          "legacy-doubled-object-syntax",
+        );
       }
       if (this.startsWith("/>")) {
         this.fail(`objects must close with ">", not "/>"`, namePos);
@@ -152,10 +160,14 @@ class HsonScanner {
         this.fail(`required trivia is missing between object member name and value`, this.position());
       }
       if (this.atEnd() || this.peek() === ">") {
-        this.fail(`object member "${name}" is missing its value`, namePos);
+        this.fail(`object member "${name}" is missing its value`, namePos, "missing-object-member-value");
       }
       if (this.peek() === "@") {
-        this.fail(`object members cannot author persisted QUID declarations`, this.position());
+        this.fail(
+          `object members cannot author persisted QUID declarations`,
+          this.position(),
+          "HSON_OBJECT_QUID_FORBIDDEN",
+        );
       }
 
       this.tokens.push(CREATE_OPEN_TOKEN(name, [], namePos));
@@ -609,7 +621,7 @@ class HsonScanner {
     const escapePos = this.position();
     this.consumeExpected("\\");
     if (this.atEnd() || this.isNewline()) {
-      this.fail(`[invalid-json-escape] invalid escape termination in ${context}`, escapePos);
+      this.fail(`[invalid-json-escape] invalid escape termination in ${context}`, escapePos, "invalid-json-escape");
     }
 
     const escaped = this.consume();
@@ -623,6 +635,7 @@ class HsonScanner {
           this.fail(
             `[invalid-json-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in ${context}`,
             escapePos,
+            "invalid-json-escape",
           );
         }
         hex += this.consume();
@@ -633,6 +646,7 @@ class HsonScanner {
     this.fail(
       `[invalid-json-escape] unsupported escape ${JSON.stringify(`\\${escaped}`)} in ${context}`,
       escapePos,
+      "invalid-json-escape",
     );
   }
 
@@ -703,6 +717,7 @@ class HsonScanner {
                 ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
                 : `[invalid-name-escape] invalid escape termination in backtick HSON name`,
               this.positionAt(cursor),
+              quoted === `"` ? "invalid-json-escape" : "invalid-name-escape",
             );
           }
           cursor += 2;
@@ -938,10 +953,21 @@ class HsonScanner {
     this.consume();
   }
 
-  private fail(message: string, pos = this.position()): never {
+  private fail(
+    message: string,
+    pos = this.position(),
+    code = "HSON_TOKENIZATION_ERROR",
+  ): never {
     _throw_transform_err(
       `${message} at ${pos.line}:${pos.col} (index ${pos.index})`,
       "tokenize-hson",
+      undefined,
+      undefined,
+      {
+        code,
+        stage: "tokenization",
+        source: { index: pos.index, line: pos.line, column: pos.col },
+      },
     );
   }
 }

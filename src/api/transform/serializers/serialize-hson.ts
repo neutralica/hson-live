@@ -27,7 +27,7 @@ import type { HsonString } from "../transform.types.js";
 type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
 type HsonLayout = "readable" | "compact";
 
-type HsonSerializeInputOptions = Readonly<{
+export type HsonSerializeInputOptions = Readonly<{
   noBreak?: boolean;
   noQuid?: boolean;
 }>;
@@ -241,6 +241,7 @@ function emitObjectMember(
   property: HsonNode,
   depth: number,
   ctx: SerializeContext,
+  propertyPath: string,
 ): string {
   ctx.guard.enter(property);
   try {
@@ -249,12 +250,26 @@ function emitObjectMember(
       _throw_transform_err(
         `serialize-hson: object member <${property.$_tag}> cannot carry attributes or flags`,
         "serialize_hson.emitObjectMember",
+        undefined,
+        undefined,
+        {
+          code: "HSON_OBJECT_MEMBER_ATTRIBUTES_FORBIDDEN",
+          stage: "serialization-admission",
+          path: `${propertyPath}.$_attrs`,
+        },
       );
     }
     if (property.$_meta && Object.keys(property.$_meta).length !== 0) {
       _throw_transform_err(
         `serialize-hson: object member <${property.$_tag}> cannot carry metadata or a QUID`,
         "serialize_hson.emitObjectMember",
+        undefined,
+        undefined,
+        {
+          code: "HSON_OBJECT_MEMBER_METADATA_FORBIDDEN",
+          stage: "serialization-admission",
+          path: `${propertyPath}.$_meta`,
+        },
       );
     }
     if (property.$_content.length !== 1 || !is_Node(property.$_content[0])) {
@@ -302,7 +317,7 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
     );
   }
 
-  const rendered = node.$_content.map((property) => {
+  const rendered = node.$_content.map((property, index) => {
     if (!is_Node(property)) {
       _throw_transform_err(
         "serialize-hson: non-node in _hson_obj.$_content",
@@ -315,7 +330,12 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
         "serialize_hson.emitObject",
       );
     }
-    return emitObjectMember(property, ctx.options.layout === "readable" ? depth + 1 : 0, ctx);
+    return emitObjectMember(
+      property,
+      ctx.options.layout === "readable" ? depth + 1 : 0,
+      ctx,
+      `$_content[${index}]`,
+    );
   });
 
   if (ctx.options.layout === "readable") {
@@ -494,6 +514,13 @@ function serialize_hson_with_ownership(
     _throw_transform_err(
       "serialize-hson: _hson_root is an internal attachment carrier and cannot be serialized",
       "serialize_hson",
+      undefined,
+      undefined,
+      {
+        code: "HSON_ROOT_SERIALIZATION_FORBIDDEN",
+        stage: "serialization-admission",
+        path: "$",
+      },
     );
   }
 

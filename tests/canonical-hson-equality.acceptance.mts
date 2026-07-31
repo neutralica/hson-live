@@ -1,6 +1,11 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { hsonTransform } from "../src/api/transform/index.ts";
+import { assert_invariants } from "../src/core/assert-invariants.ts";
+import {
+  canonical_hson_graph_difference,
+  canonical_hson_graph_equal,
+} from "../src/core/canonical-hson-equal.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 let checks = 0;
@@ -89,7 +94,7 @@ check("primitive values remain type-sensitive without coercion", () => {
   assert.equal(canonical_hson_graph_equal(graph(""), graph(" ")), false);
 });
 
-check("attribute key order is irrelevant and permissive primitive values normalize to strings", () => {
+check("attribute key order is irrelevant while primitive value identity remains strict", () => {
   const left = document(node("div", [], { count: 0, enabled: false }));
   const reordered = document(node("div", [], { enabled: false, count: 0 }));
   const changedKey = document(node("div", [], { enabled: false, total: 0 }));
@@ -99,7 +104,7 @@ check("attribute key order is irrelevant and permissive primitive values normali
   assert.equal(canonical_hson_graph_equal(left, reordered), true);
   assert.equal(canonical_hson_graph_equal(left, changedKey), false);
   assert.equal(canonical_hson_graph_equal(left, changedValue), false);
-  assert.equal(canonical_hson_graph_equal(left, changedType), true);
+  assert.equal(canonical_hson_graph_equal(left, changedType), false);
   assert.equal(canonical_hson_graph_equal(left, missing), false);
 });
 
@@ -132,12 +137,31 @@ check("ordered object-property content is not treated as an unordered record", (
   assert.equal(canonical_hson_graph_equal(left, reordered), false);
 });
 
-check("absent attrs and metadata equal permissive empty optional records", () => {
+check("strict equality distinguishes absent optional fields from present empty fields", () => {
   const absent = document(node("div"));
   const emptyAttrs = document(node("div", [], {}));
   const emptyMeta = document(node("div", [], undefined, {}));
-  assert.equal(canonical_hson_graph_equal(absent, emptyAttrs), true);
-  assert.equal(canonical_hson_graph_equal(absent, emptyMeta), true);
+  assert.equal(canonical_hson_graph_equal(absent, emptyAttrs), false);
+  assert.equal(canonical_hson_graph_equal(absent, emptyMeta), false);
+  assert.equal(canonical_hson_graph_difference(absent, emptyAttrs)?.kind, "attribute-presence");
+  assert.equal(canonical_hson_graph_difference(absent, emptyMeta)?.kind, "metadata-presence");
+});
+
+check("candidate admission removes empty attributes and direct invariant admission rejects them", () => {
+  const candidate = document(node("div", [], {}));
+  const before = structuredClone(candidate);
+  assert.throws(
+    () => assert_invariants(candidate, "empty-attribute candidate"),
+    (error) => error instanceof Error
+      && "code" in error
+      && error.code === "HSON_EMPTY_ATTRIBUTES",
+  );
+  const admitted = hsonTransform.fromNode(candidate).toNode();
+  assert.deepEqual(candidate, before, "candidate admission must not mutate caller input");
+  const cluster = admitted.$_content[0] as HsonNode;
+  const element = cluster.$_content[0] as HsonNode;
+  assert.equal(Object.hasOwn(element, "$_attrs"), false);
+  assert.doesNotThrow(() => assert_invariants(admitted, "admitted empty attributes"));
 });
 
 check("nested records are key-order-insensitive, arrays ordered, and records differ from arrays", () => {
@@ -154,10 +178,7 @@ check("nested records are key-order-insensitive, arrays ordered, and records dif
   const arrayRoot = arrayValue.$_content[0];
   if (typeof arrayRoot !== "object" || arrayRoot === null) throw new Error("Expected root node.");
   Reflect.set(arrayRoot, "$_attrs", { style: ["x", "y"] });
-  assert.throws(
-    () => canonical_hson_graph_equal(recordValue, arrayValue),
-    /malformed attribute value.*style must use the canonical inline-style value domain/,
-  );
+  assert.equal(canonical_hson_graph_equal(recordValue, arrayValue), false);
 });
 
 check("numeric equality distinguishes negative zero and rejects non-finite values", () => {
@@ -195,6 +216,24 @@ check("comparison does not mutate key order, content, attrs, metadata, or style"
   assert.deepEqual(Object.keys(leftRoot.$_attrs ?? {}), attrsKeys);
   assert.deepEqual(Object.keys(leftRoot.$_meta ?? {}), metaKeys);
   assert.deepEqual(typeof style === "object" && style !== null ? Object.keys(style) : [], styleKeys);
+});
+
+check("first divergence classifies strict canonical identity without graph repair", () => {
+  const numeric = document(node("div", [], { count: 0 }));
+  const textual = document(node("div", [], { count: "0" }));
+  const valueDifference = canonical_hson_graph_difference(numeric, textual);
+  assert.equal(valueDifference?.kind, "attribute-value");
+  assert.equal(valueDifference?.path, "$.$_content[0].$_content[0].$_attrs.count");
+
+  const rootless = node("_hson_elem", [node("main")]);
+  assert.equal(canonical_hson_graph_difference(document(node("main")), rootless)?.kind, "root-leakage");
+  assert.equal(
+    canonical_hson_graph_difference(
+      node("_hson_obj", [node("a", [node("_hson_obj", [node("_hson_val", [1])])])]),
+      node("_hson_elem", [node("a")]),
+    )?.kind,
+    "structural-mode-mismatch",
+  );
 });
 
 process.stdout.write(`# ${checks} canonical HSON equality checks passed\n`);

@@ -140,10 +140,14 @@ stores canonical boolean and null values; deletion is explicit through
 The graph type continues to permit ordinary string, number, boolean, and null
 attribute values for programmatic compatibility; this is not a promise of typed
 wire attributes. HSON parsing stores ordinary attribute values as strings, and
-canonical HSON serialization quotes every non-flag ordinary value after
-`String(...)` conversion. Thus a graph-held `{ count: 2 }` serializes as
-`count="2"` and reparses as `{ count: "2" }`. Structured style values retain
-their separate existing CSS-string normalization behavior.
+Transform node admission projects non-style attribute primitives to strings
+before HSON serialization. Thus `fromNode()` admits `{ count: 2 }` as
+`{ count: "2" }`, which serializes as `count="2"`. Direct canonical equality
+does not imitate that projection: `{ count: 2 }` and `{ count: "2" }` are
+distinct graphs. Direct serializer input must already satisfy its string-valued
+HSON attribute domain. Structured style values retain their separate existing
+CSS-string normalization behavior. Canonical no-attribute state omits
+`$_attrs`; invariant validation rejects a present empty `$_attrs` container.
 
 Metadata is structural support, not semantic JSON/HTML content. QUID identity
 is stored as `$_meta["quid"]`; array index metadata uses

@@ -2,8 +2,10 @@
 
 HSON 3.0 stores only `$_tag` and `$_content` on a node with no attributes or
 metadata. `$_content` remains required. `$_attrs` and `$_meta` are optional
-storage containers whose absence means the same thing as an empty plain object;
-canonical construction and mutation prefer absence.
+storage containers. Canonical no-attribute state requires `$_attrs` to be
+absent; a present empty `$_attrs` is a noncanonical candidate spelling.
+Candidate admission removes it without mutating caller input. Empty metadata
+remains a distinct present field and strict equality observes that presence.
 
 ## Construction and mutation rules
 
@@ -54,12 +56,13 @@ empty storage container for inspection.
 
 ## Invariants and permissive Transform ingress
 
-Runtime invariant validation accepts absent or empty plain-object optional
-containers because LiveMap, LiveHost, and cross-format projections may carry
-broader runtime shapes. Transform node ingress recognizes absent,
-`undefined`, `{}`, and legacy empty `[]` as equivalent permissive spellings and
-returns a detached canonical graph with the property omitted. It also converts
-non-style ordinary attribute primitives to strings. An ordinary node with
+Runtime invariant validation rejects a present empty `$_attrs` container.
+Transform node ingress recognizes absent, `undefined`, `{}`, and legacy empty
+`[]` attribute candidates and returns a detached canonical graph with the
+property omitted. It also converts non-style ordinary attribute primitives to
+strings as an explicit ingress projection. Strict canonical equality never
+performs either conversion: numeric `0` and string `"0"` remain distinct, as
+do an absent field and a present field. An ordinary node with
 `$_content: []` is the canonical empty element form. The one authorized legacy
 structural normalization maps an ordinary node whose sole relationship is an
 empty `_hson_elem` to `$_content: []`, without mutating the caller. Empty
@@ -133,6 +136,11 @@ Neither is transported HSON: `serialize_hson()` rejects every `_hson_root` and
 does not substitute, melt, or silently unwrap it. HSON-source public terminals
 detach exactly one validated semantic child before target projection, while
 canonical equality remains root-sensitive.
+
+Canonical equality traverses the supplied graphs directly. It does not invoke
+node normalization, rebuild indexes, sort content, detach roots, remove
+metadata, repair wrappers, or coerce attribute values. Admission and projection
+boundaries must establish their own canonical inputs before invoking equality.
 
 The future architecture must choose, separately, among:
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
+import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 const Q1 = "0000000000000001";
@@ -44,6 +45,17 @@ check("Worker-safe Transform produces readable, compact, and no-QUID HSON", () =
     hsonTransform.fromNode(node).toHson().noQuid().serialize(),
     `<worker "ready"/>`,
   );
+});
+
+check("Worker-safe Transform oracle proves strict closure without Node support", () => {
+  const result = assertCanonicalClosure({
+    launcher: "transform-worker",
+    caseId: "worker-strict-closure",
+    ingress: "hson-source",
+    source: `<worker @${Q1} "ready"/>`,
+    cycles: 3,
+  });
+  assert.equal(result.serialized, `<worker @${Q1} "ready"/>`);
 });
 
 check("trusted HTML parses without browser globals", () => {

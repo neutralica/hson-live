@@ -394,9 +394,15 @@ check("persisted QUIDs round-trip and invalid identity is rejected", () => {
   );
 });
 
-check("view-state preserves empty optional records while canonical equality normalizes them", () => {
+check("view-state requires canonical empty attributes and preserves metadata presence exactly", () => {
   const absent = round_trip(element_capture(node("div"))).decoded;
-  const emptyAttrs = round_trip(element_capture(node("div", [], {}))).decoded;
+  const emptyAttrsCandidate = element_capture(node("div", [], {}));
+  expect_codec_error(
+    () => encode_view_state_snapshot(emptyAttrsCandidate),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+  );
+  const admittedRoot = hson.fromNode(emptyAttrsCandidate.root).toNode();
+  const admitted = round_trip({ ...emptyAttrsCandidate, root: admittedRoot }).decoded;
   const emptyMeta = round_trip(element_capture(node("div", [], undefined, {}))).decoded;
   const rootOf = (capture: DocumentLiveMapCapture): HsonNode => {
     const cluster = capture.root.$_content[0];
@@ -406,13 +412,12 @@ check("view-state preserves empty optional records while canonical equality norm
     return root;
   };
   assert.equal(Object.hasOwn(rootOf(absent), "$_attrs"), false);
-  assert.equal(Object.hasOwn(rootOf(emptyAttrs), "$_attrs"), true);
-  assert.deepEqual(rootOf(emptyAttrs).$_attrs, {});
+  assert.equal(Object.hasOwn(rootOf(admitted), "$_attrs"), false);
   assert.equal(Object.hasOwn(rootOf(absent), "$_meta"), false);
   assert.equal(Object.hasOwn(rootOf(emptyMeta), "$_meta"), true);
   assert.deepEqual(rootOf(emptyMeta).$_meta, {});
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyAttrs.root), true);
-  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), true);
+  assert.equal(canonical_hson_graph_equal(absent.root, admitted.root), true);
+  assert.equal(canonical_hson_graph_equal(absent.root, emptyMeta.root), false);
 });
 
 check("record insertion order does not affect deterministic payload text", () => {
