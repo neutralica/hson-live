@@ -15,6 +15,7 @@ import {
   is_hson_bare_name_char,
   is_hson_bare_name_start,
 } from "../../../core/hson-name.js";
+import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -104,11 +105,14 @@ class HsonScanner {
       this.fail(`missing tag name before "/>"`, openPos);
     }
 
+    const tagPos = this.position();
     const tag = this.peek() === "`"
       ? this.scanQuotedTagName()
       : this.scanBareName("tag name");
+    assert_authored_hson_source_name(tag, tagPos);
 
     const attrs: RawAttr[] = [];
+    const attrDeclarations = new Map<string, Position>();
     let quid: { value: string; start: Position; end: Position } | undefined;
     let openEmitted = false;
     let contentStarted = false;
@@ -165,12 +169,16 @@ class HsonScanner {
           this.skipTrivia();
 
           if (this.peek() === "=") {
-            attrs.push(this.scanAttributeValue(name, namePos));
+            const attr = this.scanAttributeValue(name, namePos);
+            this.assertUniqueAttribute(attrDeclarations, attr);
+            attrs.push(attr);
             continue;
           }
 
           if (!isPrimitiveLiteral(name)) {
-            attrs.push({ name, start: namePos, end: nameEnd });
+            const attr = { name, start: namePos, end: nameEnd };
+            this.assertUniqueAttribute(attrDeclarations, attr);
+            attrs.push(attr);
             continue;
           }
         }
@@ -401,7 +409,7 @@ class HsonScanner {
     return { name, value: { text, quoted: false }, start, end };
   }
 
-  /** Return a complete JSON-compatible literal, preserving current text semantics. */
+  /** Return a complete JSON-compatible literal, preserving multiline HSON text. */
   private scanContentString(): string {
     const start = this.position();
     this.consumeExpected(`"`);
@@ -416,16 +424,7 @@ class HsonScanner {
       }
 
       if (ch === "\\") {
-        this.consumeExpected("\\");
-        if (this.atEnd()) this.fail(`unterminated quoted string`, start);
-
-        if (this.isNewline()) {
-          raw += "\\\\";
-          this.consume();
-          raw += "\\n";
-        } else {
-          raw += "\\" + this.consume();
-        }
+        raw += this.scanJsonEscape("content string");
         continue;
       }
 
@@ -439,6 +438,10 @@ class HsonScanner {
         this.consume();
         raw += "\\t";
         continue;
+      }
+
+      if (ch.charCodeAt(0) < 0x20) {
+        this.fail(`[invalid-json-string] unescaped control character in content string`);
       }
 
       raw += this.consume();
@@ -462,9 +465,24 @@ class HsonScanner {
       }
 
       if (ch === "\\") {
-        text += this.consume();
-        if (this.atEnd()) this.fail(`unterminated quoted attribute value for "${name}"`, start);
-        text += this.consume();
+        text += this.scanJsonEscape(`quoted attribute "${name}"`);
+        continue;
+      }
+
+      if (this.isNewline()) {
+        this.consume();
+        text += "\\n";
+        continue;
+      }
+
+      if (ch === "\t") {
+        this.consume();
+        text += "\\t";
+        continue;
+      }
+
+      if (ch.charCodeAt(0) < 0x20) {
+        this.fail(`[invalid-json-string] unescaped control character in quoted attribute "${name}"`);
         continue;
       }
 
@@ -491,13 +509,23 @@ class HsonScanner {
       }
 
       if (ch === "\\") {
+        const escapePos = this.position();
         this.consumeExpected("\\");
-        if (this.atEnd()) this.fail(`unterminated quoted tag name`, start);
+        if (this.atEnd() || this.isNewline()) {
+          this.fail(`[invalid-name-escape] invalid escape termination in backtick HSON name`, escapePos);
+        }
         const escaped = this.consume();
-        if (escaped === "n") tag += "\n";
+        if (escaped === "`") tag += "`";
+        else if (escaped === "\\") tag += "\\";
+        else if (escaped === "n") tag += "\n";
         else if (escaped === "r") tag += "\r";
         else if (escaped === "t") tag += "\t";
-        else tag += escaped;
+        else {
+          this.fail(
+            `[invalid-name-escape] unsupported escape ${JSON.stringify(`\\${escaped}`)} in backtick HSON name`,
+            escapePos,
+          );
+        }
         continue;
       }
 
@@ -505,6 +533,51 @@ class HsonScanner {
     }
 
     this.fail(`unterminated quoted tag name`, start);
+  }
+
+  private scanJsonEscape(context: string): string {
+    const escapePos = this.position();
+    this.consumeExpected("\\");
+    if (this.atEnd() || this.isNewline()) {
+      this.fail(`[invalid-json-escape] invalid escape termination in ${context}`, escapePos);
+    }
+
+    const escaped = this.consume();
+    if (`"\\/bfnrt`.includes(escaped)) return `\\${escaped}`;
+
+    if (escaped === "u") {
+      let hex = "";
+      for (let offset = 0; offset < 4; offset += 1) {
+        const digit = this.peek();
+        if (!/^[0-9A-Fa-f]$/.test(digit)) {
+          this.fail(
+            `[invalid-json-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in ${context}`,
+            escapePos,
+          );
+        }
+        hex += this.consume();
+      }
+      return `\\u${hex}`;
+    }
+
+    this.fail(
+      `[invalid-json-escape] unsupported escape ${JSON.stringify(`\\${escaped}`)} in ${context}`,
+      escapePos,
+    );
+  }
+
+  private assertUniqueAttribute(
+    declarations: Map<string, Position>,
+    attr: RawAttr,
+  ): void {
+    const first = declarations.get(attr.name);
+    if (first !== undefined) {
+      this.fail(
+        `[duplicate-attribute] duplicate HSON attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
+        attr.start,
+      );
+    }
+    declarations.set(attr.name, attr.start);
   }
 
   private scanBareName(where: string): string {

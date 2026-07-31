@@ -1,6 +1,7 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
+import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { parse_tokens } from "../src/api/transform/parsers/parse-tokens.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
@@ -43,6 +44,42 @@ function token_summary(tokens: readonly Tokens[]) {
         return { kind: token.kind, raw: token.raw };
     }
   });
+}
+
+function authored_node(source: string): ReturnType<typeof parse_hson> {
+  const root = parse_hson(source);
+  const cluster = root.$_content[0];
+  assert.ok(is_Node(cluster));
+  const node = cluster.$_content[0];
+  assert.ok(is_Node(node));
+  return node;
+}
+
+function authored_attr(source: string, name = "value"): unknown {
+  return authored_node(source).$_attrs?.[name];
+}
+
+function authored_content(source: string): unknown {
+  const node = authored_node(source);
+  const cluster = node.$_content[0];
+  assert.ok(is_Node(cluster));
+  const leaf = cluster.$_content[0];
+  assert.ok(is_Node(leaf));
+  return leaf.$_content[0];
+}
+
+function assert_authored_rejection(
+  source: string,
+  classification: string,
+  authoredName?: string,
+): void {
+  assert.throws(
+    () => parse_hson(source),
+    (cause) => cause instanceof Error
+      && cause.message.includes(classification)
+      && (authoredName === undefined || cause.message.includes(`"${authoredName}"`))
+      && /at \d+:\d+ \(index \d+\)/.test(cause.message),
+  );
 }
 
 check("header @quid is represented separately from ordinary attributes", () => {
@@ -388,6 +425,189 @@ check("representative large canonical payload round trips", () => {
   const wire = serialize_hson(detach_hson_root_value(original));
   assert.deepEqual(parse_hson(wire), original);
 });
+
+for (const reserved of [
+  "_hson_root",
+  "_hson_elem",
+  "_hson_obj",
+  "_hson_arr",
+  "_hson_ii",
+  "_hson_str",
+  "_hson_val",
+]) {
+  check(`authored reserved name rejects in bare and backtick spellings: ${reserved}`, () => {
+    assert_authored_rejection(`<${reserved}>`, "[authored-reserved-name]", reserved);
+    assert_authored_rejection(`<\`${reserved}\`>`, "[authored-reserved-name]", reserved);
+    if (reserved === "_hson_obj") {
+      assert.throws(
+        () => hsonTransform.fromHson(`<${reserved}>`).toNode(),
+        /\[authored-reserved-name\]/,
+      );
+    }
+  });
+}
+
+check("authored reserved empty object-mode form rejects at name admission", () => {
+  assert_authored_rejection(`<_hson_obj>`, "[authored-reserved-name]", "_hson_obj");
+});
+
+check("authored reserved empty element-mode form rejects at name admission", () => {
+  assert_authored_rejection(`<_hson_elem/>`, "[authored-reserved-name]", "_hson_elem");
+});
+
+check("authored reserved populated form rejects before parser construction", () => {
+  assert_authored_rejection(`<_hson_obj 1>`, "[authored-reserved-name]", "_hson_obj");
+});
+
+check("authored reserved nested form rejects at its nested source position", () => {
+  assert_authored_rejection(`<outer <_hson_obj>>`, "[authored-reserved-name]", "_hson_obj");
+});
+
+check("authored reserved property position rejects", () => {
+  assert_authored_rejection(`<<_hson_obj 1>>`, "[authored-reserved-name]", "_hson_obj");
+});
+
+check("authored reserved tag position rejects", () => {
+  assert_authored_rejection(`<outer <_hson_elem/>/>`, "[authored-reserved-name]", "_hson_elem");
+});
+
+check("future reserved bare names reject at authored admission", () => {
+  assert_authored_rejection(`<_hson_future>`, "[authored-reserved-name]", "_hson_future");
+});
+
+check("future reserved backtick names reject after decoding", () => {
+  assert_authored_rejection(`<\`_hson_future\`/>`, "[authored-reserved-name]", "_hson_future");
+});
+
+for (const [name, source] of [
+  ["value/value", `<tag a="1" a="2"/>`],
+  ["flag/flag", `<tag disabled disabled/>`],
+  ["flag/value", `<tag disabled disabled="1"/>`],
+  ["value/flag", `<tag disabled="1" disabled/>`],
+  ["style/style", `<tag style="color:red" style="color:blue"/>`],
+  ["colonized", `<tag data:item="1" data:item="2"/>`],
+  ["whitespace-separated", `<tag a="1"    a="2"/>`],
+  ["comment-separated", `<tag a="1" // declaration boundary\n a="2"/>`],
+] as const) {
+  check(`duplicate HSON attributes reject before storage: ${name}`, () => {
+    assert_authored_rejection(source, "[duplicate-attribute]");
+    if (name === "value/value") {
+      assert.throws(() => hsonTransform.fromHson(source).toNode(), /\[duplicate-attribute\]/);
+    }
+  });
+}
+
+check("HSON attribute duplicate identity is case-sensitive", () => {
+  assert.deepEqual(authored_node(`<tag a="1" A="2"/>`).$_attrs, { a: "1", A: "2" });
+});
+
+check("distinct colonized HSON attribute names remain distinct", () => {
+  assert.deepEqual(authored_node(`<tag data:a="1" data:A="2"/>`).$_attrs, {
+    "data:a": "1",
+    "data:A": "2",
+  });
+});
+
+check("quoted HSON attributes decode every JSON simple escape", () => {
+  const cases = [
+    [String.raw`\"`, `"`],
+    [String.raw`\\`, `\\`],
+    [String.raw`\/`, `/`],
+    [String.raw`\b`, `\b`],
+    [String.raw`\f`, `\f`],
+    [String.raw`\n`, `\n`],
+    [String.raw`\r`, `\r`],
+    [String.raw`\t`, `\t`],
+  ] as const;
+  for (const [spelling, expected] of cases) {
+    assert.equal(authored_attr(`<tag value="${spelling}"/>`), expected, spelling);
+  }
+});
+
+check("quoted HSON attributes decode JSON unicode escapes", () => {
+  assert.equal(authored_attr(String.raw`<tag value="\u0041\u03A9"/>`), "AΩ");
+});
+
+for (const [name, spelling] of [
+  ["unknown q", String.raw`\q`],
+  ["unknown v", String.raw`\v`],
+  ["zero", String.raw`\0`],
+  ["hex", String.raw`\x41`],
+  ["incomplete unicode", String.raw`\u12`],
+  ["malformed unicode", String.raw`\uZZZZ`],
+] as const) {
+  check(`quoted HSON attributes reject invalid JSON escape: ${name}`, () => {
+    assert_authored_rejection(`<tag value="${spelling}"/>`, "[invalid-json-escape]");
+    if (name === "unknown q") {
+      assert.throws(
+        () => hsonTransform.fromHson(`<tag value="${spelling}"/>`).toNode(),
+        /\[invalid-json-escape\]/,
+      );
+    }
+  });
+}
+
+check("quoted HSON attributes reject a trailing escape without discarding its slash", () => {
+  assert_authored_rejection(`<tag value="bad${"\\"}`, "[invalid-json-escape]");
+});
+
+check("content strings decode every JSON escape and unicode spelling", () => {
+  const cases = [
+    [String.raw`\"`, `"`],
+    [String.raw`\\`, `\\`],
+    [String.raw`\/`, `/`],
+    [String.raw`\b`, `\b`],
+    [String.raw`\f`, `\f`],
+    [String.raw`\n`, `\n`],
+    [String.raw`\r`, `\r`],
+    [String.raw`\t`, `\t`],
+    [String.raw`\u0041`, `A`],
+  ] as const;
+  for (const [spelling, expected] of cases) {
+    assert.equal(authored_content(`<tag "${spelling}"/>`), expected, spelling);
+  }
+});
+
+for (const [name, spelling] of [
+  ["unknown", String.raw`\q`],
+  ["incomplete unicode", String.raw`\u12`],
+  ["malformed unicode", String.raw`\uZZZZ`],
+] as const) {
+  check(`content strings reject invalid JSON escape: ${name}`, () => {
+    assert_authored_rejection(`<tag "${spelling}"/>`, "[invalid-json-escape]");
+  });
+}
+
+check("content strings reject a trailing escape", () => {
+  assert_authored_rejection(`<tag "bad${"\\"}`, "[invalid-json-escape]");
+});
+
+for (const [name, source, expected] of [
+  ["escaped backtick", "<`tick\\`name` 1>", "tick`name"],
+  ["escaped backslash", "<`back\\\\slash` 1>", "back\\slash"],
+  ["newline escape", "<`line\\nname` 1>", "line\nname"],
+  ["carriage-return escape", "<`line\\rname` 1>", "line\rname"],
+  ["tab escape", "<`line\\tname` 1>", "line\tname"],
+  ["literal forward slash", "<`path/name` 1>", "path/name"],
+] as const) {
+  check(`backtick HSON names accept ${name}`, () => {
+    assert.equal(authored_node(source).$_tag, expected);
+  });
+}
+
+for (const [name, spelling] of [
+  ["unknown", String.raw`\q`],
+  ["unicode", String.raw`\u0041`],
+  ["backspace", String.raw`\b`],
+  ["form feed", String.raw`\f`],
+  ["escaped forward slash", String.raw`\/`],
+  ["zero", String.raw`\0`],
+  ["hex", String.raw`\x41`],
+] as const) {
+  check(`backtick HSON names reject restricted escape: ${name}`, () => {
+    assert_authored_rejection(`<\`name${spelling}\` 1>`, "[invalid-name-escape]");
+  });
+}
 
 const malformed = [
   [`unterminated string`, `<tag "value/>`],

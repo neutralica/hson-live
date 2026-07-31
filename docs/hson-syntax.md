@@ -59,12 +59,17 @@ Tag/property names outside that bare grammar are emitted between backticks:
 <`a.b` 1>
 ```
 
-Backtick names support escaped backticks, backslashes, and `\n`, `\r`, and
-`\t`. Backticks are for tag/property names only; text and quoted attribute
-values use double quotes.
+Backtick names use a restricted escape grammar. Only escaped backticks,
+backslashes, `\n`, `\r`, and `\t` are accepted. JSON-only escapes such as
+`\uXXXX`, `\b`, `\f`, and `\/`, as well as unknown escapes, reject. A literal
+forward slash needs no escape. Backticks are for tag/property names only; text
+and quoted attribute values use double quotes.
 
-The `_hson_` prefix is reserved for structural nodes and cannot be used as an
-ordinary user tag/property name.
+The `_hson_` prefix is reserved for structural nodes and cannot be authored as
+an ordinary user tag/property name. This applies to bare and backtick spellings,
+to known VSN names such as `_hson_obj`, and to future `_hson_*` names. Parser
+synthesis may still create those internal names for anonymous objects, arrays,
+primitive leaves, clusters, and the attachment root.
 
 ---
 
@@ -99,8 +104,10 @@ The parser attaches that value directly beneath its internal `_hson_root` as
 leaf; it does not imply `_hson_elem` or `_hson_obj`. A bare name such as
 `value` is not a string and remains invalid.
 
-Only double quotes are supported for quoted text. JSON-style escapes are
-decoded. Single quotes and backticks are rejected as text delimiters.
+Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`,
+`\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown,
+incomplete, malformed, and unterminated escapes reject. Single quotes and
+backticks are rejected as text delimiters.
 
 An inline node may have attributes and one primitive value:
 
@@ -135,6 +142,17 @@ accepts double-quoted and unquoted spellings, but both produce string-valued
 ordinary attributes. Quoted values use HSON/JSON string escapes; no HTML entity
 decoding occurs on this parser edge. `style` is parsed separately into the
 graph's structured style map.
+
+Attribute declaration names are case-sensitive and duplicates reject before
+canonical attribute storage. Thus `a` and `A` are distinct, while repeated
+valued, flag, `style`, or colonized names reject even when comments or layout
+separate the declarations. This is an authored-HSON rule. Raw HTML retains its
+separate case-insensitive duplicate policy.
+
+Quoted attribute values accept exactly the same JSON escape set as quoted
+content: `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`.
+Unknown, incomplete, malformed, and unterminated escapes reject; `\/` decodes
+to `/`.
 
 For example, permissive input `<tag count=2/>` parses as `{ count: "2" }` and
 canonical reserialization produces `<tag count="2"/>`. Canonical HSON always

@@ -55,7 +55,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
-      executableChecks: 55,
+      executableChecks: 107,
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
