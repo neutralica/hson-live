@@ -10,7 +10,13 @@ function is_scalar_leaf(node: HsonNode): boolean {
 function scalar_carrier_value(node: HsonNode): HsonNode | undefined {
   if (node.$_tag !== OBJ_TAG && node.$_tag !== ELEM_TAG) return undefined;
   if (node.$_content.length !== 1 || !is_Node(node.$_content[0])) return undefined;
-  return is_scalar_leaf(node.$_content[0]) ? node.$_content[0] : undefined;
+  const child = node.$_content[0];
+  if (!is_scalar_leaf(child)) return undefined;
+  // Object mode owns strings and typed primitives. Element mode owns text
+  // only; retain an element/value relationship so invariant admission rejects
+  // it instead of laundering it into a detached typed scalar.
+  if (node.$_tag === ELEM_TAG && child.$_tag !== STR_TAG) return undefined;
+  return child;
 }
 
 function with_content(node: HsonNode, content: HsonNode["$_content"]): HsonNode {

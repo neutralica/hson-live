@@ -1178,22 +1178,95 @@ check("object member metadata and QUIDs are outside the HSON serialization domai
   assert.throws(() => serialize_hson(attributed), /must not have \$_attrs|cannot carry attributes or flags/);
 });
 
-check("detached scalar carriers normalize at node admission and reject at direct egress", () => {
-  for (const [tag, leaf] of [
-    ["_hson_obj", { $_tag: "_hson_str", $_content: ["value"] }],
-    ["_hson_obj", { $_tag: "_hson_val", $_content: [2] }],
-    ["_hson_elem", { $_tag: "_hson_str", $_content: ["value"] }],
-    ["_hson_elem", { $_tag: "_hson_val", $_content: [2] }],
-  ] satisfies ReadonlyArray<readonly ["_hson_obj" | "_hson_elem", HsonNode]>) {
-    const carrier: HsonNode = {
-      $_tag: tag,
-      $_content: [leaf],
-    };
-    const admitted = hson.fromNode(carrier).toNode();
-    assert.deepEqual(admitted, leaf);
-    assert.throws(() => serialize_hson(carrier), /detached scalar .* carrier|_hson_elem cannot contain _hson_val/);
+check("detached object scalar carriers normalize to strings and typed values", () => {
+  for (const leaf of [
+    { $_tag: "_hson_str", $_content: ["value"] },
+    { $_tag: "_hson_val", $_content: [false] },
+    { $_tag: "_hson_val", $_content: [-0] },
+  ] satisfies HsonNode[]) {
+    const carrier: HsonNode = { $_tag: "_hson_obj", $_content: [leaf] };
+    const before = structuredClone(carrier);
+    for (const admitted of [
+      hsonTransform.fromNode(carrier).toNode(),
+      hson.fromNode(carrier).toNode(),
+    ]) {
+      assert.deepEqual(admitted, leaf);
+      if (Object.is(leaf.$_content[0], -0)) {
+        assert.equal(Object.is(admitted.$_content[0], -0), true);
+      }
+    }
+    assert.deepEqual(carrier, before);
+    assert.throws(() => serialize_hson(carrier), /detached scalar _hson_obj carrier/);
   }
+});
 
+check("detached element string carriers normalize to exact text leaves", () => {
+  for (const text of ["text", ""]) {
+    const leaf: HsonNode = { $_tag: "_hson_str", $_content: [text] };
+    const carrier: HsonNode = { $_tag: "_hson_elem", $_content: [leaf] };
+    const before = structuredClone(carrier);
+    assert.deepEqual(hsonTransform.fromNode(carrier).toNode(), leaf);
+    assert.deepEqual(hson.fromNode(carrier).toNode(), leaf);
+    assert.deepEqual(carrier, before);
+    assert.throws(() => serialize_hson(carrier), /detached scalar _hson_elem carrier/);
+  }
+});
+
+check("detached element typed carriers reach invariant admission and reject deterministically", () => {
+  const started = performance.now();
+  const reject = (carrier: HsonNode): Readonly<Record<string, unknown>> => {
+    const details: Array<Readonly<Record<string, unknown>>> = [];
+    for (const admit of [
+      () => hsonTransform.fromNode(carrier).toNode(),
+      () => hson.fromNode(carrier).toNode(),
+    ]) {
+      let observed: TransformError | undefined;
+      assert.throws(
+        admit,
+        (cause) => {
+          if (!(cause instanceof TransformError)) return false;
+          observed = cause;
+          return cause.operation === "fromNode"
+            && cause.stage === "canonical-invariant-admission"
+            && cause.code === "HSON_CANONICAL_INVARIANT_VIOLATION";
+        },
+      );
+      assert.ok(observed);
+      details.push({
+        operation: observed.operation,
+        stage: observed.stage,
+        code: observed.code,
+        path: observed.path,
+      });
+    }
+    assert.deepEqual(details[1], details[0]);
+    return details[0]!;
+  };
+
+  for (const value of [false, null, 1, -0]) {
+    const carrier: HsonNode = {
+      $_tag: "_hson_elem",
+      $_content: [{ $_tag: "_hson_val", $_content: [value] }],
+    };
+    const before = structuredClone(carrier);
+    const first = reject(carrier);
+    const second = reject(carrier);
+    assert.deepEqual(first, {
+      operation: "fromNode",
+      stage: "canonical-invariant-admission",
+      code: "HSON_CANONICAL_INVARIANT_VIOLATION",
+      path: undefined,
+    });
+    assert.deepEqual(second, first);
+    assert.deepEqual(carrier, before);
+  }
+  assert.ok(
+    performance.now() - started < 250,
+    "mode-sensitive detached element/value rejection must settle synchronously and promptly",
+  );
+});
+
+check("array semantic values retain valid object and element string detachment", () => {
   for (const carrierTag of ["_hson_obj", "_hson_elem"] as const) {
     const arrayCarrier: HsonNode = {
       $_tag: "_hson_arr",

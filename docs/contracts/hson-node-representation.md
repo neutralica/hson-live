@@ -97,10 +97,13 @@ only that element projection, never mutates its source graph, and cannot
 legalize object metadata.
 
 Transform `fromNode()` is a detached semantic admission boundary. It collapses
-an unowned `_hson_obj([scalar])` or `_hson_elem([scalar])` to the scalar while
-preserving object-member scalar carriers, element text clusters, established
-root-owned text fragments, and every array cluster. Root detachment itself
-remains exact. Direct serialization rejects an unadmitted detached carrier.
+an unowned `_hson_obj([_hson_str])`, `_hson_obj([_hson_val])`, or
+`_hson_elem([_hson_str])` to the scalar while preserving object-member scalar
+carriers, element text clusters, established root-owned text fragments, and
+every array cluster. `_hson_elem([_hson_val])` is never a scalar carrier: it
+remains visible until canonical invariant admission rejects typed element
+content. Root detachment itself remains exact. Direct serialization rejects an
+unadmitted detached carrier.
 
 The legacy empty-array optional-container spelling does not apply to
 `_hson_root.$_meta`: root metadata must be absent, `undefined`, or an empty

@@ -95,7 +95,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 105,
+      executableChecks: 108,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
@@ -105,7 +105,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:json-ingress",
       repositoryModule: "tests/json-ingress.acceptance.mts",
       runtime: "node",
-      executableChecks: 30,
+      executableChecks: 31,
       collections: ["json", "ingress", "canonical-graph", "externally-discoverable"],
     }),
     launcher({

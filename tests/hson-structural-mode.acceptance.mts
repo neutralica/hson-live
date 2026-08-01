@@ -53,12 +53,16 @@ function compact(source: string): string {
 }
 
 function rejectsEveryBoundary(candidate: HsonNode, pattern: RegExp): void {
+  const before = structuredClone(candidate);
   assert.throws(() => assert_invariants(candidate, "structural-mode regression"), pattern);
+  assert.deepEqual(candidate, before);
   assert.throws(() => hson.fromNode(candidate).toNode(), pattern);
+  assert.deepEqual(candidate, before);
   const serializerCandidate = candidate.$_tag === "_hson_root"
     ? candidate.$_content[0] as HsonNode
     : candidate;
   assert.throws(() => serialize_hson(serializerCandidate), pattern);
+  assert.deepEqual(candidate, before);
 }
 
 check("parser groups a uniform top-level element sequence", () => {
@@ -190,7 +194,9 @@ check("nested redundant empty element wrappers reject at every canonical boundar
 });
 
 check("element branches reject typed value leaves", () => {
-  rejectsEveryBoundary(root(elem(node("_hson_val", [2]))), /_hson_elem cannot contain _hson_val/);
+  for (const value of [false, null, 1, -0]) {
+    rejectsEveryBoundary(root(elem(node("_hson_val", [value]))), /_hson_elem cannot contain _hson_val/);
+  }
 });
 
 check("element branches reject object clusters", () => {

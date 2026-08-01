@@ -557,5 +557,31 @@ check("all structural JSON string-ingress routes reject duplicates repeatably", 
   assert.equal(source, before);
 });
 
+check("late duplicate rejection settles without eager whole-source position scans", () => {
+  const uniquePropertyCount = 12_000;
+  const uniqueProperties = Array.from(
+    { length: uniquePropertyCount },
+    (_, index) => `"k${index}":${index}`,
+  ).join(",");
+  const source = `{"target":0,${uniqueProperties},"target":1}`;
+  const duplicateIndex = source.lastIndexOf(`"target"`);
+  const started = performance.now();
+  const details = duplicate_json_error(source);
+  const elapsed = performance.now() - started;
+
+  assert.deepEqual(details, {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: duplicateIndex, line: 1, column: duplicateIndex + 1 },
+    path: `$["target"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 1, line: 1, column: 2 },
+    }],
+  });
+  assert.ok(elapsed < 750, `late duplicate rejection took ${elapsed.toFixed(1)}ms`);
+});
+
 process.stdout.write(`# ${checks} JSON ingress checks passed\n`);
 emit_hson_live_test_completion("transform.json-ingress", checks, checks, 0);

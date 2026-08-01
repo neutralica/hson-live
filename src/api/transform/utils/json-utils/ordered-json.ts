@@ -153,7 +153,11 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     index += 1;
     skipWhitespace();
     const entries: Array<readonly [string, OrderedJsonValue]> = [];
-    const firstDeclarations = new Map<string, TransformErrorSource>();
+    // Retain offsets while the object is valid. Computing line/column walks
+    // source text, so eagerly deriving a position for every property makes a
+    // large duplicate-free document quadratic. Duplicate evidence is rare and
+    // is the only point where either full source coordinate is required.
+    const firstDeclarations = new Map<string, number>();
     if (source[index] === "}") {
       index += 1;
       return ordered_json_object(entries);
@@ -161,10 +165,11 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     while (index < source.length) {
       const keyToken = parseStringToken();
       const key = keyToken.value;
-      const duplicateSource = sourcePosition(keyToken.start);
-      const firstSource = firstDeclarations.get(key);
+      const firstOffset = firstDeclarations.get(key);
       const propertyPath = `${path}[${JSON.stringify(key)}]`;
-      if (firstSource !== undefined) {
+      if (firstOffset !== undefined) {
+        const duplicateSource = sourcePosition(keyToken.start);
+        const firstSource = sourcePosition(firstOffset);
         throw new TransformError(
           `Duplicate decoded structural JSON property ${JSON.stringify(key)} at ${duplicateSource.line}:${duplicateSource.column}`,
           {
@@ -177,7 +182,7 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
           },
         );
       }
-      firstDeclarations.set(key, duplicateSource);
+      firstDeclarations.set(key, keyToken.start);
       skipWhitespace();
       if (source[index] !== ":") fail("expected colon after JSON property name");
       index += 1;

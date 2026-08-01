@@ -9,6 +9,7 @@ import { hsonTransform } from "../src/api/transform/index.ts";
 import { parse_html } from "../src/api/transform/parsers/parse-html.ts";
 import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { normalize_detached_hson_semantic_value } from "../src/core/normalize-hson-semantic-value.ts";
 import { node_from_svg } from "../src/api/transform/utils/node-utils/node-from-svg.ts";
 import {
   decode_ordinary_attr_transit_name,
@@ -404,9 +405,32 @@ check("transport-sensitive attrs retain canonical equality through HSON text", (
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
 });
 
+check("structural HTML typed scalars use only the detached object carrier", () => {
+  for (const [source, expected] of [
+    [`<_hson_obj><_hson_val>false</_hson_val></_hson_obj>`, false],
+    [`<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>`, -0],
+  ] as const) {
+    for (const [runtime, parsed] of [
+      ["worker", worker(source)],
+      ["browser", browser(source)],
+    ] as const) {
+      const scalar = normalize_detached_hson_semantic_value(
+        detach_hson_root_value(parsed),
+        `attribute-transport.${runtime}`,
+      );
+      assert.equal(scalar.$_tag, "_hson_val");
+      assert.equal(Object.is(scalar.$_content[0], expected), true);
+    }
+  }
+
+  assert_rejects_both(
+    `<_hson_elem><_hson_val>1</_hson_val></_hson_elem>`,
+    /_hson_val.*forbidden under.*_hson_elem/,
+  );
+});
+
 check("reserved HTML transport lowering agrees across browser and Worker", () => {
   const sources = [
-    `<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>`,
     `<value><_hson_val>-0</_hson_val></value>`,
     `<_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem>`,
   ];
@@ -416,21 +440,17 @@ check("reserved HTML transport lowering agrees across browser and Worker", () =>
     assert_worker_browser_equal(`reserved-transport-${index}`, workerNode, browserNode);
   }
 
-  const scalar = detach_hson_root_value(worker(sources[1]!));
+  const scalar = detach_hson_root_value(worker(sources[0]!));
   assert.equal(scalar.$_tag, "_hson_obj");
   const property = scalar.$_content[0] as HsonNode;
   const value = property.$_content[0] as HsonNode;
   assert.equal(value.$_tag, "_hson_val");
   assert.equal(Object.is(value.$_content[0], -0), true);
 
-  const text = detach_hson_root_value(worker(sources[2]!));
+  const text = detach_hson_root_value(worker(sources[1]!));
   assert.deepEqual(
     text.$_content.map((child) => (child as HsonNode).$_content[0]),
     ["a", "", "b"],
-  );
-  assert_rejects_both(
-    `<_hson_elem><_hson_val>1</_hson_val></_hson_elem>`,
-    /_hson_val.*forbidden under.*_hson_elem/,
   );
   assert_rejects_both(
     `<_hson_str data-x="lost">&quot;text&quot;</_hson_str>`,

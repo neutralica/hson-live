@@ -285,6 +285,8 @@ Chooses HTML output.
 - Serializer-owned reserved carriers are emitted only where the HTML wire
   needs them to preserve object/element mode, detached scalars, or exact text
   item boundaries. Reserved tags are lowered before ordinary element parsing.
+- Detached typed scalars use `_hson_obj → _hson_val`; `_hson_elem` may detach
+  only an `_hson_str` text leaf and never admits `_hson_val` content.
 
 ### `.toJson()`
 
