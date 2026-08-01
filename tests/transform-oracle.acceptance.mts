@@ -426,6 +426,25 @@ check("missing object-member values expose stable lexical identity", () => {
   });
 });
 
+check("invalid authored JSON-number prefixes expose deterministic lexical ownership", () => {
+  for (const [source, caseId, expectedCode, expectedSource] of [
+    ["01", "number-leading-zero", "HSON_NUMBER_LEADING_ZERO", { index: 1, line: 1, column: 2 }],
+    ["+1", "number-leading-plus", "HSON_NUMBER_LEADING_PLUS", { index: 0, line: 1, column: 1 }],
+  ] as const) {
+    assert_structured_rejection({
+      caseId,
+      operation: "parse_hson",
+      source,
+      expectedCode,
+      expectedOperation: "tokenize-hson",
+      expectedStage: "tokenization",
+      expectedSource,
+      message: /invalid HSON number/,
+      run: () => parse_hson(source),
+    });
+  }
+});
+
 check("legacy doubled objects expose stable lexical identity", () => {
   const source = `<<a 1>>`;
   assert_structured_rejection({

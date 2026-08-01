@@ -780,6 +780,56 @@ check("numeric lexical branches have stable structured identities", () => {
   }
 });
 
+check("JSON-number tokens retain every settled accepted lexical branch", () => {
+  for (const source of [
+    "0",
+    "-0",
+    "1",
+    "-1",
+    "42",
+    "0.5",
+    "-0.5",
+    "1e3",
+    "1E3",
+    "1e+3",
+    "1e-3",
+    "1.7976931348623157e308",
+    "5e-324",
+  ] as const) {
+    assert.deepEqual(token_summary(tokenize_hson(source)), [{ kind: "TEXT", raw: source }]);
+  }
+});
+
+check("leading-zero defects belong to the second integer digit", () => {
+  for (const [source, expectedSource] of [
+    ["01", { index: 1, line: 1, column: 2 }],
+    ["00", { index: 1, line: 1, column: 2 }],
+    ["-01", { index: 2, line: 1, column: 3 }],
+  ] as const) {
+    expect_transform_error(source, "HSON_NUMBER_LEADING_ZERO", expectedSource);
+  }
+});
+
+check("leading-plus defects belong to the initial sign while exponent plus remains valid", () => {
+  for (const source of ["+1", "+0", "+1.5", "+1e3"] as const) {
+    expect_transform_error(source, "HSON_NUMBER_LEADING_PLUS", {
+      index: 0,
+      line: 1,
+      column: 1,
+    });
+  }
+  assert.deepEqual(parse_hson("1e+3"), parse_hson("1000"));
+});
+
+check("numeric spelling owns root object and array precedence without changing contextual names", () => {
+  expect_transform_error("01 2", "HSON_NUMBER_LEADING_ZERO", { index: 1, line: 1, column: 2 });
+  expect_transform_error("<n 01>", "HSON_NUMBER_LEADING_ZERO", { index: 4, line: 1, column: 5 });
+  expect_transform_error("[+1]", "HSON_NUMBER_LEADING_PLUS", { index: 1, line: 1, column: 2 });
+  assert.deepEqual(parse_hson("<n 1e+3>"), parse_json({ n: 1000 }));
+  assert.deepEqual(parse_hson("[1e-3]"), parse_json([0.001]));
+  assert.deepEqual(parse_hson("<`01` 1 `+1` 2>"), parse_json({ "01": 1, "+1": 2 }));
+});
+
 check("array comma closer and container failures have stable identities", () => {
   assert.deepEqual(parse_hson(`[1,2,]`), parse_hson(`«1,2,»`));
   assert.equal(

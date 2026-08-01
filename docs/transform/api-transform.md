@@ -240,7 +240,10 @@ Parses HSON text into HSON nodes.
   `_hson_root`. Meaningful `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`,
   and `_hson_val` nodes remain intact.
 - Bare quoted strings, finite numbers, booleans, and `null` are complete HSON
-  values. Empty, whitespace-only, and comment-only source rejects.
+  values. HSON numeric values use JSON number syntax and admit only finite
+  JavaScript numbers: a leading plus is forbidden, while an exponent plus is
+  allowed (for example, `1e+3`). Empty, whitespace-only, and comment-only
+  source rejects.
 - `.toJson()`, `.toHson()`, `.toHtml()`, and `.sanitizeBEWARE()` remain
   available for conversion and canonical reserialization.
 

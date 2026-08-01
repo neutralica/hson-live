@@ -55,7 +55,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-number",
       repositoryModule: "tests/hson-number.acceptance.mts",
       runtime: "node",
-      executableChecks: 19,
+      executableChecks: 24,
       collections: ["hson", "number", "admission", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -65,7 +65,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
-      executableChecks: 134,
+      executableChecks: 138,
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
@@ -85,7 +85,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-root-boundary",
       repositoryModule: "tests/hson-root-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 77,
+      executableChecks: 79,
       collections: ["hson", "parsing", "root-boundary", "source-shaping"],
     }),
     launcher({
@@ -95,7 +95,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 108,
+      executableChecks: 109,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
@@ -155,7 +155,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 26,
+      executableChecks: 27,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({
@@ -165,7 +165,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:certified-authored-hson-corpus",
       repositoryModule: "tests/certified-authored-hson-corpus.acceptance.mts",
       runtime: "node",
-      executableChecks: 4,
+      executableChecks: 29,
       collections: ["hson", "certified-corpus", "transport", "externally-discoverable"],
     }),
     launcher({

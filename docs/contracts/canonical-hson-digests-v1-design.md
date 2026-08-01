@@ -405,27 +405,27 @@ reported checks. Counts are contract checks, not hidden atomic assertion totals.
 | Node/Web Crypto runtime parity | 18 |
 | Browser runtime parity | 18 |
 | Worker-compatible runtime parity | 18 |
-| Corpus digest properties shard 1 | 22 |
-| Corpus digest properties shard 2 | 22 |
-| Corpus digest properties shard 3 | 22 |
-| Corpus digest properties shard 4 | 22 |
-| Corpus digest properties shard 5 | 21 |
-| Corpus digest properties shard 6 | 21 |
-| Corpus digest properties shard 7 | 21 |
-| **Estimated total** | **375** |
+| Corpus digest properties shard 1 | 24 |
+| Corpus digest properties shard 2 | 24 |
+| Corpus digest properties shard 3 | 23 |
+| Corpus digest properties shard 4 | 23 |
+| Corpus digest properties shard 5 | 23 |
+| Corpus digest properties shard 6 | 23 |
+| Corpus digest properties shard 7 | 23 |
+| **Estimated total** | **387** |
 
-The seven corpus shards expose all 151 accepted concrete descriptors as
-separately named reported checks (22+22+22+22+21+21+21), in stable case-ID
+The seven corpus shards expose all 163 accepted concrete descriptors as
+separately named reported checks (24+24+23+23+23+23+23), in stable case-ID
 order. Each checks deterministic bytes/digest, nonmutation, and equality with
 the hand-authored expected graph as applicable. Rejected corpus sources remain
 owned by their existing rejection suites; the nine graph-ingress rejection
 descriptors are cross-checked in the admission suite. This avoids both one
-opaque 151-case aggregate and arbitrary assertion inflation.
+opaque 163-case aggregate and arbitrary assertion inflation.
 
 ## 13. Corpus integration plan
 
-Do not add handwritten hashes to all 339 corpus descriptors. Import the
-existing materialized manifest read-only and, for each of its 151 accepted
+Do not add handwritten hashes to all 366 corpus descriptors. Import the
+existing materialized manifest read-only and, for each of its 163 accepted
 cases, digest the explicit `expectedGraph`. Verify:
 
 1. byte/digest determinism over repeated calls;
@@ -438,7 +438,7 @@ cases, digest the explicit `expectedGraph`. Verify:
 6. Node/browser/Worker parity uses the same fixed corpus shard order.
 
 The 42 graph and text known-answer constants above are the cryptographic oracle.
-The corpus supplies breadth and correspondence properties, not 339 supposedly
+The corpus supplies breadth and correspondence properties, not 366 supposedly
 independent hand-authored hashes. No corpus descriptor, review artifact, count,
 or fingerprint changes are required merely to add digest tests.
 

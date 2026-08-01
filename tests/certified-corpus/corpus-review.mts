@@ -81,6 +81,9 @@ function renderCase(entry: MaterializedCorpusCase): string {
     lines.push(block("specialized-test references", entry.referencedCaseIds));
   }
   lines.push("origin: " + entry.origin);
+  lines.push("provenance: " + (entry.provenance ?? "—"));
+  lines.push("novelty: " + (entry.novelty ?? "—"));
+  lines.push("human-review priority: " + (entry.humanReviewPriority ?? "—"));
   lines.push(block("specialized-test reference", entry.specializedTestIds));
   lines.push("declared source reuse: " + (entry.declaredSourceReuse ?? "—"));
   lines.push("tags: " + entry.tags.join(", "));

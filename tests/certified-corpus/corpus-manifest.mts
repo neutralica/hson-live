@@ -1,6 +1,7 @@
 import { literalAcceptedAuthoredHsonCases } from "./authored-accepted.mts";
 import { authoredAcceptedFamilies, authoredRejectedFamilies } from "./authored-families.mts";
 import { literalRejectedAuthoredHsonCases } from "./authored-rejected.mts";
+import { authoredCompletenessBasisCases } from "./authored-completeness-basis.mts";
 import { diagnosticCircuitCases, specializedReferenceCases } from "./diagnostic-and-references.mts";
 import { graphAcceptedTransportCases, graphRejectedTransportCases } from "./graph-transports.mts";
 import {
@@ -25,8 +26,10 @@ export const corpusFamilyDefinitions: readonly CorpusFamilyDefinition[] = Object
 
 const concrete = [
   ...literalAcceptedAuthoredHsonCases,
+  ...authoredCompletenessBasisCases.filter((entry) => entry.disposition === "accept"),
   ...authoredAcceptedFamilies.flatMap((family) => family.cases),
   ...literalRejectedAuthoredHsonCases,
+  ...authoredCompletenessBasisCases.filter((entry) => entry.disposition === "reject"),
   ...authoredRejectedFamilies.flatMap((family) => family.cases),
   ...graphAcceptedTransportCases,
   ...graphRejectedTransportCases,
@@ -45,9 +48,11 @@ const authoredSources = authoredCases.flatMap((entry) =>
   entry.disposition === "reference" || entry.source === undefined ? [] : [entry.source]);
 
 export const corpusCounts: CorpusCounts = Object.freeze({
-  literalAcceptedAuthoredHson: literalAcceptedAuthoredHsonCases.length,
+  literalAcceptedAuthoredHson: literalAcceptedAuthoredHsonCases.length
+    + authoredCompletenessBasisCases.filter((entry) => entry.disposition === "accept").length,
   transparentAcceptedAuthoredHson: authoredAcceptedFamilies.reduce((sum, family) => sum + family.cases.length, 0),
-  literalRejectedAuthoredHson: literalRejectedAuthoredHsonCases.length,
+  literalRejectedAuthoredHson: literalRejectedAuthoredHsonCases.length
+    + authoredCompletenessBasisCases.filter((entry) => entry.disposition === "reject").length,
   transparentRejectedAuthoredHson: authoredRejectedFamilies.reduce((sum, family) => sum + family.cases.length, 0),
   graphOnlyAcceptedTransport: graphAcceptedTransportCases.length,
   graphOnlyRejectedTransport: graphRejectedTransportCases.length,

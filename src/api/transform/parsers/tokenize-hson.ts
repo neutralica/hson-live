@@ -18,7 +18,7 @@ import {
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
 
 const MAX_NESTING = 75;
-const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
 
 function isHsonTrivia(value: string): boolean {
@@ -92,15 +92,17 @@ class HsonScanner {
         const pos = this.position();
         const raw = this.scanBareToken();
         if (!isPrimitiveLiteral(raw)) {
-          const numericCode = classifyNumberDefect(raw);
+          const numericDefect = classifyNumberDefect(raw);
           this.fail(
-            numericCode === undefined
+            numericDefect === undefined
               ? `unexpected bare token outside tag header: "${raw}"`
               : `invalid HSON number "${raw}"`,
-            pos,
-            this.tokens.length > 0 && numericCode === undefined
+            numericDefect === undefined
+              ? pos
+              : this.positionAt(pos.index + numericDefect.offset),
+            this.tokens.length > 0 && numericDefect === undefined
               ? "HSON_TRAILING_SOURCE"
-              : numericCode ?? "HSON_PRIMITIVE_TOKEN_INVALID",
+              : numericDefect?.code ?? "HSON_PRIMITIVE_TOKEN_INVALID",
           );
         }
         this.assertFiniteNumberLiteral(raw, pos);
@@ -287,11 +289,13 @@ class HsonScanner {
             : "HSON_OBJECT_ATTRIBUTE_FORBIDDEN",
         );
       }
-      const numericCode = classifyNumberDefect(raw);
+      const numericDefect = classifyNumberDefect(raw);
       this.fail(
         `invalid bare object value "${raw}" for member "${memberName}"; quote string values`,
-        pos,
-        numericCode ?? "HSON_OBJECT_FLAG_FORBIDDEN",
+        numericDefect === undefined
+          ? pos
+          : this.positionAt(pos.index + numericDefect.offset),
+        numericDefect?.code ?? "HSON_OBJECT_FLAG_FORBIDDEN",
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
@@ -411,10 +415,13 @@ class HsonScanner {
         const valuePos = this.position();
         const raw = this.scanBareToken();
         if (!isPrimitiveLiteral(raw)) {
+          const numericDefect = classifyNumberDefect(raw);
           this.fail(
             `invalid primitive content "${raw}"`,
-            valuePos,
-            classifyNumberDefect(raw) ?? "HSON_ELEMENT_TYPED_CONTENT_FORBIDDEN",
+            numericDefect === undefined
+              ? valuePos
+              : this.positionAt(valuePos.index + numericDefect.offset),
+            numericDefect?.code ?? "HSON_ELEMENT_TYPED_CONTENT_FORBIDDEN",
           );
         }
         this.assertFiniteNumberLiteral(raw, valuePos);
@@ -574,10 +581,13 @@ class HsonScanner {
     const pos = this.position();
     const raw = this.scanBareToken();
     if (!isPrimitiveLiteral(raw)) {
+      const numericDefect = classifyNumberDefect(raw);
       this.fail(
         `unexpected bare array item: "${raw}"`,
-        pos,
-        classifyNumberDefect(raw) ?? "HSON_PRIMITIVE_TOKEN_INVALID",
+        numericDefect === undefined
+          ? pos
+          : this.positionAt(pos.index + numericDefect.offset),
+        numericDefect?.code ?? "HSON_PRIMITIVE_TOKEN_INVALID",
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
@@ -1228,25 +1238,40 @@ function isPrimitiveLiteral(raw: string): boolean {
   return raw === "true" || raw === "false" || raw === "null" || NUMBER_LITERAL.test(raw);
 }
 
-function classifyNumberDefect(raw: string): string | undefined {
+type NumberDefect = Readonly<{
+  code: string;
+  offset: number;
+}>;
+
+function numberDefect(code: string, offset = 0): NumberDefect {
+  return { code, offset };
+}
+
+function classifyNumberDefect(raw: string): NumberDefect | undefined {
+  if (/^\+\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
+    return numberDefect("HSON_NUMBER_LEADING_PLUS");
+  }
+  if (/^-?0\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(raw)) {
+    return numberDefect("HSON_NUMBER_LEADING_ZERO", raw.startsWith("-") ? 2 : 1);
+  }
   if (raw === "NaN" || raw === "Infinity" || raw === "+Infinity" || raw === "-Infinity") {
-    return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+    return numberDefect("HSON_NUMBER_UNSUPPORTED_SPELLING");
   }
   if (/^[+-]?(?:0[xX][0-9A-Fa-f]+|\d[\d_]*_\d[\d_]*)$/.test(raw)) {
-    return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+    return numberDefect("HSON_NUMBER_UNSUPPORTED_SPELLING");
   }
   if (/^[+-]?(?:\.\d+|\d+\.)$/.test(raw)) {
-    return "HSON_NUMBER_INCOMPLETE_FRACTION";
+    return numberDefect("HSON_NUMBER_INCOMPLETE_FRACTION");
   }
   if (/^[+-]?\d+(?:\.\d+)?[eE][+-]?$/.test(raw)) {
-    return "HSON_NUMBER_INCOMPLETE_EXPONENT";
+    return numberDefect("HSON_NUMBER_INCOMPLETE_EXPONENT");
   }
   if (/^(?:[+-]{2,}|[+-]?\d+(?:\.\d+)?[+-]\d+)/.test(raw)) {
-    return "HSON_NUMBER_INVALID_SIGN";
+    return numberDefect("HSON_NUMBER_INVALID_SIGN");
   }
   if (/^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[^\d]/.test(raw)) {
-    return "HSON_NUMBER_TRAILING_JUNK";
+    return numberDefect("HSON_NUMBER_TRAILING_JUNK");
   }
-  if (/^[+-.\d]/.test(raw)) return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+  if (/^[+-.\d]/.test(raw)) return numberDefect("HSON_NUMBER_UNSUPPORTED_SPELLING");
   return undefined;
 }

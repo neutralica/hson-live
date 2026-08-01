@@ -4,6 +4,8 @@ import type { HsonSemanticPrimitive } from "../../../../core/types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
 import { hsonNumber } from "../../../../core/hson-number.js";
 
+const HSON_NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
 /**
  * Coerce a raw token string into a `Primitive` value.
  *
@@ -48,8 +50,7 @@ export function coerce(value: string): HsonSemanticPrimitive {
     /* 3. check for a string that is purely numeric */
 
   
-    const numericRegex = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
-    if (numericRegex.test(trimmed)) {
+    if (HSON_NUMBER_LITERAL.test(trimmed)) {
         return hsonNumber(Number(trimmed));
     }
 

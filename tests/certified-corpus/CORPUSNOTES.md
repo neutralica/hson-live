@@ -1,5 +1,12 @@
 // this audit reflects the current state of the human-reviewed/authored corpus step. this is not a TODO; this is where we were as of 01AUG2026. Do not use it as a goal.
 
+> Historical snapshot: the detailed provenance accounting below applies to the
+> original 339-descriptor candidate. The targeted completeness amendment adds
+> 27 explicitly attributed cases, producing 366 descriptors and 269 authored
+> sources. New-case provenance, novelty, and review priority are materialized in
+> `authored-completeness-basis.mts` and the regenerated review artifact; the
+> broad pre-amendment audit has not been silently reclassified.
+
 ## Executive conclusion
 
 The 339-descriptor materialized authored-HSON conformance corpus candidate is mechanically complete and reviewable, but it is not yet sufficiently independent for human certification.

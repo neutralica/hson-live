@@ -50,7 +50,7 @@ function assertBare(
   assert.notEqual(value.$_tag, "_hson_root");
   assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical);
   assert.equal(hsonString(source), canonical);
-  assert.deepEqual(publicNode(canonical), value);
+  assert.equal(canonical_hson_graph_equal(publicNode(canonical), value), true);
 }
 
 function assertNoPublicRoot(source: string): void {
@@ -111,6 +111,19 @@ check("bare negative number attaches as one _hson_val semantic value", () => {
 
 check("accepted exponent input canonicalizes as a finite _hson_val", () => {
   assertBare(`1e3`, "_hson_val", 1000, `1000`);
+});
+
+check("alternative exponent spellings close to exact canonical numeric values", () => {
+  assertBare(`1E3`, "_hson_val", 1000, `1000`);
+  assertBare(`1e+3`, "_hson_val", 1000, `1000`);
+  assertBare(`1e-3`, "_hson_val", 0.001, `0.001`);
+});
+
+check("invalid root number spellings reject before root-shaping diagnostics", () => {
+  const leadingZero = expectTransformError(`01`, "HSON_NUMBER_LEADING_ZERO");
+  assert.deepEqual(leadingZero.source, { index: 1, line: 1, column: 2 });
+  const leadingPlus = expectTransformError(`+1`, "HSON_NUMBER_LEADING_PLUS");
+  assert.deepEqual(leadingPlus.source, { index: 0, line: 1, column: 1 });
 });
 
 check("bare true attaches as one _hson_val semantic value", () => {

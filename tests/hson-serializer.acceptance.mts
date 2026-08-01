@@ -159,6 +159,22 @@ check("hson.transform.string preserves negative zero and empty element/object mo
   assert.equal(hson.transform.string(`<>`), `<>`);
 });
 
+check("authored exponent alternatives canonicalize while invalid signs and zeroes never normalize", () => {
+  assert.deepEqual(
+    ["1E3", "1e+3", "1e-3", "-0"].map(hson.transform.string),
+    ["1000", "1000", "0.001", "-0"],
+  );
+  for (const [source, code] of [
+    ["01", "HSON_NUMBER_LEADING_ZERO"],
+    ["+1", "HSON_NUMBER_LEADING_PLUS"],
+  ] as const) {
+    assert.throws(
+      () => hson.transform.string(source),
+      (cause) => cause instanceof TransformError && cause.code === code,
+    );
+  }
+});
+
 check("hson.transform.string is idempotent and reparses to the first canonical graph", () => {
   const source = `<p id="x" "first"<em "middle"/>"last"/>`;
   const firstGraph = parse(source);

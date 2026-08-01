@@ -262,6 +262,31 @@ check("Worker-safe authored diagnostics retain portable codes and related positi
       && cause.code === "HSON_STRING_CONTROL_UNESCAPED"
       && cause.source?.index === 2,
   );
+  for (const [source, expected] of [
+    ["01", {
+      operation: "tokenize-hson",
+      code: "HSON_NUMBER_LEADING_ZERO",
+      stage: "tokenization",
+      source: { index: 1, line: 1, column: 2 },
+    }],
+    ["+1", {
+      operation: "tokenize-hson",
+      code: "HSON_NUMBER_LEADING_PLUS",
+      stage: "tokenization",
+      source: { index: 0, line: 1, column: 1 },
+    }],
+  ] as const) {
+    let numericError: TransformError | undefined;
+    assert.throws(
+      () => hsonTransform.fromHson(source).toNode(),
+      (cause) => {
+        if (!(cause instanceof TransformError)) return false;
+        numericError = cause;
+        return true;
+      },
+    );
+    assert.deepEqual(read_transform_error_details(numericError), expected);
+  }
 });
 
 process.stdout.write(`# ${checks} DOM-free transform facade checks passed\n`);

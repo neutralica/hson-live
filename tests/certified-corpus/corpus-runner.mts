@@ -335,18 +335,39 @@ export type CorpusRunSummary = Readonly<{
   rejectedAssertions: number;
 }>;
 
-export function runAcceptedCorpusCases(): CorpusRunSummary {
+export function runCorpusSubset(entries: readonly MaterializedCorpusCase[]): CorpusRunSummary {
   const atomic = new AtomicAssertions();
+  let acceptedCases = 0;
+  let rejectedCases = 0;
+  let acceptedAssertions = 0;
+  let rejectedAssertions = 0;
+  for (const entry of entries) {
+    const before = atomic.count;
+    if (entry.disposition === "accept") {
+      runAccepted(entry, atomic);
+      acceptedCases += 1;
+      acceptedAssertions += atomic.count - before;
+    } else if (entry.disposition === "reject") {
+      runRejected(entry, atomic);
+      rejectedCases += 1;
+      rejectedAssertions += atomic.count - before;
+    } else {
+      throw new Error(entry.id + ": reference descriptors are not executable corpus cases");
+    }
+  }
+  return { acceptedCases, rejectedCases, acceptedAssertions, rejectedAssertions };
+}
+
+export function runAcceptedCorpusCases(): CorpusRunSummary {
   const accepted = materializedCorpusCases.filter((entry): entry is AcceptedCorpusCase => entry.disposition === "accept");
-  for (const entry of accepted) runAccepted(entry, atomic);
-  assert.equal(atomic.count, corpusAssertionCounts.acceptedAssertions);
-  return { acceptedCases: accepted.length, rejectedCases: 0, acceptedAssertions: atomic.count, rejectedAssertions: 0 };
+  const summary = runCorpusSubset(accepted);
+  assert.equal(summary.acceptedAssertions, corpusAssertionCounts.acceptedAssertions);
+  return summary;
 }
 
 export function runRejectedCorpusCases(): CorpusRunSummary {
-  const atomic = new AtomicAssertions();
   const rejected = materializedCorpusCases.filter((entry): entry is RejectedCorpusCase => entry.disposition === "reject");
-  for (const entry of rejected) runRejected(entry, atomic);
-  assert.equal(atomic.count, corpusAssertionCounts.rejectedAssertions);
-  return { acceptedCases: 0, rejectedCases: rejected.length, acceptedAssertions: 0, rejectedAssertions: atomic.count };
+  const summary = runCorpusSubset(rejected);
+  assert.equal(summary.rejectedAssertions, corpusAssertionCounts.rejectedAssertions);
+  return summary;
 }

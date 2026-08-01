@@ -13,6 +13,9 @@ import {
   hsonCalc as narrowHsonCalc,
   hsonNumber as narrowHsonNumber,
 } from "../src/number.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { read_transform_error_details } from "../src/core/errors.ts";
+import { coerce } from "../src/api/transform/utils/primitive-utils/coerce-string.utils.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -47,6 +50,17 @@ function first_number(value: unknown): number | undefined {
   }
   if (typeof value !== "object" || value === null) return undefined;
   return first_number(Reflect.get(value, "$_content"));
+}
+
+function authored_error_details(source: string) {
+  try {
+    hson.fromHson(source).toNode();
+  } catch (error) {
+    const details = read_transform_error_details(error);
+    assert.ok(details, `expected a structured authored-HSON error for ${source}`);
+    return details;
+  }
+  assert.fail(`expected authored HSON to reject: ${source}`);
 }
 
 const accepted = [
@@ -96,6 +110,85 @@ check("hson.transform.number accepts every representative finite numeric class",
 check("both number surfaces preserve negative zero exactly", () => {
   assert.equal(Object.is(hsonNumber(-0), -0), true);
   assert.equal(Object.is(hson.transform.number(-0), -0), true);
+});
+
+check("authored HSON accepts every settled JSON-number lexical branch", () => {
+  for (const [source, value, canonical] of [
+    ["0", 0, "0"],
+    ["-0", -0, "-0"],
+    ["1", 1, "1"],
+    ["-1", -1, "-1"],
+    ["42", 42, "42"],
+    ["0.5", 0.5, "0.5"],
+    ["-0.5", -0.5, "-0.5"],
+    ["1e3", 1000, "1000"],
+    ["1E3", 1000, "1000"],
+    ["1e+3", 1000, "1000"],
+    ["1e-3", 0.001, "0.001"],
+    ["1.7976931348623157e308", Number.MAX_VALUE, "1.7976931348623157e+308"],
+    ["5e-324", Number.MIN_VALUE, "5e-324"],
+  ] as const) {
+    const admitted = hson.fromHson(source).toNode();
+    assert.equal(Object.is(first_number(admitted), value), true, source);
+    assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical, source);
+    assert.equal(
+      canonical_hson_graph_equal(admitted, hson.fromHson(canonical).toNode()),
+      true,
+      source,
+    );
+  }
+});
+
+check("authored HSON leading zeroes reject at the second integer digit", () => {
+  for (const [source, index, column] of [["01", 1, 2], ["00", 1, 2], ["-01", 2, 3]] as const) {
+    assert.deepEqual(authored_error_details(source), {
+      operation: "tokenize-hson",
+      code: "HSON_NUMBER_LEADING_ZERO",
+      stage: "tokenization",
+      source: { index, line: 1, column },
+    });
+  }
+});
+
+check("authored HSON leading plus signs reject at the sign", () => {
+  for (const source of ["+1", "+0", "+1.5", "+1e3"] as const) {
+    assert.deepEqual(authored_error_details(source), {
+      operation: "tokenize-hson",
+      code: "HSON_NUMBER_LEADING_PLUS",
+      stage: "tokenization",
+      source: { index: 0, line: 1, column: 1 },
+    });
+  }
+});
+
+check("authored malformed unsupported and nonfinite spellings retain precise rejection", () => {
+  for (const [source, code] of [
+    [".5", "HSON_NUMBER_INCOMPLETE_FRACTION"],
+    ["1.", "HSON_NUMBER_INCOMPLETE_FRACTION"],
+    ["1e", "HSON_NUMBER_INCOMPLETE_EXPONENT"],
+    ["1e+", "HSON_NUMBER_INCOMPLETE_EXPONENT"],
+    ["--1", "HSON_NUMBER_INVALID_SIGN"],
+    ["+-1", "HSON_NUMBER_INVALID_SIGN"],
+    ["0x10", "HSON_NUMBER_UNSUPPORTED_SPELLING"],
+    ["1_0", "HSON_NUMBER_UNSUPPORTED_SPELLING"],
+    ["NaN", "HSON_NUMBER_UNSUPPORTED_SPELLING"],
+    ["Infinity", "HSON_NUMBER_UNSUPPORTED_SPELLING"],
+    ["-Infinity", "HSON_NUMBER_UNSUPPORTED_SPELLING"],
+    ["1e309", "HSON_NUMBER_NONFINITE"],
+  ] as const) {
+    assert.equal(authored_error_details(source).code, code, source);
+  }
+});
+
+check("authored numeric rejection is deterministic and does not mutate input", () => {
+  const source = "01";
+  const before = source.slice();
+  const first = authored_error_details(source);
+  const second = authored_error_details(source);
+  assert.equal(source, before);
+  assert.deepEqual(second, first);
+  assert.equal(coerce("01"), "01");
+  assert.equal(coerce("+1"), "+1");
 });
 
 check("hsonNumber rejects nonfinite numbers with one stable identity", () => {

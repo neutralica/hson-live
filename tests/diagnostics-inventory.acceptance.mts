@@ -97,7 +97,7 @@ for (const launcher of hson_live_test_launchers) {
 
 for (const launcher of externallyDiscoverable) {
   const source = await readFile(join(repositoryRoot, launcher.repositoryModule), "utf8");
-  const checkCount = source.match(/^check\(/gm)?.length ?? 0;
+  const checkCount = source.match(/^(?:await )?check\(/gm)?.length ?? 0;
   assert.equal(
     launcher.executableChecks,
     checkCount,

@@ -1,6 +1,6 @@
-# Certified authored-HSON corpus
+# Materialized authored-HSON conformance corpus candidate
 
-The certified authored-HSON corpus is the executable source of truth for the
+The materialized authored-HSON conformance corpus candidate is the executable source of truth for the
 settled authored language and its graph, structural JSON, and structural HTML
 transport boundaries. It is a finite contract inventory, not a fuzz suite or a
 second implementation of the parser.
@@ -32,13 +32,13 @@ count. `corpus-runner.mts` owns executable semantic assertions.
 graphs and outputs are constructed explicitly; neither the parser nor the
 serializer under test generates them.
 
-## Certified totals
+## Candidate totals
 
 | Classification | Concrete descriptors |
 | --- | ---: |
-| Literal accepted authored-HSON | 39 |
+| Literal accepted authored-HSON | 51 |
 | Transparent accepted authored-HSON | 49 |
-| Literal rejected authored-HSON | 37 |
+| Literal rejected authored-HSON | 52 |
 | Transparent rejected authored-HSON | 117 |
 | Graph-only accepted transport | 11 |
 | Graph-only rejected transport | 9 |
@@ -46,15 +46,15 @@ serializer under test generates them.
 | Structural HTML transport | 49 |
 | Diagnostic-circuit regressions | 4 |
 | Specialized-test cross-references | 10 |
-| **Total concrete descriptors** | **339** |
+| **Total concrete descriptors** | **366** |
 
-The authored subset has 242 unique sources and zero declared source reuse.
-The runner executes 1,011 accepted assertions, 1,602 rejected assertions, and
-24 integrity assertions: 2,637 atomic assertions in total.
+The authored subset has 269 unique sources and zero declared source reuse.
+The runner executes 1,083 accepted assertions, 1,737 rejected assertions, and
+24 integrity assertions: 2,844 weighted assertions in total.
 
 ## Coverage boundaries
 
-The corpus certifies the full finite quoted-string and backtick-name escape
+The candidate covers the full finite quoted-string and backtick-name escape
 families, including all 32 raw C0 rejection cases for each token role. It
 certifies object, array, and element grammar; mode-sensitive scalar admission;
 negative-zero identity; exact structural JSON order and decoded duplicate-key
@@ -83,11 +83,11 @@ corpus.
 
 ## Integrated accounting
 
-The registered hson-live inventory is 1,020 authoritative checks across 43
+The registered hson-live inventory is 1,058 authoritative checks across 43
 launchers. The hson-demo2 catalog remains 2,110 cases, for a combined total of
-3,130. The launcher manifest fingerprint is
-`b1f9c7589b0e911c14df7be7e8e1ad70c49264439dce7e1ff5f97ddd042be319`;
+3,168. The launcher manifest fingerprint is
+`7544a212899f9180cbc99b519476dc49f57abc4f95015924b59803b01cc614d1`;
 the demo catalog fingerprint remains `fnv1a32-e3a7d185`.
 
-The next target is canonical graph encoding v1 and canonical `HsonString`
-digest design, followed by deterministic operators.
+The next target is generation of the static authored-HSON `V / I / ?`
+human-review checklist. No human verdict is recorded by this candidate.

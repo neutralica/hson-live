@@ -41,6 +41,9 @@ export type CorpusCommon = Readonly<{
   tags: readonly string[];
   origin: string;
   rationale: string;
+  provenance?: string;
+  novelty?: string;
+  humanReviewPriority?: "low" | "medium" | "high" | "critical";
   declaredSourceReuse?: string;
   specializedTestIds?: readonly string[];
 }>;
