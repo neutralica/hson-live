@@ -49,6 +49,16 @@ function launcher(
 export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
   Object.freeze([
     launcher({
+      id: "core.hson-number",
+      subject: "Core",
+      displayName: "HSON numeric admission",
+      packageScript: "test:hson-number",
+      repositoryModule: "tests/hson-number.acceptance.mts",
+      runtime: "node",
+      executableChecks: 19,
+      collections: ["hson", "number", "admission", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "transform.hson-tokenizer",
       subject: "Transform",
       displayName: "HSON tokenizer",

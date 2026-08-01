@@ -14,6 +14,7 @@ import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
 import { assert_user_key_allowed } from "../utils/json-utils/key-prefix-guard.js";
+import { hsonNumber } from "../../../core/hson-number.js";
 
 /**
  * Infer the appropriate HSON VSN tag for a JSON value.
@@ -76,10 +77,10 @@ function detach_json_input(input: unknown): JsonValue {
     const visit = (value: unknown, path: string): unknown => {
         if (value === undefined || value === null
             || typeof value === "string"
-            || typeof value === "number"
             || typeof value === "boolean") {
             return value;
         }
+        if (typeof value === "number") return hsonNumber(value);
 
         if (typeof value !== "object") {
             _throw_transform_err(
@@ -299,10 +300,11 @@ export function nodeFromJson(
             if (!is_Primitive(srcJson)) {
                 _throw_transform_err(`expected number|boolean|null for ${VAL_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
             }
+            const admitted = typeof srcJson === "number" ? hsonNumber(srcJson) : srcJson;
             return {
                 node: CREATE_NODE({
                     $_tag: VAL_TAG,
-                    $_content: [srcJson] // null/number/boolean
+                    $_content: [admitted] // null/admitted-number/boolean
                 })
             };
         }

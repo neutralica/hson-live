@@ -11,7 +11,7 @@ import { _snip } from "../utils/sys-utils/snip.utils.js";
 import { split_attrs_meta } from "../utils/hson-utils/split-attrs-meta.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { is_string } from "../../../core/value-guards.js";
-import { Primitive } from "../../../core/types.js";
+import type { HsonSemanticPrimitive } from "../../../core/types.js";
 import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
 
 export type ParseTokensOptions = Readonly<{
@@ -35,7 +35,7 @@ export type ParseTokensOptions = Readonly<{
  * @param v - Primitive value to wrap as a leaf node.
  * @returns A new `HsonNode` using `_hson_str` or `_hson_val` depending on the runtime type of `v`.
  */
-export const make_leaf = (v: Primitive): HsonNode =>
+export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
 (is_string(v)
     ? CREATE_NODE({ $_tag: STR_TAG, $_content: [v] })
     : CREATE_NODE({ $_tag: VAL_TAG, $_content: [v] }));

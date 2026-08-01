@@ -391,8 +391,8 @@ check("detached semantic nodes retain no observable parent pointer", () => {
   assert.equal(Object.hasOwn(value, "$_parent"), false);
 });
 
-check("hson.string and hsonString remain the same branded producer function", () => {
-  assert.equal(hson.string, hsonString);
+check("hson.transform.string and hsonString remain the same branded producer function", () => {
+  assert.equal(hson.transform.string, hsonString);
   assert.equal(typeof hsonString(`42`), "string");
 });
 

@@ -20,10 +20,10 @@ declare const arbitrary: string;
 declare const dynamicSerializer: TransformSerialize;
 
 const direct: HsonString = serialize_hson(node);
-const normalized = hson.string(arbitrary);
+const normalized = hson.transform.string(arbitrary);
 const directlyNormalized: HsonString = hsonString(arbitrary);
 const branded: HsonString = normalized;
-const repeated: HsonString = hson.string(branded);
+const repeated: HsonString = hson.transform.string(branded);
 const directlyRepeated: HsonString = hsonString(directlyNormalized);
 const bareString: HsonString = hsonString(`"value"`);
 const bareNumber: HsonString = hsonString("42");
@@ -56,7 +56,7 @@ type HsonStringProducerReturnsExactlyHsonString = Expect<
   Equal<typeof normalized, HsonString>
 >;
 type HsonStringProducerAcceptsOrdinaryString = Expect<
-  Equal<Parameters<typeof hson.string>[0], string>
+  Equal<Parameters<typeof hson.transform.string>[0], string>
 >;
 type NamedHsonStringProducerReturnsExactlyHsonString = Expect<
   Equal<ReturnType<typeof hsonString>, HsonString>

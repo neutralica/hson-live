@@ -1,15 +1,29 @@
-import { hson, hsonString } from "hson-live";
+import {
+  hson,
+  hsonCalc,
+  hsonNumber,
+  hsonString,
+  type HsonNumber,
+} from "hson-live";
 import {
   hsonString as transformHsonString,
   hsonTransform as transformSubpath,
   type HsonString,
+  type HsonNumber as TransformHsonNumber,
   type TransformSerialize,
 } from "hson-live/transform";
-import type { HsonNode } from "hson-live/types";
-// @ts-expect-error hson.string is a facade method, not a bare package export.
+import type { HsonNode, HsonSemanticPrimitive } from "hson-live/types";
+import {
+  hsonCalc as narrowHsonCalc,
+  hsonNumber as narrowHsonNumber,
+  type HsonNumber as NarrowHsonNumber,
+} from "hson-live/number";
+// @ts-expect-error string is a Transform namespace method, not a bare package export.
 import { string as bareHsonString } from "hson-live";
 // @ts-expect-error The private brand symbol is not a Transform export.
 import type { HSON_STRING_BRAND } from "hson-live/transform";
+// @ts-expect-error The private number brand symbol is not exported.
+import type { HSON_NUMBER_BRAND } from "hson-live/transform";
 // @ts-expect-error HsonString is intentionally not exported from the package root.
 import type { HsonString as RootHsonString } from "hson-live";
 import {
@@ -68,10 +82,11 @@ type Expect<Value extends true> = Value;
 
 declare const node: HsonNode;
 declare const arbitrary: string;
+declare const arbitraryNumber: number;
 declare const genericSerializer: TransformSerialize;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
-const inferredNormalizedHson = hson.string(arbitrary);
+const inferredNormalizedHson = hson.transform.string(arbitrary);
 const inferredNamedHson = hsonString(arbitrary);
 const inferredTransformNamedHson = transformHsonString(arbitrary);
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
@@ -80,7 +95,7 @@ const hsonText: HsonString = inferredHsonText;
 const normalizedHson: HsonString = inferredNormalizedHson;
 const namedNormalizedHson: HsonString = inferredNamedHson;
 const transformNamedNormalizedHson: HsonString = inferredTransformNamedHson;
-const repeatedNormalizedHson: HsonString = hson.string(normalizedHson);
+const repeatedNormalizedHson: HsonString = hson.transform.string(normalizedHson);
 const repeatedNamedNormalizedHson: HsonString = hsonString(namedNormalizedHson);
 const readableHson: HsonString = transformSubpath.fromNode(node).toHson().serialize();
 const compactHson: HsonString =
@@ -88,6 +103,31 @@ const compactHson: HsonString =
 const noQuidHson: HsonString =
   transformSubpath.fromNode(node).toHson().noQuid().serialize();
 const ordinaryText: string = hsonText;
+const inferredNamespaceNumber = hson.transform.number(arbitraryNumber);
+const inferredNamedNumber = hsonNumber(arbitraryNumber);
+const inferredNamespaceCalc = hson.transform.calc(() => arbitraryNumber);
+const inferredNamedCalc = hsonCalc(() => arbitraryNumber);
+const admittedNumber: HsonNumber = inferredNamedNumber;
+const transformAdmittedNumber: TransformHsonNumber = admittedNumber;
+const ordinaryNumber: number = admittedNumber;
+const repeatedAdmittedNumber: HsonNumber = hsonNumber(admittedNumber);
+const admittedSemanticNumber: HsonSemanticPrimitive = admittedNumber;
+
+// @ts-expect-error Admitted semantic numeric positions require HsonNumber proof.
+const invalidSemanticNumber: HsonSemanticPrimitive = arbitraryNumber;
+const narrowAdmittedNumber: NarrowHsonNumber = narrowHsonNumber(arbitraryNumber);
+const narrowCalculatedNumber: NarrowHsonNumber = narrowHsonCalc(() => arbitraryNumber);
+const candidateNode: HsonNode = { $_tag: "_hson_val", $_content: [arbitraryNumber] };
+hson.fromJson(arbitraryNumber);
+hson.fromNode(candidateNode);
+
+declare const operationalCommit: LiveMapCommit;
+const operationalRevision: number = operationalCommit.rev;
+// @ts-expect-error Operational revisions are not semantic HsonNumber values.
+const invalidOperationalNumber: HsonNumber = operationalCommit.rev;
+
+// @ts-expect-error Ordinary numbers require runtime admission before branding.
+const invalidAdmittedNumber: HsonNumber = arbitraryNumber;
 
 // @ts-expect-error Ordinary strings are not official HSON serializer output.
 const invalidHson: HsonString = arbitrary;
@@ -106,7 +146,7 @@ type HsonStringMethodReturnsHsonString = Expect<
   Equal<typeof inferredNormalizedHson, HsonString>
 >;
 type HsonStringMethodAcceptsString = Expect<
-  Equal<Parameters<typeof hson.string>[0], string>
+  Equal<Parameters<typeof hson.transform.string>[0], string>
 >;
 type NamedHsonStringReturnsHsonString = Expect<
   Equal<typeof inferredNamedHson, HsonString>
@@ -125,6 +165,9 @@ type RootHasNoUnsafeHsonConstructor = Expect<
     false
   >
 >;
+type RootHasNoTransformAdmissionMethods = Expect<
+  Equal<Extract<"string" | "number" | "calc", keyof typeof hson>, never>
+>;
 type HtmlFinalizerReturnsString = Expect<
   Equal<typeof inferredHtmlText, string>
 >;
@@ -137,17 +180,51 @@ type GenericSerializerReturnsString = Expect<
 type ParserAcceptsString = Expect<
   Equal<Parameters<typeof transformSubpath.fromHson>[0], string>
 >;
+type NamespaceNumberReturnsHsonNumber = Expect<
+  Equal<typeof inferredNamespaceNumber, HsonNumber>
+>;
+type NamedNumberReturnsHsonNumber = Expect<
+  Equal<typeof inferredNamedNumber, HsonNumber>
+>;
+type NamespaceCalcReturnsHsonNumber = Expect<
+  Equal<typeof inferredNamespaceCalc, HsonNumber>
+>;
+type NamedCalcReturnsHsonNumber = Expect<
+  Equal<typeof inferredNamedCalc, HsonNumber>
+>;
+type NumberCandidateIsWelcoming = Expect<
+  Equal<Parameters<typeof hson.transform.number>[0], unknown>
+>;
+type CalcCallbackIsFriendly = Expect<
+  Equal<Parameters<typeof hsonCalc>[0], () => unknown>
+>;
 
 void readableHson;
 void compactHson;
 void noQuidHson;
 void ordinaryText;
+void ordinaryNumber;
+void transformAdmittedNumber;
+void repeatedAdmittedNumber;
+void admittedSemanticNumber;
+void invalidSemanticNumber;
+void narrowAdmittedNumber;
+void narrowCalculatedNumber;
+void operationalRevision;
+void invalidOperationalNumber;
+void invalidAdmittedNumber;
 void repeatedNormalizedHson;
 void transformNamedNormalizedHson;
 void repeatedNamedNormalizedHson;
 void invalidHson;
 void invalidHtmlHson;
 void invalidJsonHson;
+// @ts-expect-error Candidate normalization belongs to hson.transform.
+void hson.string;
+// @ts-expect-error Numeric admission belongs to hson.transform.
+void hson.number;
+// @ts-expect-error Calculation admission belongs to hson.transform.
+void hson.calc;
 declare const rootHsonString: RootHsonString;
 void rootHsonString;
 

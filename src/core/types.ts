@@ -2,6 +2,7 @@
 
 import type { HSON_META_INDEX, HSON_META_QUID } from "./constants.js";
 import type { PersistedQuid } from "./persisted-quid.js";
+import type { HsonNumber } from "./hson-number.js";
 
 export type Primitive = string | boolean | number | null;
 type CanonicalStyleValue =
@@ -14,6 +15,9 @@ interface CanonicalStyleMap {
 export type CanonicalPublicAttrValue = Primitive | CanonicalStyleMap;
 export type CanonicalPublicAttrs = Readonly<Record<string, CanonicalPublicAttrValue>>;
 export type BasicValue = boolean | number | null;
+
+/** Primitive value after semantic HSON numeric admission. */
+export type HsonSemanticPrimitive = string | boolean | HsonNumber | null;
 
 export type JsonObj = { [key: string]: JsonValue };
 

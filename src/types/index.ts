@@ -1,6 +1,6 @@
 // index.ts
 
-export type { Primitive, BasicValue, JsonValue } from "./core.types.js";
+export type { Primitive, BasicValue, JsonValue, HsonSemanticPrimitive } from "./core.types.js";
 export type { HsonNode, HsonAttrs, HsonMeta, NodeContent } from "./node.types.js";
 export type { HsonQuery } from './livetree.types.js';
 export type { DetachedLiveContent, LiveTreeLifecycleResult } from './lifecycle.types.js';

@@ -1,6 +1,14 @@
 // index.ts
 
-export { hson, hsonString, type HsonFacade } from "./hson.js";
+export { hson, hsonCalc, hsonNumber, hsonString, type HsonFacade } from "./hson.js";
+export {
+    HSON_CALC_FUNCTION_REQUIRED,
+} from "./api/transform/hson-calc.js";
+export {
+    HSON_NUMBER_NONFINITE,
+    HSON_NUMBER_TYPE_REQUIRED,
+    type HsonNumber,
+} from "./api/transform/hson-number.js";
 export { hsonReflect, type Reflect } from "./api/reflect/reflect.facade.js";
 export { LiveTree } from "./api/livetree/livetree.js";
 export {

@@ -5,4 +5,5 @@ export type {
   JsonObj,
   JsonValue,
   Primitive,
+  HsonSemanticPrimitive,
 } from "../core/types.js";

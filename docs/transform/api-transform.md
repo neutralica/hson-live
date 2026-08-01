@@ -4,8 +4,7 @@
 ## Transform API
 Updated: 2026-07-31
 
-The transform API is exposed directly on `hson` through the public source
-constructors:
+Transform source constructors remain exposed directly on `hson`:
 
 ```ts
 hson.fromUntrustedHtml(input)
@@ -15,7 +14,18 @@ hson.fromHson(input)
 hson.fromNode(node)
 ```
 
-There is no public `hson.transform` namespace in the current library.
+Candidate normalization and admission are organized on the existing Transform
+namespace:
+
+```ts
+hson.transform.string(source)
+hson.transform.number(candidate)
+hson.transform.calc(() => calculation())
+```
+
+The same leaf implementations are available as the named exports `hsonString`,
+`hsonNumber`, and `hsonCalc`. There are no corresponding root-level
+`hson.string`, `hson.number`, or `hson.calc` methods.
 
 Every constructor normalizes to a canonical node graph and supports two kinds
 of terminal operation:
@@ -41,20 +51,20 @@ or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
 
 ## Normalized HSON String
 
-`hson.string(source)` parses HSON source and returns its normalized official
+`hson.transform.string(source)` parses HSON source and returns its normalized official
 serialization as an `HsonString`:
 
 ```ts
 import { hson } from "hson-live";
 import type { HsonString } from "hson-live/transform";
 
-const normalized: HsonString = hson.string(
+const normalized: HsonString = hson.transform.string(
   `<p "first"<em "middle"/>"last"/>`,
 );
 ```
 
 The equivalent named producer is exported as `hsonString(source)` from both
-`hson-live` and `hson-live/transform`. `hson.string` references that same
+`hson-live` and `hson-live/transform`. `hson.transform.string` references that same
 function. The named Transform export imports only the HSON parser, serializer,
 and their required canonical graph boundaries; it does not initialize browser,
 LiveTree, LiveMap, or LiveHost surfaces.
@@ -71,12 +81,55 @@ after successful serialization.
 The result is a TypeScript-branded primitive string, not a security,
 authentication, sanitization, or trust check. The compile-time brand is
 normally lost across untyped transport or storage. A receiver should treat
-transported text as `string`; it may pass that text through `hson.string()`
+transported text as `string`; it may pass that text through `hson.transform.string()`
 again when it needs a branded, normalized value.
 
-`hson.string()` always reparses and serializes, including when its argument is
+`hson.transform.string()` always reparses and serializes, including when its argument is
 already an `HsonString`. It exposes no formatting options and uses default
 serializer behavior, including QUID preservation.
+
+---
+
+## Numeric admission
+
+`hson.transform.number(candidate)` and the equivalent named export
+`hsonNumber(candidate)` admit unknown values to the universal HSON numeric
+domain. They require a primitive, finite JavaScript number, perform no
+coercion, preserve negative zero, and return `HsonNumber`:
+
+```ts
+import { hson } from "hson-live";
+import { hsonNumber, type HsonNumber } from "hson-live/number";
+
+const count: HsonNumber = hsonNumber(42);
+const negativeZero: HsonNumber = hson.transform.number(-0);
+```
+
+`HsonNumber` is compile-time proof of completed universal numeric admission.
+At runtime it is an ordinary JavaScript number with no wrapper or brand
+metadata. It does not prove mathematical correctness, integer status,
+positivity, or a schema-specific range. Serialization and transport carry an
+ordinary number and erase the proof; decoded data must pass through numeric
+admission again.
+
+`hson.transform.calc(calculate)` and the equivalent named export `hsonCalc(calculate)`
+execute one synchronous callback exactly once and pass only its returned result
+through `hsonNumber`. They do not validate intermediate arithmetic or claim
+that a calculation is correct. Callback failures propagate unchanged. A
+Promise result is not awaited and is rejected as an object rather than a
+number.
+
+```ts
+import { hsonCalc, type HsonNumber } from "hson-live/number";
+
+const total: HsonNumber = hsonCalc(() => 6 * 7);
+```
+
+Use `hson-live/number` when dependency weight matters. That entrypoint reaches
+only the numeric leaf implementation and portable structured-error support; it
+does not import the full `hson` or Transform facades. The root and Transform
+barrels also re-export the same function objects for namespace and established
+entrypoint parity.
 
 ---
 

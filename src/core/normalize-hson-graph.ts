@@ -14,6 +14,7 @@ import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
 import { is_Node } from "./node-guards.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
+import { hsonNumber } from "./hson-number.js";
 
 function is_plain_record(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -142,11 +143,14 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
         : !EVERY_VSN.includes(tag)
           ? requiredMode
           : undefined;
-    let content = value.$_content.map((child, index) =>
-      is_plain_record(child)
-        ? visit(child, `${here}/$_content[${index}]`, tag, childRequiredMode)
-        : child
-    );
+    let content = value.$_content.map((child, index) => {
+      if (is_plain_record(child)) {
+        return visit(child, `${here}/$_content[${index}]`, tag, childRequiredMode);
+      }
+      return tag === VAL_TAG && typeof child === "number"
+        ? hsonNumber(child)
+        : child;
+    });
     if (tag === ARR_TAG) {
       const analysis = analyze_hson_array_indexes(content);
       if (!analysis.valid) return fail(where, here, analysis.reason);

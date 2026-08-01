@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
+import { hsonCalc, hsonNumber } from "../src/number.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 const Q1 = "0000000000000001";
@@ -19,14 +20,22 @@ function walk(node: HsonNode, visit: (current: HsonNode) => void): void {
   }
 }
 
-check("the transform facade exposes all five synchronous constructors", () => {
+check("the transform facade exposes its three leaf admissions and five synchronous constructors", () => {
   assert.deepEqual(Object.keys(hsonTransform), [
+    "string",
+    "number",
+    "calc",
     "fromHson",
     "fromJson",
     "fromNode",
     "fromTrustedHtml",
     "fromUntrustedHtml",
   ]);
+});
+
+check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", () => {
+  assert.equal(Object.is(hsonNumber(-0), -0), true);
+  assert.equal(Object.is(hsonCalc(() => -0), -0), true);
 });
 
 check("Worker-safe Transform produces readable, compact, and no-QUID HSON", () => {

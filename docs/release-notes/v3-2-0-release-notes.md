@@ -40,13 +40,13 @@ truthful and deterministic.
 - Kept HTML, JSON, dynamic-format, transport, persistence, diagnostic, CSS, and
   DOM serialization typed as ordinary `string`.
 
-- Added `hson.string(source)` and the narrow named producer
+- Added `hson.transform.string(source)` and the narrow named producer
   `hsonString(source)`.
 
 - Both string producers parse, normalize, validate, and officially reserialize
   HSON source before returning `HsonString`.
 
-- `hson.string` and `hsonString` share the same implementation and function
+- `hson.transform.string` and `hsonString` share the same implementation and function
   identity.
 
 - Added root and `hson-live/transform` exports for `hsonString`.
@@ -223,7 +223,7 @@ truthful and deterministic.
 - Documented `HsonString` as a TypeScript-only branded primitive produced by
   official HSON serialization.
 
-- Documented that `hson.string()` and `hsonString()` normalize source spelling
+- Documented that `hson.transform.string()` and `hsonString()` normalize source spelling
   and are not security, authentication, or cross-process trust mechanisms.
 
 - Removed the former implication that the `data-_` prefix belongs to HSON

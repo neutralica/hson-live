@@ -1,7 +1,8 @@
 // coerce-string.utils.ts
 
-import { Primitive } from "../../../../core/types.js";
+import type { HsonSemanticPrimitive } from "../../../../core/types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
+import { hsonNumber } from "../../../../core/hson-number.js";
 
 /**
  * Coerce a raw token string into a `Primitive` value.
@@ -23,7 +24,7 @@ import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js"
  * @param value - Raw input string to coerce.
  * @returns The coerced `Primitive` value.
  */
-export function coerce(value: string): Primitive {
+export function coerce(value: string): HsonSemanticPrimitive {
     const trimmed = value.trim();
     if (trimmed === '') {
         return '';
@@ -49,7 +50,7 @@ export function coerce(value: string): Primitive {
   
     const numericRegex = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
     if (numericRegex.test(trimmed)) {
-        return Number(trimmed);
+        return hsonNumber(Number(trimmed));
     }
 
     /* 4. if all else fails, it's a plain, unquoted string */
