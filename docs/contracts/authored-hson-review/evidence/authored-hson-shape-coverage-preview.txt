@@ -1,0 +1,2371 @@
+MATERIALIZED AUTHORED-HSON CONFORMANCE CORPUS CANDIDATE
+AUTHORED-SOURCE SHAPE AND COVERAGE PREVIEW — 269 SOURCES
+
+This is an orientation appendix, not a verdict checklist or certification record.
+Sources are read from the materialized descriptor snapshot; no parser or serializer output is used.
+
+COUNTS
+proposed valid authored sources: 100
+proposed invalid authored sources: 169
+literal accepted: 51
+accepted finite-family expansions: 49
+literal rejected: 52
+rejected finite-family expansions: 117
+
+UPDATED CONCEPTUAL SHAPE ATLAS
+root scalars: string, finite JSON number, true, false, null
+HSON objects: empty, ordered properties, nested object, array value, contextual keyword keys
+HSON arrays: bracket/guillemet, primitive/object/array items, trailing commas
+HSON elements: empty, attributes, flags, strings, nested elements, fragments, QUIDs
+legal compositions: root to scalar/object/array/element-fragment; object to scalar/object/array; array to scalar/object/array; element to string/element
+forbidden compositions: object to element; element to object/array/typed primitive; array to element; mixed root modes
+names: bare and backtick object keys; bare/backtick element names; bare-only attributes and flags; empty-name role distinctions
+trivia: SPACE/HT/LF/CR/CRLF and physical-line comments across compact object/array/element/source bases
+lexical families: complete quoted-string and backtick escape dispatch, malformed escapes, raw C0, unsupported whitespace
+historical/exotic: legacy object syntax, authored metadata, reserved names, QUID defects, isolated surrogates
+conceptual accepted classes represented: 29 (25 prior classes plus number, trivia-slot, fragment/context, and backtick-role bases)
+conceptual invalidity classes represented: 53 (44 prior classes plus eight number-defect ownership classes and object-to-element crossing)
+
+NUMBER GRAMMAR BASIS
+accepted exact sources: -1 | 0.5 | 1E3 | 1e+3 | 1e-3
+rejected exact sources: 01 | +1 | .5 | 1. | 1e | 1e+ | NaN | Infinity | -Infinity | 0x10 | 1_0 | 1e309
+all accepted numbers canonicalize by numeric value; malformed spelling retains explicit structured ownership
+
+TRIVIA-SLOT BASIS
+object: after opener; key/value; between properties; before closer; LF/CRLF comments; consecutive comments
+array: after opener; before/after comma; before closer; terminated item-boundary comment
+element: before/after name; around equals; between header items; before/between content; before slash
+source: a physical-line comment supplies trailing trivia through EOF
+the existing <e/ > rejection continues to own the rule that trivia cannot split '/>'
+
+COMPOSITION MATRIX AMENDMENT
+valid homogeneous root fragment: <a/><b/> -> sibling elements a, b in order
+forbidden object-to-element crossing: <a <e/>> -> HSON_STRUCTURAL_MODE_CROSSING
+
+CONTEXTUAL KEYWORD CONTRAST
+object property names: <true 1 false 2 null 3>
+typed object values: <t true f false n null>
+element flags: <x true false null/>
+
+BACKTICK-NAME ROLE BASIS
+accepted element name: <`x y`/>
+rejected attribute name: <e `data key`="value"/>
+rejected flag name: <e `feature flag`/>
+
+REMAINING GAPS
+major gaps: none identified in the bounded authored-language basis
+minor/deferred: deeper combinatorial nesting, repeated trivia permutations, additional equivalent finite values, and operator-generated stress
+readiness: the 269-source orientation inventory is ready to generate the static V / I / ? checklist; no verdict is recorded here
+
+ACCEPTED COMPLETENESS BASIS — JSON NUMBER GRAMMAR
+concrete cases: 5
+
+case ID: hson.accept.basis.number.negative-exponent-sign
+proposed verdict: valid
+claim: An exponent may contain a minus sign.
+category: shape=scalar; slot=root-number; variation/defect=negative-exponent-sign
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the negative exponent-sign spelling.
+exact source: 1e-3
+
+case ID: hson.accept.basis.number.negative-integer
+proposed verdict: valid
+claim: A minus may prefix a nonzero JSON integer.
+category: shape=scalar; slot=root-number; variation/defect=negative-integer
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the missing negative-integer lexical branch.
+exact source: -1
+
+case ID: hson.accept.basis.number.positive-exponent-sign
+proposed verdict: valid
+claim: An exponent may contain an explicit plus sign.
+category: shape=scalar; slot=root-number; variation/defect=positive-exponent-sign
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the positive exponent-sign spelling.
+exact source: 1e+3
+
+case ID: hson.accept.basis.number.positive-fraction
+proposed verdict: valid
+claim: A fraction retains digits on both sides of the decimal point.
+category: shape=scalar; slot=root-number; variation/defect=positive-fraction
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the missing positive-fraction lexical branch.
+exact source: 0.5
+
+case ID: hson.accept.basis.number.uppercase-exponent
+proposed verdict: valid
+claim: An uppercase exponent marker is accepted.
+category: shape=scalar; slot=root-number; variation/defect=uppercase-exponent
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the uppercase exponent-marker spelling.
+exact source: 1E3
+
+ACCEPTED COMPLETENESS BASIS — TRIVIA SLOTS
+concrete cases: 4
+
+case ID: hson.accept.basis.trivia.array-slots
+proposed verdict: valid
+claim: Array trivia covers after-opener, before-comma, after-comma, before-closer, and a terminated item-boundary comment.
+category: shape=array; slot=array-trivia-slots; variation/defect=array-slots
+provenance priority: high
+provenance: Newly reasoned from the settled SPACE/HT/LF/CR and physical-line-comment grammar.
+novelty: Adds one readable basis spanning the missing array trivia slots.
+escaped display: "[ \t1 \r,\n// next item\n 2 \r\n]"
+special code units: index 1: U+0020 SPACE; index 2: U+0009 unnamed; index 4: U+0020 SPACE; index 5: U+000D unnamed; index 7: U+000A unnamed; index 10: U+0020 SPACE; index 15: U+0020 SPACE; index 20: U+000A unnamed; index 21: U+0020 SPACE; index 23: U+0020 SPACE; index 24: U+000D unnamed; index 25: U+000A unnamed
+
+case ID: hson.accept.basis.trivia.comment-to-eof
+proposed verdict: valid
+claim: A physical-line comment may supply trailing root trivia through EOF.
+category: shape=scalar; slot=source-trailing-trivia; variation/defect=comment-to-eof
+provenance priority: high
+provenance: Newly reasoned from the settled SPACE/HT/LF/CR and physical-line-comment grammar.
+novelty: Adds the missing valid comment-to-EOF source boundary.
+escaped display: "42// comment to EOF"
+special code units: index 4: U+0020 SPACE; index 12: U+0020 SPACE; index 15: U+0020 SPACE
+verbatim source:
+42// comment to EOF
+
+case ID: hson.accept.basis.trivia.element-slots
+proposed verdict: valid
+claim: Element trivia covers before-name, after-name, around equals, between header items, before and between content, and before slash.
+category: shape=element; slot=element-trivia-slots; variation/defect=element-slots
+provenance priority: critical
+provenance: The graph was newly reasoned from the settled trivia grammar; the exact canonical HSON attribute order was corrected after focused production validation.
+novelty: Adds one readable basis spanning the missing element trivia slots while leaving '/>' indivisible.
+escaped display: "< \nwidget \t title \r= \n\"value\"\r\n enabled \t \"a\"// next leaf\n \"b\" \r />"
+special code units: index 1: U+0020 SPACE; index 2: U+000A unnamed; index 9: U+0020 SPACE; index 10: U+0009 unnamed; index 11: U+0020 SPACE; index 17: U+0020 SPACE; index 18: U+000D unnamed; index 20: U+0020 SPACE; index 21: U+000A unnamed; index 29: U+000D unnamed; index 30: U+000A unnamed; index 31: U+0020 SPACE; index 39: U+0020 SPACE; index 40: U+0009 unnamed; index 41: U+0020 SPACE; index 47: U+0020 SPACE; index 52: U+0020 SPACE; index 57: U+000A unnamed; index 58: U+0020 SPACE; index 62: U+0020 SPACE; index 63: U+000D unnamed; index 64: U+0020 SPACE
+
+case ID: hson.accept.basis.trivia.object-slots
+proposed verdict: valid
+claim: Object trivia covers after-open, key/value, sibling, before-close, and consecutive terminated-comment slots.
+category: shape=object; slot=object-trivia-slots; variation/defect=object-slots
+provenance priority: high
+provenance: Newly reasoned from the settled SPACE/HT/LF/CR and physical-line-comment grammar.
+novelty: Adds one readable basis spanning the missing object trivia slots and consecutive comments.
+escaped display: "< \talpha// first\n// second\r\n 1\r beta\t2 \n>"
+special code units: index 1: U+0020 SPACE; index 2: U+0009 unnamed; index 10: U+0020 SPACE; index 16: U+000A unnamed; index 19: U+0020 SPACE; index 26: U+000D unnamed; index 27: U+000A unnamed; index 28: U+0020 SPACE; index 30: U+000D unnamed; index 31: U+0020 SPACE; index 36: U+0009 unnamed; index 38: U+0020 SPACE; index 39: U+000A unnamed
+
+ACCEPTED COMPLETENESS BASIS — COMPOSITION AND CONTEXT
+concrete cases: 2
+
+case ID: hson.accept.basis.object.primitive-looking-keys
+proposed verdict: valid
+claim: true, false, and null are ordinary property keys in HSON object key position.
+category: shape=object; slot=property-key; variation/defect=primitive-looking-keys
+provenance priority: medium
+provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+novelty: Adds the contextual-key contrast with typed object values and element flags.
+escaped display: "<true 1 false 2 null 3>"
+special code units: index 5: U+0020 SPACE; index 7: U+0020 SPACE; index 13: U+0020 SPACE; index 15: U+0020 SPACE; index 20: U+0020 SPACE
+verbatim source:
+<true 1 false 2 null 3>
+
+case ID: hson.accept.basis.root.element-fragment
+proposed verdict: valid
+claim: A homogeneous root element fragment preserves sibling order.
+category: shape=element-fragment; slot=root; variation/defect=element-fragment
+provenance priority: medium
+provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+novelty: Adds the missing positive multi-element root fragment.
+exact source: <a/><b/>
+
+ACCEPTED COMPLETENESS BASIS — BACKTICK NAME ROLES
+concrete cases: 1
+
+case ID: hson.accept.basis.backtick-name.element-name
+proposed verdict: valid
+claim: A nonempty backtick name is admitted as an HSON element name.
+category: shape=element; slot=element-name; variation/defect=element-name
+provenance priority: high
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing positive backtick element-name role.
+escaped display: "<`x y`/>"
+special code units: index 3: U+0020 SPACE
+verbatim source:
+<`x y`/>
+
+ACCEPTED LITERALS — ROOT PRIMITIVES
+concrete cases: 10
+
+case ID: hson.accept.literal.primitive.empty-string
+proposed verdict: valid
+claim: A bare empty quoted string admits one string leaf.
+category: shape=scalar; slot=root-value; variation/defect=empty-string
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: ""
+
+case ID: hson.accept.literal.primitive.exponent
+proposed verdict: valid
+claim: Exponent notation admits and canonicalizes by value.
+category: shape=scalar; slot=root-value; variation/defect=exponent
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: 1e3
+
+case ID: hson.accept.literal.primitive.false
+proposed verdict: valid
+claim: Bare false is a typed primitive value.
+category: shape=scalar; slot=root-value; variation/defect=false
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: false
+
+case ID: hson.accept.literal.primitive.negative-fraction
+proposed verdict: valid
+claim: A negative finite fraction admits.
+category: shape=scalar; slot=root-value; variation/defect=negative-fraction
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: -12.5
+
+case ID: hson.accept.literal.primitive.negative-zero
+proposed verdict: valid
+claim: Negative zero retains exact numeric identity.
+category: shape=scalar; slot=root-value; variation/defect=negative-zero
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: -0
+
+case ID: hson.accept.literal.primitive.null
+proposed verdict: valid
+claim: Bare null is a typed primitive value.
+category: shape=scalar; slot=root-value; variation/defect=null
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: null
+
+case ID: hson.accept.literal.primitive.positive-integer
+proposed verdict: valid
+claim: A positive finite integer admits.
+category: shape=scalar; slot=root-value; variation/defect=positive-integer
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: 42
+
+case ID: hson.accept.literal.primitive.string
+proposed verdict: valid
+claim: A bare ordinary quoted string admits one string leaf.
+category: shape=scalar; slot=root-value; variation/defect=string
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "hello"
+
+case ID: hson.accept.literal.primitive.true
+proposed verdict: valid
+claim: Bare true is a typed primitive value.
+category: shape=scalar; slot=root-value; variation/defect=true
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: true
+
+case ID: hson.accept.literal.primitive.zero
+proposed verdict: valid
+claim: Zero admits as a typed numeric leaf.
+category: shape=scalar; slot=root-value; variation/defect=zero
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: 0
+
+ACCEPTED LITERALS — HSON OBJECTS
+concrete cases: 10
+
+case ID: hson.accept.literal.object.array-value
+proposed verdict: valid
+claim: An object property may contain an array.
+category: shape=object-with-array; slot=property-value; variation/defect=array-value
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<items \u00ab1,2\u00bb>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<items «1,2»>
+
+case ID: hson.accept.literal.object.colon-dot-names
+proposed verdict: valid
+claim: Colon and dot keys canonicalize through backticks.
+category: shape=object; slot=property-key; variation/defect=colon-dot-names
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<:x 1 a.b 2>"
+special code units: index 3: U+0020 SPACE; index 5: U+0020 SPACE; index 9: U+0020 SPACE
+verbatim source:
+<:x 1 a.b 2>
+
+case ID: hson.accept.literal.object.comments
+proposed verdict: valid
+claim: Physical-line comments are grammar trivia between object tokens.
+category: shape=object; slot=trivia; variation/defect=comments
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a// key/value\n 1 b// key/value\r\n 2>"
+special code units: index 4: U+0020 SPACE; index 14: U+000A unnamed; index 15: U+0020 SPACE; index 17: U+0020 SPACE; index 21: U+0020 SPACE; index 31: U+000D unnamed; index 32: U+000A unnamed; index 33: U+0020 SPACE
+
+case ID: hson.accept.literal.object.empty
+proposed verdict: valid
+claim: One angle pair denotes an empty HSON object.
+category: shape=object; slot=root-object; variation/defect=empty
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <>
+
+case ID: hson.accept.literal.object.empty-decoded-key
+proposed verdict: valid
+claim: An empty decoded object-property key is valid.
+category: shape=object; slot=property-key; variation/defect=empty-decoded-key
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`` 1>"
+special code units: index 3: U+0020 SPACE
+verbatim source:
+<`` 1>
+
+case ID: hson.accept.literal.object.multiple-properties
+proposed verdict: valid
+claim: Object property order is retained.
+category: shape=object; slot=object-property; variation/defect=multiple-properties
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1 b \"two\" c false>"
+special code units: index 2: U+0020 SPACE; index 4: U+0020 SPACE; index 6: U+0020 SPACE; index 12: U+0020 SPACE; index 14: U+0020 SPACE
+verbatim source:
+<a 1 b "two" c false>
+
+case ID: hson.accept.literal.object.negative-zero
+proposed verdict: valid
+claim: An object property preserves negative zero.
+category: shape=object; slot=property-value; variation/defect=negative-zero
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<value -0>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<value -0>
+
+case ID: hson.accept.literal.object.nested
+proposed verdict: valid
+claim: An object property may contain a nested HSON object.
+category: shape=nested-object; slot=property-value; variation/defect=nested
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<record <field 2>>"
+special code units: index 7: U+0020 SPACE; index 14: U+0020 SPACE
+verbatim source:
+<record <field 2>>
+
+case ID: hson.accept.literal.object.one-property
+proposed verdict: valid
+claim: An object contains a punctuation-free key/value property.
+category: shape=object; slot=object-property; variation/defect=one-property
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<a 1>
+
+case ID: hson.accept.literal.object.typed-keywords
+proposed verdict: valid
+claim: true, false, and null in object value position remain typed.
+category: shape=object; slot=property-value; variation/defect=typed-keywords
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<t true f false n null>"
+special code units: index 2: U+0020 SPACE; index 7: U+0020 SPACE; index 9: U+0020 SPACE; index 15: U+0020 SPACE; index 17: U+0020 SPACE
+verbatim source:
+<t true f false n null>
+
+ACCEPTED LITERALS — HSON ARRAYS
+concrete cases: 8
+
+case ID: hson.accept.literal.array.empty-bracket
+proposed verdict: valid
+claim: An empty bracket array canonicalizes to guillemets.
+category: shape=array; slot=root-array; variation/defect=empty-bracket
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: []
+
+case ID: hson.accept.literal.array.empty-guillemet
+proposed verdict: valid
+claim: An empty guillemet array admits.
+category: shape=array; slot=root-array; variation/defect=empty-guillemet
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: «»
+
+case ID: hson.accept.literal.array.negative-zero
+proposed verdict: valid
+claim: An array item preserves negative zero.
+category: shape=array; slot=array-item; variation/defect=negative-zero
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [-0,0]
+
+case ID: hson.accept.literal.array.nested
+proposed verdict: valid
+claim: Nested arrays retain indexed membership.
+category: shape=nested-array; slot=array-item; variation/defect=nested
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [[1],«2,3»]
+
+case ID: hson.accept.literal.array.object-item
+proposed verdict: valid
+claim: An array item may be a HSON object.
+category: shape=array-of-object; slot=array-item; variation/defect=object-item
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "[<name \"Ada\">]"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+[<name "Ada">]
+
+case ID: hson.accept.literal.array.primitives
+proposed verdict: valid
+claim: Arrays remain comma-separated and retain primitive item order.
+category: shape=array; slot=array-item; variation/defect=primitives
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [1,"two",false,null]
+
+case ID: hson.accept.literal.array.trailing-comma-bracket
+proposed verdict: valid
+claim: A bracket-array trailing comma is accepted variation.
+category: shape=array; slot=trailing-comma; variation/defect=trailing-comma-bracket
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [1,2,]
+
+case ID: hson.accept.literal.array.trailing-comma-guillemet
+proposed verdict: valid
+claim: A guillemet-array trailing comma is accepted variation.
+category: shape=array; slot=trailing-comma; variation/defect=trailing-comma-guillemet
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: «1,2,»
+
+ACCEPTED LITERALS — HSON ELEMENTS
+concrete cases: 10
+
+case ID: hson.accept.literal.element.adjacent-strings
+proposed verdict: valid
+claim: Two adjacent authored string leaves remain distinct.
+category: shape=element; slot=element-content; variation/defect=adjacent-strings
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<div \"a\" \"b\"/>"
+special code units: index 4: U+0020 SPACE; index 8: U+0020 SPACE
+verbatim source:
+<div "a" "b"/>
+
+case ID: hson.accept.literal.element.attribute
+proposed verdict: valid
+claim: An element attribute retains its explicit value.
+category: shape=element; slot=element-attribute; variation/defect=attribute
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<input title=\"value\"/>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<input title="value"/>
+
+case ID: hson.accept.literal.element.empty
+proposed verdict: valid
+claim: A self-closing angle construct denotes an empty HSON element.
+category: shape=element; slot=element-name; variation/defect=empty
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <div/>
+
+case ID: hson.accept.literal.element.flag
+proposed verdict: valid
+claim: A bare name in the element attribute region is a flag.
+category: shape=element; slot=element-flag; variation/defect=flag
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<input disabled/>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<input disabled/>
+
+case ID: hson.accept.literal.element.keyword-flags
+proposed verdict: valid
+claim: Bare true, false, and null in the element attribute region are flags.
+category: shape=element; slot=element-flag; variation/defect=keyword-flags
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<x true false null/>"
+special code units: index 2: U+0020 SPACE; index 7: U+0020 SPACE; index 13: U+0020 SPACE
+verbatim source:
+<x true false null/>
+
+case ID: hson.accept.literal.element.mixed-content
+proposed verdict: valid
+claim: Element strings and nested elements retain their order.
+category: shape=nested-element; slot=element-content; variation/defect=mixed-content
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<p \"first\" <em \"middle\"/> \"last\"/>"
+special code units: index 2: U+0020 SPACE; index 10: U+0020 SPACE; index 14: U+0020 SPACE; index 25: U+0020 SPACE
+verbatim source:
+<p "first" <em "middle"/> "last"/>
+
+case ID: hson.accept.literal.element.nested
+proposed verdict: valid
+claim: An HSON element may contain a nested element.
+category: shape=nested-element; slot=element-content; variation/defect=nested
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<p <em \"text\"/>/>"
+special code units: index 2: U+0020 SPACE; index 6: U+0020 SPACE
+verbatim source:
+<p <em "text"/>/>
+
+case ID: hson.accept.literal.element.quid
+proposed verdict: valid
+claim: An element QUID remains supported.
+category: shape=element; slot=element-quid; variation/defect=quid
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<main @0000000000000001/>"
+special code units: index 5: U+0020 SPACE
+verbatim source:
+<main @0000000000000001/>
+
+case ID: hson.accept.literal.element.text
+proposed verdict: valid
+claim: An HSON element may contain quoted string content.
+category: shape=element; slot=element-content; variation/defect=text
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<p \"text\"/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<p "text"/>
+
+case ID: hson.accept.literal.element.three-empty-strings
+proposed verdict: valid
+claim: Three adjacent empty authored string leaves remain three.
+category: shape=element; slot=element-content; variation/defect=three-empty-strings
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<div \"\"\"\"\"\"/>"
+special code units: index 4: U+0020 SPACE
+verbatim source:
+<div """"""/>
+
+ACCEPTED LITERALS — ROOT TRIVIA
+concrete cases: 1
+
+case ID: hson.accept.literal.trivia.space-tab-lf-cr
+proposed verdict: valid
+claim: Grammar trivia is exactly SPACE, HT, LF, and CR.
+category: shape=scalar; slot=trivia; variation/defect=space-tab-lf-cr
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: " \t\r\n42\r\n"
+special code units: index 0: U+0020 SPACE; index 1: U+0009 unnamed; index 2: U+000D unnamed; index 3: U+000A unnamed; index 6: U+000D unnamed; index 7: U+000A unnamed
+
+ACCEPTED FAMILY — QUOTED-STRING ESCAPES
+concrete cases: 25
+
+case ID: hson.accept.family.quoted-string.backslash
+proposed verdict: valid
+claim: Quoted-string escape variation backslash decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=backslash
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\\"
+
+case ID: hson.accept.family.quoted-string.backspace
+proposed verdict: valid
+claim: Quoted-string escape variation backspace decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=backspace
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\b"
+
+case ID: hson.accept.family.quoted-string.carriage-return
+proposed verdict: valid
+claim: Quoted-string escape variation carriage-return decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=carriage-return
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\r"
+
+case ID: hson.accept.family.quoted-string.consecutive-unicode
+proposed verdict: valid
+claim: Quoted-string escape variation consecutive-unicode decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=consecutive-unicode
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0041\u0042"
+
+case ID: hson.accept.family.quoted-string.escape-before-container-closer
+proposed verdict: valid
+claim: A valid escape may end immediately before an element closer.
+category: shape=element; slot=element-content; variation/defect=escape-before-container-closer
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e \"x\\t\"/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e "x\t"/>
+
+case ID: hson.accept.family.quoted-string.escape-before-quote
+proposed verdict: valid
+claim: Quoted-string escape variation escape-before-quote decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=escape-before-quote
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "end\t"
+
+case ID: hson.accept.family.quoted-string.form-feed
+proposed verdict: valid
+claim: Quoted-string escape variation form-feed decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=form-feed
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\f"
+
+case ID: hson.accept.family.quoted-string.line-feed
+proposed verdict: valid
+claim: Quoted-string escape variation line-feed decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=line-feed
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\n"
+
+case ID: hson.accept.family.quoted-string.quote
+proposed verdict: valid
+claim: Quoted-string escape variation quote decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=quote
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\""
+
+case ID: hson.accept.family.quoted-string.slash
+proposed verdict: valid
+claim: Quoted-string escape variation slash decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=slash
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\/"
+
+case ID: hson.accept.family.quoted-string.tab
+proposed verdict: valid
+claim: Quoted-string escape variation tab decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=tab
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\t"
+
+case ID: hson.accept.family.quoted-string.unicode-high-surrogate
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-high-surrogate decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-high-surrogate
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\uD800"
+
+case ID: hson.accept.family.quoted-string.unicode-low-surrogate
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-low-surrogate decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-low-surrogate
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\uDC00"
+
+case ID: hson.accept.family.quoted-string.unicode-lowercase
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-lowercase decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-lowercase
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0061"
+
+case ID: hson.accept.family.quoted-string.unicode-mixed-case
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-mixed-case decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-mixed-case
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u00aF"
+
+case ID: hson.accept.family.quoted-string.unicode-surrogate-pair
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-surrogate-pair decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-surrogate-pair
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\uD83D\uDE00"
+
+case ID: hson.accept.family.quoted-string.unicode-u0000
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u0000 decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u0000
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0000"
+
+case ID: hson.accept.family.quoted-string.unicode-u001f
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u001f decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u001f
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u001F"
+
+case ID: hson.accept.family.quoted-string.unicode-u007f
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u007f decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u007f
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u007F"
+
+case ID: hson.accept.family.quoted-string.unicode-u0080
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u0080 decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u0080
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0080"
+
+case ID: hson.accept.family.quoted-string.unicode-u00ff
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u00ff decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u00ff
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u00FF"
+
+case ID: hson.accept.family.quoted-string.unicode-u0100
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u0100 decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u0100
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0100"
+
+case ID: hson.accept.family.quoted-string.unicode-u2028
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u2028 decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u2028
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u2028"
+
+case ID: hson.accept.family.quoted-string.unicode-u2029
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-u2029 decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-u2029
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u2029"
+
+case ID: hson.accept.family.quoted-string.unicode-uppercase
+proposed verdict: valid
+claim: Quoted-string escape variation unicode-uppercase decodes and canonicalizes exactly.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-uppercase
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u006A"
+
+ACCEPTED FAMILY — BACKTICK-NAME ESCAPES
+concrete cases: 24
+
+case ID: hson.accept.family.backtick-name.backspace
+proposed verdict: valid
+claim: Backtick-name escape variation backspace decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=backspace
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`back\\bspace` 1>"
+special code units: index 14: U+0020 SPACE
+verbatim source:
+<`back\bspace` 1>
+
+case ID: hson.accept.family.backtick-name.carriage-return
+proposed verdict: valid
+claim: Backtick-name escape variation carriage-return decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=carriage-return
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`line\\rname` 1>"
+special code units: index 13: U+0020 SPACE
+verbatim source:
+<`line\rname` 1>
+
+case ID: hson.accept.family.backtick-name.consecutive-unicode
+proposed verdict: valid
+claim: Backtick-name escape variation consecutive-unicode decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=consecutive-unicode
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`pair\\u0041\\u0042name` 1>"
+special code units: index 23: U+0020 SPACE
+verbatim source:
+<`pair\u0041\u0042name` 1>
+
+case ID: hson.accept.family.backtick-name.escaped-backslash
+proposed verdict: valid
+claim: Backtick-name escape variation escaped-backslash decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=escaped-backslash
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`back\\\\slash` 1>"
+special code units: index 14: U+0020 SPACE
+verbatim source:
+<`back\\slash` 1>
+
+case ID: hson.accept.family.backtick-name.escaped-backtick
+proposed verdict: valid
+claim: Backtick-name escape variation escaped-backtick decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=escaped-backtick
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`tick\\`name` 1>"
+special code units: index 13: U+0020 SPACE
+verbatim source:
+<`tick\`name` 1>
+
+case ID: hson.accept.family.backtick-name.form-feed
+proposed verdict: valid
+claim: Backtick-name escape variation form-feed decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=form-feed
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`form\\ffeed` 1>"
+special code units: index 13: U+0020 SPACE
+verbatim source:
+<`form\ffeed` 1>
+
+case ID: hson.accept.family.backtick-name.line-feed
+proposed verdict: valid
+claim: Backtick-name escape variation line-feed decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=line-feed
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`line\\nname` 1>"
+special code units: index 13: U+0020 SPACE
+verbatim source:
+<`line\nname` 1>
+
+case ID: hson.accept.family.backtick-name.tab
+proposed verdict: valid
+claim: Backtick-name escape variation tab decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=tab
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`line\\tname` 1>"
+special code units: index 13: U+0020 SPACE
+verbatim source:
+<`line\tname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-control
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-control decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-control
+provenance priority: high
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`control\\u0001name` 1>"
+special code units: index 20: U+0020 SPACE
+verbatim source:
+<`control\u0001name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-high-surrogate
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-high-surrogate decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-high-surrogate
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`high\\uD800name` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`high\uD800name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-lambda
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-lambda decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-lambda
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`lambda\\u03bbname` 1>"
+special code units: index 19: U+0020 SPACE
+verbatim source:
+<`lambda\u03bbname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-low-surrogate
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-low-surrogate decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-low-surrogate
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`low\\uDC00name` 1>"
+special code units: index 16: U+0020 SPACE
+verbatim source:
+<`low\uDC00name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-lowercase
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-lowercase decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-lowercase
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`lower\\u0061name` 1>"
+special code units: index 18: U+0020 SPACE
+verbatim source:
+<`lower\u0061name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-mixed-case
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-mixed-case decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-mixed-case
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`mixed\\u00aFname` 1>"
+special code units: index 18: U+0020 SPACE
+verbatim source:
+<`mixed\u00aFname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-surrogate-pair
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-surrogate-pair decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-surrogate-pair
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`pair\\uD83D\\uDE00name` 1>"
+special code units: index 23: U+0020 SPACE
+verbatim source:
+<`pair\uD83D\uDE00name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u0000
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u0000 decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u0000
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`nul\\u0000name` 1>"
+special code units: index 16: U+0020 SPACE
+verbatim source:
+<`nul\u0000name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u001f
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u001f decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u001f
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u001Fname` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u001Fname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u007f
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u007f decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u007f
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u007fname` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u007fname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u0080
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u0080 decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u0080
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u0080name` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u0080name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u00ff
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u00ff decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u00ff
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u00FFname` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u00FFname` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u0100
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u0100 decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u0100
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u0100name` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u0100name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u2028
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u2028 decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u2028
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u2028name` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u2028name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-u2029
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-u2029 decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-u2029
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`unit\\u2029name` 1>"
+special code units: index 17: U+0020 SPACE
+verbatim source:
+<`unit\u2029name` 1>
+
+case ID: hson.accept.family.backtick-name.unicode-uppercase
+proposed verdict: valid
+claim: Backtick-name escape variation unicode-uppercase decodes and canonicalizes exactly.
+category: shape=object; slot=property-key; variation/defect=unicode-uppercase
+provenance priority: medium
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`upper\\u006Aname` 1>"
+special code units: index 18: U+0020 SPACE
+verbatim source:
+<`upper\u006Aname` 1>
+
+REJECTED LITERALS
+concrete cases: 37
+
+case ID: hson.reject.literal.array.mismatched-bracket
+proposed verdict: invalid
+claim: A bracket array must close with a bracket.
+category: shape=array; slot=container; variation/defect=mismatched-closer
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [1,2»
+
+case ID: hson.reject.literal.array.mismatched-guillemet
+proposed verdict: invalid
+claim: A guillemet array must close with a guillemet.
+category: shape=array; slot=container; variation/defect=mismatched-closer
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: «1,2]
+
+case ID: hson.reject.literal.array.missing-comma
+proposed verdict: invalid
+claim: Array items require commas.
+category: shape=array; slot=array-separator; variation/defect=missing-comma
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "[1 2]"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+[1 2]
+
+case ID: hson.reject.literal.array.missing-item
+proposed verdict: invalid
+claim: Two array commas cannot omit an item.
+category: shape=array; slot=array-item; variation/defect=missing-item
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [1,,2]
+
+case ID: hson.reject.literal.authored-metadata
+proposed verdict: invalid
+claim: Authored structural metadata names reject.
+category: shape=element; slot=element-attribute; variation/defect=authored-metadata
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e hson:index=\"0\"/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e hson:index="0"/>
+
+case ID: hson.reject.literal.comment.block
+proposed verdict: invalid
+claim: Block comments are unsupported.
+category: shape=source; slot=trivia; variation/defect=block-comment
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: /*x*/1
+
+case ID: hson.reject.literal.element.duplicate-attribute
+proposed verdict: invalid
+claim: Duplicate decoded element attributes reject with related evidence.
+category: shape=element; slot=element-attribute; variation/defect=duplicate-attribute
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e x=\"1\" x=\"2\"/>"
+special code units: index 2: U+0020 SPACE; index 8: U+0020 SPACE
+verbatim source:
+<e x="1" x="2"/>
+
+case ID: hson.reject.literal.element.duplicate-quid
+proposed verdict: invalid
+claim: An element cannot declare two QUIDs.
+category: shape=element; slot=element-quid; variation/defect=duplicate-quid
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e @0000000000000001 @0000000000000002/>"
+special code units: index 2: U+0020 SPACE; index 20: U+0020 SPACE
+verbatim source:
+<e @0000000000000001 @0000000000000002/>
+
+case ID: hson.reject.literal.element.flag-after-content
+proposed verdict: invalid
+claim: Element flags cannot follow content.
+category: shape=element; slot=element-flag; variation/defect=after-content
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e \"x\" late/>"
+special code units: index 2: U+0020 SPACE; index 6: U+0020 SPACE
+verbatim source:
+<e "x" late/>
+
+case ID: hson.reject.literal.element.malformed-closer
+proposed verdict: invalid
+claim: Whitespace cannot split an element closer.
+category: shape=element; slot=container; variation/defect=malformed-closer
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e/ >"
+special code units: index 3: U+0020 SPACE
+verbatim source:
+<e/ >
+
+case ID: hson.reject.literal.element.missing-attribute-value
+proposed verdict: invalid
+claim: An explicit element attribute requires a value.
+category: shape=element; slot=element-attribute; variation/defect=missing-value
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e x=/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e x=/>
+
+case ID: hson.reject.literal.element.missing-quid
+proposed verdict: invalid
+claim: An element QUID marker requires a persisted QUID.
+category: shape=element; slot=element-quid; variation/defect=missing-quid
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e @/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e @/>
+
+case ID: hson.reject.literal.element.numeric-content
+proposed verdict: invalid
+claim: Numeric typed content beneath an HSON element rejects.
+category: shape=element; slot=element-content; variation/defect=typed-content
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e 1/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e 1/>
+
+case ID: hson.reject.literal.empty-attribute-name
+proposed verdict: invalid
+claim: An empty decoded attribute name rejects.
+category: shape=element; slot=element-attribute; variation/defect=empty-decoded-name
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e ``=\"x\"/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e ``="x"/>
+
+case ID: hson.reject.literal.empty-element-name
+proposed verdict: invalid
+claim: An empty decoded element name rejects.
+category: shape=element; slot=element-name; variation/defect=empty-decoded-name
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <``/>
+
+case ID: hson.reject.literal.empty-flag-name
+proposed verdict: invalid
+claim: An empty decoded flag name rejects.
+category: shape=element; slot=element-flag; variation/defect=empty-decoded-name
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e ``/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e ``/>
+
+case ID: hson.reject.literal.mode.array-element
+proposed verdict: invalid
+claim: An array cannot contain element-mode content.
+category: shape=array; slot=array-item; variation/defect=element-in-array
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: [<e/>]
+
+case ID: hson.reject.literal.mode.element-array
+proposed verdict: invalid
+claim: An HSON element cannot contain an array.
+category: shape=element; slot=element-content; variation/defect=array-beneath-element
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e [1]/>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<e [1]/>
+
+case ID: hson.reject.literal.mode.element-object
+proposed verdict: invalid
+claim: An HSON element cannot contain object structure.
+category: shape=element; slot=element-content; variation/defect=object-beneath-element
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<e <b 1>/>"
+special code units: index 2: U+0020 SPACE; index 5: U+0020 SPACE
+verbatim source:
+<e <b 1>/>
+
+case ID: hson.reject.literal.object.attribute-syntax
+proposed verdict: invalid
+claim: Object properties do not use attribute equals syntax.
+category: shape=object; slot=property-key; variation/defect=attribute-syntax
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a title=\"x\" \"v\">"
+special code units: index 2: U+0020 SPACE; index 12: U+0020 SPACE
+verbatim source:
+<a title="x" "v">
+
+case ID: hson.reject.literal.object.comma
+proposed verdict: invalid
+claim: Object properties do not use commas.
+category: shape=object; slot=property-separator; variation/defect=comma
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1, b 2>"
+special code units: index 2: U+0020 SPACE; index 5: U+0020 SPACE; index 7: U+0020 SPACE
+verbatim source:
+<a 1, b 2>
+
+case ID: hson.reject.literal.object.duplicate
+proposed verdict: invalid
+claim: Duplicate decoded object-property keys reject with related evidence.
+category: shape=object; slot=property-key; variation/defect=duplicate-key
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1 a 2>"
+special code units: index 2: U+0020 SPACE; index 4: U+0020 SPACE; index 6: U+0020 SPACE
+verbatim source:
+<a 1 a 2>
+
+case ID: hson.reject.literal.object.extra-value
+proposed verdict: invalid
+claim: An object property has exactly one value.
+category: shape=object; slot=property-value; variation/defect=extra-value
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1 2 3>"
+special code units: index 2: U+0020 SPACE; index 4: U+0020 SPACE; index 6: U+0020 SPACE
+verbatim source:
+<a 1 2 3>
+
+case ID: hson.reject.literal.object.flag
+proposed verdict: invalid
+claim: An object property cannot omit its value.
+category: shape=object; slot=property-value; variation/defect=flag
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a flag>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<a flag>
+
+case ID: hson.reject.literal.object.legacy-adjacent
+proposed verdict: invalid
+claim: Adjacent angle objects do not merge into one object.
+category: shape=object; slot=root; variation/defect=legacy-syntax
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a 1><b 2>"
+special code units: index 2: U+0020 SPACE; index 7: U+0020 SPACE
+verbatim source:
+<a 1><b 2>
+
+case ID: hson.reject.literal.object.legacy-doubled
+proposed verdict: invalid
+claim: Legacy doubled-angle object syntax rejects.
+category: shape=object; slot=container; variation/defect=legacy-syntax
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<<a 1>>"
+special code units: index 3: U+0020 SPACE
+verbatim source:
+<<a 1>>
+
+case ID: hson.reject.literal.object.missing-trivia
+proposed verdict: invalid
+claim: A property key and value require trivia.
+category: shape=object; slot=property-separator; variation/defect=missing-trivia
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <a"x">
+
+case ID: hson.reject.literal.object.quid
+proposed verdict: invalid
+claim: Object-property QUIDs do not exist in authored HSON.
+category: shape=object; slot=property-key; variation/defect=object-quid
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a @0000000000000001 1>"
+special code units: index 2: U+0020 SPACE; index 20: U+0020 SPACE
+verbatim source:
+<a @0000000000000001 1>
+
+case ID: hson.reject.literal.reserved-name
+proposed verdict: invalid
+claim: Authored _hson_* element names reject.
+category: shape=element; slot=element-name; variation/defect=reserved-name
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <_hson_obj/>
+
+case ID: hson.reject.literal.root.bare-name
+proposed verdict: invalid
+claim: An arbitrary bare name is not a root primitive.
+category: shape=source; slot=root-value; variation/defect=bare-name
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: value
+
+case ID: hson.reject.literal.root.mixed-modes
+proposed verdict: invalid
+claim: Element and object root modes cannot mix.
+category: shape=mixed-root; slot=root; variation/defect=mixed-mode
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<a/><b 2>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<a/><b 2>
+
+case ID: hson.reject.literal.root.multiple-values
+proposed verdict: invalid
+claim: A root contains exactly one semantic value.
+category: shape=source; slot=root; variation/defect=multiple-values
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1 2"
+special code units: index 1: U+0020 SPACE
+verbatim source:
+1 2
+
+case ID: hson.reject.literal.root.trailing-closer
+proposed verdict: invalid
+claim: Trailing source after a primitive rejects.
+category: shape=source; slot=root; variation/defect=trailing-source
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: 42>
+
+case ID: hson.reject.literal.source.comment-only
+proposed verdict: invalid
+claim: Comment-only source has no semantic value.
+category: shape=source; slot=root; variation/defect=empty-source
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "// comment"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+// comment
+
+case ID: hson.reject.literal.source.empty
+proposed verdict: invalid
+claim: Empty source has no semantic value.
+category: shape=source; slot=root; variation/defect=empty-source
+provenance priority: low
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: 
+
+case ID: hson.reject.literal.source.whitespace-only
+proposed verdict: invalid
+claim: Whitespace-only source has no semantic value.
+category: shape=source; slot=root; variation/defect=empty-source
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "   "
+special code units: index 0: U+0020 SPACE; index 1: U+0020 SPACE; index 2: U+0020 SPACE
+verbatim source:
+   
+
+case ID: hson.reject.literal.whitespace.byte-order-mark
+proposed verdict: invalid
+claim: U+FEFF is not authored-HSON trivia.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u-feff
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\ufeff"
+special code units: index 1: U+FEFF ZERO WIDTH NO-BREAK SPACE
+verbatim source:
+1﻿
+
+REJECTED COMPLETENESS BASIS — JSON NUMBER GRAMMAR
+concrete cases: 12
+
+case ID: hson.reject.basis.number.hexadecimal
+proposed verdict: invalid
+claim: Hexadecimal spelling is not JSON-compatible HSON number syntax.
+category: shape=scalar; slot=root-number; variation/defect=unsupported-hexadecimal
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds explicit hexadecimal-spelling rejection.
+exact source: 0x10
+
+case ID: hson.reject.basis.number.leading-plus
+proposed verdict: invalid
+claim: A JSON-compatible HSON number may not begin with plus.
+category: shape=scalar; slot=root-number; variation/defect=leading-plus
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds direct ownership for the leading-plus defect.
+exact source: +1
+
+case ID: hson.reject.basis.number.leading-zero
+proposed verdict: invalid
+claim: A nonzero integer may not begin with zero.
+category: shape=scalar; slot=root-number; variation/defect=leading-zero
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds direct ownership for the leading-zero defect.
+exact source: 01
+
+case ID: hson.reject.basis.number.missing-exponent-digits
+proposed verdict: invalid
+claim: An exponent marker requires following digits.
+category: shape=scalar; slot=root-number; variation/defect=missing-exponent-digits
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the empty exponent boundary.
+exact source: 1e
+
+case ID: hson.reject.basis.number.missing-fraction-digits
+proposed verdict: invalid
+claim: A decimal point requires following fraction digits.
+category: shape=scalar; slot=root-number; variation/defect=missing-fraction-digits
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the missing fraction-digits boundary.
+exact source: 1.
+
+case ID: hson.reject.basis.number.missing-integer-before-fraction
+proposed verdict: invalid
+claim: A fraction requires an integer component before the decimal point.
+category: shape=scalar; slot=root-number; variation/defect=missing-integer-before-fraction
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the missing-integer fraction boundary.
+exact source: .5
+
+case ID: hson.reject.basis.number.missing-signed-exponent-digits
+proposed verdict: invalid
+claim: An exponent sign requires following digits.
+category: shape=scalar; slot=root-number; variation/defect=missing-signed-exponent-digits
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the signed empty exponent boundary.
+exact source: 1e+
+
+case ID: hson.reject.basis.number.named-nan
+proposed verdict: invalid
+claim: NaN is not an authored finite number.
+category: shape=scalar; slot=root-number; variation/defect=named-nonfinite
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds explicit named-NaN rejection.
+exact source: NaN
+
+case ID: hson.reject.basis.number.named-negative-infinity
+proposed verdict: invalid
+claim: Negative Infinity is not an authored finite number.
+category: shape=scalar; slot=root-number; variation/defect=named-nonfinite
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds explicit negative-Infinity rejection.
+exact source: -Infinity
+
+case ID: hson.reject.basis.number.named-positive-infinity
+proposed verdict: invalid
+claim: Infinity is not an authored finite number.
+category: shape=scalar; slot=root-number; variation/defect=named-nonfinite
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds explicit positive-Infinity rejection.
+exact source: Infinity
+
+case ID: hson.reject.basis.number.nonfinite-overflow
+proposed verdict: invalid
+claim: A syntactically valid number that overflows binary64 rejects as nonfinite.
+category: shape=scalar; slot=root-number; variation/defect=nonfinite-overflow
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds the finite-domain overflow boundary.
+exact source: 1e309
+
+case ID: hson.reject.basis.number.numeric-separator
+proposed verdict: invalid
+claim: Numeric separators are not JSON-compatible HSON number syntax.
+category: shape=scalar; slot=root-number; variation/defect=unsupported-separator
+provenance priority: medium
+provenance: Direct transcription of the settled JSON-compatible finite-number grammar.
+novelty: Adds explicit numeric-separator rejection.
+exact source: 1_0
+
+REJECTED COMPLETENESS BASIS — STRUCTURAL MODE
+concrete cases: 1
+
+case ID: hson.reject.basis.mode.object-element
+proposed verdict: invalid
+claim: An HSON object property cannot contain an element-mode value.
+category: shape=object; slot=property-value; variation/defect=element-beneath-object
+provenance priority: medium
+provenance: Direct transcription of the settled authored-HSON structural-mode contract.
+novelty: Adds the previously missing direct object-to-element crossing.
+escaped display: "<a <e/>>"
+special code units: index 2: U+0020 SPACE
+verbatim source:
+<a <e/>>
+
+REJECTED COMPLETENESS BASIS — BACKTICK NAME ROLES
+concrete cases: 2
+
+case ID: hson.reject.basis.backtick-name.attribute-name
+proposed verdict: invalid
+claim: Backtick names are not admitted as element attribute names.
+category: shape=element; slot=element-attribute; variation/defect=backtick-role-forbidden
+provenance priority: high
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing nonempty backtick attribute-role rejection.
+escaped display: "<e `data key`=\"value\"/>"
+special code units: index 2: U+0020 SPACE; index 8: U+0020 SPACE
+verbatim source:
+<e `data key`="value"/>
+
+case ID: hson.reject.basis.backtick-name.flag-name
+proposed verdict: invalid
+claim: Backtick names are not admitted as element flag names.
+category: shape=element; slot=element-flag; variation/defect=backtick-role-forbidden
+provenance priority: high
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing nonempty backtick flag-role rejection.
+escaped display: "<e `feature flag`/>"
+special code units: index 2: U+0020 SPACE; index 11: U+0020 SPACE
+verbatim source:
+<e `feature flag`/>
+
+REJECTED FAMILY — MALFORMED QUOTED-STRING ESCAPES
+concrete cases: 14
+
+case ID: hson.reject.family.quoted-string.eof-during-unicode
+proposed verdict: invalid
+claim: quoted-string defect eof-during-unicode rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=eof-during-unicode
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u12
+
+case ID: hson.reject.family.quoted-string.invalid-hex-position-1
+proposed verdict: invalid
+claim: quoted-string defect invalid-hex-position-1 rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=invalid-hex-position-1
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\uG000"
+
+case ID: hson.reject.family.quoted-string.invalid-hex-position-2
+proposed verdict: invalid
+claim: quoted-string defect invalid-hex-position-2 rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=invalid-hex-position-2
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u0G00"
+
+case ID: hson.reject.family.quoted-string.invalid-hex-position-3
+proposed verdict: invalid
+claim: quoted-string defect invalid-hex-position-3 rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=invalid-hex-position-3
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u00G0"
+
+case ID: hson.reject.family.quoted-string.invalid-hex-position-4
+proposed verdict: invalid
+claim: quoted-string defect invalid-hex-position-4 rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=invalid-hex-position-4
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u000G"
+
+case ID: hson.reject.family.quoted-string.trailing-backslash
+proposed verdict: invalid
+claim: quoted-string defect trailing-backslash rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=trailing-backslash
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "bad\
+
+case ID: hson.reject.family.quoted-string.unicode-interrupted-backslash
+proposed verdict: invalid
+claim: quoted-string defect unicode-interrupted-backslash rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-interrupted-backslash
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u\000"
+
+case ID: hson.reject.family.quoted-string.unicode-interrupted-quote
+proposed verdict: invalid
+claim: quoted-string defect unicode-interrupted-quote rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-interrupted-quote
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u"000"
+
+case ID: hson.reject.family.quoted-string.unicode-interrupted-space
+proposed verdict: invalid
+claim: quoted-string defect unicode-interrupted-space rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-interrupted-space
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "\"\\u 000\""
+special code units: index 3: U+0020 SPACE
+verbatim source:
+"\u 000"
+
+case ID: hson.reject.family.quoted-string.unicode-one-hex
+proposed verdict: invalid
+claim: quoted-string defect unicode-one-hex rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-one-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u1"
+
+case ID: hson.reject.family.quoted-string.unicode-three-hex
+proposed verdict: invalid
+claim: quoted-string defect unicode-three-hex rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-three-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u123"
+
+case ID: hson.reject.family.quoted-string.unicode-two-hex
+proposed verdict: invalid
+claim: quoted-string defect unicode-two-hex rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-two-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u12"
+
+case ID: hson.reject.family.quoted-string.unicode-zero-hex
+proposed verdict: invalid
+claim: quoted-string defect unicode-zero-hex rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unicode-zero-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\u"
+
+case ID: hson.reject.family.quoted-string.unsupported-letter
+proposed verdict: invalid
+claim: quoted-string defect unsupported-letter rejects deterministically.
+category: shape=scalar; slot=quoted-string; variation/defect=unsupported-letter
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: "\q"
+
+REJECTED FAMILY — RAW C0 IN QUOTED STRINGS
+concrete cases: 32
+shared pattern: quoted string "a<raw U+00XX>b"
+code point | case ID | escaped source
+U+0000 | hson.reject.family.quoted-string.raw-u0000 | "\"a\u0000b\"" | priority=critical
+U+0001 | hson.reject.family.quoted-string.raw-u0001 | "\"a\u0001b\"" | priority=critical
+U+0002 | hson.reject.family.quoted-string.raw-u0002 | "\"a\u0002b\"" | priority=critical
+U+0003 | hson.reject.family.quoted-string.raw-u0003 | "\"a\u0003b\"" | priority=critical
+U+0004 | hson.reject.family.quoted-string.raw-u0004 | "\"a\u0004b\"" | priority=critical
+U+0005 | hson.reject.family.quoted-string.raw-u0005 | "\"a\u0005b\"" | priority=critical
+U+0006 | hson.reject.family.quoted-string.raw-u0006 | "\"a\u0006b\"" | priority=critical
+U+0007 | hson.reject.family.quoted-string.raw-u0007 | "\"a\u0007b\"" | priority=critical
+U+0008 | hson.reject.family.quoted-string.raw-u0008 | "\"a\bb\"" | priority=critical
+U+0009 | hson.reject.family.quoted-string.raw-u0009 | "\"a\tb\"" | priority=critical
+U+000A | hson.reject.family.quoted-string.raw-u000a | "\"a\nb\"" | priority=critical
+U+000B | hson.reject.family.quoted-string.raw-u000b | "\"a\u000bb\"" | priority=critical
+U+000C | hson.reject.family.quoted-string.raw-u000c | "\"a\fb\"" | priority=critical
+U+000D | hson.reject.family.quoted-string.raw-u000d | "\"a\rb\"" | priority=critical
+U+000E | hson.reject.family.quoted-string.raw-u000e | "\"a\u000eb\"" | priority=critical
+U+000F | hson.reject.family.quoted-string.raw-u000f | "\"a\u000fb\"" | priority=critical
+U+0010 | hson.reject.family.quoted-string.raw-u0010 | "\"a\u0010b\"" | priority=critical
+U+0011 | hson.reject.family.quoted-string.raw-u0011 | "\"a\u0011b\"" | priority=critical
+U+0012 | hson.reject.family.quoted-string.raw-u0012 | "\"a\u0012b\"" | priority=critical
+U+0013 | hson.reject.family.quoted-string.raw-u0013 | "\"a\u0013b\"" | priority=critical
+U+0014 | hson.reject.family.quoted-string.raw-u0014 | "\"a\u0014b\"" | priority=critical
+U+0015 | hson.reject.family.quoted-string.raw-u0015 | "\"a\u0015b\"" | priority=critical
+U+0016 | hson.reject.family.quoted-string.raw-u0016 | "\"a\u0016b\"" | priority=critical
+U+0017 | hson.reject.family.quoted-string.raw-u0017 | "\"a\u0017b\"" | priority=critical
+U+0018 | hson.reject.family.quoted-string.raw-u0018 | "\"a\u0018b\"" | priority=critical
+U+0019 | hson.reject.family.quoted-string.raw-u0019 | "\"a\u0019b\"" | priority=critical
+U+001A | hson.reject.family.quoted-string.raw-u001a | "\"a\u001ab\"" | priority=critical
+U+001B | hson.reject.family.quoted-string.raw-u001b | "\"a\u001bb\"" | priority=critical
+U+001C | hson.reject.family.quoted-string.raw-u001c | "\"a\u001cb\"" | priority=critical
+U+001D | hson.reject.family.quoted-string.raw-u001d | "\"a\u001db\"" | priority=critical
+U+001E | hson.reject.family.quoted-string.raw-u001e | "\"a\u001eb\"" | priority=critical
+U+001F | hson.reject.family.quoted-string.raw-u001f | "\"a\u001fb\"" | priority=critical
+
+REJECTED FAMILY — MALFORMED BACKTICK-NAME ESCAPES
+concrete cases: 19
+
+case ID: hson.reject.family.backtick-name.eof
+proposed verdict: invalid
+claim: backtick-name defect eof rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=eof
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <`name
+
+case ID: hson.reject.family.backtick-name.invalid-hex-position-1
+proposed verdict: invalid
+claim: backtick-name defect invalid-hex-position-1 rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=invalid-hex-position-1
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\uG000` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\uG000` 1>
+
+case ID: hson.reject.family.backtick-name.invalid-hex-position-2
+proposed verdict: invalid
+claim: backtick-name defect invalid-hex-position-2 rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=invalid-hex-position-2
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u0G00` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u0G00` 1>
+
+case ID: hson.reject.family.backtick-name.invalid-hex-position-3
+proposed verdict: invalid
+claim: backtick-name defect invalid-hex-position-3 rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=invalid-hex-position-3
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u00G0` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u00G0` 1>
+
+case ID: hson.reject.family.backtick-name.invalid-hex-position-4
+proposed verdict: invalid
+claim: backtick-name defect invalid-hex-position-4 rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=invalid-hex-position-4
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u000G` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u000G` 1>
+
+case ID: hson.reject.family.backtick-name.trailing-backslash
+proposed verdict: invalid
+claim: backtick-name defect trailing-backslash rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=trailing-backslash
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+exact source: <`name\
+
+case ID: hson.reject.family.backtick-name.unicode-interrupted-backslash
+proposed verdict: invalid
+claim: backtick-name defect unicode-interrupted-backslash rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-interrupted-backslash
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u\\000` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u\000` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-interrupted-backtick
+proposed verdict: invalid
+claim: backtick-name defect unicode-interrupted-backtick rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-interrupted-backtick
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u`000` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u`000` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-interrupted-closer
+proposed verdict: invalid
+claim: backtick-name defect unicode-interrupted-closer rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-interrupted-closer
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u>000` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u>000` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-interrupted-quote
+proposed verdict: invalid
+claim: backtick-name defect unicode-interrupted-quote rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-interrupted-quote
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u\"000` 1>"
+special code units: index 9: U+0020 SPACE
+verbatim source:
+<`\u"000` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-interrupted-space
+proposed verdict: invalid
+claim: backtick-name defect unicode-interrupted-space rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-interrupted-space
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u 000` 1>"
+special code units: index 4: U+0020 SPACE; index 9: U+0020 SPACE
+verbatim source:
+<`\u 000` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-one-hex
+proposed verdict: invalid
+claim: backtick-name defect unicode-one-hex rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-one-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u1` 1>"
+special code units: index 6: U+0020 SPACE
+verbatim source:
+<`\u1` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-three-hex
+proposed verdict: invalid
+claim: backtick-name defect unicode-three-hex rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-three-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u123` 1>"
+special code units: index 8: U+0020 SPACE
+verbatim source:
+<`\u123` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-two-hex
+proposed verdict: invalid
+claim: backtick-name defect unicode-two-hex rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-two-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u12` 1>"
+special code units: index 7: U+0020 SPACE
+verbatim source:
+<`\u12` 1>
+
+case ID: hson.reject.family.backtick-name.unicode-zero-hex
+proposed verdict: invalid
+claim: backtick-name defect unicode-zero-hex rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unicode-zero-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\u` 1>"
+special code units: index 5: U+0020 SPACE
+verbatim source:
+<`\u` 1>
+
+case ID: hson.reject.family.backtick-name.unsupported-hex
+proposed verdict: invalid
+claim: backtick-name defect unsupported-hex rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unsupported-hex
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\x41` 1>"
+special code units: index 7: U+0020 SPACE
+verbatim source:
+<`\x41` 1>
+
+case ID: hson.reject.family.backtick-name.unsupported-letter
+proposed verdict: invalid
+claim: backtick-name defect unsupported-letter rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unsupported-letter
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\q` 1>"
+special code units: index 5: U+0020 SPACE
+verbatim source:
+<`\q` 1>
+
+case ID: hson.reject.family.backtick-name.unsupported-slash
+proposed verdict: invalid
+claim: backtick-name defect unsupported-slash rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unsupported-slash
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\/` 1>"
+special code units: index 5: U+0020 SPACE
+verbatim source:
+<`\/` 1>
+
+case ID: hson.reject.family.backtick-name.unsupported-zero
+proposed verdict: invalid
+claim: backtick-name defect unsupported-zero rejects deterministically.
+category: shape=object; slot=backtick-name; variation/defect=unsupported-zero
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "<`\\0` 1>"
+special code units: index 5: U+0020 SPACE
+verbatim source:
+<`\0` 1>
+
+REJECTED FAMILY — RAW C0 IN BACKTICK NAMES
+concrete cases: 32
+shared pattern: object property key <`a<raw U+00XX>b` 1>
+code point | case ID | escaped source
+U+0000 | hson.reject.family.backtick-name.raw-u0000 | "<`a\u0000b` 1>" | priority=critical
+U+0001 | hson.reject.family.backtick-name.raw-u0001 | "<`a\u0001b` 1>" | priority=critical
+U+0002 | hson.reject.family.backtick-name.raw-u0002 | "<`a\u0002b` 1>" | priority=critical
+U+0003 | hson.reject.family.backtick-name.raw-u0003 | "<`a\u0003b` 1>" | priority=critical
+U+0004 | hson.reject.family.backtick-name.raw-u0004 | "<`a\u0004b` 1>" | priority=critical
+U+0005 | hson.reject.family.backtick-name.raw-u0005 | "<`a\u0005b` 1>" | priority=critical
+U+0006 | hson.reject.family.backtick-name.raw-u0006 | "<`a\u0006b` 1>" | priority=critical
+U+0007 | hson.reject.family.backtick-name.raw-u0007 | "<`a\u0007b` 1>" | priority=critical
+U+0008 | hson.reject.family.backtick-name.raw-u0008 | "<`a\bb` 1>" | priority=critical
+U+0009 | hson.reject.family.backtick-name.raw-u0009 | "<`a\tb` 1>" | priority=critical
+U+000A | hson.reject.family.backtick-name.raw-u000a | "<`a\nb` 1>" | priority=critical
+U+000B | hson.reject.family.backtick-name.raw-u000b | "<`a\u000bb` 1>" | priority=critical
+U+000C | hson.reject.family.backtick-name.raw-u000c | "<`a\fb` 1>" | priority=critical
+U+000D | hson.reject.family.backtick-name.raw-u000d | "<`a\rb` 1>" | priority=critical
+U+000E | hson.reject.family.backtick-name.raw-u000e | "<`a\u000eb` 1>" | priority=critical
+U+000F | hson.reject.family.backtick-name.raw-u000f | "<`a\u000fb` 1>" | priority=critical
+U+0010 | hson.reject.family.backtick-name.raw-u0010 | "<`a\u0010b` 1>" | priority=critical
+U+0011 | hson.reject.family.backtick-name.raw-u0011 | "<`a\u0011b` 1>" | priority=critical
+U+0012 | hson.reject.family.backtick-name.raw-u0012 | "<`a\u0012b` 1>" | priority=critical
+U+0013 | hson.reject.family.backtick-name.raw-u0013 | "<`a\u0013b` 1>" | priority=critical
+U+0014 | hson.reject.family.backtick-name.raw-u0014 | "<`a\u0014b` 1>" | priority=critical
+U+0015 | hson.reject.family.backtick-name.raw-u0015 | "<`a\u0015b` 1>" | priority=critical
+U+0016 | hson.reject.family.backtick-name.raw-u0016 | "<`a\u0016b` 1>" | priority=critical
+U+0017 | hson.reject.family.backtick-name.raw-u0017 | "<`a\u0017b` 1>" | priority=critical
+U+0018 | hson.reject.family.backtick-name.raw-u0018 | "<`a\u0018b` 1>" | priority=critical
+U+0019 | hson.reject.family.backtick-name.raw-u0019 | "<`a\u0019b` 1>" | priority=critical
+U+001A | hson.reject.family.backtick-name.raw-u001a | "<`a\u001ab` 1>" | priority=critical
+U+001B | hson.reject.family.backtick-name.raw-u001b | "<`a\u001bb` 1>" | priority=critical
+U+001C | hson.reject.family.backtick-name.raw-u001c | "<`a\u001cb` 1>" | priority=critical
+U+001D | hson.reject.family.backtick-name.raw-u001d | "<`a\u001db` 1>" | priority=critical
+U+001E | hson.reject.family.backtick-name.raw-u001e | "<`a\u001eb` 1>" | priority=critical
+U+001F | hson.reject.family.backtick-name.raw-u001f | "<`a\u001fb` 1>" | priority=critical
+
+REJECTED FAMILY — UNSUPPORTED WHITESPACE
+concrete cases: 20
+
+case ID: hson.reject.family.unsupported-whitespace.u000b
+proposed verdict: invalid
+claim: Unsupported whitespace U+000B rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u000b
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u000b"
+special code units: index 1: U+000B unnamed
+
+case ID: hson.reject.family.unsupported-whitespace.u000c
+proposed verdict: invalid
+claim: Unsupported whitespace U+000C rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u000c
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\f"
+special code units: index 1: U+000C unnamed
+
+case ID: hson.reject.family.unsupported-whitespace.u00a0
+proposed verdict: invalid
+claim: Unsupported whitespace U+00A0 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u00a0
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u00a0"
+special code units: index 1: U+00A0 NO-BREAK SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u1680
+proposed verdict: invalid
+claim: Unsupported whitespace U+1680 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u1680
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u1680"
+special code units: index 1: U+1680 OGHAM SPACE MARK
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2000
+proposed verdict: invalid
+claim: Unsupported whitespace U+2000 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2000
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2000"
+special code units: index 1: U+2000 EN QUAD
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2001
+proposed verdict: invalid
+claim: Unsupported whitespace U+2001 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2001
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2001"
+special code units: index 1: U+2001 EM QUAD
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2002
+proposed verdict: invalid
+claim: Unsupported whitespace U+2002 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2002
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2002"
+special code units: index 1: U+2002 EN SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2003
+proposed verdict: invalid
+claim: Unsupported whitespace U+2003 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2003
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2003"
+special code units: index 1: U+2003 EM SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2004
+proposed verdict: invalid
+claim: Unsupported whitespace U+2004 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2004
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2004"
+special code units: index 1: U+2004 THREE-PER-EM SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2005
+proposed verdict: invalid
+claim: Unsupported whitespace U+2005 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2005
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2005"
+special code units: index 1: U+2005 FOUR-PER-EM SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2006
+proposed verdict: invalid
+claim: Unsupported whitespace U+2006 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2006
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2006"
+special code units: index 1: U+2006 SIX-PER-EM SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2007
+proposed verdict: invalid
+claim: Unsupported whitespace U+2007 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2007
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2007"
+special code units: index 1: U+2007 FIGURE SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2008
+proposed verdict: invalid
+claim: Unsupported whitespace U+2008 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2008
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2008"
+special code units: index 1: U+2008 PUNCTUATION SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2009
+proposed verdict: invalid
+claim: Unsupported whitespace U+2009 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2009
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2009"
+special code units: index 1: U+2009 THIN SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u200a
+proposed verdict: invalid
+claim: Unsupported whitespace U+200A rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u200a
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u200a"
+special code units: index 1: U+200A HAIR SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2028
+proposed verdict: invalid
+claim: Unsupported whitespace U+2028 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2028
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2028"
+special code units: index 1: U+2028 LINE SEPARATOR
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u2029
+proposed verdict: invalid
+claim: Unsupported whitespace U+2029 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u2029
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u2029"
+special code units: index 1: U+2029 PARAGRAPH SEPARATOR
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u202f
+proposed verdict: invalid
+claim: Unsupported whitespace U+202F rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u202f
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u202f"
+special code units: index 1: U+202F NARROW NO-BREAK SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u205f
+proposed verdict: invalid
+claim: Unsupported whitespace U+205F rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u205f
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u205f"
+special code units: index 1: U+205F MEDIUM MATHEMATICAL SPACE
+verbatim source:
+1 
+
+case ID: hson.reject.family.unsupported-whitespace.u3000
+proposed verdict: invalid
+claim: Unsupported whitespace U+3000 rejects outside a quoted token.
+category: shape=scalar; slot=trivia; variation/defect=unsupported-u3000
+provenance priority: critical
+provenance: see provenance audit
+novelty: see provenance audit
+escaped display: "1\u3000"
+special code units: index 1: U+3000 IDEOGRAPHIC SPACE
+verbatim source:
+1　
