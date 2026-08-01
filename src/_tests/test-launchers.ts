@@ -105,7 +105,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:json-ingress",
       repositoryModule: "tests/json-ingress.acceptance.mts",
       runtime: "node",
-      executableChecks: 14,
+      executableChecks: 30,
       collections: ["json", "ingress", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -155,7 +155,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 26,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({

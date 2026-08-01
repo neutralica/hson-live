@@ -4,12 +4,18 @@ import { JsonObj, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
 import { collect_hson_node_quid_claims } from "../../../core/hson-node-quid.js";
 import { is_Node, is_indexed } from "../../../core/node-guards.js";
-import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX } from "../../../core/constants.js";
+import { ROOT_TAG, EVERY_VSN, ARR_TAG, OBJ_TAG, STR_TAG, VAL_TAG, ELEM_TAG, II_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
 import {  HsonNode } from "../../../core/types.js";
 import { JsonValue } from "../../../core/types.js";
 import { clone_node } from "../../../core/clone-node.js";
 import { make_string } from "../../../core/stringify.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import {
+    emit_ordered_json,
+    ordered_json_from_runtime_value,
+    ordered_json_object,
+    type OrderedJsonValue,
+} from "../utils/json-utils/ordered-json.js";
 
 /**
  * Serialize a well-formed HSON tree to JSON text.
@@ -23,15 +29,18 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  *      attempting to emit JSON.
  *
  * 2. Structural conversion:
- *    - Delegates to `jsonFromNode(clone)` to convert the HSON tree into a
- *      plain `JsonValue` (object/array/primitive), resolving:
+ *    - Projects the HSON tree into an internal ordered JSON representation,
+ *      resolving:
  *        - VSNs (`_hson_root`, `_hson_obj`, `_hson_arr`, `_hson_elem`, `_hson_ii`, `_hson_str`, `_hson_val`)
  *        - Standard tags (HTML-like and user-defined)
  *      into standard JS shapes.
  *
+ *    - Object properties remain explicit entry sequences from the canonical
+ *      graph through emission; they never cross a plain JavaScript object.
+ *
  * 3. Stringification:
- *    - Uses the canonical JSON emitter so object-key layout remains stable and
- *      negative zero retains the valid JSON spelling `-0`.
+ *    - Uses the ordered JSON emitter so object-property order remains exact
+ *      and negative zero retains the valid JSON spelling `-0`.
  *
  * 4. Error handling:
  *    - Any failure during the stringify step is caught and wrapped in
@@ -41,19 +50,115 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  * - Input must be a valid `HsonNode` that passes invariants, or an error is
  *   thrown.
  * - Output is a JSON string representing the same logical data that produced
- *   the HSON tree (modulo the HSON-to-JSON mapping rules in `jsonFromNode`).
+ *   the HSON tree (modulo the established HSON-to-JSON mapping rules).
  *
  * @param $node - The root HSON node to serialize.
  * @returns A JSON string representation of the node.
  * @throws If invariants fail or final JSON emission fails.
  */
 export function serialize_json($node: HsonNode): string {
-    const serializedJson = json_value_from_node($node);
+    const serializedJson = ordered_json_value_from_node($node);
     try {
-        const json = serialize_json_value(serializedJson);
+        const json = emit_ordered_json(serializedJson);
         return json;
     } catch (e: any) {
         _throw_transform_err(`error during final JSON.stringify\n ${e.message}`, 'serialize-json');
+    }
+}
+
+/**
+ * Project a canonical graph into an internal JSON value whose object branches
+ * retain explicit entry sequences. This representation exists only between
+ * graph admission and text emission; it is never exposed as caller JSON.
+ */
+function ordered_json_value_from_node($node: HsonNode): OrderedJsonValue {
+    collect_hson_node_quid_claims($node);
+    const clone = collapse_redundant_roots(clone_node($node));
+    assert_invariants(clone, "serialize_json");
+    return orderedJsonFromNode(clone);
+}
+
+function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
+    if (!node || typeof node.$_tag !== "string") {
+        _throw_transform_err("Invalid node or node tag", "serialize_json");
+    }
+    if (node.$_tag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(node.$_tag)) {
+        _throw_transform_err(`unknown VSN-like tag: <${node.$_tag}>`, "serialize_json");
+    }
+
+    switch (node.$_tag) {
+        case ROOT_TAG: {
+            const only = node.$_content[0];
+            if (node.$_content.length !== 1 || !is_Node(only)) {
+                _throw_transform_err("malformed _hson_root node - must have exactly one child", "serialize_json");
+            }
+            return orderedJsonFromNode(only);
+        }
+        case ARR_TAG: {
+            return Object.freeze(node.$_content.map((wrapper) => {
+                if (!is_Node(wrapper) || !is_indexed(wrapper)) {
+                    _throw_transform_err("malformed _hson_ii node in _hson_arr", "serialize-json");
+                }
+                return orderedJsonFromNode(wrapper.$_content[0] as HsonNode);
+            }));
+        }
+        case OBJ_TAG: {
+            if (node.$_content.length === 1 && is_Node(node.$_content[0])) {
+                const only = node.$_content[0];
+                if (only.$_tag === STR_TAG || only.$_tag === VAL_TAG || only.$_tag === ARR_TAG
+                    || only.$_tag === OBJ_TAG || only.$_tag === ELEM_TAG) {
+                    return orderedJsonFromNode(only);
+                }
+            }
+            return ordered_json_object(node.$_content.map((property) => {
+                if (!is_Node(property)) {
+                    _throw_transform_err("malformed property node in _hson_obj", "serialize-json");
+                }
+                const child = property.$_content[0];
+                const value = is_Node(child)
+                    ? orderedJsonFromNode(child)
+                    : ordered_json_object([]);
+                return [property.$_tag, value] as const;
+            }));
+        }
+        case STR_TAG:
+        case VAL_TAG:
+            return node.$_content[0] as Primitive;
+        case ELEM_TAG:
+            return ordered_json_object([[
+                ELEM_TAG,
+                Object.freeze(node.$_content.map((child) => {
+                    if (!is_Node(child)) {
+                        _throw_transform_err("malformed child in _hson_elem", "serialize-json");
+                    }
+                    return orderedJsonFromNode(child);
+                })),
+            ]]);
+        case II_TAG: {
+            if (node.$_content.length !== 1 || !is_Node(node.$_content[0])) {
+                _throw_transform_err("misconfigured _hson_ii node", "serialize_json");
+            }
+            return orderedJsonFromNode(node.$_content[0]);
+        }
+        default: {
+            let payload: OrderedJsonValue;
+            if (node.$_content.length === 0) {
+                payload = ordered_json_object([[ELEM_TAG, Object.freeze([])]]);
+            } else if (node.$_content.length === 1 && is_Node(node.$_content[0])) {
+                payload = orderedJsonFromNode(node.$_content[0]);
+            } else {
+                _throw_transform_err(`<${node.$_tag}> has multiple content VSN children`, "serialize_json");
+            }
+
+            const entries: Array<readonly [string, OrderedJsonValue]> = [[node.$_tag, payload]];
+            if (node.$_attrs && Object.keys(node.$_attrs).length > 0) {
+                entries.push([ATTRS_KEY, ordered_json_from_runtime_value(node.$_attrs as JsonValue)]);
+            }
+            if (node.$_meta && Object.keys(node.$_meta).length > 0) {
+                entries.push([META_KEY, ordered_json_from_runtime_value(node.$_meta as JsonValue)]);
+            }
+            return ordered_json_object(entries);
+        }
     }
 }
 
@@ -128,11 +233,11 @@ function collapse_redundant_roots(node: HsonNode): HsonNode {
 }
 
 /**
- * Recursively convert a HSON node into a JSON-shaped `JsonValue`.
+ * Recursively convert a HSON node into the public in-memory `JsonValue`.
  *
- * This is the core structural converter behind `serialize_json`. It walks
- * the HSON IR, interprets VSN tags, and reconstructs the nearest equivalent
- * JavaScript value (object, array, or primitive).
+ * This converter backs `.toJson().value()`. JSON text serialization uses the
+ * ordered internal projection above so integer-index property names never
+ * cross a lossy JavaScript-object enumeration boundary before emission.
  *
  * Tag-by-tag semantics:
  *

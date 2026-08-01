@@ -5,7 +5,26 @@ import { hson } from "../src/hson.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import type { HsonNode, JsonValue } from "../src/core/types.ts";
+import {
+  read_transform_error_details,
+  TransformError,
+  type TransformErrorDetails,
+} from "../src/core/errors.ts";
+import {
+  ADJACENT_DUPLICATE_JSON_ERROR,
+  ADJACENT_DUPLICATE_JSON_SOURCE,
+  DIRECT_INTEGER_KEY_SOURCE,
+  arrayInsideObjectFixture,
+  directIntegerKeyFixture,
+  mixedKeyFixture,
+  negativeZeroOrderFixture,
+  nestedObjectFixture,
+  objectInsideArrayFixture,
+  structuralJsonOrderFixtures,
+  type StructuralJsonOrderFixture,
+} from "./fixtures/structural-json-order-fixtures.mts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -43,6 +62,51 @@ function deep_freeze(value: unknown, seen = new WeakSet<object>()): void {
   seen.add(value);
   for (const child of Object.values(value)) deep_freeze(child, seen);
   Object.freeze(value);
+}
+
+function detached_json_text(source: string): HsonNode {
+  return detach_hson_root_value(parse_json(source));
+}
+
+function object_property_orders(root: HsonNode): readonly (readonly string[])[] {
+  const orders: string[][] = [];
+  const visit = (current: HsonNode): void => {
+    if (current.$_tag === "_hson_obj"
+      && current.$_content.length > 0
+      && current.$_content.every((child) => is_Node(child) && !child.$_tag.startsWith("_hson_"))) {
+      orders.push(current.$_content.map((child) => (child as HsonNode).$_tag));
+    }
+    for (const child of current.$_content) if (is_Node(child)) visit(child);
+  };
+  visit(root);
+  return orders;
+}
+
+function assert_ordered_json_closure(fixture: StructuralJsonOrderFixture): HsonNode {
+  const before = structuredClone(fixture.graph);
+  const firstText = hson.fromNode(fixture.graph).toJson().serialize();
+  assert.equal(firstText, fixture.expectedJson);
+  assert.deepEqual(fixture.graph, before);
+  const reparsed = detached_json_text(firstText);
+  assert.equal(canonical_hson_graph_equal(reparsed, fixture.graph), true);
+  assert.deepEqual(object_property_orders(reparsed), fixture.expectedObjectOrders);
+  assert.equal(hson.fromNode(reparsed).toJson().serialize(), fixture.expectedJson);
+  return reparsed;
+}
+
+function duplicate_json_error(source: string): TransformErrorDetails {
+  let observed: TransformError | undefined;
+  assert.throws(
+    () => parse_json(source),
+    (cause) => {
+      if (!(cause instanceof TransformError)) return false;
+      observed = cause;
+      return cause.code === "HSON_JSON_DUPLICATE_PROPERTY";
+    },
+  );
+  const details = read_transform_error_details(observed);
+  assert.ok(details);
+  return details;
 }
 
 check("explicit root without metadata and empty runtime root remain valid", () => {
@@ -313,6 +377,184 @@ check("direct JSON values preserve negative zero while JSON text has JSON's zero
   assert.equal(Object.is(textValue.value, 0), true);
   assert.equal(Object.is(textValue.value, -0), false);
   assert.equal(canonical_hson_graph_equal(direct, text), false);
+});
+
+check("structural JSON directly preserves canonical integer-key property order", () => {
+  const authored = hson.fromHson(DIRECT_INTEGER_KEY_SOURCE).toNode();
+  assert.equal(canonical_hson_graph_equal(authored, directIntegerKeyFixture.graph), true);
+  assert_ordered_json_closure(directIntegerKeyFixture);
+});
+
+check("structural JSON preserves one deliberate mixed key-class sequence", () => {
+  assert_ordered_json_closure(mixedKeyFixture);
+});
+
+check("structural JSON preserves outer and inner ordered objects", () => {
+  assert_ordered_json_closure(nestedObjectFixture);
+});
+
+check("structural JSON preserves ordered objects inside arrays", () => {
+  const reparsed = assert_ordered_json_closure(objectInsideArrayFixture);
+  assert.equal(reparsed.$_content.length, 2);
+});
+
+check("structural JSON preserves arrays containing ordered objects inside an object", () => {
+  assert_ordered_json_closure(arrayInsideObjectFixture);
+});
+
+check("structural JSON multiple-cycle closure retains the original baseline", () => {
+  const baseline = directIntegerKeyFixture.graph;
+  const firstText = hson.fromNode(baseline).toJson().serialize();
+  const firstGraph = detached_json_text(firstText);
+  const secondText = hson.fromNode(firstGraph).toJson().serialize();
+  const secondGraph = detached_json_text(secondText);
+  assert.equal(canonical_hson_graph_equal(firstGraph, baseline), true);
+  assert.equal(canonical_hson_graph_equal(secondGraph, baseline), true);
+  assert.equal(firstText, directIntegerKeyFixture.expectedJson);
+  assert.equal(secondText, directIntegerKeyFixture.expectedJson);
+});
+
+check("negative zero and integer-key order coexist through structural JSON", () => {
+  const reparsed = assert_ordered_json_closure(negativeZeroOrderFixture);
+  const property = reparsed.$_content[1];
+  assert.ok(is_Node(property));
+  const carrier = property.$_content[0];
+  assert.ok(is_Node(carrier));
+  const value = carrier.$_content[0];
+  assert.ok(is_Node(value));
+  assert.equal(Object.is(value.$_content[0], -0), true);
+  assert.match(negativeZeroOrderFixture.expectedJson, /"negative-zero": -0/);
+});
+
+check("ordered JSON fixtures are deterministic and nonmutating", () => {
+  for (const fixture of structuralJsonOrderFixtures) {
+    const graphBefore = structuredClone(fixture.graph);
+    const sourceBefore = fixture.expectedJson;
+    const first = hson.fromNode(fixture.graph).toJson().serialize();
+    const second = hson.fromNode(fixture.graph).toJson().serialize();
+    assert.equal(first, second, fixture.id);
+    assert.deepEqual(fixture.graph, graphBefore, fixture.id);
+    detached_json_text(fixture.expectedJson);
+    assert.equal(fixture.expectedJson, sourceBefore, fixture.id);
+  }
+});
+
+check("JSON string ingress preserves text order while value ingress reflects runtime enumeration", () => {
+  const fromText = detached_json_text(directIntegerKeyFixture.expectedJson);
+  const runtimeValue = JSON.parse(directIntegerKeyFixture.expectedJson) as JsonValue;
+  const exposedOrder = Object.keys(runtimeValue as Record<string, JsonValue>);
+  assert.deepEqual(exposedOrder, ["1", "2", "10"]);
+  const fromValue = detach_hson_root_value(parse_json(runtimeValue));
+  assert.deepEqual(object_property_orders(fromText), [["10", "2", "1"]]);
+  assert.deepEqual(object_property_orders(fromValue), [["1", "2", "10"]]);
+  assert.equal(canonical_hson_graph_equal(fromText, fromValue), false);
+});
+
+check("adjacent duplicate JSON properties reject with both declaration positions", () => {
+  assert.deepEqual(
+    duplicate_json_error(ADJACENT_DUPLICATE_JSON_SOURCE),
+    ADJACENT_DUPLICATE_JSON_ERROR,
+  );
+});
+
+check("separated duplicate JSON properties reject instead of overwriting", () => {
+  const source = `{"x":1,"y":2,"x":3}`;
+  assert.deepEqual(duplicate_json_error(source), {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: 13, line: 1, column: 14 },
+    path: `$["x"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 1, line: 1, column: 2 },
+    }],
+  });
+});
+
+check("decoded-equivalent escaped JSON property names reject as duplicates", () => {
+  const source = `{"x":1,"\\u0078":2}`;
+  assert.deepEqual(duplicate_json_error(source), {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: 7, line: 1, column: 8 },
+    path: `$["x"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 1, line: 1, column: 2 },
+    }],
+  });
+});
+
+check("nested duplicate JSON properties retain multiline source evidence", () => {
+  const source = `{
+  "outer": {
+    "x": 1,
+    "x": 2
+  }
+}`;
+  assert.deepEqual(duplicate_json_error(source), {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: 31, line: 4, column: 5 },
+    path: `$["outer"]["x"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 19, line: 3, column: 5 },
+    }],
+  });
+});
+
+check("duplicate JSON properties inside an array object reject", () => {
+  const source = `[{"x":1,"x":2}]`;
+  assert.deepEqual(duplicate_json_error(source), {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: 8, line: 1, column: 9 },
+    path: `$[0]["x"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 2, line: 1, column: 3 },
+    }],
+  });
+});
+
+check("integer-like source order and duplicate rejection coexist", () => {
+  const source = `{"10":1,"x":2,"2":3,"x":4,"1":5}`;
+  assert.deepEqual(duplicate_json_error(source), {
+    operation: "parse-json",
+    stage: "parsing",
+    code: "HSON_JSON_DUPLICATE_PROPERTY",
+    source: { index: 20, line: 1, column: 21 },
+    path: `$["x"]`,
+    related: [{
+      role: "first-declaration",
+      source: { index: 8, line: 1, column: 9 },
+    }],
+  });
+});
+
+check("all structural JSON string-ingress routes reject duplicates repeatably", () => {
+  const source = ADJACENT_DUPLICATE_JSON_SOURCE;
+  const before = source;
+  const first = duplicate_json_error(source);
+  const second = duplicate_json_error(source);
+  assert.deepEqual(second, first);
+  assert.deepEqual(
+    (() => {
+      try {
+        hson.fromJson(source).toNode();
+        assert.fail("expected public JSON string ingress to reject the duplicate");
+      } catch (cause) {
+        return read_transform_error_details(cause);
+      }
+    })(),
+    first,
+  );
+  assert.equal(source, before);
 });
 
 process.stdout.write(`# ${checks} JSON ingress checks passed\n`);

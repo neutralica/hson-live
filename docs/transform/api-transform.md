@@ -219,8 +219,16 @@ Parses JSON data into HSON nodes.
 - Metadata on an explicit `_hson_root` is invalid and rejects; it is not
   ignored or filtered. An empty runtime `_hson_root` remains a separate
   runtime-carrier exception outside direct HSON-text serialization.
-- Preserves JSON values. Object keys are emitted in sorted canonical order by
-  the JSON serializer; source key order is not retained in serialized output.
+- JSON string ingress preserves textual property sequence, including
+  integer-index property names, before constructing canonical `_hson_obj`
+  content.
+- JSON string ingress rejects duplicate decoded property names with
+  `HSON_JSON_DUPLICATE_PROPERTY` before an earlier declaration can be
+  overwritten. Primary and first-declaration source evidence remain
+  structured.
+- Already-parsed JavaScript objects admit the enumeration order the supplied
+  runtime value exposes. They cannot recover textual order or overwritten
+  duplicate declarations discarded before this API received the value.
 
 ### `hson.fromHson(input: string)`
 
@@ -287,6 +295,9 @@ Chooses JSON output.
   without a textual serialization/parse round trip.
 - JSON text emission uses `-0` for negative zero; `value()` retains the same
   runtime identity.
+- `serialize()` emits object properties directly from canonical `_hson_obj`
+  content order. It does not route integer-like keys through ordinary object
+  enumeration or sort them.
 
 JSON roundtrips serialize as plain JSON values, not raw internal HSON node
 shapes, except where a node shape is intentionally represented by the format.

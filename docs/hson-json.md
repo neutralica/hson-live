@@ -54,8 +54,20 @@ the shorter form `<title "Hello">`.
 
 An ordinary JavaScript record remains only an ingress representation, but once
 its properties become canonical `_hson_obj` content their sequence is graph
-identity. JSON emission follows that canonical member sequence and does not
-alphabetize it.
+identity. JSON text emission follows that canonical property sequence directly
+and does not alphabetize or integer-sort it.
+
+JSON string ingress reads object entries in textual order before constructing
+the canonical graph. It does not first pass them through a JavaScript object,
+because ECMAScript enumeration would reorder integer-index property names.
+It also rejects duplicate decoded property names before construction, including
+equivalent spellings such as `"x"` and `"\u0078"`. The structured
+`HSON_JSON_DUPLICATE_PROPERTY` failure identifies the later declaration as
+primary source evidence and the first declaration as related evidence.
+Already-parsed JavaScript-value ingress can preserve only the enumeration order
+the supplied value currently exposes; it cannot recover earlier source order
+or overwritten duplicate declarations that were discarded before the value
+reached HSON.
 
 ---
 
@@ -140,7 +152,10 @@ For valid JSON input, JSON -> node -> JSON preserves:
 The serialized JSON string is deterministic. Numeric emission preserves the
 valid JSON spelling `-0`, so reparsing retains negative-zero identity rather
 than inheriting `JSON.stringify`'s conversion to `0`. Source whitespace is not
-preserved. Canonical object-member and array-item order are both retained.
+preserved. Canonical object-property and array-item order are both retained.
+Calling `.toJson().value()` still returns an ordinary JavaScript value; exact
+transport order is contracted by JSON string ingress and `serialize()`, where
+it remains representable.
 
 ---
 

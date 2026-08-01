@@ -26,6 +26,7 @@ import {
   TransformError,
 } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { directIntegerKeyFixture } from "./fixtures/structural-json-order-fixtures.mts";
 
 const LAUNCHER = "transform.canonical-oracle";
 const Q1 = "0000000000000001";
@@ -276,6 +277,26 @@ check("HSON, JSON, and HTML transports cover the canonical semantic graph lattic
       });
     }
   }
+});
+
+check("JSON cycle diagnostics retain the original ordered-object baseline", () => {
+  const baseline = directIntegerKeyFixture.graph;
+  const baselineBefore = structuredClone(baseline);
+  let current = baseline;
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    const wire = hsonTransform.fromNode(current).toJson().serialize();
+    assert.equal(wire, directIntegerKeyFixture.expectedJson);
+    const reparsed = detach_hson_root_value(hsonTransform.fromJson(wire).toNode());
+    assert_canonical_oracle_graph_equal({
+      launcher: LAUNCHER,
+      caseId: directIntegerKeyFixture.id,
+      operation: `ordered-json-cycle:${cycle}`,
+      expected: baseline,
+      actual: reparsed,
+    });
+    current = reparsed;
+  }
+  assert.deepEqual(baseline, baselineBefore);
 });
 
 check("canonical differences identify member names and ordered content", () => {

@@ -3,7 +3,7 @@
 import { $RENDER } from "../../../core/constants.js";
 import { make_string } from "../../../core/stringify.js";
 import { serialize_hson } from "../serializers/serialize-hson.js";
-import { serialize_json_value } from "../serializers/serialize-json.js";
+import { serialize_json } from "../serializers/serialize-json.js";
 import type { JsonValue } from "../../../core/types.js";
 import type {
   TransformFrameRender,
@@ -51,7 +51,10 @@ function serialize_render(context: TransformFrameRender<TransformOutputRenderFor
   switch (output) {
     case $RENDER.JSON:
       if (frame.json === undefined) throw new Error("serialize(): frame is missing JSON data");
-      return serialize_json_value(frame.json);
+      // Text emission must retain the canonical graph's property sequence.
+      // The public `.value()` projection is an ordinary JavaScript value and
+      // cannot carry source order for integer-index property names.
+      return serialize_json(frame.node);
     case $RENDER.HTML:
       if (frame.html == null) throw new Error("serialize(): frame is missing HTML data");
       return typeof frame.html === "string" ? frame.html : make_string(frame.html);

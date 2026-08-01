@@ -4,6 +4,14 @@ import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
 import { hsonCalc, hsonNumber } from "../src/number.ts";
 import { read_transform_error_details, TransformError } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import {
+  ADJACENT_DUPLICATE_JSON_ERROR,
+  ADJACENT_DUPLICATE_JSON_SOURCE,
+  DIRECT_INTEGER_KEY_SOURCE,
+  directIntegerKeyFixture,
+} from "./fixtures/structural-json-order-fixtures.mts";
+import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
 const Q1 = "0000000000000001";
 
@@ -66,6 +74,24 @@ check("Worker-safe Transform oracle proves strict closure without Node support",
     cycles: 3,
   });
   assert.equal(result.serialized, `<worker @${Q1} "ready"/>`);
+});
+
+check("Worker-safe structural JSON preserves order and duplicate identity", () => {
+  const baseline = hsonTransform.fromHson(DIRECT_INTEGER_KEY_SOURCE).toNode();
+  const wire = hsonTransform.fromNode(baseline).toJson().serialize();
+  assert.equal(wire, directIntegerKeyFixture.expectedJson);
+  const reparsed = detach_hson_root_value(hsonTransform.fromJson(wire).toNode());
+  assert.equal(canonical_hson_graph_equal(reparsed, baseline), true);
+  let duplicate: TransformError | undefined;
+  assert.throws(
+    () => hsonTransform.fromJson(ADJACENT_DUPLICATE_JSON_SOURCE).toNode(),
+    (cause) => {
+      if (!(cause instanceof TransformError)) return false;
+      duplicate = cause;
+      return cause.code === "HSON_JSON_DUPLICATE_PROPERTY";
+    },
+  );
+  assert.deepEqual(read_transform_error_details(duplicate), ADJACENT_DUPLICATE_JSON_ERROR);
 });
 
 check("trusted HTML parses without browser globals", () => {
