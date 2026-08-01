@@ -95,6 +95,13 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
 
     let ix = 0;
     const N = tokens.length;
+    function sourceDetails(pos: Position, code: string, stage = "parsing") {
+        return {
+            code,
+            stage,
+            source: { index: pos.index, line: pos.line, column: pos.col },
+        } as const;
+    }
     function _peek(): Tokens | undefined { return tokens[ix]; }
     function _take(kind: typeof TOKEN_KIND.OPEN): TokenOpen;
     function _take(kind: typeof TOKEN_KIND.CLOSE): TokenClose;
@@ -225,12 +232,18 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                 _throw_transform_err(
                     `structural mode crossing: <${open.tag}> closes as ${closeKind} but child <${incompatible.tag}> closes as ${incompatible.closeKind} at ${incompatible.open.pos.line}:${incompatible.open.pos.col}`,
                     "parse_tokens.structural-mode",
+                    undefined,
+                    undefined,
+                    sourceDetails(incompatible.open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
                 );
             }
             if (closeKind === CLOSE_KIND.elem && (sawNestedArray || sawEmptyObject)) {
                 _throw_transform_err(
                     `structural mode crossing: element branch <${open.tag}> cannot contain object/array structure at ${open.pos.line}:${open.pos.col}`,
                     "parse_tokens.structural-mode",
+                    undefined,
+                    undefined,
+                    sourceDetails(open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
                 );
             }
         }
@@ -341,6 +354,9 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                     _throw_transform_err(
                         `_hson_arr cannot contain an element-mode value at ${child.open.pos.line}:${child.open.pos.col}; arrays cannot cross object/element structural modes`,
                         "parse_tokens.structural-mode",
+                        undefined,
+                        undefined,
+                        sourceDetails(child.open.pos, "HSON_STRUCTURAL_MODE_CROSSING", "structural-mode-admission"),
                     );
                 }
                 childNode = child.node;
@@ -442,9 +458,18 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         const containsValueLeaf = kids.some((child) => child.$_tag === VAL_TAG);
         const containsStringLeaf = kids.some((child) => child.$_tag === STR_TAG);
         if (containsValueLeaf || (containsStringLeaf && !options.allowTopLevelTextFragment)) {
+            const second = topPositions[1] ?? topPositions[0];
+            const hasStructural = kids.some((child) => child.$_tag !== VAL_TAG && child.$_tag !== STR_TAG);
             _throw_transform_err(
                 "a top-level primitive must be the sole semantic HSON value",
                 "parse_tokens.root-shaping",
+                undefined,
+                undefined,
+                sourceDetails(
+                    second ?? { index: 0, line: 1, col: 1 },
+                    hasStructural ? "HSON_ROOT_MIXED_MODES" : "HSON_ROOT_MULTIPLE_VALUES",
+                    "root-shaping",
+                ),
             );
         }
 
@@ -458,13 +483,28 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             _throw_transform_err(
                 `mixed top-level structural modes are invalid (${topCloseKinds.join(", ")})${conflict === undefined ? "" : ` at ${conflict.line}:${conflict.col} (index ${conflict.index})`}`,
                 "parse_tokens.structural-mode",
+                undefined,
+                undefined,
+                sourceDetails(
+                    conflict ?? topPositions[0] ?? { index: 0, line: 1, col: 1 },
+                    "HSON_ROOT_MIXED_MODES",
+                    "root-shaping",
+                ),
             );
         }
         if (allObj) {
             const second = topPositions[1] ?? topPositions[0];
+            const allObjectValues = kids.every((child) => child.$_tag !== ARR_TAG);
             _throw_transform_err(
                 `multiple top-level object values are invalid; one object angle pair must contain every member${second === undefined ? "" : ` at ${second.line}:${second.col} (index ${second.index})`}`,
                 "parse_tokens.root-shaping",
+                undefined,
+                undefined,
+                sourceDetails(
+                    second ?? { index: 0, line: 1, col: 1 },
+                    allObjectValues ? "HSON_LEGACY_ADJACENT_OBJECT" : "HSON_ROOT_MULTIPLE_VALUES",
+                    "root-shaping",
+                ),
             );
         }
 

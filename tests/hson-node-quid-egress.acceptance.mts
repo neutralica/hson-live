@@ -264,7 +264,10 @@ check("fragment shapes remain stable across one-root, multi-root, text and mixed
     hson.fromNode(many).toHtml().serialize(),
     `<p hson:quid="${Q1}"></p>\n<hr hson:quid="${Q2}"></hr>`,
   );
-  assert.equal(hson.fromNode(text).toHtml().serialize(), "text");
+  assert.equal(
+    hson.fromNode(text).toHtml().serialize(),
+    `<_hson_obj><_hson_str>&quot;text&quot;</_hson_str></_hson_obj>`,
+  );
   assert.equal(
     hson.fromNode(mixed).toHtml().serialize(),
     `before\n<strong hson:quid="${Q1}">middle</strong>\nafter`,

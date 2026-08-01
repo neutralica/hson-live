@@ -10,7 +10,11 @@ import {
   type TransformRegressionCase,
 } from "../src/_tests/transform-oracle.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
-import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import {
+  serialize_hson,
+  serialize_hson_owned_element_text_fragment,
+} from "../src/api/transform/serializers/serialize-hson.ts";
+import { serialize_json_value } from "../src/api/transform/serializers/serialize-json.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import {
@@ -144,6 +148,134 @@ check("canonical differences distinguish scalar types and negative zero", () => 
   assert.equal(canonical_hson_graph_difference(node("_hson_val", [0]), node("_hson_val", ["0"]))?.kind, "value-type-mismatch");
   assert.equal(canonical_hson_graph_difference(node("_hson_val", [0]), node("_hson_val", [-0]))?.kind, "negative-zero-mismatch");
   assert.equal(canonical_hson_graph_difference(node("_hson_val", [1]), node("_hson_val", [2]))?.kind, "scalar-value-mismatch");
+});
+
+check("JSON and HTML numeric transports preserve negative zero explicitly", () => {
+  const scalar = node("_hson_val", [-0]);
+  const object = node("_hson_obj", [
+    node("value", [node("_hson_obj", [node("_hson_val", [-0])])]),
+  ]);
+
+  assert.equal(hsonTransform.fromNode(scalar).toJson().serialize(), "-0");
+  assert.equal(
+    hsonTransform.fromNode(scalar).toHtml().serialize(),
+    `<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>`,
+  );
+  for (const candidate of [scalar, object]) {
+    const json = hsonTransform.fromNode(candidate).toJson().serialize();
+    const jsonValue = hsonTransform.fromJson(json).toJson().value();
+    const html = hsonTransform.fromNode(candidate).toHtml().serialize();
+    const htmlValue = hsonTransform.fromTrustedHtml(html).toJson().value();
+    const expected = candidate.$_tag === "_hson_val"
+      ? -0
+      : { value: -0 };
+    const actualJson = candidate.$_tag === "_hson_val"
+      ? jsonValue
+      : (jsonValue as { value: number }).value;
+    const actualHtml = candidate.$_tag === "_hson_val"
+      ? htmlValue
+      : (htmlValue as { value: number }).value;
+    const expectedNumber = candidate.$_tag === "_hson_val"
+      ? expected
+      : (expected as { value: number }).value;
+    assert.equal(Object.is(actualJson, expectedNumber), true);
+    assert.equal(Object.is(actualHtml, expectedNumber), true);
+  }
+});
+
+check("HTML reserved transport establishes mode before ordinary wrapping", () => {
+  const adjacent = node("_hson_elem", [
+    node("_hson_str", ["a"]),
+    node("_hson_str", [""]),
+    node("_hson_str", ["b"]),
+  ]);
+  const wire = hsonTransform.fromNode(adjacent).toHtml().serialize();
+  assert.equal(
+    wire,
+    `<_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem>`,
+  );
+  const reparsed = detach_hson_root_value(hsonTransform.fromTrustedHtml(wire).toNode());
+  assert.deepEqual(reparsed, adjacent);
+
+  const objectScalar = detach_hson_root_value(
+    hsonTransform.fromTrustedHtml(`<value><_hson_val>-0</_hson_val></value>`).toNode(),
+  );
+  assert.equal(objectScalar.$_tag, "_hson_obj");
+  const member = objectScalar.$_content[0] as HsonNode;
+  const leaf = member.$_content[0] as HsonNode;
+  assert.equal(leaf.$_tag, "_hson_val");
+  assert.equal(Object.is(leaf.$_content[0], -0), true);
+});
+
+check("HSON, JSON, and HTML transports cover the canonical semantic graph lattice", () => {
+  const str = (value: string): HsonNode => node("_hson_str", [value]);
+  const val = (value: number | boolean | null): HsonNode => node("_hson_val", [value]);
+  const objValue = (value: HsonNode): HsonNode => node("_hson_obj", [value]);
+  const member = (name: string, value: HsonNode): HsonNode => node(name, [objValue(value)]);
+  const item = (index: number, value: HsonNode): HsonNode =>
+    node("_hson_ii", [value], undefined, { index: String(index) });
+
+  const fixtures: readonly HsonNode[] = [
+    str(""),
+    str("\u0001\r\n\uffff\ud800"),
+    val(-0),
+    val(true),
+    node("_hson_obj"),
+    node("_hson_obj", [member("z", val(-0)), member("a", str("value")), member("m", val(false))]),
+    node("_hson_arr"),
+    node("_hson_arr", [item(0, val(-0)), item(1, str("")), item(2, node("_hson_obj"))]),
+    node("_hson_elem", [node("div")]),
+    node("_hson_elem", [str("a"), str(""), str("b")]),
+    node("_hson_elem", [
+      node("style", [node("_hson_elem", [str("a"), str(""), str("b")])]),
+    ]),
+  ];
+
+  for (const fixture of fixtures) {
+    const admitted = hsonTransform.fromNode(fixture).toNode();
+    const rootOwnedText = admitted.$_tag === "_hson_elem"
+      && admitted.$_content.every((child) =>
+        typeof child === "object" && child !== null && child.$_tag === "_hson_str"
+      );
+    if (rootOwnedText) {
+      const hson = serialize_hson_owned_element_text_fragment(admitted);
+      const reparsed = detach_hson_root_value(parse_hson(hson, { allowTopLevelTextFragment: true }));
+      assert_canonical_oracle_graph_equal({
+        launcher: LAUNCHER,
+        caseId: `transport-totality:hson:${fixture.$_tag}`,
+        operation: "hson-owned-text-serialize-reparse",
+        expected: admitted,
+        actual: reparsed,
+      });
+    } else {
+      assertCanonicalClosure({
+        launcher: LAUNCHER,
+        caseId: `transport-totality:${fixture.$_tag}`,
+        ingress: "canonical-node",
+        node: admitted,
+      });
+    }
+
+    for (const transport of ["json", "html"] as const) {
+      const output = hsonTransform.fromNode(admitted);
+      const wire = transport === "json"
+        ? output.toJson().serialize()
+        : output.toHtml().serialize();
+      const projection = transport === "json"
+        ? hsonTransform.fromJson(wire).toJson().value()
+        : hsonTransform.fromTrustedHtml(wire).toJson().value();
+      const reparsed = detach_hson_root_value(
+        hsonTransform.fromJson(serialize_json_value(projection)).toNode(),
+      );
+      assert_canonical_oracle_graph_equal({
+        launcher: LAUNCHER,
+        caseId: `transport-totality:${transport}:${fixture.$_tag}`,
+        operation: `${transport}-serialize-reparse`,
+        expected: admitted,
+        actual: reparsed,
+      });
+    }
+  }
 });
 
 check("canonical differences identify member names and ordered content", () => {

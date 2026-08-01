@@ -137,6 +137,16 @@ check("ordered object-property content is not treated as an unordered record", (
   assert.equal(canonical_hson_graph_equal(left, reordered), false);
 });
 
+check("authored object order survives admission, serialization, and reparsing", () => {
+  const admitted = hsonTransform.fromHson(`<first 1 second 2 third 3>`).toNode();
+  const reordered = hsonTransform.fromHson(`<second 2 first 1 third 3>`).toNode();
+  assert.deepEqual(admitted.$_content.map((member) => (member as HsonNode).$_tag), ["first", "second", "third"]);
+  assert.equal(canonical_hson_graph_equal(admitted, reordered), false);
+  const serialized = hsonTransform.fromNode(admitted).toHson().noBreak().serialize();
+  assert.equal(serialized, `<first 1 second 2 third 3>`);
+  assert.equal(canonical_hson_graph_equal(admitted, hsonTransform.fromHson(serialized).toNode()), true);
+});
+
 check("strict equality distinguishes absent optional fields from present empty fields", () => {
   const absent = document(node("div"));
   const emptyAttrs = document(node("div", [], {}));

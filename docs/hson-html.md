@@ -29,8 +29,9 @@ p
          └─ _hson_str ("world")
 ```
 
-`_hson_elem` is structural and is melted when ordinary HTML is serialized; it
-does not become a literal HTML tag. Its direct children may be only
+`_hson_elem` is structural and is normally melted when ordinary HTML is
+serialized. The transport retains it explicitly when melting would lose
+adjacent, empty, control-bearing, or boundary-whitespace text items. Its direct children may be only
 `_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or
 array clusters, and array items cannot appear directly inside it.
 
@@ -166,9 +167,17 @@ It is therefore inaccurate to promise verbatim namespace-prefix or declaration
 round-tripping. The goal is usable SVG/XML structure, not preservation of every
 namespace token from the source.
 
-Literal incoming `<_hson_elem>` and `<_hson_str>` elements are rejected on the
-HTML path. Other recognized VSN tags are accepted only where required to carry
-cross-format structural data and must satisfy the graph invariants.
+Reserved transport tags are lowered before an ordinary HTML element is
+constructed. `<_hson_obj>` establishes object mode and `<_hson_elem>`
+establishes element mode. A direct `<_hson_val>` child establishes an ordinary
+object-scalar relationship and is never inserted under `_hson_elem`.
+
+Explicit `<_hson_str>` transport contains one HTML-escaped JSON string. This
+keeps adjacent and empty text-item boundaries distinct and represents control
+characters without relying on XML-invalid raw code points. Detached
+`_hson_str` and `_hson_val` values are carried under `_hson_obj` on the HTML
+wire. Reserved carriers and leaves remain subject to the same canonical graph
+invariants; transport lowering is not an invariant bypass.
 
 ---
 
@@ -212,16 +221,17 @@ rejects. Ordinary `data-*` attributes remain application data.
 
 ## Round-trip contract
 
-HTML -> node -> HTML aims to preserve representable element nesting,
-attributes, text values after parser normalization, and content order. It does
-not promise:
+Serializer-owned node -> HTML -> node transport is total over valid canonical
+semantic graphs. It preserves structural mode, typed values, ordered and empty
+text items, attributes, metadata, and `-0`. Arbitrary authored HTML still
+passes through the documented HTML normalization rules and does not promise:
 
 - the original source string;
 - comments or layout-only whitespace;
 - tag/attribute case on every path;
 - raw style attribute spelling;
 - namespace declaration spelling; or
-- an identical node graph after every cross-format route.
+- source-level distinctions that the HTML parser does not place in the graph.
 
 HTML and JSON use different cluster semantics. `_hson_elem` preserves ordered
 markup and duplicate tags; `_hson_obj` preserves unique JSON properties; and

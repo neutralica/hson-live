@@ -7,6 +7,7 @@ import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { TransformError } from "../src/core/errors.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
@@ -64,6 +65,20 @@ function assertRootEgressRejects(value: HsonNode): void {
   const pattern = /_hson_root is an internal attachment carrier/;
   assert.throws(() => serialize_hson(value), pattern);
   assert.throws(() => hson.fromNode(value).toHson().serialize(), pattern);
+}
+
+function expectTransformError(source: string, code: string): TransformError {
+  let observed: TransformError | undefined;
+  assert.throws(
+    () => publicNode(source),
+    (cause) => {
+      if (!(cause instanceof TransformError)) return false;
+      observed = cause;
+      return cause.code === code;
+    },
+  );
+  assert.ok(observed);
+  return observed;
 }
 
 check("bare empty string attaches as one _hson_str semantic value", () => {
@@ -442,6 +457,29 @@ check("canonical equality remains root-sensitive", () => {
 check("top-level primitive fragments and arbitrary bare names remain invalid", () => {
   assert.throws(() => publicNode(`"x" <a/>`), /top-level primitive must be the sole/);
   assert.throws(() => publicNode(`value`), /unexpected bare token/);
+});
+
+check("authored root failures expose stable structured identities and positions", () => {
+  const empty = expectTransformError(``, "HSON_SOURCE_EMPTY");
+  assert.deepEqual(empty.source, { index: 0, line: 1, column: 1 });
+
+  const multiple = expectTransformError(`1 2`, "HSON_ROOT_MULTIPLE_VALUES");
+  assert.deepEqual(multiple.source, { index: 2, line: 1, column: 3 });
+
+  const mixed = expectTransformError(`<a/> <b 2>`, "HSON_ROOT_MIXED_MODES");
+  assert.deepEqual(mixed.source, { index: 5, line: 1, column: 6 });
+
+  const trailing = expectTransformError(`42>`, "HSON_TRAILING_SOURCE");
+  assert.deepEqual(trailing.source, { index: 2, line: 1, column: 3 });
+});
+
+check("internal root egress retains its precise structured serialization identity", () => {
+  assert.throws(
+    () => serialize_hson(root(node("_hson_obj"))),
+    (cause) => cause instanceof TransformError
+      && cause.code === "HSON_ROOT_SERIALIZATION_FORBIDDEN"
+      && cause.stage === "serialization-admission",
+  );
 });
 
 process.stdout.write(`# ${checks} HSON root-boundary checks passed\n`);

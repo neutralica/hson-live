@@ -19,6 +19,15 @@ import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-sourc
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+const HSON_TRIVIA = new Set([" ", "\t", "\n", "\r"]);
+
+function isHsonTrivia(value: string): boolean {
+  return HSON_TRIVIA.has(value);
+}
+
+function isUnsupportedWhitespace(value: string): boolean {
+  return value !== "" && /\p{White_Space}/u.test(value) && !isHsonTrivia(value);
+}
 
 /**
  * Tokenize HSON with one absolute, newline-agnostic source cursor.
@@ -64,17 +73,37 @@ class HsonScanner {
         const pos = this.position();
         this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
       } else if (ch === "'") {
-        this.fail(`unsupported quote delimiter (use double quotes only)`);
+        this.fail(
+          `unsupported quote delimiter (use double quotes only)`,
+          undefined,
+          "HSON_QUOTE_KIND_UNSUPPORTED",
+        );
       } else if (ch === "`") {
-        this.fail(`backticks are only valid for tag names`);
+        this.fail(`backticks are only valid for authored names`, undefined, "HSON_NAME_INVALID_START");
       } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
-        this.fail(`unexpected structural closer "${ch}"`);
+        this.fail(
+          this.tokens.length === 0
+            ? `unexpected structural closer "${ch}"`
+            : `trailing source begins with unexpected structural closer "${ch}"`,
+          undefined,
+          this.tokens.length === 0 ? "HSON_TOKENIZATION_ERROR" : "HSON_TRAILING_SOURCE",
+        );
       } else {
         const pos = this.position();
         const raw = this.scanBareToken();
         if (!isPrimitiveLiteral(raw)) {
-          this.fail(`unexpected bare token outside tag header: "${raw}"`, pos);
+          const numericCode = classifyNumberDefect(raw);
+          this.fail(
+            numericCode === undefined
+              ? `unexpected bare token outside tag header: "${raw}"`
+              : `invalid HSON number "${raw}"`,
+            pos,
+            this.tokens.length > 0 && numericCode === undefined
+              ? "HSON_TRAILING_SOURCE"
+              : numericCode ?? "HSON_PRIMITIVE_TOKEN_INVALID",
+          );
         }
+        this.assertFiniteNumberLiteral(raw, pos);
         this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
       }
     }
@@ -109,7 +138,7 @@ class HsonScanner {
     }
 
     this.skipTrivia();
-    if (this.atEnd()) this.fail(`unterminated object`, openPos);
+    if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
     this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos));
     if (this.peek() === ">") {
@@ -122,6 +151,19 @@ class HsonScanner {
     const declarations = new Map<string, Position>();
     while (true) {
       const namePos = this.position();
+      if (this.peek() === ",") {
+        this.fail(`object members do not use commas`, namePos, "HSON_OBJECT_COMMA_FORBIDDEN");
+      }
+      if (
+        this.peek() === `"` || this.peek() === "[" || this.peek() === "«"
+        || this.peek() === "+" || this.peek() === "-" || /\d/.test(this.peek())
+      ) {
+        this.fail(
+          `unexpected object value where a member name is required`,
+          namePos,
+          "HSON_OBJECT_EXTRA_VALUE",
+        );
+      }
       if (this.peek() === "@") {
         this.fail(
           `object members cannot author persisted QUID declarations`,
@@ -137,7 +179,7 @@ class HsonScanner {
         );
       }
       if (this.startsWith("/>")) {
-        this.fail(`objects must close with ">", not "/>"`, namePos);
+        this.fail(`objects must close with ">", not "/>"`, namePos, "HSON_STRUCTURAL_MODE_CROSSING");
       }
       if (this.peek() === ">") {
         this.fail(`unexpected object closer; expected an object member name`, namePos);
@@ -152,15 +194,22 @@ class HsonScanner {
         this.fail(
           `[duplicate-object-member] duplicate HSON object member "${name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
           namePos,
+          "HSON_OBJECT_DUPLICATE_MEMBER",
+          [{ role: "first-declaration", pos: first }],
         );
       }
       declarations.set(name, namePos);
 
-      if (!this.skipTrivia()) {
-        this.fail(`required trivia is missing between object member name and value`, this.position());
-      }
+      const separatedFromValue = this.skipTrivia();
       if (this.atEnd() || this.peek() === ">") {
         this.fail(`object member "${name}" is missing its value`, namePos, "missing-object-member-value");
+      }
+      if (!separatedFromValue) {
+        this.fail(
+          `required trivia is missing between object member name and value`,
+          this.position(),
+          "HSON_REQUIRED_TRIVIA_MISSING",
+        );
       }
       if (this.peek() === "@") {
         this.fail(
@@ -175,15 +224,22 @@ class HsonScanner {
       this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, this.previousPosition()));
 
       const separated = this.skipTrivia();
-      if (this.atEnd()) this.fail(`unterminated object`, openPos);
+      if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
       if (this.peek() === ">") {
         const closePos = this.position();
         this.consumeExpected(">");
         this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
         return;
       }
+      if (this.peek() === ",") {
+        this.fail(`object members do not use commas`, this.position(), "HSON_OBJECT_COMMA_FORBIDDEN");
+      }
       if (!separated) {
-        this.fail(`required trivia is missing between sibling object members`, this.position());
+        this.fail(
+          `required trivia is missing between sibling object members`,
+          this.position(),
+          "HSON_REQUIRED_TRIVIA_MISSING",
+        );
       }
     }
   }
@@ -199,7 +255,11 @@ class HsonScanner {
     if (ch === "<") {
       const pos = this.position();
       if (this.classifyAngleCloser(pos) !== CLOSE_KIND.obj) {
-        this.fail(`object member "${memberName}" cannot contain an element-mode value`, pos);
+        this.fail(
+          `object member "${memberName}" cannot contain an element-mode value`,
+          pos,
+          "HSON_STRUCTURAL_MODE_CROSSING",
+        );
       }
       this.scanAngle(depth);
       return;
@@ -209,7 +269,7 @@ class HsonScanner {
       return;
     }
     if (ch === "'") {
-      this.fail(`unsupported quote delimiter (use double quotes only)`);
+      this.fail(`unsupported quote delimiter (use double quotes only)`, undefined, "HSON_QUOTE_KIND_UNSUPPORTED");
     }
     if (ch === "`") {
       this.fail(`backticks are only valid for object member or element names`);
@@ -218,24 +278,42 @@ class HsonScanner {
     const pos = this.position();
     const raw = this.scanBareToken();
     if (!isPrimitiveLiteral(raw)) {
-      this.fail(`invalid bare object value "${raw}" for member "${memberName}"; quote string values`, pos);
+      if (this.peek() === "=") {
+        this.fail(
+          `object member "${memberName}" cannot use authored metadata or attribute syntax`,
+          pos,
+          raw.startsWith("hson:")
+            ? "HSON_AUTHORED_METADATA_FORBIDDEN"
+            : "HSON_OBJECT_ATTRIBUTE_FORBIDDEN",
+        );
+      }
+      const numericCode = classifyNumberDefect(raw);
+      this.fail(
+        `invalid bare object value "${raw}" for member "${memberName}"; quote string values`,
+        pos,
+        numericCode ?? "HSON_OBJECT_FLAG_FORBIDDEN",
+      );
     }
+    this.assertFiniteNumberLiteral(raw, pos);
     this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
   }
 
   /** Existing named element syntax, selected only after a matching `/>`. */
   private scanElementAfterOpen(openPos: Position, depth: number): void {
     this.skipTrivia();
-    if (this.atEnd()) this.fail(`unterminated angle construct`, openPos);
+    if (this.atEnd()) this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
     if (this.startsWith("/>")) {
-      this.fail(`missing tag name before "/>"`, openPos);
+      this.fail(`missing tag name before "/>"`, openPos, "HSON_ELEMENT_NAME_REQUIRED");
     }
 
     const tagPos = this.position();
     const tag = this.peek() === "`"
       ? this.scanQuotedTagName()
       : this.scanBareName("tag name");
+    if (tag.length === 0) {
+      this.fail(`element name must not decode to the empty string`, tagPos, "HSON_ELEMENT_NAME_REQUIRED");
+    }
     assert_authored_hson_source_name(tag, tagPos);
 
     const attrs: RawAttr[] = [];
@@ -252,7 +330,7 @@ class HsonScanner {
 
     while (true) {
       this.skipTrivia();
-      if (this.atEnd()) this.fail(`unterminated tag <${tag}>`, openPos);
+      if (this.atEnd()) this.fail(`unterminated tag <${tag}>`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
       if (this.startsWith("/>")) {
         emitOpen();
@@ -267,14 +345,29 @@ class HsonScanner {
 
       if (ch === "@") {
         const quidPos = this.position();
-        if (contentStarted) this.fail(`persisted QUID declaration is forbidden after content begins`, quidPos);
+        if (contentStarted) {
+          this.fail(
+            `persisted QUID declaration is forbidden after content begins`,
+            quidPos,
+            "HSON_ELEMENT_HEADER_AFTER_CONTENT",
+          );
+        }
         this.consumeExpected("@");
-        if (this.atEnd() || /\s/.test(this.peek()) || this.startsWith("/>") || this.peek() === ">") {
-          this.fail(`missing persisted QUID value after "@"`, quidPos);
+        if (this.atEnd() || isHsonTrivia(this.peek()) || this.startsWith("/>") || this.peek() === ">") {
+          this.fail(`missing persisted QUID value after "@"`, quidPos, "HSON_ELEMENT_QUID_INVALID");
         }
         const value = this.scanBareToken();
-        if (!is_persisted_quid(value)) this.fail(`invalid persisted QUID "${value}"`, quidPos);
-        if (quid !== undefined) this.fail(`duplicate persisted QUID declaration`, quidPos);
+        if (!is_persisted_quid(value)) {
+          this.fail(`invalid persisted QUID "${value}"`, quidPos, "HSON_ELEMENT_QUID_INVALID");
+        }
+        if (quid !== undefined) {
+          this.fail(
+            `duplicate persisted QUID declaration`,
+            quidPos,
+            "HSON_ELEMENT_QUID_INVALID",
+            [{ role: "first-declaration", pos: quid.start }],
+          );
+        }
         quid = { value, start: quidPos, end: this.previousPosition() };
         continue;
       }
@@ -283,46 +376,53 @@ class HsonScanner {
         const namePos = this.position();
         const name = this.scanBareName("attribute or flag");
         const nameEnd = this.previousPosition();
+        assert_authored_hson_source_name(name, namePos);
 
-        if (!contentStarted) {
-          this.skipTrivia();
-
-          if (this.peek() === "=") {
-            const attr = this.scanAttributeValue(name, namePos);
-            this.assertUniqueAttribute(attrDeclarations, attr);
-            attrs.push(attr);
-            continue;
-          }
-
-          if (!isPrimitiveLiteral(name)) {
-            const attr = { name, start: namePos, end: nameEnd };
-            this.assertUniqueAttribute(attrDeclarations, attr);
-            attrs.push(attr);
-            continue;
-          }
+        if (contentStarted) {
+          this.fail(
+            `element header item "${name}" is forbidden after content begins`,
+            namePos,
+            "HSON_ELEMENT_HEADER_AFTER_CONTENT",
+          );
         }
 
-        if (isPrimitiveLiteral(name)) {
-          contentStarted = true;
-          emitOpen();
-          this.tokens.push(CREATE_TEXT_TOKEN(name, undefined, namePos));
+        this.skipTrivia();
+        if (name.startsWith("hson:")) {
+          this.fail(
+            `authored HSON metadata must not use element attribute syntax`,
+            namePos,
+            "HSON_AUTHORED_METADATA_FORBIDDEN",
+          );
+        }
+        if (this.peek() === "=") {
+          const attr = this.scanAttributeValue(name, namePos);
+          this.assertUniqueAttribute(attrDeclarations, attr);
+          attrs.push(attr);
           continue;
         }
 
-        const suffix = this.nextNonTriviaIs("=") ? `; attributes are forbidden after content begins` : "";
-        this.fail(`unexpected bare token in <${tag}> content: "${name}"${suffix}`, namePos);
+        const attr = { name, start: namePos, end: nameEnd };
+        this.assertUniqueAttribute(attrDeclarations, attr);
+        attrs.push(attr);
+        continue;
       }
 
       if (ch === "+" || ch === "-" || /\d/.test(ch)) {
         const valuePos = this.position();
         const raw = this.scanBareToken();
         if (!isPrimitiveLiteral(raw)) {
-          this.fail(`invalid primitive content "${raw}"`, valuePos);
+          this.fail(
+            `invalid primitive content "${raw}"`,
+            valuePos,
+            classifyNumberDefect(raw) ?? "HSON_ELEMENT_TYPED_CONTENT_FORBIDDEN",
+          );
         }
-        contentStarted = true;
-        emitOpen();
-        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, valuePos));
-        continue;
+        this.assertFiniteNumberLiteral(raw, valuePos);
+        this.fail(
+          `typed primitive content "${raw}" is forbidden in element mode`,
+          valuePos,
+          "HSON_ELEMENT_TYPED_CONTENT_FORBIDDEN",
+        );
       }
 
       if (ch === `"`) {
@@ -336,7 +436,11 @@ class HsonScanner {
       if (ch === "<") {
         const childPos = this.position();
         if (this.classifyAngleCloser(childPos) !== CLOSE_KIND.elem) {
-          this.fail(`structural mode crossing: element <${tag}> cannot contain an object-mode value`, childPos);
+          this.fail(
+            `structural mode crossing: element <${tag}> cannot contain an object-mode value`,
+            childPos,
+            "HSON_STRUCTURAL_MODE_CROSSING",
+          );
         }
         contentStarted = true;
         emitOpen();
@@ -345,28 +449,38 @@ class HsonScanner {
       }
 
       if (ch === "«" || ch === "[") {
-        contentStarted = true;
-        emitOpen();
-        this.scanArray(depth + 1);
-        continue;
+        this.fail(
+          `structural mode crossing: element branch <${tag}> cannot contain object/array structure (array value)`,
+          this.position(),
+          "HSON_STRUCTURAL_MODE_CROSSING",
+        );
       }
 
       if (ch === "'") {
-        this.fail(`unsupported quote delimiter (use double quotes only)`);
+        this.fail(`unsupported quote delimiter (use double quotes only)`, undefined, "HSON_QUOTE_KIND_UNSUPPORTED");
       }
 
       if (ch === "`") {
-        this.fail(`backticks are only valid for tag names`);
+        this.fail(
+          contentStarted
+            ? `element header items are forbidden after content begins`
+            : `backticks are only valid for tag names; they are not valid for element attribute or flag names`,
+          undefined,
+          contentStarted ? "HSON_ELEMENT_HEADER_AFTER_CONTENT" : "HSON_NAME_INVALID_START",
+        );
       }
 
       if (contentStarted) {
         const invalidPos = this.position();
         const raw = this.scanBareToken();
-        const suffix = this.nextNonTriviaIs("=") ? `; attributes are forbidden after content begins` : "";
-        this.fail(`unexpected bare token in <${tag}> content: "${raw}"${suffix}`, invalidPos);
+        this.fail(
+          `unexpected bare token in <${tag}> content: "${raw}"`,
+          invalidPos,
+          "HSON_ELEMENT_HEADER_AFTER_CONTENT",
+        );
       }
 
-      this.fail(`unexpected token "${ch}" in <${tag}> element header`);
+      this.fail(`unexpected token "${ch}" in <${tag}> element header`, undefined, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     }
   }
 
@@ -380,9 +494,12 @@ class HsonScanner {
     this.tokens.push(CREATE_ARR_OPEN_TOKEN(symbol, openPos));
 
     let expectItem = true;
+    let sawItem = false;
     while (true) {
       this.skipTrivia();
-      if (this.atEnd()) this.fail(`unterminated ${opener}${closer} array`, openPos);
+      if (this.atEnd()) {
+        this.fail(`unterminated ${opener}${closer} array`, openPos, "HSON_CONTAINER_UNTERMINATED");
+      }
 
       if (this.peek() === closer) {
         const closePos = this.position();
@@ -392,12 +509,20 @@ class HsonScanner {
       }
 
       if (this.peek() === (closer === "]" ? "»" : "]")) {
-        this.fail(`mismatched array closer "${this.peek()}"; expected "${closer}"`);
+        this.fail(
+          `mismatched array closer "${this.peek()}"; expected "${closer}"`,
+          undefined,
+          "HSON_ARRAY_CLOSER_MISMATCH",
+        );
       }
 
       if (!expectItem) {
         if (this.peek() !== ",") {
-          this.fail(`expected "," or "${closer}" after array item`);
+          this.fail(
+            `expected "," or "${closer}" after array item`,
+            undefined,
+            "HSON_ARRAY_COMMA_MISSING",
+          );
         }
         this.consumeExpected(",");
         expectItem = true;
@@ -405,10 +530,15 @@ class HsonScanner {
       }
 
       if (this.peek() === ",") {
-        this.fail(`missing array item before comma`);
+        this.fail(
+          sawItem ? `missing array item between commas` : `unexpected comma before first array item`,
+          undefined,
+          sawItem ? "HSON_ARRAY_ITEM_MISSING" : "HSON_ARRAY_COMMA_EXTRA",
+        );
       }
 
       this.scanArrayItem(depth + 1);
+      sawItem = true;
       expectItem = false;
     }
   }
@@ -434,7 +564,7 @@ class HsonScanner {
     }
 
     if (ch === "'") {
-      this.fail(`unsupported quote delimiter (use double quotes only)`);
+      this.fail(`unsupported quote delimiter (use double quotes only)`, undefined, "HSON_QUOTE_KIND_UNSUPPORTED");
     }
 
     if (ch === "`") {
@@ -444,8 +574,13 @@ class HsonScanner {
     const pos = this.position();
     const raw = this.scanBareToken();
     if (!isPrimitiveLiteral(raw)) {
-      this.fail(`unexpected bare array item: "${raw}"`, pos);
+      this.fail(
+        `unexpected bare array item: "${raw}"`,
+        pos,
+        classifyNumberDefect(raw) ?? "HSON_PRIMITIVE_TOKEN_INVALID",
+      );
     }
+    this.assertFiniteNumberLiteral(raw, pos);
     this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
   }
 
@@ -453,11 +588,15 @@ class HsonScanner {
     this.consumeExpected("=");
     this.skipTrivia();
     if (this.atEnd() || this.startsWith("/>") || this.peek() === ">") {
-      this.fail(`missing attribute value for "${name}"`, start);
+      this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     }
 
     if (this.peek() === "'") {
-      this.fail(`unsupported single-quoted attribute value (use double quotes only)`);
+      this.fail(
+        `unsupported single-quoted attribute value (use double quotes only)`,
+        undefined,
+        "HSON_QUOTE_KIND_UNSUPPORTED",
+      );
     }
 
     if (this.peek() === "`") {
@@ -476,22 +615,26 @@ class HsonScanner {
     while (!this.atEnd()) {
       const ch = this.peek();
       if (this.startsWith("/>")) break;
-      if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
+      if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === `"` || ch === "'" || ch === "`" || ch === "«" || ch === "»" || ch === "[" || ch === "]") {
         break;
       }
       end = this.position();
       text += this.consume();
     }
 
-    if (!text) this.fail(`missing attribute value for "${name}"`, start);
+    if (!text) this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     if (text.includes("=")) {
-      this.fail(`malformed unquoted attribute value for "${name}": "${text}"`, valueStart);
+      this.fail(
+        `malformed unquoted attribute value for "${name}": "${text}"`,
+        valueStart,
+        "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID",
+      );
     }
 
     return { name, value: { text, quoted: false }, start, end };
   }
 
-  /** Return a complete JSON-compatible literal, preserving multiline HSON text. */
+  /** Return a complete strict JSON-compatible string literal. */
   private scanContentString(): string {
     const start = this.position();
     this.consumeExpected(`"`);
@@ -510,26 +653,23 @@ class HsonScanner {
         continue;
       }
 
-      if (this.isNewline()) {
-        this.consume();
-        raw += "\\n";
-        continue;
-      }
-
-      if (ch === "\t") {
-        this.consume();
-        raw += "\\t";
-        continue;
-      }
-
       if (ch.charCodeAt(0) < 0x20) {
-        this.fail(`[invalid-json-string] unescaped control character in content string`);
+        this.fail(
+          `[invalid-json-string] unescaped control character in content string`,
+          this.position(),
+          "HSON_STRING_CONTROL_UNESCAPED",
+        );
       }
 
       raw += this.consume();
     }
 
-    this.fail(`unterminated quoted string`, start);
+    const final = this.source[this.source.length - 1];
+    this.fail(
+      final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
+      final === "'" ? this.positionAt(this.source.length - 1) : start,
+      final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
+    );
   }
 
   /** Attribute tokens retain their inner source text rather than outer quotes. */
@@ -551,27 +691,25 @@ class HsonScanner {
         continue;
       }
 
-      if (this.isNewline()) {
-        this.consume();
-        text += "\\n";
-        continue;
-      }
-
-      if (ch === "\t") {
-        this.consume();
-        text += "\\t";
-        continue;
-      }
-
       if (ch.charCodeAt(0) < 0x20) {
-        this.fail(`[invalid-json-string] unescaped control character in quoted attribute "${name}"`);
-        continue;
+        this.fail(
+          `[invalid-json-string] unescaped control character in quoted attribute "${name}"`,
+          this.position(),
+          "HSON_STRING_CONTROL_UNESCAPED",
+        );
       }
 
       text += this.consume();
     }
 
-    this.fail(`unterminated quoted attribute value for "${name}"`, start);
+    const final = this.source[this.source.length - 1];
+    this.fail(
+      final === "'"
+        ? `mixed quote boundary in quoted attribute "${name}"`
+        : `unterminated quoted attribute value for "${name}"`,
+      final === "'" ? this.positionAt(this.source.length - 1) : start,
+      final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
+    );
   }
 
   private scanQuotedTagName(): string {
@@ -586,35 +724,61 @@ class HsonScanner {
         return tag;
       }
 
-      if (this.isNewline()) {
-        this.fail(`unterminated quoted tag name`, start);
-      }
-
       if (ch === "\\") {
         const escapePos = this.position();
         this.consumeExpected("\\");
-        if (this.atEnd() || this.isNewline()) {
-          this.fail(`[invalid-name-escape] invalid escape termination in backtick HSON name`, escapePos);
+        if (this.atEnd() || this.peek().charCodeAt(0) < 0x20) {
+          this.fail(
+            `[invalid-name-escape] invalid escape termination in backtick HSON name`,
+            escapePos,
+            "invalid-name-escape",
+          );
         }
         const escaped = this.consume();
         if (escaped === "`") tag += "`";
         else if (escaped === "\\") tag += "\\";
+        else if (escaped === "b") tag += "\b";
+        else if (escaped === "f") tag += "\f";
         else if (escaped === "n") tag += "\n";
         else if (escaped === "r") tag += "\r";
         else if (escaped === "t") tag += "\t";
+        else if (escaped === "u") {
+          let hex = "";
+          for (let offset = 0; offset < 4; offset += 1) {
+            const digit = this.peek();
+            if (!/^[0-9A-Fa-f]$/.test(digit)) {
+              this.fail(
+                `[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in backtick HSON name`,
+                escapePos,
+                "invalid-name-escape",
+              );
+            }
+            hex += this.consume();
+          }
+          tag += String.fromCharCode(Number.parseInt(hex, 16));
+        }
         else {
           this.fail(
             `[invalid-name-escape] unsupported escape ${JSON.stringify(`\\${escaped}`)} in backtick HSON name`,
             escapePos,
+            "invalid-name-escape",
           );
         }
         continue;
       }
 
+      if (ch.charCodeAt(0) < 0x20) {
+        this.fail(
+          `raw control character is forbidden in backtick HSON name`,
+          this.position(),
+          "HSON_NAME_CONTROL_UNESCAPED",
+        );
+      }
+
       tag += this.consume();
     }
 
-    this.fail(`unterminated quoted tag name`, start);
+    this.fail(`unterminated quoted tag name`, start, "HSON_NAME_UNTERMINATED");
   }
 
   private scanJsonEscape(context: string): string {
@@ -659,6 +823,8 @@ class HsonScanner {
       this.fail(
         `[duplicate-attribute] duplicate HSON attribute "${attr.name}"; first declared at ${first.line}:${first.col} (index ${first.index})`,
         attr.start,
+        "HSON_ELEMENT_DUPLICATE_ATTRIBUTE",
+        [{ role: "first-declaration", pos: first }],
       );
     }
     declarations.set(attr.name, attr.start);
@@ -668,7 +834,11 @@ class HsonScanner {
     const start = this.position();
     const first = this.peek();
     if (!is_hson_bare_name_start(first)) {
-      this.fail(`malformed ${where}: expected a bare name or backtick-quoted name`, start);
+      this.fail(
+        `malformed ${where}: expected a bare name or backtick-quoted name`,
+        start,
+        where === "tag name" ? "HSON_ELEMENT_NAME_REQUIRED" : "HSON_NAME_INVALID_START",
+      );
     }
 
     let out = this.consume();
@@ -683,7 +853,7 @@ class HsonScanner {
     while (!this.atEnd()) {
       const ch = this.peek();
       if (
-        /\s/.test(ch) || ch === "<" || ch === ">" || ch === "/" ||
+        isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "/" ||
         ch === "[" || ch === "]" || ch === "«" || ch === "»" ||
         ch === "," || ch === `"` || ch === "'" || ch === "`" || ch === "="
       ) {
@@ -711,7 +881,7 @@ class HsonScanner {
 
       if (quoted !== undefined) {
         if (ch === "\\") {
-          if (cursor + 1 >= this.source.length || next === "\n" || next === "\r") {
+          if (cursor + 1 >= this.source.length || next.charCodeAt(0) < 0x20) {
             this.fail(
               quoted === `"`
                 ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
@@ -722,6 +892,15 @@ class HsonScanner {
           }
           cursor += 2;
           continue;
+        }
+        if (ch.charCodeAt(0) < 0x20) {
+          this.fail(
+            quoted === `"`
+              ? `unescaped control character in quoted HSON string`
+              : `raw control character in backtick HSON name`,
+            this.positionAt(cursor),
+            quoted === `"` ? "HSON_STRING_CONTROL_UNESCAPED" : "HSON_NAME_CONTROL_UNESCAPED",
+          );
         }
         if (ch === quoted) {
           quoted = undefined;
@@ -737,7 +916,7 @@ class HsonScanner {
       if (unquotedAttributeValue) {
         if (ch === "/" && next === ">") {
           unquotedAttributeValue = false;
-        } else if (/\s/.test(ch) || ch === "<" || ch === ">" || ch === "[" || ch === "]" || ch === "«" || ch === "»") {
+        } else if (isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "[" || ch === "]" || ch === "«" || ch === "»") {
           unquotedAttributeValue = false;
         } else {
           cursor += 1;
@@ -746,9 +925,16 @@ class HsonScanner {
       }
 
       if (expectAttributeValue) {
-        if (/\s/.test(ch)) {
+        if (isHsonTrivia(ch)) {
           cursor += 1;
           continue;
+        }
+        if (isUnsupportedWhitespace(ch)) {
+          this.fail(
+            `unsupported whitespace character U+${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}`,
+            this.positionAt(cursor),
+            "HSON_UNSUPPORTED_WHITESPACE",
+          );
         }
         if (ch === "/" && next === "/") {
           cursor += 2;
@@ -757,13 +943,14 @@ class HsonScanner {
           }
           continue;
         }
-        if (ch !== `"` && ch !== "`" && ch !== "<" && ch !== ">") {
+        if (ch === "/" && next === ">") {
+          expectAttributeValue = false;
+        } else if (ch !== `"` && ch !== "`" && ch !== "<" && ch !== ">") {
           expectAttributeValue = false;
           unquotedAttributeValue = true;
           cursor += 1;
           continue;
-        }
-        expectAttributeValue = false;
+        } else expectAttributeValue = false;
       }
 
       if (ch === `"` || ch === "`") {
@@ -779,6 +966,34 @@ class HsonScanner {
           cursor += 1;
         }
         continue;
+      }
+
+      if (ch === "/" && next === "*") {
+        this.fail(
+          `block comments are not supported in authored HSON`,
+          this.positionAt(cursor),
+          "HSON_BLOCK_COMMENT_UNSUPPORTED",
+        );
+      }
+
+      if (isUnsupportedWhitespace(ch)) {
+        this.fail(
+          `unsupported whitespace character U+${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}`,
+          this.positionAt(cursor),
+          "HSON_UNSUPPORTED_WHITESPACE",
+        );
+      }
+
+      if (ch === "/" && next !== ">" && stack.at(-1) === "<") {
+        let afterSlash = cursor + 1;
+        while (afterSlash < this.source.length && isHsonTrivia(this.source[afterSlash])) afterSlash += 1;
+        if (this.source[afterSlash] === ">") {
+          this.fail(
+            `element closer must be the adjacent token "/>"`,
+            this.positionAt(cursor),
+            "HSON_ELEMENT_CLOSER_MALFORMED",
+          );
+        }
       }
 
       if (ch === "=") {
@@ -833,15 +1048,39 @@ class HsonScanner {
       cursor += 1;
     }
 
-    if (quoted === `"`) this.fail(`unterminated quoted string`, this.positionAt(quoteStart));
-    if (quoted === "`") this.fail(`unterminated quoted tag name`, this.positionAt(quoteStart));
-    this.fail(`unterminated angle construct`, openPos);
+    if (quoted === `"`) {
+      const final = this.source[this.source.length - 1];
+      this.fail(
+        final === "'" ? `mixed quote boundary in quoted string` : `unterminated quoted string`,
+        final === "'" ? this.positionAt(this.source.length - 1) : this.positionAt(quoteStart),
+        final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
+      );
+    }
+    if (quoted === "`") {
+      this.fail(`unterminated quoted tag name`, this.positionAt(quoteStart), "HSON_NAME_UNTERMINATED");
+    }
+    this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
   }
 
   private skipTrivia(): boolean {
     const start = this.index;
     while (true) {
-      while (!this.atEnd() && /\s/.test(this.peek())) this.consume();
+      while (!this.atEnd() && isHsonTrivia(this.peek())) this.consume();
+      if (isUnsupportedWhitespace(this.peek())) {
+        const ch = this.peek();
+        this.fail(
+          `unsupported whitespace character U+${ch.charCodeAt(0).toString(16).padStart(4, "0").toUpperCase()}`,
+          this.position(),
+          "HSON_UNSUPPORTED_WHITESPACE",
+        );
+      }
+      if (this.startsWith("/*")) {
+        this.fail(
+          `block comments are not supported in authored HSON`,
+          this.position(),
+          "HSON_BLOCK_COMMENT_UNSUPPORTED",
+        );
+      }
       if (!this.startsWith("//")) return this.index !== start;
 
       this.consumeExpected("/");
@@ -855,7 +1094,7 @@ class HsonScanner {
     let ix = this.index;
     while (ix < this.source.length) {
       const ch = this.source[ix];
-      if (/\s/.test(ch)) {
+      if (isHsonTrivia(ch)) {
         ix++;
         continue;
       }
@@ -872,6 +1111,12 @@ class HsonScanner {
   private assertNesting(depth: number): void {
     if (depth >= MAX_NESTING) {
       this.fail(`stopping potentially infinite loop (depth >= ${MAX_NESTING})`);
+    }
+  }
+
+  private assertFiniteNumberLiteral(raw: string, pos: Position): void {
+    if (NUMBER_LITERAL.test(raw) && !Number.isFinite(Number(raw))) {
+      this.fail(`HSON number must be finite: "${raw}"`, pos, "HSON_NUMBER_NONFINITE");
     }
   }
 
@@ -957,6 +1202,7 @@ class HsonScanner {
     message: string,
     pos = this.position(),
     code = "HSON_TOKENIZATION_ERROR",
+    related?: readonly { role: string; pos: Position }[],
   ): never {
     _throw_transform_err(
       `${message} at ${pos.line}:${pos.col} (index ${pos.index})`,
@@ -967,6 +1213,12 @@ class HsonScanner {
         code,
         stage: "tokenization",
         source: { index: pos.index, line: pos.line, column: pos.col },
+        ...(related === undefined ? {} : {
+          related: related.map((item) => ({
+            role: item.role,
+            source: { index: item.pos.index, line: item.pos.line, column: item.pos.col },
+          })),
+        }),
       },
     );
   }
@@ -974,4 +1226,27 @@ class HsonScanner {
 
 function isPrimitiveLiteral(raw: string): boolean {
   return raw === "true" || raw === "false" || raw === "null" || NUMBER_LITERAL.test(raw);
+}
+
+function classifyNumberDefect(raw: string): string | undefined {
+  if (raw === "NaN" || raw === "Infinity" || raw === "+Infinity" || raw === "-Infinity") {
+    return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+  }
+  if (/^[+-]?(?:0[xX][0-9A-Fa-f]+|\d[\d_]*_\d[\d_]*)$/.test(raw)) {
+    return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+  }
+  if (/^[+-]?(?:\.\d+|\d+\.)$/.test(raw)) {
+    return "HSON_NUMBER_INCOMPLETE_FRACTION";
+  }
+  if (/^[+-]?\d+(?:\.\d+)?[eE][+-]?$/.test(raw)) {
+    return "HSON_NUMBER_INCOMPLETE_EXPONENT";
+  }
+  if (/^(?:[+-]{2,}|[+-]?\d+(?:\.\d+)?[+-]\d+)/.test(raw)) {
+    return "HSON_NUMBER_INVALID_SIGN";
+  }
+  if (/^[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[^\d]/.test(raw)) {
+    return "HSON_NUMBER_TRAILING_JUNK";
+  }
+  if (/^[+-.\d]/.test(raw)) return "HSON_NUMBER_UNSUPPORTED_SPELLING";
+  return undefined;
 }

@@ -23,6 +23,7 @@ import { compare_nodes } from "./compare-nodes.test.js";
 import { Fmt, LoopDir, CoreOpt, RunResult, FixtureAtom, LoopOpts, LoopReport, Step, Artifact, NodeMark, SourceFormat } from "../types/diagnostics.types.js";
 import { safe_parse, rotate_ring, step_ok, safe_emit, step_fail, clamp_int, finalize, coerce_entry, is_html_element, err_to_string, step_meh } from "./diagnostics-helpers.js";
 import { detach_hson_root_value } from "../api/transform/utils/node-utils/detach-hson-root-value.js";
+import { normalize_detached_hson_semantic_value } from "../core/normalize-hson-semantic-value.js";
 
 /* =========================================================================
  * TEST CHAIN
@@ -38,7 +39,10 @@ export const SPIN: Record<Fmt, { emit: (n: HsonNode) => string; parse: (s: strin
   },
   html: {
     emit: (n) => hson.fromNode(n as any).toHtml().serialize(),
-    parse: (s) => detach_hson_root_value(hson.fromTrustedHtml(s).toNode() as any),
+    parse: (s) => normalize_detached_hson_semantic_value(
+      detach_hson_root_value(hson.fromTrustedHtml(s).toNode() as any),
+      "diagnostics.html-transport",
+    ),
   },
   hson: {
     emit: (n) => hson.fromNode(n as any).toHson().serialize(),

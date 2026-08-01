@@ -4,6 +4,7 @@ import { hson } from "../src/hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { normalize_hson_graph } from "../src/core/normalize-hson-graph.ts";
 import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.ts";
+import { TransformError } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
@@ -279,6 +280,18 @@ check("JSON scalar, nested-object, and array relationships remain canonical", ()
 
 check("direct serialization never emits a literal empty element wrapper", () => {
   assert.throws(() => serialize_hson(elem()), /empty _hson_elem/);
+});
+
+check("authored structural crossings retain parser-owned structured evidence", () => {
+  assert.throws(
+    () => parse(`<outer <field 1>/>`),
+    (cause) => cause instanceof TransformError
+      && cause.code === "HSON_STRUCTURAL_MODE_CROSSING"
+      && cause.stage === "tokenization"
+      && cause.source?.index === 7
+      && cause.source.line === 1
+      && cause.source.column === 8,
+  );
 });
 
 process.stdout.write(`# ${checks} structural-mode checks passed\n`);

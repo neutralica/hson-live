@@ -219,12 +219,6 @@ void repeatedNamedNormalizedHson;
 void invalidHson;
 void invalidHtmlHson;
 void invalidJsonHson;
-// @ts-expect-error Candidate normalization belongs to hson.transform.
-void hson.string;
-// @ts-expect-error Numeric admission belongs to hson.transform.
-void hson.number;
-// @ts-expect-error Calculation admission belongs to hson.transform.
-void hson.calc;
 declare const rootHsonString: RootHsonString;
 void rootHsonString;
 

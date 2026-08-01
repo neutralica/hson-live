@@ -52,10 +52,10 @@ Nested objects recurse through the same property/cluster arrangement. This
 wrapper structure is part of the current IR even when serialized HSON presents
 the shorter form `<title "Hello">`.
 
-JSON object key order is not semantically significant. Parsing initially walks
-the input object's current enumeration order, but JSON serialization sorts keys
-canonically. Therefore a parse/serialize/reparse cycle preserves the JSON value
-but need not produce a node graph with the original property order.
+An ordinary JavaScript record remains only an ingress representation, but once
+its properties become canonical `_hson_obj` content their sequence is graph
+identity. JSON emission follows that canonical member sequence and does not
+alphabetize it.
 
 ---
 
@@ -137,10 +137,10 @@ For valid JSON input, JSON -> node -> JSON preserves:
 - array order; and
 - string, number, boolean, and null identity.
 
-The serialized JSON string is canonicalized. Whitespace and source property
-order are not preserved, and a reparsed node graph need not be byte-for-byte or
-order-identical to the first graph. The appropriate equality test is JSON value
-equivalence, with array order retained and object order ignored.
+The serialized JSON string is deterministic. Numeric emission preserves the
+valid JSON spelling `-0`, so reparsing retains negative-zero identity rather
+than inheriting `JSON.stringify`'s conversion to `0`. Source whitespace is not
+preserved. Canonical object-member and array-item order are both retained.
 
 ---
 

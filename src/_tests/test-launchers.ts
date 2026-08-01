@@ -65,7 +65,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
-      executableChecks: 114,
+      executableChecks: 134,
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
@@ -75,7 +75,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-structural-mode",
       repositoryModule: "tests/hson-structural-mode.acceptance.mts",
       runtime: "node",
-      executableChecks: 43,
+      executableChecks: 44,
       collections: ["hson", "parsing", "canonical-graph", "structural-mode"],
     }),
     launcher({
@@ -85,7 +85,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-root-boundary",
       repositoryModule: "tests/hson-root-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 75,
+      executableChecks: 77,
       collections: ["hson", "parsing", "root-boundary", "source-shaping"],
     }),
     launcher({
@@ -145,7 +145,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:canonical-hson-equality",
       repositoryModule: "tests/canonical-hson-equality.acceptance.mts",
       runtime: "node",
-      executableChecks: 14,
+      executableChecks: 15,
       collections: ["canonical-graph", "equality"],
     }),
     launcher({
@@ -155,7 +155,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
+      executableChecks: 25,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({

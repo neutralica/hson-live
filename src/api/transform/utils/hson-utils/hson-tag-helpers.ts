@@ -11,12 +11,19 @@ export function needs_quoted_hson_key(key: string): boolean {
 }
 
 export function quote_hson_key(key: string): string {
-  const escaped = key
-    .replaceAll("\\", "\\\\")
-    .replaceAll("`", "\\`")
-    .replaceAll("\n", "\\n")
-    .replaceAll("\r", "\\r")
-    .replaceAll("\t", "\\t");
+  let escaped = "";
+  for (const char of key) {
+    if (char === "\\") escaped += "\\\\";
+    else if (char === "`") escaped += "\\`";
+    else if (char === "\b") escaped += "\\b";
+    else if (char === "\f") escaped += "\\f";
+    else if (char === "\n") escaped += "\\n";
+    else if (char === "\r") escaped += "\\r";
+    else if (char === "\t") escaped += "\\t";
+    else if (char.charCodeAt(0) < 0x20) {
+      escaped += `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`;
+    } else escaped += char;
+  }
 
   return `\`${escaped}\``;
 }
@@ -53,4 +60,3 @@ export function unquote_hson_key(src: string): string {
 
   return out;
 }
-

@@ -52,18 +52,31 @@ Bare header names use an ASCII, case-sensitive grammar:
 [A-Za-z_:][A-Za-z0-9:._-]*
 ```
 
-Element and object-member names outside that bare grammar are emitted between
-backticks:
+The parser accepts every spelling in that grammar. The serializer deliberately
+uses a narrower preferred bare spelling, so accepted names containing a leading
+colon, any colon, or a dot can be emitted between backticks:
 
 ```hson
-<`display name` "Ada" `a b` 1>
+<`:x` 1 `a:b` 2 `a.b` 3 `display name` "Ada">
 ```
 
-Backtick names use a restricted escape grammar. Only escaped backticks,
-backslashes, `\n`, `\r`, and `\t` are accepted. JSON-only escapes such as
-`\uXXXX`, `\b`, `\f`, and `\/`, as well as unknown escapes, reject. A literal
-forward slash needs no escape. Backticks are for element or object-member names
-only; text and quoted attribute values use double quotes.
+That serializer-owned spelling change does not change the decoded name or graph.
+Backtick names accept an escaped backtick, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`,
+and exactly four hexadecimal digits after `\u`. Unknown, malformed, incomplete, trailing,
+and unterminated escapes reject. Raw unescaped U+0000 through U+001F also
+reject. A literal forward slash needs no escape. The serializer uses the same
+closed grammar and can therefore spell every admitted decoded name.
+
+An empty decoded backtick name is accepted only as an object member key:
+
+```hson
+<`` 1>
+```
+
+It is serialized with explicit backticks. Empty element, attribute, and flag
+names reject; `<``/>` is a missing element name. Backticks are otherwise for
+element or object-member names only; text and quoted attribute values use
+double quotes.
 
 The `_hson_` prefix is reserved for structural nodes and cannot be authored as
 an ordinary user element/member name. This applies to bare and backtick spellings,
@@ -107,7 +120,12 @@ leaf; it does not imply `_hson_elem` or `_hson_obj`. A bare name such as
 Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`,
 `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown,
 incomplete, malformed, and unterminated escapes reject. Single quotes and
-backticks are rejected as text delimiters.
+backticks are rejected as text delimiters. Every raw unescaped C0 control
+character (U+0000 through U+001F) rejects at its exact source position,
+including physical tab, LF, CR, backspace, and form feed. Escaped controls are
+required, and physical line endings inside quoted strings are never normalized.
+This rule is identical for primitive strings, object and array string values,
+element text, and quoted attributes.
 
 An inline node may have attributes and one primitive value:
 
@@ -167,6 +185,13 @@ A bare attribute is a presence flag:
 <input disabled/>
 ```
 
+Before element content begins, the bare names `true`, `false`, and `null` are
+ordinary flags, not typed content. Thus `<input true false null/>` has three
+flags, and explicit `true="true"`-style declarations normalize equivalently.
+Numeric tokens are not names: `<a 1/>` rejects as typed element content. Once
+content has begun, every subsequent flag or attribute rejects as a header item
+after content.
+
 The canonical graph representation is the string-valued entry
 `{ disabled: "disabled" }`. Exact `value === key` equality distinguishes a
 flag; for example, programmatic `{ disabled: true }` serializes as the ordinary
@@ -195,9 +220,16 @@ Child nodes and primitive leaves are ordered:
 />
 ```
 
-`//` starts a comment wherever trivia is legal and consumes through the physical
-newline. Comments may appear between structural tokens, are not stored in the
-node graph, and are not reserialized.
+The authored trivia alphabet is exactly SPACE (U+0020), horizontal tab
+(U+0009), LF (U+000A), and CR (U+000D). CRLF is the ordinary CR-plus-LF pair.
+Vertical tab, form feed, nonbreaking space, Unicode line/paragraph separators,
+and other ECMAScript or Unicode whitespace are not trivia and reject.
+
+`//` starts a comment wherever trivia is legal and consumes through LF, CR, or
+CRLF. It may run to end of source after a complete semantic value. Comments may
+appear between structural tokens, are not stored in the node graph, and are not
+reserialized. A comment alone still has no semantic value. Block comments are
+unsupported.
 
 ---
 
@@ -217,7 +249,9 @@ Canonical arrays use guillemets and comma-separated items:
 
 The parser also accepts `[` and `]`, including `[]`; serialization uses `«` and
 `»`. Arrays may be inline or multiline and may contain primitives, nested
-arrays, or object values. Commas separate top-level items. An array does not
+arrays, or object values. Commas separate top-level items. One optional trailing
+comma is accepted with either delimiter family (`[1,2,]` and `«1,2,»`) and is
+never emitted. Missing, leading, extra, and doubled commas reject. An array does not
 collapse when it has one item and cannot bridge an object branch to
 element-mode content.
 
@@ -281,6 +315,10 @@ pair directly:
 Ordinary member names are case-sensitive and must be unique. A member must own
 exactly one value. Thus `<a>` is invalid and an empty object value is written
 `<a <>>`.
+
+The `$_content` member sequence is authoritative graph identity. Parsing,
+admission, serialization, reparsing, canonical equality, browsers, and Workers
+preserve that sequence; serializers never alphabetize object members.
 
 The former property-angle and anonymous-wrapper grammar has been removed.
 Adjacent root properties (`<a 1><b 2>`), doubled objects (`<<a 1>>`), and
@@ -357,5 +395,13 @@ attribute, entity, and sanitization behavior.
 Empty, whitespace-only, and comment-only HSON source has no semantic value and
 rejects. Explicit empty values use `""`, `<>`, or `«»` (`[]` is accepted and
 canonicalizes to `«»`).
+
+Authored-source failures use portable `TransformError` details. Stable identity
+is read from `operation`, `code`, optional `stage`, and exact zero-based index /
+one-based line and column in `source`; graph-only failures retain graph `path`
+instead of fabricated source coordinates. Duplicate object members and element
+attributes identify the duplicate as primary `source` and the first declaration
+as structured `related` evidence. Diagnostic prose is informative but is not
+the machine-readable identity.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

@@ -33,6 +33,13 @@ export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonN
         _throw_transform_err(
             "empty, whitespace-only, or comment-only HSON source has no semantic value",
             "parse_hson",
+            undefined,
+            undefined,
+            {
+                code: "HSON_SOURCE_EMPTY",
+                stage: "source-admission",
+                source: { index: 0, line: 1, column: 1 },
+            },
         );
     }
     const newNode = parse_tokens(newTokens, options)

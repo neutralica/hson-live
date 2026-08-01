@@ -31,6 +31,8 @@ import {
     scan_ingested_hson_node_quids,
 } from "../utils/hson-utils/quid-ingress.js";
 import { normalize_hson_array_index_order } from "../../../core/hson-array-indexes.js";
+import { classify_ordinary_hson_structure } from "../../../core/hson-structural-mode.js";
+import { decode_html_string_transport } from "../utils/html-utils/decode-html-string-transport.js";
 
 
 
@@ -289,8 +291,8 @@ export function parse_html(input: string | Element): HsonNode {
  * Recursively convert a DOM `Element` subtree into a `HsonNode` subtree.
  *
  * Responsibilities:
- * - Validate tag semantics and VSN usage:
- *   - Reject literal `<_hson_str>` elements.
+ * - Validate tag semantics and lower reserved transport VSNs before ordinary
+ *   HTML element construction.
  *   - Reject unknown tags starting with `_` that are not recognized VSNs.
  * - Parse attributes and meta via `parse_html_attrs`.
  * - Handle special raw-text elements (`<style>`, `<script>`):
@@ -312,7 +314,9 @@ export function parse_html(input: string | Element): HsonNode {
  *   - `<_hson_ii>`:
  *       - Must have exactly one child, returned as `_hson_ii` with optional meta.
  *   - `<_hson_elem>`:
- *       - Disallowed in incoming HTML (internal-only wrapper).
+ *       - Establishes element mode before ordinary parent construction.
+ *   - `<_hson_str>`:
+ *       - Decodes one JSON-string payload without merging sibling items.
  * - Default HTML element path:
  *   - For zero children:
  *       - Produce an element with an empty `_hson_elem` cluster.
@@ -355,12 +359,6 @@ function convert(
         }
         return node;
     };
-    if (dec === STR_TAG) {
-        if (quid !== undefined) {
-            assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
-        }
-        _throw_transform_err('literal <_hson_str> is not allowed in input HTML', 'parse-html');
-    }
     if (dec.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(dec)) {
         if (quid !== undefined) {
             assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
@@ -371,9 +369,30 @@ function convert(
         assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
     }
 
+    if (dec === STR_TAG) {
+        if (Object.keys(sortedAcc).length > 0 || (metaAcc && Object.keys(metaAcc).length > 0)) {
+            _throw_transform_err('<_hson_str> transport must not carry attributes or metadata', 'parse-html');
+        }
+        const parts = Array.from(el.childNodes);
+        if (parts.some((child) => child.nodeType !== Node.TEXT_NODE)) {
+            _throw_transform_err('<_hson_str> transport must contain text only', 'parse-html');
+        }
+        return finish(CREATE_NODE({
+            $_tag: STR_TAG,
+            $_content: [decode_html_string_transport(
+                parts.map((child) => child.textContent ?? "").join(""),
+                "parse-html",
+            )],
+        }));
+    }
+
     // Raw text elements: treat their textContent as a single string node
     const specialExceptions = ['style', 'script'];
-    if (specialExceptions.includes(dec)) {
+    if (specialExceptions.includes(dec)
+        && !Array.from(el.childNodes).some((child) =>
+            child.nodeType === Node.ELEMENT_NODE
+            && (child as Element).tagName.toLowerCase() === ELEM_TAG
+        )) {
         let text_content = el.textContent?.trim();
 
         //  handle <![CDATA[ ... ]]> safely
@@ -479,10 +498,13 @@ function convert(
     }
 
     if (dec === ELEM_TAG) {
-        if (quid !== undefined) {
-            assign_ingested_hson_node_quid(CREATE_NODE({ $_tag: dec }), quid, "parse-html");
+        if (Object.keys(sortedAcc).length > 0 || (metaAcc && Object.keys(metaAcc).length > 0)) {
+            _throw_transform_err('<_hson_elem> transport must not carry attributes or metadata', 'parse-html');
         }
-        _throw_transform_err('_hson_elem tag found in html', 'parse-html');
+        if (childNodes.some((child) => child.$_tag === VAL_TAG)) {
+            _throw_transform_err('<_hson_val> transport is forbidden under <_hson_elem>', 'parse-html');
+        }
+        return finish(CREATE_NODE({ $_tag: ELEM_TAG, $_content: childNodes }));
     }
 
     // ---------- Default: normal HTML element ----------
@@ -501,7 +523,8 @@ function convert(
         const only = childNodes[0];
 
         // Pass through explicit clusters untouched (no mixing, no extra box)
-        if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG) {
+        if (only.$_tag === OBJ_TAG || only.$_tag === ARR_TAG || only.$_tag === ELEM_TAG
+            || (!is_Primitive(children[0]) && (only.$_tag === STR_TAG || only.$_tag === VAL_TAG))) {
             return finish(CREATE_NODE({
                 $_tag: dec,
                 $_attrs: sortedAcc,
@@ -509,6 +532,13 @@ function convert(
                 $_content: [only]
             }));
         }
+    }
+
+    if (childNodes.some((child) => child.$_tag === VAL_TAG)) {
+        _throw_transform_err(
+            '<_hson_val> transport cannot be mixed into element content',
+            'parse-html',
+        );
     }
 
     // Otherwise, we have multiple non-cluster children (text/elements):
@@ -547,8 +577,16 @@ function convert(
  */
 function wrap_as_root(node: HsonNode): HsonNode {
     if (node.$_tag === ROOT_TAG) return node; // already rooted
-    if (node.$_tag === OBJ_TAG || node.$_tag === ARR_TAG || node.$_tag === ELEM_TAG) {
+    if (node.$_tag === OBJ_TAG || node.$_tag === ARR_TAG || node.$_tag === ELEM_TAG
+        || node.$_tag === STR_TAG || node.$_tag === VAL_TAG) {
         return CREATE_NODE({ $_tag: ROOT_TAG, $_content: [node] });
+    }
+    const structure = classify_ordinary_hson_structure(node);
+    if (structure.kind === "object" || structure.kind === "object-scalar" || structure.kind === "array") {
+        return CREATE_NODE({
+            $_tag: ROOT_TAG,
+            $_content: [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [node] })],
+        });
     }
     return CREATE_NODE({
         $_tag: ROOT_TAG,

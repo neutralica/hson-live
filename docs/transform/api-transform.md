@@ -24,8 +24,7 @@ hson.transform.calc(() => calculation())
 ```
 
 The same leaf implementations are available as the named exports `hsonString`,
-`hsonNumber`, and `hsonCalc`. There are no corresponding root-level
-`hson.string`, `hson.number`, or `hson.calc` methods.
+`hsonNumber`, and `hsonCalc`.
 
 Every constructor normalizes to a canonical node graph and supports two kinds
 of terminal operation:
@@ -275,6 +274,9 @@ Chooses HTML output.
 
 - `serialize()` returns an HTML string.
 - No in-memory HTML parse terminal is exposed.
+- Serializer-owned reserved carriers are emitted only where the HTML wire
+  needs them to preserve object/element mode, detached scalars, or exact text
+  item boundaries. Reserved tags are lowered before ordinary element parsing.
 
 ### `.toJson()`
 
@@ -283,6 +285,8 @@ Chooses JSON output.
 - `serialize()` returns a JSON string.
 - `value()` returns a detached in-memory `JsonValue` projection directly,
   without a textual serialization/parse round trip.
+- JSON text emission uses `-0` for negative zero; `value()` retains the same
+  runtime identity.
 
 JSON roundtrips serialize as plain JSON values, not raw internal HSON node
 shapes, except where a node shape is intentionally represented by the format.

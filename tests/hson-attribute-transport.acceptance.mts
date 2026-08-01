@@ -55,6 +55,13 @@ function prepare_parser_element(
   node: Record<string, unknown>,
   inheritedNamespace = HTML_NS,
 ): void {
+  if (node.nodeType === 3) {
+    Object.defineProperty(node, "textContent", {
+      configurable: true,
+      value: String(node.data ?? ""),
+    });
+    return;
+  }
   if (node.nodeType !== 1) return;
   const tagName = String(node.name ?? node.tagName ?? "");
   const namespace = inheritedNamespace === SVG_NS || tagName.toLowerCase() === "svg"
@@ -395,6 +402,40 @@ check("transport-sensitive attrs retain canonical equality through HSON text", (
   });
   assert.equal(must_tag(reparsed, "main").$_attrs?.["a:b"], "1");
   assert.equal(must_tag(reparsed, "main").$_attrs?.a__colon__b, "2");
+});
+
+check("reserved HTML transport lowering agrees across browser and Worker", () => {
+  const sources = [
+    `<_hson_obj><_hson_val>-0</_hson_val></_hson_obj>`,
+    `<value><_hson_val>-0</_hson_val></value>`,
+    `<_hson_elem><_hson_str>&quot;a&quot;</_hson_str><_hson_str>&quot;&quot;</_hson_str><_hson_str>&quot;b&quot;</_hson_str></_hson_elem>`,
+  ];
+  for (const [index, source] of sources.entries()) {
+    const workerNode = worker(source);
+    const browserNode = browser(source);
+    assert_worker_browser_equal(`reserved-transport-${index}`, workerNode, browserNode);
+  }
+
+  const scalar = detach_hson_root_value(worker(sources[1]!));
+  assert.equal(scalar.$_tag, "_hson_obj");
+  const property = scalar.$_content[0] as HsonNode;
+  const value = property.$_content[0] as HsonNode;
+  assert.equal(value.$_tag, "_hson_val");
+  assert.equal(Object.is(value.$_content[0], -0), true);
+
+  const text = detach_hson_root_value(worker(sources[2]!));
+  assert.deepEqual(
+    text.$_content.map((child) => (child as HsonNode).$_content[0]),
+    ["a", "", "b"],
+  );
+  assert_rejects_both(
+    `<_hson_elem><_hson_val>1</_hson_val></_hson_elem>`,
+    /_hson_val.*forbidden under.*_hson_elem/,
+  );
+  assert_rejects_both(
+    `<_hson_str data-x="lost">&quot;text&quot;</_hson_str>`,
+    /must not carry attributes or metadata/,
+  );
 });
 
 process.stdout.write(`# ${checks} ordinary attribute transport checks passed\n`);

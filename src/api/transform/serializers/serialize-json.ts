@@ -30,9 +30,8 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  *      into standard JS shapes.
  *
  * 3. Stringification:
- *    - Uses `make_string(serializedJson)` (a thin wrapper over
- *      `JSON.stringify` with project-level defaults) to produce the final
- *      JSON string.
+ *    - Uses the canonical JSON emitter so object-key layout remains stable and
+ *      negative zero retains the valid JSON spelling `-0`.
  *
  * 4. Error handling:
  *    - Any failure during the stringify step is caught and wrapped in
@@ -46,16 +45,57 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  *
  * @param $node - The root HSON node to serialize.
  * @returns A JSON string representation of the node.
- * @throws If invariants fail or if `make_string` throws during stringify.
+ * @throws If invariants fail or final JSON emission fails.
  */
 export function serialize_json($node: HsonNode): string {
     const serializedJson = json_value_from_node($node);
     try {
-        const json = make_string(serializedJson);
+        const json = serialize_json_value(serializedJson);
         return json;
     } catch (e: any) {
         _throw_transform_err(`error during final JSON.stringify\n ${e.message}`, 'serialize-json');
     }
+}
+
+/**
+ * Serialize the JSON projection without collapsing IEEE-754 negative zero.
+ *
+ * `JSON.stringify(-0)` emits `0`, even though `-0` is a valid JSON numeric
+ * spelling and canonical HSON graph equality distinguishes the two runtime
+ * values. The transport therefore owns its numeric emission rather than
+ * delegating numbers to `JSON.stringify`.
+ */
+export function serialize_json_value(value: JsonValue, depth = 0): string {
+    if (value === null) return "null";
+    if (typeof value === "string" || typeof value === "boolean") {
+        return JSON.stringify(value);
+    }
+    if (typeof value === "number") {
+        if (!Number.isFinite(value)) {
+            _throw_transform_err(
+                `cannot serialize non-finite JSON number ${String(value)}`,
+                "serialize-json",
+            );
+        }
+        return Object.is(value, -0) ? "-0" : JSON.stringify(value);
+    }
+
+    const indent = "  ".repeat(depth);
+    const childIndent = "  ".repeat(depth + 1);
+    if (Array.isArray(value)) {
+        if (value.length === 0) return "[]";
+        return `[` + "\n"
+            + value.map((child) => `${childIndent}${serialize_json_value(child, depth + 1)}`).join(",\n")
+            + `\n${indent}]`;
+    }
+
+    const entries = Object.entries(value);
+    if (entries.length === 0) return "{}";
+    return `{` + "\n"
+        + entries.map(([key, child]) =>
+            `${childIndent}${JSON.stringify(key)}: ${serialize_json_value(child, depth + 1)}`
+        ).join(",\n")
+        + `\n${indent}}`;
 }
 
 /** Project a canonical HSON graph directly to its in-memory JSON value. */

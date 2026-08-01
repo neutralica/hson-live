@@ -21,6 +21,7 @@ import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/de
 import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
 import { TOKEN_KIND } from "../src/api/transform/token.types.ts";
 import type { HsonMeta, HsonNode } from "../src/core/types.ts";
+import { TransformError } from "../src/core/errors.ts";
 
 let checks = 0;
 
@@ -728,7 +729,8 @@ check("unknown reserved standard-tag metadata is default-deny at every HSON boun
 
   assert.throws(
     () => parse(`<section <span hson:unknown="invalid"/>/>`),
-    /@attrs:"hson:unknown".*unknown canonical metadata key/,
+    (cause) => cause instanceof TransformError
+      && cause.code === "HSON_AUTHORED_METADATA_FORBIDDEN",
   );
   assert.deepEqual(
     onlyElement(parse(`<section data-_custom="ordinary"/>`)).$_attrs,
@@ -750,7 +752,8 @@ check("unknown reserved standard-tag metadata is default-deny at every HSON boun
 check("index is string-valued only on _hson_ii and canonical position is enforced", () => {
   assert.throws(
     () => parse(`<tag hson:index="3"/>`),
-    /metadata "index" is not defined for node "tag"/,
+    (cause) => cause instanceof TransformError
+      && cause.code === "HSON_AUTHORED_METADATA_FORBIDDEN",
   );
   const invalidValue = parse(`«"value"»`);
   const item = invalidValue.$_content[0] as HsonNode;

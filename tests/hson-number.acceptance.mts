@@ -234,5 +234,5 @@ check("transport carries ordinary numbers and requires fresh admission proof", (
   assert.equal(hsonNumber(decoded), admitted);
 });
 
-emit_hson_live_test_completion("core.hson-number", checks, checks, 0);
 process.stdout.write(`# ${checks} HSON numeric admission checks passed\n`);
+emit_hson_live_test_completion("core.hson-number", checks, checks, 0);

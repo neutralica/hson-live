@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { assertCanonicalClosure } from "../src/_tests/transform-oracle.ts";
 import { hsonCalc, hsonNumber } from "../src/number.ts";
+import { read_transform_error_details, TransformError } from "../src/core/errors.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 const Q1 = "0000000000000001";
@@ -206,6 +207,34 @@ check("fully rejected untrusted markup reports sanitization failure", () => {
   assert.throws(
     () => hsonTransform.fromUntrustedHtml(`<script>alert(1)</script>`),
     /all content removed by sanitizer/,
+  );
+});
+
+check("Worker-safe authored diagnostics retain portable codes and related positions", () => {
+  let observed: TransformError | undefined;
+  assert.throws(
+    () => hsonTransform.fromHson(`<a 1 a 2>`).toNode(),
+    (cause) => {
+      if (!(cause instanceof TransformError)) return false;
+      observed = cause;
+      return cause.code === "HSON_OBJECT_DUPLICATE_MEMBER";
+    },
+  );
+  assert.deepEqual(read_transform_error_details(observed), {
+    operation: "tokenize-hson",
+    code: "HSON_OBJECT_DUPLICATE_MEMBER",
+    stage: "tokenization",
+    source: { index: 5, line: 1, column: 6 },
+    related: [{
+      role: "first-declaration",
+      source: { index: 1, line: 1, column: 2 },
+    }],
+  });
+  assert.throws(
+    () => hsonTransform.fromHson(`"a\tb"`).toNode(),
+    (cause) => cause instanceof TransformError
+      && cause.code === "HSON_STRING_CONTROL_UNESCAPED"
+      && cause.source?.index === 2,
   );
 });
 

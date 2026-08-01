@@ -9,12 +9,18 @@ export type TransformErrorSource = Readonly<{
   column: number;
 }>;
 
+export type TransformErrorRelated = Readonly<{
+  role: string;
+  source: TransformErrorSource;
+}>;
+
 export type TransformErrorDetails = Readonly<{
   operation: string;
   code: string;
   stage?: string;
   source?: TransformErrorSource;
   path?: string;
+  related?: readonly TransformErrorRelated[];
 }>;
 
 export type TransformErrorOptions = Readonly<{
@@ -22,6 +28,7 @@ export type TransformErrorOptions = Readonly<{
   stage?: string;
   source?: TransformErrorSource;
   path?: string;
+  related?: readonly TransformErrorRelated[];
 }>;
 
 /** Portable structured identity for Transform-owned failures. */
@@ -31,6 +38,7 @@ export class TransformError extends Error {
   readonly stage: string | undefined;
   readonly source: TransformErrorSource | undefined;
   readonly path: string | undefined;
+  readonly related: readonly TransformErrorRelated[] | undefined;
 
   constructor(
     message: string,
@@ -45,6 +53,12 @@ export class TransformError extends Error {
     this.stage = details.stage;
     this.source = details.source === undefined ? undefined : Object.freeze({ ...details.source });
     this.path = details.path;
+    this.related = details.related === undefined
+      ? undefined
+      : Object.freeze(details.related.map((item) => Object.freeze({
+        role: item.role,
+        source: Object.freeze({ ...item.source }),
+      })));
   }
 }
 
@@ -62,6 +76,7 @@ export function read_transform_error_details(
     ...(error.stage === undefined ? {} : { stage: error.stage }),
     ...(error.source === undefined ? {} : { source: error.source }),
     ...(error.path === undefined ? {} : { path: error.path }),
+    ...(error.related === undefined ? {} : { related: error.related }),
   });
 }
 
@@ -82,6 +97,7 @@ export function _throw_transform_err(
       ...(options.stage === undefined ? {} : { stage: options.stage }),
       ...(options.source === undefined ? {} : { source: options.source }),
       ...(options.path === undefined ? {} : { path: options.path }),
+      ...(options.related === undefined ? {} : { related: options.related }),
     },
     cause,
   );
