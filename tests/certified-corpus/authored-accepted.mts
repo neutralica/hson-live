@@ -1,0 +1,77 @@
+import type { AcceptedCorpusCase } from "./corpus-types.mts";
+import { arr, elem, element, obj, property, str, val } from "./graph-expectations.mts";
+
+function literal(
+  id: string,
+  claim: string,
+  source: string,
+  expectedGraph: AcceptedCorpusCase["expectedGraph"],
+  expectedHson: string,
+  shape: string,
+  slot: string,
+  tags: readonly string[],
+  negativeZeroPaths?: readonly string[],
+): AcceptedCorpusCase {
+  return {
+    id,
+    claim,
+    classification: "literal-accepted-authored-hson",
+    ingress: "hson",
+    escapedInput: JSON.stringify(source),
+    ...(source.includes("\n") || source.includes("\r") ? { verbatimInput: source } : {}),
+    taxonomy: { shape, slot, variation: id.split(".").at(-1) },
+    tags,
+    origin: "settled-authored-hson-language",
+    rationale: claim,
+    disposition: "accept",
+    source,
+    expectedGraph,
+    expectedOutputs: { hson: expectedHson },
+    ...(negativeZeroPaths === undefined ? {} : { negativeZeroPaths }),
+  };
+}
+
+export const literalAcceptedAuthoredHsonCases: readonly AcceptedCorpusCase[] = [
+  literal("hson.accept.literal.primitive.empty-string", "A bare empty quoted string admits one string leaf.", `""`, str(""), `""`, "scalar", "root-value", ["primitive", "string"]),
+  literal("hson.accept.literal.primitive.string", "A bare ordinary quoted string admits one string leaf.", `"hello"`, str("hello"), `"hello"`, "scalar", "root-value", ["primitive", "string"]),
+  literal("hson.accept.literal.primitive.zero", "Zero admits as a typed numeric leaf.", `0`, val(0), `0`, "scalar", "root-value", ["primitive", "number"]),
+  literal("hson.accept.literal.primitive.negative-zero", "Negative zero retains exact numeric identity.", `-0`, val(-0), `-0`, "scalar", "root-value", ["primitive", "number", "negative-zero"], ["$.$_content[0]"]),
+  literal("hson.accept.literal.primitive.positive-integer", "A positive finite integer admits.", `42`, val(42), `42`, "scalar", "root-value", ["primitive", "number"]),
+  literal("hson.accept.literal.primitive.negative-fraction", "A negative finite fraction admits.", `-12.5`, val(-12.5), `-12.5`, "scalar", "root-value", ["primitive", "number"]),
+  literal("hson.accept.literal.primitive.exponent", "Exponent notation admits and canonicalizes by value.", `1e3`, val(1000), `1000`, "scalar", "root-value", ["primitive", "number", "variation"]),
+  literal("hson.accept.literal.primitive.true", "Bare true is a typed primitive value.", `true`, val(true), `true`, "scalar", "root-value", ["primitive", "boolean"]),
+  literal("hson.accept.literal.primitive.false", "Bare false is a typed primitive value.", `false`, val(false), `false`, "scalar", "root-value", ["primitive", "boolean"]),
+  literal("hson.accept.literal.primitive.null", "Bare null is a typed primitive value.", `null`, val(null), `null`, "scalar", "root-value", ["primitive", "null"]),
+
+  literal("hson.accept.literal.object.empty", "One angle pair denotes an empty HSON object.", `<>`, obj(), `<>`, "object", "root-object", ["object"]),
+  literal("hson.accept.literal.object.one-property", "An object contains a punctuation-free key/value property.", `<a 1>`, obj(property("a", val(1))), `<a 1>`, "object", "object-property", ["object"]),
+  literal("hson.accept.literal.object.multiple-properties", "Object property order is retained.", `<a 1 b "two" c false>`, obj(property("a", val(1)), property("b", str("two")), property("c", val(false))), `<\n  a 1\n  b "two"\n  c false\n>`, "object", "object-property", ["object", "order"]),
+  literal("hson.accept.literal.object.nested", "An object property may contain a nested HSON object.", `<record <field 2>>`, obj(property("record", obj(property("field", val(2))))), `<record <field 2>>`, "nested-object", "property-value", ["object", "nested"]),
+  literal("hson.accept.literal.object.array-value", "An object property may contain an array.", `<items «1,2»>`, obj(property("items", arr(val(1), val(2)))), `<\n  items «\n    1,\n    2\n  »\n>`, "object-with-array", "property-value", ["object", "array"]),
+  literal("hson.accept.literal.object.typed-keywords", "true, false, and null in object value position remain typed.", `<t true f false n null>`, obj(property("t", val(true)), property("f", val(false)), property("n", val(null))), `<\n  t true\n  f false\n  n null\n>`, "object", "property-value", ["object", "primitive"]),
+  literal("hson.accept.literal.object.empty-decoded-key", "An empty decoded object-property key is valid.", "<`` 1>", obj(property("", val(1))), "<`` 1>", "object", "property-key", ["object", "backtick-name", "empty-name"]),
+  literal("hson.accept.literal.object.colon-dot-names", "Colon and dot keys canonicalize through backticks.", `<:x 1 a.b 2>`, obj(property(":x", val(1)), property("a.b", val(2))), `<\n  \`:x\` 1\n  \`a.b\` 2\n>`, "object", "property-key", ["object", "backtick-name"]),
+  literal("hson.accept.literal.object.comments", "Physical-line comments are grammar trivia between object tokens.", `<a// key/value\n 1 b// key/value\r\n 2>`, obj(property("a", val(1)), property("b", val(2))), `<\n  a 1\n  b 2\n>`, "object", "trivia", ["object", "comment", "crlf"]),
+  literal("hson.accept.literal.object.negative-zero", "An object property preserves negative zero.", `<value -0>`, obj(property("value", val(-0))), `<value -0>`, "object", "property-value", ["object", "negative-zero"], ["$.$_content[0].$_content[0].$_content[0].$_content[0]"]),
+
+  literal("hson.accept.literal.array.empty-bracket", "An empty bracket array canonicalizes to guillemets.", `[]`, arr(), `«»`, "array", "root-array", ["array", "variation"]),
+  literal("hson.accept.literal.array.empty-guillemet", "An empty guillemet array admits.", `«»`, arr(), `«»`, "array", "root-array", ["array"]),
+  literal("hson.accept.literal.array.primitives", "Arrays remain comma-separated and retain primitive item order.", `[1,"two",false,null]`, arr(val(1), str("two"), val(false), val(null)), `«\n  1,\n  "two",\n  false,\n  null\n»`, "array", "array-item", ["array", "primitive"]),
+  literal("hson.accept.literal.array.trailing-comma-bracket", "A bracket-array trailing comma is accepted variation.", `[1,2,]`, arr(val(1), val(2)), `«\n  1,\n  2\n»`, "array", "trailing-comma", ["array", "variation"]),
+  literal("hson.accept.literal.array.trailing-comma-guillemet", "A guillemet-array trailing comma is accepted variation.", `«1,2,»`, arr(val(1), val(2)), `«\n  1,\n  2\n»`, "array", "trailing-comma", ["array", "variation"]),
+  literal("hson.accept.literal.array.nested", "Nested arrays retain indexed membership.", `[[1],«2,3»]`, arr(arr(val(1)), arr(val(2), val(3))), `«\n  «\n    1\n  »,\n  «\n    2,\n    3\n  »\n»`, "nested-array", "array-item", ["array", "nested"]),
+  literal("hson.accept.literal.array.object-item", "An array item may be a HSON object.", `[<name "Ada">]`, arr(obj(property("name", str("Ada")))), `«\n  <name "Ada">\n»`, "array-of-object", "array-item", ["array", "object"]),
+  literal("hson.accept.literal.array.negative-zero", "An array item preserves negative zero.", `[-0,0]`, arr(val(-0), val(0)), `«\n  -0,\n  0\n»`, "array", "array-item", ["array", "negative-zero"], ["$.$_content[0].$_content[0].$_content[0]"]),
+
+  literal("hson.accept.literal.element.empty", "A self-closing angle construct denotes an empty HSON element.", `<div/>`, elem(element("div")), `<div/>`, "element", "element-name", ["element"]),
+  literal("hson.accept.literal.element.text", "An HSON element may contain quoted string content.", `<p "text"/>`, elem(element("p", [str("text")])), `<p "text"/>`, "element", "element-content", ["element", "string"]),
+  literal("hson.accept.literal.element.nested", "An HSON element may contain a nested element.", `<p <em "text"/>/>`, elem(element("p", [element("em", [str("text")])])), `<p\n  <em "text"/>\n/>`, "nested-element", "element-content", ["element", "nested"]),
+  literal("hson.accept.literal.element.attribute", "An element attribute retains its explicit value.", `<input title="value"/>`, elem(element("input", [], { title: "value" })), `<input title="value"/>`, "element", "element-attribute", ["element", "attribute"]),
+  literal("hson.accept.literal.element.flag", "A bare name in the element attribute region is a flag.", `<input disabled/>`, elem(element("input", [], { disabled: "disabled" })), `<input disabled/>`, "element", "element-flag", ["element", "flag"]),
+  literal("hson.accept.literal.element.keyword-flags", "Bare true, false, and null in the element attribute region are flags.", `<x true false null/>`, elem(element("x", [], { true: "true", false: "false", null: "null" })), `<x false null true/>`, "element", "element-flag", ["element", "flag", "primitive-keyword"]),
+  literal("hson.accept.literal.element.adjacent-strings", "Two adjacent authored string leaves remain distinct.", `<div "a" "b"/>`, elem(element("div", [str("a"), str("b")])), `<div\n  "a"\n  "b"\n/>`, "element", "element-content", ["element", "segmentation"]),
+  literal("hson.accept.literal.element.three-empty-strings", "Three adjacent empty authored string leaves remain three.", `<div """"""/>`, elem(element("div", [str(""), str(""), str("")])), `<div\n  ""\n  ""\n  ""\n/>`, "element", "element-content", ["element", "segmentation", "empty-string"]),
+  literal("hson.accept.literal.element.quid", "An element QUID remains supported.", `<main @0000000000000001/>`, elem(element("main", [], undefined, "0000000000000001")), `<main @0000000000000001/>`, "element", "element-quid", ["element", "quid"]),
+  literal("hson.accept.literal.element.mixed-content", "Element strings and nested elements retain their order.", `<p "first" <em "middle"/> "last"/>`, elem(element("p", [str("first"), element("em", [str("middle")]), str("last")])), `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`, "nested-element", "element-content", ["element", "order"]),
+  literal("hson.accept.literal.trivia.space-tab-lf-cr", "Grammar trivia is exactly SPACE, HT, LF, and CR.", ` \t\r\n42\r\n`, val(42), `42`, "scalar", "trivia", ["trivia", "whitespace"]),
+] as const;

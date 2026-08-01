@@ -159,6 +159,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({
+      id: "transform.certified-authored-hson-corpus",
+      subject: "Transform",
+      displayName: "Certified authored-HSON corpus",
+      packageScript: "test:certified-authored-hson-corpus",
+      repositoryModule: "tests/certified-authored-hson-corpus.acceptance.mts",
+      runtime: "node",
+      executableChecks: 4,
+      collections: ["hson", "certified-corpus", "transport", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.view-state-snapshot-codec",
       subject: "LiveMap",
       displayName: "View-state snapshot codec",
