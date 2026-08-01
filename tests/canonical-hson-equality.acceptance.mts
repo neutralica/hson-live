@@ -94,6 +94,31 @@ check("primitive values remain type-sensitive without coercion", () => {
   assert.equal(canonical_hson_graph_equal(graph(""), graph(" ")), false);
 });
 
+check("strict equality does not normalize detached HTML scalar carriers", () => {
+  for (const scalar of [
+    node("_hson_str", [""]),
+    node("_hson_str", ["text"]),
+    node("_hson_val", [-0]),
+    node("_hson_val", [false]),
+    node("_hson_val", [null]),
+  ]) {
+    const carrier = node("_hson_obj", [structuredClone(scalar)]);
+    const scalarBefore = structuredClone(scalar);
+    const carrierBefore = structuredClone(carrier);
+
+    assert.doesNotThrow(() => assert_invariants(scalar, "admitted detached scalar"));
+    assert.doesNotThrow(() => assert_invariants(carrier, "admitted detached HTML carrier"));
+    assert.equal(canonical_hson_graph_equal(carrier, scalar), false);
+    assert.equal(canonical_hson_graph_equal(scalar, carrier), false);
+    assert.equal(
+      canonical_hson_graph_difference(carrier, scalar)?.kind,
+      "vsn-mismatch",
+    );
+    assert.deepEqual(scalar, scalarBefore);
+    assert.deepEqual(carrier, carrierBefore);
+  }
+});
+
 check("attribute key order is irrelevant while primitive value identity remains strict", () => {
   const left = document(node("div", [], { count: 0, enabled: false }));
   const reordered = document(node("div", [], { enabled: false, count: 0 }));

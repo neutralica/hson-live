@@ -32,13 +32,17 @@ import { normalize_detached_hson_semantic_value } from "../core/normalize-hson-s
 export const SPIN: Record<Fmt, { emit: (n: HsonNode) => string; parse: (s: string) => HsonNode }> = {
   json: {
     emit: (n) => hson.fromNode(n as any).toJson().serialize(),
-    // JSON and HTML parsers retain their internal attachment carrier on the
-    // generic Transform surface. The diagnostic ring compares semantic values,
-    // so detach that parser-owned carrier before feeding another serializer.
+    // JSON parsing retains its internal attachment carrier on the generic
+    // Transform surface. Detach that parser-owned carrier before invariant
+    // admission and before feeding another serializer.
     parse: (s) => detach_hson_root_value(hson.fromJson(s.trim()).toNode() as any),
   },
   html: {
     emit: (n) => hson.fromNode(n as any).toHtml().serialize(),
+    // HTML transport admission owns detached scalar-carrier normalization:
+    // parse structural HTML -> detach -> normalize transport carrier ->
+    // safe_parse invariant admission -> strict comparison. Comparators never
+    // repair or normalize either operand.
     parse: (s) => normalize_detached_hson_semantic_value(
       detach_hson_root_value(hson.fromTrustedHtml(s).toNode() as any),
       "diagnostics.html-transport",

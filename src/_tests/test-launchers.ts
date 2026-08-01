@@ -145,7 +145,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:canonical-hson-equality",
       repositoryModule: "tests/canonical-hson-equality.acceptance.mts",
       runtime: "node",
-      executableChecks: 15,
+      executableChecks: 16,
       collections: ["canonical-graph", "equality"],
     }),
     launcher({
