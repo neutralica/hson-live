@@ -117,7 +117,7 @@ Bare false is a typed primitive value.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.null -->
 
-**Verdict — V / I / ?:** `VALID* `
+**Verdict — V / I / ?:** `V `
 
 Bare null is a typed primitive value.
 
@@ -132,7 +132,7 @@ see false
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.string -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V `
 
 A bare ordinary quoted string admits one string leaf.
 
@@ -147,7 +147,7 @@ A bare ordinary quoted string admits one string leaf.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.true -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 Bare true is a typed primitive value.
 
@@ -170,7 +170,7 @@ see false
 <!-- review-meta: source=display; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.comments -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** ` V`
 
 Physical-line comments are grammar trivia between object tokens.
 
@@ -192,7 +192,7 @@ exact codes not clear but yes this is correct
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.object.empty -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 One angle pair denotes an empty HSON object.
 
@@ -209,7 +209,7 @@ One angle pair denotes an empty HSON object.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.multiple-properties -->
 
-**Verdict — V / I / ?:** `VALID/CORRECT `
+**Verdict — V / I / ?:** `V`
 
 Object property order is retained.
 
@@ -224,7 +224,7 @@ Object property order is retained.
 <!-- review-meta: source=inline; review=standalone; attention=Negative zero must remain distinct from positive zero. -->
 <!-- authored-case:hson.accept.literal.object.negative-zero -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V `
 
 An object property preserves negative zero.
 
@@ -289,7 +289,7 @@ examples:
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.array.empty-bracket -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** `V`
 
 An empty bracket array canonicalizes to guillemets.
 
@@ -308,7 +308,7 @@ HSON's parser accepts brackets and guillemet, flexibly. It always serializes as 
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.array.empty-guillemet -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** ` V`
 
 An empty guillemet array admits.
 
@@ -325,7 +325,7 @@ An empty guillemet array admits.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Negative zero must remain distinct from positive zero. -->
 <!-- authored-case:hson.accept.literal.array.negative-zero -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** `V`
 
 An array item preserves negative zero.
 
@@ -361,7 +361,7 @@ item order is always preserved by arrays in HSON via ordering, just as with HSON
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.array.trailing-comma-bracket -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A bracket-array trailing comma is accepted variation.
 
@@ -376,7 +376,7 @@ A bracket-array trailing comma is accepted variation.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.array.trailing-comma-guillemet -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A guillemet-array trailing comma is accepted variation.
 
@@ -392,7 +392,7 @@ A guillemet-array trailing comma is accepted variation.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.adjacent-strings -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 Two adjacent authored string leaves remain distinct.
 
@@ -409,7 +409,7 @@ Two adjacent authored string leaves remain distinct.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.element.attribute -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An element attribute retains its explicit value.
 
@@ -428,7 +428,7 @@ the source HSON is valid regardless
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.element.empty -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A self-closing angle construct denotes an empty HSON element.
 
@@ -443,7 +443,7 @@ A self-closing angle construct denotes an empty HSON element.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.element.flag -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A bare name in the element attribute region is a flag.
 
@@ -464,7 +464,7 @@ only _hson_elem may receive flags or attributes
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.quid -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An element QUID remains supported.
 
@@ -479,7 +479,7 @@ An element QUID remains supported.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.element.text -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An HSON element may contain quoted string content.
 
@@ -494,7 +494,7 @@ An HSON element may contain quoted string content.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.three-empty-strings -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 Three adjacent empty authored string leaves remain three.
 
@@ -510,7 +510,7 @@ I hate it but valid
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.root.element-fragment -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A homogeneous root element fragment preserves sibling order.
 
@@ -530,7 +530,7 @@ if they don't share a single root shouldn't they be able to exist side-by-side?
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.array.nested -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 Nested arrays retain indexed membership.
 
@@ -545,7 +545,7 @@ Nested arrays retain indexed membership.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.array.object-item -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An array item may be a HSON object.
 
@@ -560,7 +560,7 @@ An array item may be a HSON object.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.mixed-content -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** `V`
 
 Element strings and nested elements retain their order.
 
@@ -575,7 +575,7 @@ Element strings and nested elements retain their order.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.element.nested -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An HSON element may contain a nested element.
 
@@ -605,7 +605,7 @@ An object property may contain an array.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.nested -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 An object property may contain a nested HSON object.
 
@@ -652,7 +652,7 @@ typed primitive value /// <_hson_val> tags only valid within _hson_obj content; 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Primitive-looking name or flag versus typed primitive value. -->
 <!-- authored-case:hson.accept.literal.element.keyword-flags -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** `V`
 
 Bare true, false, and null in the element attribute region are flags.
 
@@ -669,7 +669,7 @@ Bare true, false, and null in the element attribute region are flags.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.typed-keywords -->
 
-**Verdict — V / I / ?:** ` VALID/CORRECT`
+**Verdict — V / I / ?:** ` V`
 
 true, false, and null in object value position remain typed.
 
@@ -735,7 +735,7 @@ defer to JSON
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.number.positive-fraction -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 A fraction retains digits on both sides of the decimal point.
 
@@ -783,7 +783,7 @@ defer to JSON
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.negative-fraction -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 A negative finite fraction admits.
 
@@ -798,7 +798,7 @@ A negative finite fraction admits.
 <!-- review-meta: source=inline; review=standalone; attention=Negative zero must remain distinct from positive zero. -->
 <!-- authored-case:hson.accept.literal.primitive.negative-zero -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 Negative zero retains exact numeric identity.
 
@@ -817,7 +817,7 @@ defer to JSON
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.positive-integer -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 A positive finite integer admits.
 
@@ -832,7 +832,7 @@ A positive finite integer admits.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.zero -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V`
 
 Zero admits as a typed numeric leaf.
 
@@ -848,7 +848,7 @@ Zero admits as a typed numeric leaf.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.hexadecimal -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Hexadecimal spelling is not JSON-compatible HSON number syntax.
 
@@ -863,7 +863,7 @@ Hexadecimal spelling is not JSON-compatible HSON number syntax.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.leading-plus -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 A JSON-compatible HSON number may not begin with plus.
 
@@ -878,7 +878,7 @@ A JSON-compatible HSON number may not begin with plus.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.leading-zero -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 A nonzero integer may not begin with zero.
 
@@ -893,7 +893,7 @@ A nonzero integer may not begin with zero.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.missing-exponent-digits -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An exponent marker requires following digits.
 
@@ -908,7 +908,7 @@ An exponent marker requires following digits.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.missing-fraction-digits -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 A decimal point requires following fraction digits.
 
@@ -940,7 +940,7 @@ accept anything that is functionally 0.5 but serialize canonically
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.missing-signed-exponent-digits -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An exponent sign requires following digits.
 
@@ -955,7 +955,7 @@ An exponent sign requires following digits.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.named-nan -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 NaN is not an authored finite number.
 
@@ -970,7 +970,7 @@ NaN is not an authored finite number.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.named-negative-infinity -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Negative Infinity is not an authored finite number.
 
@@ -985,7 +985,7 @@ Negative Infinity is not an authored finite number.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.named-positive-infinity -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Infinity is not an authored finite number.
 
@@ -1000,7 +1000,7 @@ Infinity is not an authored finite number.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.nonfinite-overflow -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 A syntactically valid number that overflows binary64 rejects as nonfinite.
 
@@ -1015,7 +1015,7 @@ A syntactically valid number that overflows binary64 rejects as nonfinite.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.numeric-separator -->
 
-**Verdict — V / I / ?:** ` INVALID if JSON-incompatible`
+**Verdict — V / I / ?:** ` I`
 
 Numeric separators are not JSON-compatible HSON number syntax.
 
@@ -1024,7 +1024,7 @@ Numeric separators are not JSON-compatible HSON number syntax.
 **Current proposal:** Invalid
 
 **Notes:**
-
+seek parity with JSON
 
 ## 9. Accepted source trivia and comments
 
@@ -1056,7 +1056,7 @@ I think so?
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.trivia.comment-to-eof -->
 
-**Verdict — V / I / ?:** ` VALID?`
+**Verdict — V / I / ?:** ` V`
 
 A physical-line comment may supply trailing root trivia through EOF.
 
@@ -1120,7 +1120,7 @@ hard for me to review Unitype code: I trust the recommendation here
 <!-- review-meta: source=display; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.trivia.space-tab-lf-cr -->
 
-**Verdict — V / I / ?:** `VALID IF PRECEDENT (presumably JSON) `
+**Verdict — V / I / ?:** `V`
 
 Grammar trivia is exactly SPACE, HT, LF, and CR.
 
@@ -1172,7 +1172,7 @@ see above
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.source.whitespace-only -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Whitespace-only source has no semantic value.
 
@@ -1203,7 +1203,7 @@ U+FEFF is not authored-HSON trivia.
 
 **Notes:**
 
-LEAN INVALID--PROPOSAL ACCEPTED
+PROPOSAL VALUES ACCEPTED
 
 
 ### Family: Unsupported external whitespace
@@ -1651,7 +1651,7 @@ I can't read any of these really but I trust your judgement. if it's not JSON it
 
 **Shared rule:** Each displayed JSON escape is accepted in a quoted HSON string.
 
-**Family verdict — V / I / ?:** `VALID/CORRECT/RULE UPHELD `
+**Family verdict — V / I / ?:** `V`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -2059,7 +2059,7 @@ This displayed escape spelling is accepted inside a quoted HSON string.
 
 **Shared rule:** Each displayed malformed, incomplete, or unsupported quoted-string escape is invalid.
 
-**Family verdict — V / I / ?:** `VALID/CORRECT/RULE UPHELD `
+**Family verdict — V / I / ?:** `I`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -2283,7 +2283,7 @@ This displayed malformed or unsupported quoted-string escape is invalid.
 
 **Shared rule:** A raw U+0000 through U+001F code unit is invalid inside a quoted string.
 
-**Family verdict — V / I / ?:** `I have no opinion on this--it sounds like INVALID is the recommendation here `
+**Family verdict — V / I / ?:** `I`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -2980,7 +2980,7 @@ attribute, and flag names are presently proposed invalid.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.backtick-name.element-name -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** ` V`
 
 A nonempty backtick name is admitted as an HSON element name.
 
@@ -2995,7 +2995,7 @@ A nonempty backtick name is admitted as an HSON element name.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.colon-dot-names -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V `
 
 Colon and dot keys canonicalize through backticks.
 
@@ -3013,7 +3013,7 @@ Just running this through the parsing panels, it seems valid as-is. Which is fin
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Empty decoded name; validity depends on the name's grammatical role. -->
 <!-- authored-case:hson.accept.literal.object.empty-decoded-key -->
 
-**Verdict — V / I / ?:** `VALID `
+**Verdict — V / I / ?:** `V `
 
 An empty decoded object-property key is valid.
 
@@ -3042,7 +3042,7 @@ An empty decoded object-property key is valid.
  and generally these examples seem valid overall. 
  HOWEVER: I am not going comment on these examples individually because the backtickspam is very confusing both to myself and possibly agents. I don't want to say 'valid' to something like this: ```<`` 1>``` and then have to spend the rest of HSON dismabiguating that this ```<`` 1>``` in fact isn't valid but it was trying to be and I knew what it meant. 
 
-**Family verdict — V / I / ?:** `VALID if escape is valid and backticks are still correctly `
+**Family verdict — V / I / ?:** ` `
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -3052,7 +3052,7 @@ Blank family and override fields mean not reviewed.
 <!-- review-meta: source=inline; review=family:backtick-name-ordinary-dispatch; attention=none -->
 <!-- authored-case:hson.accept.family.backtick-name.escaped-backtick -->
 
-**Override — V / I / ?:** `VALID if escape is valid and backticks are still correctly (which it appears to be here)` 
+**Override — V / I / ?:** ` `
 
 This displayed escape spelling is accepted inside a backtick object-property name.
 
@@ -3162,7 +3162,7 @@ This displayed escape spelling is accepted inside a backtick object-property nam
 
 **Shared rule:** Each complete four-hex-digit Unicode escape sequence is accepted in a backtick object-property name.
 
-**Family verdict — V / I / ?:** `??? valid??? I'm not even sure here -- what do you suggest? `
+**Family verdict — V / I / ?:** `V `
 
 **USER NOTE:** --> once again the backticks are weird here; it looks like your proposals are correct but I don't want to appear to bless invalid backticks 
 
@@ -3440,7 +3440,7 @@ This displayed escape spelling is accepted inside a backtick object-property nam
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.backtick-name.attribute-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Backtick names are not admitted as element attribute names.
 
@@ -3455,7 +3455,7 @@ Backtick names are not admitted as element attribute names.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.backtick-name.flag-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I`
 
 Backtick names are not admitted as element flag names.
 
@@ -3470,7 +3470,7 @@ Backtick names are not admitted as element flag names.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Calibrated diagnostic; review only the rejection verdict here. Exact diagnostic ownership is deferred. -->
 <!-- authored-case:hson.reject.family.backtick-name.trailing-backslash -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 This displayed malformed or unsupported backtick-name escape is invalid.
 
@@ -3487,7 +3487,7 @@ This displayed malformed or unsupported backtick-name escape is invalid.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Calibrated diagnostic; review only the rejection verdict here. Exact diagnostic ownership is deferred. -->
 <!-- authored-case:hson.reject.family.backtick-name.unicode-interrupted-backtick -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 This displayed malformed or unsupported backtick-name escape is invalid.
 
@@ -3503,7 +3503,7 @@ This displayed malformed or unsupported backtick-name escape is invalid.
 
 **Shared rule:** Each displayed malformed, incomplete, or unsupported backtick-name escape is invalid.
 
-**Family verdict — V / I / ?:** ` INVALID`
+**Family verdict — V / I / ?:** ` I`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -3513,7 +3513,7 @@ Blank family and override fields mean not reviewed.
 <!-- review-meta: source=inline; review=family:backtick-name-malformed-escapes; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.family.backtick-name.unsupported-letter -->
 
-**Override — V / I / ?:** `INVALID `
+**Override — V / I / ?:** `I `
 
 This displayed malformed or unsupported backtick-name escape is invalid.
 
@@ -3528,7 +3528,7 @@ This displayed malformed or unsupported backtick-name escape is invalid.
 <!-- review-meta: source=inline; review=family:backtick-name-malformed-escapes; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.family.backtick-name.unsupported-slash -->
 
-**Override — V / I / ?:** ` INVALID`
+**Override — V / I / ?:** ` I`
 
 This displayed malformed or unsupported backtick-name escape is invalid.
 
@@ -3543,7 +3543,7 @@ This displayed malformed or unsupported backtick-name escape is invalid.
 <!-- review-meta: source=inline; review=family:backtick-name-malformed-escapes; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.family.backtick-name.unsupported-zero -->
 
-**Override — V / I / ?:** ` INVALID`
+**Override — V / I / ?:** ` I`
 
 This displayed malformed or unsupported backtick-name escape is invalid.
 
@@ -3772,7 +3772,7 @@ This displayed malformed or unsupported backtick-name escape is invalid.
 
 **Shared rule:** A raw U+0000 through U+001F code unit is invalid inside a backtick name.
 
-**Family verdict — V / I / ?:** ` INVALID`
+**Family verdict — V / I / ?:** ` I`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.
@@ -4457,7 +4457,7 @@ This raw C0 code unit is invalid inside a backtick name.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.attribute-syntax -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Object properties do not use attribute equals syntax.
 
@@ -4472,7 +4472,7 @@ Object properties do not use attribute equals syntax.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.comma -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Object properties do not use commas.
 
@@ -4487,7 +4487,7 @@ Object properties do not use commas.
 <!-- review-meta: source=inline; review=standalone; attention=Duplicate declaration behavior. -->
 <!-- authored-case:hson.reject.literal.object.duplicate -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Duplicate decoded object-property keys reject.
 
@@ -4504,7 +4504,7 @@ Duplicate decoded object-property keys reject.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.extra-value -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An object property has exactly one value.
 
@@ -4519,7 +4519,7 @@ An object property has exactly one value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.flag -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An object property cannot omit its value.
 
@@ -4534,7 +4534,7 @@ An object property cannot omit its value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.missing-trivia -->
 
-**Verdict — V / I / ?:** `INVALID????????? ? `
+**Verdict — V / I / ?:** `I`
 
 A property key and value require trivia.
 
@@ -4550,7 +4550,7 @@ After some thought -- this must indeed be invalid, because then you would have t
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.object.quid -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Object-property QUIDs do not exist in authored HSON///_obj yes correct only _hson_elem
 
@@ -4566,7 +4566,7 @@ Object-property QUIDs do not exist in authored HSON///_obj yes correct only _hso
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.array.mismatched-bracket -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 A bracket array must close with a bracket.
 
@@ -4581,7 +4581,7 @@ A bracket array must close with a bracket.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.array.mismatched-guillemet -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 A guillemet array must close with a guillemet.
 
@@ -4596,7 +4596,7 @@ A guillemet array must close with a guillemet.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.array.missing-comma -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Array items require commas.
 
@@ -4611,7 +4611,7 @@ Array items require commas.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.array.missing-item -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Two array commas cannot omit an item.
 
@@ -4627,7 +4627,7 @@ Two array commas cannot omit an item.
 <!-- review-meta: source=inline; review=standalone; attention=Duplicate declaration behavior. -->
 <!-- authored-case:hson.reject.literal.element.duplicate-attribute -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Duplicate decoded element attributes reject.
 
@@ -4644,7 +4644,7 @@ Duplicate decoded element attributes reject.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.element.duplicate-quid -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An element cannot declare two QUIDs.
 
@@ -4659,7 +4659,7 @@ An element cannot declare two QUIDs.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.element.flag-after-content -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Element flags cannot follow content.
 
@@ -4674,7 +4674,7 @@ Element flags cannot follow content.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.element.malformed-closer -->
 
-**Verdict — V / I / ?:** ` VALID???`
+**Verdict — V / I / ?:** `V`
 
 Whitespace cannot split an element closer.
 
@@ -4703,7 +4703,7 @@ SPACES ARE ERRORS HERE:
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.element.missing-attribute-value -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 An explicit element attribute requires a value.
 
@@ -4718,7 +4718,7 @@ An explicit element attribute requires a value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.element.missing-quid -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 An element QUID marker requires a persisted QUID.
 
@@ -4733,7 +4733,7 @@ An element QUID marker requires a persisted QUID.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Empty decoded name; validity depends on the name's grammatical role. -->
 <!-- authored-case:hson.reject.literal.empty-attribute-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An empty decoded attribute name rejects.
 
@@ -4750,7 +4750,7 @@ An empty decoded attribute name rejects.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Empty decoded name; validity depends on the name's grammatical role. -->
 <!-- authored-case:hson.reject.literal.empty-element-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An empty decoded element name rejects.
 
@@ -4767,7 +4767,7 @@ An empty decoded element name rejects.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Empty decoded name; validity depends on the name's grammatical role. -->
 <!-- authored-case:hson.reject.literal.empty-flag-name -->
 
-**Verdict — V / I / ?:** `INVALID AS EITHER CONTENT OR FLAG `
+**Verdict — V / I / ?:** `I`
 
 An empty decoded flag name rejects.
 
@@ -4796,7 +4796,7 @@ versus mixed root modes visible. The exact descriptors also appear below.
 <!-- review-meta: source=inline; review=standalone; attention=Structural-mode crossing or `>` versus `/>` boundary. -->
 <!-- authored-case:hson.reject.basis.mode.object-element -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An HSON object property cannot contain an element-mode value.
 
@@ -4813,7 +4813,7 @@ An HSON object property cannot contain an element-mode value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Structural-mode crossing or `>` versus `/>` boundary. Direct `>` versus `/>` contrast. -->
 <!-- authored-case:hson.reject.literal.element.numeric-content -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Numeric typed content beneath an HSON element rejects.
 
@@ -4830,7 +4830,7 @@ Numeric typed content beneath an HSON element rejects.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Structural-mode crossing or `>` versus `/>` boundary. -->
 <!-- authored-case:hson.reject.literal.mode.array-element -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 An array cannot contain element-mode content.
 
@@ -4847,7 +4847,7 @@ An array cannot contain element-mode content.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Structural-mode crossing or `>` versus `/>` boundary. -->
 <!-- authored-case:hson.reject.literal.mode.element-array -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An HSON element cannot contain an array.
 
@@ -4864,7 +4864,7 @@ An HSON element cannot contain an array.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Structural-mode crossing or `>` versus `/>` boundary. -->
 <!-- authored-case:hson.reject.literal.mode.element-object -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 An HSON element cannot contain object structure.
 
@@ -4881,7 +4881,7 @@ An HSON element cannot contain object structure.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.root.bare-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 An arbitrary bare name is not a root primitive.
 
@@ -4898,7 +4898,7 @@ bare unquoted string with no wrapper is not valid
 <!-- review-meta: source=inline; review=standalone; attention=Structural-mode crossing or `>` versus `/>` boundary. -->
 <!-- authored-case:hson.reject.literal.root.mixed-modes -->
 
-**Verdict — V / I / ?:** ` VALID`
+**Verdict — V / I / ?:** `V`
 
 Element and object root modes cannot mix.
 
@@ -4917,7 +4917,7 @@ UNless there's a footgun I don't see
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.literal.root.multiple-values -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 A root contains exactly one semantic value.
 
@@ -4934,7 +4934,7 @@ A root contains exactly one semantic value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.root.trailing-closer -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Trailing source after a primitive rejects.
 
@@ -4949,7 +4949,7 @@ Trailing source after a primitive rejects.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.literal.source.empty -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Empty source has no semantic value.
 
@@ -4965,7 +4965,7 @@ Empty source has no semantic value.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Metadata or reserved-name behavior. -->
 <!-- authored-case:hson.reject.literal.authored-metadata -->
 
-**Verdict — V / I / ?:** `INVALID`
+**Verdict — V / I / ?:** `I`
 
 Authored structural metadata names reject.
 
@@ -4982,7 +4982,7 @@ Authored structural metadata names reject.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Historical or legacy-syntax regression. -->
 <!-- authored-case:hson.reject.literal.object.legacy-adjacent -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Adjacent angle objects do not merge into one object.
 
@@ -4999,7 +4999,7 @@ Adjacent angle objects do not merge into one object.
 <!-- review-meta: source=inline; review=standalone; attention=Historical or legacy-syntax regression. -->
 <!-- authored-case:hson.reject.literal.object.legacy-doubled -->
 
-**Verdict — V / I / ?:** ` INVALID`
+**Verdict — V / I / ?:** ` I`
 
 Legacy doubled-angle object syntax rejects.
 
@@ -5016,7 +5016,7 @@ Legacy doubled-angle object syntax rejects.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Metadata or reserved-name behavior. -->
 <!-- authored-case:hson.reject.literal.reserved-name -->
 
-**Verdict — V / I / ?:** `INVALID `
+**Verdict — V / I / ?:** `I `
 
 Authored _hson_* element names reject.
 
