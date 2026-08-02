@@ -3,6 +3,7 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_json_value, path_kind_error } from "./livemap.guard.js";
+import { json_values_equal } from "./livemap-helpers.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "splice">;
 
@@ -46,12 +47,12 @@ export function make_livemap_array_api<
     includes: (value) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
       const item = must_json_value(value, handlePath);
-      return arrayValue.some((arrayItem) => jsonValueEquals(arrayItem, item));
+      return arrayValue.some((arrayItem) => json_values_equal(arrayItem, item));
     },
     indexOf: (value) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
       const item = must_json_value(value, handlePath);
-      return arrayValue.findIndex((arrayItem) => jsonValueEquals(arrayItem, item));
+      return arrayValue.findIndex((arrayItem) => json_values_equal(arrayItem, item));
     },
     push: (value) => {
       const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
@@ -216,7 +217,7 @@ function arrayUnique(value: JsonValue | undefined, path: LivePath): JsonValue {
   const next: JsonValue[] = [];
 
   for (const item of mustArrayValue(value, path)) {
-    if (!next.some((nextItem) => jsonValueEquals(nextItem, item))) next.push(item);
+    if (!next.some((nextItem) => json_values_equal(nextItem, item))) next.push(item);
   }
 
   return next;
@@ -224,7 +225,7 @@ function arrayUnique(value: JsonValue | undefined, path: LivePath): JsonValue {
 
 function arrayRemoveValue(value: JsonValue | undefined, path: LivePath, item: JsonValue): JsonValue {
   const next = mustArrayValue(value, path);
-  const index = next.findIndex((arrayItem) => jsonValueEquals(arrayItem, item));
+  const index = next.findIndex((arrayItem) => json_values_equal(arrayItem, item));
   if (index === -1) return next;
 
   next.splice(index, 1);
@@ -232,30 +233,7 @@ function arrayRemoveValue(value: JsonValue | undefined, path: LivePath, item: Js
 }
 
 function arrayRemoveAll(value: JsonValue | undefined, path: LivePath, item: JsonValue): JsonValue {
-  return mustArrayValue(value, path).filter((arrayItem) => !jsonValueEquals(arrayItem, item));
-}
-
-/** Structural equality for JSON values used by value-based array helpers. */
-function jsonValueEquals(left: JsonValue, right: JsonValue): boolean {
-  if (left === right) return true;
-
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-
-    return left.every((item, index) => jsonValueEquals(item, right[index] as JsonValue));
-  }
-
-  if (!isObjectValue(left) || !isObjectValue(right)) return false;
-
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  if (leftKeys.length !== rightKeys.length) return false;
-
-  return leftKeys.every((key) => key in right && jsonValueEquals(left[key] as JsonValue, right[key] as JsonValue));
-}
-
-function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return mustArrayValue(value, path).filter((arrayItem) => !json_values_equal(arrayItem, item));
 }
 
 function arrayMove(value: JsonValue | undefined, path: LivePath, fromIndex: number, toIndex: number): JsonValue {

@@ -7,10 +7,13 @@ import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/live
 import { _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
-import { json_values_equal } from "./livemap-helpers.js";
 import { clone_node } from "../../core/clone-node.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import {
+  ordered_projected_value_equal,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
 import {
   is_projected_value_hson_node,
   projected_array_item_to_hson_node,
@@ -126,19 +129,21 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
     throw new Error("LiveMap editor cannot replace the root node yet.");
   }
 
-  const prev = snap_live_path(root, path);
+  const prevNode = resolve_value_node(root, path);
+  const prev = prevNode === undefined ? undefined : node_to_json_value(prevNode);
+  const prevCarrier = prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode);
+  const nextCarrier = admit_projected_value(value);
   const resolved = resolve_parent_node(root, path);
 
   if (resolved === undefined) {
     throw new Error(`LiveMap editor could not resolve parent path: ${format_live_path(path.slice(0, -1))}`);
   }
 
-  write_child_value(resolved.parent, resolved.key, value, path);
-
-  const next = snap_live_path(root, path);
+  write_child_value(resolved.parent, resolved.key, nextCarrier, path);
+  const next = materialize_projected_value(nextCarrier);
 
   return {
-    changed: !json_values_equal(prev, next),
+    changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
     prev,
     next,
   };
@@ -177,7 +182,7 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
   const next = snap_live_path(root, path);
 
   return {
-    changed: !json_values_equal(prev, next),
+    changed: true,
     prev,
     next,
   };
@@ -192,15 +197,17 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  * editor-local JSON projection used by path writes.
  */
 export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
-  const prev = snap_live_path(root, []);
-  const nextRoot = projected_value_to_hson_root(admit_projected_value(value));
+  const prevNode = resolve_value_node(root, []);
+  const prev = prevNode === undefined ? undefined : node_to_json_value(prevNode);
+  const prevCarrier = prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode);
+  const nextCarrier = admit_projected_value(value);
+  const nextRoot = projected_value_to_hson_root(nextCarrier);
 
   overwrite_hson_node(root, nextRoot);
-
-  const next = snap_live_path(root, []);
+  const next = materialize_projected_value(nextCarrier);
 
   return {
-    changed: !json_values_equal(prev, next),
+    changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
     prev,
     next,
   };
@@ -217,10 +224,13 @@ export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEdit
 export function replace_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
   if (path.length === 0) return replace_live_root(root, value);
 
-  const prev = snap_live_path(root, path);
-  if (prev === undefined) {
+  const prevNode = resolve_value_node(root, path);
+  if (prevNode === undefined) {
     throw new Error(`LiveMap replace path does not resolve: ${format_live_path(path)}`);
   }
+  const prev = node_to_json_value(prevNode);
+  const prevCarrier = projected_value_from_hson_node(prevNode);
+  const nextCarrier = admit_projected_value(value);
 
   const resolved = resolve_parent_node(root, path);
 
@@ -228,12 +238,11 @@ export function replace_live_path(root: HsonNode, path: LivePath, value: JsonVal
     throw new Error(`LiveMap editor could not resolve parent path: ${format_live_path(path.slice(0, -1))}`);
   }
 
-  write_child_value(resolved.parent, resolved.key, value, path);
-
-  const next = snap_live_path(root, path);
+  write_child_value(resolved.parent, resolved.key, nextCarrier, path);
+  const next = materialize_projected_value(nextCarrier);
 
   return {
-    changed: !json_values_equal(prev, next),
+    changed: !ordered_projected_value_equal(prevCarrier, nextCarrier),
     prev,
     next,
   };
@@ -246,7 +255,7 @@ export function replace_live_path(root: HsonNode, path: LivePath, value: JsonVal
  * an existing numeric index only. Array append/insert/remove operations are
  * handled by path-handle array helpers that replace the scoped array value.
  */
-function write_child_value(parent: HsonNode, key: LivePathPart, value: JsonValue, path: LivePath): void {
+function write_child_value(parent: HsonNode, key: LivePathPart, value: OrderedProjectedValue, path: LivePath): void {
   if (parent.$_tag === OBJ_TAG && typeof key === "string") {
     write_object_property(parent, key, value);
     return;
@@ -266,7 +275,7 @@ function write_child_value(parent: HsonNode, key: LivePathPart, value: JsonValue
  * Missing object properties are allowed because object shape can expand without
  * needing list insertion semantics.
  */
-function write_object_property(parent: HsonNode, key: string, value: JsonValue): void {
+function write_object_property(parent: HsonNode, key: string, value: OrderedProjectedValue): void {
   const nextWrapper = make_object_property_wrapper(key, value);
   const existingIndex = parent.$_content.findIndex((child) => is_Node(child) && child.$_tag === key);
 
@@ -283,7 +292,7 @@ function write_object_property(parent: HsonNode, key: string, value: JsonValue):
  * Missing indexes throw for now. That keeps this first array mutation slice to
  * deterministic replacement and avoids deciding append/sparse-array behavior.
  */
-function write_array_index(parent: HsonNode, index: number, value: JsonValue, path: LivePath): void {
+function write_array_index(parent: HsonNode, index: number, value: OrderedProjectedValue, path: LivePath): void {
   if (!Number.isInteger(index) || index < 0 || index >= parent.$_content.length) {
     throw new Error(`LiveMap editor cannot set invalid array index: ${format_live_path(path)}`);
   }
@@ -503,10 +512,10 @@ function array_node_to_value(node: HsonNode): JsonValue[] {
  * The wrapper tag is the object key. Its first child is the HSON value node that
  * represents the assigned JSON value.
  */
-function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
+function make_object_property_wrapper(key: string, value: OrderedProjectedValue): HsonNode {
   return projected_object_property_to_hson_node(
     key,
-    admit_projected_value(value),
+    value,
   );
 }
 
@@ -516,11 +525,19 @@ function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
  * The item index is stored in `index`, matching the canonical HSON array
  * representation used by the parser/serializer pipeline.
  */
-function make_array_item_wrapper(index: number, value: JsonValue): HsonNode {
+function make_array_item_wrapper(index: number, value: OrderedProjectedValue): HsonNode {
   return projected_array_item_to_hson_node(
     index,
-    admit_projected_value(value),
+    value,
   );
+}
+
+function optional_projected_values_equal(
+  left: OrderedProjectedValue | undefined,
+  right: OrderedProjectedValue | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return ordered_projected_value_equal(left, right);
 }
 
 function clone_hson_node(node: HsonNode): HsonNode {

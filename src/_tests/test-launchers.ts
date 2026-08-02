@@ -359,6 +359,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["projected-value", "admission", "materialization", "externally-discoverable"],
     }),
     launcher({
+      id: "core.projected-value-equality",
+      subject: "LiveMap",
+      displayName: "Ordered projected-value equality",
+      packageScript: "test:projected-value-equality",
+      repositoryModule: "tests/projected-value-equality.acceptance.mts",
+      runtime: "node",
+      executableChecks: 24,
+      collections: ["projected-value", "equality", "same-value", "externally-discoverable"],
+    }),
+    launcher({
       id: "livehost.authority",
       subject: "LiveHost",
       displayName: "Exclusive LiveHost authority",

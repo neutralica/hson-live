@@ -122,3 +122,37 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
 
   visit(value);
 }
+
+/** Exact ordered structural equality for admitted projected-value carriers. */
+export function ordered_projected_value_equal(
+  left: OrderedProjectedValue,
+  right: OrderedProjectedValue,
+): boolean {
+  if (Object.is(left, right)) return true;
+
+  if (left === null || right === null) return false;
+  if (typeof left !== "object" || typeof right !== "object") return false;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+    for (let index = 0; index < left.length; index += 1) {
+      const leftItem = left[index];
+      const rightItem = right[index];
+      if (leftItem === undefined || rightItem === undefined) return false;
+      if (!ordered_projected_value_equal(leftItem, rightItem)) return false;
+    }
+    return true;
+  }
+
+  if (!is_ordered_projected_object(left) || !is_ordered_projected_object(right)) return false;
+  if (left.entries.length !== right.entries.length) return false;
+
+  for (let index = 0; index < left.entries.length; index += 1) {
+    const leftEntry = left.entries[index];
+    const rightEntry = right.entries[index];
+    if (leftEntry === undefined || rightEntry === undefined) return false;
+    if (leftEntry[0] !== rightEntry[0]) return false;
+    if (!ordered_projected_value_equal(leftEntry[1], rightEntry[1])) return false;
+  }
+  return true;
+}

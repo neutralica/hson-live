@@ -8,12 +8,15 @@
  * the public surface can expose those amenities directly on a LiveMap without
  * requiring callers to treat the map as a separate store object.
  *
- * Store snapshots are cloned JSON values. Subscribers cannot mutate LiveMap by
+ * Store snapshots are detached projected values. Subscribers cannot mutate LiveMap by
  * mutating a received snapshot, and path subscribers receive the same cloned
  * value shape they would get from `map.at(path).snap()`.
  */
 
 import type { JsonValue } from "../../core/types.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { json_values_equal as projected_json_values_equal } from "./livemap-helpers.js";
 import type {
   LiveMapCore,
   LiveMapDisposer,
@@ -29,12 +32,13 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 
-function clone_json_value<TValue>(value: TValue): TValue {
+function clone_selector_value<TValue>(value: TValue): TValue {
   return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
 }
 
-function json_signature(value: unknown): string {
-  return JSON.stringify(value);
+function copy_projected_store_value<TValue>(value: TValue): TValue {
+  if (value === undefined) return value;
+  return materialize_projected_value(admit_projected_value(value)) as TValue;
 }
 
 function values_equal<TValue>(
@@ -44,33 +48,36 @@ function values_equal<TValue>(
 ): boolean {
   return options?.equal === undefined
     ? Object.is(next, prev)
-    : options.equal(clone_json_value(next), clone_json_value(prev));
+    : options.equal(clone_selector_value(next), clone_selector_value(prev));
 }
 
-function json_values_equal<TValue>(
+function projected_values_equal<TValue>(
   next: TValue,
   prev: TValue,
   options: LiveMapStoreSubscribeOptions<TValue> | undefined,
 ): boolean {
   return options?.equal === undefined
-    ? json_signature(next) === json_signature(prev)
-    : options.equal(clone_json_value(next), clone_json_value(prev));
+    ? projected_json_values_equal(
+      next as JsonValue | undefined,
+      prev as JsonValue | undefined,
+    )
+    : options.equal(copy_projected_store_value(next), copy_projected_store_value(prev));
 }
 
 /**
  * Create the subscription surface for one LiveMap.
  *
  * - `subscribe` notifies after any root feed event.
- * - `subscribeDiff` notifies only when the cloned root JSON signature changes.
+ * - `subscribeDiff` notifies only when ordered projected root identity changes.
  * - `subscribeSel` notifies when the selected value changes by `Object.is` or a
  *   caller-provided equality function.
- * - `subscribePath` listens to one LivePath and compares cloned path snapshots
- *   by JSON signature unless a caller-provided equality function is supplied.
+ * - `subscribePath` listens to one LivePath and compares detached path snapshots
+ *   by ordered projected equality unless a caller-provided function is supplied.
  */
 export function make_livemap_store_api<TValue = JsonValue | undefined>(
   map: Pick<LiveMapCore<TValue>, "snap" | "feed" | "at">,
 ): LiveMapStoreApi<TValue> {
-  const snapshot = (): TValue => clone_json_value(map.snap());
+  const snapshot = (): TValue => copy_projected_store_value(map.snap());
 
   const subscribe = (listener: LiveMapStoreListener<TValue>): LiveMapDisposer => {
     return map.feed([], () => {
@@ -80,17 +87,14 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
 
   const subscribeDiff = (listener: LiveMapStoreDiffListener<TValue>): LiveMapDisposer => {
     let prev = snapshot();
-    let prevSignature = json_signature(prev);
 
     return map.feed([], () => {
       const next = snapshot();
-      const nextSignature = json_signature(next);
-      if (nextSignature === prevSignature) return;
+      if (projected_values_equal(next, prev, undefined)) return;
 
       const old = prev;
-      prev = clone_json_value(next);
-      prevSignature = nextSignature;
-      listener(clone_json_value(next), clone_json_value(old));
+      prev = copy_projected_store_value(next);
+      listener(copy_projected_store_value(next), copy_projected_store_value(old));
     });
   };
 
@@ -99,7 +103,7 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
     listener: LiveMapStoreSelectedListener<TSelected, TValue>,
     options?: LiveMapStoreSubscribeOptions<TSelected>,
   ): LiveMapDisposer => {
-    let prev = clone_json_value(selector(snapshot()));
+    let prev = clone_selector_value(selector(snapshot()));
 
     return map.feed([], () => {
       const state = snapshot();
@@ -107,8 +111,8 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
       if (values_equal(next, prev, options)) return;
 
       const old = prev;
-      prev = clone_json_value(next);
-      listener(clone_json_value(next), clone_json_value(old), state);
+      prev = clone_selector_value(next);
+      listener(clone_selector_value(next), clone_selector_value(old), state);
     });
   };
 
@@ -117,16 +121,16 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
     listener: LiveMapStorePathListener<TValue, TPath>,
     options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<TValue, TPath>>,
   ): LiveMapDisposer => {
-    const readPath = (): LiveMapPathValue<TValue, TPath> => clone_json_value(map.at(path).snap());
+    const readPath = (): LiveMapPathValue<TValue, TPath> => copy_projected_store_value(map.at(path).snap());
     let prev = readPath();
 
     return map.feed(path, (event: LiveMapFeedEvent) => {
       const next = readPath();
-      if (json_values_equal(next, prev, options)) return;
+      if (projected_values_equal(next, prev, options)) return;
 
       const old = prev;
-      prev = clone_json_value(next);
-      listener(clone_json_value(next), clone_json_value(old), event);
+      prev = copy_projected_store_value(next);
+      listener(copy_projected_store_value(next), copy_projected_store_value(old), event);
     });
   };
 

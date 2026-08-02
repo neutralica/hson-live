@@ -1,6 +1,8 @@
 // livemap-helpers.ts
 
 import type { JsonValue } from "../../core/types.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
 /** A cleanup function returned by subscription-style helpers. */
 export type LiveMapDisposer = () => void;
@@ -182,59 +184,9 @@ export function derive_from_paths<TPath extends LiveMapHelperPath>(options: Deri
 export function json_values_equal(
   left: JsonValue | undefined,
   right: JsonValue | undefined): boolean {
-  if (left === right) return true;
-
-  if (left === undefined
-    || right === undefined) {
-    return false;
-  }
-
-  if (left === null
-    || right === null) {
-    return false;
-  }
-
-  if (typeof left !== typeof right) {
-    return false;
-  }
-
-  if (Array.isArray(left)) {
-    if (!Array.isArray(right)
-      || left.length !== right.length) {
-      return false;
-    }
-
-    return left.every((value, index) => {
-      return json_values_equal(
-        value,
-        right[index]
-      );
-    });
-  }
-
-  if (typeof left === "object") {
-    if (typeof right !== "object"
-      || Array.isArray(right)) {
-      return false;
-    }
-
-    const leftKeys = Object.keys(left);
-    const rightKeys = Object.keys(right);
-
-    if (leftKeys.length !== rightKeys.length) {
-      return false;
-    }
-
-    return leftKeys.every((key) => {
-      return Object.prototype.hasOwnProperty.call(
-        right,
-        key
-      ) && json_values_equal(
-        left[key],
-        right[key]
-      );
-    });
-  }
-
-  return false;
+  if (left === undefined || right === undefined) return left === right;
+  return ordered_projected_value_equal(
+    admit_projected_value(left),
+    admit_projected_value(right),
+  );
 }

@@ -14,6 +14,8 @@ import { is_plain_json_object_value, must_feed_listener, must_json_value, must_l
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
 import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { json_values_equal } from "./livemap-helpers.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
 import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
@@ -752,7 +754,7 @@ function make_batch_tx(
   isOpen: () => boolean,
 ): LiveMapBatchTx<JsonValue | undefined> {
   /** The transaction mirrors Core mutation semantics. */
-  let candidate = clone_json_value(snap_live_path(root, []));
+  let candidate = copy_projected_json_value(must_projected_root_value(root));
 
   const pushWriteOps = (ops: readonly LiveMapCoreWriteOp[]) => {
     candidate = apply_json_write_ops(candidate, ops);
@@ -829,8 +831,8 @@ function replay_write_ops(
   root: HsonNode,
   ops: readonly LiveMapDataOp[],
 ): readonly LiveMapCoreWriteOp[] {
-  let candidate = clone_json_value(
-    snap_live_path(root, []),
+  let candidate = copy_projected_json_value(
+    must_projected_root_value(root),
   );
 
   const writeOps: LiveMapCoreWriteOp[] = [];
@@ -1030,9 +1032,14 @@ function validation_headline_path(validation: LiveMapSchemaValidation, fallbackP
   return validation.issues[0]?.path ?? fallbackPath;
 }
 
-function clone_json_value(value: JsonValue | undefined): JsonValue {
-  if (value === undefined) return null;
-  return JSON.parse(JSON.stringify(value)) as JsonValue;
+function copy_projected_json_value(value: JsonValue): JsonValue {
+  return materialize_projected_value(admit_projected_value(value));
+}
+
+function must_projected_root_value(root: HsonNode): JsonValue {
+  const value = snap_live_path(root, []);
+  if (value !== undefined) return value;
+  throw new Error("LiveMap projected root does not resolve.");
 }
 
 function set_json_path(root: JsonValue, path: LivePath, value: JsonValue): void {
@@ -1242,10 +1249,10 @@ function apply_write_ops(
     if (op.kind === "splice") {
       const currentValue = must_core_array_value(snap_live_path(root, op.path), op.path);
       const next = [...currentValue];
-      const removed = next.splice(op.start, op.deleteCount, ...op.items.map(clone_json_value));
+      const removed = next.splice(op.start, op.deleteCount, ...op.items.map(copy_projected_json_value));
       const edit = set_live_path(root, op.path, next);
       if (!edit.changed) continue;
-      const spliceOp: LiveMapSpliceOp = Object.freeze({ kind: "splice", path: clone_live_path(op.path), start: op.start, removed: Object.freeze(removed.map(clone_json_value)), inserted: Object.freeze(op.items.map(clone_json_value)), prev: must_json_value(edit.prev, op.path), next: must_json_value(edit.next, op.path) });
+      const spliceOp: LiveMapSpliceOp = Object.freeze({ kind: "splice", path: clone_live_path(op.path), start: op.start, removed: Object.freeze(removed.map(copy_projected_json_value)), inserted: Object.freeze(op.items.map(copy_projected_json_value)), prev: must_json_value(edit.prev, op.path), next: must_json_value(edit.next, op.path) });
       ops.push(spliceOp);
       continue;
     }
@@ -1343,7 +1350,7 @@ function must_core_schema_write_ops(
   if (schema === undefined) return;
 
   /** Preview all writes against projected JSON, then validate the whole candidate root. */
-  const candidate = apply_json_write_ops(clone_json_value(snap_live_path(root, [])), writeOps);
+  const candidate = apply_json_write_ops(copy_projected_json_value(must_projected_root_value(root)), writeOps);
 
   must_schema_validation(
     schema.validateRoot(candidate),
@@ -1381,16 +1388,16 @@ function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWri
     }
 
     if (op.kind === "set") {
-      set_json_path(candidate, op.path, clone_json_value(op.value));
+      set_json_path(candidate, op.path, copy_projected_json_value(op.value));
       continue;
     }
 
     if (op.kind === "replace") {
       if (op.path.length === 0) {
-        candidate = clone_json_value(op.value);
+        candidate = copy_projected_json_value(op.value);
       } else {
         must_resolved_path("replace", op.path, snap_json_path(candidate, op.path));
-        set_json_path(candidate, op.path, clone_json_value(op.value));
+        set_json_path(candidate, op.path, copy_projected_json_value(op.value));
       }
       continue;
     }
@@ -1405,7 +1412,7 @@ function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWri
 function apply_json_splice_write_op(root: JsonValue, op: LiveMapSpliceWriteOp): void {
   const currentValue = must_core_array_value(snap_json_path(root, op.path), op.path);
   const next = [...currentValue];
-  next.splice(op.start, op.deleteCount, ...op.items.map(clone_json_value));
+  next.splice(op.start, op.deleteCount, ...op.items.map(copy_projected_json_value));
   set_json_path(root, op.path, next);
 }
 
@@ -1414,7 +1421,7 @@ function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSet
   const currentValue = snap_json_path(root, op.path);
 
   if (currentValue !== undefined && !is_json_object_value(currentValue)) {
-    set_json_path(root, op.path, clone_json_value(plain_object_from_set_many_values(op.value)));
+    set_json_path(root, op.path, copy_projected_json_value(plain_object_from_set_many_values(op.value)));
     return;
   }
 
@@ -1423,7 +1430,7 @@ function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSet
   }
 
   for (const [key, value] of entries) {
-    set_json_path(root, append_live_path(op.path, key), clone_json_value(value));
+    set_json_path(root, append_live_path(op.path, key), copy_projected_json_value(value));
   }
 }
 
