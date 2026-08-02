@@ -1,5 +1,4 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
-import { read_hson_node_quid } from "../../core/hson-node-quid.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
@@ -7,9 +6,8 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentRequestTarget,
 } from "../../types/livemap.types.js";
-import { index_livemap_document_elements } from "./livemap.document.identity.js";
+import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import {
-  find_document_node_path,
   LiveMapDocumentPathError,
   resolve_document_path,
   validate_document_path,
@@ -64,13 +62,14 @@ export function normalize_document_commit_target(
 export function resolve_document_target(
   root: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   target: LiveMapDocumentRequestTarget,
   operation: LiveMapDocumentOperation,
 ): HsonNode | Primitive {
   if (target.kind === "path") {
     return resolve_path(root, mode, validate_path(target.path, operation), operation);
   }
-  return resolve_quid_request(root, target.quid, operation);
+  return resolve_quid_request(root, mode, overlay, target.quid, operation).endpoint;
 }
 
 /**
@@ -80,6 +79,7 @@ export function resolve_document_target(
 export function canonicalize_document_request_target(
   root: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: LiveMapDocumentOperation,
 ): Readonly<{
@@ -95,23 +95,15 @@ export function canonicalize_document_request_target(
     });
   }
 
-  const endpoint = resolve_quid_request(root, request.quid, operation);
+  const resolved = resolve_quid_request(root, mode, overlay, request.quid, operation);
+  const endpoint = resolved.endpoint;
   if (!is_ordinary_element_node(endpoint)) {
     throw document_error("DOCUMENT_TARGET_KIND", operation, "QUID request did not resolve to an ordinary element");
-  }
-  let path;
-  try {
-    path = find_document_node_path(root, mode, endpoint);
-  } catch (cause) {
-    throw map_path_error(cause, operation);
-  }
-  if (path === undefined) {
-    throw document_error("DOCUMENT_TARGET_NOT_FOUND", operation, "QUID request resolved outside the canonical document path root");
   }
   return Object.freeze({
     target: Object.freeze({
       kind: "path",
-      path,
+      path: resolved.path,
       witness: Object.freeze({ quid: request.quid }),
     }),
     endpoint,
@@ -122,6 +114,7 @@ export function canonicalize_document_request_target(
 export function resolve_document_commit_target(
   root: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: LiveMapDocumentOperation,
 ): Readonly<{
@@ -131,12 +124,7 @@ export function resolve_document_commit_target(
   const target = normalize_document_commit_target(input, operation);
   const endpoint = resolve_path(root, mode, target.path, operation);
   if (target.witness !== undefined && is_ordinary_element_node(endpoint)) {
-    let activeQuid: string | undefined;
-    try {
-      activeQuid = read_hson_node_quid(endpoint);
-    } catch (cause) {
-      throw document_error("INVALID_DOCUMENT_IDENTITY", operation, "path endpoint carries invalid QUID metadata", cause);
-    }
+    const activeQuid = overlay.quidAtPath(target.path);
     if (activeQuid !== undefined && activeQuid !== target.witness.quid) {
       throw document_error(
         "DOCUMENT_WITNESS_MISMATCH",
@@ -160,19 +148,16 @@ export function require_document_attr_element(
 
 function resolve_quid_request(
   root: HsonNode,
+  mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   quid: string,
   operation: LiveMapDocumentOperation,
-): HsonNode {
-  let endpoint: HsonNode | undefined;
-  try {
-    endpoint = index_livemap_document_elements(root).get(quid);
-  } catch (cause) {
-    throw document_error("INVALID_DOCUMENT_IDENTITY", operation, "current persisted identity is invalid", cause);
-  }
-  if (endpoint === undefined) {
+): Readonly<{ path: ReturnType<typeof validate_document_path>; endpoint: HsonNode | Primitive }> {
+  const path = overlay.pathForQuid(quid);
+  if (path === undefined) {
     throw document_error("DOCUMENT_TARGET_NOT_FOUND", operation, `no element carries persisted QUID ${JSON.stringify(quid)}`);
   }
-  return endpoint;
+  return Object.freeze({ path, endpoint: resolve_path(root, mode, path, operation) });
 }
 
 function resolve_path(

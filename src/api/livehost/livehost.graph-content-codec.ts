@@ -1,4 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
+import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentContent } from "../../types/livemap.types.js";
@@ -7,7 +8,6 @@ import {
   decode_exact_hson_value,
   encode_exact_hson_value,
 } from "../livemap/livemap.document.view-state-codec.js";
-import { index_livemap_document_elements } from "../livemap/livemap.document.identity.js";
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 
 const FORMAT = "hson-graph" as const;
@@ -108,7 +108,7 @@ function validate_content(content: HsonNode | Primitive): void {
   }
   try {
     assert_invariants(content, "livehost graph-content codec");
-    index_livemap_document_elements(content);
+    scan_hson_node_quids(content);
   } catch (cause) {
     throw graph_error(
       "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID",

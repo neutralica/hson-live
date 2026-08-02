@@ -13,7 +13,7 @@ import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hso
 import type { DocumentLiveMapCapture, DocumentLiveMapMode } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
-  index_livemap_document_elements,
+  build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
 } from "./livemap.document.identity.js";
 import {
@@ -579,7 +579,7 @@ function validate_canonical_document(root: HsonNode, expectedMode: DocumentLiveM
     );
   }
   try {
-    index_livemap_document_elements(root);
+    build_livemap_document_identity_overlay(root, expectedMode);
   } catch (cause) {
     const code: ViewStateSnapshotCodecErrorCode = cause instanceof LiveMapDocumentIdentityError
       ? "VIEW_STATE_SNAPSHOT_IDENTITY_INVALID"

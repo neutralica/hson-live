@@ -1,12 +1,14 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0 and 1 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0, 1, and 3 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
 Unit 0 settles one additional point that supersedes the earlier draft below: QUID metadata is canonical graph state. A QUID-only mutation of a LiveMap-owned graph uses the ordinary LiveMap revision and commit stream. No `identityGeneration` is introduced, and strict canonical equality remains QUID-sensitive. Later units may derive sparse lookup updates from accepted canonical commits, but they must not create a silent identity mutation stream or allow same-revision canonical graphs to differ only by QUID metadata.
 
-Unit 1 supersedes the inspection-baseline statements below that say mutation commits preserve the caller's request-target form. `LiveMapDocumentRequestTarget` remains path-or-QUID for active compatibility calls, while every newly constructed `LiveMapGraphOp` uses `LiveMapDocumentCommitTarget`, a validated path plus optional non-routing witness. The current identity index performs bounded synchronous QUID-request lowering; replay retains one named legacy QUID adapter, and the old LiveHost wire decoder remains a compatibility input pending Unit 8. The inventory below remains useful as historical migration evidence, not as the post-Unit-1 operation contract.
+Unit 1 supersedes the inspection-baseline statements below that say mutation commits preserve the caller's request-target form. `LiveMapDocumentRequestTarget` remains path-or-QUID for active compatibility calls, while every newly constructed `LiveMapGraphOp` uses `LiveMapDocumentCommitTarget`, a validated path plus optional non-routing witness. The Unit 3 sparse overlay now performs bounded synchronous QUID-request lowering; replay retains one named legacy QUID adapter, and the old LiveHost wire decoder remains a compatibility input pending Unit 8. The inventory below remains useful as historical migration evidence, not as the post-Unit-1 operation contract.
+
+Unit 3 replaces the retained QUID-to-node index with one immutable, bidirectional QUID/path overlay per document map. The overlay is derived and nonserialized, retains no graph pointers, and stores entries only for present QUIDs. Root, revision, and overlay are installed as one controller state after candidate validation. `document.byQuid`, request lowering, witness checks, and narrow reflection correspondence now consume overlay paths. The current correctness strategy rebuilds the overlay once from each final candidate before publication; operation-specific incremental reconciliation remains Unit 4 work.
 
 ## Inspection baseline
 
@@ -567,6 +569,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 3 — Central sparse document identity overlay
 
+- **Status:** Implemented and executable.
 - **Goal:** Replace the QUID-to-node index with the `SparseDocumentIdentityOverlay` abstraction and path scanner.
 - **Production ownership:** Replace `livemap.document.identity.ts`; controller owns root plus overlay.
 - **Public/API effect:** `document.byQuid` behavior remains, implementation becomes QUID-to-path.
@@ -575,6 +578,8 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Empty-QUID maps allocate identity state proportional to `N`, or overlay attempts to own LiveTree runtime maps.
 - **Dependency:** Unit 1 path utilities.
 - **Suggested commit direction:** `refactor(livemap): add sparse document identity overlay`.
+- **Implemented boundary:** One scanner validates syntax, placement, uniqueness, and both directions; retained storage is `O(Q)` with no node pointers; captures omit the derived overlay; reflection reads a narrow internal facade; no LiveTree or LiveHost wire semantics changed.
+- **Current follow-up:** Candidate mutation/replay/install rebuilding remains one full final-graph scan before publication. Unit 4 must replace this correctness seam with operation-derived reconciliation without introducing independent overlay commands.
 
 ### Unit 4 — Atomic operation-to-overlay reconciliation
 

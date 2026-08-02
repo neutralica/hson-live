@@ -25,7 +25,7 @@ import {
 
 export type PreparedDocumentReplay = Readonly<{
   root: HsonNode;
-  identity: PreparedDocumentInstall["identity"];
+  overlay: PreparedDocumentInstall["overlay"];
   commit: LiveMapGraphCommit;
 }>;
 
@@ -33,6 +33,7 @@ export type LiveMapDocumentReplayController = Readonly<{
   mode: DocumentLiveMapMode;
   rev: () => number;
   root: () => HsonNode;
+  overlay: () => PreparedDocumentInstall["overlay"];
   applyReplay: (candidate: PreparedDocumentReplay) => LiveMapGraphCommit;
   commits: LiveMapCommitObserverApi;
 }>;
@@ -48,7 +49,7 @@ export function replay_livemap_document_commit(
   }
 
   let root = clone_live_root(controller.root());
-  let identity: PreparedDocumentInstall["identity"] | undefined;
+  let overlay: PreparedDocumentInstall["overlay"] = controller.overlay();
   const operations: LiveMapGraphOp[] = [];
 
   for (const [index, rawOperation] of envelope.ops.entries()) {
@@ -68,7 +69,7 @@ export function replay_livemap_document_commit(
         root: rawOperation.root,
       }, controller.mode);
       root = prepared.root;
-      identity = prepared.identity;
+      overlay = prepared.overlay;
       operations.push(Object.freeze({
         domain: "graph",
         op: "replace-root",
@@ -81,8 +82,8 @@ export function replay_livemap_document_commit(
     let prepared;
     try {
       prepared = is_legacy_quid_target_operation(rawOperation)
-        ? prepare_legacy_quid_target_graph_operation(root, controller.mode, rawOperation)
-        : prepare_document_graph_operation(root, controller.mode, rawOperation);
+        ? prepare_legacy_quid_target_graph_operation(root, controller.mode, rawOperation, overlay)
+        : prepare_document_graph_operation(root, controller.mode, rawOperation, overlay);
     } catch (cause) {
       if (cause instanceof LiveMapDocumentMutationError) {
         throw new LiveMapDocumentStagingError(index, cause);
@@ -97,11 +98,11 @@ export function replay_livemap_document_commit(
       );
     }
     root = prepared.root;
-    identity = prepared.identity;
+    overlay = prepared.overlay;
     operations.push(prepared.operation);
   }
 
-  if (identity === undefined) {
+  if (operations.length === 0) {
     throw new LiveMapReplayInputError("graph commit contains no operations", undefined, "EMPTY_GRAPH_COMMIT");
   }
   const commit: LiveMapGraphCommit = Object.freeze({
@@ -110,7 +111,7 @@ export function replay_livemap_document_commit(
     rev: envelope.rev,
     ops: Object.freeze(operations),
   });
-  return controller.applyReplay({ root, identity, commit });
+  return controller.applyReplay({ root, overlay, commit });
 }
 
 function is_legacy_quid_target_operation(input: unknown): boolean {

@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract and Unit 1 canonical document-path contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, and Unit 3 sparse QUID/path overlay contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -80,13 +80,25 @@ QUID
      or optional stale-intent witness
 ```
 
-Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-or-QUID compatibility. Canonical graph operations store `LiveMapDocumentCommitTarget`, whose discriminator is always `kind: "path"`. A QUID request is synchronously resolved through the current validated document identity index and lowered to the exact current path before the new operation is constructed. No newly produced LiveMap graph commit stores a QUID as its sole target.
+Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-or-QUID compatibility. Canonical graph operations store `LiveMapDocumentCommitTarget`, whose discriminator is always `kind: "path"`. A QUID request is synchronously resolved through the current validated document identity overlay and lowered to the exact current path before the new operation is constructed. No newly produced LiveMap graph commit stores a QUID as its sole target.
 
 A commit target may carry `witness: { quid }`. The path always routes. A matching active endpoint QUID validates same-epoch intent; an active different endpoint QUID reports a structured witness conflict; no endpoint QUID leaves identity-free replay available. A witness elsewhere cannot repair or reroute an invalid path, and raw bytes remain insufficient epoch provenance.
 
 Pre-Unit-1 QUID-targeted replay is retained behind one explicitly named legacy adapter. Successful legacy replay immediately normalizes the operation to path plus witness. LiveHost's existing decoder may still admit the old wire shape until its separately versioned protocol unit, but new authoritative history is produced from path-authoritative LiveMap commits.
 
 `LiveMapPathHandle` follows a projected location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
+
+## Sparse document identity overlay
+
+Each active document LiveMap owns one derived `QUID -> canonical path` and `canonical path -> QUID` overlay. Construction performs one deterministic scan of the owned canonical root, validates QUID syntax, eligibility, and uniqueness, and stores entries only for QUID-bearing ordinary elements. Returned paths are detached and frozen. The overlay stores no graph-node pointers and is empty for a QUID-free graph, so retained identity storage is `O(Q)` rather than `O(N)`.
+
+`document.byQuid` first reads the current overlay path, resolves that path against the current owned root, and returns a detached clone. QUID request lowering uses the same forward lookup. Optional commit witnesses use the reverse path lookup; they never route or repair an invalid path. Repeated reads do not rebuild or rescan the graph.
+
+The controller owns root, ordinary revision, and overlay as one coherent state. Construction, mutation planning, replay, install, and restore build and validate a candidate overlay before the state is published. Failed duplicate or malformed candidates publish neither root, revision, overlay, history, nor observations. Exact captures serialize the canonical graph and QUID metadata, not the derived overlay.
+
+Unit 3 deliberately rebuilds the overlay once from each final candidate graph before publication. This is a correctness-first full candidate scan, separate from retained sparse storage. Unit 4 will derive operation-specific reconciliation and later performance work will address whole-root candidate cloning; neither optimization is represented as complete here.
+
+The overlay never mints QUIDs, owns LiveTree claims, retains DOM nodes, or manages LiveTree CSS, event, animation, resource, handle, or lifecycle records. Reflection may read the current path/QUID correspondence through an internal read-only facade, while `LiveTreeRuntime` remains the sole owner of active LiveTree identity.
 
 ## LiveMap does not mint implicitly
 
@@ -117,7 +129,7 @@ The projection does not promise to preserve retained handles, active continuity,
 
 Ordinary LiveMap document APIs protect system metadata and currently expose no supported operation that directly adds, replaces, or removes `$_meta.quid`.
 
-`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-index reconciliation, feeds, or subscriptions. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. A future path-authoritative registration operation belongs at the canonical document mutation/transition seam.
+`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, or subscriptions. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. A future path-authoritative registration operation belongs at the canonical document mutation/transition seam.
 
 ## Required invariants
 
@@ -132,3 +144,7 @@ Automated acceptance coverage must continue to establish:
 7. Serialized QUID bytes alone establish neither provenance nor authority.
 8. LiveTree remains QUID-authoritative for active exact-node identity.
 9. LiveMap paths remain the planned authoritative target for durable structural operations.
+10. Every installed document QUID has exactly one overlay path, and every overlay path resolves to the same graph QUID.
+11. QUID-free graphs retain an empty overlay, and no overlay retains graph-node pointers.
+12. Root, revision, and overlay install coherently only after candidate validation.
+13. Overlay construction and lookup never mint QUIDs or mutate LiveTree runtime ownership.

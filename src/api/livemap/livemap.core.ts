@@ -153,7 +153,8 @@ function make_livemap_core_from_owned_root(
   const initialMode = prepared.mode;
   let owned = {
     root: prepared.root,
-    documentIdentity: prepared.documentIdentity,
+    documentOverlay: prepared.documentOverlay,
+    revision: initial.revision ?? 0,
   };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
@@ -162,8 +163,7 @@ function make_livemap_core_from_owned_root(
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined = initial.schema;
   /** Revision zero represents the initial graph before any changed commit. */
-  let currentRev = initial.revision ?? 0;
-  const transitionController = make_livemap_transition_controller(initialMode, () => currentRev);
+  const transitionController = make_livemap_transition_controller(initialMode, () => owned.revision);
 
   function prepareDetachedCommit(
     commit: LiveMapCommit<LiveMapAnyOp>,
@@ -179,11 +179,15 @@ function make_livemap_core_from_owned_root(
       baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
       install: () => {
         if (initialMode === "element" || initialMode === "fragment") {
-          owned = { root: preparedNext.root, documentIdentity: preparedNext.documentIdentity };
+          owned = {
+            root: preparedNext.root,
+            documentOverlay: preparedNext.documentOverlay,
+            revision: commit.rev,
+          };
         } else {
           overwrite_hson_node(owned.root, preparedNext.root);
+          owned = { ...owned, revision: commit.rev };
         }
-        currentRev = commit.rev;
       },
       notify: (acceptedCommit) => {
         if (initialMode === "element" || initialMode === "fragment") {
@@ -198,7 +202,11 @@ function make_livemap_core_from_owned_root(
 
   function detachUnsafeReferences(): void {
     const detached = prepare_livemap_root(owned.root);
-    owned = { root: detached.root, documentIdentity: detached.documentIdentity };
+    owned = {
+      root: detached.root,
+      documentOverlay: detached.documentOverlay,
+      revision: owned.revision,
+    };
     transitionController.invalidate();
   }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
@@ -213,8 +221,8 @@ function make_livemap_core_from_owned_root(
         owned.root,
         currentSchema,
         feedHub,
-        () => currentRev,
-        (rev) => { currentRev = rev; },
+        () => owned.revision,
+        (revision) => { owned = { ...owned, revision }; },
         writeOps,
         commitObserverHub,
       );
@@ -223,8 +231,8 @@ function make_livemap_core_from_owned_root(
       owned.root,
       currentSchema,
       feedHub,
-      () => currentRev,
-      (rev) => { currentRev = rev; },
+      () => owned.revision,
+      (revision) => { owned = { ...owned, revision }; },
       writeOps,
       commitObserverHub,
       transitionController,
@@ -426,13 +434,13 @@ function make_livemap_core_from_owned_root(
     sub: subApi,
 
     get rev() {
-      return currentRev;
+      return owned.revision;
     },
     /** Capture the current projected root together with its committed revision. */
     capture: (): LiveMapCapture<JsonValue | undefined> => {
       const projected = must_projected_root_value(owned.root);
       return Object.freeze({
-        rev: currentRev,
+        rev: owned.revision,
         value: materialize_projected_value(projected),
         ...encode_projected_value_transport(projected),
       });
@@ -453,8 +461,7 @@ function make_livemap_core_from_owned_root(
       if (observedMode !== initialMode) {
         throw new Error(`LiveMap projected restore mode mismatch: expected ${initialMode}, observed ${observedMode}.`);
       }
-      owned = { root: candidate, documentIdentity: undefined };
-      currentRev = normalized.rev;
+      owned = { root: candidate, documentOverlay: undefined, revision: normalized.rev };
       transitionController.invalidate();
       commitObserverHub.emitSnapshot(normalized.rev);
     },
@@ -463,7 +470,7 @@ function make_livemap_core_from_owned_root(
       const normalized = must_projected_apply(input);
       must_expected_rev(
         normalized.prevRev,
-        currentRev,
+        owned.revision,
       );
 
       return commitOps([
@@ -480,7 +487,7 @@ function make_livemap_core_from_owned_root(
       const replay = must_livemap_replay(input);
       must_expected_rev(
         replay.prevRev,
-        currentRev,
+        owned.revision,
       );
 
       return commitOps(
@@ -529,19 +536,19 @@ function make_livemap_core_from_owned_root(
 
   const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController = {
     mode: initialMode,
-    rev: () => currentRev,
+    rev: () => owned.revision,
     root: () => owned.root,
-    identity: () => {
-      const identity = owned.documentIdentity;
+    overlay: () => {
+      const identity = owned.documentOverlay;
       if (identity === undefined) {
-        throw new Error(`LiveMap document mode ${initialMode} has no identity index.`);
+        throw new Error(`LiveMap document mode ${initialMode} has no identity overlay.`);
       }
       return identity;
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
     apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       transitionController.assertPublicMutationAllowed();
-      const prevRev = currentRev;
+      const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
       const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = unchanged
         ? Object.freeze({ changed: false, prevRev, rev: prevRev, ops: Object.freeze([]) })
@@ -561,8 +568,11 @@ function make_livemap_core_from_owned_root(
         commit,
         transitionController,
         () => {
-          owned = { root: candidate.root, documentIdentity: candidate.identity };
-          currentRev = commit.rev;
+          owned = {
+            root: candidate.root,
+            documentOverlay: candidate.overlay,
+            revision: commit.rev,
+          };
         },
         (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
       );
@@ -572,15 +582,15 @@ function make_livemap_core_from_owned_root(
       transitionController.assertPublicMutationAllowed();
       owned = {
         root: candidate.root,
-        documentIdentity: candidate.identity,
+        documentOverlay: candidate.overlay,
+        revision,
       };
-      currentRev = revision;
       transitionController.invalidate();
       commitObserverHub.emitSnapshot(revision);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();
-      const prevRev = currentRev;
+      const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
       const rev = unchanged ? prevRev : prevRev + 1;
       const commit: LiveMapGraphCommit<TOp> = unchanged
@@ -596,8 +606,11 @@ function make_livemap_core_from_owned_root(
         commit,
         transitionController,
         () => {
-          owned = { root: candidate.root, documentIdentity: candidate.identity };
-          currentRev = rev;
+          owned = {
+            root: candidate.root,
+            documentOverlay: candidate.overlay,
+            revision: rev,
+          };
         },
         (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
       );
@@ -607,9 +620,9 @@ function make_livemap_core_from_owned_root(
       transitionController.assertPublicMutationAllowed();
       owned = {
         root: candidate.root,
-        documentIdentity: candidate.identity,
+        documentOverlay: candidate.overlay,
+        revision: candidate.commit.rev,
       };
-      currentRev = candidate.commit.rev;
       transitionController.invalidate();
       commitObserverHub.emitCommit(candidate.commit, "replay");
       return candidate.commit;

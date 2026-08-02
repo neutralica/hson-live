@@ -24,9 +24,9 @@ import type {
 import { LiveMapDocumentMutationError } from "./livemap.error.js";
 import { clone_live_root } from "./livemap.editor.js";
 import {
-  index_livemap_document_elements,
+  build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
-  type LiveMapDocumentIdentityIndex,
+  type LiveMapDocumentIdentityOverlay,
 } from "./livemap.document.identity.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
@@ -47,7 +47,7 @@ type PreparedTargetAuthority = "request" | "commit";
 
 export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp> = Readonly<{
   root: HsonNode;
-  identity: LiveMapDocumentIdentityIndex;
+  overlay: LiveMapDocumentIdentityOverlay;
   operation: TOp;
 }>;
 
@@ -56,7 +56,7 @@ export type LiveMapDocumentMutationController = Readonly<{
   mode: DocumentLiveMapMode;
   rev: () => number;
   root: () => HsonNode;
-  identity: () => LiveMapDocumentIdentityIndex;
+  overlay: () => LiveMapDocumentIdentityOverlay;
   applyMutation: <TOp extends LiveMapGraphOp>(
     candidate: PreparedDocumentMutation<TOp>,
   ) => LiveMapGraphCommit<TOp>;
@@ -143,7 +143,7 @@ function read_document_attrs(
   const operation = "replace-attrs";
   const target = normalize_document_target(targetInput, operation);
   const element = require_document_attr_element(
-    resolve_document_target(controller.root(), controller.mode, target, operation),
+    resolve_document_target(controller.root(), controller.mode, controller.overlay(), target, operation),
     operation,
   );
   const attrs = decode_document_attrs(element.$_attrs ?? {});
@@ -186,6 +186,7 @@ function replace_document_attrs(
   const candidate = prepare_replace_document_attrs(
     controller.root(),
     controller.mode,
+    controller.overlay(),
     targetInput,
     attrsInput,
   );
@@ -198,13 +199,14 @@ function set_document_attr(
   nameInput: string,
   valueInput: LiveMapDocumentAttributeValue,
 ): LiveMapGraphCommit<LiveMapGraphSetAttrOp> {
-  const candidate = prepare_set_document_attr(controller.root(), controller.mode, targetInput, nameInput, valueInput);
+  const candidate = prepare_set_document_attr(controller.root(), controller.mode, controller.overlay(), targetInput, nameInput, valueInput);
   return finish_mutation(controller, candidate);
 }
 
 function prepare_set_document_attr(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   nameInput: unknown,
   valueInput: unknown,
@@ -214,7 +216,7 @@ function prepare_set_document_attr(
   const name = normalize_attr_name(nameInput, operationName);
   const value = normalize_attr_value(name, valueInput, operationName);
   const root = clone_live_root(inputRoot);
-  const { target, endpoint } = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const { target, endpoint } = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   if (name === "style" && typeof value === "object" && value !== null) attrs.style = value;
@@ -236,13 +238,14 @@ function remove_document_attr(
   targetInput: unknown,
   nameInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphRemoveAttrOp> {
-  const candidate = prepare_remove_document_attr(controller.root(), controller.mode, targetInput, nameInput);
+  const candidate = prepare_remove_document_attr(controller.root(), controller.mode, controller.overlay(), targetInput, nameInput);
   return finish_mutation(controller, candidate);
 }
 
 function prepare_remove_document_attr(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   nameInput: unknown,
   targetAuthority: PreparedTargetAuthority = "request",
@@ -250,7 +253,7 @@ function prepare_remove_document_attr(
   const operationName = "remove-attr";
   const name = normalize_attr_name(nameInput, operationName);
   const root = clone_live_root(inputRoot);
-  const { target, endpoint } = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const { target, endpoint } = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   delete attrs[name];
@@ -269,6 +272,7 @@ function prepare_remove_document_attr(
 function prepare_replace_document_attrs(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   attrsInput: unknown,
   targetAuthority: PreparedTargetAuthority = "request",
@@ -283,7 +287,7 @@ function prepare_replace_document_attrs(
     );
   }
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(
     preparedTarget.endpoint,
     operationName,
@@ -306,13 +310,14 @@ function replace_document_content(
   indexInput: unknown,
   replacementInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphReplaceContentOp> {
-  const candidate = prepare_replace_document_content(controller.root(), controller.mode, targetInput, indexInput, replacementInput);
+  const candidate = prepare_replace_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, replacementInput);
   return finish_mutation(controller, candidate);
 }
 
 function prepare_replace_document_content(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
   replacementInput: unknown,
@@ -322,7 +327,7 @@ function prepare_replace_document_content(
   const index = normalize_content_index(indexInput, operationName);
   const replacement = clone_content(replacementInput, operationName);
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   if (index >= endpoint.$_content.length) {
     throw mutation_error(
@@ -350,7 +355,7 @@ function insert_document_content(
   contentInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphInsertContentOp> {
   const candidate = prepare_insert_document_content(
-    controller.root(), controller.mode, targetInput, indexInput, contentInput,
+    controller.root(), controller.mode, controller.overlay(), targetInput, indexInput, contentInput,
   );
   return finish_mutation(controller, candidate);
 }
@@ -358,6 +363,7 @@ function insert_document_content(
 function prepare_insert_document_content(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
   contentInput: unknown,
@@ -367,7 +373,7 @@ function prepare_insert_document_content(
   const index = normalize_content_index(indexInput, operationName);
   const content = clone_content(contentInput, operationName);
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   if (index > endpoint.$_content.length) {
     throw mutation_error(
@@ -393,13 +399,14 @@ function remove_document_content(
   targetInput: unknown,
   indexInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphRemoveContentOp> {
-  const candidate = prepare_remove_document_content(controller.root(), controller.mode, targetInput, indexInput);
+  const candidate = prepare_remove_document_content(controller.root(), controller.mode, controller.overlay(), targetInput, indexInput);
   return finish_mutation(controller, candidate);
 }
 
 function prepare_remove_document_content(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   indexInput: unknown,
   targetAuthority: PreparedTargetAuthority = "request",
@@ -407,7 +414,7 @@ function prepare_remove_document_content(
   const operationName = "remove-content";
   const index = normalize_content_index(indexInput, operationName);
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   require_existing_content_index(endpoint, index, operationName);
   endpoint.$_content.splice(index, 1);
@@ -428,7 +435,7 @@ function move_document_content(
   toInput: unknown,
 ): LiveMapGraphCommit<LiveMapGraphMoveContentOp> {
   const candidate = prepare_move_document_content(
-    controller.root(), controller.mode, targetInput, fromInput, toInput,
+    controller.root(), controller.mode, controller.overlay(), targetInput, fromInput, toInput,
   );
   return finish_mutation(controller, candidate);
 }
@@ -436,6 +443,7 @@ function move_document_content(
 function prepare_move_document_content(
   inputRoot: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   targetInput: unknown,
   fromInput: unknown,
   toInput: unknown,
@@ -445,7 +453,7 @@ function prepare_move_document_content(
   const from = normalize_content_index(fromInput, operationName);
   const to = normalize_content_index(toInput, operationName);
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   require_existing_content_index(endpoint, from, operationName);
   require_existing_content_index(endpoint, to, operationName);
@@ -480,13 +488,14 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
   operation: TOp,
   operationName: DocumentOperation,
 ): PreparedDocumentMutation<TOp> {
-  let identity: LiveMapDocumentIdentityIndex | undefined;
+  let overlay: LiveMapDocumentIdentityOverlay;
   try {
-    identity = index_livemap_document_elements(root);
+    overlay = build_livemap_document_identity_overlay(root, expectedMode);
   } catch (cause) {
     if (cause instanceof LiveMapDocumentIdentityError) {
       throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, cause.message, cause);
     }
+    throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
   }
 
   try {
@@ -504,15 +513,7 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
     );
   }
 
-  if (identity === undefined) {
-    try {
-      identity = index_livemap_document_elements(root);
-    } catch (cause) {
-      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
-    }
-  }
-
-  return { root, identity, operation };
+  return { root, overlay, operation };
 }
 
 /** Validate and plan one graph operation against a detached candidate root. */
@@ -520,8 +521,9 @@ export function prepare_document_graph_operation(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   input: unknown,
+  overlay: LiveMapDocumentIdentityOverlay = build_livemap_document_identity_overlay(root, mode),
 ): PreparedDocumentMutation {
-  return prepare_graph_operation(root, mode, input, "commit");
+  return prepare_graph_operation(root, mode, overlay, input, "commit");
 }
 
 /**
@@ -532,6 +534,7 @@ export function prepare_legacy_quid_target_graph_operation(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   input: unknown,
+  overlay: LiveMapDocumentIdentityOverlay = build_livemap_document_identity_overlay(root, mode),
 ): PreparedDocumentMutation {
   if (!is_plain_record(input) || !is_plain_record(input.target) || input.target.kind !== "quid") {
     throw mutation_error(
@@ -540,12 +543,13 @@ export function prepare_legacy_quid_target_graph_operation(
       "legacy compatibility accepts only an explicit QUID request target",
     );
   }
-  return prepare_graph_operation(root, mode, input, "request");
+  return prepare_graph_operation(root, mode, overlay, input, "request");
 }
 
 function prepare_graph_operation(
   root: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   targetAuthority: PreparedTargetAuthority,
 ): PreparedDocumentMutation {
@@ -554,31 +558,31 @@ function prepare_graph_operation(
   }
   if (input.op === "set-attr") {
     must_exact_keys(input, ["domain", "op", "target", "name", "value"], input.op);
-    return prepare_set_document_attr(root, mode, input.target, input.name, input.value, targetAuthority);
+    return prepare_set_document_attr(root, mode, overlay, input.target, input.name, input.value, targetAuthority);
   }
   if (input.op === "remove-attr") {
     must_exact_keys(input, ["domain", "op", "target", "name"], input.op);
-    return prepare_remove_document_attr(root, mode, input.target, input.name, targetAuthority);
+    return prepare_remove_document_attr(root, mode, overlay, input.target, input.name, targetAuthority);
   }
   if (input.op === "replace-attrs") {
     must_exact_keys(input, ["domain", "op", "target", "attrs"], input.op);
-    return prepare_replace_document_attrs(root, mode, input.target, input.attrs, targetAuthority);
+    return prepare_replace_document_attrs(root, mode, overlay, input.target, input.attrs, targetAuthority);
   }
   if (input.op === "replace-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "replacement"], input.op);
-    return prepare_replace_document_content(root, mode, input.target, input.index, input.replacement, targetAuthority);
+    return prepare_replace_document_content(root, mode, overlay, input.target, input.index, input.replacement, targetAuthority);
   }
   if (input.op === "insert-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "content"], input.op);
-    return prepare_insert_document_content(root, mode, input.target, input.index, input.content, targetAuthority);
+    return prepare_insert_document_content(root, mode, overlay, input.target, input.index, input.content, targetAuthority);
   }
   if (input.op === "remove-content") {
     must_exact_keys(input, ["domain", "op", "target", "index"], input.op);
-    return prepare_remove_document_content(root, mode, input.target, input.index, targetAuthority);
+    return prepare_remove_document_content(root, mode, overlay, input.target, input.index, targetAuthority);
   }
   if (input.op === "move-content") {
     must_exact_keys(input, ["domain", "op", "target", "from", "to"], input.op);
-    return prepare_move_document_content(root, mode, input.target, input.from, input.to, targetAuthority);
+    return prepare_move_document_content(root, mode, overlay, input.target, input.from, input.to, targetAuthority);
   }
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", `unsupported graph operation ${JSON.stringify(input.op)}`);
 }
@@ -586,6 +590,7 @@ function prepare_graph_operation(
 function prepare_target(
   root: HsonNode,
   mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
   input: unknown,
   operation: DocumentOperation,
   authority: PreparedTargetAuthority,
@@ -594,8 +599,8 @@ function prepare_target(
   endpoint: HsonNode | Primitive;
 }> {
   return authority === "request"
-    ? canonicalize_document_request_target(root, mode, input, operation)
-    : resolve_document_commit_target(root, mode, input, operation);
+    ? canonicalize_document_request_target(root, mode, overlay, input, operation)
+    : resolve_document_commit_target(root, mode, overlay, input, operation);
 }
 
 function must_exact_keys(

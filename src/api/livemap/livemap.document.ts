@@ -2,6 +2,7 @@ import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
+import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
   ClassifiedLiveMap,
@@ -19,9 +20,11 @@ import type {
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import {
-  index_livemap_document_elements,
-  type LiveMapDocumentIdentityIndex,
+  build_livemap_document_identity_overlay,
+  register_livemap_document_identity_overlay,
+  type LiveMapDocumentIdentityOverlay,
 } from "./livemap.document.identity.js";
+import { resolve_document_path } from "./livemap.document.path.js";
 import {
   install_livemap_document_capture,
   restore_livemap_document_capture,
@@ -41,7 +44,7 @@ import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
   mode: LiveMapRootMode;
-  documentIdentity?: LiveMapDocumentIdentityIndex;
+  documentOverlay?: LiveMapDocumentIdentityOverlay;
 }>;
 
 /** Clone, validate, classify, and establish document identity before ownership. */
@@ -50,17 +53,29 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
     clone_live_root(input),
     "prepare_livemap_root",
   );
-  const identity = index_livemap_document_elements(root);
-  const mode = classify_live_root_mode(root);
+  let mode: LiveMapRootMode;
+  try {
+    mode = classify_live_root_shape(root);
+  } catch {
+    // Preserve the established malformed-root cause chain while still letting
+    // the document overlay own QUID validation for classifiable documents.
+    mode = classify_live_root_mode(root);
+  }
 
   if (mode === "element" || mode === "fragment") {
+    const documentOverlay = build_livemap_document_identity_overlay(root, mode);
+    classify_live_root_mode(root);
     return {
       root,
       mode,
-      documentIdentity: identity,
+      documentOverlay,
     };
   }
 
+  // Preserve canonical QUID validation for non-document maps without
+  // retaining any per-node identity structure.
+  scan_hson_node_quids(root);
+  classify_live_root_mode(root);
   return { root, mode };
 }
 
@@ -71,6 +86,11 @@ export function classify_live_root_mode(root: HsonNode): LiveMapRootMode {
   } catch (cause) {
     throw new Error("LiveMap cannot own a malformed canonical HSON root.", { cause });
   }
+
+  return classify_live_root_shape(root);
+}
+
+function classify_live_root_shape(root: HsonNode): LiveMapRootMode {
 
   if (root.$_tag === OBJ_TAG) return "data-object";
   if (root.$_tag === ARR_TAG) return "data-array";
@@ -133,8 +153,8 @@ export function facade_for_livemap_root(
     return core as LiveMap;
   }
 
-  if (prepared.documentIdentity === undefined || controller === undefined) {
-    throw new Error(`LiveMap document mode ${prepared.mode} was constructed without an identity index.`);
+  if (prepared.documentOverlay === undefined || controller === undefined) {
+    throw new Error(`LiveMap document mode ${prepared.mode} was constructed without an identity overlay.`);
   }
   return make_document_livemap(core, prepared.mode, controller);
 }
@@ -161,11 +181,14 @@ function make_document_livemap(
     content,
     byQuid: (quid: string) => {
       if (!is_persisted_quid(quid)) return undefined;
-      const node = controller.identity().get(quid);
-      return node === undefined ? undefined : clone_live_root(node);
+      const path = controller.overlay().pathForQuid(quid);
+      if (path === undefined) return undefined;
+      const node = resolve_document_path(controller.root(), mode, path);
+      return is_Node(node) ? clone_live_root(node) : undefined;
     },
     attrs,
   });
+  register_livemap_document_identity_overlay(document, controller.overlay);
 
   const shared = {
     root: () => core.root(),
@@ -197,6 +220,7 @@ function make_document_livemap(
         node: () => detached_top_level_element(core.root()),
       }),
     });
+    register_livemap_document_identity_overlay(elementMap, controller.overlay);
     return elementMap;
   }
 
@@ -215,6 +239,7 @@ function make_document_livemap(
     }),
     document,
   });
+  register_livemap_document_identity_overlay(fragmentMap, controller.overlay);
   return fragmentMap;
 }
 

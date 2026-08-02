@@ -1,0 +1,184 @@
+// @hson-live-external-test
+import assert from "node:assert/strict";
+import { hson } from "../src/hson.ts";
+import { HSON_META_QUID } from "../src/core/constants.ts";
+import type { HsonNode } from "../src/core/types.ts";
+import {
+  build_livemap_document_identity_overlay,
+  livemap_document_identity_overlay_for,
+  LiveMapDocumentIdentityError,
+} from "../src/api/livemap/livemap.document.identity.ts";
+import { validate_document_path } from "../src/api/livemap/livemap.document.path.ts";
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+
+let checks = 0;
+function check(name: string, run: () => void): void {
+  run();
+  checks += 1;
+  process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+const Q1 = "0000000000000001";
+const Q2 = "0000000000000002";
+const Q3 = "0000000000000003";
+
+function element(source: string) {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "element") throw new Error("Expected element map");
+  return map;
+}
+
+function fragment(source: string) {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "fragment") throw new Error("Expected fragment map");
+  return map;
+}
+
+function node(tag: string, content: HsonNode["$_content"] = [], quid?: string): HsonNode {
+  return quid === undefined
+    ? { $_tag: tag, $_content: content }
+    : { $_tag: tag, $_content: content, $_meta: { [HSON_META_QUID]: quid } };
+}
+
+check("empty element documents retain an empty overlay", () => {
+  assert.equal(livemap_document_identity_overlay_for(element(`<main/>`)).size, 0);
+});
+
+check("empty fragments retain an empty overlay", () => {
+  const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
+  if (map.mode !== "fragment") throw new Error("Expected empty fragment map");
+  assert.equal(livemap_document_identity_overlay_for(map).size, 0);
+});
+
+check("nested QUID-free graphs retain no per-node identity entries", () => {
+  const map = element(`<main <section <p "text"/>/>/>`);
+  assert.equal(livemap_document_identity_overlay_for(map).size, 0);
+});
+
+check("one root QUID maps to the element-mode empty path", () => {
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), []);
+});
+
+check("one fragment sibling QUID maps to its direct cluster slot", () => {
+  assert.deepEqual(livemap_document_identity_overlay_for(fragment(`<a/> <b @${Q1}/>`)).pathForQuid(Q1), [1]);
+});
+
+check("nested element paths include canonical content carriers exactly", () => {
+  const overlay = livemap_document_identity_overlay_for(element(`<main <section @${Q1}/>/` + `>`));
+  assert.deepEqual(overlay.pathForQuid(Q1), [0, 0]);
+});
+
+check("sparse documents retain exactly their present QUID count", () => {
+  const map = element(`<main @${Q1} <a/> <b @${Q2}/> <c <d @${Q3}/>/>/>`);
+  assert.equal(livemap_document_identity_overlay_for(map).size, 3);
+});
+
+check("sparse forward paths are exact at root and nested locations", () => {
+  const overlay = livemap_document_identity_overlay_for(
+    element(`<main @${Q1} <a @${Q2}/> <b <c @${Q3}/>/>/>`),
+  );
+  assert.deepEqual(overlay.pathForQuid(Q1), []);
+  assert.deepEqual(overlay.pathForQuid(Q2), [0, 0]);
+  assert.deepEqual(overlay.pathForQuid(Q3), [0, 1, 0, 0]);
+});
+
+check("sparse reverse lookup agrees at every retained path", () => {
+  const overlay = livemap_document_identity_overlay_for(fragment(`<a @${Q1}/> "x" <b @${Q2}/>`));
+  assert.equal(overlay.quidAtPath(validate_document_path([0])), Q1);
+  assert.equal(overlay.quidAtPath(validate_document_path([2])), Q2);
+});
+
+check("moderate QUID-free fixtures remain storage-constant", () => {
+  const source = `<main ${Array.from({ length: 80 }, (_, index) => `<n data=${JSON.stringify(index)}/>`).join("")}/>`;
+  assert.equal(livemap_document_identity_overlay_for(element(source)).size, 0);
+});
+
+check("moderate sparse fixtures retain only three entries", () => {
+  const source = `<main ${Array.from({ length: 80 }, (_, index) =>
+    `<n${index === 1 ? ` @${Q1}` : index === 40 ? ` @${Q2}` : index === 79 ? ` @${Q3}` : ""}/>`).join("")}/>`;
+  assert.equal(livemap_document_identity_overlay_for(element(source)).size, 3);
+});
+
+check("duplicate QUIDs reject during overlay construction", () => {
+  assert.throws(() => fragment(`<a @${Q1}/> <b @${Q1}/>`), (error: unknown) =>
+    error instanceof LiveMapDocumentIdentityError && error.code === "DUPLICATE_QUID");
+});
+
+check("malformed QUID syntax rejects during overlay construction", () => {
+  const root = node("_hson_root", [node("_hson_elem", [node("main", [], "short")])]);
+  assert.throws(() => build_livemap_document_identity_overlay(root, "element"), (error: unknown) =>
+    error instanceof LiveMapDocumentIdentityError && error.code === "MALFORMED_QUID");
+});
+
+check("ineligible QUID placement rejects during overlay construction", () => {
+  const invalid = node("_hson_elem", [node("main")], Q1);
+  const root = node("_hson_root", [invalid]);
+  assert.throws(() => build_livemap_document_identity_overlay(root, "element"), (error: unknown) =>
+    error instanceof LiveMapDocumentIdentityError && error.code === "MALFORMED_QUID");
+});
+
+check("returned paths are detached from graph storage and frozen", () => {
+  const path = livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1);
+  assert.deepEqual(path, []);
+  assert.equal(Object.isFrozen(path), true);
+});
+
+check("returned paths cannot be mutated", () => {
+  const path = livemap_document_identity_overlay_for(fragment(`<a @${Q1}/> <b/>`)).pathForQuid(Q1);
+  assert.throws(() => Reflect.apply(Array.prototype.push, path ?? [], [1]), TypeError);
+});
+
+check("overlay facade exposes no graph node or backing Map", () => {
+  const overlay = livemap_document_identity_overlay_for(element(`<main @${Q1}/>`));
+  assert.deepEqual(Object.keys(overlay).sort(), ["pathForQuid", "quidAtPath", "size"]);
+  assert.equal(Object.values(overlay).some((value) => value instanceof Map), false);
+});
+
+check("unquidded paths have no reverse overlay entry", () => {
+  const overlay = livemap_document_identity_overlay_for(element(`<main @${Q1} <span/>/>`));
+  assert.equal(overlay.quidAtPath(validate_document_path([0, 0])), undefined);
+});
+
+check("overlay construction never invokes QUID minting", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  let calls = 0;
+  Object.defineProperty(globalThis, "crypto", {
+    configurable: true,
+    value: { getRandomValues<T extends ArrayBufferView | null>(value: T): T { calls += 1; return value; } },
+  });
+  try {
+    element(`<main @${Q1} <span/>/>`);
+    assert.equal(calls, 0);
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(globalThis, "crypto");
+    else Object.defineProperty(globalThis, "crypto", descriptor);
+  }
+});
+
+check("direct scanner construction never invokes QUID minting", () => {
+  const root = element(`<main @${Q1}/>`).root();
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "crypto");
+  Object.defineProperty(globalThis, "crypto", { configurable: true, value: undefined });
+  try {
+    assert.equal(build_livemap_document_identity_overlay(root, "element").size, 1);
+  } finally {
+    if (descriptor === undefined) Reflect.deleteProperty(globalThis, "crypto");
+    else Object.defineProperty(globalThis, "crypto", descriptor);
+  }
+});
+
+check("repeated construction is deterministic in both directions", () => {
+  const root = fragment(`<a @${Q1}/> <b @${Q2}/>`).root();
+  const first = build_livemap_document_identity_overlay(root, "fragment");
+  const second = build_livemap_document_identity_overlay(root, "fragment");
+  assert.deepEqual(first.pathForQuid(Q2), second.pathForQuid(Q2));
+  assert.equal(first.quidAtPath(validate_document_path([0])), second.quidAtPath(validate_document_path([0])));
+});
+
+check("element and fragment path roots remain distinct and exact", () => {
+  assert.deepEqual(livemap_document_identity_overlay_for(element(`<main @${Q1}/>`)).pathForQuid(Q1), []);
+  assert.deepEqual(livemap_document_identity_overlay_for(fragment(`<main @${Q1}/> <aside/>`)).pathForQuid(Q1), [0]);
+});
+
+process.stdout.write(`1..${checks}\n`);
+emit_hson_live_test_completion("livemap.document-identity-overlay-construction", checks, checks, 0);

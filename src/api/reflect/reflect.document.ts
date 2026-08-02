@@ -1,7 +1,6 @@
 import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID } from "../../core/constants.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
-import { is_persisted_quid } from "../../core/persisted-quid.js";
 import type { CanonicalPublicAttrs, HsonNode } from "../../core/types.js";
 import type {
   DocumentLiveMapCapture,
@@ -59,6 +58,8 @@ import {
   default_livetree_runtime,
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
+import { livemap_document_identity_overlay_for } from "../livemap/livemap.document.identity.js";
+import { validate_document_path } from "../livemap/livemap.document.path.js";
 
 export type DocumentReflectStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
 
@@ -99,11 +100,9 @@ export function reflect_document_in_runtime(
 
   let capturedRevision: number;
   let sourceElement: HsonNode;
-  let persistedQuidsByPath: ReadonlyMap<string, string>;
   try {
     capturedRevision = map.rev;
     sourceElement = map.element.node();
-    persistedQuidsByPath = collect_persisted_quids(sourceElement);
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Initial document binding capture failed.");
@@ -291,7 +290,8 @@ export function reflect_document_in_runtime(
     if (!is_ordinary_element_node(node)) return;
     const path = Object.freeze([...canonicalPath]);
     const pathKey = path_key(path);
-    const persistedQuid = persistedQuidsByPath.get(pathKey);
+    const persistedQuid = livemap_document_identity_overlay_for(map.document)
+      .quidAtPath(validate_document_path(path));
     if (persistedQuid !== undefined && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
@@ -347,12 +347,11 @@ export function reflect_document_in_runtime(
     registrations = surviving;
   };
 
-  const rebuild_correspondence = (canonicalRoot: HsonNode): void => {
+  const rebuild_correspondence = (): void => {
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     registrations = [];
     byPath.clear();
     byQuid.clear();
-    persistedQuidsByPath = collect_persisted_quids(canonicalRoot);
     walk(tree.node, []);
   };
 
@@ -415,7 +414,7 @@ export function reflect_document_in_runtime(
       );
     }
     prune_removed_registrations(convergence.structural.finalNodes);
-    rebuild_correspondence(convergence.canonicalElement);
+    rebuild_correspondence();
     for (const registration of registrations) validate_bound_registration(registration);
     currentRevision = targetRevision;
     updatesApplied += 1;
@@ -506,7 +505,7 @@ export function reflect_document_in_runtime(
         throw cause;
       }
       prune_removed_registrations(plan.finalNodes);
-      rebuild_correspondence(canonicalRoot);
+      rebuild_correspondence();
       for (const registration of registrations) validate_bound_registration(registration);
       currentRevision = commit.rev;
       updatesApplied += 1;
@@ -590,30 +589,6 @@ export function reflect_document_in_runtime(
     dispose: dispose_binding,
   });
   return binding;
-}
-
-function collect_persisted_quids(root: HsonNode): ReadonlyMap<string, string> {
-  const result = new Map<string, string>();
-  const walk = (node: HsonNode, path: readonly number[]): void => {
-    if (is_ordinary_element_node(node)) {
-      const quid = node.$_meta?.[HSON_META_QUID];
-      if (quid !== undefined) {
-        if (!is_persisted_quid(quid)) {
-          throw new DocumentReflectError(
-            DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-            "Canonical document contains a malformed persisted QUID.",
-          );
-        }
-        result.set(path_key(path), quid);
-      }
-    }
-    for (let index = 0; index < node.$_content.length; index += 1) {
-      const child = node.$_content[index];
-      if (is_Node(child)) walk(child, [...path, index]);
-    }
-  };
-  walk(root, []);
-  return result;
 }
 
 function read_map_attrs(map: ElementLiveMap, target: LiveMapDocumentTarget): CanonicalPublicAttrs {

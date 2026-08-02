@@ -12,6 +12,7 @@ import type {
   LiveMapDocumentTarget,
 } from "../../types/livemap.types.js";
 import type { HsonNode } from "../../core/types.js";
+import type { LiveMapDocumentIdentityOverlay } from "./livemap.document.identity.js";
 import {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentMutationError,
@@ -40,6 +41,7 @@ export function decode_document_attrs(value: unknown): LiveMapDocumentAttrs | un
 export type LiveMapDocumentAttrsReadController = Readonly<{
   mode: DocumentLiveMapMode;
   root: () => HsonNode;
+  overlay: () => LiveMapDocumentIdentityOverlay;
 }>;
 
 /** Build canonical graph-facing reads without entering the mutation planner. */
@@ -96,7 +98,13 @@ function resolve_attr_query(
   operation: LiveMapDocumentOperation,
 ): Readonly<{ target: LiveMapDocumentTarget; element: HsonNode }> {
   const target = normalize_document_target(targetInput, operation);
-  const endpoint = resolve_document_target(controller.root(), controller.mode, target, operation);
+  const endpoint = resolve_document_target(
+    controller.root(),
+    controller.mode,
+    controller.overlay(),
+    target,
+    operation,
+  );
   return Object.freeze({
     target,
     element: require_document_attr_element(endpoint, operation),

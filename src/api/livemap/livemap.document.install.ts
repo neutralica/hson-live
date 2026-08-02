@@ -12,22 +12,22 @@ import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentInstallError, LiveMapRevError } from "./livemap.error.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
-  index_livemap_document_elements,
-  type LiveMapDocumentIdentityIndex,
+  build_livemap_document_identity_overlay,
+  type LiveMapDocumentIdentityOverlay,
 } from "./livemap.document.identity.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 
 export type PreparedDocumentInstall = Readonly<{
   mode: DocumentLiveMapMode;
   root: HsonNode;
-  identity: LiveMapDocumentIdentityIndex;
+  overlay: LiveMapDocumentIdentityOverlay;
 }>;
 
 /** Internal bridge that keeps the public document façade narrower than Core. */
 export type LiveMapDocumentInstallController = Readonly<{
   mode: DocumentLiveMapMode;
   rev: () => number;
-  identity: () => LiveMapDocumentIdentityIndex;
+  overlay: () => LiveMapDocumentIdentityOverlay;
   apply: (candidate: PreparedDocumentInstall) => LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
   restore: (
     candidate: PreparedDocumentInstall,
@@ -133,7 +133,7 @@ export function prepare_document_install(
     return {
       mode: observedMode,
       root,
-      identity: index_livemap_document_elements(root),
+      overlay: build_livemap_document_identity_overlay(root, observedMode),
     };
   } catch (cause) {
     throw new LiveMapDocumentInstallError("capture document identity is invalid", { cause });
