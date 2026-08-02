@@ -1,15 +1,22 @@
-import type { JsonValue } from "../../core/types.js";
-import type {
-  LiveMapDataOp,
-  LiveMapReplay,
-  LiveMapWriteOp,
-  LivePath,
-} from "../../types/livemap.types.js";
+import type { LivePath } from "../../types/livemap.types.js";
 import { LiveMapReplayInputError } from "./livemap.error.js";
-import { must_json_value, must_live_path } from "./livemap.guard.js";
+import { must_live_path, must_ordered_projected_value } from "./livemap.guard.js";
+import {
+  decode_livemap_replay_payload,
+  LIVEMAP_STRUCTURAL_JSON_FORMAT,
+  LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION,
+  LiveMapTransportCodecError,
+  type LiveMapProjectedDataOp,
+} from "./livemap.transport.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 
-/** Validate and defensively copy a replay envelope received at runtime. */
-export function must_livemap_replay(input: unknown): LiveMapReplay {
+export type AdmittedLiveMapReplay = Readonly<{
+  prevRev: number;
+  ops: readonly LiveMapProjectedDataOp[];
+}>;
+
+/** Validate and defensively snapshot either exact-v1 or bounded legacy replay input. */
+export function must_livemap_replay(input: unknown): AdmittedLiveMapReplay {
   if (!is_plain_object(input)) {
     throw new LiveMapReplayInputError("envelope is not an object");
   }
@@ -18,57 +25,44 @@ export function must_livemap_replay(input: unknown): LiveMapReplay {
     throw new LiveMapReplayInputError("prevRev is not a non-negative integer");
   }
 
+  if (has_transport_field(input)) {
+    return must_exact_replay(input);
+  }
+
   if (!Array.isArray(input.ops)) {
     throw new LiveMapReplayInputError("ops is not an array");
   }
 
   return Object.freeze({
     prevRev: input.prevRev as number,
-    ops: Object.freeze(input.ops.map(must_livemap_replay_op)),
+    ops: Object.freeze(input.ops.map(must_legacy_replay_op)),
   });
 }
 
-/** Convert one validated public operation into an internal write intent. */
-export function replay_write_op(op: LiveMapDataOp): LiveMapWriteOp {
-  if (op.kind === "delete") {
-    return Object.freeze({
-      kind: "delete",
-      path: op.path,
-    });
+function must_exact_replay(input: Readonly<Record<string, unknown>>): AdmittedLiveMapReplay {
+  if (input.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) {
+    throw new LiveMapReplayInputError("format is not supported");
   }
-
-  if (op.kind === "splice") {
-    return Object.freeze({
-      kind: "splice",
-      path: op.path,
-      start: op.start,
-      deleteCount: op.removed.length,
-      items: op.inserted,
-    });
+  if (input.formatVersion !== LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION) {
+    throw new LiveMapReplayInputError("formatVersion is not supported");
   }
-
-  if (op.kind === "set") {
-    if (op.next === undefined) {
-      throw new LiveMapReplayInputError("set next is missing");
+  if (typeof input.payload !== "string") {
+    throw new LiveMapReplayInputError("payload is not a string");
+  }
+  try {
+    return Object.freeze({
+      prevRev: input.prevRev as number,
+      ops: decode_livemap_replay_payload(input.payload),
+    });
+  } catch (error) {
+    if (error instanceof LiveMapTransportCodecError) {
+      throw new LiveMapReplayInputError(error.reason, error.opIndex);
     }
-    return Object.freeze({
-      kind: "set",
-      path: op.path,
-      value: op.next,
-    });
+    throw error;
   }
-
-  if (op.next === undefined) {
-    throw new LiveMapReplayInputError("replace next is missing");
-  }
-  return Object.freeze({
-    kind: "replace",
-    path: op.path,
-    value: op.next,
-  });
 }
 
-function must_livemap_replay_op(value: unknown, opIndex: number): LiveMapDataOp {
+function must_legacy_replay_op(value: unknown, opIndex: number): LiveMapProjectedDataOp {
   if (!is_plain_object(value)) {
     throw new LiveMapReplayInputError("operation is not an object", opIndex);
   }
@@ -81,13 +75,12 @@ function must_livemap_replay_op(value: unknown, opIndex: number): LiveMapDataOp 
   const path = must_replay_path(value.path, opIndex);
   must_own_field(value, "prev", opIndex);
   must_own_field(value, "next", opIndex);
-  const prev = must_optional_json(value.prev, "prev", opIndex);
+  const prev = must_optional_projected(value.prev, "prev", opIndex);
 
   if (kind === "delete") {
     if (value.next !== undefined) {
       throw new LiveMapReplayInputError("delete next must be undefined", opIndex);
     }
-
     return Object.freeze({ kind, path, prev, next: undefined });
   }
 
@@ -102,23 +95,18 @@ function must_livemap_replay_op(value: unknown, opIndex: number): LiveMapDataOp 
       throw new LiveMapReplayInputError("splice inserted is not an array", opIndex);
     }
 
-    const removed = must_json_array(value.removed, "removed", opIndex);
-    const inserted = must_json_array(value.inserted, "inserted", opIndex);
-    const splicePrev = must_json_array(value.prev, "prev", opIndex);
-    const next = must_json_array(value.next, "next", opIndex);
-
     return Object.freeze({
       kind,
       path,
       start: value.start as number,
-      removed,
-      inserted,
-      prev: splicePrev,
-      next,
+      removed: must_projected_array(value.removed, "removed", opIndex),
+      inserted: must_projected_array(value.inserted, "inserted", opIndex),
+      prev: must_projected_array(value.prev, "prev", opIndex),
+      next: must_projected_array(value.next, "next", opIndex),
     });
   }
 
-  const next = must_json(value.next, "next", opIndex);
+  const next = must_projected(value.next, "next", opIndex);
   return Object.freeze({ kind, path, prev, next });
 }
 
@@ -130,32 +118,32 @@ function must_replay_path(value: unknown, opIndex: number): LivePath {
   }
 }
 
-function must_optional_json(
+function must_optional_projected(
   value: unknown,
   field: string,
   opIndex: number,
-): JsonValue | undefined {
-  return value === undefined ? undefined : must_json(value, field, opIndex);
+): OrderedProjectedValue | undefined {
+  return value === undefined ? undefined : must_projected(value, field, opIndex);
 }
 
-function must_json(value: unknown, field: string, opIndex: number): JsonValue {
+function must_projected(value: unknown, field: string, opIndex: number): OrderedProjectedValue {
   try {
-    return must_json_value(value, []);
+    return must_ordered_projected_value(value, []);
   } catch {
     throw new LiveMapReplayInputError(`${field} is not JSON`, opIndex);
   }
 }
 
-function must_json_array(
+function must_projected_array(
   value: unknown,
   field: string,
   opIndex: number,
-): JsonValue[] {
-  const json = must_json(value, field, opIndex);
-  if (!Array.isArray(json)) {
+): readonly OrderedProjectedValue[] {
+  const projected = must_projected(value, field, opIndex);
+  if (!Array.isArray(projected)) {
     throw new LiveMapReplayInputError(`${field} is not an array`, opIndex);
   }
-  return Object.freeze(json) as unknown as JsonValue[];
+  return projected;
 }
 
 function must_own_field(
@@ -163,8 +151,14 @@ function must_own_field(
   field: string,
   opIndex: number,
 ): void {
-  if (Object.prototype.hasOwnProperty.call(value, field)) return;
+  if (Object.hasOwn(value, field)) return;
   throw new LiveMapReplayInputError(`${field} is missing`, opIndex);
+}
+
+function has_transport_field(value: Readonly<Record<string, unknown>>): boolean {
+  return Object.hasOwn(value, "format")
+    || Object.hasOwn(value, "formatVersion")
+    || Object.hasOwn(value, "payload");
 }
 
 function is_plain_object(value: unknown): value is Readonly<Record<string, unknown>> {

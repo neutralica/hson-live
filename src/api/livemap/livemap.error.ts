@@ -13,6 +13,9 @@ import type {
   ProjectedValuePath,
 } from "../../core/projected-value-admission.js";
 import { ProjectedValueAdmissionError } from "../../core/projected-value-admission.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { emit_ordered_json } from "../transform/utils/json-utils/ordered-json.js";
 
 /** Structured public-mutation failure backed by neutral projected admission. */
 export class LiveMapProjectedValueError extends TypeError {
@@ -157,20 +160,39 @@ export class LiveMapReplayError extends Error {
   readonly path: LivePath;
   readonly expected: JsonValue | undefined;
   readonly actual: JsonValue | undefined;
+  readonly expectedPayload: string | undefined;
+  readonly actualPayload: string | undefined;
 
   constructor(
     path: LivePath,
-    expected: JsonValue | undefined,
-    actual: JsonValue | undefined,
+    expected: OrderedProjectedValue | undefined,
+    actual: OrderedProjectedValue | undefined,
   ) {
+    const expectedPayload = expected === undefined ? undefined : emit_ordered_json(expected);
+    const actualPayload = actual === undefined ? undefined : emit_ordered_json(actual);
     super(
-      `LiveMap replay conflict at ${format_live_path(path)}: expected ${JSON.stringify(expected)}, actual ${JSON.stringify(actual)}`,
+      `LiveMap replay conflict at ${format_live_path(path)}: expected ${expectedPayload ?? "<absent>"}, actual ${actualPayload ?? "<absent>"}`,
     );
 
     this.name = "LiveMapReplayError";
     this.path = clone_live_path(path);
-    this.expected = expected;
-    this.actual = actual;
+    this.expected = expected === undefined ? undefined : materialize_projected_value(expected);
+    this.actual = actual === undefined ? undefined : materialize_projected_value(actual);
+    this.expectedPayload = expectedPayload;
+    this.actualPayload = actualPayload;
+  }
+}
+
+export class LiveMapProjectedTransportError extends TypeError {
+  readonly code = "INVALID_PROJECTED_TRANSPORT" as const;
+  readonly context: "apply" | "restore";
+  readonly reason: string;
+
+  constructor(context: "apply" | "restore", reason: string, options?: ErrorOptions) {
+    super(`Invalid LiveMap ${context} transport: ${reason}`, options);
+    this.name = "LiveMapProjectedTransportError";
+    this.context = context;
+    this.reason = reason;
   }
 }
 

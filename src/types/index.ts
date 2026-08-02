@@ -4,6 +4,19 @@ export type { Primitive, BasicValue, JsonValue, HsonSemanticPrimitive } from "./
 export type { HsonNode, HsonAttrs, HsonMeta, NodeContent } from "./node.types.js";
 export type { HsonQuery } from './livetree.types.js';
 export type { DetachedLiveContent, LiveTreeLifecycleResult } from './lifecycle.types.js';
+export type {
+  LiveMapApply,
+  LiveMapCapture,
+  LiveMapCaptureInput,
+  LiveMapExactApply,
+  LiveMapExactCapture,
+  LiveMapExactReplay,
+  LiveMapLegacyApply,
+  LiveMapLegacyCapture,
+  LiveMapLegacyReplay,
+  LiveMapReplay,
+  LiveMapStructuralJsonEnvelope,
+} from "./livemap.types.js";
 export type { CssMap } from './css.types.js';
 export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";

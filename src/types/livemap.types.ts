@@ -261,10 +261,13 @@ export type LiveMapCore<
   sub: LiveMapSubApi<TValue>;
   debug: LiveMapDebugApi;
   readonly rev: number;
+  /** Emit exact structural JSON plus a detached JavaScript compatibility view. */
   capture: () => LiveMapCapture<TValue>;
-  /** Atomically restore projected state and its exact captured revision. */
-  restore: (capture: LiveMapCapture<TValue>) => void;
+  /** Atomically restore exact-v1 state, or bounded legacy JavaScript-value state. */
+  restore: (capture: LiveMapCaptureInput<TValue>) => void;
+  /** Apply exact-v1 state, or bounded legacy JavaScript-value state, at one base revision. */
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
+  /** Replay an exact data commit/envelope, or bounded legacy projected operations. */
   replay: (input: LiveMapReplay) => LiveMapCommit;
 }>;
 
@@ -582,14 +585,22 @@ export type LiveMapAnyOp = LiveMapOp<"data" | "graph">;
  *
  * A commit can contain zero, one, or many ops. Empty commits represent unchanged
  * writes/deletes. Multi-op commits are used by `setMany(...)`, object-valued
- * `set(...)`, and explicit `batch(...)` calls.
+ * `set(...)`, and explicit `batch(...)` calls. Data-mode runtime commits also
+ * carry the structural-JSON envelope used by exact replay. The fields remain
+ * optional on this shared type because document graph commits do not use it.
  */
+export type LiveMapStructuralJsonEnvelope = Readonly<{
+  format: "structural-json";
+  formatVersion: 1;
+  payload: string;
+}>;
+
 export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
   changed: boolean;
   rev: number;
   prevRev: number;
   ops: readonly TOp[];
-}>;
+}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 /** Existing commit envelope specialized to graph-domain operations. */
 export type LiveMapGraphCommit<TOp extends LiveMapGraphOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
@@ -932,17 +943,45 @@ export type LiveMapSpliceOp = Readonly<{
   next: JsonValue;
 }>;
 
-export type LiveMapCapture<TValue = JsonValue | undefined> = Readonly<{
+/** Exact versioned generic projected-state transport, without a compatibility view. */
+export type LiveMapExactCapture = Readonly<{
+  rev: number;
+}> & LiveMapStructuralJsonEnvelope;
+
+/** Bounded compatibility input admitted through ordinary JavaScript-value rules. */
+export type LiveMapLegacyCapture<TValue = JsonValue | undefined> = Readonly<{
   rev: number;
   value: TValue;
 }>;
 
-export type LiveMapApply<TValue = JsonValue | undefined> = Readonly<{
+/** Exact capture plus the detached public JavaScript view retained for compatibility. */
+export type LiveMapCapture<TValue = JsonValue | undefined> =
+  LiveMapExactCapture & LiveMapLegacyCapture<TValue>;
+
+export type LiveMapCaptureInput<TValue = JsonValue | undefined> =
+  | LiveMapExactCapture
+  | LiveMapLegacyCapture<TValue>;
+
+export type LiveMapLegacyApply<TValue = JsonValue | undefined> = Readonly<{
   prevRev: number;
   value: TValue;
 }>;
 
-export type LiveMapReplay = Readonly<{
+export type LiveMapExactApply = Readonly<{
+  prevRev: number;
+}> & LiveMapStructuralJsonEnvelope;
+
+export type LiveMapApply<TValue = JsonValue | undefined> =
+  | LiveMapExactApply
+  | LiveMapLegacyApply<TValue>;
+
+export type LiveMapLegacyReplay = Readonly<{
   prevRev: number;
   ops: readonly LiveMapDataOp[];
 }>;
+
+export type LiveMapExactReplay = Readonly<{
+  prevRev: number;
+}> & LiveMapStructuralJsonEnvelope;
+
+export type LiveMapReplay = LiveMapExactReplay | LiveMapLegacyReplay;
