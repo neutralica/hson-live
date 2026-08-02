@@ -62,6 +62,10 @@
       "types": "./dist/diagnostics/index.d.ts",
       "import": "./dist/diagnostics/index.js"
     },
+    "./diagnostics/universal-circuit": {
+      "types": "./dist/diagnostics/verify-universal-circuit.d.ts",
+      "import": "./dist/diagnostics/verify-universal-circuit.js"
+    },
     "./types": {
       "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js"
@@ -102,6 +106,7 @@
     "test:circuit-semantic-engine": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/circuit-semantic-engine.acceptance.mts",
     "test:circuit-failure-control": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/circuit-failure-control.acceptance.mts",
     "test:circuit-legacy-wrapper": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/circuit-legacy-wrapper.acceptance.mts",
+    "test:universal-circuit-verification": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/universal-circuit-verification.acceptance.mts",
     "test:certified-authored-hson-corpus": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/certified-authored-hson-corpus.acceptance.mts",
     "corpus:review": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/certified-corpus/generate-review-artifact.mts",
     "test:view-state-snapshot-codec": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/view-state-snapshot-codec.acceptance.mts",

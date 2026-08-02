@@ -135,6 +135,10 @@ assert.ok(
   packageJson.exports?.["./diagnostics"] !== undefined,
   "the canonical diagnostics package entrypoint must remain exported",
 );
+assert.ok(
+  packageJson.exports?.["./diagnostics/universal-circuit"] !== undefined,
+  "the DOM-free universal circuit diagnostic must have one narrow worker-safe entrypoint",
+);
 
 await access(join(repositoryRoot, "dist", "diagnostics", "index.js"));
 const builtDiagnostics = await import("../dist/diagnostics/index.js") as {

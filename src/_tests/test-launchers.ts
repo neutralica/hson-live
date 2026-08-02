@@ -209,6 +209,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["diagnostics", "circuit", "browser-html", "compatibility"],
     }),
     launcher({
+      id: "diagnostics.universal-circuit-verification",
+      subject: "Transform",
+      displayName: "Universal circuit verification facade",
+      packageScript: "test:universal-circuit-verification",
+      repositoryModule: "tests/universal-circuit-verification.acceptance.mts",
+      runtime: "node",
+      executableChecks: 22,
+      collections: ["diagnostics", "circuit", "universal", "worker", "externally-discoverable"],
+    }),
+    launcher({
       id: "transform.certified-authored-hson-corpus",
       subject: "Transform",
       displayName: "Certified authored-HSON corpus",
