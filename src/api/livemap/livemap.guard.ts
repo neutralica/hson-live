@@ -8,7 +8,11 @@ import {
   ProjectedValueAdmissionError,
 } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import { is_ordered_projected_object } from "../../core/ordered-projected-value.js";
+import {
+  is_ordered_projected_object,
+  type OrderedProjectedObject,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
 import { LiveMapProjectedValueError } from "./livemap.error.js";
 
 export type LiveMapPathKind = "array" | "object";
@@ -30,8 +34,13 @@ export function must_live_path(path: unknown): LivePath {
 
 /** Validate a value as JSON before it enters LiveMap mutation surfaces. */
 export function must_json_value(value: unknown, path: LivePath): JsonValue {
+  return materialize_projected_value(must_ordered_projected_value(value, path));
+}
+
+/** Admit one public JavaScript value into LiveMap's immutable semantic carrier. */
+export function must_ordered_projected_value(value: unknown, path: LivePath): OrderedProjectedValue {
   try {
-    return materialize_projected_value(admit_projected_value(value, path));
+    return admit_projected_value(value, path);
   } catch (error) {
     if (error instanceof ProjectedValueAdmissionError) {
       throw new LiveMapProjectedValueError(error);
@@ -47,19 +56,14 @@ export function must_json_value(value: unknown, path: LivePath): JsonValue {
  * child write under `path`, and each child value must be valid JSON.
  */
 export function must_set_many_values(value: unknown, path: LivePath): LiveMapSetManyValues {
-  let admitted;
-  try {
-    admitted = admit_projected_value(value, path);
-  } catch (error) {
-    if (error instanceof ProjectedValueAdmissionError) {
-      throw new LiveMapProjectedValueError(error);
-    }
-    throw error;
-  }
-  if (!is_ordered_projected_object(admitted)) {
-    throw new Error(`LiveMap setMany value is not an object at ${format_live_path(path)}`);
-  }
-  return materialize_projected_value(admitted) as LiveMapSetManyValues;
+  return materialize_projected_value(must_ordered_projected_object(value, path)) as LiveMapSetManyValues;
+}
+
+/** Admit the ordered object bag accepted by `setMany` without materializing it. */
+export function must_ordered_projected_object(value: unknown, path: LivePath): OrderedProjectedObject {
+  const admitted = must_ordered_projected_value(value, path);
+  if (is_ordered_projected_object(admitted)) return admitted;
+  throw new Error(`LiveMap setMany value is not an object at ${format_live_path(path)}`);
 }
 
 /** Validate feed listener input from public subscription surfaces. */

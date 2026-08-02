@@ -349,6 +349,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["projected-value", "canonical-graph", "equivalence", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.carrier-mutation-planning",
+      subject: "LiveMap",
+      displayName: "LiveMap carrier mutation planning",
+      packageScript: "test:livemap-carrier-mutation-planning",
+      repositoryModule: "tests/livemap-carrier-planning.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["projected-value", "mutation", "commit", "canonical-graph", "externally-discoverable"],
+    }),
+    launcher({
       id: "core.projected-value-admission",
       subject: "LiveMap",
       displayName: "Projected-value admission and materialization",

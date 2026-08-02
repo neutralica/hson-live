@@ -55,8 +55,13 @@ export function clone_live_root(root: HsonNode): HsonNode {
  */
 export function snap_live_path(root: HsonNode, path: LivePath): JsonValue | undefined {
   const valueNode = resolve_value_node(root, path);
-  if (valueNode === undefined) return undefined;
-  return node_to_json_value(valueNode);
+  return valueNode === undefined ? undefined : node_to_json_value(valueNode);
+}
+
+/** Read one projected path as the immutable internal carrier. */
+export function project_live_path(root: HsonNode, path: LivePath): OrderedProjectedValue | undefined {
+  const valueNode = resolve_value_node(root, path);
+  return valueNode === undefined ? undefined : projected_value_from_hson_node(valueNode);
 }
 
 /**
@@ -125,14 +130,27 @@ export function resolve_parent_node(root: HsonNode, path: LivePath): ResolvedPar
  * The editor returns raw edit information. Core wraps that into commit/op form.
  */
 export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
+  return materialize_projected_edit(set_live_path_from_projected(root, path, admit_projected_value(value)));
+}
+
+type LiveMapProjectedEditResult = Readonly<{
+  changed: boolean;
+  prev: OrderedProjectedValue | undefined;
+  next: OrderedProjectedValue | undefined;
+}>;
+
+/** Apply one already-admitted carrier value without rereading JavaScript input. */
+export function set_live_path_from_projected(
+  root: HsonNode,
+  path: LivePath,
+  nextCarrier: OrderedProjectedValue,
+): LiveMapProjectedEditResult {
   if (path.length === 0) {
     throw new Error("LiveMap editor cannot replace the root node yet.");
   }
 
   const prevNode = resolve_value_node(root, path);
-  const prev = prevNode === undefined ? undefined : node_to_json_value(prevNode);
   const prevCarrier = prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode);
-  const nextCarrier = admit_projected_value(value);
   const resolved = resolve_parent_node(root, path);
 
   if (resolved === undefined) {
@@ -140,12 +158,11 @@ export function set_live_path(root: HsonNode, path: LivePath, value: JsonValue):
   }
 
   write_child_value(resolved.parent, resolved.key, nextCarrier, path);
-  const next = materialize_projected_value(nextCarrier);
 
   return {
     changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
-    prev,
-    next,
+    prev: prevCarrier,
+    next: nextCarrier,
   };
 }
 
@@ -197,19 +214,24 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  * editor-local JSON projection used by path writes.
  */
 export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
+  return materialize_projected_edit(replace_live_root_from_projected(root, admit_projected_value(value)));
+}
+
+/** Replace the projected root from one already-admitted carrier. */
+export function replace_live_root_from_projected(
+  root: HsonNode,
+  nextCarrier: OrderedProjectedValue,
+): LiveMapProjectedEditResult {
   const prevNode = resolve_value_node(root, []);
-  const prev = prevNode === undefined ? undefined : node_to_json_value(prevNode);
   const prevCarrier = prevNode === undefined ? undefined : projected_value_from_hson_node(prevNode);
-  const nextCarrier = admit_projected_value(value);
   const nextRoot = projected_value_to_hson_root(nextCarrier);
 
   overwrite_hson_node(root, nextRoot);
-  const next = materialize_projected_value(nextCarrier);
 
   return {
     changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
-    prev,
-    next,
+    prev: prevCarrier,
+    next: nextCarrier,
   };
 }
 
@@ -222,15 +244,22 @@ export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEdit
  * outer/root identity remains stable.
  */
 export function replace_live_path(root: HsonNode, path: LivePath, value: JsonValue): LiveMapEditResult {
-  if (path.length === 0) return replace_live_root(root, value);
+  return materialize_projected_edit(replace_live_path_from_projected(root, path, admit_projected_value(value)));
+}
+
+/** Replace one resolved path from one already-admitted carrier. */
+export function replace_live_path_from_projected(
+  root: HsonNode,
+  path: LivePath,
+  nextCarrier: OrderedProjectedValue,
+): LiveMapProjectedEditResult {
+  if (path.length === 0) return replace_live_root_from_projected(root, nextCarrier);
 
   const prevNode = resolve_value_node(root, path);
   if (prevNode === undefined) {
     throw new Error(`LiveMap replace path does not resolve: ${format_live_path(path)}`);
   }
-  const prev = node_to_json_value(prevNode);
   const prevCarrier = projected_value_from_hson_node(prevNode);
-  const nextCarrier = admit_projected_value(value);
 
   const resolved = resolve_parent_node(root, path);
 
@@ -239,12 +268,11 @@ export function replace_live_path(root: HsonNode, path: LivePath, value: JsonVal
   }
 
   write_child_value(resolved.parent, resolved.key, nextCarrier, path);
-  const next = materialize_projected_value(nextCarrier);
 
   return {
     changed: !ordered_projected_value_equal(prevCarrier, nextCarrier),
-    prev,
-    next,
+    prev: prevCarrier,
+    next: nextCarrier,
   };
 }
 
@@ -538,6 +566,14 @@ function optional_projected_values_equal(
 ): boolean {
   if (left === undefined || right === undefined) return left === right;
   return ordered_projected_value_equal(left, right);
+}
+
+function materialize_projected_edit(edit: LiveMapProjectedEditResult): LiveMapEditResult {
+  return {
+    changed: edit.changed,
+    prev: edit.prev === undefined ? undefined : materialize_projected_value(edit.prev),
+    next: edit.next === undefined ? undefined : materialize_projected_value(edit.next),
+  };
 }
 
 function clone_hson_node(node: HsonNode): HsonNode {

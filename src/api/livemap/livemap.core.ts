@@ -1,21 +1,36 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapSetManyValues, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapSpliceWriteOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapWriteOp, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapSpliceOp, LiveMapCapture, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
 import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
-import { clone_live_root, delete_live_path, overwrite_hson_node, replace_live_path, set_live_path, snap_live_path } from "./livemap.editor.js";
+import { clone_live_root, overwrite_hson_node, project_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
 import { make_livemap_node_handle } from "./livemap.node.js";
 import { make_livemap_path_handle } from "./livemap.handle.js";
 import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
-import { is_plain_json_object_value, must_feed_listener, must_json_value, must_live_path, must_set_many_values, path_kind_error } from "./livemap.guard.js";
+import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
 import { LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { json_values_equal } from "./livemap-helpers.js";
-import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import {
+  is_ordered_projected_object,
+  ordered_projected_value_equal,
+  type OrderedProjectedObject,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
+import {
+  ordered_projected_array_splice,
+  ordered_projected_value_at,
+  ordered_projected_value_delete,
+  ordered_projected_value_replace,
+  ordered_projected_value_set,
+} from "../../core/ordered-projected-value-mutation.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { ROOT_TAG } from "../../core/constants.js";
+import { is_Node } from "../../core/node-guards.js";
 import { must_livemap_replay, replay_write_op } from "./livemap.replay.js";
 import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root } from "./livemap.document.js";
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
@@ -32,10 +47,40 @@ import {
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
   path: LivePath;
-  value: LiveMapSetManyValues;
+  value: OrderedProjectedObject;
 }>;
 
-type LiveMapCoreWriteOp = LiveMapWriteOp | LiveMapConstructiveSetWriteOp;
+type LiveMapProjectedSetWriteOp = Readonly<{
+  kind: "set";
+  path: LivePath;
+  value: OrderedProjectedValue;
+}>;
+
+type LiveMapProjectedReplaceWriteOp = Readonly<{
+  kind: "replace";
+  path: LivePath;
+  value: OrderedProjectedValue;
+}>;
+
+type LiveMapProjectedDeleteWriteOp = Readonly<{
+  kind: "delete";
+  path: LivePath;
+}>;
+
+type LiveMapProjectedSpliceWriteOp = Readonly<{
+  kind: "splice";
+  path: LivePath;
+  start: number;
+  deleteCount: number;
+  items: readonly OrderedProjectedValue[];
+}>;
+
+type LiveMapCoreWriteOp =
+  | LiveMapProjectedSetWriteOp
+  | LiveMapProjectedReplaceWriteOp
+  | LiveMapProjectedDeleteWriteOp
+  | LiveMapProjectedSpliceWriteOp
+  | LiveMapConstructiveSetWriteOp;
 
 type BuiltLiveMapCore = Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
@@ -300,7 +345,7 @@ function make_livemap_core_from_owned_root(
         write_ops_from_set(
           livePath,
           value,
-          snap_live_path(owned.root, livePath),
+          project_live_path(owned.root, livePath),
         ),
       );
     },
@@ -308,12 +353,12 @@ function make_livemap_core_from_owned_root(
     /** Set multiple object properties while preserving unspecified siblings. */
     setMany: (path, values) => {
       const livePath = must_live_path(path);
-      const jsonValues = must_set_many_values(values, livePath);
+      const projectedValues = must_ordered_projected_object(values, livePath);
       return commitOps(
         write_ops_from_set_many(
           livePath,
-          jsonValues,
-          snap_live_path(owned.root, livePath),
+          projectedValues,
+          project_live_path(owned.root, livePath),
         ),
       );
     },
@@ -321,7 +366,7 @@ function make_livemap_core_from_owned_root(
     /** Apply one semantic array splice and preserve it in the resulting commit. */
     splice: (path, start, deleteCount, ...items) => {
       const livePath = must_live_path(path);
-      const currentValue = snap_live_path(owned.root, livePath);
+      const currentValue = project_live_path(owned.root, livePath);
       const op = splice_write_op(livePath, currentValue, start, deleteCount, items);
       return commitOps([op]);
     },
@@ -335,14 +380,14 @@ function make_livemap_core_from_owned_root(
      */
     replace: function (pathOrValue: unknown, value?: unknown) {
       const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
-      must_resolved_path("replace", op.path, snap_live_path(owned.root, op.path));
+      must_resolved_path("replace", op.path, project_live_path(owned.root, op.path));
       return commitOps([op]);
     },
 
     /** Delete a projected object-property path, emit the resulting commit, and return it. */
     delete: (path) => {
       const livePath = must_live_path(path);
-      must_resolved_path("delete", livePath, snap_live_path(owned.root, livePath));
+      must_resolved_path("delete", livePath, project_live_path(owned.root, livePath));
       return commitOps([
         { kind: "delete", path: livePath },
       ]);
@@ -385,15 +430,14 @@ function make_livemap_core_from_owned_root(
     restore: (capture: LiveMapCapture<JsonValue | undefined>): void => {
       transitionController.assertPublicMutationAllowed();
       const normalized = must_projected_capture(capture);
-      const operation: LiveMapWriteOp = {
+      const operation: LiveMapProjectedReplaceWriteOp = {
         kind: "replace",
         path: [],
         value: normalized.value,
       };
       must_core_schema_write_ops(currentSchema, owned.root, [operation]);
-      must_editor_write_ops(owned.root, [operation]);
-      const candidate = clone_live_root(owned.root);
-      apply_write_ops(candidate, [operation]);
+      const planned = plan_write_ops(must_projected_root_value(owned.root), [operation]);
+      const candidate = projected_value_to_hson_root(planned.value);
       const observedMode = classify_live_root_mode(candidate);
       if (observedMode !== initialMode) {
         throw new Error(`LiveMap projected restore mode mismatch: expected ${initialMode}, observed ${observedMode}.`);
@@ -414,7 +458,7 @@ function make_livemap_core_from_owned_root(
         {
           kind: "replace",
           path: [],
-          value: must_json_value(
+          value: must_ordered_projected_value(
             input.value,
             [],
           ),
@@ -744,7 +788,7 @@ function feed_core_path(
 /**
  * Build the transaction facade used by `core.batch(...)`.
  *
- * The transaction keeps a cloned JSON candidate so each later operation sees
+ * The transaction keeps an immutable carrier candidate so each later operation sees
  * earlier staged writes for path resolution and object expansion. The live root
  * is not mutated until the collected write ops pass schema and editor preflight.
  */
@@ -754,10 +798,10 @@ function make_batch_tx(
   isOpen: () => boolean,
 ): LiveMapBatchTx<JsonValue | undefined> {
   /** The transaction mirrors Core mutation semantics. */
-  let candidate = copy_projected_json_value(must_projected_root_value(root));
+  let candidate = must_projected_root_value(root);
 
   const pushWriteOps = (ops: readonly LiveMapCoreWriteOp[]) => {
-    candidate = apply_json_write_ops(candidate, ops);
+    candidate = plan_write_ops(candidate, ops).value;
     writeOps.push(...ops);
   };
 
@@ -765,34 +809,34 @@ function make_batch_tx(
     set: (path, value) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
-      pushWriteOps(write_ops_from_set(livePath, value, snap_json_path(candidate, livePath)));
+      pushWriteOps(write_ops_from_set(livePath, value, ordered_projected_value_at(candidate, livePath)));
       return tx;
     },
     replace: function (pathOrValue: unknown, value?: unknown) {
       must_batch_open(isOpen);
       const op = replace_write_op_from_args(arguments.length, pathOrValue, value);
-      must_resolved_path("replace", op.path, snap_json_path(candidate, op.path));
+      must_resolved_path("replace", op.path, ordered_projected_value_at(candidate, op.path));
       pushWriteOps([op]);
       return tx;
     },
     setMany: (path, values) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
-      const jsonValues = must_set_many_values(values, livePath);
-      pushWriteOps(write_ops_from_set_many(livePath, jsonValues, snap_json_path(candidate, livePath)));
+      const projectedValues = must_ordered_projected_object(values, livePath);
+      pushWriteOps(write_ops_from_set_many(livePath, projectedValues, ordered_projected_value_at(candidate, livePath)));
       return tx;
     },
     splice: (path, start, deleteCount, ...items) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
-      const op = splice_write_op(livePath, snap_json_path(candidate, livePath), start, deleteCount, items);
+      const op = splice_write_op(livePath, ordered_projected_value_at(candidate, livePath), start, deleteCount, items);
       pushWriteOps([op]);
       return tx;
     },
     delete: (path) => {
       must_batch_open(isOpen);
       const livePath = must_live_path(path);
-      must_resolved_path("delete", livePath, snap_json_path(candidate, livePath));
+      must_resolved_path("delete", livePath, ordered_projected_value_at(candidate, livePath));
       pushWriteOps([{ kind: "delete", path: livePath }]);
       return tx;
     },
@@ -831,17 +875,12 @@ function replay_write_ops(
   root: HsonNode,
   ops: readonly LiveMapDataOp[],
 ): readonly LiveMapCoreWriteOp[] {
-  let candidate = copy_projected_json_value(
-    must_projected_root_value(root),
-  );
+  let candidate = must_projected_root_value(root);
 
   const writeOps: LiveMapCoreWriteOp[] = [];
 
   for (const op of ops) {
-    const currentValue = snap_json_path(
-      candidate,
-      op.path,
-    );
+    const currentValue = materialize_optional_projected_value(ordered_projected_value_at(candidate, op.path));
 
     must_replay_value(
       op.path,
@@ -849,17 +888,11 @@ function replay_write_ops(
       currentValue,
     );
 
-    const writeOp = replay_write_op(op);
+    const writeOp = projected_write_op_from_wire(replay_write_op(op));
 
-    candidate = apply_json_write_ops(
-      candidate,
-      [writeOp],
-    );
+    candidate = plan_write_ops(candidate, [writeOp]).value;
 
-    const nextValue = snap_json_path(
-      candidate,
-      op.path,
-    );
+    const nextValue = materialize_optional_projected_value(ordered_projected_value_at(candidate, op.path));
 
     must_replay_value(
       op.path,
@@ -873,7 +906,7 @@ function replay_write_ops(
   return writeOps;
 }
 
-function must_projected_capture(input: unknown): Readonly<{ rev: number; value: JsonValue }> {
+function must_projected_capture(input: unknown): Readonly<{ rev: number; value: OrderedProjectedValue }> {
   if (!is_plain_unknown_record(input)) {
     throw new TypeError("LiveMap projected restore capture must be an object.");
   }
@@ -886,7 +919,7 @@ function must_projected_capture(input: unknown): Readonly<{ rev: number; value: 
   }
   return Object.freeze({
     rev: input.rev,
-    value: must_json_value(input.value, []),
+    value: must_ordered_projected_value(input.value, []),
   });
 }
 
@@ -901,12 +934,7 @@ function must_replay_value(
   expected: JsonValue | undefined,
   actual: JsonValue | undefined,
 ): void {
-  if (
-    json_values_equal(
-      expected,
-      actual,
-    )
-  ) {
+  if (json_values_equal(expected, actual)) {
     return;
   }
 
@@ -922,12 +950,12 @@ function replace_write_op_from_args(
   argCount: number,
   pathOrValue: unknown,
   value: unknown,
-): LiveMapWriteOp {
+): LiveMapProjectedReplaceWriteOp {
   if (argCount <= 1) {
     return {
       kind: "replace",
       path: [],
-      value: must_json_value(pathOrValue, []),
+      value: must_ordered_projected_value(pathOrValue, []),
     };
   }
 
@@ -936,20 +964,20 @@ function replace_write_op_from_args(
   return {
     kind: "replace",
     path: livePath,
-    value: must_json_value(value, livePath),
+    value: must_ordered_projected_value(value, livePath),
   };
 }
 
 /** Normalize one public array splice into a transport-safe write intent. */
-function splice_write_op(path: LivePath, currentValue: JsonValue | undefined, start: number, deleteCount: number, items: readonly unknown[]): LiveMapSpliceWriteOp {
+function splice_write_op(path: LivePath, currentValue: OrderedProjectedValue | undefined, start: number, deleteCount: number, items: readonly unknown[]): LiveMapProjectedSpliceWriteOp {
   const arrayValue = must_core_array_value(currentValue, path);
   const normalizedStart = normalize_splice_start(arrayValue.length, start, path);
   const normalizedDeleteCount = normalize_splice_delete_count(arrayValue.length, normalizedStart, deleteCount, path);
-  const jsonItems = items.map((item, index) => must_json_value(item, append_live_path(path, normalizedStart + index)));
-  return Object.freeze({ kind: "splice", path: clone_live_path(path), start: normalizedStart, deleteCount: normalizedDeleteCount, items: Object.freeze(jsonItems) });
+  const projectedItems = items.map((item, index) => must_ordered_projected_value(item, append_live_path(path, normalizedStart + index)));
+  return Object.freeze({ kind: "splice", path: clone_live_path(path), start: normalizedStart, deleteCount: normalizedDeleteCount, items: Object.freeze(projectedItems) });
 }
 
-function must_core_array_value(value: JsonValue | undefined, path: LivePath): readonly JsonValue[] {
+function must_core_array_value(value: OrderedProjectedValue | undefined, path: LivePath): readonly OrderedProjectedValue[] {
   if (!Array.isArray(value)) throw path_kind_error(path, "array");
   return value;
 }
@@ -971,38 +999,6 @@ function must_core_schema_root(schema: LiveMapSchema, root: HsonNode): void {
   must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
 }
 
-
-function delete_json_path(root: JsonValue, path: LivePath): void {
-  if (path.length === 0) return;
-
-  let cursor = root;
-
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const part = path[index];
-
-    if (typeof part === "number") {
-      if (!Array.isArray(cursor)) return;
-      cursor = cursor[part];
-      if (cursor === undefined) return;
-      continue;
-    }
-
-    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
-    cursor = cursor[part];
-    if (cursor === undefined) return;
-  }
-
-  const leaf = path[path.length - 1];
-
-  if (typeof leaf === "number") {
-    if (!Array.isArray(cursor)) return;
-    cursor.splice(leaf, 1);
-    return;
-  }
-
-  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) return;
-  delete cursor[leaf];
-}
 
 function must_schema_validation(
   validation: LiveMapSchemaValidation,
@@ -1032,73 +1028,24 @@ function validation_headline_path(validation: LiveMapSchemaValidation, fallbackP
   return validation.issues[0]?.path ?? fallbackPath;
 }
 
-function copy_projected_json_value(value: JsonValue): JsonValue {
-  return materialize_projected_value(admit_projected_value(value));
-}
-
-function must_projected_root_value(root: HsonNode): JsonValue {
-  const value = snap_live_path(root, []);
+function must_projected_root_value(root: HsonNode): OrderedProjectedValue {
+  const value = project_live_path(root, []);
   if (value !== undefined) return value;
   throw new Error("LiveMap projected root does not resolve.");
 }
 
-function set_json_path(root: JsonValue, path: LivePath, value: JsonValue): void {
-  if (path.length === 0) return;
-
-  let cursor = root;
-
-  for (let index = 0; index < path.length - 1; index += 1) {
-    const part = path[index];
-
-    if (typeof part === "number") {
-      if (!Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-array path ${JSON.stringify(path)}`);
-      if (cursor[part] === undefined) throw new Error(`LiveMap schema cannot preview set through missing path ${JSON.stringify(path.slice(0, index + 1))}`);
-      cursor = cursor[part];
-      continue;
-    }
-
-    if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-object path ${JSON.stringify(path)}`);
-    if (cursor[part] === undefined) throw new Error(`LiveMap schema cannot preview set through missing path ${JSON.stringify(path.slice(0, index + 1))}`);
-    cursor = cursor[part];
-  }
-
-  const leaf = path[path.length - 1];
-
-  if (typeof leaf === "number") {
-    if (!Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-array path ${JSON.stringify(path)}`);
-    cursor[leaf] = value;
-    return;
-  }
-
-  if (cursor === null || typeof cursor !== "object" || Array.isArray(cursor)) throw new Error(`LiveMap schema cannot preview set through non-object path ${JSON.stringify(path)}`);
-  cursor[leaf] = value;
-}
-
-function snap_json_path(root: JsonValue, path: LivePath): JsonValue | undefined {
-  let cursor: JsonValue | undefined = root;
-
-  for (const part of path) {
-    if (typeof part === "number") {
-      if (!Array.isArray(cursor)) return undefined;
-      cursor = cursor[part];
-      continue;
-    }
-
-    if (!is_json_object_value(cursor)) return undefined;
-    cursor = cursor[part];
-  }
-
-  return cursor;
-}
-
-function plain_object_from_set_many_values(values: LiveMapSetManyValues): JsonValue {
-  const objectValue: Record<string, JsonValue> = {};
-
-  for (const [key, value] of Object.entries(values)) {
-    objectValue[key] = value;
-  }
-
-  return objectValue;
+/** Preserve direct data roots unless an explicit whole-root replacement owns the change. */
+function projected_candidate_graph(
+  currentRoot: HsonNode,
+  value: OrderedProjectedValue,
+  writeOps: readonly LiveMapCoreWriteOp[],
+): HsonNode {
+  const root = projected_value_to_hson_root(value);
+  const replacesRoot = writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+  if (currentRoot.$_tag === ROOT_TAG || replacesRoot) return root;
+  const candidate = root.$_content[0];
+  if (is_Node(candidate)) return candidate;
+  throw new Error("LiveMap projected constructor did not produce a value node.");
 }
 
 
@@ -1113,19 +1060,19 @@ function prepare_projected_transition(
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
   transitionController: LiveMapTransitionController,
 ): PreparedLiveMapTransition {
-  must_core_schema_write_ops(schema, root, writeOps);
   const baseRoot = clone_live_root(root);
-  const nextRoot = clone_live_root(root);
-  const applied = apply_write_ops(nextRoot, writeOps);
+  const planned = plan_write_ops(must_projected_root_value(root), writeOps);
+  must_core_schema_candidate(schema, planned.value, writeOps);
+  const nextRoot = projected_candidate_graph(root, planned.value, writeOps);
   const prevRev = getRev();
-  const rev = applied.changed
+  const rev = planned.changed
     ? prevRev + 1
     : prevRev;
   const commit: LiveMapCommit = Object.freeze({
-    changed: applied.changed,
+    changed: planned.changed,
     prevRev,
     rev,
-    ops: applied.ops,
+    ops: planned.ops,
   });
   return transitionController.prepare({
     commit,
@@ -1151,13 +1098,15 @@ function apply_replay_ops(
   writeOps: readonly LiveMapCoreWriteOp[],
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
 ): LiveMapCommit {
-  must_core_schema_write_ops(schema, root, writeOps);
-  must_editor_write_ops(root, writeOps);
-  const applied = apply_write_ops(root, writeOps);
+  const planned = plan_write_ops(must_projected_root_value(root), writeOps);
+  must_core_schema_candidate(schema, planned.value, writeOps);
   const prevRev = getRev();
-  const rev = applied.changed ? prevRev + 1 : prevRev;
-  if (applied.changed) setRev(rev);
-  const commit: LiveMapCommit = Object.freeze({ changed: applied.changed, prevRev, rev, ops: applied.ops });
+  const rev = planned.changed ? prevRev + 1 : prevRev;
+  if (planned.changed) {
+    overwrite_hson_node(root, projected_candidate_graph(root, planned.value, writeOps));
+    setRev(rev);
+  }
+  const commit: LiveMapCommit = Object.freeze({ changed: planned.changed, prevRev, rev, ops: planned.ops });
   feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
   commitObserverHub.emitCommit(commit, "replay");
   return commit;
@@ -1186,20 +1135,20 @@ function prepare_document_transition(
  * writes. Other JSON values, arrays, null, root values, and non-object current
  * endpoints stay as direct endpoint `set` writes.
  */
-function write_ops_from_set(path: LivePath, value: unknown, currentValue: JsonValue | undefined): readonly LiveMapCoreWriteOp[] {
-  const jsonValue = must_json_value(value, path);
+function write_ops_from_set(path: LivePath, value: unknown, currentValue: OrderedProjectedValue | undefined): readonly LiveMapCoreWriteOp[] {
+  const projectedValue = must_ordered_projected_value(value, path);
 
   must_resolved_path("set", path, currentValue);
 
-  if (path.length === 0 || !is_plain_json_object_value(jsonValue)) {
+  if (path.length === 0 || !is_ordered_projected_object(projectedValue)) {
     return [
-      { kind: "set", path, value: jsonValue },
+      { kind: "set", path, value: projectedValue },
     ];
   }
 
-  if (currentValue !== undefined && !is_json_object_value(currentValue)) {
+  if (currentValue !== undefined && !is_ordered_projected_object(currentValue)) {
     return [
-      { kind: "set", path, value: jsonValue },
+      { kind: "set", path, value: projectedValue },
     ];
   }
 
@@ -1207,139 +1156,138 @@ function write_ops_from_set(path: LivePath, value: unknown, currentValue: JsonVa
     {
       kind: "constructive-set",
       path,
-      value: must_set_many_values(jsonValue, path),
+      value: projectedValue,
     },
   ];
 }
 
 /** Normalize public `setMany` into child-path set writes. */
-function write_ops_from_set_many(path: LivePath, values: LiveMapSetManyValues, currentValue: JsonValue | undefined): readonly LiveMapWriteOp[] {
+function write_ops_from_set_many(path: LivePath, values: OrderedProjectedObject, currentValue: OrderedProjectedValue | undefined): readonly LiveMapProjectedSetWriteOp[] {
   must_resolved_object_path("setMany", path, currentValue);
 
   /** Build the child-path set ops used by sibling-preserving object sets. */
-  return Object.entries(values).map(([key, value]) => ({
+  return values.entries.map(([key, value]) => ({
     kind: "set" as const,
     path: append_live_path(path, key),
     value,
   }));
 }
 
-function must_editor_write_ops(root: HsonNode, writeOps: readonly LiveMapCoreWriteOp[]): void {
-  /** Validate that the editor can apply the full pending op set before mutating the live root. */
-  apply_write_ops(clone_live_root(root), writeOps);
-}
-
-type LiveMapAppliedOps = Readonly<{
+type LiveMapPlannedOps = Readonly<{
   changed: boolean;
+  value: OrderedProjectedValue;
   ops: readonly LiveMapDataOp[];
 }>;
-function apply_write_ops(
-  root: HsonNode,
+function plan_write_ops(
+  root: OrderedProjectedValue,
   writeOps: readonly LiveMapCoreWriteOp[],
-): LiveMapAppliedOps {
-  /** Apply normalized pending intents in order and collect the changed public ops. */
+): LiveMapPlannedOps {
+  let candidate = root;
   const ops: LiveMapDataOp[] = [];
 
   for (const op of writeOps) {
     if (op.kind === "constructive-set") {
-      ops.push(...apply_constructive_set_write_op(root, op));
+      const planned = plan_constructive_set_write_op(candidate, op);
+      candidate = planned.value;
+      ops.push(...planned.ops);
       continue;
     }
 
     if (op.kind === "splice") {
-      const currentValue = must_core_array_value(snap_live_path(root, op.path), op.path);
-      const next = [...currentValue];
-      const removed = next.splice(op.start, op.deleteCount, ...op.items.map(copy_projected_json_value));
-      const edit = set_live_path(root, op.path, next);
-      if (!edit.changed) continue;
-      const spliceOp: LiveMapSpliceOp = Object.freeze({ kind: "splice", path: clone_live_path(op.path), start: op.start, removed: Object.freeze(removed.map(copy_projected_json_value)), inserted: Object.freeze(op.items.map(copy_projected_json_value)), prev: must_json_value(edit.prev, op.path), next: must_json_value(edit.next, op.path) });
+      const prev = must_resolved_projected_value("set", op.path, ordered_projected_value_at(candidate, op.path));
+      const result = ordered_projected_array_splice(candidate, op.path, op.start, op.deleteCount, op.items);
+      const next = must_resolved_projected_value("set", op.path, ordered_projected_value_at(result.value, op.path));
+      candidate = result.value;
+      if (ordered_projected_value_equal(prev, next)) continue;
+      const spliceOp: LiveMapSpliceOp = Object.freeze({
+        kind: "splice",
+        path: clone_live_path(op.path),
+        start: op.start,
+        removed: Object.freeze(result.removed.map(materialize_projected_value)),
+        inserted: Object.freeze(op.items.map(materialize_projected_value)),
+        prev: materialize_projected_value(prev),
+        next: materialize_projected_value(next),
+      });
       ops.push(spliceOp);
       continue;
     }
 
     if (op.kind === "set") {
-      const edit = set_live_path(root, op.path, op.value);
-      if (!edit.changed) continue;
+      const prev = ordered_projected_value_at(candidate, op.path);
+      candidate = ordered_projected_value_set(candidate, op.path, op.value);
+      if (optional_projected_values_equal(prev, op.value)) continue;
 
-      ops.push({
+      ops.push(Object.freeze({
         kind: "set",
         path: clone_live_path(op.path),
-        prev: edit.prev,
-        next: edit.next,
-      });
+        prev: materialize_optional_projected_value(prev),
+        next: materialize_projected_value(op.value),
+      }));
       continue;
     }
 
     if (op.kind === "replace") {
-      must_resolved_path("replace", op.path, snap_live_path(root, op.path));
-      const edit = replace_live_path(root, op.path, op.value);
-      if (!edit.changed) continue;
+      const prev = must_resolved_projected_value("replace", op.path, ordered_projected_value_at(candidate, op.path));
+      candidate = ordered_projected_value_replace(candidate, op.path, op.value);
+      if (ordered_projected_value_equal(prev, op.value)) continue;
 
-      ops.push({
+      ops.push(Object.freeze({
         kind: "replace",
         path: clone_live_path(op.path),
-        prev: edit.prev,
-        next: edit.next,
-      });
+        prev: materialize_projected_value(prev),
+        next: materialize_projected_value(op.value),
+      }));
       continue;
     }
 
-    must_resolved_path("delete", op.path, snap_live_path(root, op.path));
-    const edit = delete_live_path(root, op.path);
-    if (!edit.changed) continue;
+    const prev = must_resolved_projected_value("delete", op.path, ordered_projected_value_at(candidate, op.path));
+    must_plan_projected_delete(candidate, op.path);
+    candidate = ordered_projected_value_delete(candidate, op.path);
 
-    ops.push({
+    ops.push(Object.freeze({
       kind: "delete",
       path: clone_live_path(op.path),
-      prev: edit.prev,
+      prev: materialize_projected_value(prev),
       next: undefined,
-    });
+    }));
   }
 
   return {
     changed: ops.length > 0,
-    ops,
+    value: candidate,
+    ops: Object.freeze(ops),
   };
 }
 
-function apply_constructive_set_write_op(root: HsonNode, op: LiveMapConstructiveSetWriteOp): readonly LiveMapDataOp[] {
-  const entries = Object.entries(op.value);
-  const currentValue = snap_live_path(root, op.path);
-
-  if (currentValue !== undefined && !is_json_object_value(currentValue)) {
-    const edit = set_live_path(root, op.path, plain_object_from_set_many_values(op.value));
-    if (!edit.changed) return [];
-
-    return [
-      {
-        kind: "set",
-        path: clone_live_path(op.path),
-        prev: edit.prev,
-        next: edit.next,
-      },
-    ];
-  }
-
+function plan_constructive_set_write_op(
+  root: OrderedProjectedValue,
+  op: LiveMapConstructiveSetWriteOp,
+): Readonly<{ value: OrderedProjectedValue; ops: readonly LiveMapDataOp[] }> {
+  const currentValue = ordered_projected_value_at(root, op.path);
   if (currentValue === undefined) {
     throw new Error(`LiveMap set path does not resolve: ${format_live_path(op.path)}`);
   }
-
-  const ops: LiveMapDataOp[] = [];
-
-  for (const [key, value] of entries) {
-    const childPath = append_live_path(op.path, key);
-    const edit = set_live_path(root, childPath, value);
-    if (!edit.changed) continue;
-
-    ops.push({
-      kind: "set",
-      path: childPath,
-      prev: edit.prev,
-      next: edit.next,
-    });
+  if (!is_ordered_projected_object(currentValue)) {
+    throw new Error(`LiveMap set path is not an object: ${format_live_path(op.path)}`);
   }
 
-  return ops;
+  const ops: LiveMapDataOp[] = [];
+  let candidate = root;
+  for (const [key, value] of op.value.entries) {
+    const childPath = append_live_path(op.path, key);
+    const prev = ordered_projected_value_at(candidate, childPath);
+    candidate = ordered_projected_value_set(candidate, childPath, value);
+    if (optional_projected_values_equal(prev, value)) continue;
+
+    ops.push(Object.freeze({
+      kind: "set",
+      path: childPath,
+      prev: materialize_optional_projected_value(prev),
+      next: materialize_projected_value(value),
+    }));
+  }
+
+  return Object.freeze({ value: candidate, ops: Object.freeze(ops) });
 }
 
 function must_core_schema_write_ops(
@@ -1348,12 +1296,19 @@ function must_core_schema_write_ops(
   writeOps: readonly LiveMapCoreWriteOp[],
 ): void {
   if (schema === undefined) return;
+  const candidate = plan_write_ops(must_projected_root_value(root), writeOps).value;
+  must_core_schema_candidate(schema, candidate, writeOps);
+}
 
-  /** Preview all writes against projected JSON, then validate the whole candidate root. */
-  const candidate = apply_json_write_ops(copy_projected_json_value(must_projected_root_value(root)), writeOps);
-
+/** Materialize only the completed immutable candidate for the existing schema API. */
+function must_core_schema_candidate(
+  schema: LiveMapSchema | undefined,
+  candidate: OrderedProjectedValue,
+  writeOps: readonly LiveMapCoreWriteOp[],
+): void {
+  if (schema === undefined) return;
   must_schema_validation(
-    schema.validateRoot(candidate),
+    schema.validateRoot(materialize_projected_value(candidate)),
     write_op_path(writeOps[0]),
     schema_headline_mode_for_write_ops(writeOps)
   );
@@ -1372,89 +1327,78 @@ function schema_headline_mode_for_write_ops(writeOps: readonly LiveMapCoreWriteO
   return "path";
 }
 
-/** Apply staged write intents to a cloned JSON root for schema preview. */
-function apply_json_write_ops(root: JsonValue, writeOps: readonly LiveMapCoreWriteOp[]): JsonValue {
-  let candidate = root;
-
-  for (const op of writeOps) {
-    if (op.kind === "constructive-set") {
-      apply_json_constructive_set(candidate, op);
-      continue;
-    }
-
-    if (op.kind === "splice") {
-      apply_json_splice_write_op(candidate, op);
-      continue;
-    }
-
-    if (op.kind === "set") {
-      set_json_path(candidate, op.path, copy_projected_json_value(op.value));
-      continue;
-    }
-
-    if (op.kind === "replace") {
-      if (op.path.length === 0) {
-        candidate = copy_projected_json_value(op.value);
-      } else {
-        must_resolved_path("replace", op.path, snap_json_path(candidate, op.path));
-        set_json_path(candidate, op.path, copy_projected_json_value(op.value));
-      }
-      continue;
-    }
-
-    must_resolved_path("delete", op.path, snap_json_path(candidate, op.path));
-    delete_json_path(candidate, op.path);
-  }
-
-  return candidate;
-}
-
-function apply_json_splice_write_op(root: JsonValue, op: LiveMapSpliceWriteOp): void {
-  const currentValue = must_core_array_value(snap_json_path(root, op.path), op.path);
-  const next = [...currentValue];
-  next.splice(op.start, op.deleteCount, ...op.items.map(copy_projected_json_value));
-  set_json_path(root, op.path, next);
-}
-
-function apply_json_constructive_set(root: JsonValue, op: LiveMapConstructiveSetWriteOp): void {
-  const entries = Object.entries(op.value);
-  const currentValue = snap_json_path(root, op.path);
-
-  if (currentValue !== undefined && !is_json_object_value(currentValue)) {
-    set_json_path(root, op.path, copy_projected_json_value(plain_object_from_set_many_values(op.value)));
-    return;
-  }
-
-  if (currentValue === undefined) {
-    throw new Error(`LiveMap set path does not resolve: ${format_live_path(op.path)}`);
-  }
-
-  for (const [key, value] of entries) {
-    set_json_path(root, append_live_path(op.path, key), copy_projected_json_value(value));
-  }
-}
-
-/** True for non-array JSON objects that can receive shallow child writes. */
-function is_json_object_value(value: JsonValue | undefined): value is LiveMapSetManyValues {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /** Enforce strict resolved-path semantics for endpoint operations. */
-function must_resolved_path(action: "delete" | "replace" | "set", path: LivePath, value: JsonValue | undefined): void {
+function must_resolved_path(action: "delete" | "replace" | "set", path: LivePath, value: OrderedProjectedValue | undefined): void {
   if (path.length === 0 || value !== undefined) return;
 
   throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
 }
 
 /** Enforce `setMany`'s existing-object endpoint requirement. */
-function must_resolved_object_path(action: "setMany", path: LivePath, value: JsonValue | undefined): void {
+function must_resolved_object_path(action: "setMany", path: LivePath, value: OrderedProjectedValue | undefined): void {
   if (value === undefined) {
     throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
   }
 
-  if (is_json_object_value(value)) return;
+  if (is_ordered_projected_object(value)) return;
 
   throw new Error(`LiveMap ${action} path is not an object: ${format_live_path(path)}`);
+}
+
+function must_resolved_projected_value(
+  action: "delete" | "replace" | "set",
+  path: LivePath,
+  value: OrderedProjectedValue | undefined,
+): OrderedProjectedValue {
+  if (value !== undefined) return value;
+  throw new Error(`LiveMap ${action} path does not resolve: ${format_live_path(path)}`);
+}
+
+function must_plan_projected_delete(root: OrderedProjectedValue, path: LivePath): void {
+  if (path.length === 0) {
+    throw new Error("LiveMap editor cannot delete the root node yet.");
+  }
+  const leaf = path[path.length - 1];
+  const parent = ordered_projected_value_at(root, path.slice(0, -1));
+  if (typeof leaf === "number" && Array.isArray(parent)) {
+    throw new Error(`LiveMap editor cannot delete array indexes yet: ${format_live_path(path)}`);
+  }
+}
+
+function optional_projected_values_equal(
+  left: OrderedProjectedValue | undefined,
+  right: OrderedProjectedValue | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return ordered_projected_value_equal(left, right);
+}
+
+function materialize_optional_projected_value(
+  value: OrderedProjectedValue | undefined,
+): JsonValue | undefined {
+  return value === undefined ? undefined : materialize_projected_value(value);
+}
+
+/** Adapt existing replay wire intents at the boundary without changing their transport type. */
+function projected_write_op_from_wire(op: LiveMapWriteOp): Exclude<LiveMapCoreWriteOp, LiveMapConstructiveSetWriteOp> {
+  if (op.kind === "delete") {
+    return Object.freeze({ kind: "delete", path: clone_live_path(op.path) });
+  }
+  if (op.kind === "splice") {
+    return Object.freeze({
+      kind: "splice",
+      path: clone_live_path(op.path),
+      start: op.start,
+      deleteCount: op.deleteCount,
+      items: Object.freeze(op.items.map((item, index) =>
+        must_ordered_projected_value(item, append_live_path(op.path, op.start + index)))),
+    });
+  }
+  return Object.freeze({
+    kind: op.kind,
+    path: clone_live_path(op.path),
+    value: must_ordered_projected_value(op.value, op.path),
+  });
 }
 
 function write_op_path(op: LiveMapCoreWriteOp | undefined): LivePath {
