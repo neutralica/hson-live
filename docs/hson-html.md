@@ -4,17 +4,13 @@
 ## HTML Representation in HSON
 Updated: 2026-07-13
 
-HTML maps into the HSON graph as ordered element content. The mapping preserves
-the structure required to re-emit useful equivalent markup, but it is
-canonicalizing rather than source-text-lossless.
+HTML maps into the HSON graph as ordered element content. The mapping preserves the structure required to re-emit useful equivalent markup, but it is canonicalizing rather than source-text-lossless.
 
 ---
 
 ## Element clusters
 
-A normal HTML element becomes an ordinary node whose tag is the parsed element
-name, whose attributes are in `$_attrs`, and whose content is represented by
-one `_hson_elem` cluster:
+A normal HTML element becomes an ordinary node whose tag is the parsed element name, whose attributes are in `$_attrs`, and whose content is represented by one `_hson_elem` cluster:
 
 ```html
 <p>Hello <em>world</em></p>
@@ -29,16 +25,9 @@ p
          └─ _hson_str ("world")
 ```
 
-`_hson_elem` is structural and is normally melted when ordinary HTML is
-serialized. The transport retains it explicitly when melting would lose
-adjacent, empty, control-bearing, or boundary-whitespace text items. Its direct children may be only
-`_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or
-array clusters, and array items cannot appear directly inside it.
+`_hson_elem` is structural and is normally melted when ordinary HTML is serialized. The transport retains it explicitly when melting would lose adjacent, empty, control-bearing, or boundary-whitespace text items. Its direct children may be only `_hson_str` leaves or ordinary element nodes. Typed `_hson_val`, JSON object or array clusters, and array items cannot appear directly inside it.
 
-Empty and void elements use canonical ordinary `$_content: []`; an empty
-`_hson_elem` is not retained. Voidness is inferred from tag semantics during
-HTML serialization; the source spelling `<img>`, `<img/>`, or an expanded
-repair form is not retained.
+Empty and void elements use canonical ordinary `$_content: []`; an empty `_hson_elem` is not retained. Voidness is inferred from tag semantics during HTML serialization; the source spelling `<img>`, `<img/>`, or an expanded repair form is not retained.
 
 ---
 
@@ -53,8 +42,7 @@ HSON uses one tag construct rather than HTML opening/closing pairs:
 />
 ```
 
-Simple text-only content may be emitted inline. Attributes and text remain
-separate in the graph. The parser accepts this compact combined spelling:
+Simple text-only content may be emitted inline. Attributes and text remain separate in the graph. The parser accepts this compact combined spelling:
 
 ```hson
 <button id="save" disabled "Save"/>
@@ -78,31 +66,24 @@ Mixed text and elements retain their graph order:
 />
 ```
 
-The source's indentation, quote style, comments, entity spelling, optional end
-tags, and void-tag spelling are not preserved.
+The source's indentation, quote style, comments, entity spelling, optional end tags, and void-tag spelling are not preserved.
 
 ---
 
 ## Text behavior
 
-General HTML parsing trims each non-empty text node and drops layout-only
-whitespace. This means boundary spaces can be lost:
+General HTML parsing trims each non-empty text node and drops layout-only whitespace. This means boundary spaces can be lost:
 
 ```html
 <p>Hello <em>world</em></p>
 ```
 
-records `"Hello"`, not `"Hello "`, on the general parser path. Text is neither
-fully whitespace-lossless nor guaranteed to reproduce the exact original
-`textContent` around element boundaries.
+records `"Hello"`, not `"Hello "`, on the general parser path. Text is neither fully whitespace-lossless nor guaranteed to reproduce the exact original `textContent` around element boundaries.
 
-`style` and `script` content is also trimmed and stored as one `_hson_str`
-leaf, with a recognized CDATA wrapper removed. Comments and non-element,
+`style` and `script` content is also trimmed and stored as one `_hson_str` leaf, with a recognized CDATA wrapper removed. Comments and non-element,
 non-text DOM nodes are ignored.
 
-There are specialized SVG ingestion paths whose text handling differs and can
-retain raw SVG text-node whitespace. Code that depends on whitespace should
-test the exact source constructor and format route it uses.
+There are specialized SVG ingestion paths whose text handling differs and can retain raw SVG text-node whitespace. Code that depends on whitespace should test the exact source constructor and format route it uses.
 
 ---
 
@@ -113,45 +94,22 @@ The parser canonicalizes them:
 
 - HTML attribute names are lowercased.
 - SVG attribute spelling reported by the namespace-aware DOM is preserved.
-- `style` is parsed into a structured CSS map rather than retained as one raw
-  string.
+- `style` is parsed into a structured CSS map rather than retained as one raw string.
 - `xmlns`, `xmlns:*`, and `xml:*` namespace plumbing is dropped.
 - SVG `xlink:href` is mapped to `href` when no `href` is already present.
-- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not
-  `$_attrs`; unknown `hson:*` names reject.
-- Private transit names are rejected at public ingress and never enter the
-  canonical graph.
-- Every `data-*` attribute is routed to `$_attrs` as application data,
-  including the literal name `data--attrmap`.
+- Registered `hson:index` and `hson:quid` names are routed to `$_meta`, not `$_attrs`; unknown `hson:*` names reject.
+- Private transit names are rejected at public ingress and never enter the canonical graph.
+- Every `data-*` attribute is routed to `$_attrs` as application data, including the literal name `data--attrmap`.
 - other attribute whitespace is normalized.
-- empty values and values equal to the attribute name are treated as presence
-  attributes and stored canonically.
+- empty values and values equal to the attribute name are treated as presence attributes and stored canonically.
 
-As a result, attribute presence is preserved more reliably than exact source
-value spelling. Attribute order is not semantically significant after parsing.
+As a result, attribute presence is preserved more reliably than exact source value spelling. Attribute order is not semantically significant after parsing.
 
-Raw HTML-string duplicates are resolved while their original names are still
-visible. Names compare case-insensitively. Ordinary attributes use last-wins
-values and retain the position and spelling of their first occurrence.
-Repeated `class` declarations merge tokens in encounter order and remove
-repeated tokens. Repeated registered or candidate `hson:*` metadata
-declarations reject. An existing `Element` has already lost raw duplicate
-tokens and therefore begins at the post-token semantic boundary.
+Raw HTML-string duplicates are resolved while their original names are still visible. Names compare case-insensitively. Ordinary attributes use last-wins values and retain the position and spelling of their first occurrence. Repeated `class` declarations merge tokens in encounter order and remove repeated tokens. Repeated registered or candidate `hson:*` metadata declarations reject. An existing `Element` has already lost raw duplicate tokens and therefore begins at the post-token semantic boundary.
 
-For XML-backed string parsing, canonical-valid ordinary names that are unsafe
-for XML transit, such as `a:b`, are encoded into deterministic, injective,
-self-decoding private names. They are decoded before canonical attribute
-admission; the temporary spelling never enters `$_attrs`. Invalid canonical
-names reject rather than being made valid by transport. Literal `hson:*`
-candidates use their separate metadata codec and still pass through the exact
-registry, so `hson:unknown` rejects. Authored names in either private transit
-domain reject on string, `Element`, raw-node, codec, and serializer boundaries.
+For XML-backed string parsing, canonical-valid ordinary names that are unsafe for XML transit, such as `a:b`, are encoded into deterministic, injective, self-decoding private names. They are decoded before canonical attribute admission; the temporary spelling never enters `$_attrs`. Invalid canonical names reject rather than being made valid by transport. Literal `hson:*` candidates use their separate metadata codec and still pass through the exact registry, so `hson:unknown` rejects. Authored names in either private transit domain reject on string, `Element`, raw-node, codec, and serializer boundaries.
 
-The string preflight order is comment stripping, flag expansion, text/entity
-normalization, SVG namespace handling, quote normalization, duplicate
-resolution plus ordinary-name transit encoding, HSON metadata-name transit
-encoding, XML parsing, attribute enumeration, both transit decoders, canonical
-graph construction, and invariant validation.
+The string preflight order is comment stripping, flag expansion, text/entity normalization, SVG namespace handling, quote normalization, duplicate resolution plus ordinary-name transit encoding, HSON metadata-name transit encoding, XML parsing, attribute enumeration, both transit decoders, canonical graph construction, and invariant validation.
 
 ---
 
