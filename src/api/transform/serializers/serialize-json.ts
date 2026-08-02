@@ -11,10 +11,17 @@ import { clone_node } from "../../../core/clone-node.js";
 import { make_string } from "../../../core/stringify.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import {
+    is_projected_value_hson_node,
+    projected_value_from_hson_node,
+} from "../../../core/projected-value-graph.js";
+import {
+    ordered_projected_array,
+    ordered_projected_object,
+    type OrderedProjectedValue,
+} from "../../../core/ordered-projected-value.js";
+import {
     emit_ordered_json,
     ordered_json_from_runtime_value,
-    ordered_json_object,
-    type OrderedJsonValue,
 } from "../utils/json-utils/ordered-json.js";
 
 /**
@@ -71,14 +78,17 @@ export function serialize_json($node: HsonNode): string {
  * retain explicit entry sequences. This representation exists only between
  * graph admission and text emission; it is never exposed as caller JSON.
  */
-function ordered_json_value_from_node($node: HsonNode): OrderedJsonValue {
+function ordered_json_value_from_node($node: HsonNode): OrderedProjectedValue {
     collect_hson_node_quid_claims($node);
     const clone = collapse_redundant_roots(clone_node($node));
     assert_invariants(clone, "serialize_json");
+    if (is_projected_value_hson_node(clone)) {
+        return projected_value_from_hson_node(clone);
+    }
     return orderedJsonFromNode(clone);
 }
 
-function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
+function orderedJsonFromNode(node: HsonNode): OrderedProjectedValue {
     if (!node || typeof node.$_tag !== "string") {
         _throw_transform_err("Invalid node or node tag", "serialize_json");
     }
@@ -95,7 +105,7 @@ function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
             return orderedJsonFromNode(only);
         }
         case ARR_TAG: {
-            return Object.freeze(node.$_content.map((wrapper) => {
+            return ordered_projected_array(node.$_content.map((wrapper) => {
                 if (!is_Node(wrapper) || !is_indexed(wrapper)) {
                     _throw_transform_err("malformed _hson_ii node in _hson_arr", "serialize-json");
                 }
@@ -110,14 +120,14 @@ function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
                     return orderedJsonFromNode(only);
                 }
             }
-            return ordered_json_object(node.$_content.map((property) => {
+            return ordered_projected_object(node.$_content.map((property) => {
                 if (!is_Node(property)) {
                     _throw_transform_err("malformed property node in _hson_obj", "serialize-json");
                 }
                 const child = property.$_content[0];
                 const value = is_Node(child)
                     ? orderedJsonFromNode(child)
-                    : ordered_json_object([]);
+                    : ordered_projected_object([]);
                 return [property.$_tag, value] as const;
             }));
         }
@@ -125,9 +135,9 @@ function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
         case VAL_TAG:
             return node.$_content[0] as Primitive;
         case ELEM_TAG:
-            return ordered_json_object([[
+            return ordered_projected_object([[
                 ELEM_TAG,
-                Object.freeze(node.$_content.map((child) => {
+                ordered_projected_array(node.$_content.map((child) => {
                     if (!is_Node(child)) {
                         _throw_transform_err("malformed child in _hson_elem", "serialize-json");
                     }
@@ -141,23 +151,23 @@ function orderedJsonFromNode(node: HsonNode): OrderedJsonValue {
             return orderedJsonFromNode(node.$_content[0]);
         }
         default: {
-            let payload: OrderedJsonValue;
+            let payload: OrderedProjectedValue;
             if (node.$_content.length === 0) {
-                payload = ordered_json_object([[ELEM_TAG, Object.freeze([])]]);
+                payload = ordered_projected_object([[ELEM_TAG, ordered_projected_array([])]]);
             } else if (node.$_content.length === 1 && is_Node(node.$_content[0])) {
                 payload = orderedJsonFromNode(node.$_content[0]);
             } else {
                 _throw_transform_err(`<${node.$_tag}> has multiple content VSN children`, "serialize_json");
             }
 
-            const entries: Array<readonly [string, OrderedJsonValue]> = [[node.$_tag, payload]];
+            const entries: Array<readonly [string, OrderedProjectedValue]> = [[node.$_tag, payload]];
             if (node.$_attrs && Object.keys(node.$_attrs).length > 0) {
                 entries.push([ATTRS_KEY, ordered_json_from_runtime_value(node.$_attrs as JsonValue)]);
             }
             if (node.$_meta && Object.keys(node.$_meta).length > 0) {
                 entries.push([META_KEY, ordered_json_from_runtime_value(node.$_meta as JsonValue)]);
             }
-            return ordered_json_object(entries);
+            return ordered_projected_object(entries);
         }
     }
 }

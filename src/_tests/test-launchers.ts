@@ -339,6 +339,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["authority", "lifecycle", "commit"],
     }),
     launcher({
+      id: "livemap.projected-value-equivalence",
+      subject: "LiveMap",
+      displayName: "LiveMap ordered projected-value equivalence",
+      packageScript: "test:livemap-projected-value-equivalence",
+      repositoryModule: "tests/livemap-projected-value-equivalence.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["projected-value", "canonical-graph", "equivalence", "externally-discoverable"],
+    }),
+    launcher({
       id: "livehost.authority",
       subject: "LiveHost",
       displayName: "Exclusive LiveHost authority",

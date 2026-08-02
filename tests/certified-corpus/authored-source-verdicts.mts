@@ -372,8 +372,15 @@ function specialCodeUnitDescription(source: string): string {
     if (!isSpecialCodeUnit(unit)) continue;
     const hex = unit.toString(16).padStart(4, "0").toUpperCase();
     let name = specialNames.get(unit);
-    if (name === undefined && unit >= 0xd800 && unit <= 0xdbff) name = "isolated/high-surrogate code unit";
-    else if (name === undefined && unit >= 0xdc00 && unit <= 0xdfff) name = "isolated/low-surrogate code unit";
+    if (name === undefined && unit >= 0xd800 && unit <= 0xdbff) {
+      const paired = index + 1 < source.length && source.charCodeAt(index + 1) >= 0xdc00
+        && source.charCodeAt(index + 1) <= 0xdfff;
+      name = paired ? "paired high-surrogate code unit" : "isolated high-surrogate code unit";
+    } else if (name === undefined && unit >= 0xdc00 && unit <= 0xdfff) {
+      const paired = index > 0 && source.charCodeAt(index - 1) >= 0xd800
+        && source.charCodeAt(index - 1) <= 0xdbff;
+      name = paired ? "paired low-surrogate code unit" : "isolated low-surrogate code unit";
+    }
     else if (name === undefined && unit < 0x20) name = "raw C0 control";
     else if (name === undefined) name = "Unicode whitespace";
     parts.push(`index ${index}: ${name} U+${hex}`);
@@ -381,67 +388,87 @@ function specialCodeUnitDescription(source: string): string {
   return `${parts.join("; ")}; all other code units are printable as shown`;
 }
 
-function html(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-}
-
-function sourceDisplay(entry: AuthoredCase): string {
-  if (!Array.from(entry.source, (character) => character.charCodeAt(0)).some(isSpecialCodeUnit)) {
-    return markdownInlineCode(entry.source);
-  }
-  return `<pre>Escaped source: ${html(escapedSource(entry.source))}<br>Actual code units: ${html(specialCodeUnitDescription(entry.source))}</pre>`;
-}
-
 function proposal(entry: AuthoredCase): "Valid" | "Invalid" {
   return entry.disposition === "accept" ? "Valid" : "Invalid";
 }
 
-function claimCell(entry: AuthoredCase): string {
-  const notes = attention(entry);
-  const suffix = notes.length === 0 ? "" : `<br>**Review attention:** ${notes.join(" ")}`;
-  return plainClaim(entry).replaceAll("|", "\\|") + suffix;
+function visibleAttention(entry: AuthoredCase): readonly string[] {
+  return attention(entry).filter((note) =>
+    note !== "Implementation-derived classification or expectation provenance.");
 }
 
-function primaryTable(entries: readonly AuthoredCase[]): string {
-  if (entries.length === 0) return "";
-  const lines = [
-    "| Case ID | Exact authored source | Current proposal | Plain-English claim | Human verdict (`V/I/?`) | Optional note |",
-    "|---|---|---|---|---|---|",
-  ];
-  for (const entry of entries) {
-    lines.push(`<!-- authored-case:${entry.id}; source:${isSpecialSource(entry.source) ? "display" : "inline"}; review:standalone -->`);
-    lines.push(`| \`${entry.id}\` | ${sourceDisplay(entry)} | ${proposal(entry)} | ${claimCell(entry)} |  |  |`);
-  }
-  return lines.join("\n");
+function sourceBlock(entry: AuthoredCase): string {
+  if (!isSpecialSource(entry.source)) return `**Source:** ${markdownInlineCode(entry.source)}`;
+  return [
+    "**Source:**",
+    "",
+    "```text",
+    escapedSource(entry.source),
+    "```",
+    "",
+    `**Special code units:** ${specialCodeUnitDescription(entry.source)}`,
+  ].join("\n");
 }
 
 function isSpecialSource(source: string): boolean {
-  return Array.from({ length: source.length }, (_, index) => source.charCodeAt(index)).some(isSpecialCodeUnit);
+  for (let index = 0; index < source.length; index += 1) {
+    const unit = source.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff && index + 1 < source.length) {
+      const next = source.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        index += 1;
+        continue;
+      }
+    }
+    if (isSpecialCodeUnit(unit)) return true;
+  }
+  return false;
 }
 
-function familyTable(group: ReviewGroup): string {
+function reviewBlock(entry: AuthoredCase, kind: "verdict" | "override", familyId?: string): string {
+  const allAttention = attention(entry);
+  const visible = visibleAttention(entry);
+  const meta = [
+    `source=${isSpecialSource(entry.source) ? "display" : "inline"}`,
+    `review=${kind === "verdict" ? "standalone" : `family:${familyId}`}`,
+    `attention=${allAttention.length === 0 ? "none" : allAttention.join(" ")}`,
+  ].join("; ");
+  const lines = [
+    `<!-- review-meta: ${meta} -->`,
+    `<!-- authored-case:${entry.id} -->`,
+    "",
+    kind === "verdict" ? "**Verdict — V / I / ?:** ` `" : "**Override — V / I / ?:** ` `",
+    "",
+    plainClaim(entry),
+    "",
+    sourceBlock(entry),
+  ];
+  if (visible.length > 0) lines.push("", `**Review attention:** ${visible.join(" ")}`);
+  lines.push("", `**Current proposal:** ${proposal(entry)}`, "", "**Notes:**");
+  return lines.join("\n");
+}
+
+function primaryBlocks(entries: readonly AuthoredCase[]): string {
+  return entries.map((entry) => reviewBlock(entry, "verdict")).join("\n\n---\n\n");
+}
+
+function familyBlocks(group: ReviewGroup): string {
   const lines = [
     `### Family: ${group.title}`,
     "",
-    group.rule,
+    `**Shared rule:** ${group.rule}`,
     "",
-    "Family verdict (`V/I/?`): ______",
+    "**Family verdict — V / I / ?:** ` `",
     "",
-    "Inheritance rule:",
-    "If a family verdict is present, every blank row inherits it.",
-    "An individual row verdict overrides the family verdict.",
-    "Blank family and row verdicts mean not reviewed.",
+    "A family verdict applies to every blank override below. An individual override wins.",
+    "Blank family and override fields mean not reviewed.",
     "",
     `<!-- family:start ${group.id} -->`,
-    "| Case ID | Exact source/display | Current proposal | Distinct varied value | Row override (`V/I/?`) | Optional note |",
-    "|---|---|---|---|---|---|",
+    "",
+    group.entries.map((entry) => reviewBlock(entry, "override", group.id)).join("\n\n---\n\n"),
+    "",
+    `<!-- family:end ${group.id} -->`,
   ];
-  for (const entry of group.entries) {
-    const varied = entry.taxonomy.variation ?? entry.taxonomy.defect ?? group.rule;
-    lines.push(`<!-- authored-case:${entry.id}; source:${isSpecialSource(entry.source) ? "display" : "inline"}; review:family:${group.id} -->`);
-    lines.push(`| \`${entry.id}\` | ${sourceDisplay(entry)} | ${proposal(entry)} | ${varied.replaceAll("|", "\\|")}${attention(entry).length === 0 ? "" : `<br>**Review attention:** ${attention(entry).join(" ")}`} |  |  |`);
-  }
-  lines.push(`<!-- family:end ${group.id} -->`);
   return lines.join("\n");
 }
 
@@ -461,10 +488,10 @@ function emptyNameContrast(): string {
   ].join("\n");
 }
 
-function objectElementContrast(): string {
+function objectElementContrast(confirmed = false): string {
   return [
     "### Matched contrast: object versus element closer",
-    "",
+    confirmed ? "///---> CONFIRMED" : "",
     "```hson",
     "<a 1>   // current proposal: valid HSON object",
     "<a 1/>  // current proposal: invalid HSON element typed content",
@@ -528,13 +555,13 @@ export function renderAuthoredSourceVerdictTemplate(): string {
     "",
     "## Matched source contrasts",
     "",
-    objectElementContrast(),
+    objectElementContrast(true),
     "",
     "### Typed object values versus element flags",
-    "",
+    "///---> CONFIRMED",
     "```hson",
-    "<t true f false n null>",
-    "<x true false null/>",
+    "<t true f false n null>   /// JS object {t: true, f: false, n null}",
+    "<x true false null/>      /// empty x element w boolean attributes <x true=\"true\" false=\"false\" null=\"null\"></x>",
     "```",
     "",
     "### Primitive-looking object keys",
@@ -564,8 +591,8 @@ export function renderAuthoredSourceVerdictTemplate(): string {
     const standalone = authoredCases
       .filter((entry) => sectionNumber(entry) === section.number && !familyIds.has(entry.id))
       .sort((left, right) => left.id.localeCompare(right.id));
-    if (standalone.length > 0) out.push(primaryTable(standalone), "");
-    for (const group of groups) out.push(familyTable(group), "");
+    if (standalone.length > 0) out.push(primaryBlocks(standalone), "");
+    for (const group of groups) out.push(familyBlocks(group), "");
   }
 
   out.push(

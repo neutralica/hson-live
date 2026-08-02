@@ -4,11 +4,17 @@
 import type { HsonNode, JsonValue, Primitive } from "../../core/types.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { LivePathPart, LivePath, LiveMapEditResult } from "../../types/livemap.types.js";
-import { HSON_META_INDEX, _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
+import { _HSON_, ARR_TAG, II_TAG, OBJ_TAG, STR_TAG, VAL_TAG } from "../../core/constants.js";
 import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
 import { json_values_equal } from "./livemap-helpers.js";
 import { clone_node } from "../../core/clone-node.js";
+import { ordered_projected_value_from_json } from "../../core/ordered-projected-value.js";
+import {
+  projected_array_item_to_hson_node,
+  projected_object_property_to_hson_node,
+  projected_value_to_hson_root,
+} from "../../core/projected-value-graph.js";
 
 /**
  * Parent resolution for a projected LiveMap path.
@@ -184,7 +190,7 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  */
 export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
   const prev = snap_live_path(root, []);
-  const nextRoot = json_value_to_node(value);
+  const nextRoot = projected_value_to_hson_root(ordered_projected_value_from_json(value));
 
   overwrite_hson_node(root, nextRoot);
 
@@ -487,10 +493,10 @@ function array_node_to_value(node: HsonNode): JsonValue[] {
  * represents the assigned JSON value.
  */
 function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
-  return CREATE_NODE({
-    $_tag: key,
-    $_content: [json_value_to_node(value)],
-  });
+  return projected_object_property_to_hson_node(
+    key,
+    ordered_projected_value_from_json(value),
+  );
 }
 
 /**
@@ -500,67 +506,10 @@ function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
  * representation used by the parser/serializer pipeline.
  */
 function make_array_item_wrapper(index: number, value: JsonValue): HsonNode {
-  return CREATE_NODE({
-    $_tag: II_TAG,
-    $_content: [json_value_to_node(value)],
-    $_meta: { [HSON_META_INDEX]: String(index) },
-  });
-}
-
-/**
- * Convert projected JSON data into the corresponding HSON value node.
- *
- * This is the editor-local writer equivalent of `node_to_json_value()`. It is
- * deliberately small for now and should eventually align with the transform
- * constructor path or move into a shared LiveMap projection helper if reused.
- */
-function json_value_to_node(value: JsonValue): HsonNode {
-  if (typeof value === "string") return make_value_node(STR_TAG, [value]);
-  if (value === null || typeof value === "number" || typeof value === "boolean") return make_value_node(VAL_TAG, [value]);
-  if (Array.isArray(value)) return json_array_to_node(value);
-  return json_object_to_node(value);
-}
-
-/**
- * Convert a plain object into an `_hson_obj` value node.
- *
- * Each object entry becomes a user-key wrapper containing one value payload.
- */
-function json_object_to_node(value: Readonly<Record<string, JsonValue>>): HsonNode {
-  return make_value_node(
-    OBJ_TAG,
-    Object.entries(value).map(([key, entry]) => make_object_property_wrapper(key, entry)),
+  return projected_array_item_to_hson_node(
+    index,
+    ordered_projected_value_from_json(value),
   );
-}
-
-/**
- * Convert a JSON array into an `_hson_arr` value node.
- *
- * Each entry becomes an `_hson_ii` wrapper with `index` metadata and one
- * value payload child.
- */
-function json_array_to_node(value: readonly JsonValue[]): HsonNode {
-  return make_value_node(
-    ARR_TAG,
-    value.map((entry, index) => CREATE_NODE({
-      $_tag: II_TAG,
-      $_content: [json_value_to_node(entry)],
-      $_meta: { [HSON_META_INDEX]: String(index) },
-    })),
-  );
-}
-
-/**
- * Create a HSON value node with normalized node defaults.
- *
- * All node construction goes through `CREATE_NODE` so metadata/content defaults
- * stay consistent with core node construction.
- */
-function make_value_node(tag: string, content: HsonNode[] | Primitive[]): HsonNode {
-  return CREATE_NODE({
-    $_tag: tag,
-    $_content: content,
-  });
 }
 
 function clone_hson_node(node: HsonNode): HsonNode {

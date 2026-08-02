@@ -1,35 +1,17 @@
-import type { JsonValue, Primitive } from "../../../../core/types.js";
+import type { JsonValue } from "../../../../core/types.js";
 import {
   TransformError,
   type TransformErrorSource,
 } from "../../../../core/errors.js";
-
-const ORDERED_JSON_OBJECT: unique symbol = Symbol("hson.ordered-json-object");
-
-export type OrderedJsonObject = Readonly<{
-  [ORDERED_JSON_OBJECT]: true;
-  entries: readonly (readonly [string, OrderedJsonValue])[];
-}>;
-
-export type OrderedJsonValue =
-  | Primitive
-  | readonly OrderedJsonValue[]
-  | OrderedJsonObject;
-
-export function ordered_json_object(
-  entries: readonly (readonly [string, OrderedJsonValue])[],
-): OrderedJsonObject {
-  return Object.freeze({
-    [ORDERED_JSON_OBJECT]: true as const,
-    entries: Object.freeze(entries.map(([key, value]) => Object.freeze([key, value] as const))),
-  });
-}
-
-export function is_ordered_json_object(value: unknown): value is OrderedJsonObject {
-  return typeof value === "object"
-    && value !== null
-    && Reflect.get(value, ORDERED_JSON_OBJECT) === true;
-}
+import { hsonNumber } from "../../../../core/hson-number.js";
+import {
+  is_ordered_projected_object,
+  ordered_projected_array,
+  ordered_projected_object,
+  ordered_projected_value_from_json,
+  type OrderedProjectedObject,
+  type OrderedProjectedValue,
+} from "../../../../core/ordered-projected-value.js";
 
 /**
  * Parse JSON text without first materializing object properties through the
@@ -37,7 +19,7 @@ export function is_ordered_json_object(value: unknown): value is OrderedJsonObje
  * JSON escape decoding, so neither source order nor an earlier duplicate can
  * disappear before HSON admission.
  */
-export function parse_ordered_json_text(source: string): OrderedJsonValue {
+export function parse_ordered_json_text(source: string): OrderedProjectedValue {
   let index = 0;
 
   const sourcePosition = (offset: number): TransformErrorSource => {
@@ -123,24 +105,23 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(index));
     if (match === null) return fail("invalid JSON number");
     index += match[0].length;
-    const value = Number(match[0]);
-    return value;
+    return hsonNumber(Number(match[0]));
   };
 
-  const parseArray = (path: string): readonly OrderedJsonValue[] => {
+  const parseArray = (path: string): readonly OrderedProjectedValue[] => {
     index += 1;
     skipWhitespace();
-    const values: OrderedJsonValue[] = [];
+    const values: OrderedProjectedValue[] = [];
     if (source[index] === "]") {
       index += 1;
-      return Object.freeze(values);
+      return ordered_projected_array(values);
     }
     while (index < source.length) {
       values.push(parseValue(`${path}[${values.length}]`));
       skipWhitespace();
       if (source[index] === "]") {
         index += 1;
-        return Object.freeze(values);
+        return ordered_projected_array(values);
       }
       if (source[index] !== ",") fail("expected comma or array closer");
       index += 1;
@@ -149,10 +130,10 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     return fail("unterminated JSON array");
   };
 
-  const parseObject = (path: string): OrderedJsonObject => {
+  const parseObject = (path: string): OrderedProjectedObject => {
     index += 1;
     skipWhitespace();
-    const entries: Array<readonly [string, OrderedJsonValue]> = [];
+    const entries: Array<readonly [string, OrderedProjectedValue]> = [];
     // Retain offsets while the object is valid. Computing line/column walks
     // source text, so eagerly deriving a position for every property makes a
     // large duplicate-free document quadratic. Duplicate evidence is rare and
@@ -160,7 +141,7 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     const firstDeclarations = new Map<string, number>();
     if (source[index] === "}") {
       index += 1;
-      return ordered_json_object(entries);
+      return ordered_projected_object(entries);
     }
     while (index < source.length) {
       const keyToken = parseStringToken();
@@ -191,7 +172,7 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
       skipWhitespace();
       if (source[index] === "}") {
         index += 1;
-        return ordered_json_object(entries);
+        return ordered_projected_object(entries);
       }
       if (source[index] !== ",") fail("expected comma or object closer");
       index += 1;
@@ -200,7 +181,7 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
     return fail("unterminated JSON object");
   };
 
-  const parseValue = (path: string): OrderedJsonValue => {
+  const parseValue = (path: string): OrderedProjectedValue => {
     skipWhitespace();
     const unit = source[index];
     if (unit === `"`) return parseString();
@@ -230,28 +211,22 @@ export function parse_ordered_json_text(source: string): OrderedJsonValue {
   return value;
 }
 
-export function ordered_json_from_runtime_value(value: JsonValue): OrderedJsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") {
-    return value;
-  }
-  if (Array.isArray(value)) return Object.freeze(value.map(ordered_json_from_runtime_value));
-  return ordered_json_object(Object.entries(value).map(([key, child]) =>
-    [key, ordered_json_from_runtime_value(child)] as const
-  ));
+export function ordered_json_from_runtime_value(value: JsonValue): OrderedProjectedValue {
+  return ordered_projected_value_from_json(value);
 }
 
-export function ordered_json_to_runtime_value(value: OrderedJsonValue): JsonValue {
+export function ordered_json_to_runtime_value(value: OrderedProjectedValue): JsonValue {
   if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") {
     return value;
   }
   if (Array.isArray(value)) return value.map(ordered_json_to_runtime_value);
-  if (!is_ordered_json_object(value)) throw new TypeError("invalid ordered JSON value");
+  if (!is_ordered_projected_object(value)) throw new TypeError("invalid ordered JSON value");
   const record: Record<string, JsonValue> = Object.create(null);
   for (const [key, child] of value.entries) record[key] = ordered_json_to_runtime_value(child);
   return record;
 }
 
-export function emit_ordered_json(value: OrderedJsonValue, depth = 0): string {
+export function emit_ordered_json(value: OrderedProjectedValue, depth = 0): string {
   if (value === null) return "null";
   if (typeof value === "string" || typeof value === "boolean") return JSON.stringify(value);
   if (typeof value === "number") {
@@ -267,7 +242,7 @@ export function emit_ordered_json(value: OrderedJsonValue, depth = 0): string {
       `${childIndent}${emit_ordered_json(child, depth + 1)}`
     ).join(",\n")}\n${indent}]`;
   }
-  if (!is_ordered_json_object(value)) throw new TypeError("invalid ordered JSON value");
+  if (!is_ordered_projected_object(value)) throw new TypeError("invalid ordered JSON value");
   if (value.entries.length === 0) return "{}";
   return `{\n${value.entries.map(([key, child]) =>
     `${childIndent}${JSON.stringify(key)}: ${emit_ordered_json(child, depth + 1)}`

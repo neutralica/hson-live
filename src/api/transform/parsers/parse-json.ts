@@ -3,7 +3,6 @@
 import { is_Primitive, is_string } from "../../../core/value-guards.js";
 import { VAL_TAG, STR_TAG, ARR_TAG, OBJ_TAG, II_TAG, ELEM_TAG, ROOT_TAG, HSON_SYS_PREFIX, ATTRS_KEY, META_KEY } from "../../../core/constants.js";
 import { CREATE_NODE } from "../../../core/factories.js";
-import { HSON_META_INDEX } from "../../../core/constants.js";
 import { HsonMeta, HsonAttrs, HsonNode } from "../../../core/types.js";
 import { JsonValue, Primitive } from "../../../core/types.js";
 import { assert_invariants } from "../../../core/assert-invariants.js";
@@ -17,22 +16,27 @@ import { assert_user_key_allowed } from "../utils/json-utils/key-prefix-guard.js
 import { hsonNumber } from "../../../core/hson-number.js";
 import { is_transform_error } from "../../../core/errors.js";
 import {
-    is_ordered_json_object,
+    is_ordered_projected_object,
+    is_ordered_projected_value,
+    ordered_projected_value_from_json,
+    type OrderedProjectedObject,
+    type OrderedProjectedValue,
+} from "../../../core/ordered-projected-value.js";
+import { projected_value_to_hson_node } from "../../../core/projected-value-graph.js";
+import {
     ordered_json_to_runtime_value,
     parse_ordered_json_text,
-    type OrderedJsonObject,
-    type OrderedJsonValue,
 } from "../utils/json-utils/ordered-json.js";
 
-type JsonInputValue = JsonValue | OrderedJsonValue;
-type JsonInputObject = Record<string, unknown> | OrderedJsonObject;
+type JsonInputValue = JsonValue | OrderedProjectedValue;
+type JsonInputObject = Record<string, unknown> | OrderedProjectedObject;
 
 function is_json_input_object(value: unknown): value is JsonInputObject {
-    return is_ordered_json_object(value) || is_plain_record(value);
+    return is_ordered_projected_object(value) || is_plain_record(value);
 }
 
 function json_input_entries(value: JsonInputObject): readonly (readonly [string, JsonInputValue])[] {
-    return is_ordered_json_object(value)
+    return is_ordered_projected_object(value)
         ? value.entries
         : Object.entries(value) as readonly (readonly [string, JsonInputValue])[];
 }
@@ -42,25 +46,42 @@ function json_input_keys(value: JsonInputObject): readonly string[] {
 }
 
 function json_input_has(value: JsonInputObject, key: string): boolean {
-    return is_ordered_json_object(value)
+    return is_ordered_projected_object(value)
         ? value.entries.some(([candidate]) => candidate === key)
         : Object.prototype.hasOwnProperty.call(value, key);
 }
 
 function json_input_get(value: JsonInputObject, key: string): JsonInputValue | undefined {
-    if (is_ordered_json_object(value)) {
+    if (is_ordered_projected_object(value)) {
         return value.entries.find(([candidate]) => candidate === key)?.[1];
     }
     return value[key] as JsonInputValue | undefined;
 }
 
 function json_input_plain_record(value: JsonInputObject): Record<string, unknown> {
-    if (!is_ordered_json_object(value)) return value;
+    if (!is_ordered_projected_object(value)) return value;
     return ordered_json_to_runtime_value(value) as Record<string, unknown>;
 }
 
 function describe_json_input(value: unknown): string {
-    return make_string(is_ordered_json_object(value) ? ordered_json_to_runtime_value(value) : value);
+    return make_string(is_ordered_projected_object(value) ? ordered_json_to_runtime_value(value) : value);
+}
+
+function semantic_projected_value(value: JsonInputValue): OrderedProjectedValue {
+    if (is_ordered_projected_value(value)) return value;
+    return ordered_projected_value_from_json(value as JsonValue);
+}
+
+function assert_transform_projected_keys(value: OrderedProjectedValue): void {
+    if (Array.isArray(value)) {
+        for (const child of value) assert_transform_projected_keys(child);
+        return;
+    }
+    if (!is_ordered_projected_object(value)) return;
+    for (const [key, child] of value.entries) {
+        assert_user_key_allowed(key, "parse-json");
+        assert_transform_projected_keys(child);
+    }
 }
 
 /**
@@ -338,23 +359,12 @@ export function nodeFromJson(
             if (typeof srcJson !== "string") {
                 _throw_transform_err(`expected string for ${STR_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
             }
-            return {
-                node: CREATE_NODE({
-                    $_tag: STR_TAG,
-                    $_content: [srcJson] // "" included
-                })
-            };
+            return { node: projected_value_to_hson_node(srcJson) };
         } else { // VAL_TAG
             if (!is_Primitive(srcJson)) {
                 _throw_transform_err(`expected number|boolean|null for ${VAL_TAG}, got ${typeof srcJson}`, "nodeFromJson.primitive");
             }
-            const admitted = typeof srcJson === "number" ? hsonNumber(srcJson) : srcJson;
-            return {
-                node: CREATE_NODE({
-                    $_tag: VAL_TAG,
-                    $_content: [admitted] // null/admitted-number/boolean
-                })
-            };
+            return { node: projected_value_to_hson_node(srcJson) };
         }
     }
 
@@ -363,16 +373,9 @@ export function nodeFromJson(
         if (!Array.isArray(srcJson)) {
             _throw_transform_err("array expected for ARR_TAG parent", "parse_json", make_string(srcJson));
         }
-        const items = (srcJson as JsonInputValue[]).map((val, ix) => {
-            const childTag = getTag(val);
-            const child = nodeFromJson(val, childTag).node;
-            return CREATE_NODE({
-                $_tag: II_TAG,
-                $_meta: { [HSON_META_INDEX]: String(ix) },
-                $_content: [child]
-            });
-        });
-        return { node: CREATE_NODE({ $_tag: ARR_TAG, $_content: items }) };
+        const semantic = semantic_projected_value(srcJson);
+        assert_transform_projected_keys(semantic);
+        return { node: projected_value_to_hson_node(semantic) };
     }
 
     // ---- 2) Object branch (three mutually exclusive shapes) ----
@@ -528,56 +531,9 @@ export function nodeFromJson(
 
         // C) GENERIC OBJECT HANDLING → _hson_obj
         assertNoForbiddenVSNKeysInJSON(obj, "[generic object check, parseJSON]");
-        const propertyNodes: HsonNode[] = json_input_entries(obj).map(([key, raw]) => {
-            assert_user_key_allowed(key, "parse-json");
-
-            // build a child node for the property value WITHOUT collapsing "".
-            let child: HsonNode;
-
-            if (typeof raw === "string") {
-                // strings (including "") → _hson_str(["..."])
-                child = CREATE_NODE({
-                    $_tag: STR_TAG,
-                    $_content: [raw] // "" preserved
-                });
-            } else if (
-                typeof raw === "number" ||
-                typeof raw === "boolean" ||
-                raw === null
-            ) {
-                // numbers/booleans/null → _hson_val([...])
-                child = CREATE_NODE({
-                    $_tag: VAL_TAG,
-                    $_content: [raw]
-                });
-            } else if (Array.isArray(raw)) {
-                // arrays recurse under _hson_arr
-                child = nodeFromJson(raw, ARR_TAG).node;
-            } else if (raw && typeof raw === "object") {
-                // objects recurse under _hson_obj
-                child = nodeFromJson(raw, OBJ_TAG).node;
-            } else {
-                _throw_transform_err(`unsupported JSON value for key "${key}"`, "nodeFromJson.object.value");
-            }
-
-            // JSON-mode property ⇒ inner _hson_obj wrapper unless the child is already a cluster
-            const payload =
-                (child.$_tag === OBJ_TAG || child.$_tag === ARR_TAG)
-                    ? [child]                                    // passthrough single cluster
-                    : [CREATE_NODE({ $_tag: OBJ_TAG, $_content: [child] })]; // wrap leaf in _hson_obj
-
-            return CREATE_NODE({
-                $_tag: key,
-                $_content: payload
-            });
-        });
-
-        return {
-            node: CREATE_NODE({
-                $_tag: OBJ_TAG,
-                $_content: propertyNodes
-            })
-        };
+        const semantic = semantic_projected_value(srcJson);
+        assert_transform_projected_keys(semantic);
+        return { node: projected_value_to_hson_node(semantic) };
     }
 
     // ---- Fallback (should be unreachable if callers set parentTag correctly) ----

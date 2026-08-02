@@ -119,6 +119,7 @@
     "test:livemap-document-replay": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-replay.acceptance.mts",
     "test:livemap-path-handle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-path-handle.acceptance.mts",
     "test:livemap-staged-authority": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-staged-authority.acceptance.mts",
+    "test:livemap-projected-value-equivalence": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-projected-value-equivalence.acceptance.mts",
     "test:livehost-authority": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-authority.acceptance.mjs",
     "test:livehost-persistence": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-persistence.acceptance.mjs",
     "test:livehost-recovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/livehost-recovery.acceptance.mjs",
