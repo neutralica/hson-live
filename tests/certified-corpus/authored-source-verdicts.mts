@@ -1,3 +1,11 @@
+/**
+ * Historical-only worksheet template machinery.
+ *
+ * This file records the corpus and backtick-delimited syntax used to create the
+ * immutable completed worksheet. It is not an active grammar or current-spec
+ * generator. Current derived artifacts are produced through the explicit
+ * quoted-name amendment in authored-name-delimiter-amendment.mts.
+ */
 import { corpusFamilyDefinitions, materializedCorpusCases } from "./corpus-manifest.mts";
 import type { MaterializedCorpusCase } from "./corpus-types.mts";
 

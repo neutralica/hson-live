@@ -35,7 +35,7 @@ export type StructuralJsonOrderFixture = Readonly<{
   expectedObjectOrders: readonly (readonly string[])[];
 }>;
 
-export const DIRECT_INTEGER_KEY_SOURCE = `<\`10\` "ten" \`2\` "two" \`1\` "one">`;
+export const DIRECT_INTEGER_KEY_SOURCE = `<'10' "ten" '2' "two" '1' "one">`;
 
 export const ADJACENT_DUPLICATE_JSON_SOURCE = `{"x":1,"x":2}`;
 export const ADJACENT_DUPLICATE_JSON_ERROR: TransformErrorDetails = Object.freeze({

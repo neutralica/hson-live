@@ -6,6 +6,13 @@
 > sources. New-case provenance, novelty, and review priority are materialized in
 > `authored-completeness-basis.mts` and the regenerated review artifact; the
 > broad pre-amendment audit has not been silently reclassified.
+>
+> Current delimiter amendment: the active corpus uses single-quoted names and
+> has 370 descriptors / 273 authored sources. The immutable provenance audit
+> and human worksheet retain their historical backtick-name IDs. Current IDs
+> and their historical mappings are recorded in
+> `02-authored-source-verdict-ledger.json` and
+> `05-quoted-name-delimiter-amendment.md`.
 
 ## Executive conclusion
 
@@ -114,13 +121,17 @@ The seven direct HTML typed-value rejections retain only operation and code; omi
 
 The two explicitly calibrated descriptors are:
 
-1. `hson.reject.family.backtick-name.unicode-interrupted-backtick`
+1. `hson.reject.family.quoted-name.unicode-interrupted-apostrophe`
+
+   Historical ID: `hson.reject.family.backtick-name.unicode-interrupted-backtick`.
 
    - Proposed: `invalid-name-escape`, index 2, line 1, column 3.
    - Observed: `HSON_NAME_UNTERMINATED`, index 8, line 1, column 9.
    - Final: observed evidence retained.
 
-2. `hson.reject.family.backtick-name.trailing-backslash`
+2. `hson.reject.family.quoted-name.trailing-backslash`
+
+   Historical ID: `hson.reject.family.backtick-name.trailing-backslash`.
 
    - Proposed: `HSON_NAME_UNTERMINATED`, index 1, line 1, column 2.
    - Observed after corpus failure: `invalid-name-escape`, index 6, line 1, column 7.

@@ -172,31 +172,31 @@ export const completenessCompositionCases: readonly (AcceptedCorpusCase | Reject
   ),
 ] as const;
 
-export const completenessBacktickRoleCases: readonly (AcceptedCorpusCase | RejectedCorpusCase)[] = [
+export const completenessQuotedNameRoleCases: readonly (AcceptedCorpusCase | RejectedCorpusCase)[] = [
   accepted(
-    "hson.accept.basis.backtick-name.element-name",
-    "A nonempty backtick name is admitted as an HSON element name.",
-    "<`x y`/>",
+    "hson.accept.basis.quoted-name.element-name",
+    "A nonempty single-quoted name is admitted as an HSON element name.",
+    "<'x y'/>",
     elem(element("x y")),
-    "<`x y`/>",
-    "element", "element-name", ["element", "backtick-name", "authored-name"],
-    NAME_PROVENANCE, "Adds the missing positive backtick element-name role.", "high",
+    "<'x y'/>",
+    "element", "element-name", ["element", "quoted-name", "authored-name"],
+    NAME_PROVENANCE, "Adds the missing positive quoted element-name role.", "high",
   ),
   rejected(
-    "hson.reject.basis.backtick-name.attribute-name",
-    "Backtick names are not admitted as element attribute names.",
-    "<e `data key`=\"value\"/>",
+    "hson.reject.basis.quoted-name.attribute-name",
+    "Single-quoted names are not admitted as element attribute names.",
+    "<e 'data key'=\"value\"/>",
     tokenError("HSON_NAME_INVALID_START", 3),
-    "element", "element-attribute", "backtick-role-forbidden", ["element", "attribute", "backtick-name", "rejection"],
-    NAME_PROVENANCE, "Adds the missing nonempty backtick attribute-role rejection.", "high",
+    "element", "element-attribute", "quoted-name-role-forbidden", ["element", "attribute", "quoted-name", "rejection"],
+    NAME_PROVENANCE, "Adds the missing nonempty quoted-name attribute-role rejection.", "high",
   ),
   rejected(
-    "hson.reject.basis.backtick-name.flag-name",
-    "Backtick names are not admitted as element flag names.",
-    "<e `feature flag`/>",
+    "hson.reject.basis.quoted-name.flag-name",
+    "Single-quoted names are not admitted as element flag names.",
+    "<e 'feature flag'/>",
     tokenError("HSON_NAME_INVALID_START", 3),
-    "element", "element-flag", "backtick-role-forbidden", ["element", "flag", "backtick-name", "rejection"],
-    NAME_PROVENANCE, "Adds the missing nonempty backtick flag-role rejection.", "high",
+    "element", "element-flag", "quoted-name-role-forbidden", ["element", "flag", "quoted-name", "rejection"],
+    NAME_PROVENANCE, "Adds the missing nonempty quoted-name flag-role rejection.", "high",
   ),
 ] as const;
 
@@ -205,5 +205,5 @@ export const authoredCompletenessBasisCases = [
   ...completenessRejectedNumberCases,
   ...completenessTriviaCases,
   ...completenessCompositionCases,
-  ...completenessBacktickRoleCases,
+  ...completenessQuotedNameRoleCases,
 ] as const;

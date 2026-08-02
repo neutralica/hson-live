@@ -121,6 +121,17 @@ projected payload data is invalid and never falls back to a legacy view.
 
 This encoding does not make recovery graph-native: it transports projected JSON-compatible state and does not preserve the authoritative source graph's QUID identity.
 
+When a snapshot contains property names that require canonical quoting, its
+HSON payload uses single-quoted names. Backticks remain ordinary name and
+string data:
+
+```hson
+<'display name' "Ada" 'contains ` backtick' true>
+```
+
+An outer JavaScript template-literal delimiter, when used by an application,
+is host-language syntax and is not part of the HSON payload.
+
 A reconnecting client can present its last confirmed revision. If the host still retains every later commit, it can replay them in order. If history is unavailable, the host sends a current snapshot. Snapshot replacement remains the source-of-truth fallback rather than an exceptional failure.
 
 The implementation has both bounded canonical commit history for

@@ -37,8 +37,8 @@ serializer under test generates them.
 | Classification | Concrete descriptors |
 | --- | ---: |
 | Literal accepted authored-HSON | 51 |
-| Transparent accepted authored-HSON | 49 |
-| Literal rejected authored-HSON | 52 |
+| Transparent accepted authored-HSON | 50 |
+| Literal rejected authored-HSON | 55 |
 | Transparent rejected authored-HSON | 117 |
 | Graph-only accepted transport | 11 |
 | Graph-only rejected transport | 9 |
@@ -46,15 +46,15 @@ serializer under test generates them.
 | Structural HTML transport | 49 |
 | Diagnostic-circuit regressions | 4 |
 | Specialized-test cross-references | 10 |
-| **Total concrete descriptors** | **366** |
+| **Total concrete descriptors** | **370** |
 
-The authored subset has 269 unique sources and zero declared source reuse.
-The runner executes 1,083 accepted assertions, 1,737 rejected assertions, and
-24 integrity assertions: 2,844 weighted assertions in total.
+The authored subset has 273 unique sources and zero declared source reuse.
+The runner executes 1,089 accepted assertions, 1,764 rejected assertions, and
+24 integrity assertions: 2,877 weighted assertions in total.
 
 ## Coverage boundaries
 
-The candidate covers the full finite quoted-string and backtick-name escape
+The candidate covers the full finite quoted-string and single-quoted-name escape
 families, including all 32 raw C0 rejection cases for each token role. It
 certifies object, array, and element grammar; mode-sensitive scalar admission;
 negative-zero identity; exact structural JSON order and decoded duplicate-key
@@ -83,11 +83,15 @@ corpus.
 
 ## Integrated accounting
 
-The registered hson-live inventory is 1,058 authoritative checks across 43
-launchers. The hson-demo2 catalog remains 2,110 cases, for a combined total of
-3,168. The launcher manifest fingerprint is
-`7544a212899f9180cbc99b519476dc49f57abc4f95015924b59803b01cc614d1`;
-the demo catalog fingerprint remains `fnv1a32-e3a7d185`.
+After the quoted-name delimiter amendment, the registered hson-live inventory
+is 1,428 authoritative checks across 59 launchers. The hson-demo2 Node catalog
+contains 2,438 cases, for a combined total of 3,866. The launcher manifest
+fingerprint is
+`42e4d5aac15f36a3c420589ff6a36c0c02e9870fbd60d52f670967a75a252645`;
+the Node catalog fingerprint is `fnv1a32-fe2e33a7`, and the Worker catalog
+fingerprint is `fnv1a32-18e3249e`.
 
-The next target is generation of the static authored-HSON `V / I / ?`
-human-review checklist. No human verdict is recorded by this candidate.
+The completed human worksheet remains immutable historical input. Current
+membership records are amendment-aware. The next authored-HSON decisions are
+`.5` admission, element-closer trivia, comment syntax, and mixed-root design
+reservation.

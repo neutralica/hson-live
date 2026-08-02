@@ -413,8 +413,8 @@ check("empty object and array snapshots", () => {
 });
 
 check("quoted names and escaped string content snapshot", () => {
-  const node = parse(`<\`this is a tag\` title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`);
-  const expected = `<\`this is a tag\` title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`;
+  const node = parse(`<'this is a tag' title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`);
+  const expected = `<'this is a tag' title="a\\\"b" disabled "slash\\\\ tab\\t line\\nnext"/>`;
   assert.equal(readable(node), expected);
   assert.equal(compact(node), expected);
 });
@@ -523,7 +523,7 @@ const boundaryCases: ReadonlyArray<readonly [string, string]> = [
   [`<a <b <c "x">>>`, `<a <b <c "x">>>`],
   [`«<name "Ada" active true>»`, `«<name "Ada" active true>»`],
   [`«[1,2],[3,[4]]»`, `««1,2»,«3,«4»»»`],
-  [`<\`tag name\` "text"/>`, `<\`tag name\` "text"/>`],
+  [`<'tag name' "text"/>`, `<'tag name' "text"/>`],
   [`<empty <>>`, `<empty <>>`],
   [`<items []>`, `<items «»>`],
 ];
@@ -539,7 +539,7 @@ const equivalenceSources = [
   `<p "first" <em "middle"/> "last"/>`,
   `<parent <child "value">>`,
   `«1,"two",<name "Ada" active true>,[3,4]»`,
-  `<\`quoted key\` data-user="meta" "a\\\"b\\\\c\\tline\\nnext"/>`,
+  `<'quoted key' data-user="meta" "a\\\"b\\\\c\\tline\\nnext"/>`,
   `<>`,
   `[]`,
 ];
@@ -901,7 +901,7 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
         && cause.message.includes(`/tag:tag`),
     );
   }
-  assert.throws(() => parse(`<tag \`bad key\`="value"/>`), /backticks are only valid for tag names/);
+  assert.throws(() => parse(`<tag 'bad key'="value"/>`), /single-quoted names are valid only/);
   const badMeta: HsonNode = {
     $_tag: "_hson_root",
     $_content: [{
@@ -930,7 +930,7 @@ check("attribute and metadata names use the tokenizer's unquoted name grammar", 
     compact(ordinaryData),
     `<tag data-id="7" data-theme="dark" data-user="42"/>`,
   );
-  assert.equal(compact(parse(`<\`bad key\` "value">`)), `<\`bad key\` "value">`);
+  assert.equal(compact(parse(`<'bad key' "value">`)), `<'bad key' "value">`);
 });
 
 check("finite HSON numbers round-trip and negative zero retains identity", () => {

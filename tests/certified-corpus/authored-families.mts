@@ -60,57 +60,58 @@ export const quotedStringAcceptedFamily: AcceptedFamilyDefinition = {
 };
 
 function acceptedNameCase(id: string, spelling: string, decoded: string, expectedHson: string): AcceptedCorpusCase {
-  const source = "<`" + spelling + "` 1>";
+  const source = "<'" + spelling + "' 1>";
   return {
-    id: "hson.accept.family.backtick-name." + id,
-    claim: "Backtick-name escape variation " + id + " decodes and canonicalizes exactly.",
+    id: "hson.accept.family.quoted-name." + id,
+    claim: "Quoted-name escape variation " + id + " decodes and canonicalizes exactly.",
     classification: "materialized-accepted-family-case", ingress: "hson", escapedInput: JSON.stringify(source),
     taxonomy: { shape: "object", slot: "property-key", variation: id },
-    tags: ["backtick-name", "escape", "transparent-family"], origin: "family.accept.backtick-name-escapes",
+    tags: ["quoted-name", "escape", "transparent-family"], origin: "family.accept.quoted-name-escapes",
     rationale: "One property-key slot varies only the accepted escape spelling.", disposition: "accept", source,
     expectedGraph: obj(property(decoded, val(1))), expectedOutputs: { hson: expectedHson },
   };
 }
 
-const backtickNameAcceptedCases: readonly AcceptedCorpusCase[] = [
-  acceptedNameCase("escaped-backtick", "tick\\`name", "tick`name", "<`tick\\`name` 1>"),
-  acceptedNameCase("escaped-backslash", "back\\\\slash", "back\\slash", "<`back\\\\slash` 1>"),
-  acceptedNameCase("backspace", "back\\bspace", "back\bspace", "<`back\\bspace` 1>"),
-  acceptedNameCase("form-feed", "form\\ffeed", "form\ffeed", "<`form\\ffeed` 1>"),
-  acceptedNameCase("line-feed", "line\\nname", "line\nname", "<`line\\nname` 1>"),
-  acceptedNameCase("carriage-return", "line\\rname", "line\rname", "<`line\\rname` 1>"),
-  acceptedNameCase("tab", "line\\tname", "line\tname", "<`line\\tname` 1>"),
+const quotedNameAcceptedCases: readonly AcceptedCorpusCase[] = [
+  acceptedNameCase("escaped-apostrophe", "don\\'t", "don't", "<'don\\'t' 1>"),
+  acceptedNameCase("escaped-backslash", "back\\\\slash", "back\\slash", "<'back\\\\slash' 1>"),
+  acceptedNameCase("backspace", "back\\bspace", "back\bspace", "<'back\\bspace' 1>"),
+  acceptedNameCase("form-feed", "form\\ffeed", "form\ffeed", "<'form\\ffeed' 1>"),
+  acceptedNameCase("line-feed", "line\\nname", "line\nname", "<'line\\nname' 1>"),
+  acceptedNameCase("carriage-return", "line\\rname", "line\rname", "<'line\\rname' 1>"),
+  acceptedNameCase("tab", "line\\tname", "line\tname", "<'line\\tname' 1>"),
   acceptedNameCase("unicode-lowercase", "lower\\u0061name", "loweraname", "<loweraname 1>"),
   acceptedNameCase("unicode-uppercase", "upper\\u006Aname", "upperjname", "<upperjname 1>"),
-  acceptedNameCase("unicode-mixed-case", "mixed\\u00aFname", "mixed¯name", "<`mixed¯name` 1>"),
-  acceptedNameCase("unicode-u0000", "nul\\u0000name", "nul\u0000name", "<`nul\\u0000name` 1>"),
-  acceptedNameCase("unicode-control", "control\\u0001name", "control\u0001name", "<`control\\u0001name` 1>"),
-  acceptedNameCase("unicode-u001f", "unit\\u001Fname", "unit\u001fname", "<`unit\\u001fname` 1>"),
-  acceptedNameCase("unicode-u007f", "unit\\u007fname", "unit\u007fname", "<`unit\u007fname` 1>"),
-  acceptedNameCase("unicode-u0080", "unit\\u0080name", "unit\u0080name", "<`unit\u0080name` 1>"),
-  acceptedNameCase("unicode-u00ff", "unit\\u00FFname", "unitÿname", "<`unitÿname` 1>"),
-  acceptedNameCase("unicode-u0100", "unit\\u0100name", "unitĀname", "<`unitĀname` 1>"),
-  acceptedNameCase("unicode-u2028", "unit\\u2028name", "unit\u2028name", "<`unit\u2028name` 1>"),
-  acceptedNameCase("unicode-u2029", "unit\\u2029name", "unit\u2029name", "<`unit\u2029name` 1>"),
-  acceptedNameCase("unicode-lambda", "lambda\\u03bbname", "lambdaλname", "<`lambdaλname` 1>"),
-  acceptedNameCase("unicode-high-surrogate", "high\\uD800name", "high\ud800name", "<`high\ud800name` 1>"),
-  acceptedNameCase("unicode-low-surrogate", "low\\uDC00name", "low\udc00name", "<`low\udc00name` 1>"),
-  acceptedNameCase("unicode-surrogate-pair", "pair\\uD83D\\uDE00name", "pair😀name", "<`pair😀name` 1>"),
+  acceptedNameCase("unicode-mixed-case", "mixed\\u00aFname", "mixed¯name", "<'mixed¯name' 1>"),
+  acceptedNameCase("unicode-u0000", "nul\\u0000name", "nul\u0000name", "<'nul\\u0000name' 1>"),
+  acceptedNameCase("unicode-control", "control\\u0001name", "control\u0001name", "<'control\\u0001name' 1>"),
+  acceptedNameCase("unicode-u001f", "unit\\u001Fname", "unit\u001fname", "<'unit\\u001fname' 1>"),
+  acceptedNameCase("unicode-u007f", "unit\\u007fname", "unit\u007fname", "<'unit\u007fname' 1>"),
+  acceptedNameCase("unicode-u0080", "unit\\u0080name", "unit\u0080name", "<'unit\u0080name' 1>"),
+  acceptedNameCase("unicode-u00ff", "unit\\u00FFname", "unitÿname", "<'unitÿname' 1>"),
+  acceptedNameCase("unicode-u0100", "unit\\u0100name", "unitĀname", "<'unitĀname' 1>"),
+  acceptedNameCase("unicode-u2028", "unit\\u2028name", "unit\u2028name", "<'unit\u2028name' 1>"),
+  acceptedNameCase("unicode-u2029", "unit\\u2029name", "unit\u2029name", "<'unit\u2029name' 1>"),
+  acceptedNameCase("unicode-lambda", "lambda\\u03bbname", "lambdaλname", "<'lambdaλname' 1>"),
+  acceptedNameCase("unicode-high-surrogate", "high\\uD800name", "high\ud800name", "<'high\ud800name' 1>"),
+  acceptedNameCase("unicode-low-surrogate", "low\\uDC00name", "low\udc00name", "<'low\udc00name' 1>"),
+  acceptedNameCase("unicode-surrogate-pair", "pair\\uD83D\\uDE00name", "pair😀name", "<'pair😀name' 1>"),
   acceptedNameCase("consecutive-unicode", "pair\\u0041\\u0042name", "pairABname", "<pairABname 1>"),
+  acceptedNameCase("literal-backtick", "tick`name", "tick`name", "<'tick`name' 1>"),
 ] as const;
 
-export const backtickNameAcceptedFamily: AcceptedFamilyDefinition = {
-  id: "family.accept.backtick-name-escapes",
-  claim: "Backtick property keys accept every settled escape branch and representative Unicode boundaries.",
-  classification: "transparent-accepted-family", variedDimension: "backtick-name escape spelling",
-  expectedExpansionCount: backtickNameAcceptedCases.length, cases: backtickNameAcceptedCases,
+export const quotedNameAcceptedFamily: AcceptedFamilyDefinition = {
+  id: "family.accept.quoted-name-escapes",
+  claim: "Single-quoted property keys accept every settled escape branch and representative Unicode boundaries.",
+  classification: "transparent-accepted-family", variedDimension: "quoted-name escape spelling",
+  expectedExpansionCount: quotedNameAcceptedCases.length, cases: quotedNameAcceptedCases,
 };
 
 function tokenError(code: string, index: number, line = 1, column = index + 1) {
   return { operation: "tokenize-hson", stage: "tokenization", code, source: { index, line, column } } as const;
 }
 
-function rejectedEscapeCase(family: "quoted-string" | "backtick-name", id: string, source: string, code: string, index: number): RejectedCorpusCase {
+function rejectedEscapeCase(family: "quoted-string" | "quoted-name", id: string, source: string, code: string, index: number): RejectedCorpusCase {
   return {
     id: "hson.reject.family." + family + "." + id, claim: family + " defect " + id + " rejects deterministically.",
     classification: "materialized-rejected-family-case", ingress: "hson", escapedInput: JSON.stringify(source),
@@ -153,26 +154,26 @@ const malformedNameSpellings = [
   ["unicode-interrupted-backslash", "\\u\\000"],
 ] as const;
 const malformedNameCases: readonly RejectedCorpusCase[] = [
-  ...malformedNameSpellings.map(([id, spelling]) => rejectedEscapeCase("backtick-name", id, "<`" + spelling + "` 1>", "invalid-name-escape", 2)),
-  rejectedEscapeCase("backtick-name", "unicode-interrupted-backtick", "<`\\u`000` 1>", "HSON_NAME_UNTERMINATED", 8),
-  rejectedEscapeCase("backtick-name", "eof", "<`name", "HSON_NAME_UNTERMINATED", 1),
-  rejectedEscapeCase("backtick-name", "trailing-backslash", "<`name\\", "invalid-name-escape", 6),
+  ...malformedNameSpellings.map(([id, spelling]) => rejectedEscapeCase("quoted-name", id, "<'" + spelling + "' 1>", "invalid-name-escape", 2)),
+  rejectedEscapeCase("quoted-name", "unicode-interrupted-apostrophe", "<'\\u'000' 1>", "HSON_NAME_UNTERMINATED", 8),
+  rejectedEscapeCase("quoted-name", "eof", "<'name", "HSON_NAME_UNTERMINATED", 1),
+  rejectedEscapeCase("quoted-name", "trailing-backslash", "<'name\\", "invalid-name-escape", 6),
 ] as const;
-export const malformedBacktickNameFamily: RejectedFamilyDefinition = {
-  id: "family.reject.backtick-name-malformed-escapes", claim: "Malformed and unsupported backtick-name escapes reject.",
-  classification: "transparent-rejected-family", variedDimension: "malformed backtick-name escape spelling",
+export const malformedQuotedNameFamily: RejectedFamilyDefinition = {
+  id: "family.reject.quoted-name-malformed-escapes", claim: "Malformed and unsupported quoted-name escapes reject.",
+  classification: "transparent-rejected-family", variedDimension: "malformed quoted-name escape spelling",
   expectedExpansionCount: malformedNameCases.length, cases: malformedNameCases,
 };
 
-function rawControlCases(family: "quoted-string" | "backtick-name"): readonly RejectedCorpusCase[] {
+function rawControlCases(family: "quoted-string" | "quoted-name"): readonly RejectedCorpusCase[] {
   return Array.from({ length: 32 }, (_, codePoint) => {
     const hex = codePoint.toString(16).padStart(4, "0");
-    const source = family === "quoted-string" ? "\"a" + String.fromCharCode(codePoint) + "b\"" : "<`a" + String.fromCharCode(codePoint) + "b` 1>";
+    const source = family === "quoted-string" ? "\"a" + String.fromCharCode(codePoint) + "b\"" : "<'a" + String.fromCharCode(codePoint) + "b' 1>";
     return {
       id: "hson.reject.family." + family + ".raw-u" + hex,
       claim: "Raw U+" + hex.toUpperCase() + " rejects in a " + family + ".",
       classification: "materialized-rejected-family-case", ingress: "hson",
-      escapedInput: family === "quoted-string" ? "\"a\\u" + hex + "b\"" : "<`a\\u" + hex + "b` 1>",
+      escapedInput: family === "quoted-string" ? "\"a\\u" + hex + "b\"" : "<'a\\u" + hex + "b' 1>",
       verbatimInput: source,
       taxonomy: { shape: family === "quoted-string" ? "scalar" : "object", slot: family, defect: "raw-u" + hex },
       tags: [family, "raw-c0", "transparent-family", "rejection"], origin: "family.reject." + family + "-raw-c0",
@@ -183,14 +184,14 @@ function rawControlCases(family: "quoted-string" | "backtick-name"): readonly Re
   });
 }
 const rawQuotedControlCases = rawControlCases("quoted-string");
-const rawBacktickControlCases = rawControlCases("backtick-name");
+const rawQuotedNameControlCases = rawControlCases("quoted-name");
 export const rawQuotedControlFamily: RejectedFamilyDefinition = {
   id: "family.reject.quoted-string-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a quoted string.",
   classification: "transparent-rejected-family", variedDimension: "raw C0 code point", expectedExpansionCount: 32, cases: rawQuotedControlCases,
 };
-export const rawBacktickControlFamily: RejectedFamilyDefinition = {
-  id: "family.reject.backtick-name-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a backtick name.",
-  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", expectedExpansionCount: 32, cases: rawBacktickControlCases,
+export const rawQuotedNameControlFamily: RejectedFamilyDefinition = {
+  id: "family.reject.quoted-name-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a single-quoted name.",
+  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", expectedExpansionCount: 32, cases: rawQuotedNameControlCases,
 };
 
 const unsupportedWhitespaceCodePoints = [
@@ -215,8 +216,8 @@ export const unsupportedWhitespaceFamily: RejectedFamilyDefinition = {
   expectedExpansionCount: unsupportedWhitespaceCases.length, cases: unsupportedWhitespaceCases,
 };
 
-export const authoredAcceptedFamilies = [quotedStringAcceptedFamily, backtickNameAcceptedFamily] as const;
+export const authoredAcceptedFamilies = [quotedStringAcceptedFamily, quotedNameAcceptedFamily] as const;
 export const authoredRejectedFamilies = [
-  malformedQuotedStringFamily, malformedBacktickNameFamily, rawQuotedControlFamily,
-  rawBacktickControlFamily, unsupportedWhitespaceFamily,
+  malformedQuotedStringFamily, malformedQuotedNameFamily, rawQuotedControlFamily,
+  rawQuotedNameControlFamily, unsupportedWhitespaceFamily,
 ] as const;

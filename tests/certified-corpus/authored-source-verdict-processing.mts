@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { corpusCounts, materializedCorpusCases } from "./corpus-manifest.mts";
 import {
-  AUTHORED_VERDICT_DOCUMENT,
-  REVIEW_FAMILY_GROUPS,
-  calibratedStandaloneIds,
-} from "./authored-source-verdicts.mts";
+  AMENDMENT_ONLY_ACTIVE_CASES,
+  HISTORICAL_WORKSHEET_PATH,
+  HISTORICAL_WORKSHEET_SHA256,
+  QUOTED_NAME_AMENDMENT_PATH,
+  activeCaseIdForHistorical,
+  activeFamilyIdForHistorical,
+  amendmentVerdictForActiveCase,
+  delimiterChangedForCase,
+} from "./authored-name-delimiter-amendment.mts";
+import { materializedCorpusCases } from "./corpus-manifest.mts";
 import type { MaterializedCorpusCase } from "./corpus-types.mts";
 
 export const VERDICT_LEDGER_PATH =
@@ -17,21 +22,27 @@ export const CORPUS_REVIEW_PATH = "docs/contracts/certified-authored-hson-corpus
 type AuthoredCase = Exclude<MaterializedCorpusCase, { disposition: "reference" }> & { source: string };
 type RawVerdict = "" | "V" | "I" | "?";
 export type HumanVerdict = "valid" | "invalid" | "uncertain" | "unreviewed";
-export type VerdictSource = "row" | "family" | "none";
+export type VerdictSource = "row" | "family" | "amendment" | "none";
 
 export type ParsedVerdictCase = Readonly<{
   caseId: string;
+  historicalCaseId?: string;
   humanVerdict: HumanVerdict;
+  historicalVerdict?: HumanVerdict;
   verdictSource: VerdictSource;
+  historicalVerdictSource?: Exclude<VerdictSource, "amendment">;
   familyId?: string;
+  historicalFamilyId?: string;
   currentProposal: "valid" | "invalid";
   agreesWithProposal: boolean | null;
   note?: string;
   source: string;
   claim: string;
+  historicalClaim?: string;
   section: string;
   provenancePriority: "low" | "medium" | "high" | "critical";
   rowOverride: boolean;
+  amendmentApplied: boolean;
 }>;
 
 export type VerdictSummary = Readonly<{
@@ -41,6 +52,7 @@ export type VerdictSummary = Readonly<{
   unreviewed: number;
   rowVerdicts: number;
   familyInheritedVerdicts: number;
+  amendmentVerdicts: number;
   rowOverrides: number;
   proposalAgreements: number;
   proposalDisagreements: number;
@@ -48,8 +60,15 @@ export type VerdictSummary = Readonly<{
 
 export type ProcessedWorksheet = Readonly<{
   worksheetSha256: string;
+  amendmentSha256: string;
   corpusReviewFingerprint: string;
-  families: readonly Readonly<{ familyId: string; humanVerdict: HumanVerdict }>[];
+  families: readonly Readonly<{
+    familyId: string;
+    historicalFamilyId: string;
+    humanVerdict: HumanVerdict;
+    historicalVerdict: HumanVerdict;
+  }>[];
+  caseIdMigrations: readonly Readonly<{ historicalCaseId: string; activeCaseId: string }>[];
   cases: readonly ParsedVerdictCase[];
   summary: VerdictSummary;
 }>;
@@ -59,6 +78,11 @@ const authoredCases: readonly AuthoredCase[] = materializedCorpusCases.flatMap((
     ? [entry as AuthoredCase]
     : []);
 const caseById = new Map(authoredCases.map((entry) => [entry.id, entry]));
+const HISTORICAL_AUTHORED_CASE_COUNT = 269;
+const calibratedHistoricalStandaloneIds = Object.freeze([
+  "hson.reject.family.backtick-name.unicode-interrupted-backtick",
+  "hson.reject.family.backtick-name.trailing-backslash",
+]);
 
 function sha256(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
@@ -89,10 +113,10 @@ function parsePriorityEvidence(): Map<string, "low" | "medium" | "high" | "criti
 
 function sectionAt(text: string, index: number): string {
   const headings = Array.from(text.slice(0, index).matchAll(/^## (\d+\. .+)$/gm));
-  return headings.at(-1)?.[1] ?? "Unsectioned";
+  return headings.at(-1)?.[1] ?? "Amendment-only cases";
 }
 
-function extractClaim(block: string, fieldEnd: number): string {
+function extractHistoricalClaim(block: string, fieldEnd: number): string {
   const sourceIndex = block.indexOf("**Source:**", fieldEnd);
   if (sourceIndex < 0) return "";
   return block.slice(fieldEnd, sourceIndex).trim();
@@ -118,101 +142,140 @@ function extractNote(block: string): string | undefined {
 
 function familyMembership(text: string): Readonly<{
   caseToFamily: Map<string, string>;
+  familyOrder: readonly string[];
   familyVerdicts: Map<string, RawVerdict>;
 }> {
   const caseToFamily = new Map<string, string>();
   const familyVerdicts = new Map<string, RawVerdict>();
-  for (const group of REVIEW_FAMILY_GROUPS) {
-    const startMarker = `<!-- family:start ${group.id} -->`;
-    const endMarker = `<!-- family:end ${group.id} -->`;
-    const start = text.indexOf(startMarker);
-    const end = text.indexOf(endMarker);
-    if (start < 0 || end < start) throw new Error(`Missing or malformed family region: ${group.id}`);
+  const starts = Array.from(text.matchAll(/^<!-- family:start ([^>\n]+) -->$/gm));
+  for (const startMatch of starts) {
+    const familyId = startMatch[1];
+    const start = startMatch.index! + startMatch[0].length;
+    const endMarker = `<!-- family:end ${familyId} -->`;
+    const end = text.indexOf(endMarker, start);
+    if (end < start) throw new Error(`Missing or malformed historical family region: ${familyId}`);
     const regionIds = Array.from(text.slice(start, end).matchAll(/^<!-- authored-case:([^>\n]+) -->$/gm))
       .map((match) => match[1]);
-    const expectedIds = group.entries.map((entry) => entry.id);
-    if (regionIds.join("\n") !== expectedIds.join("\n")) {
-      throw new Error(`Family membership or order changed: ${group.id}`);
+    if (regionIds.length === 0) throw new Error(`Historical family has no cases: ${familyId}`);
+    for (const id of regionIds) {
+      if (caseToFamily.has(id)) throw new Error(`Historical case belongs to multiple families: ${id}`);
+      caseToFamily.set(id, familyId);
     }
-    for (const id of regionIds) caseToFamily.set(id, group.id);
-    const preceding = text.slice(0, start);
-    const fields = Array.from(preceding.matchAll(
+    const fields = Array.from(text.slice(0, startMatch.index).matchAll(
       /^\*\*Family verdict — V \/ I \/ \?:\*\*\s*`([^`]*)`\s*$/gm,
     ));
     const raw = fields.at(-1)?.[1].trim();
     if (raw === undefined || !["", "V", "I", "?"].includes(raw)) {
-      const line = fields.at(-1)?.index === undefined ? 0 : lineNumber(text, fields.at(-1)!.index!);
-      throw new Error(`Malformed family verdict for ${group.id} at line ${line}: ${JSON.stringify(raw)}`);
+      throw new Error(`Malformed historical family verdict for ${familyId}.`);
     }
-    familyVerdicts.set(group.id, raw as RawVerdict);
+    familyVerdicts.set(familyId, raw as RawVerdict);
   }
-  return { caseToFamily, familyVerdicts };
+  return { caseToFamily, familyOrder: starts.map((match) => match[1]), familyVerdicts };
 }
 
 export function processWorksheet(text: string): ProcessedWorksheet {
+  const worksheetSha256 = sha256(text);
+  if (worksheetSha256 !== HISTORICAL_WORKSHEET_SHA256) {
+    throw new Error(`Historical worksheet SHA-256 mismatch: ${worksheetSha256}`);
+  }
   const markers = Array.from(text.matchAll(/^<!-- authored-case:([^>\n]+) -->$/gm));
-  if (markers.length !== 269) throw new Error(`Expected 269 authored-case markers, found ${markers.length}.`);
-  const ids = markers.map((match) => match[1]);
-  if (new Set(ids).size !== ids.length) throw new Error("Duplicate authored-case marker.");
-  const expectedIds = authoredCases.map((entry) => entry.id).sort();
-  if ([...ids].sort().join("\n") !== expectedIds.join("\n")) {
-    throw new Error("Worksheet case IDs do not exactly match the authored descriptor inventory.");
+  if (markers.length !== HISTORICAL_AUTHORED_CASE_COUNT) {
+    throw new Error(`Expected ${HISTORICAL_AUTHORED_CASE_COUNT} historical authored-case markers, found ${markers.length}.`);
+  }
+  const historicalIds = markers.map((match) => match[1]);
+  if (new Set(historicalIds).size !== historicalIds.length) throw new Error("Duplicate historical authored-case marker.");
+
+  const caseIdMigrations = historicalIds.map((historicalCaseId) => ({
+    historicalCaseId,
+    activeCaseId: activeCaseIdForHistorical(historicalCaseId),
+  }));
+  const migratedIds = caseIdMigrations.map((entry) => entry.activeCaseId);
+  if (new Set(migratedIds).size !== migratedIds.length) throw new Error("Historical-to-active case-ID mapping is not one-to-one.");
+  const expectedActiveIds = [...migratedIds, ...Object.keys(AMENDMENT_ONLY_ACTIVE_CASES)].sort();
+  const actualActiveIds = authoredCases.map((entry) => entry.id).sort();
+  if (expectedActiveIds.join("\n") !== actualActiveIds.join("\n")) {
+    throw new Error("Amendment-aware worksheet inventory does not exactly match active authored descriptors.");
   }
 
-  const { caseToFamily, familyVerdicts } = familyMembership(text);
-  for (const id of calibratedStandaloneIds()) {
-    if (caseToFamily.has(id)) throw new Error(`Calibrated case must remain standalone: ${id}`);
+  const { caseToFamily, familyOrder, familyVerdicts } = familyMembership(text);
+  for (const id of calibratedHistoricalStandaloneIds) {
+    if (caseToFamily.has(id)) throw new Error(`Calibrated historical case must remain standalone: ${id}`);
   }
   const priorityEvidence = parsePriorityEvidence();
   const parsed: ParsedVerdictCase[] = [];
 
   for (const [index, marker] of markers.entries()) {
-    const id = marker[1];
-    const descriptor = caseById.get(id);
-    if (descriptor === undefined) throw new Error(`Unknown authored case ID: ${id}`);
+    const historicalCaseId = marker[1];
+    const caseId = activeCaseIdForHistorical(historicalCaseId);
+    const descriptor = caseById.get(caseId);
+    if (descriptor === undefined) throw new Error(`Unknown active authored case ID: ${caseId}`);
     const blockStart = marker.index! + marker[0].length;
     const blockEnd = markers[index + 1]?.index ?? text.length;
     const block = text.slice(blockStart, blockEnd);
     const fields = Array.from(block.matchAll(
       /^\*\*(Verdict|Override) — V \/ I \/ \?:\*\*\s*`([^`]*)`\s*$/gm,
     ));
-    if (fields.length !== 1) throw new Error(`${id} has ${fields.length} verdict fields.`);
+    if (fields.length !== 1) throw new Error(`${historicalCaseId} has ${fields.length} verdict fields.`);
     const rowRaw = fields[0][2].trim();
     if (!["", "V", "I", "?"].includes(rowRaw)) {
-      throw new Error(`Malformed verdict at line ${lineNumber(text, blockStart + fields[0].index!)} for ${id}: ${JSON.stringify(rowRaw)}`);
+      throw new Error(`Malformed verdict at line ${lineNumber(text, blockStart + fields[0].index!)} for ${historicalCaseId}: ${JSON.stringify(rowRaw)}`);
     }
-    const familyId = caseToFamily.get(id);
-    const familyRaw = familyId === undefined ? "" : familyVerdicts.get(familyId)!;
+    const historicalFamilyId = caseToFamily.get(historicalCaseId);
+    const familyRaw = historicalFamilyId === undefined ? "" : familyVerdicts.get(historicalFamilyId)!;
     const effectiveRaw = (rowRaw || familyRaw) as RawVerdict;
-    const verdictSource: VerdictSource = rowRaw !== "" ? "row" : familyRaw !== "" ? "family" : "none";
-    const humanVerdict = verdict(effectiveRaw);
+    const historicalVerdictSource: Exclude<VerdictSource, "amendment"> =
+      rowRaw !== "" ? "row" : familyRaw !== "" ? "family" : "none";
+    const historicalVerdict = verdict(effectiveRaw);
+    const amendmentVerdict = amendmentVerdictForActiveCase(caseId);
+    const humanVerdict = amendmentVerdict ?? historicalVerdict;
+    const verdictSource: VerdictSource = amendmentVerdict === undefined ? historicalVerdictSource : "amendment";
     const currentProposal = descriptor.disposition === "accept" ? "valid" : "invalid";
     const agreesWithProposal = humanVerdict === "valid" || humanVerdict === "invalid"
       ? humanVerdict === currentProposal
       : null;
     const visibleProposal = Array.from(block.matchAll(/^\*\*Current proposal:\*\* (Valid|Invalid)$/gm));
-    if (visibleProposal.length !== 1 || visibleProposal[0][1].toLowerCase() !== currentProposal) {
-      throw new Error(`Current proposal mismatch for ${id}.`);
-    }
-    const claim = extractClaim(block, fields[0].index! + fields[0][0].length);
-    if (claim.length === 0) throw new Error(`Missing visible claim for ${id}.`);
+    if (visibleProposal.length !== 1) throw new Error(`Historical proposal field is missing for ${historicalCaseId}.`);
+    const historicalClaim = extractHistoricalClaim(block, fields[0].index! + fields[0][0].length);
+    if (historicalClaim.length === 0) throw new Error(`Missing visible historical claim for ${historicalCaseId}.`);
     const note = extractNote(block);
-    const provenancePriority = descriptor.humanReviewPriority
-      ?? priorityEvidence.get(id)
-      ?? "medium";
+    const familyId = historicalFamilyId === undefined ? undefined : activeFamilyIdForHistorical(historicalFamilyId);
     parsed.push({
-      caseId: id,
+      caseId,
+      historicalCaseId,
       humanVerdict,
+      historicalVerdict,
       verdictSource,
-      ...(familyId === undefined ? {} : { familyId }),
+      historicalVerdictSource,
+      ...(familyId === undefined ? {} : { familyId, historicalFamilyId }),
       currentProposal,
       agreesWithProposal,
       ...(note === undefined ? {} : { note }),
       source: descriptor.source,
-      claim,
+      claim: descriptor.claim,
+      historicalClaim,
       section: sectionAt(text, marker.index!),
-      provenancePriority,
-      rowOverride: familyId !== undefined && rowRaw !== "" && familyRaw !== "",
+      provenancePriority: descriptor.humanReviewPriority ?? priorityEvidence.get(historicalCaseId) ?? "medium",
+      rowOverride: historicalFamilyId !== undefined && rowRaw !== "" && familyRaw !== "",
+      amendmentApplied: delimiterChangedForCase(historicalCaseId, caseId),
+    });
+  }
+
+  for (const [caseId, humanVerdict] of Object.entries(AMENDMENT_ONLY_ACTIVE_CASES)) {
+    const descriptor = caseById.get(caseId);
+    if (descriptor === undefined) throw new Error(`Missing amendment-only active authored case: ${caseId}`);
+    const currentProposal = descriptor.disposition === "accept" ? "valid" : "invalid";
+    parsed.push({
+      caseId,
+      humanVerdict,
+      verdictSource: "amendment",
+      currentProposal,
+      agreesWithProposal: humanVerdict === currentProposal,
+      source: descriptor.source,
+      claim: descriptor.claim,
+      section: "Amendment-only cases",
+      provenancePriority: descriptor.humanReviewPriority ?? "critical",
+      rowOverride: false,
+      amendmentApplied: true,
     });
   }
 
@@ -224,43 +287,67 @@ export function processWorksheet(text: string): ProcessedWorksheet {
     unreviewed: count((entry) => entry.humanVerdict === "unreviewed"),
     rowVerdicts: count((entry) => entry.verdictSource === "row"),
     familyInheritedVerdicts: count((entry) => entry.verdictSource === "family"),
+    amendmentVerdicts: count((entry) => entry.verdictSource === "amendment"),
     rowOverrides: count((entry) => entry.rowOverride),
     proposalAgreements: count((entry) => entry.agreesWithProposal === true),
     proposalDisagreements: count((entry) => entry.agreesWithProposal === false),
   };
   return {
-    worksheetSha256: sha256(text),
+    worksheetSha256,
+    amendmentSha256: sha256(readFileSync(QUOTED_NAME_AMENDMENT_PATH)),
     corpusReviewFingerprint: sha256(readFileSync(CORPUS_REVIEW_PATH)),
-    families: REVIEW_FAMILY_GROUPS.map((group) => ({
-      familyId: group.id,
-      humanVerdict: verdict(familyVerdicts.get(group.id)!),
-    })),
+    families: familyOrder.map((historicalFamilyId) => {
+      const familyId = activeFamilyIdForHistorical(historicalFamilyId);
+      const historicalVerdict = verdict(familyVerdicts.get(historicalFamilyId)!);
+      const amendedFamily = familyId.includes("quoted-name");
+      return {
+        familyId,
+        historicalFamilyId,
+        humanVerdict: amendedFamily && historicalVerdict === "unreviewed" ? "valid" : historicalVerdict,
+        historicalVerdict,
+      };
+    }),
+    caseIdMigrations,
     cases: parsed,
     summary,
   };
 }
 
 export function processCurrentWorksheet(): ProcessedWorksheet {
-  return processWorksheet(readFileSync(AUTHORED_VERDICT_DOCUMENT, "utf8"));
+  return processWorksheet(readFileSync(HISTORICAL_WORKSHEET_PATH, "utf8"));
 }
 
 export function renderLedger(processed: ProcessedWorksheet): string {
   const ledger = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     artifactKind: "authored-hson-source-verdict-ledger",
-    scope: "human-reviewed authored-language membership only",
-    worksheetSha256: processed.worksheetSha256,
-    corpusReviewFingerprint: processed.corpusReviewFingerprint,
-    authoredDescriptorCount: corpusCounts.uniqueAuthoredSources,
+    scope: "amendment-aware human-reviewed authored-language membership only",
+    inputBinding: {
+      historicalWorksheetPath: HISTORICAL_WORKSHEET_PATH,
+      worksheetSha256: processed.worksheetSha256,
+      amendmentPath: QUOTED_NAME_AMENDMENT_PATH,
+      amendmentSha256: processed.amendmentSha256,
+      corpusReviewFingerprint: processed.corpusReviewFingerprint,
+    },
+    activeAuthoredDescriptorCount: processed.cases.length,
+    historicalAuthoredDescriptorCount: processed.caseIdMigrations.length,
     summary: processed.summary,
     families: processed.families,
+    caseIdMigrations: processed.caseIdMigrations,
     cases: processed.cases.map((entry) => ({
       caseId: entry.caseId,
+      ...(entry.historicalCaseId === undefined ? {} : { historicalCaseId: entry.historicalCaseId }),
       humanVerdict: entry.humanVerdict,
+      ...(entry.historicalVerdict === undefined ? {} : { historicalVerdict: entry.historicalVerdict }),
       verdictSource: entry.verdictSource,
+      ...(entry.historicalVerdictSource === undefined ? {} : { historicalVerdictSource: entry.historicalVerdictSource }),
       ...(entry.familyId === undefined ? {} : { familyId: entry.familyId }),
+      ...(entry.historicalFamilyId === undefined ? {} : { historicalFamilyId: entry.historicalFamilyId }),
       currentProposal: entry.currentProposal,
       agreesWithProposal: entry.agreesWithProposal,
+      amendmentApplied: entry.amendmentApplied,
+      source: entry.source,
+      claim: entry.claim,
       ...(entry.note === undefined ? {} : { note: entry.note }),
     })),
   };
@@ -273,8 +360,7 @@ function sourceCode(source: string): string {
     .replaceAll("\u2029", "\\u2029")
     .replaceAll("\ufeff", "\\uFEFF");
   const longest = Math.max(0, ...Array.from(value.matchAll(/`+/g), (match) => match[0].length));
-  const fence = "`".repeat(longest + 1);
-  return `${fence}${value}${fence}`;
+  return `${"`".repeat(longest + 1)}${value}${"`".repeat(longest + 1)}`;
 }
 
 const recommendationById = new Map<string, string>([
@@ -301,28 +387,43 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
   const disagreements = processed.cases.filter((entry) => entry.agreesWithProposal === false);
   const uncertain = processed.cases.filter((entry) => entry.humanVerdict === "uncertain");
   const unreviewed = processed.cases.filter((entry) => entry.humanVerdict === "unreviewed");
+  const renamed = processed.caseIdMigrations.filter((entry) => entry.historicalCaseId !== entry.activeCaseId);
   const lines: string[] = [
     "# Authored-HSON source-membership reconciliation",
     "",
-    "This report reconciles only **human-reviewed authored-language membership**.",
+    "This amendment-aware report reconciles **human-reviewed authored-language membership**.",
     "It does not certify expected graphs, canonical output, or structured diagnostics.",
+    "The completed worksheet remains immutable historical input; current syntax comes from the quoted-name amendment.",
     "",
     "## Input binding",
     "",
-    `- Worksheet SHA-256: \`${processed.worksheetSha256}\``,
+    `- Historical worksheet SHA-256: \`${processed.worksheetSha256}\``,
+    `- Quoted-name amendment SHA-256: \`${processed.amendmentSha256}\``,
     `- Corpus review fingerprint: \`${processed.corpusReviewFingerprint}\``,
-    `- Authored descriptors: ${processed.cases.length}`,
+    `- Historical authored descriptors: ${processed.caseIdMigrations.length}`,
+    `- Active authored descriptors: ${processed.cases.length}`,
+    "",
+    "## Historical-to-active ID migration",
+    "",
+    "All 269 historical IDs are recorded in the ledger. Unlisted IDs are identity mappings.",
+    "",
+    ...renamed.map((entry) => `- \`${entry.historicalCaseId}\` → \`${entry.activeCaseId}\``),
+    "",
+    "Amendment-only active IDs:",
+    "",
+    ...Object.keys(AMENDMENT_ONLY_ACTIVE_CASES).map((id) => `- \`${id}\``),
     "",
     "## Summary",
     "",
     "| Measure | Count |",
     "|---|---:|",
-    `| Human valid | ${processed.summary.humanValid} |`,
-    `| Human invalid | ${processed.summary.humanInvalid} |`,
+    `| Human/amendment valid | ${processed.summary.humanValid} |`,
+    `| Human/amendment invalid | ${processed.summary.humanInvalid} |`,
     `| Human uncertain | ${processed.summary.humanUncertain} |`,
     `| Unreviewed | ${processed.summary.unreviewed} |`,
-    `| Row verdicts | ${processed.summary.rowVerdicts} |`,
+    `| Direct row verdicts | ${processed.summary.rowVerdicts} |`,
     `| Family-inherited verdicts | ${processed.summary.familyInheritedVerdicts} |`,
+    `| Amendment verdicts | ${processed.summary.amendmentVerdicts} |`,
     `| Row overrides | ${processed.summary.rowOverrides} |`,
     `| Proposal agreements | ${processed.summary.proposalAgreements} |`,
     `| Proposal disagreements | ${processed.summary.proposalDisagreements} |`,
@@ -334,11 +435,11 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
     lines.push(
       `### \`${entry.caseId}\``,
       "",
-      `- Exact authored source: ${sourceCode(entry.source)}`,
+      `- Exact active authored source: ${sourceCode(entry.source)}`,
       `- Current proposal: ${entry.currentProposal}`,
-      `- Human verdict: ${entry.humanVerdict}`,
+      `- Human/amendment verdict: ${entry.humanVerdict}`,
       `- Human note: ${reportNote(entry.note)}`,
-      `- Candidate claim: ${entry.claim}`,
+      `- Active claim: ${entry.claim}`,
       `- Provenance priority: ${entry.provenancePriority}`,
       `- Recommended owner: **${recommendationById.get(entry.caseId) ?? "review clarification"}**`,
       "",
@@ -349,7 +450,7 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
     lines.push(
       `### \`${entry.caseId}\``,
       "",
-      `- Source: ${sourceCode(entry.source)}`,
+      `- Active source: ${sourceCode(entry.source)}`,
       `- Human note: ${reportNote(entry.note)}`,
       `- Current proposal: ${entry.currentProposal}`,
       `- Minimal remaining question: ${remainingQuestionById.get(entry.caseId) ?? "Clarify the intended authored-language membership rule."}`,
@@ -368,9 +469,8 @@ export function renderReconciliation(processed: ProcessedWorksheet): string {
   lines.push(
     "## Next focused action",
     "",
-    "Resolve the three proposal disagreements, seven uncertain cases, and two entirely unreviewed",
-    "accepted-family groups. Only then reconcile expected graphs and canonical outputs for sources",
-    "whose authored-language validity has human approval.",
+    "The remaining authored-HSON decisions are separate from this delimiter migration:",
+    "`.5` admission, element-closer trivia, comment syntax, and mixed-root design reservation.",
     "",
   );
   return lines.join("\n");

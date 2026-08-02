@@ -14,7 +14,7 @@ export function quote_hson_key(key: string): string {
   let escaped = "";
   for (const char of key) {
     if (char === "\\") escaped += "\\\\";
-    else if (char === "`") escaped += "\\`";
+    else if (char === "'") escaped += "\\'";
     else if (char === "\b") escaped += "\\b";
     else if (char === "\f") escaped += "\\f";
     else if (char === "\n") escaped += "\\n";
@@ -25,7 +25,7 @@ export function quote_hson_key(key: string): string {
     } else escaped += char;
   }
 
-  return `\`${escaped}\``;
+  return `'${escaped}'`;
 }
 
 export function serialize_hson_tag_name(tag: string): string {
@@ -33,7 +33,7 @@ export function serialize_hson_tag_name(tag: string): string {
 }
 
 export function unquote_hson_key(src: string): string {
-  if (!src.startsWith("`") || !src.endsWith("`")) {
+  if (!src.startsWith("'") || !src.endsWith("'")) {
     return src;
   }
 

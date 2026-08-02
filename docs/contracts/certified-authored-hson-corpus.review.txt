@@ -4,8 +4,8 @@ SUMMARY
 {
   "counts": {
     "literalAcceptedAuthoredHson": 51,
-    "transparentAcceptedAuthoredHson": 49,
-    "literalRejectedAuthoredHson": 52,
+    "transparentAcceptedAuthoredHson": 50,
+    "literalRejectedAuthoredHson": 55,
     "transparentRejectedAuthoredHson": 117,
     "graphOnlyAcceptedTransport": 11,
     "graphOnlyRejectedTransport": 9,
@@ -13,15 +13,15 @@ SUMMARY
     "structuralHtmlTransport": 49,
     "diagnosticCircuitRegressions": 4,
     "specializedTestReferences": 10,
-    "totalConcreteDescriptors": 366,
-    "uniqueAuthoredSources": 269,
+    "totalConcreteDescriptors": 370,
+    "uniqueAuthoredSources": 273,
     "declaredSourceReuse": 0
   },
   "assertions": {
-    "acceptedAssertions": 1083,
-    "rejectedAssertions": 1737,
+    "acceptedAssertions": 1089,
+    "rejectedAssertions": 1764,
     "integrityAssertions": 24,
-    "totalAssertions": 2844
+    "totalAssertions": 2877
   }
 }
 
@@ -1004,44 +1004,6 @@ declared source reuse: —
 tags: graph-ingress, typed-value, structural-mode, rejection
 rationale: An ordinary element may not retain a typed numeric leaf beneath its element content.
 
-=== hson.accept.basis.backtick-name.element-name ===
-claim: A nonempty backtick name is admitted as an HSON element name.
-classification: literal-accepted-authored-hson
-ingress format: hson
-escaped input: "\"<`x y`/>\""
-verbatim input: —
-semantic shape: element
-slot: element-name
-variation: element-name
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    {
-      "$_content": [],
-      "$_tag": "x y"
-    }
-  ],
-  "$_tag": "_hson_elem"
-}
-exact HSON output: "<`x y`/>"
-exact JSON output: —
-exact HTML output: —
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves: —
-negative-zero paths: —
-structured rejection: —
-origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription after auditing the existing authored-name role grammar.
-novelty: Adds the missing positive backtick element-name role.
-human-review priority: high
-specialized-test reference: —
-declared source reuse: —
-tags: element, backtick-name, authored-name
-rationale: A nonempty backtick name is admitted as an HSON element name.
-
 === hson.accept.basis.number.negative-exponent-sign ===
 claim: An exponent may contain a minus sign.
 classification: literal-accepted-authored-hson
@@ -1298,6 +1260,44 @@ specialized-test reference: —
 declared source reuse: —
 tags: object, property-key, primitive-keyword, order
 rationale: true, false, and null are ordinary property keys in HSON object key position.
+
+=== hson.accept.basis.quoted-name.element-name ===
+claim: A nonempty single-quoted name is admitted as an HSON element name.
+classification: literal-accepted-authored-hson
+ingress format: hson
+escaped input: "\"<'x y'/>\""
+verbatim input: —
+semantic shape: element
+slot: element-name
+variation: element-name
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    {
+      "$_content": [],
+      "$_tag": "x y"
+    }
+  ],
+  "$_tag": "_hson_elem"
+}
+exact HSON output: "<'x y'/>"
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: targeted-authored-hson-completeness-amendment
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing positive quoted element-name role.
+human-review priority: high
+specialized-test reference: —
+declared source reuse: —
+tags: element, quoted-name, authored-name
+rationale: A nonempty single-quoted name is admitted as an HSON element name.
 
 === hson.accept.basis.root.element-fragment ===
 claim: A homogeneous root element fragment preserves sibling order.
@@ -1564,11 +1564,11 @@ declared source reuse: —
 tags: trivia, comment, object, crlf
 rationale: Object trivia covers after-open, key/value, sibling, before-close, and consecutive terminated-comment slots.
 
-=== hson.accept.family.backtick-name.backspace ===
-claim: Backtick-name escape variation backspace decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.backspace ===
+claim: Quoted-name escape variation backspace decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`back\\\\bspace` 1>\""
+escaped input: "\"<'back\\\\bspace' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1597,7 +1597,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`back\\bspace` 1>"
+exact HSON output: "<'back\\bspace' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1605,20 +1605,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.carriage-return ===
-claim: Backtick-name escape variation carriage-return decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.carriage-return ===
+claim: Quoted-name escape variation carriage-return decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`line\\\\rname` 1>\""
+escaped input: "\"<'line\\\\rname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1647,7 +1647,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`line\\rname` 1>"
+exact HSON output: "<'line\\rname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1655,20 +1655,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.consecutive-unicode ===
-claim: Backtick-name escape variation consecutive-unicode decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.consecutive-unicode ===
+claim: Quoted-name escape variation consecutive-unicode decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`pair\\\\u0041\\\\u0042name` 1>\""
+escaped input: "\"<'pair\\\\u0041\\\\u0042name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1705,20 +1705,70 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.escaped-backslash ===
-claim: Backtick-name escape variation escaped-backslash decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.escaped-apostrophe ===
+claim: Quoted-name escape variation escaped-apostrophe decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`back\\\\\\\\slash` 1>\""
+escaped input: "\"<'don\\\\'t' 1>\""
+verbatim input: —
+semantic shape: object
+slot: property-key
+variation: escaped-apostrophe
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    {
+      "$_content": [
+        {
+          "$_content": [
+            {
+              "$_content": [
+                1
+              ],
+              "$_tag": "_hson_val"
+            }
+          ],
+          "$_tag": "_hson_obj"
+        }
+      ],
+      "$_tag": "don't"
+    }
+  ],
+  "$_tag": "_hson_obj"
+}
+exact HSON output: "<'don\\'t' 1>"
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: family.accept.quoted-name-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: quoted-name, escape, transparent-family
+rationale: One property-key slot varies only the accepted escape spelling.
+
+=== hson.accept.family.quoted-name.escaped-backslash ===
+claim: Quoted-name escape variation escaped-backslash decodes and canonicalizes exactly.
+classification: materialized-accepted-family-case
+ingress format: hson
+escaped input: "\"<'back\\\\\\\\slash' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1747,7 +1797,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`back\\\\slash` 1>"
+exact HSON output: "<'back\\\\slash' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1755,70 +1805,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.escaped-backtick ===
-claim: Backtick-name escape variation escaped-backtick decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.form-feed ===
+claim: Quoted-name escape variation form-feed decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`tick\\\\`name` 1>\""
-verbatim input: —
-semantic shape: object
-slot: property-key
-variation: escaped-backtick
-defect: —
-disposition: accept
-hand-authored expected graph:
-{
-  "$_content": [
-    {
-      "$_content": [
-        {
-          "$_content": [
-            {
-              "$_content": [
-                1
-              ],
-              "$_tag": "_hson_val"
-            }
-          ],
-          "$_tag": "_hson_obj"
-        }
-      ],
-      "$_tag": "tick`name"
-    }
-  ],
-  "$_tag": "_hson_obj"
-}
-exact HSON output: "<`tick\\`name` 1>"
-exact JSON output: —
-exact HTML output: —
-exact diagnostic output: —
-expected key sequences: —
-expected string leaves: —
-negative-zero paths: —
-structured rejection: —
-origin: family.accept.backtick-name-escapes
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: backtick-name, escape, transparent-family
-rationale: One property-key slot varies only the accepted escape spelling.
-
-=== hson.accept.family.backtick-name.form-feed ===
-claim: Backtick-name escape variation form-feed decodes and canonicalizes exactly.
-classification: materialized-accepted-family-case
-ingress format: hson
-escaped input: "\"<`form\\\\ffeed` 1>\""
+escaped input: "\"<'form\\\\ffeed' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1847,7 +1847,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`form\\ffeed` 1>"
+exact HSON output: "<'form\\ffeed' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1855,20 +1855,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.line-feed ===
-claim: Backtick-name escape variation line-feed decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.line-feed ===
+claim: Quoted-name escape variation line-feed decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`line\\\\nname` 1>\""
+escaped input: "\"<'line\\\\nname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1897,7 +1897,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`line\\nname` 1>"
+exact HSON output: "<'line\\nname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1905,20 +1905,70 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.tab ===
-claim: Backtick-name escape variation tab decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.literal-backtick ===
+claim: Quoted-name escape variation literal-backtick decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`line\\\\tname` 1>\""
+escaped input: "\"<'tick`name' 1>\""
+verbatim input: —
+semantic shape: object
+slot: property-key
+variation: literal-backtick
+defect: —
+disposition: accept
+hand-authored expected graph:
+{
+  "$_content": [
+    {
+      "$_content": [
+        {
+          "$_content": [
+            {
+              "$_content": [
+                1
+              ],
+              "$_tag": "_hson_val"
+            }
+          ],
+          "$_tag": "_hson_obj"
+        }
+      ],
+      "$_tag": "tick`name"
+    }
+  ],
+  "$_tag": "_hson_obj"
+}
+exact HSON output: "<'tick`name' 1>"
+exact JSON output: —
+exact HTML output: —
+exact diagnostic output: —
+expected key sequences: —
+expected string leaves: —
+negative-zero paths: —
+structured rejection: —
+origin: family.accept.quoted-name-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: quoted-name, escape, transparent-family
+rationale: One property-key slot varies only the accepted escape spelling.
+
+=== hson.accept.family.quoted-name.tab ===
+claim: Quoted-name escape variation tab decodes and canonicalizes exactly.
+classification: materialized-accepted-family-case
+ingress format: hson
+escaped input: "\"<'line\\\\tname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1947,7 +1997,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`line\\tname` 1>"
+exact HSON output: "<'line\\tname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -1955,20 +2005,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-control ===
-claim: Backtick-name escape variation unicode-control decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-control ===
+claim: Quoted-name escape variation unicode-control decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`control\\\\u0001name` 1>\""
+escaped input: "\"<'control\\\\u0001name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -1997,7 +2047,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`control\\u0001name` 1>"
+exact HSON output: "<'control\\u0001name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2005,20 +2055,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-high-surrogate ===
-claim: Backtick-name escape variation unicode-high-surrogate decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-high-surrogate ===
+claim: Quoted-name escape variation unicode-high-surrogate decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`high\\\\uD800name` 1>\""
+escaped input: "\"<'high\\\\uD800name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2047,7 +2097,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`high\ud800name` 1>"
+exact HSON output: "<'high\ud800name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2055,20 +2105,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-lambda ===
-claim: Backtick-name escape variation unicode-lambda decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-lambda ===
+claim: Quoted-name escape variation unicode-lambda decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`lambda\\\\u03bbname` 1>\""
+escaped input: "\"<'lambda\\\\u03bbname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2097,7 +2147,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`lambdaλname` 1>"
+exact HSON output: "<'lambdaλname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2105,20 +2155,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-low-surrogate ===
-claim: Backtick-name escape variation unicode-low-surrogate decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-low-surrogate ===
+claim: Quoted-name escape variation unicode-low-surrogate decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`low\\\\uDC00name` 1>\""
+escaped input: "\"<'low\\\\uDC00name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2147,7 +2197,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`low\udc00name` 1>"
+exact HSON output: "<'low\udc00name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2155,20 +2205,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-lowercase ===
-claim: Backtick-name escape variation unicode-lowercase decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-lowercase ===
+claim: Quoted-name escape variation unicode-lowercase decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`lower\\\\u0061name` 1>\""
+escaped input: "\"<'lower\\\\u0061name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2205,20 +2255,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-mixed-case ===
-claim: Backtick-name escape variation unicode-mixed-case decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-mixed-case ===
+claim: Quoted-name escape variation unicode-mixed-case decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`mixed\\\\u00aFname` 1>\""
+escaped input: "\"<'mixed\\\\u00aFname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2247,7 +2297,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`mixed¯name` 1>"
+exact HSON output: "<'mixed¯name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2255,20 +2305,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-surrogate-pair ===
-claim: Backtick-name escape variation unicode-surrogate-pair decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-surrogate-pair ===
+claim: Quoted-name escape variation unicode-surrogate-pair decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`pair\\\\uD83D\\\\uDE00name` 1>\""
+escaped input: "\"<'pair\\\\uD83D\\\\uDE00name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2297,7 +2347,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`pair😀name` 1>"
+exact HSON output: "<'pair😀name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2305,20 +2355,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u0000 ===
-claim: Backtick-name escape variation unicode-u0000 decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u0000 ===
+claim: Quoted-name escape variation unicode-u0000 decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`nul\\\\u0000name` 1>\""
+escaped input: "\"<'nul\\\\u0000name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2347,7 +2397,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`nul\\u0000name` 1>"
+exact HSON output: "<'nul\\u0000name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2355,20 +2405,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u001f ===
-claim: Backtick-name escape variation unicode-u001f decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u001f ===
+claim: Quoted-name escape variation unicode-u001f decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u001Fname` 1>\""
+escaped input: "\"<'unit\\\\u001Fname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2397,7 +2447,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unit\\u001fname` 1>"
+exact HSON output: "<'unit\\u001fname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2405,20 +2455,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u007f ===
-claim: Backtick-name escape variation unicode-u007f decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u007f ===
+claim: Quoted-name escape variation unicode-u007f decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u007fname` 1>\""
+escaped input: "\"<'unit\\\\u007fname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2447,7 +2497,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unit\u007fname` 1>"
+exact HSON output: "<'unit\u007fname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2455,20 +2505,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u0080 ===
-claim: Backtick-name escape variation unicode-u0080 decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u0080 ===
+claim: Quoted-name escape variation unicode-u0080 decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u0080name` 1>\""
+escaped input: "\"<'unit\\\\u0080name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2497,7 +2547,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unit\u0080name` 1>"
+exact HSON output: "<'unit\u0080name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2505,20 +2555,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u00ff ===
-claim: Backtick-name escape variation unicode-u00ff decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u00ff ===
+claim: Quoted-name escape variation unicode-u00ff decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u00FFname` 1>\""
+escaped input: "\"<'unit\\\\u00FFname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2547,7 +2597,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unitÿname` 1>"
+exact HSON output: "<'unitÿname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2555,20 +2605,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u0100 ===
-claim: Backtick-name escape variation unicode-u0100 decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u0100 ===
+claim: Quoted-name escape variation unicode-u0100 decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u0100name` 1>\""
+escaped input: "\"<'unit\\\\u0100name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2597,7 +2647,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unitĀname` 1>"
+exact HSON output: "<'unitĀname' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2605,20 +2655,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u2028 ===
-claim: Backtick-name escape variation unicode-u2028 decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u2028 ===
+claim: Quoted-name escape variation unicode-u2028 decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u2028name` 1>\""
+escaped input: "\"<'unit\\\\u2028name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2647,7 +2697,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unit\u2028name` 1>"
+exact HSON output: "<'unit\u2028name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2655,20 +2705,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-u2029 ===
-claim: Backtick-name escape variation unicode-u2029 decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-u2029 ===
+claim: Quoted-name escape variation unicode-u2029 decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`unit\\\\u2029name` 1>\""
+escaped input: "\"<'unit\\\\u2029name' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2697,7 +2747,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`unit\u2029name` 1>"
+exact HSON output: "<'unit\u2029name' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -2705,20 +2755,20 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
-=== hson.accept.family.backtick-name.unicode-uppercase ===
-claim: Backtick-name escape variation unicode-uppercase decodes and canonicalizes exactly.
+=== hson.accept.family.quoted-name.unicode-uppercase ===
+claim: Quoted-name escape variation unicode-uppercase decodes and canonicalizes exactly.
 classification: materialized-accepted-family-case
 ingress format: hson
-escaped input: "\"<`upper\\\\u006Aname` 1>\""
+escaped input: "\"<'upper\\\\u006Aname' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -2755,13 +2805,13 @@ expected key sequences: —
 expected string leaves: —
 negative-zero paths: —
 structured rejection: —
-origin: family.accept.backtick-name-escapes
+origin: family.accept.quoted-name-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family
+tags: quoted-name, escape, transparent-family
 rationale: One property-key slot varies only the accepted escape spelling.
 
 === hson.accept.family.quoted-string.backslash ===
@@ -4743,7 +4793,7 @@ tags: object, array
 rationale: An object property may contain an array.
 
 === hson.accept.literal.object.colon-dot-names ===
-claim: Colon and dot keys canonicalize through backticks.
+claim: Colon and dot keys canonicalize through single-quoted names.
 classification: literal-accepted-authored-hson
 ingress format: hson
 escaped input: "\"<:x 1 a.b 2>\""
@@ -4791,7 +4841,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<\n  `:x` 1\n  `a.b` 2\n>"
+exact HSON output: "<\n  ':x' 1\n  'a.b' 2\n>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4805,8 +4855,8 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: object, backtick-name
-rationale: Colon and dot keys canonicalize through backticks.
+tags: object, quoted-name
+rationale: Colon and dot keys canonicalize through single-quoted names.
 
 === hson.accept.literal.object.comments ===
 claim: Physical-line comments are grammar trivia between object tokens.
@@ -4911,7 +4961,7 @@ rationale: One angle pair denotes an empty HSON object.
 claim: An empty decoded object-property key is valid.
 classification: literal-accepted-authored-hson
 ingress format: hson
-escaped input: "\"<`` 1>\""
+escaped input: "\"<'' 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key
@@ -4940,7 +4990,7 @@ hand-authored expected graph:
   ],
   "$_tag": "_hson_obj"
 }
-exact HSON output: "<`` 1>"
+exact HSON output: "<'' 1>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -4954,7 +5004,7 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: object, backtick-name, empty-name
+tags: object, quoted-name, empty-name
 rationale: An empty decoded object-property key is valid.
 
 === hson.accept.literal.object.multiple-properties ===
@@ -5676,92 +5726,6 @@ declared source reuse: —
 tags: trivia, whitespace
 rationale: Grammar trivia is exactly SPACE, HT, LF, and CR.
 
-=== hson.reject.basis.backtick-name.attribute-name ===
-claim: Backtick names are not admitted as element attribute names.
-classification: literal-rejected-authored-hson
-ingress format: hson
-escaped input: "\"<e `data key`=\\\"value\\\"/>\""
-verbatim input: —
-semantic shape: element
-slot: element-attribute
-variation: —
-defect: backtick-role-forbidden
-disposition: reject
-hand-authored expected graph: —
-exact HSON output: —
-exact JSON output: —
-exact HTML output: —
-structured rejection:
-{
-  "code": "HSON_NAME_INVALID_START",
-  "operation": "tokenize-hson",
-  "source": {
-    "column": 4,
-    "index": 3,
-    "line": 1
-  },
-  "stage": "tokenization"
-}
-source evidence:
-{
-  "column": 4,
-  "index": 3,
-  "line": 1
-}
-path evidence: —
-related evidence: —
-origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription after auditing the existing authored-name role grammar.
-novelty: Adds the missing nonempty backtick attribute-role rejection.
-human-review priority: high
-specialized-test reference: —
-declared source reuse: —
-tags: element, attribute, backtick-name, rejection
-rationale: Backtick names are not admitted as element attribute names.
-
-=== hson.reject.basis.backtick-name.flag-name ===
-claim: Backtick names are not admitted as element flag names.
-classification: literal-rejected-authored-hson
-ingress format: hson
-escaped input: "\"<e `feature flag`/>\""
-verbatim input: —
-semantic shape: element
-slot: element-flag
-variation: —
-defect: backtick-role-forbidden
-disposition: reject
-hand-authored expected graph: —
-exact HSON output: —
-exact JSON output: —
-exact HTML output: —
-structured rejection:
-{
-  "code": "HSON_NAME_INVALID_START",
-  "operation": "tokenize-hson",
-  "source": {
-    "column": 4,
-    "index": 3,
-    "line": 1
-  },
-  "stage": "tokenization"
-}
-source evidence:
-{
-  "column": 4,
-  "index": 3,
-  "line": 1
-}
-path evidence: —
-related evidence: —
-origin: targeted-authored-hson-completeness-amendment
-provenance: Direct transcription after auditing the existing authored-name role grammar.
-novelty: Adds the missing nonempty backtick flag-role rejection.
-human-review priority: high
-specialized-test reference: —
-declared source reuse: —
-tags: element, flag, backtick-name, rejection
-rationale: Backtick names are not admitted as element flag names.
-
 === hson.reject.basis.mode.object-element ===
 claim: An HSON object property cannot contain an element-mode value.
 classification: literal-rejected-authored-hson
@@ -6321,14 +6285,100 @@ declared source reuse: —
 tags: number, json-number-grammar, rejection
 rationale: Numeric separators are not JSON-compatible HSON number syntax.
 
-=== hson.reject.family.backtick-name.eof ===
-claim: backtick-name defect eof rejects deterministically.
+=== hson.reject.basis.quoted-name.attribute-name ===
+claim: Single-quoted names are not admitted as element attribute names.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<e 'data key'=\\\"value\\\"/>\""
+verbatim input: —
+semantic shape: element
+slot: element-attribute
+variation: —
+defect: quoted-name-role-forbidden
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_NAME_INVALID_START",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 4,
+    "index": 3,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 4,
+  "index": 3,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: targeted-authored-hson-completeness-amendment
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing nonempty quoted-name attribute-role rejection.
+human-review priority: high
+specialized-test reference: —
+declared source reuse: —
+tags: element, attribute, quoted-name, rejection
+rationale: Single-quoted names are not admitted as element attribute names.
+
+=== hson.reject.basis.quoted-name.flag-name ===
+claim: Single-quoted names are not admitted as element flag names.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<e 'feature flag'/>\""
+verbatim input: —
+semantic shape: element
+slot: element-flag
+variation: —
+defect: quoted-name-role-forbidden
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_NAME_INVALID_START",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 4,
+    "index": 3,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 4,
+  "index": 3,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: targeted-authored-hson-completeness-amendment
+provenance: Direct transcription after auditing the existing authored-name role grammar.
+novelty: Adds the missing nonempty quoted-name flag-role rejection.
+human-review priority: high
+specialized-test reference: —
+declared source reuse: —
+tags: element, flag, quoted-name, rejection
+rationale: Single-quoted names are not admitted as element flag names.
+
+=== hson.reject.family.quoted-name.eof ===
+claim: quoted-name defect eof rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`name\""
+escaped input: "\"<'name\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: eof
 disposition: reject
@@ -6355,23 +6405,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.invalid-hex-position-1 ===
-claim: backtick-name defect invalid-hex-position-1 rejects deterministically.
+=== hson.reject.family.quoted-name.invalid-hex-position-1 ===
+claim: quoted-name defect invalid-hex-position-1 rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\uG000` 1>\""
+escaped input: "\"<'\\\\uG000' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: invalid-hex-position-1
 disposition: reject
@@ -6398,23 +6448,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.invalid-hex-position-2 ===
-claim: backtick-name defect invalid-hex-position-2 rejects deterministically.
+=== hson.reject.family.quoted-name.invalid-hex-position-2 ===
+claim: quoted-name defect invalid-hex-position-2 rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u0G00` 1>\""
+escaped input: "\"<'\\\\u0G00' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: invalid-hex-position-2
 disposition: reject
@@ -6441,23 +6491,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.invalid-hex-position-3 ===
-claim: backtick-name defect invalid-hex-position-3 rejects deterministically.
+=== hson.reject.family.quoted-name.invalid-hex-position-3 ===
+claim: quoted-name defect invalid-hex-position-3 rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u00G0` 1>\""
+escaped input: "\"<'\\\\u00G0' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: invalid-hex-position-3
 disposition: reject
@@ -6484,23 +6534,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.invalid-hex-position-4 ===
-claim: backtick-name defect invalid-hex-position-4 rejects deterministically.
+=== hson.reject.family.quoted-name.invalid-hex-position-4 ===
+claim: quoted-name defect invalid-hex-position-4 rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u000G` 1>\""
+escaped input: "\"<'\\\\u000G' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: invalid-hex-position-4
 disposition: reject
@@ -6527,23 +6577,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.raw-u0000 ===
-claim: Raw U+0000 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0000 ===
+claim: Raw U+0000 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0000b` 1>"
-verbatim input: "<`a\u0000b` 1>"
+escaped input: "<'a\\u0000b' 1>"
+verbatim input: "<'a\u0000b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0000
 disposition: reject
@@ -6570,23 +6620,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0001 ===
-claim: Raw U+0001 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0001 ===
+claim: Raw U+0001 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0001b` 1>"
-verbatim input: "<`a\u0001b` 1>"
+escaped input: "<'a\\u0001b' 1>"
+verbatim input: "<'a\u0001b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0001
 disposition: reject
@@ -6613,23 +6663,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0002 ===
-claim: Raw U+0002 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0002 ===
+claim: Raw U+0002 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0002b` 1>"
-verbatim input: "<`a\u0002b` 1>"
+escaped input: "<'a\\u0002b' 1>"
+verbatim input: "<'a\u0002b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0002
 disposition: reject
@@ -6656,23 +6706,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0003 ===
-claim: Raw U+0003 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0003 ===
+claim: Raw U+0003 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0003b` 1>"
-verbatim input: "<`a\u0003b` 1>"
+escaped input: "<'a\\u0003b' 1>"
+verbatim input: "<'a\u0003b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0003
 disposition: reject
@@ -6699,23 +6749,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0004 ===
-claim: Raw U+0004 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0004 ===
+claim: Raw U+0004 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0004b` 1>"
-verbatim input: "<`a\u0004b` 1>"
+escaped input: "<'a\\u0004b' 1>"
+verbatim input: "<'a\u0004b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0004
 disposition: reject
@@ -6742,23 +6792,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0005 ===
-claim: Raw U+0005 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0005 ===
+claim: Raw U+0005 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0005b` 1>"
-verbatim input: "<`a\u0005b` 1>"
+escaped input: "<'a\\u0005b' 1>"
+verbatim input: "<'a\u0005b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0005
 disposition: reject
@@ -6785,23 +6835,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0006 ===
-claim: Raw U+0006 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0006 ===
+claim: Raw U+0006 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0006b` 1>"
-verbatim input: "<`a\u0006b` 1>"
+escaped input: "<'a\\u0006b' 1>"
+verbatim input: "<'a\u0006b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0006
 disposition: reject
@@ -6828,23 +6878,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0007 ===
-claim: Raw U+0007 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0007 ===
+claim: Raw U+0007 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0007b` 1>"
-verbatim input: "<`a\u0007b` 1>"
+escaped input: "<'a\\u0007b' 1>"
+verbatim input: "<'a\u0007b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0007
 disposition: reject
@@ -6871,23 +6921,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0008 ===
-claim: Raw U+0008 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0008 ===
+claim: Raw U+0008 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0008b` 1>"
-verbatim input: "<`a\bb` 1>"
+escaped input: "<'a\\u0008b' 1>"
+verbatim input: "<'a\bb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0008
 disposition: reject
@@ -6914,23 +6964,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0009 ===
-claim: Raw U+0009 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0009 ===
+claim: Raw U+0009 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0009b` 1>"
-verbatim input: "<`a\tb` 1>"
+escaped input: "<'a\\u0009b' 1>"
+verbatim input: "<'a\tb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0009
 disposition: reject
@@ -6957,23 +7007,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000a ===
-claim: Raw U+000A rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000a ===
+claim: Raw U+000A rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000ab` 1>"
-verbatim input: "<`a\nb` 1>"
+escaped input: "<'a\\u000ab' 1>"
+verbatim input: "<'a\nb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000a
 disposition: reject
@@ -7000,23 +7050,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000b ===
-claim: Raw U+000B rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000b ===
+claim: Raw U+000B rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000bb` 1>"
-verbatim input: "<`a\u000bb` 1>"
+escaped input: "<'a\\u000bb' 1>"
+verbatim input: "<'a\u000bb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000b
 disposition: reject
@@ -7043,23 +7093,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000c ===
-claim: Raw U+000C rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000c ===
+claim: Raw U+000C rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000cb` 1>"
-verbatim input: "<`a\fb` 1>"
+escaped input: "<'a\\u000cb' 1>"
+verbatim input: "<'a\fb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000c
 disposition: reject
@@ -7086,23 +7136,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000d ===
-claim: Raw U+000D rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000d ===
+claim: Raw U+000D rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000db` 1>"
-verbatim input: "<`a\rb` 1>"
+escaped input: "<'a\\u000db' 1>"
+verbatim input: "<'a\rb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000d
 disposition: reject
@@ -7129,23 +7179,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000e ===
-claim: Raw U+000E rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000e ===
+claim: Raw U+000E rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000eb` 1>"
-verbatim input: "<`a\u000eb` 1>"
+escaped input: "<'a\\u000eb' 1>"
+verbatim input: "<'a\u000eb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000e
 disposition: reject
@@ -7172,23 +7222,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u000f ===
-claim: Raw U+000F rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u000f ===
+claim: Raw U+000F rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u000fb` 1>"
-verbatim input: "<`a\u000fb` 1>"
+escaped input: "<'a\\u000fb' 1>"
+verbatim input: "<'a\u000fb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u000f
 disposition: reject
@@ -7215,23 +7265,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0010 ===
-claim: Raw U+0010 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0010 ===
+claim: Raw U+0010 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0010b` 1>"
-verbatim input: "<`a\u0010b` 1>"
+escaped input: "<'a\\u0010b' 1>"
+verbatim input: "<'a\u0010b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0010
 disposition: reject
@@ -7258,23 +7308,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0011 ===
-claim: Raw U+0011 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0011 ===
+claim: Raw U+0011 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0011b` 1>"
-verbatim input: "<`a\u0011b` 1>"
+escaped input: "<'a\\u0011b' 1>"
+verbatim input: "<'a\u0011b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0011
 disposition: reject
@@ -7301,23 +7351,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0012 ===
-claim: Raw U+0012 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0012 ===
+claim: Raw U+0012 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0012b` 1>"
-verbatim input: "<`a\u0012b` 1>"
+escaped input: "<'a\\u0012b' 1>"
+verbatim input: "<'a\u0012b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0012
 disposition: reject
@@ -7344,23 +7394,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0013 ===
-claim: Raw U+0013 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0013 ===
+claim: Raw U+0013 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0013b` 1>"
-verbatim input: "<`a\u0013b` 1>"
+escaped input: "<'a\\u0013b' 1>"
+verbatim input: "<'a\u0013b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0013
 disposition: reject
@@ -7387,23 +7437,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0014 ===
-claim: Raw U+0014 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0014 ===
+claim: Raw U+0014 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0014b` 1>"
-verbatim input: "<`a\u0014b` 1>"
+escaped input: "<'a\\u0014b' 1>"
+verbatim input: "<'a\u0014b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0014
 disposition: reject
@@ -7430,23 +7480,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0015 ===
-claim: Raw U+0015 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0015 ===
+claim: Raw U+0015 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0015b` 1>"
-verbatim input: "<`a\u0015b` 1>"
+escaped input: "<'a\\u0015b' 1>"
+verbatim input: "<'a\u0015b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0015
 disposition: reject
@@ -7473,23 +7523,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0016 ===
-claim: Raw U+0016 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0016 ===
+claim: Raw U+0016 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0016b` 1>"
-verbatim input: "<`a\u0016b` 1>"
+escaped input: "<'a\\u0016b' 1>"
+verbatim input: "<'a\u0016b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0016
 disposition: reject
@@ -7516,23 +7566,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0017 ===
-claim: Raw U+0017 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0017 ===
+claim: Raw U+0017 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0017b` 1>"
-verbatim input: "<`a\u0017b` 1>"
+escaped input: "<'a\\u0017b' 1>"
+verbatim input: "<'a\u0017b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0017
 disposition: reject
@@ -7559,23 +7609,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0018 ===
-claim: Raw U+0018 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0018 ===
+claim: Raw U+0018 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0018b` 1>"
-verbatim input: "<`a\u0018b` 1>"
+escaped input: "<'a\\u0018b' 1>"
+verbatim input: "<'a\u0018b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0018
 disposition: reject
@@ -7602,23 +7652,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u0019 ===
-claim: Raw U+0019 rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u0019 ===
+claim: Raw U+0019 rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u0019b` 1>"
-verbatim input: "<`a\u0019b` 1>"
+escaped input: "<'a\\u0019b' 1>"
+verbatim input: "<'a\u0019b' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u0019
 disposition: reject
@@ -7645,23 +7695,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001a ===
-claim: Raw U+001A rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001a ===
+claim: Raw U+001A rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001ab` 1>"
-verbatim input: "<`a\u001ab` 1>"
+escaped input: "<'a\\u001ab' 1>"
+verbatim input: "<'a\u001ab' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001a
 disposition: reject
@@ -7688,23 +7738,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001b ===
-claim: Raw U+001B rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001b ===
+claim: Raw U+001B rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001bb` 1>"
-verbatim input: "<`a\u001bb` 1>"
+escaped input: "<'a\\u001bb' 1>"
+verbatim input: "<'a\u001bb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001b
 disposition: reject
@@ -7731,23 +7781,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001c ===
-claim: Raw U+001C rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001c ===
+claim: Raw U+001C rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001cb` 1>"
-verbatim input: "<`a\u001cb` 1>"
+escaped input: "<'a\\u001cb' 1>"
+verbatim input: "<'a\u001cb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001c
 disposition: reject
@@ -7774,23 +7824,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001d ===
-claim: Raw U+001D rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001d ===
+claim: Raw U+001D rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001db` 1>"
-verbatim input: "<`a\u001db` 1>"
+escaped input: "<'a\\u001db' 1>"
+verbatim input: "<'a\u001db' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001d
 disposition: reject
@@ -7817,23 +7867,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001e ===
-claim: Raw U+001E rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001e ===
+claim: Raw U+001E rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001eb` 1>"
-verbatim input: "<`a\u001eb` 1>"
+escaped input: "<'a\\u001eb' 1>"
+verbatim input: "<'a\u001eb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001e
 disposition: reject
@@ -7860,23 +7910,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.raw-u001f ===
-claim: Raw U+001F rejects in a backtick-name.
+=== hson.reject.family.quoted-name.raw-u001f ===
+claim: Raw U+001F rejects in a quoted-name.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "<`a\\u001fb` 1>"
-verbatim input: "<`a\u001fb` 1>"
+escaped input: "<'a\\u001fb' 1>"
+verbatim input: "<'a\u001fb' 1>"
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: raw-u001f
 disposition: reject
@@ -7903,23 +7953,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-raw-c0
+origin: family.reject.quoted-name-raw-c0
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, raw-c0, transparent-family, rejection
+tags: quoted-name, raw-c0, transparent-family, rejection
 rationale: The finite 32-case family visibly materializes every raw C0 code point.
 
-=== hson.reject.family.backtick-name.trailing-backslash ===
-claim: backtick-name defect trailing-backslash rejects deterministically.
+=== hson.reject.family.quoted-name.trailing-backslash ===
+claim: quoted-name defect trailing-backslash rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`name\\\\\""
+escaped input: "\"<'name\\\\\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: trailing-backslash
 disposition: reject
@@ -7946,23 +7996,66 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-interrupted-backslash ===
-claim: backtick-name defect unicode-interrupted-backslash rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-interrupted-apostrophe ===
+claim: quoted-name defect unicode-interrupted-apostrophe rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u\\\\000` 1>\""
+escaped input: "\"<'\\\\u'000' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
+variation: —
+defect: unicode-interrupted-apostrophe
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_NAME_UNTERMINATED",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 9,
+    "index": 8,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 9,
+  "index": 8,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: family.reject.quoted-name-malformed-escapes
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: quoted-name, escape, transparent-family, rejection
+rationale: One lexical slot varies only the malformed escape spelling.
+
+=== hson.reject.family.quoted-name.unicode-interrupted-backslash ===
+claim: quoted-name defect unicode-interrupted-backslash rejects deterministically.
+classification: materialized-rejected-family-case
+ingress format: hson
+escaped input: "\"<'\\\\u\\\\000' 1>\""
+verbatim input: —
+semantic shape: object
+slot: quoted-name
 variation: —
 defect: unicode-interrupted-backslash
 disposition: reject
@@ -7989,66 +8082,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-interrupted-backtick ===
-claim: backtick-name defect unicode-interrupted-backtick rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-interrupted-closer ===
+claim: quoted-name defect unicode-interrupted-closer rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u`000` 1>\""
+escaped input: "\"<'\\\\u>000' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
-variation: —
-defect: unicode-interrupted-backtick
-disposition: reject
-hand-authored expected graph: —
-exact HSON output: —
-exact JSON output: —
-exact HTML output: —
-structured rejection:
-{
-  "code": "HSON_NAME_UNTERMINATED",
-  "operation": "tokenize-hson",
-  "source": {
-    "column": 9,
-    "index": 8,
-    "line": 1
-  },
-  "stage": "tokenization"
-}
-source evidence:
-{
-  "column": 9,
-  "index": 8,
-  "line": 1
-}
-path evidence: —
-related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
-provenance: —
-novelty: —
-human-review priority: —
-specialized-test reference: —
-declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
-rationale: One lexical slot varies only the malformed escape spelling.
-
-=== hson.reject.family.backtick-name.unicode-interrupted-closer ===
-claim: backtick-name defect unicode-interrupted-closer rejects deterministically.
-classification: materialized-rejected-family-case
-ingress format: hson
-escaped input: "\"<`\\\\u>000` 1>\""
-verbatim input: —
-semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-interrupted-closer
 disposition: reject
@@ -8075,23 +8125,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-interrupted-quote ===
-claim: backtick-name defect unicode-interrupted-quote rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-interrupted-quote ===
+claim: quoted-name defect unicode-interrupted-quote rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u\\\"000` 1>\""
+escaped input: "\"<'\\\\u\\\"000' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-interrupted-quote
 disposition: reject
@@ -8118,23 +8168,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-interrupted-space ===
-claim: backtick-name defect unicode-interrupted-space rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-interrupted-space ===
+claim: quoted-name defect unicode-interrupted-space rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u 000` 1>\""
+escaped input: "\"<'\\\\u 000' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-interrupted-space
 disposition: reject
@@ -8161,23 +8211,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-one-hex ===
-claim: backtick-name defect unicode-one-hex rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-one-hex ===
+claim: quoted-name defect unicode-one-hex rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u1` 1>\""
+escaped input: "\"<'\\\\u1' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-one-hex
 disposition: reject
@@ -8204,23 +8254,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-three-hex ===
-claim: backtick-name defect unicode-three-hex rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-three-hex ===
+claim: quoted-name defect unicode-three-hex rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u123` 1>\""
+escaped input: "\"<'\\\\u123' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-three-hex
 disposition: reject
@@ -8247,23 +8297,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-two-hex ===
-claim: backtick-name defect unicode-two-hex rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-two-hex ===
+claim: quoted-name defect unicode-two-hex rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u12` 1>\""
+escaped input: "\"<'\\\\u12' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-two-hex
 disposition: reject
@@ -8290,23 +8340,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unicode-zero-hex ===
-claim: backtick-name defect unicode-zero-hex rejects deterministically.
+=== hson.reject.family.quoted-name.unicode-zero-hex ===
+claim: quoted-name defect unicode-zero-hex rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\u` 1>\""
+escaped input: "\"<'\\\\u' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unicode-zero-hex
 disposition: reject
@@ -8333,23 +8383,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unsupported-hex ===
-claim: backtick-name defect unsupported-hex rejects deterministically.
+=== hson.reject.family.quoted-name.unsupported-hex ===
+claim: quoted-name defect unsupported-hex rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\x41` 1>\""
+escaped input: "\"<'\\\\x41' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unsupported-hex
 disposition: reject
@@ -8376,23 +8426,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unsupported-letter ===
-claim: backtick-name defect unsupported-letter rejects deterministically.
+=== hson.reject.family.quoted-name.unsupported-letter ===
+claim: quoted-name defect unsupported-letter rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\q` 1>\""
+escaped input: "\"<'\\\\q' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unsupported-letter
 disposition: reject
@@ -8419,23 +8469,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unsupported-slash ===
-claim: backtick-name defect unsupported-slash rejects deterministically.
+=== hson.reject.family.quoted-name.unsupported-slash ===
+claim: quoted-name defect unsupported-slash rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\/` 1>\""
+escaped input: "\"<'\\\\/' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unsupported-slash
 disposition: reject
@@ -8462,23 +8512,23 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
-=== hson.reject.family.backtick-name.unsupported-zero ===
-claim: backtick-name defect unsupported-zero rejects deterministically.
+=== hson.reject.family.quoted-name.unsupported-zero ===
+claim: quoted-name defect unsupported-zero rejects deterministically.
 classification: materialized-rejected-family-case
 ingress format: hson
-escaped input: "\"<`\\\\0` 1>\""
+escaped input: "\"<'\\\\0' 1>\""
 verbatim input: —
 semantic shape: object
-slot: backtick-name
+slot: quoted-name
 variation: —
 defect: unsupported-zero
 disposition: reject
@@ -8505,13 +8555,13 @@ source evidence:
 }
 path evidence: —
 related evidence: —
-origin: family.reject.backtick-name-malformed-escapes
+origin: family.reject.quoted-name-malformed-escapes
 provenance: —
 novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: backtick-name, escape, transparent-family, rejection
+tags: quoted-name, escape, transparent-family, rejection
 rationale: One lexical slot varies only the malformed escape spelling.
 
 === hson.reject.family.quoted-string.eof-during-unicode ===
@@ -11955,7 +12005,7 @@ rationale: Numeric typed content beneath an HSON element rejects.
 claim: An empty decoded attribute name rejects.
 classification: literal-rejected-authored-hson
 ingress format: hson
-escaped input: "\"<e ``=\\\"x\\\"/>\""
+escaped input: "\"<e ''=\\\"x\\\"/>\""
 verbatim input: —
 semantic shape: element
 slot: element-attribute
@@ -11991,14 +12041,14 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: element, attribute, empty-name
+tags: element, attribute, quoted-name, empty-name
 rationale: An empty decoded attribute name rejects.
 
 === hson.reject.literal.empty-element-name ===
 claim: An empty decoded element name rejects.
 classification: literal-rejected-authored-hson
 ingress format: hson
-escaped input: "\"<``/>\""
+escaped input: "\"<''/>\""
 verbatim input: —
 semantic shape: element
 slot: element-name
@@ -12034,14 +12084,14 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: element, empty-name
+tags: element, quoted-name, empty-name
 rationale: An empty decoded element name rejects.
 
 === hson.reject.literal.empty-flag-name ===
 claim: An empty decoded flag name rejects.
 classification: literal-rejected-authored-hson
 ingress format: hson
-escaped input: "\"<e ``/>\""
+escaped input: "\"<e ''/>\""
 verbatim input: —
 semantic shape: element
 slot: element-flag
@@ -12077,8 +12127,51 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: element, flag, empty-name
+tags: element, flag, quoted-name, empty-name
 rationale: An empty decoded flag name rejects.
+
+=== hson.reject.literal.legacy-backtick-name ===
+claim: Legacy backtick-delimited names are invalid.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<`legacy name` 1>\""
+verbatim input: —
+semantic shape: object
+slot: property-key
+variation: —
+defect: legacy-backtick-name
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_NAME_LEGACY_BACKTICK",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 2,
+    "index": 1,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 2,
+  "index": 1,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: settled-authored-hson-language
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: object, quoted-name, legacy, rejection
+rationale: Legacy backtick-delimited names are invalid.
 
 === hson.reject.literal.mode.array-element ===
 claim: An array cannot contain element-mode content.
@@ -12616,6 +12709,49 @@ declared source reuse: —
 tags: object, quid
 rationale: Object-property QUIDs do not exist in authored HSON.
 
+=== hson.reject.literal.quoted-name.raw-apostrophe ===
+claim: A literal apostrophe inside a quoted name must be escaped.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<'don't' 1>\""
+verbatim input: —
+semantic shape: object
+slot: property-key
+variation: —
+defect: raw-apostrophe
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_NAME_UNTERMINATED",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 8,
+    "index": 7,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 8,
+  "index": 7,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: settled-authored-hson-language
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: object, quoted-name, apostrophe, rejection
+rationale: A literal apostrophe inside a quoted name must be escaped.
+
 === hson.reject.literal.reserved-name ===
 claim: Authored _hson_* element names reject.
 classification: literal-rejected-authored-hson
@@ -12830,6 +12966,49 @@ specialized-test reference: —
 declared source reuse: —
 tags: root-boundary
 rationale: Trailing source after a primitive rejects.
+
+=== hson.reject.literal.single-quoted-value ===
+claim: Single quotes do not delimit object string values.
+classification: literal-rejected-authored-hson
+ingress format: hson
+escaped input: "\"<'name' 'value'>\""
+verbatim input: —
+semantic shape: object
+slot: property-value
+variation: —
+defect: single-quoted-value
+disposition: reject
+hand-authored expected graph: —
+exact HSON output: —
+exact JSON output: —
+exact HTML output: —
+structured rejection:
+{
+  "code": "HSON_QUOTE_KIND_UNSUPPORTED",
+  "operation": "tokenize-hson",
+  "source": {
+    "column": 9,
+    "index": 8,
+    "line": 1
+  },
+  "stage": "tokenization"
+}
+source evidence:
+{
+  "column": 9,
+  "index": 8,
+  "line": 1
+}
+path evidence: —
+related evidence: —
+origin: settled-authored-hson-language
+provenance: —
+novelty: —
+human-review priority: —
+specialized-test reference: —
+declared source reuse: —
+tags: object, string, quote-kind, rejection
+rationale: Single quotes do not delimit object string values.
 
 === hson.reject.literal.source.comment-only ===
 claim: Comment-only source has no semantic value.
@@ -15952,7 +16131,7 @@ tags: json, property-order, transport
 rationale: The graph, JSON text, and expected nested key sequences are handwritten in the ordered JSON fixture inventory.
 
 === json.accept.unusual-authored-keys ===
-claim: Structural JSON preserves keys whose authored-HSON canonical spelling uses backticks.
+claim: Structural JSON preserves keys whose authored-HSON canonical spelling uses single-quoted names.
 classification: structural-json-transport
 ingress format: graph
 escaped input: "{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\":x\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"colon\"]}]}]},{\"$_tag\":\"a.b\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"dot\"]}]}]},{\"$_tag\":\"\",\"$_content\":[{\"$_tag\":\"_hson_obj\",\"$_content\":[{\"$_tag\":\"_hson_str\",\"$_content\":[\"empty\"]}]}]}]}"
@@ -16037,7 +16216,7 @@ novelty: —
 human-review priority: —
 specialized-test reference: —
 declared source reuse: —
-tags: json, property-order, backtick-name, transport
+tags: json, property-order, quoted-name, transport
 rationale: The expected order is authored directly rather than recovered through JavaScript object enumeration.
 
 === json.reject.duplicate.adjacent ===

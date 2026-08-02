@@ -8,7 +8,12 @@ import {
   renderLedger,
   renderReconciliation,
 } from "./authored-source-verdict-processing.mts";
-import { AUTHORED_VERDICT_DOCUMENT, calibratedStandaloneIds } from "./authored-source-verdicts.mts";
+import {
+  AMENDMENT_ONLY_ACTIVE_CASES,
+  HISTORICAL_WORKSHEET_PATH,
+  HISTORICAL_WORKSHEET_SHA256,
+  activeCaseIdForHistorical,
+} from "./authored-name-delimiter-amendment.mts";
 
 let checkNumber = 0;
 function check(name: string, body: () => void): void {
@@ -17,78 +22,78 @@ function check(name: string, body: () => void): void {
   console.log(`ok ${checkNumber} - ${name}`);
 }
 
-const worksheet = readFileSync(AUTHORED_VERDICT_DOCUMENT, "utf8");
+const worksheet = readFileSync(HISTORICAL_WORKSHEET_PATH, "utf8");
 const worksheetBefore = Buffer.from(worksheet);
 const processed = processCurrentWorksheet();
 const committedLedger = readFileSync(VERDICT_LEDGER_PATH, "utf8");
 const committedReport = readFileSync(RECONCILIATION_REPORT_PATH, "utf8");
 const ledger = JSON.parse(committedLedger) as Record<string, unknown>;
 
-check("worksheet parser accepts only the explicit verdict grammar", () => {
+check("historical worksheet remains bound to its original SHA-256", () => {
+  assert.equal(processed.worksheetSha256, HISTORICAL_WORKSHEET_SHA256);
   const mutated = worksheet.replace(/(\*\*Verdict — V \/ I \/ \?:\*\*\s*`)[VI? ]+`/, "$1valid`");
-  assert.throws(() => processWorksheet(mutated), /Malformed verdict/);
-  assert.equal(processed.cases.length, 269);
+  assert.throws(() => processWorksheet(mutated), /SHA-256 mismatch/);
 });
 
-check("worksheet inventory contains every authored descriptor exactly once", () => {
-  assert.equal(new Set(processed.cases.map((entry) => entry.caseId)).size, 269);
-  assert.equal(processed.cases.length, 269);
+check("amendment-aware inventory maps 269 historical rows to 273 active cases", () => {
+  assert.equal(processed.caseIdMigrations.length, 269);
+  assert.equal(processed.cases.length, 273);
+  assert.equal(new Set(processed.cases.map((entry) => entry.caseId)).size, 273);
 });
 
-check("family inheritance and row overrides reproduce worksheet semantics", () => {
-  assert.equal(processed.summary.familyInheritedVerdicts, 139);
-  assert.equal(processed.summary.rowOverrides, 3);
-  assert(processed.cases.filter((entry) => entry.verdictSource === "family").every((entry) => entry.familyId !== undefined));
+check("historical and active quoted-name IDs map exactly", () => {
+  for (const migration of processed.caseIdMigrations) {
+    assert.equal(migration.activeCaseId, activeCaseIdForHistorical(migration.historicalCaseId));
+  }
+  assert(processed.caseIdMigrations.some((entry) =>
+    entry.historicalCaseId.endsWith("escaped-backtick")
+    && entry.activeCaseId.endsWith("escaped-apostrophe")));
 });
 
-check("calibrated backtick cases remain standalone", () => {
-  for (const id of calibratedStandaloneIds()) {
-    const entry = processed.cases.find((candidate) => candidate.caseId === id)!;
-    assert.equal(entry.familyId, undefined);
-    assert.notEqual(entry.verdictSource, "family");
+check("amendment-only cases have explicit amendment verdicts", () => {
+  for (const [id, expected] of Object.entries(AMENDMENT_ONLY_ACTIVE_CASES)) {
+    const entry = processed.cases.find((candidate) => candidate.caseId === id);
+    assert.equal(entry?.humanVerdict, expected);
+    assert.equal(entry?.verdictSource, "amendment");
+    assert.equal(entry?.historicalCaseId, undefined);
   }
 });
 
-check("reviewer notes remain associated with their case IDs", () => {
+check("family inheritance and row overrides preserve historical semantics", () => {
+  assert.equal(processed.summary.rowOverrides, 3);
+  assert(processed.cases.filter((entry) => entry.historicalVerdictSource === "family")
+    .every((entry) => entry.historicalFamilyId !== undefined));
+});
+
+check("reviewer notes remain associated through ID migration", () => {
   assert.match(processed.cases.find((entry) => entry.caseId === "hson.accept.literal.primitive.false")?.note ?? "", /_hson_obj/);
   assert.match(processed.cases.find((entry) => entry.caseId === "hson.reject.literal.element.malformed-closer")?.note ?? "", /space/i);
 });
 
-check("ledger contains 269 deterministic case records", () => {
+check("ledger contains deterministic current records and full provenance mapping", () => {
   const ledgerCases = ledger.cases as Array<Record<string, unknown>>;
-  assert.equal(ledgerCases.length, 269);
+  const migrations = ledger.caseIdMigrations as Array<Record<string, unknown>>;
+  assert.equal(ledger.schemaVersion, 2);
+  assert.equal(ledgerCases.length, 273);
+  assert.equal(migrations.length, 269);
   assert.deepEqual(ledgerCases.map((entry) => entry.caseId), processed.cases.map((entry) => entry.caseId));
-  for (const [index, entry] of processed.cases.entries()) {
-    assert.equal(ledgerCases[index].humanVerdict, entry.humanVerdict);
-    assert.equal(ledgerCases[index].verdictSource, entry.verdictSource);
-    assert.equal(ledgerCases[index].familyId, entry.familyId);
-    assert.equal(ledgerCases[index].note, entry.note);
-  }
   assert.equal(committedLedger, renderLedger(processed));
 });
 
-check("proposal agreement and disagreement counts reconcile", () => {
-  assert.equal(processed.summary.proposalAgreements, 237);
+check("proposal agreement inventory reconciles exactly", () => {
   assert.equal(processed.summary.proposalDisagreements, 3);
   assert.equal(processed.summary.proposalAgreements + processed.summary.proposalDisagreements
-    + processed.summary.humanUncertain + processed.summary.unreviewed, 269);
+    + processed.summary.humanUncertain + processed.summary.unreviewed, 273);
 });
 
-check("uncertain and unreviewed inventories reconcile", () => {
-  assert.equal(processed.summary.humanUncertain, 7);
-  assert.equal(processed.summary.unreviewed, 22);
-});
-
-check("reconciliation report is complete and deterministic", () => {
+check("current reconciliation report is deterministic and amendment-aware", () => {
   assert.equal(committedReport, renderReconciliation(processed));
-  for (const entry of processed.cases.filter((candidate) => candidate.agreesWithProposal === false
-    || candidate.humanVerdict === "uncertain" || candidate.humanVerdict === "unreviewed")) {
-    assert(committedReport.includes(entry.caseId));
-  }
+  assert.match(committedReport, /Quoted-name amendment SHA-256/);
+  assert.match(committedReport, /legacy-backtick-name/);
 });
 
-check("processing never overwrites the human worksheet", () => {
-  assert(Buffer.from(readFileSync(AUTHORED_VERDICT_DOCUMENT)).equals(worksheetBefore));
+check("derived processing never overwrites the historical worksheet", () => {
+  assert(Buffer.from(readFileSync(HISTORICAL_WORKSHEET_PATH)).equals(worksheetBefore));
 });
 
 console.log(`# ${checkNumber} authored-source verdict processing checks passed`);

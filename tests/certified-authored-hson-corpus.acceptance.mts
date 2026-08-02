@@ -63,9 +63,9 @@ await check("source trivia basis accepts a comment through EOF", () => runBasis(
 await check("object-to-element structural crossing rejects", () => runBasis("hson.reject.basis.mode.object-element"));
 await check("homogeneous root element fragments retain sibling order", () => runBasis("hson.accept.basis.root.element-fragment"));
 await check("primitive-looking object property keys stay contextual names", () => runBasis("hson.accept.basis.object.primitive-looking-keys"));
-await check("nonempty backtick element names admit", () => runBasis("hson.accept.basis.backtick-name.element-name"));
-await check("nonempty backtick attribute names reject", () => runBasis("hson.reject.basis.backtick-name.attribute-name"));
-await check("nonempty backtick flag names reject", () => runBasis("hson.reject.basis.backtick-name.flag-name"));
+await check("nonempty quoted element names admit", () => runBasis("hson.accept.basis.quoted-name.element-name"));
+await check("nonempty quoted attribute names reject", () => runBasis("hson.reject.basis.quoted-name.attribute-name"));
+await check("nonempty quoted flag names reject", () => runBasis("hson.reject.basis.quoted-name.flag-name"));
 
 await check("materialized descriptor summary is derived from the source of truth", () => {
   assert.equal(corpusCounts.totalConcreteDescriptors, materializedCorpusCases.length);

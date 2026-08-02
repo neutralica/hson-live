@@ -49,6 +49,15 @@ commit.
 `mode` discriminates data from document APIs. The input node is prepared as
 owned canonical state; `root()` returns detached clones.
 
+```ts
+const authored = `<'display name' "Ada" 'preferred pronoun' "she">`;
+const classified = hson.liveMap.fromHson(authored);
+```
+
+Quoted property names use apostrophe delimiters in authored HSON. JavaScript
+template-literal backticks belong to JavaScript and do not need per-name
+escaping.
+
 ### Projected-value boundary
 
 The canonical HSON graph is the authority for a data LiveMap. Internally,

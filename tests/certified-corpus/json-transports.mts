@@ -29,10 +29,10 @@ const unusualGraph = obj(
 
 const unusualAuthoredKeyCase: AcceptedCorpusCase = {
   id: "json.accept.unusual-authored-keys",
-  claim: "Structural JSON preserves keys whose authored-HSON canonical spelling uses backticks.",
+  claim: "Structural JSON preserves keys whose authored-HSON canonical spelling uses single-quoted names.",
   classification: "structural-json-transport", ingress: "graph", escapedInput: JSON.stringify(unusualGraph),
   taxonomy: { shape: "object", slot: "object-property-order", variation: "unusual-authored-keys" },
-  tags: ["json", "property-order", "backtick-name", "transport"], origin: "certified-corpus-design",
+  tags: ["json", "property-order", "quoted-name", "transport"], origin: "certified-corpus-design",
   rationale: "The expected order is authored directly rather than recovered through JavaScript object enumeration.",
   disposition: "accept", graphIngress: unusualGraph, expectedGraph: unusualGraph,
   expectedOutputs: { json: "{\n  \":x\": \"colon\",\n  \"a.b\": \"dot\",\n  \"\": \"empty\"\n}" },

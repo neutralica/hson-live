@@ -117,7 +117,7 @@ check("object-value grammar covers empty, one, multiple, nested, array, and arra
 });
 
 check("object member names and physical-line comments use required trivia", () => {
-  const source = `<true "literal-looking"\n  \`unusual name\`// name/value separator\n  "value"\n  a// name/value separator\n  true\n  b false>`;
+  const source = `<true "literal-looking"\n  'unusual name'// name/value separator\n  "value"\n  a// name/value separator\n  true\n  b false>`;
   assert.deepEqual(parse_hson(source), parse_json({
     true: "literal-looking",
     "unusual name": "value",
@@ -295,7 +295,7 @@ const token_cases = [
   },
   {
     name: "quoted key attributes flags and metadata",
-    source: `<\`display name\` @0000000000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
+    source: `<'display name' @0000000000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
     expected: [
       {
         kind: "OPEN",
@@ -362,7 +362,7 @@ const required_valid = [
   `<tag count=2/>`,
   `<a 1 b 2>`,
   `<parent <child "value"/>/>`,
-  `<\`this is always a tag\`
+  `<'this is always a tag'
   attribute="long value"
   disabled
   "content"
@@ -503,7 +503,7 @@ check("multiline attribute ranges use original CRLF indices", () => {
 });
 
 check("comments quoted tags and nested arrays share absolute positions", () => {
-  const source = `// c\r\n[<\`a b\` 1>,[2]]`;
+  const source = `// c\r\n[<'a b' 1>,[2]]`;
   const tokens = tokenize_hson(source);
   assert.deepEqual(tokens.map((token) => ({ kind: token.kind, pos: token.pos })), [
     { kind: "ARR_OPEN", pos: { line: 2, col: 1, index: 6 } },
@@ -556,9 +556,9 @@ for (const reserved of [
   "_hson_str",
   "_hson_val",
 ]) {
-  check(`authored reserved name rejects in bare and backtick spellings: ${reserved}`, () => {
+  check(`authored reserved name rejects in bare and quoted spellings: ${reserved}`, () => {
     assert_authored_rejection(`<${reserved}>`, "[authored-reserved-name]", reserved);
-    assert_authored_rejection(`<\`${reserved}\`>`, "[authored-reserved-name]", reserved);
+    assert_authored_rejection(`<'${reserved}'>`, "[authored-reserved-name]", reserved);
     if (reserved === "_hson_obj") {
       assert.throws(
         () => hsonTransform.fromHson(`<${reserved}>`).toNode(),
@@ -596,8 +596,8 @@ check("future reserved bare names reject at authored admission", () => {
   assert_authored_rejection(`<_hson_future>`, "[authored-reserved-name]", "_hson_future");
 });
 
-check("future reserved backtick names reject after decoding", () => {
-  assert_authored_rejection(`<\`_hson_future\`/>`, "[authored-reserved-name]", "_hson_future");
+check("future reserved quoted names reject after decoding", () => {
+  assert_authored_rejection(`<'_hson_future'/>`, "[authored-reserved-name]", "_hson_future");
 });
 
 for (const [name, source] of [
@@ -690,21 +690,21 @@ check("strict quoted control rejection is identical in object array element-cont
   }
 });
 
-check("backtick names reject raw controls trailing escapes and unterminated spellings", () => {
+check("single-quoted names reject raw controls trailing escapes and unterminated spellings", () => {
   for (let codePoint = 0; codePoint <= 0x1f; codePoint += 1) {
-    expect_transform_error(`<\`a${String.fromCharCode(codePoint)}b\` 1>`, "HSON_NAME_CONTROL_UNESCAPED");
+    expect_transform_error(`<'a${String.fromCharCode(codePoint)}b' 1>`, "HSON_NAME_CONTROL_UNESCAPED");
   }
-  expect_transform_error(`<\`name${"\\"}`, "invalid-name-escape");
-  expect_transform_error(`<\`name 1>`, "HSON_NAME_UNTERMINATED");
+  expect_transform_error(`<'name${"\\"}`, "invalid-name-escape");
+  expect_transform_error(`<'name 1>`, "HSON_NAME_UNTERMINATED");
 });
 
 check("empty decoded names are accepted only for object-member keys", () => {
-  const graph = parse_hson(`<\`\` 1>`);
-  assert.equal(authored_node(`<\`\` 1>`).$_tag, "");
-  assert.equal(serialize_hson(detach_hson_root_value(graph), { noBreak: true }), `<\`\` 1>`);
-  expect_transform_error(`<\`\`/>`, "HSON_ELEMENT_NAME_REQUIRED");
-  expect_transform_error(`<e \`\`/>`, "HSON_NAME_INVALID_START");
-  expect_transform_error(`<e \`\`="value"/>`, "HSON_NAME_INVALID_START");
+  const graph = parse_hson(`<'' 1>`);
+  assert.equal(authored_node(`<'' 1>`).$_tag, "");
+  assert.equal(serialize_hson(detach_hson_root_value(graph), { noBreak: true }), `<'' 1>`);
+  expect_transform_error(`<''/>`, "HSON_ELEMENT_NAME_REQUIRED");
+  expect_transform_error(`<e ''/>`, "HSON_NAME_INVALID_START");
+  expect_transform_error(`<e ''="value"/>`, "HSON_NAME_INVALID_START");
 });
 
 check("authored trivia is exactly SPACE HT LF CR and their ordinary combinations", () => {
@@ -827,7 +827,7 @@ check("numeric spelling owns root object and array precedence without changing c
   expect_transform_error("[+1]", "HSON_NUMBER_LEADING_PLUS", { index: 1, line: 1, column: 2 });
   assert.deepEqual(parse_hson("<n 1e+3>"), parse_json({ n: 1000 }));
   assert.deepEqual(parse_hson("[1e-3]"), parse_json([0.001]));
-  assert.deepEqual(parse_hson("<`01` 1 `+1` 2>"), parse_json({ "01": 1, "+1": 2 }));
+  assert.deepEqual(parse_hson("<'01' 1 '+1' 2>"), parse_json({ "01": 1, "+1": 2 }));
 });
 
 check("array comma closer and container failures have stable identities", () => {
@@ -913,11 +913,11 @@ check("element grammar and mode defects expose their stable identities", () => {
   }
 });
 
-check("accepted colon and dot bare names canonicalize through serializer-owned backtick spellings", () => {
+check("accepted colon and dot bare names canonicalize through serializer-owned quoted spellings", () => {
   for (const [source, canonical, decoded] of [
-    [`<:x 1>`, `<\`:x\` 1>`, ":x"],
-    [`<a:b 1>`, `<\`a:b\` 1>`, "a:b"],
-    [`<a.b 1>`, `<\`a.b\` 1>`, "a.b"],
+    [`<:x 1>`, `<':x' 1>`, ":x"],
+    [`<a:b 1>`, `<'a:b' 1>`, "a:b"],
+    [`<a.b 1>`, `<'a.b' 1>`, "a.b"],
   ] as const) {
     const graph = parse_hson(source);
     assert.equal(authored_node(source).$_tag, decoded);
@@ -978,18 +978,19 @@ check("content strings reject a trailing escape", () => {
 });
 
 for (const [name, source, expected] of [
-  ["escaped backtick", "<`tick\\`name` 1>", "tick`name"],
-  ["escaped backslash", "<`back\\\\slash` 1>", "back\\slash"],
-  ["backspace escape", "<`back\\bspace` 1>", "back\bspace"],
-  ["form-feed escape", "<`form\\ffeed` 1>", "form\ffeed"],
-  ["newline escape", "<`line\\nname` 1>", "line\nname"],
-  ["carriage-return escape", "<`line\\rname` 1>", "line\rname"],
-  ["tab escape", "<`line\\tname` 1>", "line\tname"],
-  ["four-digit Unicode control escape", "<`control\\u0001name` 1>", "control\u0001name"],
-  ["ordinary Unicode", "<`λ漢😀` 1>", "λ漢😀"],
-  ["literal forward slash", "<`path/name` 1>", "path/name"],
+  ["escaped apostrophe", "<'don\\'t' 1>", "don't"],
+  ["literal backtick", "<'tick`name' 1>", "tick`name"],
+  ["escaped backslash", "<'back\\\\slash' 1>", "back\\slash"],
+  ["backspace escape", "<'back\\bspace' 1>", "back\bspace"],
+  ["form-feed escape", "<'form\\ffeed' 1>", "form\ffeed"],
+  ["newline escape", "<'line\\nname' 1>", "line\nname"],
+  ["carriage-return escape", "<'line\\rname' 1>", "line\rname"],
+  ["tab escape", "<'line\\tname' 1>", "line\tname"],
+  ["four-digit Unicode control escape", "<'control\\u0001name' 1>", "control\u0001name"],
+  ["ordinary Unicode", "<'λ漢😀' 1>", "λ漢😀"],
+  ["literal forward slash", "<'path/name' 1>", "path/name"],
 ] as const) {
-  check(`backtick HSON names accept ${name}`, () => {
+  check(`single-quoted HSON names accept ${name}`, () => {
     assert.equal(authored_node(source).$_tag, expected);
     const graph = parse_hson(source);
     assert.deepEqual(parse_hson(serialize_hson(detach_hson_root_value(graph))), graph);
@@ -1004,14 +1005,14 @@ for (const [name, spelling] of [
   ["zero", String.raw`\0`],
   ["hex", String.raw`\x41`],
 ] as const) {
-  check(`backtick HSON names reject restricted escape: ${name}`, () => {
-    assert_authored_rejection(`<\`name${spelling}\` 1>`, "[invalid-name-escape]");
+  check(`single-quoted HSON names reject restricted escape: ${name}`, () => {
+    assert_authored_rejection(`<'name${spelling}' 1>`, "[invalid-name-escape]");
   });
 }
 
 const malformed = [
   [`unterminated string`, `<tag "value/>`],
-  [`unterminated quoted key`, `<\`tag "value">`],
+  [`unterminated quoted key`, `<'tag "value">`],
   [`unterminated tag`, `<tag`],
   [`unterminated array`, `<items [1, 2>`],
   [`single-quoted content`, `<tag 'value'/>`],

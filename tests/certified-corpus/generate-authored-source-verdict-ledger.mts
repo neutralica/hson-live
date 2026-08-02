@@ -8,27 +8,35 @@ import {
   renderLedger,
   renderReconciliation,
 } from "./authored-source-verdict-processing.mts";
-import { AUTHORED_VERDICT_DOCUMENT } from "./authored-source-verdicts.mts";
+import {
+  HISTORICAL_WORKSHEET_PATH,
+  HISTORICAL_WORKSHEET_SHA256,
+} from "./authored-name-delimiter-amendment.mts";
+import { createHash } from "node:crypto";
 
-const initialize = process.argv.includes("--initialize");
+const applyAmendment = process.argv.includes("--apply-amendment");
 const outputIndex = process.argv.indexOf("--output-dir");
 const outputDirectory = outputIndex < 0 ? undefined : process.argv[outputIndex + 1];
-if (initialize === (outputDirectory !== undefined)) {
-  throw new Error("Use exactly one of --initialize or --output-dir <temporary-directory>.");
+if (applyAmendment === (outputDirectory !== undefined)) {
+  throw new Error("Use exactly one of --apply-amendment or --output-dir <temporary-directory>.");
 }
 
-const worksheetBefore = readFileSync(AUTHORED_VERDICT_DOCUMENT);
+const worksheetBefore = readFileSync(HISTORICAL_WORKSHEET_PATH);
+const worksheetHash = createHash("sha256").update(worksheetBefore).digest("hex");
+if (worksheetHash !== HISTORICAL_WORKSHEET_SHA256) {
+  throw new Error(`Historical worksheet SHA-256 mismatch: ${worksheetHash}`);
+}
 const processed = processCurrentWorksheet();
 const ledger = renderLedger(processed);
 const report = renderReconciliation(processed);
 let ledgerPath: string;
 let reportPath: string;
 
-if (initialize) {
+if (applyAmendment) {
   ledgerPath = resolve(VERDICT_LEDGER_PATH);
   reportPath = resolve(RECONCILIATION_REPORT_PATH);
-  if (existsSync(ledgerPath) || existsSync(reportPath)) {
-    throw new Error("Refusing to overwrite an existing verdict ledger or reconciliation report.");
+  if (!existsSync(ledgerPath) || !existsSync(reportPath)) {
+    throw new Error("Amendment migration requires both existing derived artifacts.");
   }
 } else {
   const directory = resolve(outputDirectory!);
@@ -44,6 +52,6 @@ mkdirSync(dirname(ledgerPath), { recursive: true });
 mkdirSync(dirname(reportPath), { recursive: true });
 writeFileSync(ledgerPath, ledger, "utf8");
 writeFileSync(reportPath, report, "utf8");
-const worksheetAfter = readFileSync(AUTHORED_VERDICT_DOCUMENT);
+const worksheetAfter = readFileSync(HISTORICAL_WORKSHEET_PATH);
 if (!worksheetBefore.equals(worksheetAfter)) throw new Error("Worksheet changed during artifact generation.");
 console.log(JSON.stringify({ ledgerPath, reportPath, worksheetSha256: processed.worksheetSha256 }));

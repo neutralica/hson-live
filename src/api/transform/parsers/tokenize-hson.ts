@@ -79,7 +79,7 @@ class HsonScanner {
           "HSON_QUOTE_KIND_UNSUPPORTED",
         );
       } else if (ch === "`") {
-        this.fail(`backticks are only valid for authored names`, undefined, "HSON_NAME_INVALID_START");
+        this.rejectLegacyBacktick();
       } else if (ch === ">" || ch === "/" || ch === "]" || ch === "»") {
         this.fail(
           this.tokens.length === 0
@@ -187,8 +187,8 @@ class HsonScanner {
         this.fail(`unexpected object closer; expected an object member name`, namePos);
       }
 
-      const name = this.peek() === "`"
-        ? this.scanQuotedTagName()
+      const name = this.peek() === "'"
+        ? this.scanQuotedName()
         : this.scanBareName("object member name");
       assert_authored_hson_source_name(name, namePos);
       const first = declarations.get(name);
@@ -274,7 +274,7 @@ class HsonScanner {
       this.fail(`unsupported quote delimiter (use double quotes only)`, undefined, "HSON_QUOTE_KIND_UNSUPPORTED");
     }
     if (ch === "`") {
-      this.fail(`backticks are only valid for object member or element names`);
+      this.rejectLegacyBacktick();
     }
 
     const pos = this.position();
@@ -312,8 +312,8 @@ class HsonScanner {
     }
 
     const tagPos = this.position();
-    const tag = this.peek() === "`"
-      ? this.scanQuotedTagName()
+    const tag = this.peek() === "'"
+      ? this.scanQuotedName()
       : this.scanBareName("tag name");
     if (tag.length === 0) {
       this.fail(`element name must not decode to the empty string`, tagPos, "HSON_ELEMENT_NAME_REQUIRED");
@@ -464,17 +464,15 @@ class HsonScanner {
       }
 
       if (ch === "'") {
-        this.fail(`unsupported quote delimiter (use double quotes only)`, undefined, "HSON_QUOTE_KIND_UNSUPPORTED");
+        this.fail(
+          `single-quoted names are valid only in the element-name position, not as attributes or flags`,
+          undefined,
+          "HSON_NAME_INVALID_START",
+        );
       }
 
       if (ch === "`") {
-        this.fail(
-          contentStarted
-            ? `element header items are forbidden after content begins`
-            : `backticks are only valid for tag names; they are not valid for element attribute or flag names`,
-          undefined,
-          contentStarted ? "HSON_ELEMENT_HEADER_AFTER_CONTENT" : "HSON_NAME_INVALID_START",
-        );
+        this.rejectLegacyBacktick();
       }
 
       if (contentStarted) {
@@ -575,7 +573,7 @@ class HsonScanner {
     }
 
     if (ch === "`") {
-      this.fail(`backticks are only valid for tag names`);
+      this.rejectLegacyBacktick();
     }
 
     const pos = this.position();
@@ -610,7 +608,7 @@ class HsonScanner {
     }
 
     if (this.peek() === "`") {
-      this.fail(`backticks are only valid for tag names`);
+      this.rejectLegacyBacktick();
     }
 
     if (this.peek() === `"`) {
@@ -722,15 +720,15 @@ class HsonScanner {
     );
   }
 
-  private scanQuotedTagName(): string {
+  private scanQuotedName(): string {
     const start = this.position();
-    this.consumeExpected("`");
+    this.consumeExpected("'");
     let tag = "";
 
     while (!this.atEnd()) {
       const ch = this.peek();
-      if (ch === "`") {
-        this.consumeExpected("`");
+      if (ch === "'") {
+        this.consumeExpected("'");
         return tag;
       }
 
@@ -739,13 +737,13 @@ class HsonScanner {
         this.consumeExpected("\\");
         if (this.atEnd() || this.peek().charCodeAt(0) < 0x20) {
           this.fail(
-            `[invalid-name-escape] invalid escape termination in backtick HSON name`,
+            `[invalid-name-escape] invalid quoted-name escape termination`,
             escapePos,
             "invalid-name-escape",
           );
         }
         const escaped = this.consume();
-        if (escaped === "`") tag += "`";
+        if (escaped === "'") tag += "'";
         else if (escaped === "\\") tag += "\\";
         else if (escaped === "b") tag += "\b";
         else if (escaped === "f") tag += "\f";
@@ -758,7 +756,7 @@ class HsonScanner {
             const digit = this.peek();
             if (!/^[0-9A-Fa-f]$/.test(digit)) {
               this.fail(
-                `[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in backtick HSON name`,
+                `[invalid-name-escape] malformed unicode escape ${JSON.stringify(`\\u${hex}`)} in quoted HSON name`,
                 escapePos,
                 "invalid-name-escape",
               );
@@ -769,7 +767,7 @@ class HsonScanner {
         }
         else {
           this.fail(
-            `[invalid-name-escape] unsupported escape ${JSON.stringify(`\\${escaped}`)} in backtick HSON name`,
+            `[invalid-name-escape] unsupported quoted-name escape ${JSON.stringify(`\\${escaped}`)}`,
             escapePos,
             "invalid-name-escape",
           );
@@ -779,7 +777,7 @@ class HsonScanner {
 
       if (ch.charCodeAt(0) < 0x20) {
         this.fail(
-          `raw control character is forbidden in backtick HSON name`,
+          `raw control character is forbidden in single-quoted HSON name`,
           this.position(),
           "HSON_NAME_CONTROL_UNESCAPED",
         );
@@ -788,7 +786,7 @@ class HsonScanner {
       tag += this.consume();
     }
 
-    this.fail(`unterminated quoted tag name`, start, "HSON_NAME_UNTERMINATED");
+    this.fail(`unterminated single-quoted HSON name`, start, "HSON_NAME_UNTERMINATED");
   }
 
   private scanJsonEscape(context: string): string {
@@ -845,7 +843,7 @@ class HsonScanner {
     const first = this.peek();
     if (!is_hson_bare_name_start(first)) {
       this.fail(
-        `malformed ${where}: expected a bare name or backtick-quoted name`,
+        `malformed ${where}: expected a bare name or single-quoted name`,
         start,
         where === "tag name" ? "HSON_ELEMENT_NAME_REQUIRED" : "HSON_NAME_INVALID_START",
       );
@@ -862,6 +860,7 @@ class HsonScanner {
 
     while (!this.atEnd()) {
       const ch = this.peek();
+      if (ch === "`") this.rejectLegacyBacktick();
       if (
         isHsonTrivia(ch) || isUnsupportedWhitespace(ch) || ch === "<" || ch === ">" || ch === "/" ||
         ch === "[" || ch === "]" || ch === "«" || ch === "»" ||
@@ -880,7 +879,7 @@ class HsonScanner {
   private classifyAngleCloser(openPos: Position): CloseKind {
     const stack: Array<"<" | "[" | "«"> = ["<"];
     let cursor = this.index + 1;
-    let quoted: `"` | "`" | undefined;
+    let quoted: `"` | "'" | undefined;
     let quoteStart = -1;
     let expectAttributeValue = false;
     let unquotedAttributeValue = false;
@@ -895,7 +894,7 @@ class HsonScanner {
             this.fail(
               quoted === `"`
                 ? `[invalid-json-escape] invalid escape termination in quoted HSON string`
-                : `[invalid-name-escape] invalid escape termination in backtick HSON name`,
+                : `[invalid-name-escape] invalid quoted-name escape termination`,
               this.positionAt(cursor),
               quoted === `"` ? "invalid-json-escape" : "invalid-name-escape",
             );
@@ -907,7 +906,7 @@ class HsonScanner {
           this.fail(
             quoted === `"`
               ? `unescaped control character in quoted HSON string`
-              : `raw control character in backtick HSON name`,
+              : `raw control character in single-quoted HSON name`,
             this.positionAt(cursor),
             quoted === `"` ? "HSON_STRING_CONTROL_UNESCAPED" : "HSON_NAME_CONTROL_UNESCAPED",
           );
@@ -918,6 +917,10 @@ class HsonScanner {
         }
         cursor += 1;
         continue;
+      }
+
+      if (ch === "`") {
+        this.rejectLegacyBacktick(this.positionAt(cursor));
       }
 
       // Element attributes retain the existing permissive unquoted value
@@ -955,7 +958,7 @@ class HsonScanner {
         }
         if (ch === "/" && next === ">") {
           expectAttributeValue = false;
-        } else if (ch !== `"` && ch !== "`" && ch !== "<" && ch !== ">") {
+        } else if (ch !== `"` && ch !== "'" && ch !== "<" && ch !== ">") {
           expectAttributeValue = false;
           unquotedAttributeValue = true;
           cursor += 1;
@@ -963,7 +966,7 @@ class HsonScanner {
         } else expectAttributeValue = false;
       }
 
-      if (ch === `"` || ch === "`") {
+      if (ch === `"` || ch === "'") {
         quoted = ch;
         quoteStart = cursor;
         cursor += 1;
@@ -1066,8 +1069,8 @@ class HsonScanner {
         final === "'" ? "HSON_QUOTE_BOUNDARY_MISMATCH" : "HSON_STRING_UNTERMINATED",
       );
     }
-    if (quoted === "`") {
-      this.fail(`unterminated quoted tag name`, this.positionAt(quoteStart), "HSON_NAME_UNTERMINATED");
+    if (quoted === "'") {
+      this.fail(`unterminated single-quoted HSON name`, this.positionAt(quoteStart), "HSON_NAME_UNTERMINATED");
     }
     this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
   }
@@ -1206,6 +1209,14 @@ class HsonScanner {
       this.fail(`expected "${expected}", got "${this.peek() || "eof"}"`);
     }
     this.consume();
+  }
+
+  private rejectLegacyBacktick(pos = this.position()): never {
+    this.fail(
+      `legacy backtick-delimited HSON names are invalid; use a single-quoted name`,
+      pos,
+      "HSON_NAME_LEGACY_BACKTICK",
+    );
   }
 
   private fail(

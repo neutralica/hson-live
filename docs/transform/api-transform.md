@@ -234,6 +234,24 @@ Parses JSON data into HSON nodes.
 
 Parses HSON text into HSON nodes.
 
+Authored names are bare or single-quoted. Double quotes delimit string values;
+backticks have no HSON syntax role. For example:
+
+```ts
+const source = `
+<
+  'major problem here:' ""
+  'ordinary quoted name' "value"
+>
+`;
+
+const node = hson.fromHson(source).toNode();
+```
+
+Inside a single-quoted HSON name, write an apostrophe as `\'`. A JavaScript
+template literal must preserve that HSON backslash, for example
+``const source = `<'don\\'t' 1>`;``. Legacy backtick-delimited names reject.
+
 - Does not sanitize.
 - The parser internally creates one `_hson_root` attachment carrier.
 - `.toNode()` returns exactly its one semantic child and never returns
@@ -323,6 +341,10 @@ Chooses HSON output.
   metadata from the expected projection; it cannot legalize object metadata.
 - Direct `serialize_hson(node)` and `hson.fromNode(node).toHson().serialize()`
   use the same canonical serializer. `noBreak` changes layout only.
+- Canonical names use the established preferred bare grammar where possible.
+  Names requiring quoting use apostrophe delimiters, escape apostrophes as
+  `\'`, and treat backticks as ordinary data. Canonical HSON never emits a
+  backtick-delimited name.
 - Direct or fluent HSON serialization of any caller-supplied `_hson_root`
   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the
   HSON parser root are explicitly detached by their source pipeline first.

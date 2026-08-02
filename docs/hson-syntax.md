@@ -44,23 +44,23 @@ Bare header names use an ASCII, case-sensitive grammar:
 [A-Za-z_:][A-Za-z0-9:._-]*
 ```
 
-The parser accepts every spelling in that grammar. The serializer deliberately uses a narrower preferred bare spelling, so accepted names containing a leading colon, any colon, or a dot can be emitted between backticks:
+The parser accepts every spelling in that grammar. The serializer deliberately uses a narrower preferred bare spelling, so accepted names containing a leading colon, any colon, or a dot are emitted as single-quoted names:
 
 ```hson
-<`:x` 1 `a:b` 2 `a.b` 3 `display name` "Ada">
+<':x' 1 'a:b' 2 'a.b' 3 'display name' "Ada">
 ```
 
-That serializer-owned spelling change does not change the decoded name or graph. Backtick names accept an escaped backtick, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, and exactly four hexadecimal digits after `\u`. Unknown, malformed, incomplete, trailing, and unterminated escapes reject. Raw unescaped U+0000 through U+001F also reject. A literal forward slash needs no escape. The serializer uses the same closed grammar and can therefore spell every admitted decoded name.
+That serializer-owned spelling change does not change the decoded name or graph. Single-quoted names accept `\'` for an apostrophe, plus `\\`, `\b`, `\f`, `\n`, `\r`, `\t`, and exactly four hexadecimal digits after `\u`. Unknown, malformed, incomplete, trailing, and unterminated escapes reject. Raw unescaped U+0000 through U+001F also reject. Literal backticks and forward slashes need no escape. The serializer uses the same closed grammar and can therefore spell every admitted decoded name.
 
-An empty decoded backtick name is accepted only as an object member key:
+An empty decoded quoted name is accepted only as an object member key:
 
 ```hson
-<`` 1>
+<'' 1>
 ```
 
-It is serialized with explicit backticks. Empty element, attribute, and flag names reject; `<``/>` is a missing element name. Backticks are otherwise for element or object-member names only; text and quoted attribute values use double quotes.
+It is serialized with explicit apostrophe delimiters. Empty element, attribute, and flag names reject; `<''/>` is a missing element name. Single-quoted names are otherwise for element or object-member names only. Double quotes delimit string values. Backticks have no HSON syntactic role and remain ordinary data inside quoted names and string values.
 
-The `_hson_` prefix is reserved for structural nodes and cannot be authored as an ordinary user element/member name. This applies to bare and backtick spellings, to known VSN names such as `_hson_obj`, and to future `_hson_*` names. Parser synthesis may still create those internal names for objects, arrays, primitive leaves, clusters, and the attachment root.
+The `_hson_` prefix is reserved for structural nodes and cannot be authored as an ordinary user element/member name. This applies to bare and quoted spellings, to known VSN names such as `_hson_obj`, and to future `_hson_*` names. Parser synthesis may still create those internal names for objects, arrays, primitive leaves, clusters, and the attachment root.
 
 ---
 
@@ -90,7 +90,20 @@ null
 
 The parser attaches that value directly beneath its internal `_hson_root` as `_hson_str` or `_hson_val`. Public `fromHson().toNode()` detaches exactly that leaf; it does not imply `_hson_elem` or `_hson_obj`. A bare name such as `value` is not a string and remains invalid.
 
-Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown, incomplete, malformed, and unterminated escapes reject. Single quotes and backticks are rejected as text delimiters. Every raw unescaped C0 control character (U+0000 through U+001F) rejects at its exact source position, including physical tab, LF, CR, backspace, and form feed. Escaped controls are required, and physical line endings inside quoted strings are never normalized. This rule is identical for primitive strings, object and array string values, element text, and quoted attributes.
+Only double quotes are supported for quoted text. The JSON escapes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX` are decoded. Unknown, incomplete, malformed, and unterminated escapes reject. Single quotes and backticks are not text delimiters. Every raw unescaped C0 control character (U+0000 through U+001F) rejects at its exact source position, including physical tab, LF, CR, backspace, and form feed. Escaped controls are required, and physical line endings inside quoted strings are never normalized. This rule is identical for primitive strings, object and array string values, element text, and quoted attributes.
+
+JavaScript template literals can contain ordinary HSON quoted-name delimiters directly:
+
+```ts
+const source = `
+<
+  'major problem here:' ""
+  'ordinary quoted name' "value"
+>
+`;
+```
+
+When the decoded HSON name itself contains an apostrophe, preserve the normal host-language layering by escaping the HSON backslash for JavaScript: ``const source = `<'don\\'t' 1>`;``.
 
 An inline node may have attributes and one primitive value:
 

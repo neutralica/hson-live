@@ -84,6 +84,8 @@
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
+    "test:hson-quoted-name-acceptance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-quoted-name-acceptance.acceptance.mts",
+    "test:hson-quoted-name-rejection": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-quoted-name-rejection.acceptance.mts",
     "test:hson-number": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-number.acceptance.mts",
     "test:hson-structural-mode": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-structural-mode.acceptance.mts",
     "test:hson-root-boundary": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-root-boundary.acceptance.mts",
