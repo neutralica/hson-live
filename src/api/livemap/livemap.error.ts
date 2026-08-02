@@ -91,7 +91,12 @@ export type LiveMapDocumentMutationErrorCode =
   | "DOCUMENT_TARGET_NOT_FOUND"
   | "DOCUMENT_TARGET_KIND"
   | "INVALID_DOCUMENT_PATH"
+  | "INVALID_DOCUMENT_PATH_INDEX"
   | "DOCUMENT_PATH_OUT_OF_RANGE"
+  | "DOCUMENT_PATH_PRIMITIVE_DESCENT"
+  | "INVALID_DOCUMENT_COMMIT_TARGET"
+  | "INVALID_DOCUMENT_WITNESS"
+  | "DOCUMENT_WITNESS_MISMATCH"
   | "INVALID_DOCUMENT_ATTRIBUTE_NAME"
   | "INVALID_DOCUMENT_ATTRIBUTE_VALUE"
   | "DOCUMENT_ATTRIBUTE_NOT_FOUND"
@@ -198,12 +203,18 @@ export class LiveMapProjectedTransportError extends TypeError {
 
 export class LiveMapReplayInputError extends Error {
   readonly code = "INVALID_REPLAY" as const;
+  readonly reasonCode:
+    | "INVALID_REPLAY_ENVELOPE"
+    | "ROOT_OPERATION_COMPOSITION"
+    | "UNCHANGED_STAGED_OPERATION"
+    | "EMPTY_GRAPH_COMMIT";
   readonly reason: string;
   readonly opIndex: number | undefined;
 
   constructor(
     reason: string,
     opIndex?: number,
+    reasonCode: LiveMapReplayInputError["reasonCode"] = "INVALID_REPLAY_ENVELOPE",
   ) {
     super(
       opIndex === undefined
@@ -212,7 +223,25 @@ export class LiveMapReplayInputError extends Error {
     );
 
     this.name = "LiveMapReplayInputError";
+    this.reasonCode = reasonCode;
     this.reason = reason;
+    this.opIndex = opIndex;
+  }
+}
+
+/** One canonical graph operation failed against its ordinal staged graph. */
+export class LiveMapDocumentStagingError extends Error {
+  readonly code = "DOCUMENT_STAGING_CONFLICT" as const;
+  readonly reasonCode: LiveMapDocumentMutationErrorCode;
+  readonly opIndex: number;
+
+  constructor(opIndex: number, cause: LiveMapDocumentMutationError) {
+    super(
+      `Invalid LiveMap replay operation ${opIndex}: ${cause.reason}`,
+      { cause },
+    );
+    this.name = "LiveMapDocumentStagingError";
+    this.reasonCode = cause.code;
     this.opIndex = opIndex;
   }
 }

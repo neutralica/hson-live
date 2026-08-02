@@ -301,13 +301,36 @@ export type DocumentLiveMapInstallOptions = Readonly<{
   expectedRev?: number;
 }>;
 
-/** Numeric traversal through canonical document `$_content` arrays. */
-export type LiveMapDocumentPath = readonly number[];
+declare const LIVEMAP_DOCUMENT_PATH_BRAND: unique symbol;
 
-/** Current document request target; QUID lookup is epoch-scoped, while paths remain the planned durable authority. */
-export type LiveMapDocumentTarget =
-  | Readonly<{ kind: "path"; path: LiveMapDocumentPath }>
+/**
+ * Validated, detached numeric traversal through canonical document
+ * `$_content` arrays. Runtime values remain frozen ordinary arrays.
+ */
+export type LiveMapDocumentPath = readonly number[] & Readonly<{
+  [LIVEMAP_DOCUMENT_PATH_BRAND]: true;
+}>;
+
+/** Untrusted caller representation accepted at the live request boundary. */
+export type LiveMapDocumentPathInput = readonly number[];
+
+/** Current live request target; QUID lookup is compatibility-only and epoch-scoped. */
+export type LiveMapDocumentRequestTarget =
+  | Readonly<{ kind: "path"; path: LiveMapDocumentPathInput }>
   | Readonly<{ kind: "quid"; quid: string }>;
+
+/** Optional same-epoch diagnostic evidence; never a routing address. */
+export type LiveMapDocumentTargetWitness = Readonly<{ quid: string }>;
+
+/** Path-authoritative target stored by canonical graph operations. */
+export type LiveMapDocumentCommitTarget = Readonly<{
+  kind: "path";
+  path: LiveMapDocumentPath;
+  witness?: LiveMapDocumentTargetWitness;
+}>;
+
+/** @deprecated Compatibility name for the live request-target union. */
+export type LiveMapDocumentTarget = LiveMapDocumentRequestTarget;
 
 /** Existing canonical HSON attribute value model; style remains structured. */
 export type LiveMapDocumentAttributeValue = CanonicalPublicAttrValue;
@@ -320,49 +343,49 @@ export type LiveMapDocumentContent = NodeContent[number];
 
 export type DocumentLiveMapAttrsMustApi = Readonly<{
   get: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     name: string,
   ) => LiveMapDocumentAttributeValue;
 }>;
 
 export type DocumentLiveMapAttrsReadApi = Readonly<{
   get: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     name: string,
   ) => LiveMapDocumentAttributeValue | undefined;
   has: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     name: string,
   ) => boolean;
   keys: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
   ) => readonly string[];
   must: DocumentLiveMapAttrsMustApi;
 }>;
 
 export type DocumentLiveMapAttrsMutationApi = Readonly<{
   set: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     name: string,
     value: LiveMapDocumentAttributeValue,
   ) => LiveMapGraphCommit<LiveMapGraphSetAttrOp>;
   drop: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     name: string,
   ) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
   setMany: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     values: LiveMapDocumentAttrs,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
   dropMany: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     names: readonly string[],
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
   clear: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
   replace: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     values: LiveMapDocumentAttrs,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
 }>;
@@ -373,21 +396,21 @@ export type DocumentLiveMapAttrsApi = DocumentLiveMapAttrsReadApi & DocumentLive
 /** Detached content reader plus atomic single-slot structural mutations. */
 export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{
   replace: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   insert: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
     content: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
   remove: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
   ) => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
   move: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     from: number,
     to: number,
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
@@ -511,7 +534,7 @@ export type LiveMapGraphReplaceRootOp = Readonly<{
 export type LiveMapGraphSetAttrOp = Readonly<{
   domain: "graph";
   op: "set-attr";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   name: string;
   value: LiveMapDocumentAttributeValue;
 }>;
@@ -519,7 +542,7 @@ export type LiveMapGraphSetAttrOp = Readonly<{
 export type LiveMapGraphRemoveAttrOp = Readonly<{
   domain: "graph";
   op: "remove-attr";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   name: string;
 }>;
 
@@ -527,14 +550,14 @@ export type LiveMapGraphRemoveAttrOp = Readonly<{
 export type LiveMapGraphReplaceAttrsOp = Readonly<{
   domain: "graph";
   op: "replace-attrs";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   attrs: LiveMapDocumentAttrs;
 }>;
 
 export type LiveMapGraphReplaceContentOp = Readonly<{
   domain: "graph";
   op: "replace-content";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   index: number;
   replacement: LiveMapDocumentContent;
 }>;
@@ -542,7 +565,7 @@ export type LiveMapGraphReplaceContentOp = Readonly<{
 export type LiveMapGraphInsertContentOp = Readonly<{
   domain: "graph";
   op: "insert-content";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   index: number;
   content: LiveMapDocumentContent;
 }>;
@@ -550,14 +573,14 @@ export type LiveMapGraphInsertContentOp = Readonly<{
 export type LiveMapGraphRemoveContentOp = Readonly<{
   domain: "graph";
   op: "remove-content";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   index: number;
 }>;
 
 export type LiveMapGraphMoveContentOp = Readonly<{
   domain: "graph";
   op: "move-content";
-  target: LiveMapDocumentTarget;
+  target: LiveMapDocumentCommitTarget;
   from: number;
   to: number;
 }>;

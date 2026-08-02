@@ -9,7 +9,8 @@ import type {
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
-  LiveMapDocumentTarget,
+  LiveMapDocumentCommitTarget,
+  LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapGraphInsertContentOp,
   LiveMapGraphMoveContentOp,
@@ -34,12 +35,15 @@ import {
   is_public_document_attr_name,
 } from "./livemap.document.attrs.js";
 import {
+  canonicalize_document_request_target,
   normalize_document_target,
   require_document_attr_element,
+  resolve_document_commit_target,
   resolve_document_target,
 } from "./livemap.document.target.js";
 
 type DocumentOperation = LiveMapDocumentMutationError["operation"];
+type PreparedTargetAuthority = "request" | "commit";
 
 export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp> = Readonly<{
   root: HsonNode;
@@ -65,25 +69,25 @@ export function make_livemap_document_mutation_api(
   attrs: DocumentLiveMapAttrsMutationApi;
   /** Internal atomic substrate shared by every public bulk attrs method. */
   replaceAttrs: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     attrs: LiveMapDocumentAttrs,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
   replaceContent: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
     replacement: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   insertContent: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
     content: LiveMapDocumentContent,
   ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
   removeContent: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     index: number,
   ) => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
   moveContent: (
-    target: LiveMapDocumentTarget,
+    target: LiveMapDocumentRequestTarget,
     from: number,
     to: number,
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
@@ -135,7 +139,7 @@ function drop_many_document_attrs(
 function read_document_attrs(
   controller: LiveMapDocumentMutationController,
   targetInput: unknown,
-): Readonly<{ target: LiveMapDocumentTarget; attrs: LiveMapDocumentAttrs }> {
+): Readonly<{ target: LiveMapDocumentRequestTarget; attrs: LiveMapDocumentAttrs }> {
   const operation = "replace-attrs";
   const target = normalize_document_target(targetInput, operation);
   const element = require_document_attr_element(
@@ -190,7 +194,7 @@ function replace_document_attrs(
 
 function set_document_attr(
   controller: LiveMapDocumentMutationController,
-  targetInput: LiveMapDocumentTarget,
+  targetInput: LiveMapDocumentRequestTarget,
   nameInput: string,
   valueInput: LiveMapDocumentAttributeValue,
 ): LiveMapGraphCommit<LiveMapGraphSetAttrOp> {
@@ -204,13 +208,13 @@ function prepare_set_document_attr(
   targetInput: unknown,
   nameInput: unknown,
   valueInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphSetAttrOp> {
   const operationName = "set-attr";
-  const target = normalize_document_target(targetInput, operationName);
   const name = normalize_attr_name(nameInput, operationName);
   const value = normalize_attr_value(name, valueInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = resolve_document_target(root, mode, target, operationName);
+  const { target, endpoint } = prepare_target(root, mode, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   if (name === "style" && typeof value === "object" && value !== null) attrs.style = value;
@@ -241,12 +245,12 @@ function prepare_remove_document_attr(
   mode: DocumentLiveMapMode,
   targetInput: unknown,
   nameInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphRemoveAttrOp> {
   const operationName = "remove-attr";
-  const target = normalize_document_target(targetInput, operationName);
   const name = normalize_attr_name(nameInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = resolve_document_target(root, mode, target, operationName);
+  const { target, endpoint } = prepare_target(root, mode, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
   delete attrs[name];
@@ -267,9 +271,9 @@ function prepare_replace_document_attrs(
   mode: DocumentLiveMapMode,
   targetInput: unknown,
   attrsInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphReplaceAttrsOp> {
   const operationName = "replace-attrs";
-  const target = normalize_document_target(targetInput, operationName);
   const attrs = decode_document_attrs(attrsInput);
   if (attrs === undefined) {
     throw mutation_error(
@@ -279,8 +283,9 @@ function prepare_replace_document_attrs(
     );
   }
   const root = clone_live_root(inputRoot);
+  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(
-    resolve_document_target(root, mode, target, operationName),
+    preparedTarget.endpoint,
     operationName,
   );
   if (Object.keys(attrs).length === 0) delete element.$_attrs;
@@ -289,7 +294,7 @@ function prepare_replace_document_attrs(
   const operation: LiveMapGraphReplaceAttrsOp = Object.freeze({
     domain: "graph",
     op: operationName,
-    target,
+    target: preparedTarget.target,
     attrs: clone_node(attrs),
   });
   return prepare_finished_mutation(mode, root, operation, operationName);
@@ -311,13 +316,14 @@ function prepare_replace_document_content(
   targetInput: unknown,
   indexInput: unknown,
   replacementInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphReplaceContentOp> {
   const operationName = "replace-content";
-  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const replacement = clone_content(replacementInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
+  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   if (index >= endpoint.$_content.length) {
     throw mutation_error(
       "INVALID_DOCUMENT_CONTENT_INDEX",
@@ -330,7 +336,7 @@ function prepare_replace_document_content(
   const operation: LiveMapGraphReplaceContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
-    target,
+    target: preparedTarget.target,
     index,
     replacement: clone_content(replacement, operationName),
   });
@@ -355,13 +361,14 @@ function prepare_insert_document_content(
   targetInput: unknown,
   indexInput: unknown,
   contentInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphInsertContentOp> {
   const operationName = "insert-content";
-  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const content = clone_content(contentInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
+  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   if (index > endpoint.$_content.length) {
     throw mutation_error(
       "INVALID_DOCUMENT_CONTENT_INDEX",
@@ -374,7 +381,7 @@ function prepare_insert_document_content(
   const operation: LiveMapGraphInsertContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
-    target,
+    target: preparedTarget.target,
     index,
     content: clone_content(content, operationName),
   });
@@ -395,19 +402,20 @@ function prepare_remove_document_content(
   mode: DocumentLiveMapMode,
   targetInput: unknown,
   indexInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphRemoveContentOp> {
   const operationName = "remove-content";
-  const target = normalize_document_target(targetInput, operationName);
   const index = normalize_content_index(indexInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
+  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   require_existing_content_index(endpoint, index, operationName);
   endpoint.$_content.splice(index, 1);
 
   const operation: LiveMapGraphRemoveContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
-    target,
+    target: preparedTarget.target,
     index,
   });
   return prepare_finished_mutation(mode, root, operation, operationName);
@@ -431,13 +439,14 @@ function prepare_move_document_content(
   targetInput: unknown,
   fromInput: unknown,
   toInput: unknown,
+  targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphMoveContentOp> {
   const operationName = "move-content";
-  const target = normalize_document_target(targetInput, operationName);
   const from = normalize_content_index(fromInput, operationName);
   const to = normalize_content_index(toInput, operationName);
   const root = clone_live_root(inputRoot);
-  const endpoint = require_content_endpoint(resolve_document_target(root, mode, target, operationName), operationName);
+  const preparedTarget = prepare_target(root, mode, targetInput, operationName, targetAuthority);
+  const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   require_existing_content_index(endpoint, from, operationName);
   require_existing_content_index(endpoint, to, operationName);
   if (from !== to) {
@@ -451,7 +460,7 @@ function prepare_move_document_content(
   const operation: LiveMapGraphMoveContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
-    target,
+    target: preparedTarget.target,
     from,
     to,
   });
@@ -512,38 +521,81 @@ export function prepare_document_graph_operation(
   mode: DocumentLiveMapMode,
   input: unknown,
 ): PreparedDocumentMutation {
+  return prepare_graph_operation(root, mode, input, "commit");
+}
+
+/**
+ * Transitional decoder for pre-Unit-1 graph operations whose sole target is a
+ * QUID. Successful planning returns the canonical path target plus witness.
+ */
+export function prepare_legacy_quid_target_graph_operation(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  input: unknown,
+): PreparedDocumentMutation {
+  if (!is_plain_record(input) || !is_plain_record(input.target) || input.target.kind !== "quid") {
+    throw mutation_error(
+      "INVALID_DOCUMENT_COMMIT_TARGET",
+      "replace-content",
+      "legacy compatibility accepts only an explicit QUID request target",
+    );
+  }
+  return prepare_graph_operation(root, mode, input, "request");
+}
+
+function prepare_graph_operation(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  input: unknown,
+  targetAuthority: PreparedTargetAuthority,
+): PreparedDocumentMutation {
   if (!is_plain_record(input) || input.domain !== "graph" || typeof input.op !== "string") {
     throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", "graph operation must have explicit graph domain and operation discriminants");
   }
   if (input.op === "set-attr") {
     must_exact_keys(input, ["domain", "op", "target", "name", "value"], input.op);
-    return prepare_set_document_attr(root, mode, input.target, input.name, input.value);
+    return prepare_set_document_attr(root, mode, input.target, input.name, input.value, targetAuthority);
   }
   if (input.op === "remove-attr") {
     must_exact_keys(input, ["domain", "op", "target", "name"], input.op);
-    return prepare_remove_document_attr(root, mode, input.target, input.name);
+    return prepare_remove_document_attr(root, mode, input.target, input.name, targetAuthority);
   }
   if (input.op === "replace-attrs") {
     must_exact_keys(input, ["domain", "op", "target", "attrs"], input.op);
-    return prepare_replace_document_attrs(root, mode, input.target, input.attrs);
+    return prepare_replace_document_attrs(root, mode, input.target, input.attrs, targetAuthority);
   }
   if (input.op === "replace-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "replacement"], input.op);
-    return prepare_replace_document_content(root, mode, input.target, input.index, input.replacement);
+    return prepare_replace_document_content(root, mode, input.target, input.index, input.replacement, targetAuthority);
   }
   if (input.op === "insert-content") {
     must_exact_keys(input, ["domain", "op", "target", "index", "content"], input.op);
-    return prepare_insert_document_content(root, mode, input.target, input.index, input.content);
+    return prepare_insert_document_content(root, mode, input.target, input.index, input.content, targetAuthority);
   }
   if (input.op === "remove-content") {
     must_exact_keys(input, ["domain", "op", "target", "index"], input.op);
-    return prepare_remove_document_content(root, mode, input.target, input.index);
+    return prepare_remove_document_content(root, mode, input.target, input.index, targetAuthority);
   }
   if (input.op === "move-content") {
     must_exact_keys(input, ["domain", "op", "target", "from", "to"], input.op);
-    return prepare_move_document_content(root, mode, input.target, input.from, input.to);
+    return prepare_move_document_content(root, mode, input.target, input.from, input.to, targetAuthority);
   }
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", `unsupported graph operation ${JSON.stringify(input.op)}`);
+}
+
+function prepare_target(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  input: unknown,
+  operation: DocumentOperation,
+  authority: PreparedTargetAuthority,
+): Readonly<{
+  target: LiveMapDocumentCommitTarget;
+  endpoint: HsonNode | Primitive;
+}> {
+  return authority === "request"
+    ? canonicalize_document_request_target(root, mode, input, operation)
+    : resolve_document_commit_target(root, mode, input, operation);
 }
 
 function must_exact_keys(
@@ -598,8 +650,8 @@ function normalize_attr_value(
 }
 
 function normalize_content_index(input: unknown, operation: DocumentOperation): number {
-  if (typeof input !== "number" || !Number.isInteger(input) || input < 0) {
-    throw mutation_error("INVALID_DOCUMENT_CONTENT_INDEX", operation, "content index must be a non-negative integer");
+  if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
+    throw mutation_error("INVALID_DOCUMENT_CONTENT_INDEX", operation, "content index must be a non-negative safe integer");
   }
   return input;
 }

@@ -88,7 +88,7 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
 
 const rootPath = { kind: "path", path: [] };
 
-await check("document.attrs.set uses a QUID target and flows through one authoritative commit and replay", async () => {
+await check("document.attrs.set lowers a QUID request before authoritative history and replay", async () => {
   const initial = `<main @0000000000000001 <p @0000000000000002/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attr-set" });
   const client = await connected_document_client(host, element(initial));
@@ -230,7 +230,7 @@ await check("document.content.insert uses a fragment path and publishes one cano
   });
 });
 
-await check("document.content.remove uses a QUID target and publishes one canonical removal", async () => {
+await check("document.content.remove lowers a QUID request to one canonical path removal", async () => {
   const initial = `<main @000000000000001d/>`;
   const authority = element(initial);
   const mirror = element(initial);

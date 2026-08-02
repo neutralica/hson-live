@@ -1,10 +1,12 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Unit 0 contract decision recorded; later-unit architecture remains a plan.
+Status: Units 0 and 1 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
 Unit 0 settles one additional point that supersedes the earlier draft below: QUID metadata is canonical graph state. A QUID-only mutation of a LiveMap-owned graph uses the ordinary LiveMap revision and commit stream. No `identityGeneration` is introduced, and strict canonical equality remains QUID-sensitive. Later units may derive sparse lookup updates from accepted canonical commits, but they must not create a silent identity mutation stream or allow same-revision canonical graphs to differ only by QUID metadata.
+
+Unit 1 supersedes the inspection-baseline statements below that say mutation commits preserve the caller's request-target form. `LiveMapDocumentRequestTarget` remains path-or-QUID for active compatibility calls, while every newly constructed `LiveMapGraphOp` uses `LiveMapDocumentCommitTarget`, a validated path plus optional non-routing witness. The current identity index performs bounded synchronous QUID-request lowering; replay retains one named legacy QUID adapter, and the old LiveHost wire decoder remains a compatibility input pending Unit 8. The inventory below remains useful as historical migration evidence, not as the post-Unit-1 operation contract.
 
 ## Inspection baseline
 
@@ -542,10 +544,11 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 1 — Path-authoritative document operation model
 
+- **Status:** Complete. Canonical paths, pure transforms, ordinal staging, request/commit target separation, witness conflicts, and bounded legacy QUID lowering are executable contracts.
 - **Goal:** Add nominal document path utilities, request-target versus commit-target types, sequential staging prose/tests, structured conflicts, and optional non-routing witness semantics.
 - **Production ownership:** `livemap.types.ts`, a new document-path module, mutation/replay normalizers.
 - **Public/API effect:** Additive request/commit types; existing request union remains.
-- **Compatibility effect:** Internal commit construction changes; serialization not yet switched.
+- **Compatibility effect:** New LiveMap commits and new LiveHost history entries are path-authoritative. Pre-Unit-1 QUID-target replay and old LiveHost wire decoding remain isolated compatibility inputs and normalize during replay; LiveHost protocol versioning remains Unit 8.
 - **Tests:** Every graph op through paths; multi-op staged path shifts; move final-position semantics; witness present/absent/mismatch.
 - **Stop conditions:** Any document operation lacks deterministic revision/path semantics.
 - **Dependency:** Unit 0.

@@ -50,7 +50,7 @@ check("projected commits retain their exact data operation domain", () => {
   assert.equal(graphInData.ok, false);
 });
 
-check("document commits decode graph operations without projected coercion", () => {
+check("document commits decode canonical paths and the bounded legacy QUID wire seam", () => {
   const valid = decode(commit("element", [
     {
       domain: "graph",
@@ -106,7 +106,7 @@ check("document commits decode graph operations without projected coercion", () 
   assert.equal(valid.value.commit.ops[0].domain, "graph");
 });
 
-check("document recovery transport carries replace-attrs as one canonical operation", () => {
+check("document recovery transport retains legacy QUID input until replay lowering", () => {
   const decoded = decode_livehost_server_message(JSON.stringify({
     type: "recovery-commit",
     id: "replace-attrs-recovery",

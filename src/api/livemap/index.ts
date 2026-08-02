@@ -5,6 +5,7 @@ export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,
   LiveMapDocumentMutationError,
+  LiveMapDocumentStagingError,
   LiveMapSchemaError,
 } from "./livemap.error.js";
 export {
@@ -17,6 +18,10 @@ export {
   paths_overlap,
   relative_live_path,
 } from "./livemap.path.js";
+export {
+  LiveMapDocumentPathError,
+  validate_document_path,
+} from "./livemap.document.path.js";
 export { link_livemap } from "./livemap.link.js";
 export { make_livemap_feed_hub } from "./livemap.feed.js";
 export { make_livemap_proxy } from "./livemap.proxy.js";
@@ -36,6 +41,7 @@ export {
 } from "./livemap.schema.js";
 
 export type { LiveMapDocumentMutationErrorCode } from "./livemap.error.js";
+export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js";
 export type * from "../../types/livemap.types.js";
 export type {
   InferLiveMapSchema,

@@ -124,9 +124,9 @@ check("path and QUID targets resolve the same ordinary elements", () => {
   assert.deepEqual(byPath.root(), byIdentity.root());
   assert.equal(byIdentity.document.byQuid("0000000000000002")?.$_attrs?.id, "new");
 
-  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [-1] }, "id", "x"), "INVALID_DOCUMENT_PATH");
-  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [1.5] }, "id", "x"), "INVALID_DOCUMENT_PATH");
-  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [Number.POSITIVE_INFINITY] }, "id", "x"), "INVALID_DOCUMENT_PATH");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [-1] }, "id", "x"), "INVALID_DOCUMENT_PATH_INDEX");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [1.5] }, "id", "x"), "INVALID_DOCUMENT_PATH_INDEX");
+  errorCode(() => byPath.document.attrs.set({ kind: "path", path: [Number.POSITIVE_INFINITY] }, "id", "x"), "INVALID_DOCUMENT_PATH_INDEX");
   errorCode(() => byPath.document.attrs.set(path(9), "id", "x"), "DOCUMENT_PATH_OUT_OF_RANGE");
   errorCode(() => byPath.document.attrs.set(quid("000000000000000d"), "id", "x"), "DOCUMENT_TARGET_NOT_FOUND");
   errorCode(() => byPath.document.attrs.set({ kind: "quid", quid: "" }, "id", "x"), "INVALID_DOCUMENT_TARGET");
@@ -201,7 +201,12 @@ check("attrs.drop removes only existing ordinary attributes", () => {
     changed: true,
     prevRev: 0,
     rev: 1,
-    ops: [{ domain: "graph", op: "remove-attr", target: quid("0000000000000001"), name: "id" }],
+    ops: [{
+      domain: "graph",
+      op: "remove-attr",
+      target: { kind: "path", path: [], witness: { quid: "0000000000000001" } },
+      name: "id",
+    }],
   });
   assert.deepEqual(map.element.node().$_attrs, { title: "keep" });
   assert.equal(map.document.byQuid("0000000000000001")?.$_tag, "main");

@@ -8,6 +8,7 @@ import type {
   ElementLiveMap,
   LiveMapCommitObservation,
   LiveMapDisposer,
+  LiveMapDocumentCommitTarget,
   LiveMapDocumentTarget,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
@@ -355,20 +356,12 @@ export function reflect_document_in_runtime(
     walk(tree.node, []);
   };
 
-  const resolve_registration = (target: LiveMapDocumentTarget): ProjectedRegistration => {
-    const registration = target.kind === "path"
-      ? byPath.get(path_key(target.path))
-      : byQuid.get(target.quid);
+  const resolve_registration = (target: LiveMapDocumentCommitTarget): ProjectedRegistration => {
+    const registration = byPath.get(path_key(target.path));
     if (registration === undefined) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Canonical attribute target has no projected element correspondence.",
-      );
-    }
-    if (target.kind === "quid" && registration.persistedQuid !== target.quid) {
-      throw new DocumentReflectError(
-        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-        "Canonical QUID target does not match projected correspondence.",
       );
     }
     return registration;

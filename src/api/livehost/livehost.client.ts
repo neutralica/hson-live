@@ -61,7 +61,7 @@ import {
 } from "./livehost.error.js";
 import {
   decode_livehost_client_server_message,
-  decode_livehost_document_commit,
+  replay_livehost_document_commit_compat,
   is_livehost_json_value,
 } from "./livehost.protocol.js";
 import {
@@ -441,7 +441,7 @@ export function create_livehost_client<
     const localRevBefore = map.rev;
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
-        ? map.replay(decode_livehost_document_commit(commit))
+        ? replay_livehost_document_commit_compat(map, commit)
         : commit.format === "structural-json"
           && commit.formatVersion === 1
           && typeof commit.payload === "string"

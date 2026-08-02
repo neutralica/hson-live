@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units may change document operation formats, but they must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract and Unit 1 canonical document-path contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -58,7 +58,16 @@ LiveTree does not become path-authoritative, and its identity does not depend on
 
 ## LiveMap path and QUID roles
 
-A path identifies a structural location in a named graph revision. It is not timeless identity. For ordered commits, each operation is interpreted against the staged graph produced by preceding operations.
+A `LiveMapDocumentPath` is a nominal, readonly array of finite, non-negative safe-integer indexes. It traverses only canonical `$_content` ownership and is distinct from projected `LivePath`; string keys are never document-path segments. Validation detaches and freezes the runtime array before it enters a commit.
+
+Path origin is mode-specific but uses one language:
+
+- in element mode, `[]` addresses the one public top-level ordinary element;
+- in fragment mode, `[]` addresses the owned `_hson_elem` content cluster;
+- subsequent indexes descend through the current endpoint's canonical `$_content` array, including structural carriers and legal primitive leaves; and
+- a path through a primitive or beyond owned content rejects rather than coercing, scanning, or rebasing.
+
+A path identifies a structural location in a named graph revision. It is not timeless identity. Operation ordinal zero is interpreted against `commit.prevRev`; ordinal `i` is interpreted against the staged graph produced by ordinals `0..i-1`. Callers supply each ordinal's path and indexes in that staged coordinate system.
 
 LiveMap paths remain the planned durable language for structural operation targets:
 
@@ -71,7 +80,11 @@ QUID
      or optional stale-intent witness
 ```
 
-Current compatibility APIs still permit QUID-targeted document operations and history. Lowering those requests to path-authoritative commits belongs to Unit 1 and later work; Unit 0 does not change their format.
+Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-or-QUID compatibility. Canonical graph operations store `LiveMapDocumentCommitTarget`, whose discriminator is always `kind: "path"`. A QUID request is synchronously resolved through the current validated document identity index and lowered to the exact current path before the new operation is constructed. No newly produced LiveMap graph commit stores a QUID as its sole target.
+
+A commit target may carry `witness: { quid }`. The path always routes. A matching active endpoint QUID validates same-epoch intent; an active different endpoint QUID reports a structured witness conflict; no endpoint QUID leaves identity-free replay available. A witness elsewhere cannot repair or reroute an invalid path, and raw bytes remain insufficient epoch provenance.
+
+Pre-Unit-1 QUID-targeted replay is retained behind one explicitly named legacy adapter. Successful legacy replay immediately normalizes the operation to path plus witness. LiveHost's existing decoder may still admit the old wire shape until its separately versioned protocol unit, but new authoritative history is produced from path-authoritative LiveMap commits.
 
 `LiveMapPathHandle` follows a projected location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
 

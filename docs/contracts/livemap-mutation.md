@@ -178,6 +178,45 @@ and no removal release is currently assigned.
 
 A capture is observed state. It is not itself a mutation request.
 
+## Canonical document operations
+
+Document-mode LiveMaps use a separate canonical path domain. `LiveMapDocumentPath` is a validated, detached, readonly numeric array of finite, non-negative safe-integer `$_content` indexes. It never admits projected object keys.
+
+Root interpretation is exact:
+
+- element mode `[]` addresses the one public top-level ordinary element;
+- fragment mode `[]` addresses the owned `_hson_elem` cluster;
+- each segment descends through the current HSON node's `$_content`; and
+- descent through a primitive or beyond content is a structured conflict.
+
+Canonical graph commits stage operations in ordinal order:
+
+```text
+ordinal 0 -> graph at commit.prevRev
+ordinal i -> graph after ordinals 0..i-1
+```
+
+Paths and content indexes are interpreted at their own ordinal. They are never silently rebased against `prevRev`.
+
+Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`). Stored graph operations use only `LiveMapDocumentCommitTarget` (`path` plus an optional non-routing QUID witness). QUID requests are resolved and lowered synchronously before commit construction. A witness can detect an active different QUID at the routed endpoint but cannot route, repair an invalid path, or prove epoch provenance.
+
+### Document operation matrix
+
+| Operation | Path target and index domain | Staged structural effect | No-op and conflict rules |
+|---|---|---|---|
+| `set-attr` | Ordinary element path; canonical public name/value | No path changes | Exact existing value is a no-op; wrong node kind, protected name, invalid value, path, or witness conflicts. |
+| `remove-attr` | Ordinary element path; canonical public name | No path changes | Missing attribute is a no-op; the same target/name conflicts apply. |
+| `replace-attrs` | Ordinary element path; complete canonical public bag | No path changes | Exact bag equality is a no-op; malformed/protected bags and target conflicts reject. |
+| `insert-content` | HSON-node parent path; index `0..length` at its ordinal | New subtree occupies `index`; siblings at and after it shift `+1` | Invalid insertion index/content, identity admission, mode change, path, or witness conflicts reject. |
+| `replace-content` | HSON-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
+| `remove-content` | HSON-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
+| `move-content` | HSON-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
+| `replace-root` | No target; same document mode | Every old path retires and the supplied canonical root becomes authoritative | Exact root equality is a no-op at install; in replay it must be the sole operation and mode must match. |
+
+`move-content.to` is the final position after removal, not a pre-removal insertion boundary. Thus moving `1 -> 3` in `[a,b,c,d]` yields `[a,c,d,b]`, while `3 -> 1` yields `[a,d,b,c]`.
+
+Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
+
 apply
 
 apply({ prevRev, value }) conditionally replaces the projected root.

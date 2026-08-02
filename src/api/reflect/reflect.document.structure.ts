@@ -12,7 +12,7 @@ import { clone_node } from "../../core/clone-node.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
-import type { LiveMapDocumentTarget, LiveMapGraphOp } from "../../types/livemap.types.js";
+import type { LiveMapDocumentCommitTarget, LiveMapGraphOp } from "../../types/livemap.types.js";
 import { project_livetree } from "../livetree/creation/project-live-tree.js";
 import { index_subtree_ownership, release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
@@ -282,22 +282,7 @@ function plan_replacement(
   return shadow;
 }
 
-function resolve_shadow_target(root: ShadowNode, target: LiveMapDocumentTarget, operation: string): ShadowNode {
-  if (target.kind === "quid") {
-    let found: ShadowNode | undefined;
-    walk_shadow(root, (candidate) => {
-      if (candidate.persistedQuid !== target.quid) return;
-      if (found !== undefined && found !== candidate) {
-        throw new DocumentReflectError(
-          DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
-          "Persisted QUID resolves to multiple projected structural targets.",
-        );
-      }
-      found = candidate;
-    });
-    if (found !== undefined) return found;
-    throw content_path_error(operation);
-  }
+function resolve_shadow_target(root: ShadowNode, target: LiveMapDocumentCommitTarget, operation: string): ShadowNode {
   let current = root;
   for (const segment of target.path) {
     const child = current.content[segment];

@@ -25,6 +25,7 @@ import { create_live_trace_context, type LiveHostCommitCausation } from "./liveh
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import { clone_live_root } from "../livemap/livemap.editor.js";
+import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { encode_livehost_graph_content } from "./livehost.graph-content-codec.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
@@ -172,9 +173,13 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveHostCanonicalOp {
       root: encode_livehost_graph_content(clone_live_root(op.root)),
     });
   }
-  const target = op.target.kind === "path"
-    ? Object.freeze({ kind: "path" as const, path: Object.freeze([...op.target.path]) })
-    : Object.freeze({ kind: "quid" as const, quid: op.target.quid });
+  const target = Object.freeze({
+    kind: "path" as const,
+    path: validate_document_path(op.target.path),
+    ...(op.target.witness === undefined
+      ? {}
+      : { witness: Object.freeze({ quid: op.target.witness.quid }) }),
+  });
   if (op.op === "set-attr") {
     return Object.freeze({
       domain: "graph",

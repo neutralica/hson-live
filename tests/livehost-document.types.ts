@@ -1,4 +1,4 @@
-import { create_livehost, create_livehost_client, create_persistent_livehost, hson } from "../src/index.ts";
+import { create_livehost, create_livehost_client, create_persistent_livehost, hson, validate_document_path } from "../src/index.ts";
 import type {
   ElementLiveMap,
   ExistingMapLiveHostOptions,
@@ -30,7 +30,7 @@ const replacementAttrs: LiveMapDocumentAttrs = {
 const replacementOperation: LiveMapGraphReplaceAttrsOp = {
   domain: "graph",
   op: "replace-attrs",
-  target: { kind: "path", path: [] },
+  target: { kind: "path", path: validate_document_path([]) },
   attrs: replacementAttrs,
 };
 void replacementOperation;

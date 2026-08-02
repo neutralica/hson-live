@@ -1,6 +1,6 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
+import { hson, validate_document_path } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { is_Node } from "../src/core/node-guards.ts";
@@ -82,7 +82,7 @@ function mount(node: HsonNode): AttributeProjection {
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: segments };
+  return { kind: "path" as const, path: validate_document_path(segments) };
 }
 
 check("initial binding owns a detached graph and indexes raw canonical paths", () => {

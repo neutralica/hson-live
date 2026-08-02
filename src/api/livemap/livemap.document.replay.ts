@@ -7,7 +7,12 @@ import type {
   LiveMapCommitObserverApi,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
-import { LiveMapReplayInputError, LiveMapRevError } from "./livemap.error.js";
+import {
+  LiveMapDocumentMutationError,
+  LiveMapDocumentStagingError,
+  LiveMapReplayInputError,
+  LiveMapRevError,
+} from "./livemap.error.js";
 import {
   canonical_graph_equal,
   prepare_document_install,
@@ -15,6 +20,7 @@ import {
 } from "./livemap.document.install.js";
 import {
   prepare_document_graph_operation,
+  prepare_legacy_quid_target_graph_operation,
 } from "./livemap.document.mutation.js";
 
 export type PreparedDocumentReplay = Readonly<{
@@ -48,7 +54,11 @@ export function replay_livemap_document_commit(
   for (const [index, rawOperation] of envelope.ops.entries()) {
     if (is_replace_root_operation(rawOperation)) {
       if (envelope.ops.length !== 1) {
-        throw new LiveMapReplayInputError("replace-root must be the only graph operation", index);
+        throw new LiveMapReplayInputError(
+          "replace-root must be the only graph operation",
+          index,
+          "ROOT_OPERATION_COMPOSITION",
+        );
       }
       const prepared = prepare_document_install({
         kind: "hson-document",
@@ -68,9 +78,23 @@ export function replay_livemap_document_commit(
       continue;
     }
 
-    const prepared = prepare_document_graph_operation(root, controller.mode, rawOperation);
+    let prepared;
+    try {
+      prepared = is_legacy_quid_target_operation(rawOperation)
+        ? prepare_legacy_quid_target_graph_operation(root, controller.mode, rawOperation)
+        : prepare_document_graph_operation(root, controller.mode, rawOperation);
+    } catch (cause) {
+      if (cause instanceof LiveMapDocumentMutationError) {
+        throw new LiveMapDocumentStagingError(index, cause);
+      }
+      throw cause;
+    }
     if (canonical_graph_equal(root, prepared.root)) {
-      throw new LiveMapReplayInputError("changed graph commit contains an unchanged operation", index);
+      throw new LiveMapReplayInputError(
+        "changed graph commit contains an unchanged operation",
+        index,
+        "UNCHANGED_STAGED_OPERATION",
+      );
     }
     root = prepared.root;
     identity = prepared.identity;
@@ -78,7 +102,7 @@ export function replay_livemap_document_commit(
   }
 
   if (identity === undefined) {
-    throw new LiveMapReplayInputError("graph commit contains no operations");
+    throw new LiveMapReplayInputError("graph commit contains no operations", undefined, "EMPTY_GRAPH_COMMIT");
   }
   const commit: LiveMapGraphCommit = Object.freeze({
     changed: true,
@@ -87,6 +111,11 @@ export function replay_livemap_document_commit(
     ops: Object.freeze(operations),
   });
   return controller.applyReplay({ root, identity, commit });
+}
+
+function is_legacy_quid_target_operation(input: unknown): boolean {
+  if (!is_plain_record(input) || input.op === "replace-root" || !is_plain_record(input.target)) return false;
+  return input.target.kind === "quid";
 }
 
 function must_graph_commit_envelope(input: unknown): LiveMapGraphCommit {

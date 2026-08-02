@@ -1,6 +1,6 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { hson } from "../src/index.ts";
+import { hson, validate_document_path } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap } from "../src/types/livemap.types.ts";
@@ -34,7 +34,7 @@ function element(source: string): ElementLiveMap {
 }
 
 function path(...segments: number[]) {
-  return { kind: "path" as const, path: segments };
+  return { kind: "path" as const, path: validate_document_path(segments) };
 }
 
 function raw_node(root: HsonNode, rawPath: readonly number[]): HsonNode {

@@ -18,6 +18,7 @@ import type {
   LiveHostActionPayloads,
   LiveHostCanonicalCommit,
   LiveHostCanonicalOp,
+  LiveHostDocumentWireTarget,
   LiveHostServerCanonicalCommitMessage,
   LiveHostServerActionStatusMessage,
   LiveHostServerRecoveryCaughtUpMessage,
@@ -44,8 +45,10 @@ import {
 } from "../livemap/livemap.document.attrs.js";
 import type {
   DocumentLiveMapMode,
+  DocumentLiveMap,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
+  LiveMapDocumentCommitTarget,
   LiveMapDocumentTarget,
   LiveMapGraphCommit,
   LiveMapGraphOp,
@@ -61,6 +64,15 @@ import {
   decode_livehost_graph_content,
   is_livehost_encoded_graph_content,
 } from "./livehost.graph-content-codec.js";
+import { validate_document_path } from "../livemap/livemap.document.path.js";
+
+type WithDecodedDocumentWireTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
+  ? Omit<TOperation, "target"> & Readonly<{ target: LiveHostDocumentWireTarget }>
+  : TOperation;
+
+export type LiveHostDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Readonly<{
+  ops: readonly WithDecodedDocumentWireTarget<LiveMapGraphOp>[];
+}>;
 
 function ok<T>(value: T): LiveHostResult<T> {
   return { ok: true, value };
@@ -181,14 +193,38 @@ function decode_style_map(value: unknown): CssMap | undefined {
 
 function decode_document_target(value: unknown): LiveMapDocumentTarget | undefined {
   if (!is_record(value)) return undefined;
-  if (value.kind === "path" && has_exact_keys(value, ["kind", "path"]) && Array.isArray(value.path)) {
-    if (!value.path.every((part) => typeof part === "number" && Number.isInteger(part) && part >= 0)) return undefined;
-    return Object.freeze({ kind: "path", path: Object.freeze([...value.path]) });
+  if (value.kind === "path" && has_exact_keys(value, ["kind", "path"])) {
+    try {
+      return Object.freeze({ kind: "path", path: validate_document_path(value.path) });
+    } catch {
+      return undefined;
+    }
   }
   if (value.kind === "quid" && has_exact_keys(value, ["kind", "quid"]) && is_persisted_quid(value.quid)) {
     return Object.freeze({ kind: "quid", quid: value.quid });
   }
   return undefined;
+}
+
+function decode_document_commit_target(value: unknown): LiveMapDocumentCommitTarget | undefined {
+  if (!is_record(value) || value.kind !== "path") return undefined;
+  const witnessPresent = Object.hasOwn(value, "witness");
+  if (!has_exact_keys(value, witnessPresent ? ["kind", "path", "witness"] : ["kind", "path"])) return undefined;
+  let path;
+  try {
+    path = validate_document_path(value.path);
+  } catch {
+    return undefined;
+  }
+  if (!witnessPresent) return Object.freeze({ kind: "path", path });
+  if (!is_record(value.witness)
+    || !has_exact_keys(value.witness, ["quid"])
+    || !is_persisted_quid(value.witness.quid)) return undefined;
+  return Object.freeze({
+    kind: "path",
+    path,
+    witness: Object.freeze({ quid: value.witness.quid }),
+  });
 }
 
 function decode_attribute_name(value: unknown): string | undefined {
@@ -234,7 +270,9 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCan
     return Object.freeze({ domain: "graph", op: "replace-root", mode, root: value.root });
   }
 
-  const target = decode_document_target(value.target);
+  const canonicalTarget = decode_document_commit_target(value.target);
+  const legacyTarget = canonicalTarget === undefined ? decode_document_target(value.target) : undefined;
+  const target = canonicalTarget ?? (legacyTarget?.kind === "quid" ? legacyTarget : undefined);
   if (target === undefined) return undefined;
   if (value.op === "set-attr") {
     if (!has_exact_keys(value, ["domain", "op", "target", "name", "value"])) return undefined;
@@ -344,11 +382,11 @@ export function decode_livehost_canonical_commit(value: unknown): LiveHostCanoni
 /** @internal Convert an encoded document commit into detached LiveMap-domain operations. */
 export function decode_livehost_document_commit(
   commit: LiveHostCanonicalCommit,
-): LiveMapGraphCommit {
+): LiveHostDecodedDocumentCommit {
   if (commit.mode !== "element" && commit.mode !== "fragment") {
     throw new Error("LiveHost canonical commit is not a document commit.");
   }
-  const operations: LiveMapGraphOp[] = [];
+  const operations: WithDecodedDocumentWireTarget<LiveMapGraphOp>[] = [];
   for (const operation of commit.ops) {
     if (!("domain" in operation)) {
       throw new Error("LiveHost document commit contains a projected operation.");
@@ -371,6 +409,17 @@ export function decode_livehost_document_commit(
     rev: commit.rev,
     ops: Object.freeze(operations),
   });
+}
+
+/**
+ * Unit 1 compatibility seam: decode current path targets or legacy QUID wire
+ * targets, then let LiveMap replay normalize any legacy request immediately.
+ */
+export function replay_livehost_document_commit_compat(
+  map: DocumentLiveMap,
+  commit: LiveHostCanonicalCommit,
+): LiveMapGraphCommit {
+  return Reflect.apply(map.replay, map, [decode_livehost_document_commit(commit)]);
 }
 
 function decode_snapshot(

@@ -30,7 +30,7 @@ import {
 import { make_livehost_canonical_commit } from "./livehost.history.js";
 import {
   decode_livehost_canonical_commit,
-  decode_livehost_document_commit,
+  replay_livehost_document_commit_compat,
 } from "./livehost.protocol.js";
 import { create_live_trace_context } from "./livehost.trace.js";
 import {
@@ -335,7 +335,7 @@ function validate_persisted_state(
         mapKind: "document" as const,
         commit: canonical,
       });
-      map.replay(decode_livehost_document_commit(canonical));
+      replay_livehost_document_commit_compat(map, canonical);
       commits.push(persistedCommit);
       canonicalCommits.push(canonical);
       expectedPrevRev = canonical.rev;

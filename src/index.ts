@@ -81,9 +81,14 @@ export {
     LiveMapDocumentAttributeNotFoundError,
     LiveMapDocumentInstallError,
     LiveMapDocumentMutationError,
+    LiveMapDocumentStagingError,
 } from "./api/livemap/livemap.error.js";
 export type { LiveMapDocumentMutationErrorCode } from "./api/livemap/livemap.error.js";
 export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
+export {
+    LiveMapDocumentPathError,
+    validate_document_path,
+} from "./api/livemap/livemap.document.path.js";
 export { link_livemap } from "./api/livemap/livemap.link.js";
 export { make_livemap_feed_hub } from "./api/livemap/livemap.feed.js";
 export { make_livemap_proxy } from "./api/livemap/livemap.proxy.js";
@@ -159,6 +164,10 @@ export type {
     DocumentLiveMapCapture,
     DocumentLiveMapInstallOptions,
     LiveMapDocumentPath,
+    LiveMapDocumentPathInput,
+    LiveMapDocumentRequestTarget,
+    LiveMapDocumentCommitTarget,
+    LiveMapDocumentTargetWitness,
     LiveMapDocumentTarget,
     LiveMapDocumentAttributeValue,
     LiveMapDocumentAttrs,

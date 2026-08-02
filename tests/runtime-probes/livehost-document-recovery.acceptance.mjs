@@ -235,6 +235,11 @@ await check("existing element authority publishes detached graph history and rep
   assert.equal(retained?.length, 1);
   assert.notEqual(retained?.[0]?.ops, sourceCommit.ops);
   assert.deepEqual(retained?.[0]?.ops, sourceCommit.ops);
+  assert.deepEqual(retained?.[0]?.ops[0]?.target, {
+    kind: "path",
+    path: [0, 0],
+    witness: { quid: "0000000000000002" },
+  });
 
   const mirror = element(initial);
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
