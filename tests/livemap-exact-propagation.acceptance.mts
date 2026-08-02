@@ -266,12 +266,22 @@ check("LiveHost canonical commits and resume entries retain exact payloads", () 
   assert.equal(typeof canonical?.payload, "string");
 
   const resume = make_livehost_resume_log();
+  const compatibilityValue = Object.defineProperty(
+    { "1": 1, "2": 2, "10": 10, negative: -0 },
+    "__proto__",
+    { value: "data", enumerable: true, writable: true, configurable: true },
+  ) as JsonValue;
   const message: LiveHostServerSyncMessage = {
-    type: "sync", seq: 1, path: ["value"], value: { "1": 1, "2": 2, "10": 10 },
+    type: "sync", seq: 1, path: ["value"], value: compatibilityValue,
     format: "structural-json", formatVersion: 1, payload: JSON.stringify({ "10": 10, "2": 2, "1": 1 }),
   };
   resume.record_sync(message);
-  assert.equal(resume.replay_after(0)[0]?.payload, message.payload);
+  const replayed = resume.replay_after(0)[0];
+  assert.equal(replayed?.payload, message.payload);
+  assert.equal(Object.getPrototypeOf(replayed?.value), Object.prototype);
+  assert.equal(Object.hasOwn(replayed?.value as object, "__proto__"), true);
+  assert.equal((replayed?.value as Record<string, JsonValue>).__proto__, "data");
+  assert.equal(Object.is((replayed?.value as Record<string, JsonValue>).negative, -0), true);
   assert.throws(
     () => resume.record_sync({ type: "sync", seq: 2, path: ["value"], value: 0, format: "structural-json" }),
     /invalid exact transport envelope/,

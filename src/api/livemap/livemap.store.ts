@@ -16,7 +16,10 @@
 import type { JsonValue } from "../../core/types.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import { ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import {
+  optional_ordered_projected_value_equal,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
 import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
 import type {
   LiveMapCore,
@@ -33,6 +36,9 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 
+// Selector results intentionally remain a separate compatibility domain. This
+// JSON clone is not used for LiveMap projected state, commits, paths, or
+// transport and must not be substituted for the ordered carrier machinery.
 function clone_selector_value<TValue>(value: TValue): TValue {
   return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
 }
@@ -45,14 +51,6 @@ function values_equal<TValue>(
   return options?.equal === undefined
     ? Object.is(next, prev)
     : options.equal(clone_selector_value(next), clone_selector_value(prev));
-}
-
-function optional_projected_values_equal(
-  next: OrderedProjectedValue | undefined,
-  prev: OrderedProjectedValue | undefined,
-): boolean {
-  if (next === undefined || prev === undefined) return next === prev;
-  return ordered_projected_value_equal(next, prev);
 }
 
 /**
@@ -91,7 +89,7 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
 
     return map.feed([], () => {
       const next = read_projected([]);
-      if (optional_projected_values_equal(next, prev)) return;
+      if (optional_ordered_projected_value_equal(next, prev)) return;
 
       const old = prev;
       prev = next;
@@ -127,7 +125,7 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
     return map.feed(path, (event: LiveMapFeedEvent) => {
       const next = read_projected(path);
       const equal = options?.equal === undefined
-        ? optional_projected_values_equal(next, prev)
+        ? optional_ordered_projected_value_equal(next, prev)
         : options.equal(
           materialize<LiveMapPathValue<TValue, TPath>>(next),
           materialize<LiveMapPathValue<TValue, TPath>>(prev),

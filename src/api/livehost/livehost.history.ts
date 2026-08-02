@@ -26,6 +26,8 @@ import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import { clone_live_root } from "../livemap/livemap.editor.js";
 import { encode_livehost_graph_content } from "./livehost.graph-content-codec.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 
 const DEFAULT_MAX_COMMITS = 1_024;
 const DEFAULT_MAX_BYTES = 4 * 1_024 * 1_024;
@@ -65,36 +67,26 @@ function must_bound(value: number | undefined, fallback: number, name: string): 
   throw new Error(`LiveHost canonical history ${name} must be a finite non-negative number.`);
 }
 
-function is_json_value(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  if (typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(is_json_value);
-  if (typeof value !== "object") return false;
-
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  return Object.values(value).every(is_json_value);
+function freeze_projected_value(value: JsonValue): JsonValue {
+  if (value === null || typeof value !== "object") return value;
+  for (const child of Object.values(value)) freeze_projected_value(child);
+  Object.freeze(value);
+  return value;
 }
 
-function clone_json_value(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone = value.map(clone_json_value);
-    Object.freeze(clone);
-    return clone;
+function clone_projected_value(value: JsonValue, field: string): JsonValue {
+  try {
+    return freeze_projected_value(
+      materialize_projected_value(admit_projected_value(value)),
+    );
+  } catch {
+    throw new Error(`LiveHost canonical commit ${field} is not a supported projected value.`);
   }
-
-  const clone: Record<string, JsonValue> = {};
-  for (const [key, item] of Object.entries(value)) clone[key] = clone_json_value(item);
-  Object.freeze(clone);
-  return clone;
 }
 
 function wire_value(value: JsonValue | undefined, field: string): LiveHostWireValue {
   if (value === undefined) return ABSENT_VALUE;
-  if (!is_json_value(value)) throw new Error(`LiveHost canonical commit ${field} is not JSON.`);
-  return Object.freeze({ present: true, value: clone_json_value(value) });
+  return Object.freeze({ present: true, value: clone_projected_value(value, field) });
 }
 
 function must_path(path: LivePath): LivePath {
@@ -108,10 +100,11 @@ function must_path(path: LivePath): LivePath {
 }
 
 function must_json_array(values: readonly JsonValue[], field: string): readonly JsonValue[] {
-  if (!Array.isArray(values) || !values.every(is_json_value)) {
-    throw new Error(`LiveHost canonical commit ${field} is not a JSON array.`);
+  if (!Array.isArray(values)) {
+    throw new Error(`LiveHost canonical commit ${field} is not a projected array.`);
   }
-  return Object.freeze(values.map(clone_json_value));
+  return Object.freeze(values.map((value, index) =>
+    clone_projected_value(value, `${field}[${index}]`)));
 }
 
 function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {

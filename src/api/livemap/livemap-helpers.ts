@@ -1,9 +1,5 @@
 // livemap-helpers.ts
 
-import type { JsonValue } from "../../core/types.js";
-import { admit_projected_value } from "../../core/projected-value-admission.js";
-import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
-
 /** A cleanup function returned by subscription-style helpers. */
 export type LiveMapDisposer = () => void;
 
@@ -180,13 +176,4 @@ export function derive_from_paths<TPath extends LiveMapHelperPath>(options: Deri
     if (options.immediate === true) listener();
 
     return subscribe_paths(options.subscribePath, options.paths, listener);
-}
-export function json_values_equal(
-  left: JsonValue | undefined,
-  right: JsonValue | undefined): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  return ordered_projected_value_equal(
-    admit_projected_value(left),
-    admit_projected_value(right),
-  );
 }

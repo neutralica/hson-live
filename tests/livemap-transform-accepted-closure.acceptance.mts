@@ -101,6 +101,11 @@ check("dangerous own keys close as ordinary data", () => {
   assert.equal(is_ordered_projected_object(carrier), true);
   if (!is_ordered_projected_object(carrier)) throw new Error("Expected object carrier.");
   assert.deepEqual(carrier.entries.map(([key]) => key), ["__proto__", "constructor", "prototype"]);
+  const publicValue = hson.fromJson(value as JsonValue).toJson().value() as Record<string, JsonValue>;
+  assert.equal(Object.getPrototypeOf(publicValue), Object.prototype);
+  assert.equal(Object.hasOwn(publicValue, "__proto__"), true);
+  assert.equal(publicValue.__proto__, "data");
+  assert.equal(Object.is(publicValue.constructor, -0), true);
 });
 check("ordinary mixed key order closes identically", () => {
   assert_javascript_equivalence({ a: 1, "01": 2, "-1": 3, b: 4 });

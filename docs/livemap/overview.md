@@ -53,6 +53,13 @@ LiveMap
 
 A LiveMap does not store JSON beside HSON or maintain a separate document model. It owns one canonical graph and exposes an interface appropriate to the map kind.
 
+For projected-data maps, the implementation uses a private immutable ordered
+carrier between JavaScript admission and canonical graph construction. The
+carrier preserves exact object-entry order, dangerous names, and SameValue
+number identity while mutations, schemas, equality, feeds, links, stores, and
+exact transport do their work. It is transient; there is no synchronized shadow
+state beside the canonical graph.
+
 ---
 
 ## Core model
@@ -86,6 +93,27 @@ state at revision N
 A no-op may complete successfully without changing the graph, advancing the revision, or producing a commit.
 
 LiveMap is deterministic at its public boundaries. Given the same compatible starting state and the same ordered canonical commits, replay produces the same projected result and document structure.
+
+### Projected JavaScript boundary
+
+Supported ingress consists of strings, booleans, `null`, finite primitive
+numbers, plain/null-prototype objects, and dense ordinary arrays. Admission
+snapshots own descriptors once. It rejects accessors, symbol or nonenumerable
+properties, custom prototypes, boxed/exotic objects, holes, explicit
+`undefined`, array extras, and cycles. Repeated acyclic references are copied
+structurally. Ordinary getters and setters do not execute; proxies are
+unsupported and their reflective traps may execute.
+
+Public projections are fresh ordinary JavaScript objects and dense arrays.
+`__proto__`, `constructor`, and `prototype` remain own data properties. A public
+plain object follows JavaScript integer-key enumeration and is therefore not an
+exact ordered persistence form. Canonical graph reads and object-handle
+`keys`/`values`/`entries` retain semantic graph order.
+
+Projected equality is ordered SameValue equality: object and array order are
+semantic, `0` differs from `-0`, and missing differs from every present value.
+Selector results deliberately keep their separate `Object.is` or custom
+comparator contract.
 
 ---
 
@@ -1308,6 +1336,10 @@ LiveMap may evaluate selectors after accepted changes that could affect their re
 
 Selectors are not schema validators and do not participate in mutation acceptance.
 
+Selector-result comparison is intentionally not the generic projected-value
+comparator. The default is `Object.is`; callers may provide a comparator for the
+selector's own result domain.
+
 ---
 
 ## Immediate publication
@@ -1439,6 +1471,13 @@ A projected snapshot may preserve:
 - projected root value;
 - revision metadata;
 - map configuration required by the format.
+
+The implemented data-map capture includes both a detached JavaScript
+compatibility value and a versioned `structural-json` payload. The payload is
+the exact ordered form used by restore/apply/replay and propagation. Exact
+fields take precedence; malformed exact data fails without legacy fallback.
+Legacy value/op shapes remain readable but are lossy, with no removal release
+currently assigned.
 
 An exact document view-state may additionally preserve:
 

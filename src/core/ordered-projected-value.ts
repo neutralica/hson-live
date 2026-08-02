@@ -156,3 +156,12 @@ export function ordered_projected_value_equal(
   }
   return true;
 }
+
+/** Exact equality for a projected carrier or the path-absence sentinel. */
+export function optional_ordered_projected_value_equal(
+  left: OrderedProjectedValue | undefined,
+  right: OrderedProjectedValue | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return ordered_projected_value_equal(left, right);
+}

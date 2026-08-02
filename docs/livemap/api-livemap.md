@@ -49,6 +49,48 @@ commit.
 `mode` discriminates data from document APIs. The input node is prepared as
 owned canonical state; `root()` returns detached clones.
 
+### Projected-value boundary
+
+The canonical HSON graph is the authority for a data LiveMap. Internally,
+LiveMap admits projected values into a private immutable ordered carrier while
+it plans mutations, validates schemas, compares candidates, and prepares exact
+transport. That carrier is transient machinery, not a second synchronized
+state model or a public type.
+
+JavaScript-value ingress accepts only:
+
+- primitive strings, booleans, `null`, and finite primitive numbers;
+- ordinary objects whose prototype is exactly `Object.prototype` or `null`;
+- dense ordinary arrays whose prototype is exactly `Array.prototype`.
+
+Objects must contain only enumerable own string-keyed data properties.
+Accessors, nonenumerable properties, symbol keys, custom prototypes, class
+instances, boxed primitives, and exotic built-ins are rejected. Arrays may
+contain only a data property for every index plus their built-in `length`; holes,
+explicit `undefined`, accessor indexes, symbol keys, and extra named properties
+are rejected. Cycles reject. Repeated acyclic references are copied
+structurally, so reference identity is not part of projected-value semantics.
+Caller mutation after admission cannot affect the candidate or committed state.
+
+Ordinary accessors are rejected from their descriptors without calling their
+getter or setter. Arbitrary proxies are unsupported: JavaScript has no reliable
+general proxy detector, and reflective admission may execute proxy traps.
+Callers must not rely on acceptance, rejection, trap count, or side-effect-free
+inspection of a proxy.
+
+`__proto__`, `constructor`, and `prototype` are ordinary own data keys. Public
+objects are freshly materialized with `Object.prototype`, and their properties
+are defined rather than assigned, so those names cannot alter the result's
+prototype. Every nested object and array is detached from the graph and from
+other public materializations.
+
+Canonical object-property order is explicit in the graph and private carrier.
+Object-handle `keys()`, `values()`, and `entries()` read that order directly;
+`root()` exposes it through a detached canonical graph. A public plain-object
+snapshot follows JavaScript's own-key enumeration rules, which reorder
+integer-index keys. It is therefore not an exact ordered persistence format,
+and re-ingressing it may adopt that JavaScript-visible integer-key order.
+
 ### Documents
 
 `fromTrustedHtml(string)` and `fromUntrustedHtml(string)` are public and return
@@ -103,10 +145,14 @@ stable path handle, even if the path is currently missing; `handle.snap()` then
 returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object
 handle `hasKey`, schema `has`, or a proxy handle as appropriate.
 
-`capture()` returns a detached value coupled to the exact revision. `restore`
-atomically installs a capture and its revision without publishing an ordinary
-commit. `apply({ prevRev, value })` and `replay({ prevRev, ops })` require exact
-revision continuity.
+`capture()` returns a detached compatibility `value`, its exact revision, and a
+versioned structural-JSON envelope (`format`, `formatVersion`, `payload`). The
+payload preserves ordered object entries and `-0`; the plain JavaScript `value`
+does not preserve arbitrary integer-key order. `restore`, `apply`, and `replay`
+prefer exact fields whenever any exact transport field is present. Malformed or
+unsupported exact data rejects and never falls back to the compatibility value.
+Legacy value/op-only inputs remain readable but are lossy; no release is
+currently assigned for their removal.
 
 ## Core projected writes
 
@@ -292,6 +338,13 @@ Builder tokens:
 them. `readonly` rejects writes overlapping the rule. Tuple indexes are bounded.
 `refine` runs custom validation after its base succeeds.
 
+Schema values use the same admission domain as mutations. `optional` means the
+property may be missing; a present property whose value is `undefined` is
+invalid. Literal values are admitted and detached when the schema is defined,
+then compared using ordered SameValue semantics. Refinement callbacks receive
+fresh detached JavaScript materializations, so mutating one callback's input
+cannot alter the candidate or another refinement.
+
 Schema objects expose `validate(value)`, `rules`, `match(path)`,
 `resolve(path)`, `has(path)`, and throwing `must.*` inspection. Attached maps
 mirror lookup through `map.schema`; `get()` returns the attached schema.
@@ -316,7 +369,8 @@ stop();
 - `map.sub(listener)`: root snapshot after each changed publication.
 - `map.sub.diff(listener)`: `(next, prev)` root snapshots.
 - `map.sub.sel(selector, listener, { equal? })`: selected next/previous values
-  plus current root; default equality is JSON structural equality.
+  plus current root; selector results use their separate `Object.is` default or
+  the supplied comparator, not projected-value equality.
 - `map.sub.path(path, listener, { equal? })`: path next/previous plus feed event.
 
 Registration does **not** call listeners immediately; obtain initial state with
@@ -324,6 +378,10 @@ Registration does **not** call listeners immediately; obtain initial state with
 while `make_livemap_store_api` exposes `snapshot`). Values are detached clones.
 Disposers are idempotent. One batch produces at most one subscriber publication.
 Link-applied writes use normal commits and therefore notify target subscribers.
+Feeds, path subscriptions, links, stores, and applicable LiveHost routes carry
+exact projected carriers or versioned payloads internally; callbacks receive
+detached JavaScript materializations. A rejected link write is atomic for the
+target, but source and target are not one distributed transaction.
 
 ## Proxy API
 

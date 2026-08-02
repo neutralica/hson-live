@@ -94,6 +94,15 @@ persisted QUIDs are rejected before mutation. Complete-map `view-state`
 snapshots remain separate because they also own exact mode and revision and
 support empty-fragment restoration.
 
+Projected-data routes use LiveMap's separate versioned `structural-json`
+payload. Feeds, sync delivery, canonical history, resume, links, and recovery
+preserve that exact payload internally, including semantic object order and
+`-0`; public callback/message value fields remain detached JavaScript
+compatibility projections. Exact fields take precedence over legacy values,
+and malformed exact data is never retried as legacy input. Legacy value/op-only
+readers remain for compatibility but are lossy, with no removal release
+currently assigned.
+
 ## `create_livehost(options?)`
 
 **Stable for data hosts; experimental for document/exclusive modes.**

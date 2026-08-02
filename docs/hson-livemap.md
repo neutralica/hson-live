@@ -71,6 +71,28 @@ This separation is fundamental for data maps:
 
 The projected reader converts the current node payload into detached JSON values. `root()` likewise returns a detached structural clone of the canonical graph. Only `debug.node(path)` exposes intentionally live graph access.
 
+For projected-data maps, the HSON graph remains the sole authoritative state.
+LiveMap uses a private immutable ordered carrier only while admitting values,
+planning and comparing mutations, validating schemas, and encoding exact
+transport. It does not keep a synchronized JavaScript-object shadow of the
+graph.
+
+JavaScript ingress accepts strings, booleans, `null`, finite primitive numbers,
+plain or null-prototype objects, and dense ordinary arrays. Own properties must
+be enumerable string-keyed data properties. Accessors, symbols, nonenumerable
+properties, custom prototypes, boxed values, exotic built-ins, sparse arrays,
+explicit `undefined`, cycles, and array extras reject. Repeated acyclic
+references are copied structurally. Ordinary accessors reject without executing
+their getter or setter. Proxies are unsupported and reflective admission may
+execute traps because JavaScript provides no reliable general proxy detector.
+
+Dangerous names such as `__proto__`, `constructor`, and `prototype` remain own
+data. Public reads are fresh ordinary JavaScript objects and arrays; they cannot
+mutate the graph or another read. Canonical and object-helper ordered reads
+preserve graph order, while a plain object snapshot necessarily follows
+JavaScript integer-key enumeration. Such a snapshot is not exact ordered
+persistence, and re-ingress may adopt that observable order.
+
 Document roots are now classified separately as `element` or `fragment` and do not expose the projected data surface. Their `element` or `fragment` capability returns detached canonical nodes/content, and their revision-coupled capture is discriminated by `kind: "hson-document"` and `version: 2`. Version-1 captures reject explicitly as unsupported. Document maps now support same-mode `install(capture)` plus three local incremental canonical operations. The capability syntax follows LiveTree/LiveMap namespaces: `element.attrs.set(...)`, `element.attrs.drop(...)`, and `element.content.replace(...)`, with equivalent `fragment` capabilities. There are no `setAttrs`-style methods. Graph replay, document batching/subscriptions, and LiveTree projection remain future work.
 
 ---
@@ -170,7 +192,11 @@ Public operations are `set`, `replace`, `delete`, and `splice`. Each records its
 
 One method call can produce several operations. Object-valued `set`, `setMany`, `batch`, and replay are the common examples. A feed subscriber is still called at most once for that commit and receives all matching operations.
 
-Structural JSON equality determines whether a write changed state. Object key insertion order is ignored by Core equality; array order remains significant. A no-op commit has no operations and consumes no revision.
+Projected-value equality is ordered and uses JavaScript SameValue semantics.
+Object-property order and array order are semantic, and `0` differs from `-0`.
+Missing and present values are distinct. Selector-result comparison remains a
+separate `Object.is` or caller-supplied-comparator contract. A no-op commit has
+no operations and consumes no revision.
 
 Commits are data-shaped for replay and transport. They do not contain map, handle, Proxy, DOM, or LiveTree objects.
 
@@ -187,7 +213,16 @@ no-op commit:   rev = prevRev
 
 Normal construction establishes initial state at revision 0 without producing an instantiation commit. Revision therefore counts committed transitions on the current map instance rather than construction steps.
 
-On data maps, `capture()` returns the projected root and its revision. `apply()` performs a conditional root replacement only when its `prevRev` still matches the map. `replay()` conditionally re-applies normalized operation records and verifies both their declared previous values and computed next values before mutation.
+On data maps, `capture()` returns a detached compatibility projection, the
+revision, and an exact versioned structural-JSON payload. The exact payload
+preserves property order, dangerous keys, and negative zero without crossing a
+plain-object intermediary. `apply()` performs a conditional root replacement
+only when its `prevRev` still matches the map. `replay()` conditionally
+re-applies normalized operation records and verifies both their declared
+previous values and computed next values before mutation. Exact fields take
+precedence; malformed exact data rejects without falling back to a legacy
+value/op shape. Legacy shapes remain readable but lossy, with no removal release
+currently assigned.
 
 These operations form the implemented local foundation for LiveHost:
 

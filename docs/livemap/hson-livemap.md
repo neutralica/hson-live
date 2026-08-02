@@ -220,9 +220,10 @@ One method call can produce several operations. Object-valued `set`,
 `setMany`, `batch`, and replay are the common examples. A feed subscriber is
 still called at most once for that commit and receives all matching operations.
 
-Structural JSON equality determines whether a write changed state. Object key
-insertion order is ignored by Core equality; array order remains significant.
-A no-op commit has no operations and consumes no revision.
+Projected-value equality is ordered and uses JavaScript SameValue semantics.
+Object-property order and array order are semantic, and `0` differs from `-0`.
+Selector-result comparison remains a separate `Object.is` or caller-supplied
+comparator contract. A no-op commit has no operations and consumes no revision.
 
 Commits are data-shaped for replay and transport. They do not contain map,
 handle, Proxy, DOM, or LiveTree objects.
@@ -242,10 +243,15 @@ Normal construction establishes initial state at revision 0 without producing
 an instantiation commit. Revision therefore counts committed transitions on the
 current map instance rather than construction steps.
 
-On data maps, `capture()` returns the projected root and its revision. `apply()` performs a
-conditional root replacement only when its `prevRev` still matches the map.
-`replay()` conditionally re-applies normalized operation records and verifies
-both their declared previous values and computed next values before mutation.
+On data maps, `capture()` returns the projected root, its revision, and an exact
+versioned structural-JSON payload. The exact payload preserves ordered entries,
+dangerous keys, and negative zero; the public plain-object value is a detached
+compatibility view. `apply()` performs a conditional root replacement only when
+its `prevRev` still matches the map. `replay()` conditionally re-applies
+normalized operation records and verifies both their declared previous values
+and computed next values before mutation. Exact fields take precedence, and
+malformed exact data never falls back to legacy value/op shapes. Legacy shapes
+remain readable but lossy, with no removal release currently assigned.
 
 These operations form the implemented local foundation for LiveHost:
 

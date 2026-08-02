@@ -22,6 +22,7 @@ import { LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, Li
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
+  optional_ordered_projected_value_equal,
   ordered_projected_value_equal,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
@@ -1001,7 +1002,7 @@ function must_replay_value(
   expected: OrderedProjectedValue | undefined,
   actual: OrderedProjectedValue | undefined,
 ): void {
-  if (optional_projected_values_equal(expected, actual)) return;
+  if (optional_ordered_projected_value_equal(expected, actual)) return;
 
   throw new LiveMapReplayError(
     path,
@@ -1294,7 +1295,7 @@ function plan_write_ops(
     if (op.kind === "set") {
       const prev = ordered_projected_value_at(candidate, op.path);
       candidate = ordered_projected_value_set(candidate, op.path, op.value);
-      if (optional_projected_values_equal(prev, op.value)) continue;
+      if (optional_ordered_projected_value_equal(prev, op.value)) continue;
 
       transportOps.push(Object.freeze({
         kind: "set",
@@ -1358,7 +1359,7 @@ function plan_constructive_set_write_op(
     const childPath = append_live_path(op.path, key);
     const prev = ordered_projected_value_at(candidate, childPath);
     candidate = ordered_projected_value_set(candidate, childPath, value);
-    if (optional_projected_values_equal(prev, value)) continue;
+    if (optional_ordered_projected_value_equal(prev, value)) continue;
 
     ops.push(Object.freeze({
       kind: "set",
@@ -1444,14 +1445,6 @@ function must_plan_projected_delete(root: OrderedProjectedValue, path: LivePath)
   if (typeof leaf === "number" && Array.isArray(parent)) {
     throw new Error(`LiveMap editor cannot delete array indexes yet: ${format_live_path(path)}`);
   }
-}
-
-function optional_projected_values_equal(
-  left: OrderedProjectedValue | undefined,
-  right: OrderedProjectedValue | undefined,
-): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  return ordered_projected_value_equal(left, right);
 }
 
 /** Compile one already-admitted replay operation into carrier-native planning. */

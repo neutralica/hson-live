@@ -11,6 +11,7 @@ import { clone_node } from "../../core/clone-node.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
+  optional_ordered_projected_value_equal,
   ordered_projected_value_equal,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
@@ -160,7 +161,7 @@ export function set_live_path_from_projected(
   write_child_value(resolved.parent, resolved.key, nextCarrier, path);
 
   return {
-    changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
+    changed: !optional_ordered_projected_value_equal(prevCarrier, nextCarrier),
     prev: prevCarrier,
     next: nextCarrier,
   };
@@ -229,7 +230,7 @@ export function replace_live_root_from_projected(
   overwrite_hson_node(root, nextRoot);
 
   return {
-    changed: !optional_projected_values_equal(prevCarrier, nextCarrier),
+    changed: !optional_ordered_projected_value_equal(prevCarrier, nextCarrier),
     prev: prevCarrier,
     next: nextCarrier,
   };
@@ -304,7 +305,7 @@ function write_child_value(parent: HsonNode, key: LivePathPart, value: OrderedPr
  * needing list insertion semantics.
  */
 function write_object_property(parent: HsonNode, key: string, value: OrderedProjectedValue): void {
-  const nextWrapper = make_object_property_wrapper(key, value);
+  const nextWrapper = projected_object_property_to_hson_node(key, value);
   const existingIndex = parent.$_content.findIndex((child) => is_Node(child) && child.$_tag === key);
 
   if (existingIndex === -1) {
@@ -330,7 +331,7 @@ function write_array_index(parent: HsonNode, index: number, value: OrderedProjec
     throw new Error(`LiveMap editor cannot append or insert array indexes yet: ${format_live_path(path)}`);
   }
 
-  parent.$_content[index] = make_array_item_wrapper(index, value);
+  parent.$_content[index] = projected_array_item_to_hson_node(index, value);
 }
 
 /**
@@ -532,40 +533,6 @@ function array_node_to_value(node: HsonNode): JsonValue[] {
   }
 
   return values;
-}
-
-/**
- * Create the user-key wrapper for an object property.
- *
- * The wrapper tag is the object key. Its first child is the HSON value node that
- * represents the assigned JSON value.
- */
-function make_object_property_wrapper(key: string, value: OrderedProjectedValue): HsonNode {
-  return projected_object_property_to_hson_node(
-    key,
-    value,
-  );
-}
-
-/**
- * Create the `_hson_ii` wrapper for an array item.
- *
- * The item index is stored in `index`, matching the canonical HSON array
- * representation used by the parser/serializer pipeline.
- */
-function make_array_item_wrapper(index: number, value: OrderedProjectedValue): HsonNode {
-  return projected_array_item_to_hson_node(
-    index,
-    value,
-  );
-}
-
-function optional_projected_values_equal(
-  left: OrderedProjectedValue | undefined,
-  right: OrderedProjectedValue | undefined,
-): boolean {
-  if (left === undefined || right === undefined) return left === right;
-  return ordered_projected_value_equal(left, right);
 }
 
 function materialize_projected_edit(edit: LiveMapProjectedEditResult): LiveMapEditResult {

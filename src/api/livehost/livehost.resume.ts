@@ -3,6 +3,8 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapStructuralJsonEnvelope, LivePath } from "../../types/livemap.types.js";
 import type { LiveHostSeq, LiveHostServerSyncMessage } from "../../types/livehost.types.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 
 export type LiveHostResumeEntry = Readonly<{
   seq: LiveHostSeq;
@@ -21,8 +23,10 @@ export type LiveHostResumeLogOptions = Readonly<{
   maxEntries?: number;
 }>;
 
-function clone_json_value<TValue>(value: TValue): TValue {
-  return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
+function clone_projected_value(value: JsonValue | undefined): JsonValue | undefined {
+  return value === undefined
+    ? undefined
+    : materialize_projected_value(admit_projected_value(value));
 }
 
 function clone_live_path(path: LivePath): LivePath {
@@ -33,7 +37,7 @@ function clone_entry(entry: LiveHostResumeEntry): LiveHostResumeEntry {
   return Object.freeze({
     seq: entry.seq,
     path: clone_live_path(entry.path),
-    value: clone_json_value(entry.value),
+    value: clone_projected_value(entry.value),
     ...transport_fields(entry),
   });
 }
@@ -43,7 +47,7 @@ function sync_message_from_entry(entry: LiveHostResumeEntry): LiveHostServerSync
     type: "sync",
     seq: entry.seq,
     path: clone_live_path(entry.path),
-    value: clone_json_value(entry.value),
+    value: clone_projected_value(entry.value),
     ...transport_fields(entry),
   };
 }
@@ -58,7 +62,7 @@ export function make_livehost_resume_log(options: LiveHostResumeLogOptions = {})
     entries.push(Object.freeze({
       seq: message.seq,
       path: clone_live_path(message.path),
-      value: clone_json_value(message.value),
+      value: clone_projected_value(message.value),
       ...transport_fields(message),
     }));
 

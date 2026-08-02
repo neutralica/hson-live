@@ -4,7 +4,6 @@ import { $RENDER } from "../../../core/constants.js";
 import { make_string } from "../../../core/stringify.js";
 import { serialize_hson } from "../serializers/serialize-hson.js";
 import { serialize_json } from "../serializers/serialize-json.js";
-import type { JsonValue } from "../../../core/types.js";
 import type {
   TransformFrameRender,
   TransformHsonSerialize,
@@ -14,15 +13,8 @@ import type {
 } from "../transform.types.js";
 import { ROOT_TAG } from "../../../core/constants.js";
 import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
-
-function clone_json_value(value: JsonValue): JsonValue {
-  if (Array.isArray(value)) return value.map(clone_json_value);
-  if (typeof value !== "object" || value === null) return value;
-
-  const clone: Record<string, JsonValue> = {};
-  for (const [key, child] of Object.entries(value)) clone[key] = clone_json_value(child);
-  return clone;
-}
+import { admit_projected_value } from "../../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../../core/projected-value-materialization.js";
 
 /**
  * HSON pipeline, stage 4: finalize the selected output.
@@ -99,7 +91,7 @@ export function construct_json_render_4(
       if (context.frame.json === undefined) {
         throw new Error("value(): frame is missing JSON data");
       }
-      return clone_json_value(context.frame.json);
+      return materialize_projected_value(admit_projected_value(context.frame.json));
     },
   };
 }

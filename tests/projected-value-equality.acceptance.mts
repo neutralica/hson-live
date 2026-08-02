@@ -6,10 +6,10 @@ import { admit_projected_value } from "../src/core/projected-value-admission.ts"
 import {
   ordered_projected_array,
   ordered_projected_object,
+  optional_ordered_projected_value_equal,
   ordered_projected_value_equal,
   type OrderedProjectedValue,
 } from "../src/core/ordered-projected-value.ts";
-import { json_values_equal } from "../src/api/livemap/livemap-helpers.ts";
 
 let checks = 0;
 
@@ -130,9 +130,12 @@ check("empty carriers remain distinct across domains", () => {
 });
 
 check("absent projected values differ from every present value", () => {
-  assert.equal(json_values_equal(undefined, undefined), true);
+  assert.equal(optional_ordered_projected_value_equal(undefined, undefined), true);
   for (const present of [null, "", 0, -0, [], {}] as const) {
-    assert.equal(json_values_equal(undefined, present), false);
+    assert.equal(optional_ordered_projected_value_equal(
+      undefined,
+      admit_projected_value(present),
+    ), false);
   }
 });
 

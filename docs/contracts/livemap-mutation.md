@@ -15,6 +15,21 @@ A projected mutation:
 6. emits one normalized commit;
 7. advances the map revision only when state changed.
 A mutation either commits completely or has no observable effect.
+
+The canonical HSON graph is authoritative. An immutable ordered projected-value
+carrier is private transient machinery used for admission, planning, equality,
+schema validation, propagation, and exact transport; it is not stored as a
+second synchronized state model.
+
+JavaScript values enter through one descriptor-aware snapshot pass. Supported
+values are strings, booleans, `null`, finite primitive numbers, ordinary plain
+or null-prototype objects, and dense ordinary arrays. Objects admit only
+enumerable own string-keyed data properties. Arrays admit only a data property
+for every index and their built-in `length`. Accessors, symbol/nonenumerable
+properties, custom prototypes, boxed or exotic values, holes, explicit
+`undefined`, array extras, and cycles reject. Repeated acyclic references copy
+structurally. Arbitrary proxies are unsupported and reflective inspection may
+execute traps.
 ## Mutation domain
 Projected mutations include:
 - `set`
@@ -142,14 +157,24 @@ A multi-operation batch or replay advances the revision once.
 
 capture
 
-capture() returns detached projected state with the revision at which it was observed.
+capture() returns detached projected state, exact structural transport, and the
+revision at which it was observed.
 
 type LiveMapCapture<TValue> = Readonly<{
   rev: number;
   value: TValue;
+  format: "structural-json";
+  formatVersion: 1;
+  payload: string;
 }>;
 
 A capture must remain stable after later map mutations.
+
+`value` is a compatibility JavaScript projection. `payload` is the exact
+ordered representation and preserves `-0`. Any presence of exact transport
+fields selects exact decoding; malformed exact data rejects and never falls
+back to `value`. Legacy `{ rev, value }` captures remain readable but are lossy,
+and no removal release is currently assigned.
 
 A capture is observed state. It is not itself a mutation request.
 
@@ -203,18 +228,17 @@ Replay is atomic across all operations.
 
 Equality
 
-Projected JSON equality is structural.
+Generic projected equality is ordered structural SameValue equality.
 
-Object key insertion order is not semantically meaningful.
+Object-property order and array order are semantic. Existing object properties
+retain their position, new properties append in admitted order, and complete
+replacement adopts the admitted order. `0` and `-0` are different. Missing is
+different from every present value. Equality never normalizes or repairs a
+candidate while comparing it.
 
-These values are equal:
-
-{ a: 1, b: 2 }
-{ b: 2, a: 1 }
-
-Array order is meaningful.
-
-Primitive equality follows JSON value semantics.
+Detached plain JavaScript objects follow the host language's integer-key
+enumeration order. They are not used to reconstruct exact canonical order;
+exact capture/replay uses the structural payload instead.
 
 Defensive copying
 
@@ -225,6 +249,11 @@ Mutating an input path, object, array, prev, next, removed, or inserted value af
 * committed state;
 * stored operation records;
 * later feed events.
+
+Projected public objects are fresh ordinary objects built with own data
+properties, including `__proto__`, `constructor`, and `prototype`. Mutating a
+public result cannot alter canonical state, commits, later reads, or another
+listener result.
 
 Schema behavior
 
@@ -238,6 +267,11 @@ Schema failure:
 * leaves the map unchanged.
 
 Schema concerns shape and validity. It does not redefine mutation semantics.
+
+Schema validates the same admitted projected-value domain. Optional means a
+property may be missing; a present `undefined` value is invalid. Schema literals
+are detached at definition and compared with ordered SameValue equality. Custom
+refinements intentionally execute on fresh detached public materializations.
 
 Feed behavior
 

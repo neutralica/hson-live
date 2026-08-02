@@ -91,9 +91,10 @@ type CommitEnvelope = Readonly<{
 
 A changed commit advances the authoritative revision once. Clients apply commits in order; duplicates do not create duplicate changes; a gap or stale base triggers replay or snapshot recovery.
 
-This is contract direction, supported locally by LiveMap's commit, capture, apply, and replay operations. The current LiveHost wire path instead sends complete values for subscribed paths after a successful action. It also defines a patch message type, but the host does not emit patches and the client does not apply their operations yet.
-
-The completed design should make the LiveMap revision the state-ordering fact. Request IDs, action acknowledgments, session sequence numbers, and transport frame order may still exist, but none should be silently substituted for the canonical state revision.
+LiveHost now retains and publishes canonical commits keyed by LiveMap revision.
+Request IDs, action acknowledgments, legacy session sequence numbers, and
+transport frame order remain separate facts and are not substituted for the
+canonical revision.
 
 ---
 
@@ -110,22 +111,27 @@ type LiveHostSnapshotEnvelope = Readonly<{
 }>;
 ```
 
-The host obtains a projected `JsonValue` from the atomic LiveMap capture and serializes it as canonical compact HSON. The client parses that HSON, projects it back to `JsonValue`, constructs and schema-validates a staged LiveMap, and only then replaces the active mirror. Malformed HSON is an invalid recovery snapshot. Commit and replay operation payloads remain in their existing format.
+The host obtains one atomic LiveMap capture and serializes a recovery snapshot
+at that exact revision. Projected commits and sync/resume routes retain
+LiveMap's exact versioned `structural-json` payload internally; detached
+JavaScript value fields are compatibility views. Document graph content uses
+its separate versioned HSON codec. A client stages, validates, and installs a
+snapshot before replacing its active mirror. Malformed snapshot or exact
+projected payload data is invalid and never falls back to a legacy view.
 
 This encoding does not make recovery graph-native: it transports projected JSON-compatible state and does not preserve the authoritative source graph's QUID identity.
 
 A reconnecting client can present its last confirmed revision. If the host still retains every later commit, it can replay them in order. If history is unavailable, the host sends a current snapshot. Snapshot replacement remains the source-of-truth fallback rather than an exceptional failure.
 
-The current implementation contains a bounded in-memory log of `sync` messages and accepts `lastSeq` during hello. It always sends a current snapshot and may then replay retained sync deliveries. This is useful scaffolding, not yet the completed revision-resume algorithm: the log stores delivered path values, can contain duplicate entries for different sessions, and is not a canonical commit log.
+The implementation has both bounded canonical commit history for
+revision-based recovery and a legacy bounded `sync` resume log keyed by session
+sequence. Exact projected payload fields pass through the legacy log unchanged;
+its public JavaScript values remain lossy compatibility fields. Canonical
+recovery chooses current, ordered replay, snapshot, or rejection, detects gaps
+and revisions ahead of authority, and installs snapshots atomically.
 
-Roadmap work includes:
-
-- retained ordered commit envelopes;
-- explicit replay-available and snapshot-required responses;
-- duplicate and gap detection on clients;
-- durable or pluggable retention where applications require it;
-- protocol/schema compatibility checks; and
-- tested resumption without state regression.
+Durable retention remains an explicit persistence policy rather than a property
+of the in-memory history or legacy resume log.
 
 ---
 
