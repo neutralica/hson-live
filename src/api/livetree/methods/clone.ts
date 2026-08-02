@@ -61,7 +61,7 @@ function clone_branch_with_quids(
   runtime: LiveTreeRuntime,
   opts?: CloneOpts,
 ): { root: HsonNode; quidMap: QuidMap } {
-  // Reject invalid or duplicate persisted identity before cloning or
+  // Reject invalid or duplicate supplied QUID metadata before cloning or
   // registering any node.
   scan_hson_node_quids(srcRoot);
 

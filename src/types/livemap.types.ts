@@ -285,7 +285,7 @@ export type LiveMap<TValue = JsonValue | undefined> = Readonly<
   }
 >;
 
-/** Detached, revision-coupled canonical capture for a document LiveMap. */
+/** Detached exact canonical capture, including admitted QUID metadata. */
 export type DocumentLiveMapCapture<
   TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
 > = Readonly<{
@@ -304,7 +304,7 @@ export type DocumentLiveMapInstallOptions = Readonly<{
 /** Numeric traversal through canonical document `$_content` arrays. */
 export type LiveMapDocumentPath = readonly number[];
 
-/** One unambiguous canonical-document addressing mode. */
+/** Current document request target; QUID lookup is epoch-scoped, while paths remain the planned durable authority. */
 export type LiveMapDocumentTarget =
   | Readonly<{ kind: "path"; path: LiveMapDocumentPath }>
   | Readonly<{ kind: "quid"; quid: string }>;
@@ -399,7 +399,7 @@ export type LiveMapDocumentApi = Readonly<{
   root: () => HsonNode;
   /** Return detached top-level document content in canonical order. */
   content: DocumentLiveMapContentApi;
-  /** Resolve persisted document identity to a detached element clone. */
+  /** Resolve a QUID in the current owned graph to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
   /** Canonical ordinary-attribute mutation namespace. */
   attrs: DocumentLiveMapAttrsApi;

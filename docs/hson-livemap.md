@@ -384,7 +384,7 @@ These identifiers must never be silently substituted for one another. A future i
 - Feed listener exceptions are not isolated. State and revision have already committed when listeners run, and a thrown listener can escape the mutation call and interrupt delivery to later listeners.
 - The lower-level `link_livemap` implementation does not currently propagate a standalone semantic `splice` operation; handle-level `linkTo` forwards the resulting scoped value.
 - Schema `readonly` is descriptive today, not enforced write protection.
-- Experimental QUID helpers track object owners, not persistent graph identity across snapshots or processes.
+- QUID metadata may persist through controlled exact snapshots and processes, but serialized QUID bytes alone do not prove membership in the current live epoch.
 
 
 ---

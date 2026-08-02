@@ -4,7 +4,7 @@ import {
 } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 
-/** Per-map persisted identity index for ordinary document elements. */
+/** Per-map QUID index for ordinary elements in the current owned graph. */
 export type LiveMapDocumentIdentityIndex = ReadonlyMap<string, HsonNode>;
 
 export class LiveMapDocumentIdentityError extends Error {

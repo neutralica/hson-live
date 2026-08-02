@@ -199,13 +199,14 @@ class StyleDocument {
   }
 }
 
-check("the same supplied QUID is legal in independent runtimes", () => {
+check("serialized QUID bytes are runtime-local routing data, not global authority", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const leftNode = node("main", SAME_QUID);
   const rightNode = node("main", SAME_QUID);
   runtimeTree(left, leftNode);
   runtimeTree(right, rightNode);
+  assert.notEqual(leftNode, rightNode);
   assert.equal(_lookup_livetree_runtime_test_node(left, SAME_QUID), leftNode);
   assert.equal(_lookup_livetree_runtime_test_node(right, SAME_QUID), rightNode);
 });
@@ -216,13 +217,22 @@ check("duplicate supplied QUID admission is atomic within one runtime", () => {
   const before = _livetree_runtime_test_claim_count(runtime);
   assert.throws(() => runtimeTree(runtime, node("aside", SAME_QUID)), /Duplicate QUID/);
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
+  const duplicateGraph = node("section");
+  duplicateGraph.$_content.push(
+    node("span", "0000000000000rt3"),
+    node("em", "0000000000000rt3"),
+  );
+  assert.throws(() => runtimeTree(runtime, duplicateGraph), /Duplicate QUID/);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), before);
 });
 
 check("lookup never crosses runtime boundaries", () => {
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const tree = runtimeTree(left, node());
-  assert.equal(_lookup_livetree_runtime_test_node(left, tree.quid), tree.node);
+  const exactNode = tree.node;
+  assert.equal(_lookup_livetree_runtime_test_node(left, tree.quid), exactNode);
+  assert.equal(tree.node, exactNode);
   assert.equal(_lookup_livetree_runtime_test_node(right, tree.quid), undefined);
 });
 
@@ -248,11 +258,15 @@ check("detach retains identity and resources in its runtime", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const parent = runtimeTree(runtime, node());
   const child = runtimeTree(runtime, node("section", SAME_QUID));
+  const exactNode = child.node;
+  const exactQuid = child.quid;
   parent.append(child);
   let cleaned = 0;
   _own_livetree_runtime_test_disposable(runtime, child.quid, () => { cleaned += 1; }, "other");
   assert.equal(child.detach(), 1);
-  assert.equal(_lookup_livetree_runtime_test_node(runtime, child.quid), child.node);
+  assert.equal(child.node, exactNode);
+  assert.equal(child.quid, exactQuid);
+  assert.equal(_lookup_livetree_runtime_test_node(runtime, child.quid), exactNode);
   assert.equal(_livetree_runtime_test_resource_counts(runtime, child.quid).total, 1);
   assert.equal(cleaned, 0);
   parent.append(child);
@@ -482,7 +496,13 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   const rootNode = node("main");
   rootNode.$_content.push(node("span"));
   const root = runtimeTree(runtime, rootNode);
+  const claimsBeforeQuery = _livetree_runtime_test_claim_count(runtime);
   const descendant = root.find.byTag("span");
+  assert.equal(_livetree_runtime_test_claim_count(runtime), claimsBeforeQuery + 1);
+  assert.equal(
+    descendant === undefined ? undefined : _lookup_livetree_runtime_test_node(runtime, descendant.quid),
+    descendant?.node,
+  );
   assert.equal(root.dom.el(), undefined);
   assert.equal(descendant?.dom.el(), undefined);
 
@@ -491,12 +511,16 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   assert.equal(descendant?.dom.el()?.tagName.toLowerCase(), "span");
 
   const appended = runtimeTree(runtime, node("em"));
+  const appendedNode = appended.node;
+  const appendedQuid = appended.quid;
   root.append(appended);
   const batchA = runtimeTree(runtime, node("strong"));
   const batchB = runtimeTree(runtime, node("small"));
   _append_livetree_branches_atomic(root, [batchA, batchB]);
   appended.detach();
   root.append(appended);
+  assert.equal(appended.node, appendedNode);
+  assert.equal(appended.quid, appendedQuid);
   const clone = appended.cloneBranch();
   root.append(clone);
   assertCleanProjection(rootElement);

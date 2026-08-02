@@ -1,200 +1,121 @@
-// identity.md
+# QUID, path, and revision contract
 
-# Path and Identity Contract
 ## Status
-This document defines the distinction between projected location and persistent graph identity.
-The distinction is fundamental to LiveMap, LiveTree, reconciliation, and LiveHost.
-## Core rule
-A path identifies a location.
-A QUID identifies a graph node.
-These are not interchangeable.
-## Paths
-A `LivePath` describes where a projected value is currently located.
-Examples:
 
-```ts
-["user", "name"]
-["items", 3]
-[]
+This document defines the executable Unit 0 identity contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units may change document operation formats, but they must preserve these rules unless an explicit architectural revision replaces them.
+
+## One QUID concept
+
+HSON Live has one QUID concept. A QUID is an optional opaque identity token used when the live system needs to retain, reconcile, or route an eligible HSON node independently of its current structural path.
+
+A QUID is not:
+
+- application identity;
+- a hidden permanent node UUID;
+- a second document-node identifier;
+- a path or substitute for path semantics;
+- authorization, authentication, a capability, or a security token; or
+- proof that serialized bytes belong to an active live epoch.
+
+Only ordinary elements are currently QUID-eligible. Expanding eligibility, changing the encoding, or defining a retained-identity API is outside Unit 0.
+
+## Canonical graph state and revisions
+
+`$_meta.quid` is canonical graph state. Adding, replacing, or removing it changes the exact canonical graph.
+
+When a LiveMap-owned canonical graph changes only by QUID metadata, that change:
+
+- advances the ordinary LiveMap revision;
+- appears in the ordinary commit stream;
+- may enter history and synchronization;
+- may be captured and persisted; and
+- participates in ordinary stale-base and no-op decisions.
+
+There is no separate `identityGeneration`, silent QUID overlay mutation stream, or QUID-insensitive revision clock. A future registration operation may be path-addressed, but it must use the ordinary canonical revision contract.
+
+## Strict canonical equality
+
+`canonical_hson_graph_equal` and `canonical_hson_graph_difference` remain strict. QUID metadata is significant, and otherwise identical graphs carrying different QUIDs are not exact-equal.
+
+An explicitly named identity-stripping projection may compare or serialize a different purpose-built view. It must not be substituted for strict canonical equality when LiveMap decides whether an owned canonical mutation is a no-op or deserves a revision.
+
+## LiveTree QUID authority
+
+LiveTree is the originating and primary active-identity consumer. One `LiveTreeRuntime` owns its active QUID namespace.
+
+LiveTree preserves these semantics:
+
+- whole-graph admission is preflighted before claims are published;
+- minting checks the owning runtime and retries collisions;
+- handles remain anchored to the exact node, not merely a raw QUID lookup;
+- query materialization may establish identity for the returned exact node;
+- detach and same-runtime movement preserve identity and owned resources;
+- terminal disposal invalidates the node and cleans QUID-owned CSS, events, animation, resources, reflection, and lifecycle state;
+- clones receive fresh identity; and
+- malformed or duplicate active claims reject without partial admission.
+
+LiveTree does not become path-authoritative, and its identity does not depend on LiveMap revisions.
+
+## LiveMap path and QUID roles
+
+A path identifies a structural location in a named graph revision. It is not timeless identity. For ordered commits, each operation is interpreted against the staged graph produced by preceding operations.
+
+LiveMap paths remain the planned durable language for structural operation targets:
+
+```text
+revision + canonical path + operation semantics
+  -> authoritative structural target
+
+QUID
+  -> registration data, current live lookup, continuity aid,
+     or optional stale-intent witness
 ```
 
-A path may continue to exist while the value or graph node at that path changes.
+Current compatibility APIs still permit QUID-targeted document operations and history. Lowering those requests to path-authoritative commits belongs to Unit 1 and later work; Unit 0 does not change their format.
 
-A path may become invalid when:
+`LiveMapPathHandle` follows a projected location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
 
-* an object key is deleted;
-* an array is shortened;
-* a subtree is replaced;
-* the projected shape changes.
+## LiveMap does not mint implicitly
 
-A path does not promise to follow a value after it moves.
+A QUID-free LiveMap is complete and fully functional. LiveMap does not mint merely because a graph is:
 
-Path handles
+- constructed or parsed;
+- traversed or read by path;
+- mutated through ordinary attributes or content operations;
+- moved, deleted, or replaced;
+- captured, installed, restored, or replayed; or
+- installed from a LiveHost-compatible snapshot.
 
-A path-oriented handle follows a location.
+Supplied valid sparse QUID metadata is preserved where exact graph contracts require it. Untouched unquidded nodes remain unquidded. A later explicit retained-identity API may request minting, but no such API is defined here.
 
-For example:
+## Capture, persistence, and provenance
 
-const handle = map.path(["items", 2]);
+Exact capture, view-state encoding, controlled synchronization, recovery, and persistence may preserve QUID metadata. Preservation is useful for continuity inside a controlled application lifecycle and is not forbidden.
 
-The handle refers to the projected location ["items", 2].
+Serialized QUID bytes alone do not prove membership in the current active epoch. Uncontrolled or external re-admission must not infer ownership, authorization, or same-node provenance from the string by itself. Future admission categories may add explicit provenance without creating a second identity system.
 
-If array items move, the handle continues to refer to index 2. It does not automatically follow the item that previously occupied index 2.
+## `noQuid` is identity-stripping
 
-A cached path handle may therefore observe a different node or value after:
+HSON `noQuid` output deliberately removes QUID metadata without mutating the source graph. Reparsing that output produces an identity-stripped graph that is not exact-equal to a QUID-bearing source.
 
-* splice;
-* move;
-* replacement;
-* deletion followed by insertion;
-* root application or replay.
+The projection does not promise to preserve retained handles, active continuity, QUID-backed CSS, events, animation, resources, reflection associations, lifecycle state, or exact canonical graph identity.
 
-This is expected behavior.
+## Mutation boundaries
 
-QUID identity
+Ordinary LiveMap document APIs protect system metadata and currently expose no supported operation that directly adds, replaces, or removes `$_meta.quid`.
 
-A QUID identifies a specific HSON graph node.
+`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-index reconciliation, feeds, or subscriptions. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. A future path-authoritative registration operation belongs at the canonical document mutation/transition seam.
 
-QUID identity may survive location changes when the same physical graph node is moved or reattached without replacement.
+## Required invariants
 
-QUID identity does not survive replacement by a different graph node merely because the projected value is equal.
+Automated acceptance coverage must continue to establish:
 
-A QUID is not a projected path.
-
-Identity-oriented references
-
-A future identity-oriented reference should have semantics distinct from path handles.
-
-Conceptually:
-
-type NodeRef = {
-  readonly quid: string;
-};
-
-An identity reference follows the node associated with the QUID, subject to lifecycle and graph ownership.
-
-It may become detached or invalid when:
-
-* the node is deleted;
-* the node is replaced;
-* its graph is disposed;
-* the reference crosses an unsupported authority boundary.
-
-An identity reference must not silently fall back to the old path when its node disappears.
-
-Replacement
-
-Exact replacement creates a new endpoint value.
-
-Unless implementation explicitly preserves physical node identity, replacement must be treated as identity replacement.
-
-Equal projected data does not imply equal graph identity.
-
-Arrays
-
-Array indices are locations.
-
-They are not item identities.
-
-For keyed reconciliation, item identity must come from an explicit source such as:
-
-* a stable user-provided key;
-* a schema-recognized identity key;
-* a QUID;
-* another declared identity extractor.
-
-Index-based identity is acceptable only when position itself is the intended identity.
-
-Moves
-
-A move and a delete-plus-insert may produce similar projected arrays while having different identity consequences.
-
-Semantic reconciliation may preserve identity across a move.
-
-Snapshot-only reconciliation may be unable to distinguish a move from replacement.
-
-When operation intent is available, reconciliation should prefer it.
-
-Keyed binding
-
-A keyed LiveTree binding must declare how keys are derived.
-
-The binding must not ambiguously combine:
-
-* current path;
-* current array index;
-* QUID;
-* user key.
-
-A key extractor must produce a stable identity within the binding scope.
-
-Duplicate keys are invalid unless the binding explicitly defines otherwise.
-
-Path rebasing
-
-Nested bindings may need to rebase paths after array or object changes.
-
-Rebasing a path changes location tracking. It does not establish identity.
-
-A binding that follows identity must resolve the current path from its identity source rather than assuming its original path remains valid.
-
-Host synchronization
-
-LiveHost messages should transmit paths and operation records where location semantics are intended.
-
-QUIDs may be transmitted when graph identity is part of the protocol.
-
-A client must not assume that a local QUID is globally meaningful unless the host contract explicitly establishes shared QUID identity.
-
-The authority determines whether QUIDs are:
-
-* session-local;
-* graph-global;
-* stable across snapshots;
-* stable across persistence;
-* transport-visible.
-
-Snapshots and identity
-
-A snapshot represents projected value state.
-
-A projected JSON snapshot does not necessarily preserve graph identity.
-
-Applying or resynchronizing from a snapshot may recreate graph nodes with new QUIDs.
-
-Any guarantee that identity survives snapshot replacement must be explicit and tested.
-
-Handle invalidation
-
-Handles and references must define their invalidation behavior.
-
-A path handle may remain valid as a location handle even when its previous value is gone.
-
-A QUID reference should report that its node is absent or detached.
-
-Neither should silently reinterpret itself as the other.
-
-Non-goals
-
-This contract does not yet define:
-
-* persistent database identity;
-* cross-process QUID allocation;
-* identity migration across schema versions;
-* automatic item-key inference;
-* weak-reference or garbage-collection behavior;
-* peer-generated global identifiers.
-
-Required invariants
-
-Tests must continue to prove:
-
-* path handles follow locations;
-* identity references follow nodes;
-* replacement does not accidentally preserve identity;
-* moves preserve identity only when promised;
-* duplicate keyed identities are handled deterministically;
-* snapshot resynchronization states its identity consequences;
-* disposal invalidates identity-bound resources predictably.
-
----
+1. QUID metadata is strict canonical graph state.
+2. A QUID-only LiveMap canonical change is revision-worthy.
+3. No second identity clock or permanent hidden node ID exists.
+4. A QUID-free LiveMap remains functional and ordinary behavior never implicitly mints.
+5. Controlled exact capture and persistence may preserve QUIDs.
+6. `noQuid` explicitly abandons exact identity continuity.
+7. Serialized QUID bytes alone establish neither provenance nor authority.
+8. LiveTree remains QUID-authoritative for active exact-node identity.
+9. LiveMap paths remain the planned authoritative target for durable structural operations.

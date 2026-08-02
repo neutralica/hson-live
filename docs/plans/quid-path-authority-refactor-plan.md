@@ -1,8 +1,10 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: concrete read-only plan; no implementation is included.
+Status: Unit 0 contract decision recorded; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
+
+Unit 0 settles one additional point that supersedes the earlier draft below: QUID metadata is canonical graph state. A QUID-only mutation of a LiveMap-owned graph uses the ordinary LiveMap revision and commit stream. No `identityGeneration` is introduced, and strict canonical equality remains QUID-sensitive. Later units may derive sparse lookup updates from accepted canonical commits, but they must not create a silent identity mutation stream or allow same-revision canonical graphs to differ only by QUID metadata.
 
 ## Inspection baseline
 
@@ -126,12 +128,9 @@ Application identity is user-owned data: schema keys, object keys, an HTML `id`,
 
 An identity epoch is the lifetime during which one owner promises that a QUID claim denotes the same live node. A raw serialized QUID is not epoch provenance. Same-epoch transfer needs an out-of-band, non-node provenance token or an internal exact-object handoff. The token is not application identity and must not authorize an operation.
 
-Durable structure and exact live state also need distinct equality concepts:
+Canonical graph equality is exact and includes QUID metadata. Adding, replacing, or removing a QUID changes the canonical graph and is revision-worthy when the graph is LiveMap-owned. `canonical_hson_graph_equal` and `canonical_hson_graph_difference` remain the strict authorities for ordinary LiveMap no-op and stale-base decisions.
 
-- **structural equality** ignores QUID-only annotation differences and governs durable revision/no-op decisions;
-- **same-epoch exact equality** includes QUID annotations and overlay agreement.
-
-Today canonical equality treats QUID metadata as structural, so separating these equality domains is an architectural prerequisite, not documentation-only cleanup.
+An explicitly named projection such as HSON `noQuid` may remove QUID metadata for a particular serialization purpose. That projection is not a second broadly applicable comparator, is not exact-equal to its QUID-bearing source, and does not redefine ordinary revision semantics.
 
 ## 3. Durable QUID dependency inventory
 
@@ -238,7 +237,7 @@ The following is the desired final semantic matrix. “Supplied” means QUID me
 | move content | Preserve moved subtree and descendants | Reparent/reindex moved prefix and shift intervening siblings | N/A | Same live node moves. |
 | whole-root install | Retire prior overlay unless explicitly same-epoch convergence | Rebuild all active paths | Category policy: adopt, strip, or rekey | Ordinary install is replacement; same-epoch capture may reconcile. |
 | snapshot restore | Same as root install, but exact revision is installed | Rebuild | Same-epoch token may preserve; durable/external restore cannot assume it | Structural restore works without old identities. |
-| QUID ensure/request | Add identity to one eligible existing node | No structural path change | Mint through owning live namespace and reject collision | Identity-only live transition; does not claim application-state change. |
+| QUID ensure/request | Add canonical identity metadata to one eligible existing node | No structural path change | Mint through owning live namespace and reject collision | Canonical registration transition; advances the ordinary revision and commit stream. |
 | terminal identity retirement | Remove overlay claim and active metadata | No structural path change unless paired with deletion | Never reuse during that epoch if final allocator policy requires it | Invalidates identity handles and ownership. |
 
 Identity preservation must follow operation intent and exact live ownership, not canonical equality. Current reflection already embodies the correct conservative rule for content replacement: it reuses an exact projected node only when both sides have the same QUID and compatible ordinary-element tag ([`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts#L251)).
@@ -256,7 +255,6 @@ type SparseDocumentIdentityOverlay = Readonly<{
   byQuid: ReadonlyMap<string, OverlayEntry>;
   quidAt(path: LiveMapDocumentPath): string | undefined;
   pathFor(quid: string): LiveMapDocumentPath | undefined;
-  identityGeneration: number;
   epoch: LiveIdentityEpoch;
 }>;
 ```
@@ -288,16 +286,11 @@ The current index is sparse in storage but not sufficient: it maps QUID to clone
 
 Replace the index behind the existing controller ownership rather than grow a second side table. The scanner can evolve to collect `(quid,path)` during canonical validation. Storage stays `O(Q)` where `Q` is the number of quidded nodes; initial validation may remain `O(N)` because the graph itself must be validated, but no per-node identity object may be retained for the `N-Q` unquidded nodes.
 
-### Identity-only changes
+### QUID metadata changes
 
-Explicit QUID ensure/retire operations change live metadata but should not become durable structural commands. Introduce an ephemeral `identityGeneration` and distinguish structural equality from exact live-state equality. An identity transaction updates the node annotation, overlay, and generation atomically, publishes a derived identity delta, and does not advance the durable structural revision. A same-epoch capture reads root, overlay, revision, and identity generation under one synchronous cut.
+Explicit QUID ensure, replacement, or retirement changes canonical graph metadata. For a LiveMap-owned graph, that transition advances the ordinary revision, publishes through the ordinary commit stream, may enter history and persistence, and updates any sparse lookup representation atomically with the graph. There is no separate `identityGeneration`, silent overlay mutation, or preferred identity-only delta outside the normal commit stream.
 
-If the implementation cannot make this separation without ambiguous snapshots or observer ordering, stop at Unit 0 and choose explicitly between:
-
-- separate structural and live-identity generations, as recommended; or
-- a path-addressed identity operation that advances revision, accepting that it becomes durable protocol state.
-
-Do not silently let QUID-only metadata changes sometimes advance structural revisions and sometimes not.
+A future path-authoritative registration operation may express that canonical change, but its public shape belongs to a later unit. Unit 0 freezes only the revision semantics: two owned canonical graphs that differ by QUID metadata cannot share a revision as if they were exact-equal.
 
 ## 7. Reconciliation ownership
 
@@ -316,25 +309,25 @@ plan_document_transition(
   root,
   overlay,
   canonicalCommit,
-  identityDelta,
+  identityEffects,
 }
 ```
 
 Production ownership should be a new focused module under `src/api/livemap/`, called by `livemap.document.mutation.ts`, `livemap.document.replay.ts`, document install/restore, and the staged authority in `livemap.core.ts`. LiveHost and reflection must consume its result, never maintain a competing overlay reducer.
 
-The operation reducer owns graph semantics. The overlay reducer is a pure consequence function over `(before graph, before overlay, path operation, after graph, admission context)`. It cannot accept independent user commands. That prevents identity deltas from becoming a second command language that can disagree with the path operation.
+The operation reducer owns graph semantics. The overlay reducer is a pure consequence function over `(before graph, before overlay, path operation, after graph, admission context)`. It cannot accept independent user commands. That prevents derived identity effects from becoming a second command language that can disagree with the canonical operation.
 
 ### Transaction order
 
-1. Capture `prevRev`, current root, overlay, structural generation, and identity generation.
+1. Capture `prevRev`, current root, and overlay.
 2. Normalize a request target. If it is a QUID, resolve it through the active overlay to a path now and attach an optional witness.
 3. Clone/copy-on-write the graph candidate and overlay candidate.
 4. For each operation in order, resolve its path in the current staged graph, apply structural semantics, and derive its overlay transform.
 5. Validate local input, canonical graph invariants, mode, duplicate claims, overlay/metadata agreement, and optional witnesses.
-6. Compute structural equality excluding QUID-only metadata. An unchanged structural request publishes no structural commit.
-7. Construct the path-authoritative commit and derived identity delta.
-8. Use the existing transition controller's stale-base check and install root, overlay, revision, and generations in one synchronous swap. The current controller already validates base revision/generation and installs before notification ([`livemap.authority.ts`](../../src/api/livemap/livemap.authority.ts#L102), [`livemap.authority.ts`](../../src/api/livemap/livemap.authority.ts#L141)).
-9. Publish the structural commit first, then its paired identity delta/reflection update. Observer exceptions do not roll back already-installed state; they are reported as post-commit observer failures, matching current LiveHost recovery handling ([`livehost.client.ts`](../../src/api/livehost/livehost.client.ts#L458)).
+6. Compute strict canonical equality, including QUID metadata. Only an exact-equal request is unchanged.
+7. Construct the path-authoritative canonical commit and its derived overlay/reflection effects.
+8. Use the existing transition controller's stale-base check and install root, overlay, and revision in one synchronous swap. The current controller already validates its internal transition generation and installs before notification ([`livemap.authority.ts`](../../src/api/livemap/livemap.authority.ts#L102), [`livemap.authority.ts`](../../src/api/livemap/livemap.authority.ts#L141)); that concurrency guard is not a second public identity clock.
+9. Publish the ordinary canonical commit, then notify reflection of its derived identity effects. Observer exceptions do not roll back already-installed state; they are reported as post-commit observer failures, matching current LiveHost recovery handling ([`livehost.client.ts`](../../src/api/livehost/livehost.client.ts#L458)).
 
 Validation or planning failure publishes nothing. Install failure discards the transition. Notification failure never attempts rollback because consumers may already have observed the committed state.
 
@@ -342,11 +335,11 @@ Validation or planning failure publishes nothing. Install failure discards the t
 
 Authoritative mutation and replay must share the same path operation reducer. Current document replay calls mutation preparers, which is a useful starting seam, but both paths repeatedly clone/reindex ([`livemap.document.replay.ts`](../../src/api/livemap/livemap.document.replay.ts#L44), [`livemap.document.mutation.ts`](../../src/api/livemap/livemap.document.mutation.ts#L468)). The refactor should plan one candidate transaction and validate once.
 
-A structurally unchanged operation has no revision, history, persistence append, or structural feed. An identity-only explicit request may still emit an ephemeral identity delta and increment `identityGeneration`; that behavior must be separate and tested.
+An exact canonical no-op has no revision, history, persistence append, or feed. A QUID-only canonical change is not such a no-op: it uses the ordinary revision and commit path. Any sparse routing update is derived from that accepted commit and cannot be published as an independent mutation command.
 
 ### Reflection timing
 
-Reflection currently receives a commit after canonical map installation, plans a shadow result, applies graph/DOM changes, disposes removed LiveTree nodes, and rebuilds correspondence ([`reflect.document.ts`](../../src/api/reflect/reflect.document.ts#L432), [`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts#L196)). Preserve this order. Feed it path-authoritative operations plus the derived identity delta. Do not allow reflection to modify the LiveMap overlay or to make LiveTree identity path-authoritative.
+Reflection currently receives a commit after canonical map installation, plans a shadow result, applies graph/DOM changes, disposes removed LiveTree nodes, and rebuilds correspondence ([`reflect.document.ts`](../../src/api/reflect/reflect.document.ts#L432), [`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts#L196)). Preserve this order. Feed it path-authoritative operations plus derived identity effects from the same accepted commit. Do not allow reflection to modify the LiveMap overlay or to make LiveTree identity path-authoritative.
 
 ## 8. QUID-targeted API migration
 
@@ -399,7 +392,7 @@ Raw QUID APIs are observable in `hson-demo2`: the pointer demo and hosted test p
 | LiveHost bootstrap v1 | HSON state plus logical map/incarnation/revision ([`livehost.bootstrap.ts`](../../src/api/livehost/livehost.bootstrap.ts#L448)) | Durable structural bootstrap | Logical map/incarnation is history provenance, not by itself node-QUID epoch proof. |
 | LiveHost canonical history | May retain raw QUID targets today | Durable structural operation stream | New history path-only; optional witnesses never route. |
 | debug output/diagnostics | May preserve or print QUID | Diagnostic | Clearly label epoch and non-application meaning. |
-| canonical structural equality | Includes QUID today | Internal contract requiring split | Structural equality must ignore QUID-only changes; exact same-epoch equality includes them. |
+| strict canonical equality | Includes QUID today | Canonical graph contract | Remains QUID-sensitive and governs ordinary LiveMap no-op and revision decisions. |
 
 Same-epoch provenance must not be encoded only as the QUID itself. A local capture can carry an internal, nonserializable epoch object. A remote controlled mirror may use a negotiated ephemeral authority epoch in its transport envelope, but that token must reset on authority runtime restart and must not serve authorization. If no proof is present, detached serialized QUIDs are hints to strip/rekey or leave inactive before admission.
 
@@ -536,14 +529,14 @@ The string-width saving may be small relative to JavaScript map overhead. Eight 
 
 There are fourteen units, numbered 0 through 13. Each is one coherent architectural change; later optional units may be deferred without weakening path authority.
 
-### Unit 0 — Executable terminology, equality, and epoch contract
+### Unit 0 — Executable identity and revision contract
 
-- **Goal:** Freeze the definitions in section 2, distinguish structural from exact-live equality, specify identity generation, and encode QUID-free/path-only invariants as tests before changing records.
-- **Production ownership:** Types/contracts plus the canonical equality seam used by LiveMap; no behavioral switch until tests describe both domains.
+- **Goal:** Freeze the definitions in section 2, certify strict QUID-sensitive canonical equality, ordinary revision semantics for QUID metadata changes, QUID-free LiveMap behavior, controlled persistence, `noQuid` continuity loss, and protected LiveTree identity before changing operation records.
+- **Production ownership:** Narrow types/comments/contracts plus authoritative acceptance suites; no path-target or protocol behavioral switch.
 - **Public/API effect:** Documentation/type terminology only; no removal.
 - **Compatibility effect:** None yet, but exposes contradictions in current QUID-bearing no-op behavior.
-- **Tests:** QUID-free construction/mutation/replay; equal structure with different QUID metadata; same-epoch exact inequality; no security-token use; protected LiveTree regression suite.
-- **Stop conditions:** Cannot define QUID-only revision behavior or same-epoch provenance without ambiguity.
+- **Tests:** QUID-free construction/mutation/replay; otherwise equal graphs with different QUID metadata; QUID addition/replacement/removal through ordinary revision paths; exact capture/restore/replay; controlled persistence and `noQuid`; protected LiveTree regression suite.
+- **Stop conditions:** Strict equality cannot remain QUID-sensitive, ordinary behavior unexpectedly mints, or QUID metadata cannot participate in the ordinary canonical revision stream.
 - **Dependency:** None.
 - **Suggested commit direction:** `test(livemap): define path authority and live identity epochs`.
 
@@ -582,12 +575,12 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 4 — Atomic operation-to-overlay reconciliation
 
-- **Goal:** One reducer plans graph plus overlay plus derived identity delta and installs them atomically.
+- **Goal:** One reducer plans graph plus overlay plus derived identity effects from the ordinary canonical commit and installs them atomically.
 - **Production ownership:** central document transition planner, mutation/replay/install/core transition boundary.
 - **Public/API effect:** No intended surface change.
 - **Compatibility effect:** Corrects operation identity behavior; may expose previously accepted inconsistent QUID metadata.
 - **Tests:** exhaustive matrix from section 5; rollback; no-op; observer failure after install; move/splice path transforms; malicious duplicates.
-- **Stop conditions:** Helpers must independently patch overlay, rollback cannot be proved, or identity deltas become independent commands.
+- **Stop conditions:** Helpers must independently patch overlay, rollback cannot be proved, or derived identity effects become independent commands.
 - **Dependency:** Units 0, 1, 3.
 - **Suggested commit direction:** `refactor(livemap): reconcile graph and live identity atomically`.
 
@@ -602,7 +595,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Dependency:** Unit 4.
 - **Suggested commit direction:** `refactor(livemap): lower QUID targets to revisioned paths`.
 
-### Unit 6 — Path-first reflection with derived identity deltas
+### Unit 6 — Path-first reflection with derived identity effects
 
 - **Goal:** Remove reflection's need to route canonical commits by QUID while preserving same-QUID exact-node continuity and all LiveTree ownership.
 - **Production ownership:** `reflect.document.ts`, structural planner, binding registration.
@@ -611,7 +604,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Tests:** path-only attrs/content, shifted paths, same-QUID compatible replacement, QUID-free root replacement, CSS/event/resource survival and retirement.
 - **Stop conditions:** Repair requires path-authoritative LiveTree handles or weakens runtime collision/lifecycle rules.
 - **Dependency:** Units 4 and 5.
-- **Suggested commit direction:** `refactor(reflect): consume path commits and live identity deltas`.
+- **Suggested commit direction:** `refactor(reflect): consume path commits and derived identity effects`.
 
 ### Unit 7 — Explicit capture and epoch provenance
 
@@ -698,7 +691,7 @@ The first implementation target is Unit 0, followed by Unit 1. Encoding work mus
 |---|---|---|
 | Internal-only | Overlay representation, path trie, graph/overlay reducer, QUID-to-path lookup | No public version if behavior remains exact. |
 | Public types | Split request and commit targets; new witness/category/epoch types; possible new projected move/rename ops | Additive types first. Changing existing returned commit types is likely major unless a versioned commit surface is introduced. |
-| Public behavior | QUID requests return path-targeted commits; external serialized QUID no longer auto-adopts; structural no-op ignores QUID-only differences | Document and stage behind version/compatibility mode. Likely major for direct commit assertions/admission behavior. |
+| Public behavior | QUID requests return path-targeted commits in later units; external serialized QUID alone does not prove active provenance; QUID-only canonical changes remain revision-worthy | Document and stage path/admission changes behind version/compatibility mode. Likely major for direct commit assertions/admission behavior. |
 | Serialized HSON/HTML/JSON | Bytes may still carry QUID; admission semantics change | Encoding width requires explicit version/migration. Category metadata should be versioned where encoded. |
 | LiveMap capture/view-state | Exact v2 currently preserves QUID and revision | Add a new version/category rather than silently reinterpret v2 persistence. |
 | LiveHost canonical commit | Raw QUID targets removed from new history | Mandatory commit format version and negotiation. |
@@ -736,8 +729,8 @@ The completed architecture is acceptable only when automated tests prove all of 
 14. External serialized QUID bytes do not establish active epoch membership.
 15. Move and rename preserve identity only from explicit operation intent; structural equality never implies it.
 16. Replacement retires prior identity unless an explicit compatible same-epoch same-node rule applies.
-17. Graph plus overlay plus revision/generation install atomically; failed validation publishes neither.
-18. Identity deltas are derived from accepted operations and cannot be replayed as independent canonical commands.
+17. Graph plus overlay plus ordinary revision install atomically; failed validation publishes neither.
+18. Overlay/reflection identity effects are derived from accepted canonical commits and cannot be replayed as independent commands.
 19. Observer failure after install does not roll back committed state and is reported distinctly from replay conflict.
 20. Multiple LiveMaps and multiple LiveTrees may coexist; each owner checks its own complete namespace and cross-owner admission never overwrites.
 21. LiveTree handles remain exact-node anchored; detach, disposal, clone, graft, projection, collision, CSS, event, animation, resource, and reflection ownership semantics remain unchanged unless separately approved.
@@ -751,15 +744,14 @@ The completed architecture is acceptable only when automated tests prove all of 
 
 ### Decisions that must be made in Unit 0 or Unit 1
 
-1. **Identity-only generation:** confirm the recommended separate `identityGeneration` and structural equality that excludes QUID-only metadata, or explicitly accept identity operations in durable revision history.
-2. **Witness conflict rule:** confirm that an active different QUID at a witnessed path is a structured conflict, while a completely absent witness is diagnostic-only.
-3. **Same-epoch provenance representation:** choose internal exact-object token for local captures and a negotiated ephemeral authority token, if remote continuity is required. Raw QUID, logical map ID, and incarnation alone are insufficient.
-4. **External admission default:** choose strip versus leave unquidded after decode; rekey only when an explicit live identity need exists. Never silently adopt raw bytes.
-5. **Public commit migration:** decide dual v1/v2 public commit APIs versus a major-version switch.
-6. **Graph candidate performance:** choose path-spine copy-on-write, persistent ownership, or reversible journal after correctness; account for unsafe debug aliases.
-7. **No-reuse scope:** decide whether no-reuse is required for every active map/LiveTree epoch and measure issued-ever storage before shortening.
-8. **Retained LiveMap handle API:** decide whether a public explicit identity handle is needed at all before designing its mint trigger.
-9. **Object/array `set` semantics:** define update versus replacement before QUID eligibility expands.
+1. **Witness conflict rule:** confirm that an active different QUID at a witnessed path is a structured conflict, while a completely absent witness is diagnostic-only.
+2. **Same-epoch provenance representation:** choose internal exact-object token for local captures and a negotiated ephemeral authority token, if remote continuity is required. Raw QUID, logical map ID, and incarnation alone are insufficient.
+3. **External admission default:** choose strip versus leave unquidded after decode; rekey only when an explicit live identity need exists. Never silently adopt raw bytes.
+4. **Public commit migration:** decide dual v1/v2 public commit APIs versus a major-version switch.
+5. **Graph candidate performance:** choose path-spine copy-on-write, persistent ownership, or reversible journal after correctness; account for unsafe debug aliases.
+6. **No-reuse scope:** decide whether no-reuse is required for every active map/LiveTree epoch and measure issued-ever storage before shortening.
+7. **Retained LiveMap handle API:** decide whether a public explicit identity handle is needed at all before designing its mint trigger.
+8. **Object/array `set` semantics:** define update versus replacement before QUID eligibility expands.
 
 ### Mandatory stop conditions
 

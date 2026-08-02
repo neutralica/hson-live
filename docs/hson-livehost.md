@@ -261,7 +261,7 @@ Because LiveHost operates on LiveMap commits rather than framework-specific comp
 
 ## Identity across the host boundary
 
-Paths describe locations. QUIDs may eventually describe graph identity, but a local QUID is not globally meaningful merely because it can be serialized.
+Paths describe locations and remain the planned durable structural operation authority. QUIDs are optional canonical identity metadata that controlled snapshots and history may preserve, but serialized QUID bytes alone do not prove membership in the current live epoch.
 
 The host protocol must explicitly decide whether an identity is:
 

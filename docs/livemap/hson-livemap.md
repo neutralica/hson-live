@@ -493,8 +493,9 @@ guarantees:
   standalone semantic `splice` operation; handle-level `linkTo` forwards the
   resulting scoped value.
 - Schema `readonly` is descriptive today, not enforced write protection.
-- Experimental QUID helpers track object owners, not persistent graph identity
-  across snapshots or processes.
+- QUID metadata may persist through controlled exact snapshots and processes,
+  but serialized QUID bytes alone do not prove membership in the current live
+  epoch.
 
 These are documented implementation boundaries, not requirements of the
 completed architecture.

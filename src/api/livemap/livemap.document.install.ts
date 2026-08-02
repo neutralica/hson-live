@@ -35,7 +35,7 @@ export type LiveMapDocumentInstallController = Readonly<{
   ) => void;
 }>;
 
-/** Validate a canonical capture with sparse persisted identity, then apply it. */
+/** Validate an exact canonical capture with optional sparse QUID metadata, then apply it. */
 export function install_livemap_document_capture(
   controller: LiveMapDocumentInstallController,
   capture: DocumentLiveMapCapture,
