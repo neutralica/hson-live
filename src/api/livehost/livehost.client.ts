@@ -11,6 +11,8 @@ import type {
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
+import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import type {
   LiveHostActionId,
   LiveHostActionPayloads,
@@ -440,7 +442,16 @@ export function create_livehost_client<
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
         ? map.replay(decode_livehost_document_commit(commit))
-        : map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
+        : commit.format === "structural-json"
+          && commit.formatVersion === 1
+          && typeof commit.payload === "string"
+          ? map.replay({
+            prevRev: localRevBefore,
+            format: commit.format,
+            formatVersion: commit.formatVersion,
+            payload: commit.payload,
+          })
+          : map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
       if (!applied.changed || map.rev !== localRevBefore + 1) {
         throw new Error("Canonical changed commit did not advance the client mirror exactly once.");
       }
@@ -498,7 +509,12 @@ export function create_livehost_client<
         }
         const schema = map.schema.get();
         const capture = staged.capture();
-        map.restore(Object.freeze({ rev: snapshot.rev, value: capture.value }));
+        map.restore(Object.freeze({
+          rev: snapshot.rev,
+          format: capture.format,
+          formatVersion: capture.formatVersion,
+          payload: capture.payload,
+        }));
         if (schema) map.schema.use(schema);
       } else if (is_document_live_map(map)) {
         const capture = decode_livehost_document_snapshot(snapshot);
@@ -779,8 +795,12 @@ export function create_livehost_client<
     }
     if (message.type === "hello") {
       seq = message.seq;
-      if (is_projected_live_map(map) && is_livehost_json_value(message.snapshot)) {
-        map.replace(message.snapshot);
+      if (is_projected_live_map(map)) {
+        if (has_projected_transport(message)) {
+          apply_projected_message(map, [], message, "replace");
+        } else if (is_livehost_json_value(message.snapshot)) {
+          map.replace(message.snapshot);
+        }
       }
       return;
     }
@@ -788,7 +808,9 @@ export function create_livehost_client<
       seq = message.seq;
 
       if (is_projected_live_map(map)) {
-        if (message.path.length === 0) {
+        if (has_projected_transport(message)) {
+          apply_projected_message(map, message.path, message, message.path.length === 0 ? "replace" : "set");
+        } else if (message.path.length === 0) {
           if (is_livehost_json_value(message.value)) map.replace(message.value);
         } else if (message.value === undefined) {
           map.delete(message.path);
@@ -1177,6 +1199,34 @@ function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
   return (map.mode === "data-object" || map.mode === "data-array")
     && "replace" in map
     && typeof map.replace === "function";
+}
+
+function has_projected_transport(value: object): boolean {
+  return Object.hasOwn(value, "format")
+    || Object.hasOwn(value, "formatVersion")
+    || Object.hasOwn(value, "payload");
+}
+
+function apply_projected_message(
+  map: LiveMap,
+  path: readonly (string | number)[],
+  message: Readonly<{ format?: unknown; formatVersion?: unknown; payload?: unknown }>,
+  kind: "set" | "replace",
+): void {
+  if (message.format !== "structural-json"
+    || message.formatVersion !== 1
+    || typeof message.payload !== "string") {
+    throw new Error("LiveHost projected message has an invalid exact transport envelope.");
+  }
+  const projected = livemap_projected_propagation(map);
+  if (projected === undefined) {
+    throw new Error("LiveHost projected mirror has no carrier propagation capability.");
+  }
+  projected.commit([Object.freeze({
+    kind,
+    path: Object.freeze([...path]),
+    value: decode_projected_value_payload(message.payload),
+  })]);
 }
 
 function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedLiveMap, { mode: "element" | "fragment" }> {

@@ -2,7 +2,13 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapCore, LiveMapDisposer, LiveMapFeedEvent, LiveMapLinkOptions, LivePath } from "../../types/livemap.types.js";
+import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
 import { path_is_prefix } from "./livemap.path.js";
+import {
+  livemap_projected_propagation,
+  type LiveMapProjectedFeedEvent,
+  type LiveMapProjectedPropagationWrite,
+} from "./livemap.projected-propagation.js";
 
 /**
  * Link one LiveMap core to another in one direction.
@@ -27,10 +33,70 @@ import { path_is_prefix } from "./livemap.path.js";
  */
 export function link_livemap(source: LiveMapCore, target: LiveMapCore, options: LiveMapLinkOptions): LiveMapDisposer {
   const linkPath = link_source_path(options);
+  const sourceProjected = livemap_projected_propagation(source);
+  const targetProjected = livemap_projected_propagation(target);
+
+  if (sourceProjected !== undefined && targetProjected !== undefined) {
+    return sourceProjected.feed(linkPath, (event) => {
+      apply_projected_link_event(target, event, options);
+    });
+  }
 
   return source.feed(linkPath, (event) => {
     apply_link_event(target, event, options);
   });
+}
+
+function apply_projected_link_event(
+  target: LiveMapCore,
+  event: LiveMapProjectedFeedEvent,
+  options: LiveMapLinkOptions,
+): void {
+  const sourcePath = link_source_path(options);
+  const targetSourcePath = link_target_path(sourcePath, options);
+  if (targetSourcePath === undefined) return;
+
+  if (event.value === undefined) {
+    commit_projected_link(target, [Object.freeze({ kind: "delete", path: targetSourcePath })]);
+    return;
+  }
+
+  if (event.ops.some((op) => op.kind === "delete" || op.kind === "splice")
+    || event.ops.some((op) => op.kind === "replace" && path_is_prefix(op.path, sourcePath))) {
+    commit_projected_link(target, [Object.freeze({
+      kind: "replace",
+      path: targetSourcePath,
+      value: event.value,
+    })]);
+    return;
+  }
+
+  const writes: LiveMapProjectedPropagationWrite[] = [];
+  for (const op of event.ops) {
+    if (op.kind !== "set" && op.kind !== "replace") continue;
+    const path = link_target_path(op.path, options);
+    if (path === undefined) continue;
+    writes.push(Object.freeze({ kind: op.kind, path, value: op.next }));
+  }
+  if (writes.length > 0) commit_projected_link(target, writes);
+}
+
+function commit_projected_link(
+  target: LiveMapCore,
+  writes: readonly LiveMapProjectedPropagationWrite[],
+): void {
+  const scheduled = schedule_livemap_managed_mutation(target, (draft) => {
+    const projected = livemap_projected_propagation(draft);
+    if (projected === undefined) throw new Error("Managed LiveMap draft has no projected propagation capability.");
+    return projected.commit(writes);
+  });
+  if (scheduled !== undefined) {
+    void scheduled.catch(() => undefined);
+    return;
+  }
+  const projected = livemap_projected_propagation(target);
+  if (projected === undefined) throw new Error("LiveMap target has no projected propagation capability.");
+  projected.commit(writes);
 }
 
 /**

@@ -52,6 +52,15 @@ import {
   type LiveMapTransitionController,
   type PreparedLiveMapTransition,
 } from "./livemap.authority.js";
+import {
+  register_livemap_projected_propagation,
+  type LiveMapProjectedDeleteWrite,
+  type LiveMapProjectedPropagation,
+  type LiveMapProjectedPropagationWrite,
+  type LiveMapProjectedReplaceWrite,
+  type LiveMapProjectedSetWrite,
+  type LiveMapProjectedSpliceWrite,
+} from "./livemap.projected-propagation.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -59,30 +68,10 @@ type LiveMapConstructiveSetWriteOp = Readonly<{
   value: OrderedProjectedObject;
 }>;
 
-type LiveMapProjectedSetWriteOp = Readonly<{
-  kind: "set";
-  path: LivePath;
-  value: OrderedProjectedValue;
-}>;
-
-type LiveMapProjectedReplaceWriteOp = Readonly<{
-  kind: "replace";
-  path: LivePath;
-  value: OrderedProjectedValue;
-}>;
-
-type LiveMapProjectedDeleteWriteOp = Readonly<{
-  kind: "delete";
-  path: LivePath;
-}>;
-
-type LiveMapProjectedSpliceWriteOp = Readonly<{
-  kind: "splice";
-  path: LivePath;
-  start: number;
-  deleteCount: number;
-  items: readonly OrderedProjectedValue[];
-}>;
+type LiveMapProjectedSetWriteOp = LiveMapProjectedSetWrite;
+type LiveMapProjectedReplaceWriteOp = LiveMapProjectedReplaceWrite;
+type LiveMapProjectedDeleteWriteOp = LiveMapProjectedDeleteWrite;
+type LiveMapProjectedSpliceWriteOp = LiveMapProjectedSpliceWrite;
 
 type LiveMapCoreWriteOp =
   | LiveMapProjectedSetWriteOp
@@ -93,6 +82,7 @@ type LiveMapCoreWriteOp =
 
 type BuiltLiveMapCore = Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
+  projected: LiveMapProjectedPropagation;
   document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController;
   transitionController: LiveMapTransitionController;
   currentRoot: () => HsonNode;
@@ -133,6 +123,7 @@ export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | unde
   const prepared = prepare_livemap_root(input);
   const built = make_livemap_core_from_owned_root(prepared);
   register_staged_facade(built.core, built);
+  register_livemap_projected_propagation(built.core, built.projected);
   return built.core;
 }
 
@@ -142,6 +133,8 @@ export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   const built = make_livemap_core_from_owned_root(prepared);
   const facade = facade_for_livemap_root(built.core, prepared, built.document);
   register_staged_facade(facade, built);
+  register_livemap_projected_propagation(built.core, built.projected);
+  register_livemap_projected_propagation(facade, built.projected);
   return facade;
 }
 
@@ -189,7 +182,7 @@ function make_livemap_core_from_owned_root(
         if (initialMode === "element" || initialMode === "fragment") {
           commitObserverHub.emitCommit(acceptedCommit, "authoritative");
         } else {
-          feedHub.emit(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => snap_live_path(owned.root, path));
+          feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => project_live_path(owned.root, path));
           commitObserverHub.emitCommit(acceptedCommit, "authoritative");
         }
       },
@@ -497,6 +490,12 @@ function make_livemap_core_from_owned_root(
 
   const pathHandleCache = new Map<string, LiveMapPathHandle>();
 
+  const projected: LiveMapProjectedPropagation = Object.freeze({
+    read: (path) => project_live_path(owned.root, path),
+    feed: (path, listener) => feedHub.addProjected(path, listener),
+    commit: (ops: readonly LiveMapProjectedPropagationWrite[]) => commitOps(ops),
+  });
+
 
   function get_path_handle(path: LivePath): LiveMapPathHandle {
     const handlePath = must_live_path(path);
@@ -512,6 +511,7 @@ function make_livemap_core_from_owned_root(
   if (initialMode !== "element" && initialMode !== "fragment") {
     return {
       core,
+      projected,
       transitionController,
       currentRoot: () => owned.root,
       currentSchema: () => currentSchema,
@@ -611,6 +611,7 @@ function make_livemap_core_from_owned_root(
 
   return {
     core,
+    projected,
     document,
     transitionController,
     currentRoot: () => owned.root,
@@ -643,6 +644,7 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
       });
 
       const ephemeral = make_ephemeral_staged_draft(draft as TMap);
+      register_livemap_projected_propagation(ephemeral.draft, draftBuilt.projected);
       let result: unknown;
       try {
         result = mutation(ephemeral.draft);
@@ -1140,7 +1142,7 @@ function prepare_projected_transition(
       setRev(rev);
     },
     notify: (acceptedCommit) => {
-      feedHub.emit(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => snap_live_path(root, feedPath));
+      feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => project_live_path(root, feedPath));
       commitObserverHub.emitCommit(acceptedCommit, "authoritative");
     },
   });
@@ -1171,7 +1173,7 @@ function apply_replay_ops(
     ops: planned.ops,
     ...encode_livemap_replay_transport(planned.transportOps),
   });
-  feedHub.emit(commit, (feedPath) => snap_live_path(root, feedPath));
+  feedHub.emitProjected(commit, (feedPath) => project_live_path(root, feedPath));
   commitObserverHub.emitCommit(commit, "replay");
   return commit;
 }

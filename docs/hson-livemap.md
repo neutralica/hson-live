@@ -25,20 +25,11 @@ It is designed to make the same graph useful in three roles:
 - ordinary object, array, and primitive application state; and
 - a source of explicit, replayable changes for views and hosted authority.
 
-The implemented local-state core includes projected paths, atomic mutations,
-commits, revisions, feeds, schema validation, path handles, proxies,
-array/object helpers, links, and capture/apply/replay.
+The implemented local-state core includes projected paths, atomic mutations, commits, revisions, feeds, schema validation, path handles, proxies, array/object helpers, links, and capture/apply/replay.
 
-LiveHost now builds on those facilities with authoritative hosted state,
-ordered commits, snapshots, recovery, reconnect behavior, deduplication, and
-multi-client coordination. Further roadmap work includes identity-aware
-reconciliation, deterministic lifecycle scopes, richer derived views,
-persistence, authorization, and broader operational hardening.
+LiveHost now builds on those facilities with authoritative hosted state, ordered commits, snapshots, recovery, reconnect behavior, deduplication, and multi-client coordination. Further roadmap work includes identity-aware reconciliation, deterministic lifecycle scopes, richer derived views, persistence, authorization, and broader operational hardening.
 
-This document describes LiveMap's implemented semantics, architectural
-boundaries, and roadmap direction without presenting planned behavior as
-current API. The complete implemented callable surface is documented in
-`api-livemap.md`.
+This document describes LiveMap's implemented semantics, architectural boundaries, and roadmap direction without presenting planned behavior as current API. The complete implemented callable surface is documented in `api-livemap.md`.
 
 ---
 
@@ -47,21 +38,16 @@ current API. The complete implemented callable surface is documented in
 The following terms are used deliberately:
 
 - **Implemented** means the behavior exists in the current source.
-- **Contract direction** means repository contracts define the intended
-  semantics and the current implementation substantially follows them.
-- **Roadmap** means the design is coherent with the current architecture but is
-  not yet a callable or complete public guarantee.
+- **Contract direction** means repository contracts define the intended semantics and the current implementation substantially follows them.
+- **Roadmap** means the design is coherent with the current architecture but is not yet a callable or complete public guarantee.
 
-Roadmap material describes the intended completed system. Applications must use
-`api-livemap.md`, rather than this design discussion, to determine what can be
-called today.
+Roadmap material describes the intended completed system. Applications must use `api-livemap.md`, rather than this design discussion, to determine what can be called today.
 
 ---
 
 ## One graph, two views
 
-Every LiveMap owns a detached canonical HSON node graph. Construction clones and
-validates caller-owned input before selecting a data or document façade.
+Every LiveMap owns a detached canonical HSON node graph. Construction clones and validates caller-owned input before selecting a data or document façade.
 
 ```ts
 const map = hson.liveMap.fromJson({
@@ -75,9 +61,7 @@ map.root();                    // detached canonical HsonNode clone
 map.debug.node(["user"]);     // unsafe live graph handle
 ```
 
-The projected path `["user", "name"]` crosses whatever `_hson_obj`, property,
-and primitive VSN wrappers are required by the HSON graph. Callers do not need
-to encode those wrappers in a `LivePath`.
+The projected path `["user", "name"]` crosses whatever `_hson_obj`, property, and primitive VSN wrappers are required by the HSON graph. Callers do not need to encode those wrappers in a `LivePath`.
 
 This separation is fundamental for data maps:
 
@@ -85,21 +69,9 @@ This separation is fundamental for data maps:
 - HSON wrappers preserve structural representation; and
 - raw node operations remain available for deliberately physical graph work.
 
-The projected reader converts the current node payload into detached JSON
-values. `root()` likewise returns a detached structural clone of the canonical
-graph. Only `debug.node(path)` exposes intentionally live graph access.
+The projected reader converts the current node payload into detached JSON values. `root()` likewise returns a detached structural clone of the canonical graph. Only `debug.node(path)` exposes intentionally live graph access.
 
-Document roots are now classified separately as `element` or `fragment` and do
-not expose the projected data surface. Their `element` or `fragment` capability
-returns detached canonical nodes/content, and their revision-coupled capture is
-discriminated by `kind: "hson-document"` and `version: 2`. Version-1 captures
-reject explicitly as unsupported. Document maps now
-support same-mode `install(capture)` plus three local incremental canonical
-operations. The capability syntax follows LiveTree/LiveMap namespaces:
-`element.attrs.set(...)`, `element.attrs.drop(...)`, and
-`element.content.replace(...)`, with equivalent `fragment` capabilities. There
-are no `setAttrs`-style methods. Graph replay, document batching/subscriptions,
-and LiveTree projection remain future work.
+Document roots are now classified separately as `element` or `fragment` and do not expose the projected data surface. Their `element` or `fragment` capability returns detached canonical nodes/content, and their revision-coupled capture is discriminated by `kind: "hson-document"` and `version: 2`. Version-1 captures reject explicitly as unsupported. Document maps now support same-mode `install(capture)` plus three local incremental canonical operations. The capability syntax follows LiveTree/LiveMap namespaces: `element.attrs.set(...)`, `element.attrs.drop(...)`, and `element.content.replace(...)`, with equivalent `fragment` capabilities. There are no `setAttrs`-style methods. Graph replay, document batching/subscriptions, and LiveTree projection remain future work.
 
 ---
 
@@ -120,20 +92,16 @@ Examples:
 ["items", 3, "name"] // array index followed by object property
 ```
 
-Paths are exact and unambiguous. They do not split dots, coerce strings to
-numbers, contain wildcards, or use raw HSON node positions.
+Paths are exact and unambiguous. They do not split dots, coerce strings to numbers, contain wildcards, or use raw HSON node positions.
 
-A path identifies a current location, not a persistent value identity. A
-cached handle for `["items", 2]` continues to address index 2 after a splice; it
-does not follow the item that previously occupied that position.
+A path identifies a current location, not a persistent value identity. A cached handle for `["items", 2]` continues to address index 2 after a splice; it does not follow the item that previously occupied that position.
 
 This distinction supports two different future references:
 
 - location handles follow projected paths; and
 - identity references follow graph nodes.
 
-The first is implemented. Full identity-oriented node references and
-identity-preserving keyed reconciliation remain roadmap work.
+The first is implemented. Full identity-oriented node references and identity-preserving keyed reconciliation remain roadmap work.
 
 ---
 
@@ -158,9 +126,7 @@ Schema or editor failure occurs before the live graph is changed. Explicit
 `batch()` groups multiple synchronous writes into one preflight and one commit,
 so a failing write prevents the entire batch from being applied.
 
-Raw operations through `debug.node(path)` do not use this pipeline. They do not
-validate schemas, advance revisions, create commits, or notify feeds. Mutating
-the detached graph returned by `root()` has no effect on the map.
+Raw operations through `debug.node(path)` do not use this pipeline. They do not validate schemas, advance revisions, create commits, or notify feeds. Mutating the detached graph returned by `root()` has no effect on the map.
 
 ---
 
@@ -168,34 +134,22 @@ the detached graph returned by `root()` has no effect on the map.
 
 LiveMap makes object patching explicit without making every set a deep merge.
 
-`set(path, value)` requires the endpoint to exist. At an existing object
-endpoint, an object value expands into shallow child writes and preserves
-unspecified siblings:
+`set(path, value)` requires the endpoint to exist. At an existing object endpoint, an object value expands into shallow child writes and preserves unspecified siblings:
 
 ```ts
 map.set(["user"], { name: "Grace" });
 // existing user.role survives
 ```
 
-Primitives, arrays, and `null` are assigned as endpoint values. If an existing
-endpoint is not an object, setting an object replaces that endpoint rather than
-patching a non-object.
+Primitives, arrays, and `null` are assigned as endpoint values. If an existing endpoint is not an object, setting an object replaces that endpoint rather than patching a non-object.
 
-`setMany(path, values)` is the explicit shallow object operation. It requires
-an existing object at `path`, can create the supplied child keys, and preserves
-other keys.
+`setMany(path, values)` is the explicit shallow object operation. It requires an existing object at `path`, can create the supplied child keys, and preserves other keys.
 
-`replace(path, value)` is destructive endpoint replacement. `replace(value)`
-replaces the projected root while overwriting the owned root node in place, so
-the Core and its existing path handles remain attached.
+`replace(path, value)` is destructive endpoint replacement. `replace(value)` replaces the projected root while overwriting the owned root node in place, so the Core and its existing path handles remain attached.
 
-`delete(path)` removes an existing projected property. Array structure is
-changed through semantic splice/array helpers rather than direct index delete.
-The empty path is not deletable.
+`delete(path)` removes an existing projected property. Array structure is changed through semantic splice/array helpers rather than direct index delete. The empty path is not deletable.
 
-There is no implicit missing-parent construction. New object children are
-created through `setMany` or `handle.object.setKey` after their parent object
-already exists.
+There is no implicit missing-parent construction. New object children are created through `setMany` or `handle.object.setKey` after their parent object already exists.
 
 ---
 
@@ -212,20 +166,13 @@ type LiveMapCommit = Readonly<{
 }>;
 ```
 
-Public operations are `set`, `replace`, `delete`, and `splice`. Each records its
-projected path and previous/next value. Splice additionally records its start,
-removed values, and inserted values.
+Public operations are `set`, `replace`, `delete`, and `splice`. Each records its projected path and previous/next value. Splice additionally records its start, removed values, and inserted values.
 
-One method call can produce several operations. Object-valued `set`,
-`setMany`, `batch`, and replay are the common examples. A feed subscriber is
-still called at most once for that commit and receives all matching operations.
+One method call can produce several operations. Object-valued `set`, `setMany`, `batch`, and replay are the common examples. A feed subscriber is still called at most once for that commit and receives all matching operations.
 
-Structural JSON equality determines whether a write changed state. Object key
-insertion order is ignored by Core equality; array order remains significant.
-A no-op commit has no operations and consumes no revision.
+Structural JSON equality determines whether a write changed state. Object key insertion order is ignored by Core equality; array order remains significant. A no-op commit has no operations and consumes no revision.
 
-Commits are data-shaped for replay and transport. They do not contain map,
-handle, Proxy, DOM, or LiveTree objects.
+Commits are data-shaped for replay and transport. They do not contain map, handle, Proxy, DOM, or LiveTree objects.
 
 ---
 
@@ -238,14 +185,9 @@ changed commit: rev = prevRev + 1
 no-op commit:   rev = prevRev
 ```
 
-Normal construction establishes initial state at revision 0 without producing
-an instantiation commit. Revision therefore counts committed transitions on the
-current map instance rather than construction steps.
+Normal construction establishes initial state at revision 0 without producing an instantiation commit. Revision therefore counts committed transitions on the current map instance rather than construction steps.
 
-On data maps, `capture()` returns the projected root and its revision. `apply()` performs a
-conditional root replacement only when its `prevRev` still matches the map.
-`replay()` conditionally re-applies normalized operation records and verifies
-both their declared previous values and computed next values before mutation.
+On data maps, `capture()` returns the projected root and its revision. `apply()` performs a conditional root replacement only when its `prevRev` still matches the map. `replay()` conditionally re-applies normalized operation records and verifies both their declared previous values and computed next values before mutation.
 
 These operations form the implemented local foundation for LiveHost:
 
@@ -254,37 +196,13 @@ These operations form the implemented local foundation for LiveHost:
 - revision checks detect stale bases; and
 - replay conflict checks prevent applying an incompatible history.
 
-Document maps instead return a detached canonical HSON capture preserving
-ordered content, attrs, metadata, and persisted element QUIDs. Their local
-`install(capture, { expectedRev? })` transition validates and clones a same-mode
-capture with optional sparse persisted identity before atomically swapping root
-and QUID index. It advances the target's revision once and does not adopt the
-source `capture.rev`.
-The resulting commit contains one `{ domain: "graph", op: "replace-root" }`
-operation. Graph apply/replay and authoritative recovery installation do not
-exist yet.
+Document maps instead return a detached canonical HSON capture preserving ordered content, attrs, metadata, and persisted element QUIDs. Their local `install(capture, { expectedRev? })` transition validates and clones a same-mode capture with optional sparse persisted identity before atomically swapping root and QUID index. It advances the target's revision once and does not adopt the source `capture.rev`. The resulting commit contains one `{ domain: "graph", op: "replace-root" }` operation. Graph apply/replay and authoritative recovery installation do not exist yet.
 
-Incremental document operations use a shared discriminated path-or-QUID target.
-Numeric document paths traverse physical canonical `$_content`; they are not
-projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only
-through the current map's sparse index. Attribute mutation is restricted to
-ordinary elements and cannot edit `hson:*` metadata. Every `data-*` name is an
-ordinary application attribute. Content replacement swaps
-one existing slot, clones caller input, validates the complete candidate graph
-and sparse identity, and atomically replaces owned root/index state. Its commit
-operations are `set-attr`, `remove-attr`, and `replace-content`, never
-`replace-root`.
+Incremental document operations use a shared discriminated path-or-QUID target. Numeric document paths traverse physical canonical `$_content`; they are not projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only through the current map's sparse index. Attribute mutation is restricted to ordinary elements and cannot edit `hson:*` metadata. Every `data-*` name is an ordinary application attribute. Content replacement swaps one existing slot, clones caller input, validates the complete candidate graph and sparse identity, and atomically replaces owned root/index state. Its commit operations are `set-attr`, `remove-attr`, and `replace-content`, never `replace-root`.
 
-These LiveMap operations do not themselves define transport, persistence,
-retry policy, authorization, conflict merging, or multi-writer consensus.
-Those responsibilities belong outside LiveMap. LiveHost now implements the
-authoritative transport, recovery, retry, deduplication, and session-facing
-parts of that boundary, while persistence and authorization remain separate
-concerns.
+These LiveMap operations do not themselves define transport, persistence, retry policy, authorization, conflict merging, or multi-writer consensus. Those responsibilities belong outside LiveMap. LiveHost now implements the authoritative transport, recovery, retry, deduplication, and session-facing parts of that boundary, while persistence and authorization remain separate concerns.
 
-A revision is meaningful only within the history and authority domain that
-issued it. Revision 12 in one LiveMap or host session is not interchangeable
-with revision 12 in another.
+A revision is meaningful only within the history and authority domain that issued it. Revision 12 in one LiveMap or host session is not interchangeable with revision 12 in another.
 
 ---
 
@@ -309,20 +227,13 @@ The `sub` surface builds store-style views over feeds:
 - selected values; and
 - one projected path with before/after values.
 
-All current notification is synchronous after graph mutation. Disposal is a
-returned idempotent function. General lifecycle scopes that own groups of
-subscriptions, bindings, timers, and keyed child resources are roadmap work,
-although the repository lifecycle contract already describes their intended
-semantics.
+All current notification is synchronous after graph mutation. Disposal is a returned idempotent function. General lifecycle scopes that own groups of subscriptions, bindings, timers, and keyed child resources are roadmap work, although the repository lifecycle contract already describes their intended semantics.
 
 ---
 
 ## Handles and proxies
 
-`map.at(path)` returns a stable path-oriented handle. Core caches handles by
-path, so repeated calls for the same canonical path return the same handle
-object. The handle reads the current value at that location and exposes scoped
-mutations, feeds, object helpers, array helpers, and one-way linking.
+`map.at(path)` returns a stable path-oriented handle. Core caches handles by path, so repeated calls for the same canonical path return the same handle object. The handle reads the current value at that location and exposes scoped mutations, feeds, object helpers, array helpers, and one-way linking.
 
 `map.proxy()` is an ergonomic path builder:
 
@@ -334,21 +245,15 @@ state.user.name.$_.set("Grace");
 state.tags[0].$_.replace("writer");
 ```
 
-Property access only builds a path. `$_` exits the Proxy and returns the normal
-path handle. Direct assignment and JavaScript `delete` are rejected so Proxy
-syntax cannot bypass validation or commit generation.
+Property access only builds a path. `$_` exits the Proxy and returns the normal path handle. Direct assignment and JavaScript `delete` are rejected so Proxy syntax cannot bypass validation or commit generation.
 
-The Proxy does not make paths into object references or add transparent
-reactivity. It is syntax over the same location semantics as `at(path)`.
+The Proxy does not make paths into object references or add transparent reactivity. It is syntax over the same location semantics as `at(path)`.
 
 ---
 
 ## Schemas
 
-LiveMap schemas combine runtime validation with inferred TypeScript state
-types. A schema is attached only after the current projected root validates.
-Each later projected commit validates the complete candidate root before live
-mutation.
+LiveMap schemas combine runtime validation with inferred TypeScript state types. A schema is attached only after the current projected root validates. Each later projected commit validates the complete candidate root before live mutation.
 
 ```ts
 const UserState = hson.liveMap.schema.define((s) => ({
@@ -362,22 +267,15 @@ const UserState = hson.liveMap.schema.define((s) => ({
 const typed = map.schema.use(UserState);
 ```
 
-The builder currently supports primitives, literals, choices, tagged choices,
-lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact
-objects, partial objects, and deep-partial objects. Tokens can be optional or
-nullable.
+The builder currently supports primitives, literals, choices, tagged choices, lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact objects, partial objects, and deep-partial objects. Tokens can be optional or nullable.
 
-Schema validation governs projected JSON state. It does not validate direct raw
-HSON node edits. The current `readonly` schema modifier is recorded in schema
-rules but is not enforced as a mutation prohibition; treating it as access
-control is roadmap behavior.
+Schema validation governs projected JSON state. It does not validate direct raw HSON node edits. The current `readonly` schema modifier is recorded in schema rules but is not enforced as a mutation prohibition; treating it as access control is roadmap behavior.
 
 ---
 
 ## LiveTree projection
 
-LiveMap owns state; LiveTree owns a mutable presentation graph and optional DOM
-projection. The current public bridge is explicit on LiveTree:
+LiveMap owns state; LiveTree owns a mutable presentation graph and optional DOM projection. The current public bridge is explicit on LiveTree:
 
 ```ts
 tree.bind.text(map, ["user", "name"]);
@@ -387,9 +285,7 @@ tree.bind.css(map, ["theme", "color"], (color) => ({
 }));
 ```
 
-Bindings apply the current value and subscribe to later changes until disposed.
-They do not make LiveTree and LiveMap the same graph, and they do not currently
-provide automatic keyed list reconciliation.
+Bindings apply the current value and subscribe to later changes until disposed. They do not make LiveTree and LiveMap the same graph, and they do not currently provide automatic keyed list reconciliation.
 
 The completed design can build on the same boundary with:
 
@@ -399,25 +295,17 @@ The completed design can build on the same boundary with:
 - reusable schema-derived controls; and
 - scheduled/coalesced derived render passes.
 
-Those facilities are consistent with the present architecture but remain
-roadmap rather than current LiveMap API.
+Those facilities are consistent with the present architecture but remain roadmap rather than current LiveMap API.
 
 ---
 
 ## Links, authority, and replication
 
-Implemented one-way links forward selected local changes from one LiveMap to
-another. They are intentionally narrow: no initial synchronization, no
-bidirectional loop protection, no transforms, and no conflict resolution.
+Implemented one-way links forward selected local changes from one LiveMap to another. They are intentionally narrow: no initial synchronization, no bidirectional loop protection, no transforms, and no conflict resolution.
 
-The implemented distributed model is authoritative rather than peer-to-peer.
-LiveHost establishes a single accepted revision order, and clients recover,
-mirror, and propose changes against that authority. Actions and conditional
-proposals cross the authority boundary, while snapshots and ordered commits
-return from it.
+The implemented distributed model is authoritative rather than peer-to-peer. LiveHost establishes a single accepted revision order, and clients recover, mirror, and propose changes against that authority. Actions and conditional proposals cross the authority boundary, while snapshots and ordered commits return from it.
 
-LiveHost does not turn LiveMap into a CRDT or provide automatic divergent-history
-merging.
+LiveHost does not turn LiveMap into a CRDT or provide automatic divergent-history merging.
 
 This preserves a clean separation:
 
@@ -425,73 +313,44 @@ This preserves a clean separation:
 - LiveHost defines authority, sessions, transport, and resume policy; and
 - LiveTree defines presentation and DOM behavior.
 
-CRDT behavior, multi-master consensus, and automatic divergent-history merging
-are not goals of the initial architecture.
+CRDT behavior, multi-master consensus, and automatic divergent-history merging are not goals of the initial architecture.
 
 ---
 
 ## Stored state and derived state
 
-LiveMap stores authoritative projected state and emits semantic changes to that
-state. Consumers may derive display values, filtered collections, validation
-messages, or presentation graphs from snapshots and feeds, but those derived
-values are not implicitly inserted back into the map.
+LiveMap stores authoritative projected state and emits semantic changes to that state. Consumers may derive display values, filtered collections, validation messages, or presentation graphs from snapshots and feeds, but those derived values are not implicitly inserted back into the map.
 
-LiveMap does not currently provide a general computed-value dependency graph.
-Derived views remain explicit consumers of snapshots, feeds, schemas, or
-application-level selectors.
+LiveMap does not currently provide a general computed-value dependency graph. Derived views remain explicit consumers of snapshots, feeds, schemas, or application-level selectors.
 
 ---
 
 ## Identity direction
 
-A LiveMap path handle is identified operationally by its owning LiveMap and
-canonical path. It is map-local, positional, not serialized, and has no public
-identifier. Repeated access to the same path on one map returns the same cached
-handle object.
+A LiveMap path handle is identified operationally by its owning LiveMap and canonical path. It is map-local, positional, not serialized, and has no public identifier. Repeated access to the same path on one map returns the same cached handle object.
 
 The system distinguishes:
 
 - a path, which follows location;
-- a node QUID, which follows a particular graph node while that identity is
-  alive;
-- an application key, which identifies a domain item within a declared scope;
-  and
+- a node QUID, which follows a particular graph node while that identity is alive;
+- an application key, which identifies a domain item within a declared scope; and
 - a host/session identifier, which belongs to replication lifecycle.
 
-Document-map persisted `$_meta.quid` identity is sparse and indexed within the
-document map. Existing valid QUIDs are preserved, ordinary elements without
-QUIDs remain positional and unquidded, and duplicate present QUIDs are rejected.
-Construction, reads, capture, and installation never mint identity.
+Document-map persisted `$_meta.quid` identity is sparse and indexed within the document map. Existing valid QUIDs are preserved, ordinary elements without QUIDs remain positional and unquidded, and duplicate present QUIDs are rejected. Construction, reads, capture, and installation never mint identity.
 
-These identifiers must never be silently substituted for one another. A future
-identity-oriented reference should become absent when its node disappears,
-rather than falling back to the old path.
+These identifiers must never be silently substituted for one another. A future identity-oriented reference should become absent when its node disappears, rather than falling back to the old path.
 
 ---
 
 ## Current limitations that affect the model
 
-The following current behaviors should not be mistaken for idealized
-guarantees:
-
-- Normal construction establishes initial state directly at revision 0 and
-  emits no commit. The first changed atomic transition advances 0 to 1;
-  unchanged operations consume no revision.
-- `debug.node(path)` exposes live physical graph mutation outside schema,
-  commit, revision, feed, and subscription accounting. `root()` is detached.
-- Feed listener exceptions are not isolated. State and revision have already
-  committed when listeners run, and a thrown listener can escape the mutation
-  call and interrupt delivery to later listeners.
-- The lower-level `link_livemap` implementation does not currently propagate a
-  standalone semantic `splice` operation; handle-level `linkTo` forwards the
-  resulting scoped value.
+- Normal construction establishes initial state directly at revision 0 and emits no commit. The first changed atomic transition advances 0 to 1; unchanged operations consume no revision.
+- `debug.node(path)` exposes live physical graph mutation outside schema, commit, revision, feed, and subscription accounting. `root()` is detached.
+- Feed listener exceptions are not isolated. State and revision have already committed when listeners run, and a thrown listener can escape the mutation call and interrupt delivery to later listeners.
+- The lower-level `link_livemap` implementation does not currently propagate a standalone semantic `splice` operation; handle-level `linkTo` forwards the resulting scoped value.
 - Schema `readonly` is descriptive today, not enforced write protection.
-- Experimental QUID helpers track object owners, not persistent graph identity
-  across snapshots or processes.
+- Experimental QUID helpers track object owners, not persistent graph identity across snapshots or processes.
 
-These are documented implementation boundaries, not requirements of the
-completed architecture.
 
 ---
 

@@ -157,34 +157,19 @@ graph construction, and invariant validation.
 
 ## Tag and namespace behavior
 
-The general XML-backed HTML parser normalizes element tags to lowercase.
-Trusted top-level SVG has a specialized namespace-aware conversion path; SVG
-attribute case is preserved there, while its exact element-tag behavior follows
-the DOM/parser path in use.
+The general XML-backed HTML parser normalizes element tags to lowercase. Trusted top-level SVG has a specialized namespace-aware conversion path; SVG attribute case is preserved there, while its exact element-tag behavior follows the DOM/parser path in use.
 
-The parser adds or removes namespace scaffolding as needed for XML processing.
-It is therefore inaccurate to promise verbatim namespace-prefix or declaration
-round-tripping. The goal is usable SVG/XML structure, not preservation of every
-namespace token from the source.
+The parser adds or removes namespace scaffolding as needed for XML processing. It is therefore inaccurate to promise verbatim namespace-prefix or declaration round-tripping. The goal is usable SVG/XML structure, not preservation of every namespace token from the source.
 
-Reserved transport tags are lowered before an ordinary HTML element is
-constructed. `<_hson_obj>` establishes object mode and `<_hson_elem>`
-establishes element mode. A direct `<_hson_val>` child establishes an ordinary
-object-scalar relationship and is never inserted under `_hson_elem`.
+Reserved transport tags are lowered before an ordinary HTML element is constructed. `<_hson_obj>` establishes object mode and `<_hson_elem>` establishes element mode. A direct `<_hson_val>` child establishes an ordinary object-scalar relationship and is never inserted under `_hson_elem`.
 
-Explicit `<_hson_str>` transport contains one HTML-escaped JSON string. This
-keeps adjacent and empty text-item boundaries distinct and represents control
-characters without relying on XML-invalid raw code points. Detached
-`_hson_str` and `_hson_val` values are carried under `_hson_obj` on the HTML
-wire. Reserved carriers and leaves remain subject to the same canonical graph
-invariants; transport lowering is not an invariant bypass.
+Explicit `<_hson_str>` transport contains one HTML-escaped JSON string. This keeps adjacent and empty text-item boundaries distinct and represents control characters without relying on XML-invalid raw code points. Detached `_hson_str` and `_hson_val` values are carried under `_hson_obj` on the HTML wire. Reserved carriers and leaves remain subject to the same canonical graph invariants; transport lowering is not an invariant bypass.
 
 ---
 
 ## HTML-ish input repairs
 
-String input is parsed with an XML-backed pipeline plus targeted preflights. It
-can normalize or repair common HTML forms, including:
+String input is parsed with an XML-backed pipeline plus targeted preflights. It can normalize or repair common HTML forms, including:
 
 - known named entities;
 - boolean attributes;
@@ -194,37 +179,19 @@ can normalize or repair common HTML forms, including:
 - multiple top-level elements via a temporary root; and
 - selected XML-hostile attribute characters.
 
-Malformed input that remains invalid after those repairs throws a transform
-error. These repairs are parsing conveniences, not sanitization. Only
-`fromUntrustedHtml` applies DOMPurify; `fromTrustedHtml` does not.
+Malformed input that remains invalid after those repairs throws a transform error. These repairs are parsing conveniences, not sanitization. Only `fromUntrustedHtml` applies DOMPurify; `fromTrustedHtml` does not.
 
-When a constructor receives an `Element`, the supplied element is the source
-root. Its attributes, metadata, and descendants are included in the canonical
-graph; it is not treated as an `innerHTML` snapshot. Equivalent string and
-Element sources normalize to canonically equal graphs where the DOM boundary
-has not already erased a distinction. That boundary cannot recover duplicate
-source attributes, original HTML casing, source quoting or whitespace, or
-namespace detail not represented by the received DOM.
+When a constructor receives an `Element`, the supplied element is the source root. Its attributes, metadata, and descendants are included in the canonical graph; it is not treated as an `innerHTML` snapshot. Equivalent string and Element sources normalize to canonically equal graphs where the DOM boundary has not already erased a distinction. That boundary cannot recover duplicate source attributes, original HTML casing, source quoting or whitespace, or namespace detail not represented by the received DOM.
 
-The Transform `queryDOM(selector)` and `queryBody()` helpers are intentionally
-different: they snapshot selected children or body children through
-`innerHTML`. LiveTree `queryDom(selector).graft()` and `queryBody().graft()`
-instead treat the selected Element itself as the managed root.
+The Transform `queryDOM(selector)` and `queryBody()` helpers are intentionally different: they snapshot selected children or body children through `innerHTML`. LiveTree `queryDom(selector).graft()` and `queryBody().graft()` instead treat the selected Element itself as the managed root.
 
-Untrusted HTML sanitization and canonical graph validation are separate
-stages. Sanitization removes unsafe markup behavior without silently deleting
-HSON metadata candidates. Valid descendant QUIDs are therefore preserved as
-canonical identity; malformed, unknown, misplaced, or duplicate metadata
-rejects. Ordinary `data-*` attributes remain application data.
+Untrusted HTML sanitization and canonical graph validation are separate stages. Sanitization removes unsafe markup behavior without silently deleting HSON metadata candidates. Valid descendant QUIDs are therefore preserved as canonical identity; malformed, unknown, misplaced, or duplicate metadata rejects. Ordinary `data-*` attributes remain application data.
 
 ---
 
 ## Round-trip contract
 
-Serializer-owned node -> HTML -> node transport is total over valid canonical
-semantic graphs. It preserves structural mode, typed values, ordered and empty
-text items, attributes, metadata, and `-0`. Arbitrary authored HTML still
-passes through the documented HTML normalization rules and does not promise:
+Serializer-owned node -> HTML -> node transport is total over valid canonical semantic graphs. It preserves structural mode, typed values, ordered and empty text items, attributes, metadata, and `-0`. Arbitrary authored HTML still passes through the documented HTML normalization rules and does not promise:
 
 - the original source string;
 - comments or layout-only whitespace;
@@ -233,10 +200,6 @@ passes through the documented HTML normalization rules and does not promise:
 - namespace declaration spelling; or
 - source-level distinctions that the HTML parser does not place in the graph.
 
-HTML and JSON use different cluster semantics. `_hson_elem` preserves ordered
-markup and duplicate tags; `_hson_obj` preserves unique JSON properties; and
-`_hson_arr` preserves arrays. Cross-format serialization may expose literal VSN
-scaffolding where the target format otherwise could not express the source
-structure.
+HTML and JSON use different cluster semantics. `_hson_elem` preserves ordered markup and duplicate tags; `_hson_obj` preserves unique JSON properties; and `_hson_arr` preserves arrays. Cross-format serialization may expose literal VSN scaffolding where the target format otherwise could not express the source structure.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

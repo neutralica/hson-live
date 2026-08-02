@@ -379,6 +379,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["projected-value", "capture", "replay", "compatibility", "rejection", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.exact-propagation",
+      subject: "LiveMap",
+      displayName: "LiveMap exact carrier propagation",
+      packageScript: "test:livemap-exact-propagation",
+      repositoryModule: "tests/livemap-exact-propagation.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["projected-value", "feed", "link", "store", "livehost", "externally-discoverable"],
+    }),
+    launcher({
       id: "core.projected-value-admission",
       subject: "LiveMap",
       displayName: "Projected-value admission and materialization",

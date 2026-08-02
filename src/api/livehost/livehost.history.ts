@@ -272,6 +272,13 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     && operation.mode !== map.mode)) {
     throw new Error(`LiveHost canonical root replacement is incompatible with ${map.mode}.`);
   }
+  if (!documentMode && (
+    commit.format !== "structural-json"
+    || commit.formatVersion !== 1
+    || typeof commit.payload !== "string"
+  )) {
+    throw new Error("LiveHost projected canonical commit requires exact structural transport.");
+  }
 
   return Object.freeze({
     logicalMapId,
@@ -281,6 +288,11 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     mode: map.mode,
     ops: Object.freeze(commit.ops.map((operation) =>
       "domain" in operation ? canonical_graph_op(operation) : canonical_op(operation))),
+    ...(documentMode ? {} : {
+      format: "structural-json" as const,
+      formatVersion: 1 as const,
+      payload: commit.payload as string,
+    }),
   });
 }
 

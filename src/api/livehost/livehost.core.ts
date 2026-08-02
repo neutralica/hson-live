@@ -42,6 +42,9 @@ import { make_livehost_resume_log } from "./livehost.resume.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 import { make_livehost_canonical_stream_runtime } from "./livehost.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
+import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
+import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import {
   make_livehost_recovery_planner_internal,
@@ -1724,7 +1727,7 @@ function create_livehost_for_map<
             }),
           });
         }
-        send_without_record({ type: "hello", sessionId, seq, snapshot: map.snap() });
+        send_without_record({ type: "hello", sessionId, seq, ...hello_snapshot(map) });
         if (message.lastSeq !== undefined && resume.can_replay_after(message.lastSeq)) {
           for (const replay of resume.replay_after(message.lastSeq)) send_without_record(replay);
         }
@@ -1933,4 +1936,28 @@ function is_projected_live_map(map: LiveMapAuthority): map is LiveMap {
   return (map.mode === "data-object" || map.mode === "data-array")
     && "snap" in map
     && typeof map.snap === "function";
+}
+
+function hello_snapshot(map: LiveMapAuthority): Readonly<{
+  snapshot: JsonValue | undefined;
+  format?: "structural-json";
+  formatVersion?: 1;
+  payload?: string;
+}> {
+  if (!is_projected_live_map(map)) {
+    const snapshot = "snap" in map && typeof map.snap === "function"
+      ? map.snap() as JsonValue | undefined
+      : undefined;
+    return Object.freeze({ snapshot });
+  }
+  const propagation = livemap_projected_propagation(map);
+  if (propagation === undefined) {
+    throw new Error("LiveHost projected hello requires a carrier propagation capability.");
+  }
+  const projected = propagation.read([]);
+  if (projected === undefined) return Object.freeze({ snapshot: undefined });
+  return Object.freeze({
+    snapshot: materialize_projected_value(projected),
+    ...encode_projected_value_transport(projected),
+  });
 }

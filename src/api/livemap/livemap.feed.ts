@@ -1,8 +1,16 @@
 // livemap-feed.ts
 
 import type { JsonValue } from "../../core/types.js";
+import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { LiveMapCommit, LiveMapDisposer, LiveMapFeedEvent, LiveMapFeedListener, LivePath } from "../../types/livemap.types.js";
-import { path_is_prefix, paths_overlap } from "./livemap.path.js";
+import { paths_overlap } from "./livemap.path.js";
+import type { LiveMapProjectedFeedEvent } from "./livemap.projected-propagation.js";
+import {
+  decode_livemap_replay_payload,
+  materialize_livemap_projected_op,
+  type LiveMapProjectedDataOp,
+} from "./livemap.transport.js";
 
 /**
  * Reads the current projected JSON value at a LiveMap path.
@@ -24,6 +32,11 @@ type FeedEntry = Readonly<{
   listener: LiveMapFeedListener;
 }>;
 
+type ProjectedFeedEntry = Readonly<{
+  path: LivePath;
+  listener: (event: LiveMapProjectedFeedEvent) => void;
+}>;
+
 
 /**
  * Create an in-memory feed registry for one LiveMap core instance.
@@ -41,6 +54,7 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
    * subscriptions are runtime observers, not part of the HSON data graph.
    */
   const entries: FeedEntry[] = [];
+  const projectedEntries: ProjectedFeedEntry[] = [];
 
   return {
     /**
@@ -50,7 +64,7 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
      * silently move the subscription.
      */
     add: (path, listener) => {
-      const entry: FeedEntry = { path: [...path], listener };
+      const entry: FeedEntry = { path: Object.freeze([...path]), listener };
       entries.push(entry);
 
       /**
@@ -61,6 +75,15 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
       return () => {
         const index = entries.indexOf(entry);
         if (index !== -1) entries.splice(index, 1);
+      };
+    },
+
+    addProjected: (path, listener) => {
+      const entry: ProjectedFeedEntry = { path: Object.freeze([...path]), listener };
+      projectedEntries.push(entry);
+      return () => {
+        const index = projectedEntries.indexOf(entry);
+        if (index !== -1) projectedEntries.splice(index, 1);
       };
     },
 
@@ -98,7 +121,58 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
         entry.listener(event);
       }
     },
+
+    emitProjected: (commit, read) => {
+      if (!commit.changed) return;
+      if (typeof commit.payload !== "string") {
+        throw new Error("LiveMap projected feed requires an exact commit payload.");
+      }
+      const projectedOps = decode_livemap_replay_payload(commit.payload);
+
+      for (const entry of [...projectedEntries]) {
+        const ops = projectedOps.filter((op) => paths_overlap(entry.path, op.path));
+        if (ops.length === 0) continue;
+        entry.listener(Object.freeze({
+          commit,
+          path: entry.path,
+          value: read(entry.path),
+          ops: Object.freeze(ops),
+        }));
+      }
+
+      for (const entry of [...entries]) {
+        const publicCommit = detached_public_commit(commit, projectedOps);
+        const ops = publicCommit.ops.filter((op) => paths_overlap(entry.path, op.path));
+        const op = ops[0];
+        if (op === undefined) continue;
+        const projected = read(entry.path);
+        entry.listener({
+          commit: publicCommit,
+          op,
+          ops,
+          path: entry.path,
+          value: projected === undefined ? undefined : materialize_projected_value(projected),
+        });
+      }
+    },
   };
+}
+
+function detached_public_commit(
+  commit: LiveMapCommit,
+  ops: readonly LiveMapProjectedDataOp[],
+): LiveMapCommit {
+  return Object.freeze({
+    changed: commit.changed,
+    prevRev: commit.prevRev,
+    rev: commit.rev,
+    ops: Object.freeze(ops.map(materialize_livemap_projected_op)),
+    ...(commit.format === undefined ? {} : {
+      format: commit.format,
+      formatVersion: commit.formatVersion,
+      payload: commit.payload,
+    }),
+  });
 }
 
 /**
@@ -109,5 +183,13 @@ export function make_livemap_feed_hub(): LiveMapFeedHub {
  */
 export type LiveMapFeedHub = Readonly<{
   add: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
+  addProjected: (
+    path: LivePath,
+    listener: (event: LiveMapProjectedFeedEvent) => void,
+  ) => LiveMapDisposer;
   emit: (commit: LiveMapCommit, snap: LiveMapSnapFn) => void;
+  emitProjected: (
+    commit: LiveMapCommit,
+    read: (path: LivePath) => OrderedProjectedValue | undefined,
+  ) => void;
 }>;

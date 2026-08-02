@@ -5,8 +5,13 @@ import type { LiveMapCommit, LiveMapCore, LiveMapPathHandle, LivePath } from "..
 import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
-import { clone_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
+import { clone_live_path, format_live_path, parent_live_path, path_is_prefix } from "./livemap.path.js";
 import { schedule_livemap_managed_mutation } from "./livemap.authority.js";
+import {
+  livemap_projected_propagation,
+  type LiveMapProjectedPropagationWrite,
+} from "./livemap.projected-propagation.js";
+import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
@@ -63,7 +68,27 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     array: make_livemap_array_api(core, handlePath),
     object: make_livemap_object_api<TValue>(core, handlePath),
     feed: (listener) => core.feed(handlePath, listener),
-    linkTo: (target) => core.feed(handlePath, (event) => {
+    linkTo: (target) => {
+      const targetInternals = pathHandleInternals.get(target);
+      if (targetInternals !== undefined) {
+        const sourceProjected = livemap_projected_propagation(core);
+        if (sourceProjected !== undefined) {
+          return sourceProjected.feed(handlePath, (event) => {
+            const deletion = event.ops.find((op) => op.kind === "delete");
+            if (deletion !== undefined && path_is_prefix(deletion.path, handlePath)) {
+              commit_projected_handle_link(targetInternals, [{ kind: "delete", path: targetInternals.path }]);
+              return;
+            }
+            if (event.value === undefined) return;
+            write_projected_handle_link(
+              targetInternals,
+              event.value,
+              event.ops[0]?.kind === "replace" ? "replace" : "set",
+            );
+          });
+        }
+      }
+      return core.feed(handlePath, (event) => {
       if (event.op.kind === "delete") {
         propagate_delete_link(handlePath, event.op.path, event.value, target);
         return;
@@ -71,11 +96,50 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
 
       if (event.value === undefined) return;
       write_link_target(target, event.value, event.op.kind === "replace" ? "replace" : "set");
-    }),
+      });
+    },
   };
 
   pathHandleInternals.set(handle as unknown as LiveMapPathHandle, { core, path: handlePath });
   return handle;
+}
+
+function write_projected_handle_link(
+  target: LiveMapPathHandleInternals,
+  value: OrderedProjectedValue,
+  mode: "replace" | "set",
+): void {
+  commit_projected_handle_link(target, [{ kind: mode, path: target.path, value }], true);
+}
+
+function commit_projected_handle_link(
+  target: LiveMapPathHandleInternals,
+  writes: readonly LiveMapProjectedPropagationWrite[],
+  allowMissingChild = false,
+): void {
+  const run = (candidate: object): LiveMapCommit => {
+    const projected = livemap_projected_propagation(candidate);
+    if (projected === undefined) throw new Error("LiveMap handle link target has no projected propagation capability.");
+    if (allowMissingChild) must_handle_link_target(projected, target.path);
+    return projected.commit(writes);
+  };
+  const scheduled = schedule_livemap_managed_mutation(target.core, (draft) => run(draft));
+  if (scheduled !== undefined) {
+    void scheduled.catch(() => undefined);
+    return;
+  }
+  run(target.core);
+}
+
+function must_handle_link_target(
+  projected: NonNullable<ReturnType<typeof livemap_projected_propagation>>,
+  path: LivePath,
+): void {
+  if (path.length === 0 || projected.read(path) !== undefined) return;
+  const parent = parent_live_path(path);
+  const key = path[path.length - 1];
+  if (parent !== undefined && typeof key === "string" && is_ordered_projected_object(projected.read(parent))) return;
+  throw new Error(`LiveMap set path does not resolve: ${format_live_path(path)}`);
 }
 
 /**

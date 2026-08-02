@@ -2,6 +2,9 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMap, LiveMapAuthority, LivePath } from "../../types/livemap.types.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
+import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
 import type {
   LiveHostError,
   LiveHostResult,
@@ -43,10 +46,6 @@ function fail(message: string, extra?: Omit<LiveHostError, "message">): LiveHost
   return { ok: false, error: { message, ...extra } };
 }
 
-function clone_json_value<TValue>(value: TValue): TValue {
-  return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
-}
-
 function clone_live_path(path: LivePath): LivePath {
   return [...path];
 }
@@ -58,8 +57,22 @@ function live_path_key(path: LivePath): string {
 function sync_value_for_path<TState extends JsonValue | undefined>(
   map: LiveMap<TState>,
   path: LivePath,
-): JsonValue | undefined {
-  return clone_json_value(map.at(path).snap());
+): Readonly<{
+  value: JsonValue | undefined;
+  format?: "structural-json";
+  formatVersion?: 1;
+  payload?: string;
+}> {
+  const propagation = livemap_projected_propagation(map);
+  if (propagation === undefined) {
+    throw new Error("LiveHost projected sync requires a carrier propagation capability.");
+  }
+  const projected = propagation.read(path);
+  if (projected === undefined) return Object.freeze({ value: undefined });
+  return Object.freeze({
+    value: materialize_projected_value(projected),
+    ...encode_projected_value_transport(projected),
+  });
 }
 
 function send_sync<TState extends JsonValue | undefined>(
@@ -68,11 +81,12 @@ function send_sync<TState extends JsonValue | undefined>(
   path: LivePath,
   seq: LiveHostSeq,
 ): void {
+  const projected = sync_value_for_path(map, path);
   session.send?.({
     type: "sync",
     seq,
     path: clone_live_path(path),
-    value: sync_value_for_path(map, path),
+    ...projected,
   });
 }
 

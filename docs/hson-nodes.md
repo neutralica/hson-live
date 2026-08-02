@@ -25,17 +25,12 @@ type HsonNode = {
 };
 ```
 
-`$_tag` and `$_content` are required. Empty optional attribute and metadata
-containers are omitted by the node factory; empty content is `[]`.
+`$_tag` and `$_content` are required. Empty optional attribute and metadata containers are omitted by the node factory; empty content is `[]`.
 
-- `$_tag` identifies an ordinary element/property node or a virtual structural
-  node (VSN).
-- `$_content` is physically ordered. Except for primitive VSN payloads, its
-  entries must be nodes rather than raw primitives.
+- `$_tag` identifies an ordinary element/property node or a virtual structural node (VSN).
+- `$_content` is physically ordered. Except for primitive VSN payloads, its entries must be nodes rather than raw primitives.
 - `$_attrs` stores HTML-derived attributes and serializable inline style.
-- `$_meta` stores exact registered metadata: optional `quid` on ordinary
-  elements and required string `index` on `_hson_ii`. Invariant checking
-  rejects every other key.
+- `$_meta` stores exact registered metadata: optional `quid` on ordinary elements and required string `index` on `_hson_ii`. Invariant checking rejects every other key.
 
 Cycles are invalid. The representation is structurally a rooted ordered tree,
 even when application-level handles refer to its nodes from elsewhere.

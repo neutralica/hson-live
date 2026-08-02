@@ -1,6 +1,5 @@
 // livehost.recovery.ts
 
-import type { JsonValue } from "../../core/types.js";
 import type { DocumentLiveMapCapture, LiveMapAuthority } from "../../types/livemap.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import type {
@@ -35,8 +34,9 @@ import {
   type LiveHostDocumentSnapshotEncoding,
   type LiveHostOutboundDocumentSnapshotEnvelope,
 } from "./livehost.document-snapshot.js";
-import { parse_json } from "../transform/parsers/parse-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
+import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
+import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
@@ -48,18 +48,6 @@ function must_bound(value: number | undefined, fallback: number, name: string): 
   if (value === undefined) return fallback;
   if (Number.isFinite(value) && value >= 0) return Math.trunc(value);
   throw new Error(`LiveHost recovery ${name} must be a finite non-negative number.`);
-}
-
-function is_json_value(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  if (typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(is_json_value);
-  if (typeof value !== "object") return false;
-
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  return Object.values(value).every(is_json_value);
 }
 
 function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
@@ -75,20 +63,6 @@ function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
     && typeof value.rev === "number"
     && "root" in value
     && is_Node(value.root);
-}
-
-function clone_json_value(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) {
-    const clone = value.map(clone_json_value);
-    Object.freeze(clone);
-    return clone;
-  }
-
-  const clone: Record<string, JsonValue> = {};
-  for (const [key, item] of Object.entries(value)) clone[key] = clone_json_value(item);
-  Object.freeze(clone);
-  return clone;
 }
 
 function encoded_bytes(value: unknown): number {
@@ -409,8 +383,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               documentSnapshotEncoding,
             ));
           } else {
-            if (!("value" in capture) || capture.value === undefined || !is_json_value(capture.value)) {
-              throw new Error("LiveHost recovery snapshot root is not JSON.");
+            if (!("payload" in capture) || typeof capture.payload !== "string") {
+              throw new Error("LiveHost recovery snapshot has no exact projected payload.");
             }
             snapshotBody = Object.freeze({
               logicalMapId: stream.logicalMapId,
@@ -418,7 +392,9 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               rev: capture.rev,
               mode: map.mode,
               hson: serialize_hson(
-                detach_hson_root_value(parse_json(clone_json_value(capture.value))),
+                detach_hson_root_value(
+                  projected_value_to_hson_root(decode_projected_value_payload(capture.payload)),
+                ),
                 { noBreak: true },
               ),
             });

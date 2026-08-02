@@ -296,13 +296,27 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCan
 
 /** @internal Strict persisted/network canonical commit decoder. */
 export function decode_livehost_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
-  if (!is_record(value) || !has_exact_keys(value, ["logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops"])) return undefined;
+  if (!is_record(value)) return undefined;
+  const transportPresent = Object.hasOwn(value, "format")
+    || Object.hasOwn(value, "formatVersion")
+    || Object.hasOwn(value, "payload");
+  const keys = transportPresent
+    ? ["logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops", "format", "formatVersion", "payload"]
+    : ["logicalMapId", "incarnationId", "mode", "prevRev", "rev", "ops"];
+  if (!has_exact_keys(value, keys)) return undefined;
   const logicalMapId = required_string(value.logicalMapId);
   const incarnationId = required_string(value.incarnationId);
   const mode = decode_mode(value.mode);
   const prevRev = required_rev(value.prevRev);
   const rev = required_rev(value.rev);
   if (!logicalMapId || !incarnationId || mode === undefined || prevRev === undefined || rev !== prevRev + 1) return undefined;
+  if (transportPresent && (
+    mode === "element"
+    || mode === "fragment"
+    || value.format !== "structural-json"
+    || value.formatVersion !== 1
+    || typeof value.payload !== "string"
+  )) return undefined;
   if (!Array.isArray(value.ops) || value.ops.length === 0) return undefined;
   const ops: LiveHostCanonicalOp[] = [];
   for (const item of value.ops) {
@@ -312,7 +326,19 @@ export function decode_livehost_canonical_commit(value: unknown): LiveHostCanoni
     if (!op) return undefined;
     ops.push(op);
   }
-  return Object.freeze({ logicalMapId, incarnationId, mode, prevRev, rev, ops: Object.freeze(ops) });
+  return Object.freeze({
+    logicalMapId,
+    incarnationId,
+    mode,
+    prevRev,
+    rev,
+    ops: Object.freeze(ops),
+    ...(transportPresent ? {
+      format: "structural-json" as const,
+      formatVersion: 1 as const,
+      payload: value.payload as string,
+    } : {}),
+  });
 }
 
 /** @internal Convert an encoded document commit into detached LiveMap-domain operations. */

@@ -16,7 +16,8 @@
 import type { JsonValue } from "../../core/types.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
-import { json_values_equal as projected_json_values_equal } from "./livemap-helpers.js";
+import { ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
 import type {
   LiveMapCore,
   LiveMapDisposer,
@@ -36,11 +37,6 @@ function clone_selector_value<TValue>(value: TValue): TValue {
   return value === undefined ? value : JSON.parse(JSON.stringify(value)) as TValue;
 }
 
-function copy_projected_store_value<TValue>(value: TValue): TValue {
-  if (value === undefined) return value;
-  return materialize_projected_value(admit_projected_value(value)) as TValue;
-}
-
 function values_equal<TValue>(
   next: TValue,
   prev: TValue,
@@ -51,17 +47,12 @@ function values_equal<TValue>(
     : options.equal(clone_selector_value(next), clone_selector_value(prev));
 }
 
-function projected_values_equal<TValue>(
-  next: TValue,
-  prev: TValue,
-  options: LiveMapStoreSubscribeOptions<TValue> | undefined,
+function optional_projected_values_equal(
+  next: OrderedProjectedValue | undefined,
+  prev: OrderedProjectedValue | undefined,
 ): boolean {
-  return options?.equal === undefined
-    ? projected_json_values_equal(
-      next as JsonValue | undefined,
-      prev as JsonValue | undefined,
-    )
-    : options.equal(copy_projected_store_value(next), copy_projected_store_value(prev));
+  if (next === undefined || prev === undefined) return next === prev;
+  return ordered_projected_value_equal(next, prev);
 }
 
 /**
@@ -77,7 +68,17 @@ function projected_values_equal<TValue>(
 export function make_livemap_store_api<TValue = JsonValue | undefined>(
   map: Pick<LiveMapCore<TValue>, "snap" | "feed" | "at">,
 ): LiveMapStoreApi<TValue> {
-  const snapshot = (): TValue => copy_projected_store_value(map.snap());
+  const propagation = livemap_projected_propagation(map as object);
+  const read_projected = (path: LivePath): OrderedProjectedValue | undefined => {
+    const exact = propagation?.read(path);
+    if (exact !== undefined) return exact;
+    const publicValue = path.length === 0 ? map.snap() : map.at(path).snap();
+    return publicValue === undefined ? undefined : admit_projected_value(publicValue);
+  };
+  const materialize = <TOutput>(value: OrderedProjectedValue | undefined): TOutput => {
+    return (value === undefined ? undefined : materialize_projected_value(value)) as TOutput;
+  };
+  const snapshot = (): TValue => materialize<TValue>(read_projected([]));
 
   const subscribe = (listener: LiveMapStoreListener<TValue>): LiveMapDisposer => {
     return map.feed([], () => {
@@ -86,15 +87,15 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
   };
 
   const subscribeDiff = (listener: LiveMapStoreDiffListener<TValue>): LiveMapDisposer => {
-    let prev = snapshot();
+    let prev = read_projected([]);
 
     return map.feed([], () => {
-      const next = snapshot();
-      if (projected_values_equal(next, prev, undefined)) return;
+      const next = read_projected([]);
+      if (optional_projected_values_equal(next, prev)) return;
 
       const old = prev;
-      prev = copy_projected_store_value(next);
-      listener(copy_projected_store_value(next), copy_projected_store_value(old));
+      prev = next;
+      listener(materialize<TValue>(next), materialize<TValue>(old));
     });
   };
 
@@ -121,16 +122,25 @@ export function make_livemap_store_api<TValue = JsonValue | undefined>(
     listener: LiveMapStorePathListener<TValue, TPath>,
     options?: LiveMapStoreSubscribeOptions<LiveMapPathValue<TValue, TPath>>,
   ): LiveMapDisposer => {
-    const readPath = (): LiveMapPathValue<TValue, TPath> => copy_projected_store_value(map.at(path).snap());
-    let prev = readPath();
+    let prev = read_projected(path);
 
     return map.feed(path, (event: LiveMapFeedEvent) => {
-      const next = readPath();
-      if (projected_values_equal(next, prev, options)) return;
+      const next = read_projected(path);
+      const equal = options?.equal === undefined
+        ? optional_projected_values_equal(next, prev)
+        : options.equal(
+          materialize<LiveMapPathValue<TValue, TPath>>(next),
+          materialize<LiveMapPathValue<TValue, TPath>>(prev),
+        );
+      if (equal) return;
 
       const old = prev;
-      prev = copy_projected_store_value(next);
-      listener(copy_projected_store_value(next), copy_projected_store_value(old), event);
+      prev = next;
+      listener(
+        materialize<LiveMapPathValue<TValue, TPath>>(next),
+        materialize<LiveMapPathValue<TValue, TPath>>(old),
+        event,
+      );
     });
   };
 

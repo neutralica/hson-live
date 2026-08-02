@@ -264,7 +264,12 @@ function map_from_snapshot(
   try {
     if (is_data_map(map)) {
       const capture = map.capture();
-      map.restore(Object.freeze({ rev: snapshot.rev, value: capture.value }));
+      map.restore(Object.freeze({
+        rev: snapshot.rev,
+        format: capture.format,
+        formatVersion: capture.formatVersion,
+        payload: capture.payload,
+      }));
     } else if (is_document_map(map)) {
       const capture = decode_livehost_document_snapshot(snapshot);
       map.restore(capture);

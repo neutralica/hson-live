@@ -17,6 +17,7 @@ import type {
   LiveMapRootMode,
   LivePath,
   LiveMapOp,
+  LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";
 import type { JsonValue } from "../core/types.js";
 
@@ -168,7 +169,7 @@ export type LiveHostCanonicalCommit = Readonly<{
   prevRev: number;
   rev: number;
   ops: readonly LiveHostCanonicalOp[];
-}>;
+}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 export type LiveHostCanonicalCommitListener = (commit: LiveHostCanonicalCommit) => void;
 
@@ -640,7 +641,7 @@ export type LiveHostServerHelloMessage<TState extends JsonValue | undefined = Js
   sessionId: LiveHostSessionId;
   seq: LiveHostSeq;
   snapshot: TState;
-}>;
+}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 export type LiveHostServerPatchMessage = Readonly<{
   type: "patch";
@@ -659,7 +660,7 @@ export type LiveHostServerSyncMessage<TValue extends JsonValue | undefined = Jso
   seq: LiveHostSeq;
   path: LivePath;
   value: TValue;
-}>;
+}> & Partial<LiveMapStructuralJsonEnvelope>;
 
 export type LiveHostServerAckMessage = Readonly<{
   type: "ack";
