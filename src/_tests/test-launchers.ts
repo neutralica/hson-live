@@ -389,6 +389,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["projected-value", "feed", "link", "store", "livehost", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.schema-value-boundary",
+      subject: "LiveMap",
+      displayName: "LiveMap schema value boundary",
+      packageScript: "test:livemap-schema-value-boundary",
+      repositoryModule: "tests/livemap-schema-value-boundary.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["projected-value", "schema", "admission", "externally-discoverable"],
+    }),
+    launcher({
       id: "core.projected-value-admission",
       subject: "LiveMap",
       displayName: "Projected-value admission and materialization",

@@ -1,95 +1,114 @@
 // handle-object.ts
 
-
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCore, LiveMapObjectEntry, LiveMapObjectKey, LiveMapObjectSetManyValues, LiveMapObjectSetValue, LiveMapObjectShape, LiveMapObjectValue, LiveMapPathObjectApi, LivePath } from "../../types/livemap.types.js";
-import {  must_json_value, must_object_key, must_set_many_values, path_kind_error } from "./livemap.guard.js";
-import { format_live_path } from "./livemap.path.js";
-
+import {
+  is_ordered_projected_object,
+  ordered_projected_object,
+  type OrderedProjectedObject,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import type {
+  LiveMapCore,
+  LiveMapObjectEntry,
+  LiveMapObjectKey,
+  LiveMapObjectSetManyValues,
+  LiveMapObjectSetValue,
+  LiveMapObjectShape,
+  LiveMapObjectValue,
+  LiveMapPathObjectApi,
+  LivePath,
+} from "../../types/livemap.types.js";
+import {
+  must_object_key,
+  must_ordered_projected_object,
+  must_ordered_projected_value,
+  path_kind_error,
+} from "./livemap.guard.js";
+import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
 
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
 
-/**
- * Object-scoped helpers for a projected LiveMap path.
- *
- * Read helpers require the projected path to resolve to a JSON object. Mutation
- * helpers preserve LiveMap commit semantics:
- *
- * - `setKey` and `setMany` write child keys through core `setMany`, so they can
- *   create missing keys under an existing object.
- * - `clear` and `renameKey` replace the object endpoint because they change the
- *   object as a whole.
- * - `deleteKey`, `deleteMany`, and `renameKey` treat missing source keys as
- *   no-ops rather than strict path deletes.
- */
-export function make_livemap_object_api<TValue = JsonValue | undefined>(core: LiveMapObjectHandleCore, handlePath: LivePath): LiveMapPathObjectApi<TValue> {
+/** Object-scoped helpers backed by the canonical ordered carrier. */
+export function make_livemap_object_api<TValue = JsonValue | undefined>(
+  core: LiveMapObjectHandleCore,
+  handlePath: LivePath,
+): LiveMapPathObjectApi<TValue> {
+  const projected = livemap_projected_propagation(core);
+  if (projected === undefined) throw new Error("LiveMap object helper has no projected propagation capability.");
+
+  const read = (): OrderedProjectedObject => {
+    const value = projected.read(handlePath);
+    if (!is_ordered_projected_object(value)) throw path_kind_error(handlePath, "object");
+    return value;
+  };
+  const noChange = () => projected.commit([]);
+
   return {
-    is: () => isObjectValue(core.snap(handlePath)),
-    toObject: () => ({ ...mustObjectValue(core.snap(handlePath), handlePath) }) as LiveMapObjectShape<TValue>,
-    pick: (keys) => objectPick(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)) as ReturnType<LiveMapPathObjectApi<TValue>["pick"]>,
-    omit: (keys) => objectOmit(core.snap(handlePath), handlePath, mustObjectKeyList(keys, handlePath)) as ReturnType<LiveMapPathObjectApi<TValue>["omit"]>,
-    hasKey: (key: unknown) => {
-      const objectKey = must_object_key(key, handlePath);
-      return objectKey in mustObjectValue(core.snap(handlePath), handlePath);
-    },
+    is: () => is_ordered_projected_object(projected.read(handlePath)),
+    toObject: () => materialize_projected_value(read()) as LiveMapObjectShape<TValue>,
+    pick: (keys) => materialize_projected_value(
+      object_pick(read(), mustObjectKeyList(keys, handlePath)),
+    ) as ReturnType<LiveMapPathObjectApi<TValue>["pick"]>,
+    omit: (keys) => materialize_projected_value(
+      object_omit(read(), mustObjectKeyList(keys, handlePath)),
+    ) as ReturnType<LiveMapPathObjectApi<TValue>["omit"]>,
+    hasKey: (key: unknown) => object_entry_index(read(), must_object_key(key, handlePath)) !== -1,
     getKey: <const TKey extends string>(key: TKey): LiveMapObjectValue<TValue, TKey> => {
-      const objectKey = must_object_key(key, handlePath);
-      return mustObjectValue(core.snap(handlePath), handlePath)[objectKey] as unknown as LiveMapObjectValue<TValue, TKey>;
+      const entry = object_entry(read(), must_object_key(key, handlePath));
+      return (entry === undefined ? undefined : materialize_projected_value(entry[1])) as LiveMapObjectValue<TValue, TKey>;
     },
-    keys: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectKey<TValue>[],
-    isEmpty: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length === 0,
-    size: () => Object.keys(mustObjectValue(core.snap(handlePath), handlePath)).length,
-    values: () => Object.values(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
-    entries: () => Object.entries(mustObjectValue(core.snap(handlePath), handlePath)) as unknown as readonly LiveMapObjectEntry<TValue>[],
+    keys: () => read().entries.map(([key]) => key) as unknown as readonly LiveMapObjectKey<TValue>[],
+    isEmpty: () => read().entries.length === 0,
+    size: () => read().entries.length,
+    values: () => read().entries.map(([, value]) => materialize_projected_value(value)) as unknown as readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][],
+    entries: () => read().entries.map(([key, value]) => [key, materialize_projected_value(value)]) as unknown as readonly LiveMapObjectEntry<TValue>[],
     setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: LiveMapObjectSetValue<TValue, TKey>) => {
       const objectKey = must_object_key(key, handlePath);
-      mustObjectValue(core.snap(handlePath), handlePath);
-      return core.setMany(handlePath, { [objectKey]: must_json_value(value, [...handlePath, objectKey]) });
+      read();
+      return projected.commit([{
+        kind: "set",
+        path: [...handlePath, objectKey],
+        value: must_ordered_projected_value(value, [...handlePath, objectKey]),
+      }]);
     },
     setMany: (values: LiveMapObjectSetManyValues<TValue>) => {
-      mustObjectValue(core.snap(handlePath), handlePath);
-      return core.setMany(handlePath, must_set_many_values(values, handlePath));
+      read();
+      const admitted = must_ordered_projected_object(values, handlePath);
+      return projected.commit(admitted.entries.map(([key, value]) => ({
+        kind: "set" as const,
+        path: [...handlePath, key],
+        value,
+      })));
     },
     clear: () => {
-      mustObjectValue(core.snap(handlePath), handlePath);
-      return core.replace(handlePath, {});
+      read();
+      return projected.commit([{ kind: "replace", path: handlePath, value: ordered_projected_object([]) }]);
     },
     deleteKey: (key: unknown) => {
       const objectKey = must_object_key(key, handlePath);
-      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      if (!(objectKey in objectValue)) {return core.batch(() => {});}
-      return core.delete([...handlePath, objectKey]);
+      if (object_entry_index(read(), objectKey) === -1) return noChange();
+      return projected.commit([{ kind: "delete", path: [...handlePath, objectKey] }]);
     },
     deleteMany: (keys: unknown) => {
-      const objectKeys = mustObjectKeyList(keys, handlePath);
-      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      return core.batch((tx) => {
-        for (const key of new Set(objectKeys)) {
-          if (key in objectValue) tx.delete([...handlePath, key]);
-        }
-      });
+      const objectKeys = new Set(mustObjectKeyList(keys, handlePath));
+      const value = read();
+      return projected.commit(value.entries
+        .filter(([key]) => objectKeys.has(key))
+        .map(([key]) => ({ kind: "delete" as const, path: [...handlePath, key] })));
     },
     renameKey: (fromKey: unknown, toKey: unknown) => {
       const fromObjectKey = must_object_key(fromKey, handlePath);
       const toObjectKey = must_object_key(toKey, handlePath);
-      const objectValue = mustObjectValue(core.snap(handlePath), handlePath);
-      if (!(fromObjectKey in objectValue)) {return core.batch(() => {});}
-      if (fromObjectKey === toObjectKey) {return core.batch(() => {});}
-      return core.replace(handlePath, objectRenameKey(objectValue, handlePath, fromObjectKey, toObjectKey));
+      const value = read();
+      if (object_entry_index(value, fromObjectKey) === -1 || fromObjectKey === toObjectKey) return noChange();
+      return projected.commit([{
+        kind: "replace",
+        path: handlePath,
+        value: object_rename_key(value, fromObjectKey, toObjectKey),
+      }]);
     },
   };
-}
-
-function isObjectValue(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function mustObjectValue(value: JsonValue | undefined, path: LivePath): Readonly<Record<string, JsonValue>> {
-  if (!isObjectValue(value)) {
-    throw path_kind_error(path, "object");
-  }
-
-  return value;
 }
 
 /** Normalize and validate user-supplied object key lists. */
@@ -97,52 +116,40 @@ function mustObjectKeyList(value: unknown, path: LivePath): readonly string[] {
   if (!Array.isArray(value)) {
     throw new Error(`LiveMap object keys are not an array at ${JSON.stringify(path)}`);
   }
-
   return value.map((key) => must_object_key(key, path));
 }
 
-function objectPick(value: JsonValue | undefined, path: LivePath, keys: readonly string[]): Readonly<Record<string, JsonValue>> {
-  const objectValue = mustObjectValue(value, path);
-  const next: Record<string, JsonValue> = {};
-
-  for (const key of keys) {
-    if (key in objectValue) next[key] = objectValue[key] as JsonValue;
-  }
-
-  return next;
+function object_entry_index(value: OrderedProjectedObject, key: string): number {
+  return value.entries.findIndex(([entryKey]) => entryKey === key);
 }
 
-function objectOmit(value: JsonValue | undefined, path: LivePath, keys: readonly string[]): Readonly<Record<string, JsonValue>> {
-  const objectValue = mustObjectValue(value, path);
-  const omitKeys = new Set(keys);
-  const next: Record<string, JsonValue> = {};
-
-  for (const [key, item] of Object.entries(objectValue)) {
-    if (!omitKeys.has(key)) next[key] = item;
-  }
-
-  return next;
+function object_entry(
+  value: OrderedProjectedObject,
+  key: string,
+): readonly [string, OrderedProjectedValue] | undefined {
+  const index = object_entry_index(value, key);
+  return index === -1 ? undefined : value.entries[index];
 }
 
-/** Build a whole-object replacement for rename semantics. */
-function objectRenameKey(value: JsonValue | undefined, path: LivePath, fromKey: string, toKey: string): JsonValue {
-  const objectValue = mustObjectValue(value, path);
-  if (!(fromKey in objectValue)) {
-    throw new Error(`LiveMap rename path does not resolve: ${format_live_path([...path, fromKey])}`);
-  }
+function object_pick(value: OrderedProjectedObject, keys: readonly string[]): OrderedProjectedObject {
+  const selected = new Set(keys);
+  return ordered_projected_object(value.entries.filter(([key]) => selected.has(key)));
+}
 
-  if (fromKey === toKey) return { ...objectValue };
+function object_omit(value: OrderedProjectedObject, keys: readonly string[]): OrderedProjectedObject {
+  const omitted = new Set(keys);
+  return ordered_projected_object(value.entries.filter(([key]) => !omitted.has(key)));
+}
 
-  const next: Record<string, JsonValue> = {};
-
-  for (const [key, item] of Object.entries(objectValue)) {
-    if (key === fromKey) {
-      next[toKey] = item;
-      continue;
-    }
-
-    if (key !== toKey) next[key] = item;
-  }
-
-  return next;
+/** Rename in the source position and remove an existing destination entry. */
+function object_rename_key(
+  value: OrderedProjectedObject,
+  fromKey: string,
+  toKey: string,
+): OrderedProjectedObject {
+  return ordered_projected_object(value.entries.flatMap(([key, item]) => {
+    if (key === fromKey) return [[toKey, item] as const];
+    if (key === toKey) return [];
+    return [[key, item] as const];
+  }));
 }

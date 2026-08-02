@@ -36,9 +36,16 @@ export function decode_public_attrs(value: unknown): CanonicalPublicAttrs | unde
   const attrs: Record<string, CanonicalPublicAttrValue> = {};
   for (const name of Object.keys(value).sort()) {
     if (!is_public_attr_name(name)) return undefined;
-    const decoded = decode_public_attr_value(name, value[name]);
+    const descriptor = Object.getOwnPropertyDescriptor(value, name);
+    if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) return undefined;
+    const decoded = decode_public_attr_value(name, descriptor.value);
     if (decoded === undefined) return undefined;
-    attrs[name] = decoded;
+    Object.defineProperty(attrs, name, {
+      value: decoded,
+      enumerable: true,
+      writable: false,
+      configurable: false,
+    });
   }
   return Object.freeze(attrs);
 }

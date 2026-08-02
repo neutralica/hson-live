@@ -485,7 +485,12 @@ function decode_entries(
       throw invalid_representation();
     }
     previous = entry.key;
-    output[entry.key] = decode_value(entry.value, depth + 1, budget, limits);
+    Object.defineProperty(output, entry.key, {
+      value: decode_value(entry.value, depth + 1, budget, limits),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return output;
 }
@@ -494,7 +499,12 @@ function decode_attrs(value: Record<string, unknown>): HsonAttrs {
   const attrs: HsonAttrs = {};
   for (const [key, item] of Object.entries(value)) {
     if (is_primitive(item)) {
-      attrs[key] = item;
+      Object.defineProperty(attrs, key, {
+        value: item,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
       continue;
     }
     if (key === "style" && is_style_record(item, new WeakSet<object>())) {
@@ -512,7 +522,12 @@ function decode_meta(value: Record<string, unknown>): HsonMeta {
     if (!is_hson_metadata_key(key) || typeof item !== "string") {
       throw invalid_representation();
     }
-    meta[key] = item;
+    Object.defineProperty(meta, key, {
+      value: item,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return meta;
 }

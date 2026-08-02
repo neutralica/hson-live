@@ -1,145 +1,157 @@
 // handle-array.ts
 
 import type { JsonValue } from "../../core/types.js";
+import {
+  ordered_projected_array,
+  ordered_projected_value_equal,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
-import { array_index_error, must_json_value, path_kind_error } from "./livemap.guard.js";
-import { json_values_equal } from "./livemap-helpers.js";
+import { array_index_error, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
+import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "splice">;
 
-export function make_livemap_array_api<
-  TValue = JsonValue | undefined,
->(
-  coreInput: LiveMapArrayHandleCore,
+export function make_livemap_array_api<TValue = JsonValue | undefined>(
+  core: LiveMapArrayHandleCore,
   handlePath: LivePath,
 ): LiveMapPathArrayApi<TValue> {
-  const core = coreInput as LiveMapArrayHandleCore;
+  const projected = livemap_projected_propagation(core);
+  if (projected === undefined) throw new Error("LiveMap array helper has no projected propagation capability.");
+
+  const read = (): readonly OrderedProjectedValue[] => {
+    const value = projected.read(handlePath);
+    if (!Array.isArray(value)) throw path_kind_error(handlePath, "array");
+    return value;
+  };
+  const set = (value: readonly OrderedProjectedValue[]) => projected.commit([{
+    kind: "set",
+    path: handlePath,
+    value: ordered_projected_array(value),
+  }]);
+  const splice = (
+    start: number,
+    deleteCount: number,
+    items: readonly OrderedProjectedValue[] = [],
+  ) => projected.commit([{ kind: "splice", path: handlePath, start, deleteCount, items }]);
+  const materializeArray = (value: readonly OrderedProjectedValue[]) => (
+    materialize_projected_value(ordered_projected_array(value)) as LiveMapArrayShape<TValue>
+  );
+
   return {
-    is: () => Array.isArray(core.snap(handlePath)),
-    toArray: () => mustArrayValue(core.snap(handlePath), handlePath) as unknown as LiveMapArrayShape<TValue>,
-    slice: (start, end) => arraySlice(core.snap(handlePath), handlePath, start, end) as unknown as LiveMapArrayShape<TValue>,
-    take: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(0, arrayCount(count, handlePath)) as unknown as LiveMapArrayShape<TValue>,
-    drop: (count) => mustArrayValue(core.snap(handlePath), handlePath).slice(arrayCount(count, handlePath)) as unknown as LiveMapArrayShape<TValue>,
+    is: () => Array.isArray(projected.read(handlePath)),
+    toArray: () => materializeArray(read()),
+    slice: (start, end) => materializeArray(arraySlice(read(), handlePath, start, end)),
+    take: (count) => materializeArray(read().slice(0, arrayCount(count, handlePath))),
+    drop: (count) => materializeArray(read().slice(arrayCount(count, handlePath))),
     takeLast: (count) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const value = read();
       const itemCount = arrayCount(count, handlePath);
-      return (itemCount === 0 ? [] : arrayValue.slice(-itemCount)) as unknown as LiveMapArrayShape<TValue>;
+      return materializeArray(itemCount === 0 ? [] : value.slice(-itemCount));
     },
     dropLast: (count) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const value = read();
       const itemCount = arrayCount(count, handlePath);
-      return (itemCount === 0 ? arrayValue : arrayValue.slice(0, -itemCount)) as unknown as LiveMapArrayShape<TValue>;
+      return materializeArray(itemCount === 0 ? value : value.slice(0, -itemCount));
     },
-    length: () => mustArrayValue(core.snap(handlePath), handlePath).length,
-    isEmpty: () => mustArrayValue(core.snap(handlePath), handlePath).length === 0,
+    length: () => read().length,
+    isEmpty: () => read().length === 0,
     at: (index) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, index)] as unknown as LiveMapArrayItem<TValue>;
+      const value = read();
+      return materialize_projected_value(value[arrayIndex(value, handlePath, index)] as OrderedProjectedValue) as LiveMapArrayItem<TValue>;
     },
     first: () => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, 0)] as unknown as LiveMapArrayItem<TValue>;
+      const value = read();
+      return materialize_projected_value(value[arrayIndex(value, handlePath, 0)] as OrderedProjectedValue) as LiveMapArrayItem<TValue>;
     },
     last: () => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return arrayValue[arrayIndex(arrayValue, handlePath, -1)] as unknown as LiveMapArrayItem<TValue>;
+      const value = read();
+      return materialize_projected_value(value[arrayIndex(value, handlePath, -1)] as OrderedProjectedValue) as LiveMapArrayItem<TValue>;
     },
     includes: (value) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const item = must_json_value(value, handlePath);
-      return arrayValue.some((arrayItem) => json_values_equal(arrayItem, item));
+      const item = must_ordered_projected_value(value, handlePath);
+      return read().some((arrayItem) => ordered_projected_value_equal(arrayItem, item));
     },
     indexOf: (value) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const item = must_json_value(value, handlePath);
-      return arrayValue.findIndex((arrayItem) => json_values_equal(arrayItem, item));
+      const item = must_ordered_projected_value(value, handlePath);
+      return read().findIndex((arrayItem) => ordered_projected_value_equal(arrayItem, item));
     },
     push: (value) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const index = arrayValue.length;
-      return core.splice(handlePath, index, 0, must_json_value(value, [...handlePath, index]));
+      const current = read();
+      return splice(current.length, 0, [must_ordered_projected_value(value, [...handlePath, current.length])]);
     },
     pushMany: (values) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.splice(handlePath, arrayValue.length, 0, ...mustJsonArrayValue(values, handlePath));
+      const current = read();
+      return splice(current.length, 0, mustOrderedArrayValue(values, handlePath));
     },
     unshift: (value) => {
-      mustArrayValue(core.snap(handlePath), handlePath);
-      return core.splice(handlePath, 0, 0, must_json_value(value, [...handlePath, 0]));
+      read();
+      return splice(0, 0, [must_ordered_projected_value(value, [...handlePath, 0])]);
     },
     unshiftMany: (values) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.splice(handlePath, 0, 0, ...mustJsonArrayValue(values, handlePath));
+      read();
+      return splice(0, 0, mustOrderedArrayValue(values, handlePath));
     },
     pop: () => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const index = arrayIndex(arrayValue, handlePath, -1);
-      return core.splice(handlePath, index, 1);
+      const current = read();
+      return splice(arrayIndex(current, handlePath, -1), 1);
     },
     shift: () => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const index = arrayIndex(arrayValue, handlePath, 0);
-      return core.splice(handlePath, index, 1);
+      const current = read();
+      return splice(arrayIndex(current, handlePath, 0), 1);
     },
     clear: () => {
-      mustArrayValue(core.snap(handlePath), handlePath);
-      return core.set(handlePath, []);
+      read();
+      return set([]);
     },
-    reverse: () => core.set(handlePath, mustArrayValue(core.snap(handlePath), handlePath).reverse()),
-    sortNumbers: (direction) => core.set(handlePath, arraySortNumbers(core.snap(handlePath), handlePath, direction)),
-    sortStrings: (direction) => core.set(handlePath, arraySortStrings(core.snap(handlePath), handlePath, direction)),
+    reverse: () => set([...read()].reverse()),
+    sortNumbers: (direction) => set(arraySortNumbers(read(), handlePath, direction)),
+    sortStrings: (direction) => set(arraySortStrings(read(), handlePath, direction)),
     splice: (...args) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
+      const current = read();
       const [start, deleteCount, ...items] = args;
-      const normalizedStart = normalizeHandleSpliceStart(arrayValue.length, arraySpliceStart(start, handlePath));
-      const normalizedDeleteCount = deleteCount === undefined ? arrayValue.length - normalizedStart : arraySpliceDeleteCount(deleteCount, handlePath);
-      return core.splice(handlePath, normalizedStart, normalizedDeleteCount, ...items.map((item, index) => must_json_value(item, [...handlePath, normalizedStart + index])));
+      const normalizedStart = normalizeHandleSpliceStart(current.length, arraySpliceStart(start, handlePath));
+      const normalizedDeleteCount = deleteCount === undefined
+        ? current.length - normalizedStart
+        : arraySpliceDeleteCount(deleteCount, handlePath);
+      return splice(normalizedStart, Math.min(normalizedDeleteCount, current.length - normalizedStart), items.map((item, index) => (
+        must_ordered_projected_value(item, [...handlePath, normalizedStart + index])
+      )));
     },
     insert: (index, value) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const resolvedIndex = arrayInsertIndex(arrayValue, handlePath, index);
-      return core.splice(handlePath, resolvedIndex, 0, must_json_value(value, [...handlePath, resolvedIndex]));
+      const current = read();
+      const resolvedIndex = arrayInsertIndex(current, handlePath, index);
+      return splice(resolvedIndex, 0, [must_ordered_projected_value(value, [...handlePath, resolvedIndex])]);
     },
     remove: (index) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      return core.splice(handlePath, arrayIndex(arrayValue, handlePath, index), 1);
+      const current = read();
+      return splice(arrayIndex(current, handlePath, index), 1);
     },
     replace: (index, value) => {
-      const arrayValue = mustArrayValue(core.snap(handlePath), handlePath);
-      const resolvedIndex = arrayIndex(arrayValue, handlePath, index);
-      return core.splice(handlePath, resolvedIndex, 1, must_json_value(value, [...handlePath, resolvedIndex]));
+      const current = read();
+      const resolvedIndex = arrayIndex(current, handlePath, index);
+      return splice(resolvedIndex, 1, [must_ordered_projected_value(value, [...handlePath, resolvedIndex])]);
     },
-    move: (fromIndex, toIndex) => core.set(handlePath, arrayMove(core.snap(handlePath), handlePath, fromIndex, toIndex)),
-    unique: () => core.set(handlePath, arrayUnique(core.snap(handlePath), handlePath)),
-    removeValue: (value) => core.set(handlePath, arrayRemoveValue(core.snap(handlePath), handlePath, must_json_value(value, handlePath))),
-    removeAll: (value) => core.set(handlePath, arrayRemoveAll(core.snap(handlePath), handlePath, must_json_value(value, handlePath))),
+    move: (fromIndex, toIndex) => set(arrayMove(read(), handlePath, fromIndex, toIndex)),
+    unique: () => set(arrayUnique(read())),
+    removeValue: (value) => set(arrayRemoveValue(read(), must_ordered_projected_value(value, handlePath))),
+    removeAll: (value) => set(arrayRemoveAll(read(), must_ordered_projected_value(value, handlePath))),
   };
 }
 
-/** Validate the current path as an array and return a shallow editable copy. */
-function mustArrayValue(value: JsonValue | undefined, path: LivePath): JsonValue[] {
-  if (!Array.isArray(value)) {
-    throw path_kind_error(path, "array");
-  }
-
-  return [...value];
-}
-
-/** Validate a user-supplied value as a JSON array and return a shallow copy. */
-function mustJsonArrayValue(value: unknown, path: LivePath): JsonValue[] {
-  const jsonValue = must_json_value(value, path);
-  if (!Array.isArray(jsonValue)) {
+function mustOrderedArrayValue(value: unknown, path: LivePath): readonly OrderedProjectedValue[] {
+  const admitted = must_ordered_projected_value(value, path);
+  if (!Array.isArray(admitted)) {
     throw new Error(`LiveMap array values are not an array at ${JSON.stringify(path)}`);
   }
-
-  return [...jsonValue];
+  return admitted;
 }
 
 function arrayCount(count: number, path: LivePath): number {
   if (!Number.isInteger(count) || count < 0) {
     throw new Error(`LiveMap array count is not valid at ${JSON.stringify(path)}: ${count}`);
   }
-
   return count;
 }
 
@@ -148,19 +160,22 @@ function arrayOptionalIndex(index: number | undefined, path: LivePath, label: st
   if (!Number.isInteger(index)) {
     throw new Error(`LiveMap array ${label} is not a valid index at ${JSON.stringify(path)}: ${String(index)}`);
   }
-
   return index;
 }
 
-function arraySlice(value: JsonValue | undefined, path: LivePath, start?: number, end?: number): JsonValue[] {
-  return mustArrayValue(value, path).slice(arrayOptionalIndex(start, path, "slice start"), arrayOptionalIndex(end, path, "slice end"));
+function arraySlice(
+  value: readonly OrderedProjectedValue[],
+  path: LivePath,
+  start?: number,
+  end?: number,
+): readonly OrderedProjectedValue[] {
+  return value.slice(arrayOptionalIndex(start, path, "slice start"), arrayOptionalIndex(end, path, "slice end"));
 }
 
 function arraySpliceStart(start: number, path: LivePath): number {
   if (!Number.isInteger(start)) {
     throw new Error(`LiveMap array splice start is not a valid index at ${JSON.stringify(path)}: ${String(start)}`);
   }
-
   return start;
 }
 
@@ -173,98 +188,91 @@ function arraySpliceDeleteCount(deleteCount: number, path: LivePath): number {
   if (!Number.isInteger(deleteCount) || deleteCount < 0) {
     throw new Error(`LiveMap array splice deleteCount is not valid at ${JSON.stringify(path)}: ${String(deleteCount)}`);
   }
-
   return deleteCount;
 }
 
 function arraySortDirection(direction: "asc" | "desc" | undefined, path: LivePath): 1 | -1 {
   if (direction === undefined || direction === "asc") return 1;
   if (direction === "desc") return -1;
-
   throw new Error(`LiveMap array sort direction is not valid at ${JSON.stringify(path)}: ${String(direction)}`);
 }
 
-function arraySortNumbers(value: JsonValue | undefined, path: LivePath, direction?: "asc" | "desc"): JsonValue {
-  const next = mustArrayValue(value, path);
+function arraySortNumbers(
+  value: readonly OrderedProjectedValue[],
+  path: LivePath,
+  direction?: "asc" | "desc",
+): readonly OrderedProjectedValue[] {
+  const next = [...value];
   const multiplier = arraySortDirection(direction, path);
-
-  for (const item of next) {
-    if (typeof item !== "number") {
-      throw new Error(`LiveMap array contains a non-number item at ${JSON.stringify(path)}`);
-    }
+  if (next.some((item) => typeof item !== "number")) {
+    throw new Error(`LiveMap array contains a non-number item at ${JSON.stringify(path)}`);
   }
-
   return next.sort((left, right) => multiplier * ((left as number) - (right as number)));
 }
 
-function arraySortStrings(value: JsonValue | undefined, path: LivePath, direction?: "asc" | "desc"): JsonValue {
-  const next = mustArrayValue(value, path);
+function arraySortStrings(
+  value: readonly OrderedProjectedValue[],
+  path: LivePath,
+  direction?: "asc" | "desc",
+): readonly OrderedProjectedValue[] {
+  const next = [...value];
   const multiplier = arraySortDirection(direction, path);
-
-  for (const item of next) {
-    if (typeof item !== "string") {
-      throw new Error(`LiveMap array contains a non-string item at ${JSON.stringify(path)}`);
-    }
+  if (next.some((item) => typeof item !== "string")) {
+    throw new Error(`LiveMap array contains a non-string item at ${JSON.stringify(path)}`);
   }
-
   return next.sort((left, right) => {
     if (left === right) return 0;
     return multiplier * ((left as string) < (right as string) ? -1 : 1);
   });
 }
 
-function arrayUnique(value: JsonValue | undefined, path: LivePath): JsonValue {
-  const next: JsonValue[] = [];
-
-  for (const item of mustArrayValue(value, path)) {
-    if (!next.some((nextItem) => json_values_equal(nextItem, item))) next.push(item);
+function arrayUnique(value: readonly OrderedProjectedValue[]): readonly OrderedProjectedValue[] {
+  const next: OrderedProjectedValue[] = [];
+  for (const item of value) {
+    if (!next.some((candidate) => ordered_projected_value_equal(candidate, item))) next.push(item);
   }
-
   return next;
 }
 
-function arrayRemoveValue(value: JsonValue | undefined, path: LivePath, item: JsonValue): JsonValue {
-  const next = mustArrayValue(value, path);
-  const index = next.findIndex((arrayItem) => json_values_equal(arrayItem, item));
-  if (index === -1) return next;
-
-  next.splice(index, 1);
+function arrayRemoveValue(
+  value: readonly OrderedProjectedValue[],
+  item: OrderedProjectedValue,
+): readonly OrderedProjectedValue[] {
+  const next = [...value];
+  const index = next.findIndex((candidate) => ordered_projected_value_equal(candidate, item));
+  if (index !== -1) next.splice(index, 1);
   return next;
 }
 
-function arrayRemoveAll(value: JsonValue | undefined, path: LivePath, item: JsonValue): JsonValue {
-  return mustArrayValue(value, path).filter((arrayItem) => !json_values_equal(arrayItem, item));
+function arrayRemoveAll(
+  value: readonly OrderedProjectedValue[],
+  item: OrderedProjectedValue,
+): readonly OrderedProjectedValue[] {
+  return value.filter((candidate) => !ordered_projected_value_equal(candidate, item));
 }
 
-function arrayMove(value: JsonValue | undefined, path: LivePath, fromIndex: number, toIndex: number): JsonValue {
-  const next = mustArrayValue(value, path);
+function arrayMove(
+  value: readonly OrderedProjectedValue[],
+  path: LivePath,
+  fromIndex: number,
+  toIndex: number,
+): readonly OrderedProjectedValue[] {
+  const next = [...value];
   const [item] = next.splice(arrayIndex(next, path, fromIndex), 1);
-  next.splice(arrayInsertIndex(next, path, toIndex), 0, item as JsonValue);
+  next.splice(arrayInsertIndex(next, path, toIndex), 0, item as OrderedProjectedValue);
   return next;
 }
 
-function arrayIndex(value: readonly JsonValue[], path: LivePath, index: number): number {
-  if (!Number.isInteger(index)) {
-    throw array_index_error(path, index);
-  }
-
+function arrayIndex(value: readonly OrderedProjectedValue[], path: LivePath, index: number): number {
+  if (!Number.isInteger(index)) throw array_index_error(path, index);
   const resolvedIndex = index < 0 ? value.length + index : index;
-  if (resolvedIndex < 0 || resolvedIndex >= value.length) {
-    throw array_index_error(path, index);
-  }
-
+  if (resolvedIndex < 0 || resolvedIndex >= value.length) throw array_index_error(path, index);
   return resolvedIndex;
 }
 
-function arrayInsertIndex(value: readonly JsonValue[], path: LivePath, index: number): number {
-  if (!Number.isInteger(index)) {
-    throw array_index_error(path, index);
-  }
-
+function arrayInsertIndex(value: readonly OrderedProjectedValue[], path: LivePath, index: number): number {
+  if (!Number.isInteger(index)) throw array_index_error(path, index);
   const resolvedIndex = index < 0 ? value.length + index : index;
-  if (resolvedIndex < 0 || resolvedIndex > value.length) {
-    throw array_index_error(path, index);
-  }
-
+  if (resolvedIndex < 0 || resolvedIndex > value.length) throw array_index_error(path, index);
   return resolvedIndex;
 }

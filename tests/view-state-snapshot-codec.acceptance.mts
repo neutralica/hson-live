@@ -253,6 +253,12 @@ check("typed attrs and raw style strings retain exact types", () => {
     empty: "",
   };
   Reflect.set(attrs, "style", "color:red");
+  Object.defineProperty(attrs, "__proto__", {
+    value: "data",
+    enumerable: true,
+    writable: true,
+    configurable: true,
+  });
   const capture = element_capture(node("div", [], attrs));
   const { decoded } = round_trip(capture);
   const cluster = decoded.root.$_content[0];
@@ -264,6 +270,9 @@ check("typed attrs and raw style strings retain exact types", () => {
   assert.equal(typeof root.$_attrs?.zeroString, "string");
   assert.equal(typeof root.$_attrs?.disabled, "boolean");
   assert.equal(root.$_attrs?.missing, null);
+  assert.equal(Object.hasOwn(root.$_attrs ?? {}, "__proto__"), true);
+  assert.equal(Reflect.getOwnPropertyDescriptor(root.$_attrs, "__proto__")?.value, "data");
+  assert.equal(Object.getPrototypeOf(root.$_attrs), Object.prototype);
 });
 
 check("ordinary data attribute string values retain type-like spellings exactly", () => {

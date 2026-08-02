@@ -1,8 +1,14 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCapture, LiveMapCaptureInput, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp } from "../../types/livemap.types.js";
-import type { LiveMapSchema, LiveMapSchemaResolution, LiveMapSchemaValidation, LiveMapSchemaValue } from "./livemap.schema.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCapture, LiveMapCaptureInput, LiveMapApply, LiveMapGraphCommit, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
+import {
+  validate_livemap_schema_projected_root,
+  type LiveMapSchema,
+  type LiveMapSchemaResolution,
+  type LiveMapSchemaValidation,
+  type LiveMapSchemaValue,
+} from "./livemap.schema.js";
 import { clone_live_root, overwrite_hson_node, project_live_path, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
@@ -263,7 +269,7 @@ function make_livemap_core_from_owned_root(
 
     use: <TSchema extends LiveMapSchema>(schema: TSchema) => {
       transitionController.assertPublicMutationAllowed();
-      must_core_schema_root(schema, owned.root);
+      must_core_schema_root(schema, owned.root, initialMode);
       currentSchema = schema;
       transitionController.invalidate();
 
@@ -1054,8 +1060,15 @@ function normalize_splice_delete_count(length: number, start: number, deleteCoun
 
 
 /** Validate the current root before attaching a schema-bound map view. */
-function must_core_schema_root(schema: LiveMapSchema, root: HsonNode): void {
-  must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
+function must_core_schema_root(schema: LiveMapSchema, root: HsonNode, mode: LiveMapRootMode): void {
+  if (mode === "element" || mode === "fragment") {
+    must_schema_validation(schema.validateRoot(snap_live_path(root, [])), []);
+    return;
+  }
+  must_schema_validation(
+    validate_livemap_schema_projected_root(schema, must_projected_root_value(root)),
+    [],
+  );
 }
 
 
@@ -1368,7 +1381,7 @@ function must_core_schema_write_ops(
   must_core_schema_candidate(schema, candidate, writeOps);
 }
 
-/** Materialize only the completed immutable candidate for the existing schema API. */
+/** Validate the completed immutable candidate through the shared carrier domain. */
 function must_core_schema_candidate(
   schema: LiveMapSchema | undefined,
   candidate: OrderedProjectedValue,
@@ -1376,7 +1389,7 @@ function must_core_schema_candidate(
 ): void {
   if (schema === undefined) return;
   must_schema_validation(
-    schema.validateRoot(materialize_projected_value(candidate)),
+    validate_livemap_schema_projected_root(schema, candidate),
     write_op_path(writeOps[0]),
     schema_headline_mode_for_write_ops(writeOps)
   );
