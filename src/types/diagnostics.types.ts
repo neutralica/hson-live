@@ -29,7 +29,7 @@ export type LoopOpts = {
   stopOnFirstFail?: boolean; // default true
   capture?: boolean; // capture emitted artifacts (strings)
   dual?: boolean; //  run both cw + ccw and compare final nodes (default true)
-  paranoid?: boolean; // also compare per-step parsed nodes across dirs (requires captureNodes)
+  paranoid?: boolean; // retain parsed checkpoints and strictly compare matching checkpoints across directions
 };
 /**
  * Single trace/failure record produced during a run.

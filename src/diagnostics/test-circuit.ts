@@ -1,439 +1,375 @@
-// test-circuit.ts
-
 /**
- * test-circuit.ts
+ * Browser diagnostic compatibility facade for the strict semantic circuit.
  *
- * A deterministic 3-way round-trip validation rig for HSON.
- *
- * This module exercises the serialization ring:
- *   JSON ↔ HTML ↔ HSON
- *
- * NEW (dual mode):
- *   - Run the ring twice (cw + ccw) from the same entry.
- *   - Compare the final nodes from both directions.
- *   - Optionally (paranoid) compare per-step parsed nodes across directions.
+ * The engine itself is environment-neutral. This module deliberately injects
+ * the complete browser `hson` facade so established `_circuit_test` callers
+ * continue to exercise the DOMParser-backed HTML path.
  */
 
 import { hson } from "../hson.js";
-import { HsonNode } from "../core/types.js"
+import type { HsonNode } from "../core/types.js";
 import { is_Node } from "../core/node-guards.js";
 import { make_string } from "../core/stringify.js";
-import { assert_invariants } from "./assert-invariants.test.js";
-import { compare_nodes } from "./compare-nodes.test.js";
-import { Fmt, LoopDir, CoreOpt, RunResult, FixtureAtom, LoopOpts, LoopReport, Step, Artifact, NodeMark, SourceFormat } from "../types/diagnostics.types.js";
-import { safe_parse, rotate_ring, step_ok, safe_emit, step_fail, clamp_int, finalize, coerce_entry, is_html_element, err_to_string, step_meh } from "./diagnostics-helpers.js";
-import { detach_hson_root_value } from "../api/transform/utils/node-utils/detach-hson-root-value.js";
-import { normalize_detached_hson_semantic_value } from "../core/normalize-hson-semantic-value.js";
+import type {
+  Artifact,
+  CoreOpt,
+  FixtureAtom,
+  Fmt,
+  LoopOpts,
+  LoopReport,
+  NodeMark,
+  SourceFormat,
+  Step,
+} from "../types/diagnostics.types.js";
+import {
+  clamp_int,
+  coerce_entry,
+  err_to_string,
+  finalize,
+  is_html_element,
+  step_fail,
+  step_meh,
+} from "./diagnostics-helpers.js";
+import {
+  execute_circuit,
+  type CircuitDirection,
+  type CircuitExecutionResult,
+  type CircuitFailure,
+  type CircuitLegDiagnostic,
+} from "./circuit-engine.js";
+import { create_circuit_transform_boundary } from "./circuit-transform-boundary.js";
 
-/* =========================================================================
- * TEST CHAIN
- * =========================================================================
- */
-export const SPIN: Record<Fmt, { emit: (n: HsonNode) => string; parse: (s: string) => HsonNode }> = {
-  json: {
-    emit: (n) => hson.fromNode(n as any).toJson().serialize(),
-    // JSON parsing retains its internal attachment carrier on the generic
-    // Transform surface. Detach that parser-owned carrier before invariant
-    // admission and before feeding another serializer.
-    parse: (s) => detach_hson_root_value(hson.fromJson(s.trim()).toNode() as any),
+const BROWSER_CIRCUIT_BOUNDARY = create_circuit_transform_boundary(
+  "browser-domparser",
+  {
+    parseJson: (text) => hson.fromJson(text).toNode(),
+    parseHtml: (text) => hson.fromTrustedHtml(text).toNode(),
+    parseHson: (text) => hson.fromHson(text).toNode(),
+    serializeJson: (node) => hson.fromNode(node).toJson().serialize(),
+    serializeHtml: (node) => hson.fromNode(node).toHtml().serialize(),
+    serializeHson: (node) => hson.fromNode(node).toHson().serialize(),
   },
-  html: {
-    emit: (n) => hson.fromNode(n as any).toHtml().serialize(),
-    // HTML transport admission owns detached scalar-carrier normalization:
-    // parse structural HTML -> detach -> normalize transport carrier ->
-    // safe_parse invariant admission -> strict comparison. Comparators never
-    // repair or normalize either operand.
-    parse: (s) => normalize_detached_hson_semantic_value(
-      detach_hson_root_value(hson.fromTrustedHtml(s).toNode() as any),
-      "diagnostics.html-transport",
-    ),
-  },
-  hson: {
-    emit: (n) => hson.fromNode(n as any).toHson().serialize(),
-    parse: (s) => hson.fromHson(s).toNode() as any,
-  },
-} as const;
+);
 
+/** Retained source-level compatibility for diagnostics helpers and audits. */
+export const SPIN: Readonly<Record<Fmt, {
+  emit(node: HsonNode): string;
+  parse(text: string): HsonNode;
+}>> = Object.freeze({
+  json: Object.freeze({
+    emit: (node: HsonNode) => BROWSER_CIRCUIT_BOUNDARY.serialize("json", node),
+    parse: (text: string) => BROWSER_CIRCUIT_BOUNDARY.parse("json", text),
+  }),
+  html: Object.freeze({
+    emit: (node: HsonNode) => BROWSER_CIRCUIT_BOUNDARY.serialize("html", node),
+    parse: (text: string) => BROWSER_CIRCUIT_BOUNDARY.parse("html", text),
+  }),
+  hson: Object.freeze({
+    emit: (node: HsonNode) => BROWSER_CIRCUIT_BOUNDARY.serialize("hson", node),
+    parse: (text: string) => BROWSER_CIRCUIT_BOUNDARY.parse("hson", text),
+  }),
+});
 
-function runRing(
-  entryFmt: Fmt,
-  entryText: string,
-  dir: LoopDir,
-  times: number,
-  opt: CoreOpt
-): RunResult {
-  // 1) enter the ring
-  let node = safe_parse(entryFmt, entryText, `enter:${entryFmt}`, opt, { lap: 0, fmt: entryFmt, phase: "parse" });
-  if (!node) {
-    return { ok: false, final: { fmt: entryFmt, text: entryText }, finalNode: { $_tag: "_bad", $_content: [] } as any };
-  }
-
-  // 2) choose direction (a visible ring order)
-  const ring: readonly Fmt[] =
-    dir === "cw"
-      ? (["json", "html", "hson"] as const)
-      : (["json", "hson", "html"] as const);
-
-  // rotate ring so we start at entryFmt
-  const path = rotate_ring(ring, entryFmt);
-
-  let carryText = entryText;
-
-  // 3) walk the ring: emit -> parse -> diff -> advance
-  for (let lap = 0; lap < times; lap++) {
-    step_ok(opt, `lap ${lap + 1}/${times} begin`);
-
-    for (let i = 0; i < path.length; i++) {
-      const fmt = path[i];
-
-      const text = safe_emit(fmt, node, `emit:${fmt}`, opt, { lap, dir, phase: "emit" });
-      if (text === undefined) {
-        return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
-      }
-
-      //  capture emitted artifacts here
-
-      const next = safe_parse(fmt, text, `parse:${fmt}`, opt, { lap, fmt, phase: "parse" });
-      if (!next) {
-        return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
-      }
-      if (opt.capture) {
-        opt.capture.artifacts.push({
-          lap,
-          fmt,
-          text,
-          node: make_string(next),
-        });
-      }
-
-      const diffs = compare_nodes(node, next, false);
-      if (diffs.length) {
-        step_fail(opt, `diff nodes<ERR>:node -> ${fmt} -> node`, diffs[0]);
-        if (opt.stopOnFirstFail) {
-          return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
-        }
-      } else {
-        step_ok(opt, `diff nodes<OK>:node -> ${fmt} -> node`);
-      }
-
-      node = next;
-      carryText = text;
-    }
-
-    // 4) closure check: return to entry representation and re-parse once
-    const closeText = safe_emit(entryFmt, node, `return:to:${entryFmt}`, opt);
-    if (closeText !== undefined) {
-      const closeNode = safe_parse(entryFmt, closeText, `return:from:${entryFmt}`, opt, { lap, fmt: entryFmt, phase: "closure" });
-      if (closeNode) {
-        const closeDiffs = compare_nodes(node, closeNode, false);
-        if (closeDiffs.length) {
-          step_fail(opt, `closure:${entryFmt}`, closeDiffs[0]);
-          if (opt.stopOnFirstFail) {
-            return { ok: false, final: { fmt: entryFmt, text: carryText }, finalNode: node };
-          }
-        } else {
-          step_ok(opt, `return:check:${entryFmt}`);
-        }
-        node = closeNode;
-        carryText = closeText;
-      }
-    }
-
-    step_ok(opt, `lap ${lap + 1}/${times} end`);
-  }
-
-  return { ok: opt.failures.length === 0, final: { fmt: entryFmt, text: carryText }, finalNode: node };
+function failure_step(failure: CircuitFailure, entry: Fmt): Step {
+  const target = failure.targetFormat ?? failure.sourceFormat ?? entry;
+  const step = failure.stage === "prepare"
+    ? `enter:${target}`
+    : failure.stage === "serialize"
+      ? failure.leg === 3 ? `return:to:${target}` : `emit:${target}`
+      : failure.stage === "parse"
+        ? failure.leg === 3 ? `return:from:${target}` : `parse:${target}`
+        : failure.stage === "cancel"
+          ? "circuit:cancelled"
+          : failure.leg === 3 ? `closure:${entry}` : `diff nodes:node -> ${target} -> node`;
+  const difference = failure.difference;
+  const error = difference === undefined
+    ? failure.message
+    : `${difference.kind} at ${difference.path}: ${difference.message}`;
+  return { step, ok: false, error };
 }
 
-/* =========================================================================
- * PUBLIC ENTRY
- * ========================================================================= */
+function append_failure(
+  failure: CircuitFailure,
+  entry: Fmt,
+  failures: Step[],
+  trace: Step[],
+  verbose: boolean,
+): void {
+  const step = failure_step(failure, entry);
+  failures.push(step);
+  if (verbose) trace.push(step);
+}
+
+function trace_leg(
+  leg: CircuitLegDiagnostic,
+  entry: Fmt,
+  failures: Step[],
+  trace: Step[],
+  verbose: boolean,
+): void {
+  const closure = leg.phase === "closure";
+  const emitStep = closure ? `return:to:${leg.targetFormat}` : `emit:${leg.targetFormat}`;
+  const parseStep = closure ? `return:from:${leg.targetFormat}` : `parse:${leg.targetFormat}`;
+  const compareStep = closure
+    ? `return:check:${entry}`
+    : `diff nodes<OK>:node -> ${leg.targetFormat} -> node`;
+
+  if (verbose && leg.failure?.stage !== "serialize") trace.push({ step: emitStep, ok: true });
+  if (verbose && leg.comparison !== undefined) trace.push({ step: parseStep, ok: true });
+  if (leg.failure !== undefined) append_failure(leg.failure, entry, failures, trace, verbose);
+  else if (verbose && leg.comparison?.equal === true) trace.push({ step: compareStep, ok: true });
+}
+
+function collect_report_material(
+  result: CircuitExecutionResult,
+  entry: Fmt,
+  opts: LoopOpts,
+  trace: Step[],
+  failures: Step[],
+): Readonly<{ artifacts?: Artifact[]; marks?: NodeMark[] }> {
+  const artifacts: Artifact[] | undefined = opts.capture ? [] : undefined;
+  const marks: NodeMark[] | undefined = opts.paranoid ? [] : undefined;
+  const verbose = opts.verbose === true;
+
+  if (result.prepareFailure !== undefined) {
+    append_failure(result.prepareFailure, entry, failures, trace, verbose);
+    return Object.freeze({ artifacts, marks });
+  }
+  if (verbose) trace.push({ step: `enter:${entry}`, ok: true });
+
+  for (const direction of result.directions) {
+    if (marks !== undefined && result.prepared !== undefined) {
+      marks.push({ lap: 0, fmt: entry, phase: "parse", node: result.prepared.node });
+    }
+    for (const lap of direction.laps ?? []) {
+      if (verbose) trace.push({ step: `lap ${lap.lap + 1}/${direction.requestedLaps} begin`, ok: true });
+      for (const leg of lap.legs ?? []) {
+        trace_leg(leg, entry, failures, trace, verbose);
+        if (artifacts !== undefined && leg.phase === "conversion" && leg.material !== undefined) {
+          artifacts.push({
+            lap: leg.lap,
+            fmt: leg.targetFormat,
+            text: leg.material.serializedOutput,
+            node: JSON.stringify(leg.material.sourceNode, null, 2),
+          });
+          artifacts.push({
+            lap: leg.lap,
+            fmt: leg.targetFormat,
+            text: leg.material.serializedOutput,
+            node: make_string(leg.material.parsedNode),
+          });
+        }
+      }
+      if (verbose && lap.completed) {
+        trace.push({ step: `lap ${lap.lap + 1}/${direction.requestedLaps} end`, ok: true });
+      }
+    }
+    if (marks !== undefined) {
+      for (const checkpoint of direction.checkpoints ?? []) {
+        marks.push({
+          lap: checkpoint.lap,
+          fmt: checkpoint.targetFormat,
+          phase: checkpoint.phase === "closure" ? "closure" : "parse",
+          node: checkpoint.node,
+        });
+      }
+    }
+    if (direction.laps === undefined) {
+      for (const failure of direction.failures) append_failure(failure, entry, failures, trace, verbose);
+    } else {
+      for (const failure of direction.failures) {
+        if (failure.stage === "cancel") append_failure(failure, entry, failures, trace, verbose);
+      }
+    }
+  }
+
+  if (result.executionFailure !== undefined) {
+    append_failure(result.executionFailure, entry, failures, trace, verbose);
+  }
+
+  const finalComparison = result.finalComparison;
+  if (finalComparison?.performed === true) {
+    if (finalComparison.failure !== undefined) {
+      append_failure(finalComparison.failure, entry, failures, trace, verbose);
+    } else if (verbose) {
+      trace.push({ step: "dual:finalNode cw == ccw", ok: true });
+      if (opts.paranoid) {
+        trace.push({ step: `paranoid:${finalComparison.paranoidComparisons} strict checkpoint comparisons`, ok: true });
+      }
+    }
+  }
+  return Object.freeze({ artifacts, marks });
+}
 
 /**
- * Runs a multi-lap round-trip validation across JSON, HTML, and HSON.
- *
- * Default behavior runs BOTH directions (dual=true) and compares the
- * final nodes from cw vs ccw to detect path-dependence.
- *
- * When `capture=true`, emitted text artifacts are stored in the report.
- * When `paranoid=true`, parsed nodes are captured and compared across
- * directions at matching (lap, fmt, phase) checkpoints.
+ * Runs the browser-backed circuit synchronously through the strict staged
+ * engine. Omitted `stopOnFirstFail` is fail-fast (`true`); callers requesting
+ * exhaustive independent diagnostics must pass `false` explicitly.
  */
 export function _circuit_test(atom: FixtureAtom, opts: LoopOpts = {}): LoopReport {
   const trace: Step[] = [];
   const failures: Step[] = [];
-  const artifacts: Artifact[] = [];
-  const marks: NodeMark[] = [];
-
-  const coreBase: Omit<CoreOpt, "capture" | "marks"> = {
+  const core: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail"> = {
     trace,
     failures,
-    verbose: !!opts.verbose,
-    stopOnFirstFail: opts.stopOnFirstFail ?? false,
+    verbose: opts.verbose === true,
+    stopOnFirstFail: opts.stopOnFirstFail ?? true,
   };
-  step_ok({ trace, failures, verbose: true, stopOnFirstFail: false }, `debug:opts.entry=${String(opts.entry)} typeofAtom=${typeof atom}`);
-  //  dual by default
   const dual = opts.dual ?? true;
-
   const times = clamp_int(opts.times ?? 3, 1, 10_000);
-
-  const entry = (opts.entry ?? "auto") as SourceFormat;
-  const resolved = resolve_entry(atom, entry, coreBase);
-  if (!resolved) {
-    return finalize(false, times, dual ? "dual" : (opts.dir ?? "cw"), entry, trace, failures, undefined, undefined, undefined, undefined);
+  const requestedEntry: SourceFormat = opts.entry ?? "auto";
+  const resolved = resolve_entry(atom, requestedEntry, core);
+  if (resolved === undefined) {
+    return finalize(false, times, dual ? "dual" : opts.dir ?? "cw", requestedEntry, trace, failures);
   }
 
-  const { fmt, text } = resolved;
-
-  // ---- single-direction mode (kept for simplicity / explicitness) ----
-  if (!dual) {
-    const dir: LoopDir = opts.dir ?? "cw";
-
-    const core: CoreOpt = {
-      ...coreBase,
-      capture: opts.capture ? { artifacts } : undefined,
-      marks: opts.paranoid ? { nodes: marks } : undefined,
-    };
-
-    const res = runRing(fmt, text, dir, times, core);
-    return finalize(res.ok, times, dir, entry, trace, failures, opts.capture ? artifacts : undefined, opts.paranoid ? marks : undefined, res.final, undefined);
-  }
-
-  // ---- dual mode (cw + ccw) ----
-  const cwArtifacts: Artifact[] = [];
-  const ccwArtifacts: Artifact[] = [];
-  const cwMarks: NodeMark[] = [];
-  const ccwMarks: NodeMark[] = [];
-
-  const cwCore: CoreOpt = {
-    ...coreBase,
-    capture: opts.capture ? { artifacts: cwArtifacts } : undefined,
-    marks: opts.paranoid ? { nodes: cwMarks } : undefined,
-  };
-
-  const ccwCore: CoreOpt = {
-    ...coreBase,
-    capture: opts.capture ? { artifacts: ccwArtifacts } : undefined,
-    marks: opts.paranoid ? { nodes: ccwMarks } : undefined,
-  };
-
-  const cwRes = runRing(fmt, text, "cw", times, cwCore);
-  const ccwRes = runRing(fmt, text, "ccw", times, ccwCore);
-
-  //  compare final nodes cw vs ccw (path dependence detector)
-  const finalDiffs = compare_nodes(cwRes.finalNode, ccwRes.finalNode, false);
-  if (finalDiffs.length) {
-    step_fail({ trace, failures, verbose: !!opts.verbose, }, "dual:finalNode cw != ccw", finalDiffs[0]);
-  } else {
-    step_ok({ trace, failures, verbose: !!opts.verbose }, "dual:finalNode cw == ccw");
-  }
-
-  // paranoid cross-check at each checkpoint (lap, fmt, phase)
-  if (opts.paranoid) {
-    const byKey = (m: NodeMark) => `${m.lap}|${m.fmt}|${m.phase}`;
-
-    const cwMap = new Map<string, HsonNode>();
-    for (const m of cwMarks) cwMap.set(byKey(m), m.node);
-
-    const ccwMap = new Map<string, HsonNode>();
-    for (const m of ccwMarks) ccwMap.set(byKey(m), m.node);
-
-    const keys = new Set<string>([...cwMap.keys(), ...ccwMap.keys()]);
-    for (const k of keys) {
-      const a = cwMap.get(k);
-      const b = ccwMap.get(k);
-      if (!a || !b) {
-        step_fail({ trace, failures, verbose: !!opts.verbose }, `paranoid:missing mark ${k}`, !a ? "missing cw mark" : "missing ccw mark");
-        continue;
-      }
-      const diffs = compare_nodes(a, b, false);
-      if (diffs.length) {
-        step_fail({ trace, failures, verbose: !!opts.verbose }, `paranoid:mark mismatch ${k}`, diffs[0]);
-        if (opts.stopOnFirstFail ?? true) break;
-      } else {
-        step_ok({ trace, failures, verbose: !!opts.verbose }, `paranoid:mark ok ${k}`);
-      }
-    }
-  }
-
-  const ok = failures.length === 0 && cwRes.ok && ccwRes.ok;
-
-  // Merge optional capture payloads in a simple, readable way:
-  const mergedArtifacts = opts.capture ? [...cwArtifacts, ...ccwArtifacts] : undefined;
-  const mergedMarks = opts.paranoid ? [...cwMarks, ...ccwMarks] : undefined;
+  const direction: CircuitDirection = opts.dir ?? "cw";
+  const result = execute_circuit(
+    BROWSER_CIRCUIT_BOUNDARY,
+    resolved.fmt,
+    resolved.text,
+    { times, dual, direction },
+    {
+      capture: opts.capture === true,
+      verbose: opts.verbose === true,
+      paranoid: opts.paranoid === true,
+      stopOnFirstFail: opts.stopOnFirstFail ?? true,
+    },
+  );
+  const material = collect_report_material(result, resolved.fmt, opts, trace, failures);
+  const cw = result.directions.find((item) => item.direction === "cw");
+  const ccw = result.directions.find((item) => item.direction === "ccw");
+  const selected = dual ? cw : result.directions[0];
+  const final = selected === undefined
+    ? undefined
+    : { fmt: selected.final.format, text: selected.final.text };
+  const dualFinals = cw === undefined || ccw === undefined
+    ? undefined
+    : {
+        cw: { fmt: cw.final.format, text: cw.final.text },
+        ccw: { fmt: ccw.final.format, text: ccw.final.text },
+      };
 
   return finalize(
-    ok,
+    result.ok,
     times,
-    "dual",
-    entry,
+    dual ? "dual" : direction,
+    requestedEntry,
     trace,
     failures,
-    mergedArtifacts,
-    mergedMarks,
-    // pick one "final" for convenience; both are also returned in dualFinals
-    cwRes.final,
-    { cw: cwRes.final, ccw: ccwRes.final }
+    material.artifacts,
+    material.marks,
+    final,
+    dualFinals,
   );
 }
 
-/* =========================================================================
- * HELPERS
- * ========================================================================= */
-
-function looks_like_json(s: string): boolean {
-  const t = s.trim();
-  if (!t) return false;
-
-  const c0 = t[0]!;
-  if (c0 === "{" || c0 === "[") return true;
-
-  // JSON scalars
-  if (c0 === `"` || c0 === "-" || (c0 >= "0" && c0 <= "9")) return true;
-  return t === "true" || t === "false" || t === "null";
+function looks_like_json(source: string): boolean {
+  const text = source.trim();
+  if (!text) return false;
+  const first = text[0]!;
+  if (first === "{" || first === "[") return true;
+  if (first === `"` || first === "-" || (first >= "0" && first <= "9")) return true;
+  return text === "true" || text === "false" || text === "null";
 }
 
-function looks_like_hson(s: string): boolean {
-  const t = s.trim();
-  if (!t) return false;
-
-  if (/[«»]/.test(t)) return true;
-  if (/(?:^|\n)\s*\/?>\s*(?:\/\/.*)?(?:\n|$)/.test(t)) return true;
-  if (/(?:^|\n)\s*"\s*/.test(t)) return true;
-  if (/<>\s*/.test(t)) return true;
-
-  return false;
+function looks_like_hson(source: string): boolean {
+  const text = source.trim();
+  if (!text) return false;
+  return /[«»]/.test(text)
+    || /(?:^|\n)\s*\/?>\s*(?:\/\/.*)?(?:\n|$)/.test(text)
+    || /(?:^|\n)\s*"\s*/.test(text)
+    || /<>\s*/.test(text);
 }
 
-// only try HTML when it actually looks like markup.
-// (conservative; false negatives are better than HTML swallowing JSON.)
-function looks_like_html(s: string): boolean {
-  const t = s.trim();
-  if (!t) return false;
-
-  // starts with a tag-like opener: <a  </a  <!doctype  <?xml  <_hson_obj ...
-  if (/^<\s*[A-Za-z_!/??]/.test(t)) return true;
-
-  // or contains a tag-ish opener somewhere (avoid treating "< 3" as HTML)
-  if (/<\s*[A-Za-z_!/??]/.test(t)) return true;
-
-  return false;
+function looks_like_html(source: string): boolean {
+  const text = source.trim();
+  return text.length > 0 && ( /^<\s*[A-Za-z_!/?]/.test(text) || /<\s*[A-Za-z_!/?]/.test(text) );
 }
 
-function is_json_source_text(s: string): boolean {
-  const t = s.trim();
-  if (!looks_like_json(t)) return false;
-  try { JSON.parse(t); return true; } catch { return false; }
+function is_json_source_text(source: string): boolean {
+  const text = source.trim();
+  if (!looks_like_json(text)) return false;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function resolve_entry(
   atom: FixtureAtom,
   entry: SourceFormat,
-  opt: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail">
+  opt: Pick<CoreOpt, "trace" | "failures" | "verbose" | "stopOnFirstFail">,
 ): { fmt: Fmt; text: string } | undefined {
-  if (entry !== "auto") {
-    return coerce_entry(atom, entry, opt);
-  }
+  if (entry !== "auto") return coerce_entry(atom, entry, opt);
 
   if (is_Node(atom)) {
-    const text = safe_emit("hson", atom, "emit:node->hson(entry)", opt);
-    if (text === undefined) return undefined;
-    return { fmt: "hson", text };
+    try {
+      return { fmt: "hson", text: SPIN.hson.emit(atom) };
+    } catch (error) {
+      step_fail(opt, "emit:node->hson(entry)", err_to_string(error));
+      return undefined;
+    }
   }
+  if (is_html_element(atom)) return { fmt: "html", text: atom.outerHTML };
+  if (typeof atom !== "string") return { fmt: "json", text: JSON.stringify(atom) };
 
-  if (is_html_element(atom)) {
-    return { fmt: "html", text: atom.outerHTML };
-  }
+  const source = atom.trim();
+  const likeJson = looks_like_json(source);
+  const likeHson = looks_like_hson(source);
+  const likeHtml = looks_like_html(source);
 
-  if (typeof atom !== "string") {
-    return { fmt: "json", text: JSON.stringify(atom) };
-  }
-
-  const s = atom.trim();
-  // commit by shape first, but give explicit HTML closer syntax priority
-  // over HSON because some HTML is parseable as HSON and contaminates source-sensitive tests.
-  const likeJson = looks_like_json(s);
-  const likeHson = looks_like_hson(s);
-  const likeHtml = looks_like_html(s);
-
-  // strong HTML signal for auto-detect in diagnostics/tests
-  const hasHtmlCloser = s.includes("</");
-
-  // Prefer JSON if it looks JSON-ish.
   if (likeJson) {
-    if (!is_json_source_text(s)) {
+    if (!is_json_source_text(source)) {
       step_fail(opt, "resolve_entry:auto", "Looks like JSON but JSON.parse failed (invalid JSON)");
       return undefined;
     }
-
     try {
-      const n = SPIN.json.parse(s);
-      assert_invariants(n, "auto:json");
-      return { fmt: "json", text: s };
-    } catch (err) {
-      step_fail(opt, "resolve_entry:auto", `Looks like JSON but SPIN.json.parse failed: ${err_to_string(err)}`);
+      SPIN.json.parse(source);
+      return { fmt: "json", text: source };
+    } catch (error) {
+      step_fail(opt, "resolve_entry:auto", `Looks like JSON but JSON parse failed: ${err_to_string(error)}`);
       return undefined;
     }
   }
 
-  // explicit HTML closing tags are a strong diagnostic signal.
-  // HSON normally does not use </tag> closers, so prefer HTML here.
-  if (hasHtmlCloser) {
+  if (source.includes("</")) {
     try {
-      const n = SPIN.html.parse(s);
-      assert_invariants(n, "auto:html");
-      return { fmt: "html", text: s };
-    } catch (htmlErr) {
-      step_fail(
-        opt,
-        "resolve_entry:auto",
-        `Contains '</' so auto preferred HTML, but HTML parse failed: ${err_to_string(htmlErr)}`
-      );
+      SPIN.html.parse(source);
+      return { fmt: "html", text: source };
+    } catch (error) {
+      step_fail(opt, "resolve_entry:auto", `Contains '</' but HTML parse failed: ${err_to_string(error)}`);
       return undefined;
     }
   }
 
-  let hsonErr: unknown = undefined;
-
-  // prefer HSON for remaining markup-ish input
+  let hsonError: unknown;
   if (likeHson || likeHtml) {
     try {
-      const n = SPIN.hson.parse(s);
-      assert_invariants(n, "auto:hson");
-      return { fmt: "hson", text: s };
-    } catch (err) {
-      hsonErr = err;
-      step_meh(
-        opt,
-        `resolve_entry:auto:hson-failed - ${err_to_string(err)}\n... trying html`
-      );
+      SPIN.hson.parse(source);
+      return { fmt: "hson", text: source };
+    } catch (error) {
+      hsonError = error;
+      step_meh(opt, `resolve_entry:auto:hson-failed - ${err_to_string(error)}\n... trying html`);
     }
   }
 
-  // HTML fallback only after HSON fails, unless the strong </ signal already handled it above
   if (likeHtml) {
     try {
-      const n = SPIN.html.parse(s);
-      assert_invariants(n, "auto:html");
-      return { fmt: "html", text: s };
-    } catch (htmlErr) {
-      step_fail(
-        opt,
-        "resolve_entry:auto",
-        [
-          "Markup-like input failed HSON parse, then failed HTML parse.",
-          `HSON: ${err_to_string(hsonErr)}`,
-          `HTML: ${err_to_string(htmlErr)}`,
-        ].join("\n")
-      );
+      SPIN.html.parse(source);
+      return { fmt: "html", text: source };
+    } catch (error) {
+      step_fail(opt, "resolve_entry:auto", [
+        "Markup-like input failed HSON parse, then failed HTML parse.",
+        `HSON: ${err_to_string(hsonError)}`,
+        `HTML: ${err_to_string(error)}`,
+      ].join("\n"));
       return undefined;
     }
   }
 
-  step_fail(
-    opt,
-    "resolve_entry:auto",
-    `Markup-like input failed HSON parse: ${err_to_string(hsonErr)}`
-  );
+  step_fail(opt, "resolve_entry:auto", `Markup-like input failed HSON parse: ${err_to_string(hsonError)}`);
   return undefined;
 }
