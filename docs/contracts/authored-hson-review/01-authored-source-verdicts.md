@@ -86,7 +86,7 @@ attribute, and flag names are presently proposed invalid.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.empty-string -->
 
-**Verdict — V / I / ?:** `VALID`
+**Verdict — V / I / ?:** `V`
 
 A bare empty quoted string admits one string leaf.
 
@@ -101,7 +101,7 @@ A bare empty quoted string admits one string leaf.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.literal.primitive.false -->
 
-**Verdict — V / I / ?:** `VALID*`
+**Verdict — V / I / ?:** `V`
 
 Bare false is a typed primitive value.
 
@@ -241,7 +241,7 @@ seek 1:1 parity with JSON for typed primitives
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. Direct `>` versus `/>` contrast. -->
 <!-- authored-case:hson.accept.literal.object.one-property -->
 
-**Verdict — V / I / ?:** `PARTIALLY CORRECT/UNCLEAR`
+**Verdict — V / I / ?:** `?`
 
 An object contains a punctuation-free key/value property.
 
@@ -252,37 +252,8 @@ An object contains a punctuation-free key/value property.
 **Current proposal:** Valid
 
 **Notes:**
-///-> "punctuation" is not a metric. here is quotation behavior, for both tag and content in _elem and _obj context:
+Partially correct--only for non-string
 
-for BOTH _elem and _obj contexts:
--> tags do not need backtick quotes if they have no spaces; special characters should parse without backticks (NOTE: this may not be true currently; since we control HSON parsing, though, only spaces in keys should *require* backticks)
--> tags are 1:1 compatible with JSON key strings
--> all string content must be double-quoted in HSON
-
-for _obj context only:
--> false, true, null, and numbers must not be unquoted to retain their types
-
-for _elem context only:
--> unquoted (typed) content will error to the 'no val tags in html' invariant
-
-examples:
-```
-<keytag "valuecontent"> /// valid and canonical (///-> actually not sure what happens in this case)
-<keytag "false" keytag1 "false" keytag2 "false"> /// valid
-<`keytag` "valuecontent"> /// valid but unnecessary backticks (///-> actually not sure what happens in this case)
-
-<"keytag" "valuecontent"> /// key is INVALID (double quotes only allowed for content)
-<keytag valuecontent> /// value is INVALID (all strings must be quoted)
-<keytag "false" "false" "false"> /// INVALID values with no keys
-<keytag "false" keytag "false" keytag "false"> /// INVALID duplicated keys (rejects, DOES NOT silently take last key)
-
-<keytag "valuecontent"/> /// valid
-<`keytag` "valuecontent"/> /// valid
-<keytag "false"/> /// valid
-<keytag "false" "false" "false"/> /// valid
-<keytag false/> /// value is INVALID (typed HSON _elem content)
-<keytag <keytag "false">/> /// INVALID (blending _obj/_elem)
-```
 
 ## 3. Basic HSON arrays
 
@@ -344,7 +315,7 @@ where it goes one it goes all
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.array.primitives -->
 
-**Verdict — V / I / ?:** `VALID/CORRECT `
+**Verdict — V / I / ?:** `V `
 
 Arrays remain comma-separated and retain primitive item order.
 
@@ -590,7 +561,7 @@ An HSON element may contain a nested element.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.accept.literal.object.array-value -->
 
-**Verdict — V / I / ?:** `VALid `
+**Verdict — V / I / ?:** `V `
 
 An object property may contain an array.
 
@@ -630,7 +601,7 @@ an object property key, and an element flag position.
 <!-- review-meta: source=inline; review=standalone; attention=Primitive-looking name or flag versus typed primitive value. -->
 <!-- authored-case:hson.accept.basis.object.primitive-looking-keys -->
 
-**Verdict — V / I / ?:** `VALID/CORRECT `
+**Verdict — V / I / ?:** `V `
 
 true, false, and null are ordinary property keys in HSON object key position.
 
@@ -702,7 +673,7 @@ I defer to JSON spec
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.number.negative-integer -->
 
-**Verdict — V / I / ?:** `VALId `
+**Verdict — V / I / ?:** `V `
 
 A minus may prefix a nonzero JSON integer.
 
@@ -751,7 +722,7 @@ yes
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.accept.basis.number.uppercase-exponent -->
 
-**Verdict — V / I / ?:** `valid ?`
+**Verdict — V / I / ?:** `V`
 
 An uppercase exponent marker is accepted.
 
@@ -923,7 +894,7 @@ A decimal point requires following fraction digits.
 <!-- review-meta: source=inline; review=standalone; attention=none -->
 <!-- authored-case:hson.reject.basis.number.missing-integer-before-fraction -->
 
-**Verdict — V / I / ?:** `ACCEPT BUT CANONICALIZE `
+**Verdict — V / I / ?:** `V `
 
 A fraction requires an integer component before the decimal point.
 
@@ -932,7 +903,8 @@ A fraction requires an integer component before the decimal point.
 **Current proposal:** Invalid
 
 **Notes:**
-accept anything that is functionally 0.5 but serialize canonically
+
+accept anything that is functionally 0.5; serialize canonically
 
 
 ---
@@ -1031,7 +1003,7 @@ seek parity with JSON
 <!-- review-meta: source=display; review=standalone; attention=Complex trivia composition. -->
 <!-- authored-case:hson.accept.basis.trivia.array-slots -->
 
-**Verdict — V / I / ?:** `CORRECT/VALID `
+**Verdict — V / I / ?:** `V `
 
 Array trivia covers after-opener, before-comma, after-comma, before-closer, and a terminated item-boundary comment.
 
@@ -1072,7 +1044,7 @@ seems fine?
 <!-- review-meta: source=display; review=standalone; attention=Implementation-influenced expected output; this pass reviews source validity only, not attribute output order. Complex trivia composition. -->
 <!-- authored-case:hson.accept.basis.trivia.element-slots -->
 
-**Verdict — V / I / ?:** `VALID/CORRECT `
+**Verdict — V / I / ?:** `V`
 
 Element trivia covers before-name, after-name, around equals, between header items, before and between content, and before slash.
 
@@ -1095,7 +1067,7 @@ Element trivia covers before-name, after-name, around equals, between header ite
 <!-- review-meta: source=display; review=standalone; attention=Complex trivia composition. -->
 <!-- authored-case:hson.accept.basis.trivia.object-slots -->
 
-**Verdict — V / I / ?:** `VALID/CORRECT `
+**Verdict — V / I / ?:** `V `
 
 Object trivia covers after-open, key/value, sibling, before-close, and consecutive terminated-comment slots.
 
@@ -1142,7 +1114,7 @@ Grammar trivia is exactly SPACE, HT, LF, and CR.
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.comment.block -->
 
-**Verdict — V / I / ?:** `TBD `
+**Verdict — V / I / ?:** `? `
 
 Block comments are unsupported.
 
@@ -1151,13 +1123,13 @@ Block comments are unsupported.
 **Current proposal:** Invalid
 
 **Notes:**
- I MAY WANT TO PRESERVE/ALLOW COMMENTS 
+ TBD - I MAY WANT TO PRESERVE/ALLOW COMMENTS 
 ---
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
 <!-- authored-case:hson.reject.literal.source.comment-only -->
 
-**Verdict — V / I / ?:** `TBD `
+**Verdict — V / I / ?:** `? `
 
 Comment-only source has no semantic value.
 
@@ -1166,7 +1138,7 @@ Comment-only source has no semantic value.
 **Current proposal:** Invalid
 
 **Notes:**
-see above
+TBD - see above
 ---
 
 <!-- review-meta: source=inline; review=standalone; attention=Implementation-derived classification or expectation provenance. -->
@@ -1210,7 +1182,7 @@ PROPOSAL VALUES ACCEPTED
 
 **Shared rule:** Code points outside SPACE, HT, LF, and CR are not authored-HSON trivia.
 
-**Family verdict — V / I / ?:** ` RULE UPHELD (presumably JSON parity?)`
+**Family verdict — V / I / ?:** ` I`
 
 A family verdict applies to every blank override below. An individual override wins.
 Blank family and override fields mean not reviewed.

@@ -9,10 +9,13 @@ import { CREATE_NODE } from "../../core/factories.js";
 import { format_live_path } from "./livemap.path.js";
 import { json_values_equal } from "./livemap-helpers.js";
 import { clone_node } from "../../core/clone-node.js";
-import { ordered_projected_value_from_json } from "../../core/ordered-projected-value.js";
+import { admit_projected_value } from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
+  is_projected_value_hson_node,
   projected_array_item_to_hson_node,
   projected_object_property_to_hson_node,
+  projected_value_from_hson_node,
   projected_value_to_hson_root,
 } from "../../core/projected-value-graph.js";
 
@@ -190,7 +193,7 @@ export function delete_live_path(root: HsonNode, path: LivePath): LiveMapEditRes
  */
 export function replace_live_root(root: HsonNode, value: JsonValue): LiveMapEditResult {
   const prev = snap_live_path(root, []);
-  const nextRoot = projected_value_to_hson_root(ordered_projected_value_from_json(value));
+  const nextRoot = projected_value_to_hson_root(admit_projected_value(value));
 
   overwrite_hson_node(root, nextRoot);
 
@@ -331,6 +334,9 @@ function delete_object_property(parent: HsonNode, key: string): void {
  * compatibility, but document LiveMaps do not expose this lossy reader.
  */
 export function node_to_json_value(node: HsonNode): JsonValue {
+  if (is_projected_value_hson_node(node)) {
+    return materialize_projected_value(projected_value_from_hson_node(node));
+  }
   const transparentPayload = unwrap_transparent_object_payload(node);
   if (transparentPayload !== undefined) return node_to_json_value(transparentPayload);
 
@@ -456,7 +462,12 @@ function object_node_to_value(node: HsonNode): JsonValue {
     const payload = unwrap_value_payload(child);
     if (payload === undefined) continue;
 
-    out[child.$_tag] = node_to_json_value(payload);
+    Object.defineProperty(out, child.$_tag, {
+      value: node_to_json_value(payload),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
 
   return out;
@@ -495,7 +506,7 @@ function array_node_to_value(node: HsonNode): JsonValue[] {
 function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
   return projected_object_property_to_hson_node(
     key,
-    ordered_projected_value_from_json(value),
+    admit_projected_value(value),
   );
 }
 
@@ -508,7 +519,7 @@ function make_object_property_wrapper(key: string, value: JsonValue): HsonNode {
 function make_array_item_wrapper(index: number, value: JsonValue): HsonNode {
   return projected_array_item_to_hson_node(
     index,
-    ordered_projected_value_from_json(value),
+    admit_projected_value(value),
   );
 }
 

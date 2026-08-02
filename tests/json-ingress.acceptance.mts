@@ -109,7 +109,7 @@ function duplicate_json_error(source: string): TransformErrorDetails {
   return details;
 }
 
-check("explicit root without metadata and empty runtime root remain valid", () => {
+check("explicit root without metadata remains valid while runtime undefined rejects", () => {
   const populated = parse_json(explicit_root());
   const populatedText = parse_json(JSON.stringify(explicit_root()));
   assert.equal(populated.$_tag, "_hson_root");
@@ -117,22 +117,27 @@ check("explicit root without metadata and empty runtime root remain valid", () =
   assert.equal(Object.hasOwn(populated, "$_meta"), false);
   assert.equal(canonical_hson_graph_equal(populated, populatedText), true);
 
-  const empty = parse_json({ _hson_root: undefined } as unknown as JsonValue);
-  assert.deepEqual(empty, { $_tag: "_hson_root", $_content: [] });
+  assert.throws(
+    () => parse_json({ _hson_root: undefined } as unknown as JsonValue),
+    (cause) => cause instanceof TransformError
+      && cause.code === "PROJECTED_VALUE_UNDEFINED_VALUE"
+      && cause.path === '["_hson_root"]',
+  );
 });
 
-check("neutral empty root metadata records normalize away", () => {
-  for (const input of [
-    { _hson_root: { _hson_elem: [{ div: "" }] }, $_meta: {} },
-    { _hson_root: { _hson_elem: [{ div: "" }] }, $_meta: undefined },
-  ]) {
-    const result = parse_json(input as unknown as JsonValue);
-    assert.equal(Object.hasOwn(result, "$_meta"), false);
-    if (input.$_meta !== undefined) {
-      const textResult = parse_json(JSON.stringify(input));
-      assert.equal(canonical_hson_graph_equal(result, textResult), true);
-    }
-  }
+check("empty root metadata normalizes away while explicit undefined rejects", () => {
+  const input = { _hson_root: { _hson_elem: [{ div: "" }] }, $_meta: {} };
+  const result = parse_json(input as unknown as JsonValue);
+  assert.equal(Object.hasOwn(result, "$_meta"), false);
+  const textResult = parse_json(JSON.stringify(input));
+  assert.equal(canonical_hson_graph_equal(result, textResult), true);
+
+  assert.throws(
+    () => parse_json({ ...input, $_meta: undefined } as unknown as JsonValue),
+    (cause) => cause instanceof TransformError
+      && cause.code === "PROJECTED_VALUE_UNDEFINED_VALUE"
+      && cause.path === '["$_meta"]',
+  );
 });
 
 check("JSON text and value reject every populated root metadata class", () => {
@@ -331,7 +336,9 @@ check("cyclic parsed values reject deterministically without mutation", () => {
   cyclic.self = cyclic;
   assert.throws(
     () => parse_json(cyclic as JsonValue),
-    /cycle detected in parsed JSON input[\s\S]*reference returns to \$/,
+    (cause) => cause instanceof TransformError
+      && cause.code === "PROJECTED_VALUE_CYCLE"
+      && cause.path === '["self"]',
   );
   assert.equal(cyclic.kept, "value");
   assert.equal(cyclic.self, cyclic);

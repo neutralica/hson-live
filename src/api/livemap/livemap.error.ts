@@ -8,6 +8,32 @@ import {
 import type { LiveMapSchemaIssue } from "./livemap.schema.js";
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapDocumentTarget } from "../../types/livemap.types.js";
+import type {
+  ProjectedValueAdmissionCode,
+  ProjectedValuePath,
+} from "../../core/projected-value-admission.js";
+import { ProjectedValueAdmissionError } from "../../core/projected-value-admission.js";
+
+/** Structured public-mutation failure backed by neutral projected admission. */
+export class LiveMapProjectedValueError extends TypeError {
+  readonly code = "INVALID_PROJECTED_VALUE" as const;
+  readonly reasonCode: ProjectedValueAdmissionCode;
+  readonly path: ProjectedValuePath;
+  readonly originPath: ProjectedValuePath | undefined;
+
+  constructor(admission: ProjectedValueAdmissionError) {
+    super(
+      `LiveMap value is not JSON at ${format_live_path(admission.path)}`,
+      { cause: admission },
+    );
+    this.name = "LiveMapProjectedValueError";
+    this.reasonCode = admission.code;
+    this.path = Object.freeze([...admission.path]);
+    this.originPath = admission.originPath === undefined
+      ? undefined
+      : Object.freeze([...admission.originPath]);
+  }
+}
 
 export class LiveMapSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;

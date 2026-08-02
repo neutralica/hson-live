@@ -13,15 +13,17 @@ import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
 import { normalize_hson_graph } from "../../../core/normalize-hson-graph.js";
 import { assert_user_key_allowed } from "../utils/json-utils/key-prefix-guard.js";
-import { hsonNumber } from "../../../core/hson-number.js";
 import { is_transform_error } from "../../../core/errors.js";
 import {
     is_ordered_projected_object,
     is_ordered_projected_value,
-    ordered_projected_value_from_json,
     type OrderedProjectedObject,
     type OrderedProjectedValue,
 } from "../../../core/ordered-projected-value.js";
+import {
+    admit_projected_value,
+    ProjectedValueAdmissionError,
+} from "../../../core/projected-value-admission.js";
 import { projected_value_to_hson_node } from "../../../core/projected-value-graph.js";
 import {
     ordered_json_to_runtime_value,
@@ -69,7 +71,7 @@ function describe_json_input(value: unknown): string {
 
 function semantic_projected_value(value: JsonInputValue): OrderedProjectedValue {
     if (is_ordered_projected_value(value)) return value;
-    return ordered_projected_value_from_json(value as JsonValue);
+    return admit_projected_value(value);
 }
 
 function assert_transform_projected_keys(value: OrderedProjectedValue): void {
@@ -130,70 +132,6 @@ function is_plain_record(value: unknown): value is Record<string, unknown> {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
     const prototype = Object.getPrototypeOf(value);
     return prototype === Object.prototype || prototype === null;
-}
-
-/**
- * Detach the complete parsed-value input before normalization can rewrite it.
- *
- * Shared acyclic references are copied by value rather than preserving caller
- * identity. Active references are rejected so cycles fail at a deterministic
- * JSON-ingress boundary instead of overflowing recursive conversion.
- */
-function detach_json_input(input: unknown): JsonValue {
-    const active = new WeakMap<object, string>();
-
-    const visit = (value: unknown, path: string): unknown => {
-        if (value === undefined || value === null
-            || typeof value === "string"
-            || typeof value === "boolean") {
-            return value;
-        }
-        if (typeof value === "number") return hsonNumber(value);
-
-        if (typeof value !== "object") {
-            _throw_transform_err(
-                `unsupported parsed JSON value at ${path}`,
-                "parse_json",
-                `received ${typeof value}`,
-            );
-        }
-
-        const origin = active.get(value);
-        if (origin !== undefined) {
-            _throw_transform_err(
-                `cycle detected in parsed JSON input at ${path}`,
-                "parse_json",
-                `reference returns to ${origin}`,
-            );
-        }
-
-        active.set(value, path);
-        if (Array.isArray(value)) {
-            const detached = value.map((item, index) => visit(item, `${path}[${index}]`));
-            active.delete(value);
-            return detached;
-        }
-        if (!is_plain_record(value)) {
-            active.delete(value);
-            _throw_transform_err(
-                `parsed JSON object at ${path} must be a plain object`,
-                "parse_json",
-            );
-        }
-
-        const detached: Record<string, unknown> = Object.create(null);
-        for (const key of Object.keys(value)) {
-            detached[key] = visit(value[key], `${path}.${key}`);
-        }
-        active.delete(value);
-        return detached;
-    };
-
-    const detached = visit(input, "$");
-    if (detached === undefined) {
-        _throw_transform_err("invalid value provided", "parse_json", "top-level undefined");
-    }
-    return detached as JsonValue;
 }
 
 function optional_json_record(
@@ -586,7 +524,26 @@ export function parse_json(input: string | JsonValue): HsonNode {
         // Runtime-value admission retains its established structured failures
         // (notably hson.transform.number / HSON_NUMBER_NONFINITE). Only JSON
         // text syntax failures belong to the parse-json wrapper above.
-        parsed = detach_json_input(input);
+        try {
+            parsed = admit_projected_value(input);
+        } catch (error) {
+            if (error instanceof ProjectedValueAdmissionError) {
+                if (error.code === "NONFINITE_NUMBER" && is_transform_error(error.cause)) {
+                    throw error.cause;
+                }
+                _throw_transform_err(
+                    error.message,
+                    "parse_json",
+                    undefined,
+                    error,
+                    {
+                        code: `PROJECTED_VALUE_${error.code}`,
+                        path: JSON.stringify(error.path),
+                    },
+                );
+            }
+            throw error;
+        }
     }
     const { node } = nodeFromJson(parsed, getTag(parsed));
     const root = node.$_tag === ROOT_TAG

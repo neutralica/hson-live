@@ -14,6 +14,7 @@ import {
     is_projected_value_hson_node,
     projected_value_from_hson_node,
 } from "../../../core/projected-value-graph.js";
+import { materialize_projected_value } from "../../../core/projected-value-materialization.js";
 import {
     ordered_projected_array,
     ordered_projected_object,
@@ -220,6 +221,9 @@ export function json_value_from_node($node: HsonNode): JsonValue {
     collect_hson_node_quid_claims($node);
     const clone = collapse_redundant_roots(clone_node($node))
     assert_invariants(clone, 'serialize_json')
+    if (is_projected_value_hson_node(clone)) {
+        return materialize_projected_value(projected_value_from_hson_node(clone));
+    }
     return jsonFromNode(clone);
 }
 

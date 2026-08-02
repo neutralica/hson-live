@@ -8,10 +8,11 @@ import {
   is_ordered_projected_object,
   ordered_projected_array,
   ordered_projected_object,
-  ordered_projected_value_from_json,
   type OrderedProjectedObject,
   type OrderedProjectedValue,
 } from "../../../../core/ordered-projected-value.js";
+import { admit_projected_value } from "../../../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../../../core/projected-value-materialization.js";
 
 /**
  * Parse JSON text without first materializing object properties through the
@@ -212,18 +213,11 @@ export function parse_ordered_json_text(source: string): OrderedProjectedValue {
 }
 
 export function ordered_json_from_runtime_value(value: JsonValue): OrderedProjectedValue {
-  return ordered_projected_value_from_json(value);
+  return admit_projected_value(value);
 }
 
 export function ordered_json_to_runtime_value(value: OrderedProjectedValue): JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") {
-    return value;
-  }
-  if (Array.isArray(value)) return value.map(ordered_json_to_runtime_value);
-  if (!is_ordered_projected_object(value)) throw new TypeError("invalid ordered JSON value");
-  const record: Record<string, JsonValue> = Object.create(null);
-  for (const [key, child] of value.entries) record[key] = ordered_json_to_runtime_value(child);
-  return record;
+  return materialize_projected_value(value);
 }
 
 export function emit_ordered_json(value: OrderedProjectedValue, depth = 0): string {

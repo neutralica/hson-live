@@ -1,5 +1,5 @@
 import { hsonNumber } from "./hson-number.js";
-import type { JsonValue, Primitive } from "./types.js";
+import type { Primitive } from "./types.js";
 
 const ORDERED_PROJECTED_OBJECT: unique symbol = Symbol("hson.ordered-projected-object");
 
@@ -121,37 +121,4 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
   };
 
   visit(value);
-}
-
-/**
- * Copy an already-supported runtime JsonValue into the neutral ordered carrier.
- *
- * This is a semantic adapter, not the public unknown-value admission boundary.
- * Unit B will replace public reflection with descriptor-aware one-pass admission.
- */
-export function ordered_projected_value_from_json(value: JsonValue): OrderedProjectedValue {
-  const active = new WeakSet<object>();
-
-  const visit = (candidate: JsonValue): OrderedProjectedValue => {
-    if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") return candidate;
-    if (typeof candidate === "number") return hsonNumber(candidate);
-    if (active.has(candidate)) {
-      throw new TypeError("Ordered projected values must be acyclic.");
-    }
-
-    active.add(candidate);
-    if (Array.isArray(candidate)) {
-      const result = ordered_projected_array(candidate.map((child) => visit(child)));
-      active.delete(candidate);
-      return result;
-    }
-
-    const result = ordered_projected_object(
-      Object.entries(candidate).map(([key, child]) => [key, visit(child)] as const),
-    );
-    active.delete(candidate);
-    return result;
-  };
-
-  return visit(value);
 }

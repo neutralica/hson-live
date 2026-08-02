@@ -6,7 +6,7 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import { LiveMapReplayInputError } from "./livemap.error.js";
-import { must_live_path } from "./livemap.guard.js";
+import { must_json_value, must_live_path } from "./livemap.guard.js";
 
 /** Validate and defensively copy a replay envelope received at runtime. */
 export function must_livemap_replay(input: unknown): LiveMapReplay {
@@ -139,10 +139,11 @@ function must_optional_json(
 }
 
 function must_json(value: unknown, field: string, opIndex: number): JsonValue {
-  if (!is_json_value(value)) {
+  try {
+    return must_json_value(value, []);
+  } catch {
     throw new LiveMapReplayInputError(`${field} is not JSON`, opIndex);
   }
-  return clone_replay_json(value);
 }
 
 function must_json_array(
@@ -170,21 +171,4 @@ function is_plain_object(value: unknown): value is Readonly<Record<string, unkno
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-}
-
-function is_json_value(value: unknown): value is JsonValue {
-  if (value === null) return true;
-  if (typeof value === "string" || typeof value === "boolean") return true;
-  if (typeof value === "number") return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(is_json_value);
-  return is_plain_object(value) && Object.values(value).every(is_json_value);
-}
-
-function clone_replay_json(value: JsonValue): JsonValue {
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(clone_replay_json);
-
-  return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, clone_replay_json(item)]),
-  );
 }

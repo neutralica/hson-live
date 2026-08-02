@@ -1,0 +1,2147 @@
+{
+  "schemaVersion": 1,
+  "artifactKind": "authored-hson-source-verdict-ledger",
+  "scope": "human-reviewed authored-language membership only",
+  "worksheetSha256": "df17f7de1e9452754b9ab1ddc4d80fdfc82c473f1323ce91a72f9a46ec79db7c",
+  "corpusReviewFingerprint": "b4dc3e488ebabceb47e5a1f0704f3f1df84513ca05aefeda9a8724ad386afae9",
+  "authoredDescriptorCount": 269,
+  "summary": {
+    "humanValid": 77,
+    "humanInvalid": 163,
+    "humanUncertain": 7,
+    "unreviewed": 22,
+    "rowVerdicts": 108,
+    "familyInheritedVerdicts": 139,
+    "rowOverrides": 3,
+    "proposalAgreements": 237,
+    "proposalDisagreements": 3
+  },
+  "families": [
+    {
+      "familyId": "quoted-string-ordinary-dispatch",
+      "humanVerdict": "valid"
+    },
+    {
+      "familyId": "quoted-string-unicode-boundaries",
+      "humanVerdict": "unreviewed"
+    },
+    {
+      "familyId": "quoted-string-malformed-escapes",
+      "humanVerdict": "invalid"
+    },
+    {
+      "familyId": "quoted-string-raw-c0",
+      "humanVerdict": "invalid"
+    },
+    {
+      "familyId": "backtick-name-ordinary-dispatch",
+      "humanVerdict": "unreviewed"
+    },
+    {
+      "familyId": "backtick-name-unicode-boundaries",
+      "humanVerdict": "valid"
+    },
+    {
+      "familyId": "backtick-name-malformed-escapes",
+      "humanVerdict": "invalid"
+    },
+    {
+      "familyId": "backtick-name-raw-c0",
+      "humanVerdict": "invalid"
+    },
+    {
+      "familyId": "unsupported-whitespace",
+      "humanVerdict": "invalid"
+    }
+  ],
+  "cases": [
+    {
+      "caseId": "hson.accept.literal.primitive.empty-string",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.false",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "* only VALID in _hson_obj context. typed content is invalid in _hson_elem"
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.null",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "see false"
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.string",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.true",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "see false"
+    },
+    {
+      "caseId": "hson.accept.literal.object.comments",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "exact codes not clear but yes this is correct"
+    },
+    {
+      "caseId": "hson.accept.literal.object.empty",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "`</>` not valid however"
+    },
+    {
+      "caseId": "hson.accept.literal.object.multiple-properties",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.object.negative-zero",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "seek 1:1 parity with JSON for typed primitives"
+    },
+    {
+      "caseId": "hson.accept.literal.object.one-property",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": null,
+      "note": "Partially correct--only for non-string"
+    },
+    {
+      "caseId": "hson.accept.literal.array.empty-bracket",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": " it sounds like this means 'serializes canonically'? \nthe array symbol is obviously not stored in the nodes per se except by the _hson_arr wrapper. \nHSON's parser accepts brackets and guillemet, flexibly. It always serializes as guillemet, yes. It never serializes to bracket and there's no way to change that. "
+    },
+    {
+      "caseId": "hson.accept.literal.array.empty-guillemet",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "\"admits?\" sure I guess. \"is admitted\"?? \"is canonical array symnbol?\" anyway yes"
+    },
+    {
+      "caseId": "hson.accept.literal.array.negative-zero",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "where it goes one it goes all"
+    },
+    {
+      "caseId": "hson.accept.literal.array.primitives",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "item order is always preserved by arrays in HSON via ordering, just as with HSON. it is preserved in HTML expressions of JSON by wrapping each item in an ii node which melts on reparsing. the hson:index value on the ii node must determine the order of reconstruction correctly."
+    },
+    {
+      "caseId": "hson.accept.literal.array.trailing-comma-bracket",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.array.trailing-comma-guillemet",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.adjacent-strings",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "///-> only valid in _hson_elem context; \n `<div \"a\" \"b\">` /// INVALID"
+    },
+    {
+      "caseId": "hson.accept.literal.element.attribute",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "Yes, I'm not sure what's even questionable here\nit's explicit value may only ever be a string\nthe source HSON is valid regardless"
+    },
+    {
+      "caseId": "hson.accept.literal.element.empty",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "/// <div>  ///-> INVALID _hson_obj must hve a value and a key"
+    },
+    {
+      "caseId": "hson.accept.literal.element.flag",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "only _hson_elem may receive flags or attributes\n```ts\n `<input disabled>` ///-> INVALID\n `<input \"disabled\">` ///-> valid\n `<input null>` ///-> valid\n ```"
+    },
+    {
+      "caseId": "hson.accept.literal.element.quid",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.text",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.three-empty-strings",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "I hate it but valid"
+    },
+    {
+      "caseId": "hson.accept.basis.root.element-fragment",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "the circuit tests don't love it but this is totally valid\n*I'd even argue that this might be valid too:*\n`<a/><b>`\nif they don't share a single root shouldn't they be able to exist side-by-side?"
+    },
+    {
+      "caseId": "hson.accept.literal.array.nested",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.array.object-item",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.mixed-content",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.nested",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.object.array-value",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.object.nested",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.basis.object.primitive-looking-keys",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.element.keyword-flags",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.object.typed-keywords",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.basis.number.negative-exponent-sign",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": null,
+      "note": "I defer to JSON spec"
+    },
+    {
+      "caseId": "hson.accept.basis.number.negative-integer",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "<negativeOne -1> is valid "
+    },
+    {
+      "caseId": "hson.accept.basis.number.positive-exponent-sign",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": null,
+      "note": "defer to JSON"
+    },
+    {
+      "caseId": "hson.accept.basis.number.positive-fraction",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "yes\n///-> we should accept `.5` as well however, as well as `0.500` if someone tries it"
+    },
+    {
+      "caseId": "hson.accept.basis.number.uppercase-exponent",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "accepting in parse; defer to JSON"
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.exponent",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": null,
+      "note": "defer to JSON"
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.negative-fraction",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.negative-zero",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "defer to JSON"
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.positive-integer",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.primitive.zero",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.hexadecimal",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.leading-plus",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.leading-zero",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.missing-exponent-digits",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.missing-fraction-digits",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.missing-integer-before-fraction",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": false,
+      "note": "accept anything that is functionally 0.5; serialize canonically"
+    },
+    {
+      "caseId": "hson.reject.basis.number.missing-signed-exponent-digits",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.named-nan",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.named-negative-infinity",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.named-positive-infinity",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.nonfinite-overflow",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.number.numeric-separator",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true,
+      "note": "seek parity with JSON"
+    },
+    {
+      "caseId": "hson.accept.basis.trivia.array-slots",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "I think so?"
+    },
+    {
+      "caseId": "hson.accept.basis.trivia.comment-to-eof",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "seems fine?"
+    },
+    {
+      "caseId": "hson.accept.basis.trivia.element-slots",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.basis.trivia.object-slots",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "hard for me to review Unitype code: I trust the recommendation here"
+    },
+    {
+      "caseId": "hson.accept.literal.trivia.space-tab-lf-cr",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.comment.block",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": null,
+      "note": " TBD - I MAY WANT TO PRESERVE/ALLOW COMMENTS "
+    },
+    {
+      "caseId": "hson.reject.literal.source.comment-only",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": null,
+      "note": "TBD - see above"
+    },
+    {
+      "caseId": "hson.reject.literal.source.whitespace-only",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.whitespace.byte-order-mark",
+      "humanVerdict": "uncertain",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": null,
+      "note": "PROPOSAL VALUES ACCEPTED"
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u000b",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u000c",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u00a0",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u1680",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2000",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2001",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2002",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2003",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2004",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2005",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2006",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2007",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2008",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2009",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u200a",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2028",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u2029",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u202f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u205f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.unsupported-whitespace.u3000",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "unsupported-whitespace",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true,
+      "note": "I can't read any of these really but I trust your judgement. if it's not JSON it's not HSON (unless it's HTML)"
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.quote",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.backslash",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.slash",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.backspace",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.form-feed",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.line-feed",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.carriage-return",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.tab",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.escape-before-quote",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.escape-before-container-closer",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-lowercase",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-uppercase",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-mixed-case",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u0000",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u001f",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u007f",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u0080",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u00ff",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u0100",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u2028",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-u2029",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-high-surrogate",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-low-surrogate",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.unicode-surrogate-pair",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.quoted-string.consecutive-unicode",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "quoted-string-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-zero-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-one-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-two-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-three-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.invalid-hex-position-1",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.invalid-hex-position-2",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.invalid-hex-position-3",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.invalid-hex-position-4",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-interrupted-space",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-interrupted-quote",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unicode-interrupted-backslash",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.unsupported-letter",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.eof-during-unicode",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.trailing-backslash",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0000",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0001",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0002",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0003",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0004",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0005",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0006",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0007",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0008",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0009",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000a",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000b",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000c",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000d",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000e",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u000f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0010",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0011",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0012",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0013",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0014",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0015",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0016",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0017",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0018",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u0019",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001a",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001b",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001c",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001d",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001e",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.quoted-string.raw-u001f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "quoted-string-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.basis.backtick-name.element-name",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.literal.object.colon-dot-names",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": "Just running this through the parsing panels, it seems valid as-is. Which is fine; I'm OK with only requiring backticks to preserve spacing if that's all we need them for. (e.g. camelCase etc should be automatically preserved. )"
+    },
+    {
+      "caseId": "hson.accept.literal.object.empty-decoded-key",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "valid",
+      "agreesWithProposal": true,
+      "note": " node: {$_tag: \"\" } /// {\"\": 1}"
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.escaped-backtick",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.escaped-backslash",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.backspace",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.form-feed",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.line-feed",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.carriage-return",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.tab",
+      "humanVerdict": "unreviewed",
+      "verdictSource": "none",
+      "familyId": "backtick-name-ordinary-dispatch",
+      "currentProposal": "valid",
+      "agreesWithProposal": null,
+      "note": "/// THESE PROPOSED RULES SEEM CORRECT BUT I WILL NOT COMMENT ON THE OVERRIDES TO AVOID PERCEPTION OF BLESSING THE BACKTICK SYNTAX HERE"
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-lowercase",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-uppercase",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-mixed-case",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u0000",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-control",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u001f",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u007f",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u0080",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u00ff",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u0100",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u2028",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-u2029",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-lambda",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-high-surrogate",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-low-surrogate",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.unicode-surrogate-pair",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.accept.family.backtick-name.consecutive-unicode",
+      "humanVerdict": "valid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-unicode-boundaries",
+      "currentProposal": "valid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.backtick-name.attribute-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.basis.backtick-name.flag-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.trailing-backslash",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-interrupted-backtick",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unsupported-letter",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unsupported-slash",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unsupported-zero",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unsupported-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-zero-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-one-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-two-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-three-hex",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.invalid-hex-position-1",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.invalid-hex-position-2",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.invalid-hex-position-3",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.invalid-hex-position-4",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-interrupted-space",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-interrupted-quote",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-interrupted-closer",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.unicode-interrupted-backslash",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.eof",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-malformed-escapes",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0000",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0001",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0002",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0003",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0004",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0005",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0006",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0007",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0008",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0009",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000a",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000b",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000c",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000d",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000e",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u000f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0010",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0011",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0012",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0013",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0014",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0015",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0016",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0017",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0018",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u0019",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001a",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001b",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001c",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001d",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001e",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.family.backtick-name.raw-u001f",
+      "humanVerdict": "invalid",
+      "verdictSource": "family",
+      "familyId": "backtick-name-raw-c0",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.attribute-syntax",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.comma",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.duplicate",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.extra-value",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.flag",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.missing-trivia",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true,
+      "note": "After some thought -- this must indeed be invalid, because then you would have to allow <afalse> and <anull> and <a1> as <a> tags"
+    },
+    {
+      "caseId": "hson.reject.literal.object.quid",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.array.mismatched-bracket",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.array.mismatched-guillemet",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.array.missing-comma",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.array.missing-item",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.duplicate-attribute",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.duplicate-quid",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.flag-after-content",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.malformed-closer",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": false,
+      "note": "Nah? It's just a space? this feels like trivia to me. what's the argument against this? \n\n///-> a ground rule is emerging: SPACES ARE TRIVIA HERE:\n- before: tag, attribute, flag, \"content\", > /// SPACE HERE ARE VALID\n<tag attribute=\"0\" flag \"content\">\n ^   ^             ^    ^        ^ /// SPACES ARE TRIVIA HERE\n\n\nSPACES ARE ERRORS HERE:\n- within attribute name, on either side of = ///SPACES BETWEEN EQUALS SIGN AND ANYTHING ARE INVALID\n- obviously inserted within any whole word or number /// INVALID\n<tag attribute=\"0\" flag \"content\">\n              ^^  /// SPACES ARE INVALID AT/BEFORE EITHER CARAT"
+    },
+    {
+      "caseId": "hson.reject.literal.element.missing-attribute-value",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.missing-quid",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.empty-attribute-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.empty-element-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.empty-flag-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true,
+      "note": "flags may never be backticked or quoted ever regardless"
+    },
+    {
+      "caseId": "hson.reject.basis.mode.object-element",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.element.numeric-content",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.mode.array-element",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.mode.element-array",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.mode.element-object",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.root.bare-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true,
+      "note": "bare unquoted string with no wrapper is not valid"
+    },
+    {
+      "caseId": "hson.reject.literal.root.mixed-modes",
+      "humanVerdict": "valid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": false,
+      "note": "I am on the fence here. I think eventually they will coexist, some day. Honestly as long as there's never any nesting of obj and elem --just neighbors I wouldn't want to rule this out totally as a whole-graph storage approach. \n\nUNless there's a footgun I don't see"
+    },
+    {
+      "caseId": "hson.reject.literal.root.multiple-values",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.root.trailing-closer",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.source.empty",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.authored-metadata",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.legacy-adjacent",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.object.legacy-doubled",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    },
+    {
+      "caseId": "hson.reject.literal.reserved-name",
+      "humanVerdict": "invalid",
+      "verdictSource": "row",
+      "currentProposal": "invalid",
+      "agreesWithProposal": true
+    }
+  ]
+}

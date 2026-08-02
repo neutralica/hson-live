@@ -3,6 +3,13 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMapFeedListener, LiveMapSetManyValues, LivePath } from "../../types/livemap.types.js";
 import { format_live_path } from "./livemap.path.js";
+import {
+  admit_projected_value,
+  ProjectedValueAdmissionError,
+} from "../../core/projected-value-admission.js";
+import { materialize_projected_value } from "../../core/projected-value-materialization.js";
+import { is_ordered_projected_object } from "../../core/ordered-projected-value.js";
+import { LiveMapProjectedValueError } from "./livemap.error.js";
 
 export type LiveMapPathKind = "array" | "object";
 
@@ -23,9 +30,14 @@ export function must_live_path(path: unknown): LivePath {
 
 /** Validate a value as JSON before it enters LiveMap mutation surfaces. */
 export function must_json_value(value: unknown, path: LivePath): JsonValue {
-  if (is_json_value(value)) return value;
-
-  throw new Error(`LiveMap value is not JSON at ${format_live_path(path)}`);
+  try {
+    return materialize_projected_value(admit_projected_value(value, path));
+  } catch (error) {
+    if (error instanceof ProjectedValueAdmissionError) {
+      throw new LiveMapProjectedValueError(error);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -35,17 +47,19 @@ export function must_json_value(value: unknown, path: LivePath): JsonValue {
  * child write under `path`, and each child value must be valid JSON.
  */
 export function must_set_many_values(value: unknown, path: LivePath): LiveMapSetManyValues {
-  if (!is_plain_json_object_value(value)) {
+  let admitted;
+  try {
+    admitted = admit_projected_value(value, path);
+  } catch (error) {
+    if (error instanceof ProjectedValueAdmissionError) {
+      throw new LiveMapProjectedValueError(error);
+    }
+    throw error;
+  }
+  if (!is_ordered_projected_object(admitted)) {
     throw new Error(`LiveMap setMany value is not an object at ${format_live_path(path)}`);
   }
-
-  const values: Record<string, JsonValue> = {};
-
-  for (const [key, item] of Object.entries(value)) {
-    values[key] = must_json_value(item, [...path, key]);
-  }
-
-  return values;
+  return materialize_projected_value(admitted) as LiveMapSetManyValues;
 }
 
 /** Validate feed listener input from public subscription surfaces. */
@@ -77,24 +91,6 @@ function must_live_path_part(part: unknown, index: number): string | number {
   if (typeof part === "number" && Number.isInteger(part) && part >= 0) return part;
 
   throw new Error(`LiveMap path part is not valid at index ${index}`);
-}
-
-function is_json_value(value: unknown): value is JsonValue {
-  if (value === null) return true;
-
-  switch (typeof value) {
-    case "string":
-    case "boolean":
-      return true;
-    case "number":
-      return Number.isFinite(value);
-    case "object":
-      return Array.isArray(value)
-        ? value.every(is_json_value)
-        : is_plain_json_object_value(value) && Object.values(value).every(is_json_value);
-    default:
-      return false;
-  }
 }
 
 /** True for plain object records accepted by LiveMap JSON object guards. */
