@@ -78,11 +78,40 @@ export class LiveMapRevError extends Error {
 export class LiveMapDocumentInstallError extends Error {
   readonly code = "INVALID_DOCUMENT_INSTALL" as const;
   readonly reason: string;
+  readonly reasonCode: LiveMapDocumentInstallFailureCode;
 
-  constructor(reason: string, options?: ErrorOptions) {
+  constructor(
+    reason: string,
+    options?: ErrorOptions,
+    reasonCode: LiveMapDocumentInstallFailureCode = "MALFORMED_CAPTURE_ENVELOPE",
+  ) {
     super(`Invalid LiveMap document install: ${reason}`, options);
     this.name = "LiveMapDocumentInstallError";
     this.reason = reason;
+    this.reasonCode = reasonCode;
+  }
+}
+
+export type LiveMapDocumentInstallFailureCode =
+  | "MALFORMED_CAPTURE_ENVELOPE"
+  | "DUPLICATE_PRESERVED_CLAIMS"
+  | "IDENTITY_POLICY_MISMATCH";
+
+export type LiveMapDocumentIdentityProvenanceErrorCode =
+  | "SAME_EPOCH_PROVENANCE_REQUIRED"
+  | "STALE_IDENTITY_EPOCH"
+  | "FOREIGN_IDENTITY_EPOCH"
+  | "IDENTITY_POLICY_MISMATCH"
+  | "UNSUPPORTED_CAPTURE_CATEGORY";
+
+/** Stable category/provenance failure without exposing capability internals. */
+export class LiveMapDocumentIdentityProvenanceError extends Error {
+  constructor(
+    readonly code: LiveMapDocumentIdentityProvenanceErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "LiveMapDocumentIdentityProvenanceError";
   }
 }
 

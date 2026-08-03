@@ -524,7 +524,7 @@ export function create_livehost_client<
             "LiveHost document snapshot mode does not match the mirror mode.",
           );
         }
-        map.restore(capture);
+        map.restore(capture, { identity: "preserve-metadata" });
       } else {
         throw new Error("Recovery snapshot reconstructed an incompatible map mode.");
       }

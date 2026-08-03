@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0, 1, 3, 4, 5, and 6 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0, 1, 3, 4, 5, 6, and 7 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -15,6 +15,8 @@ Unit 4 replaces that ordinary-operation rebuild seam with the shared document op
 Unit 5 completes the request/canonical split across the remaining authority surfaces. Active LiveMap and LiveHost action requests may still use QUIDs, but resolution occurs inside the accepting staged transaction. Canonical LiveMap and LiveHost types, current protocol decoding, history, recovery, client application, and new persistence appends are path-only with an optional witness. Named internal compatibility readers lower old QUID-only commits from the exact checkpoint/base graph and normalize them immediately; no protocol version or persistence rewrite was required for new-format correctness.
 
 Unit 6 makes document Reflection path-first. The exact accepted commit privately carries Unit 4 identity effects to the binding; paths route, witnesses validate, moves retain exact projected subtrees, and compatible same-QUID replacements remain conservative continuity cases. Ordinary local operations update binding correspondence through the shared Unit 1 transform without a whole-domain rebuild. Initialization, snapshots, and compatible root replacement retain the legitimate complete-build boundary. LiveTree runtime registries and public semantics remain unchanged.
+
+Unit 7 classifies capture and admission without introducing a second graph or persisted identifier. Existing `capture()` remains a durable exact-metadata capture. Additive `identity` options select same-epoch, preserve-metadata, strip, or strict external rejection. Same-epoch proof is an opaque exact capture-object capability held in a `WeakMap`; copied or decoded bytes cannot recreate it, and changed durable root replacement invalidates it. All preserved document QUIDs still satisfy Unit 3 by becoming validated fresh map-local overlay claims. That lookup continuity is explicitly distinct from old map or browser handle continuity. Existing view-state, graph-content, LiveHost snapshot/bootstrap/recovery, and persistence formats remain unchanged durable structural formats.
 
 ## Inspection baseline
 
@@ -633,6 +635,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 7 — Explicit capture and epoch provenance
 
+- **Status:** Implemented and executable.
 - **Goal:** Define same-epoch, durable structural, identity-free, and external admission categories; add provenance/admission policy.
 - **Production ownership:** document capture/install/restore, HSON/view-state/graph-content boundary adapters.
 - **Public/API effect:** Add explicit capture/admission options or new methods; preserve old exact capture under a documented compatibility mode.
@@ -641,6 +644,10 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Same-epoch identity cannot be distinguished from copied serialized metadata.
 - **Dependency:** Units 0, 3, 4.
 - **Suggested commit direction:** `feat(livemap): classify live and structural captures`.
+- **Implemented boundary:** `capture()` retains exact durable compatibility semantics. `capture({ identity })` adds `same-epoch`, `preserve-metadata`, and `strip`; install/restore additionally accept `reject`. Same-epoch admission validates the exact owner, current local epoch, unchanged capture graph/envelope, and exact capability object before candidate preparation. Durable and external preserved claims are active only as fresh local overlay identity. Strip removes metadata on a detached candidate before ownership and never mutates the source.
+- **Provenance ownership:** One document-map closure owns an object capability and local counter. The capability is nonenumerable because it is not stored on the capture at all, is neither authentication nor authorization, and is replaced by changed durable install/restore including accepted staged-authority install. LiveTree retains its independent runtime epoch and collision-aware exact-node ownership.
+- **Compatibility result:** No capture, HSON, HTML, JSON, view-state, graph-content, bootstrap, recovery, canonical commit, or persistence format changed. No protocol field, remote token, migration, rekey, registration API, or passive shadow graph was added.
+- **Executable result:** Three focused launchers provide 22 capture-category, 23 provenance/admission, and 23 LiveHost/Reflection closure checks. They cover opacity, stale/foreign/raw-byte rejection, duplicate/atomic admission, identity-free path replay, bootstrap/checkpoint restart semantics, and new-mirror versus exact-runtime continuity.
 
 ### Unit 8 — LiveHost path-authoritative canonical commit v2
 

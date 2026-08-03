@@ -68,7 +68,7 @@ function document_checkpoint(
   logicalMapId: string,
   incarnationId: string,
 ): LiveHostPersistedDocumentCheckpoint {
-  const capture = map.capture();
+  const capture = map.capture({ identity: "preserve-metadata" });
   return Object.freeze({
     logicalMapId,
     incarnationId,
@@ -308,7 +308,7 @@ function validate_persisted_state(
     if (capture.rev !== checkpoint.rev || capture.mode !== checkpoint.mode) throw invalid_state();
     const map = make_classified_livemap(capture.root);
     if (map.mode !== capture.mode) throw invalid_state();
-    map.restore(capture);
+    map.restore(capture, { identity: "preserve-metadata" });
 
     if (!Array.isArray(state.commits)) throw invalid_state();
     const commits: LiveHostPersistedCommit[] = [];

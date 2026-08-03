@@ -72,6 +72,11 @@ import {
   register_livemap_document_identity_effects,
   replace_livemap_document_identity_overlay_effects,
 } from "./livemap.document.identity.js";
+import {
+  livemap_document_commit_continuity,
+  make_livemap_document_identity_epoch,
+  register_livemap_document_commit_continuity,
+} from "./livemap.document.capture.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -162,6 +167,7 @@ function make_livemap_core_from_owned_root(
   };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
+  const documentIdentityEpoch = make_livemap_document_identity_epoch();
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
@@ -183,6 +189,9 @@ function make_livemap_core_from_owned_root(
       baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
       install: () => {
         if (initialMode === "element" || initialMode === "fragment") {
+          if (livemap_document_commit_continuity(commit) === "new-epoch") {
+            documentIdentityEpoch.replace();
+          }
           owned = {
             root: preparedNext.root,
             documentOverlay: preparedNext.documentOverlay,
@@ -550,7 +559,11 @@ function make_livemap_core_from_owned_root(
       return identity;
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
-    apply: (candidate: PreparedDocumentInstall): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
+    identityEpoch: documentIdentityEpoch,
+    apply: (
+      candidate: PreparedDocumentInstall,
+      continuity: "same-epoch" | "new-epoch",
+    ): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       transitionController.assertPublicMutationAllowed();
       const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
@@ -568,6 +581,7 @@ function make_livemap_core_from_owned_root(
           })]),
         });
       if (commit.changed) {
+        register_livemap_document_commit_continuity(commit, continuity);
         const currentOverlay = owned.documentOverlay;
         if (currentOverlay === undefined) throw new Error("LiveMap document identity overlay is unavailable.");
         register_livemap_document_identity_effects(
@@ -580,6 +594,7 @@ function make_livemap_core_from_owned_root(
         commit,
         transitionController,
         () => {
+          if (continuity === "new-epoch") documentIdentityEpoch.replace();
           owned = {
             root: candidate.root,
             documentOverlay: candidate.overlay,
@@ -590,8 +605,13 @@ function make_livemap_core_from_owned_root(
       );
       return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
     },
-    restore: (candidate: PreparedDocumentInstall, revision: number): void => {
+    restore: (
+      candidate: PreparedDocumentInstall,
+      revision: number,
+      continuity: "same-epoch" | "new-epoch",
+    ): void => {
       transitionController.assertPublicMutationAllowed();
+      if (continuity === "new-epoch") documentIdentityEpoch.replace();
       owned = {
         root: candidate.root,
         documentOverlay: candidate.overlay,

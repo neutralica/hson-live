@@ -296,9 +296,34 @@ export type DocumentLiveMapCapture<
   root: HsonNode;
 }>;
 
-/** Optimistic target-local revision guard for canonical document installation. */
+/** Explicit identity treatment for one detached document capture. */
+export type DocumentLiveMapCaptureIdentity =
+  | "same-epoch"
+  | "preserve-metadata"
+  | "strip";
+
+/** Capture policy. Omission retains the durable exact-metadata compatibility form. */
+export type DocumentLiveMapCaptureOptions = Readonly<{
+  identity: DocumentLiveMapCaptureIdentity;
+}>;
+
+/** Explicit identity treatment at a complete document admission boundary. */
+export type DocumentLiveMapInstallIdentity =
+  | DocumentLiveMapCaptureIdentity
+  | "reject";
+
+/** Callable capture surface with an additive identity-category selector. */
+export type DocumentLiveMapCaptureApi<
+  TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
+> = {
+  (): DocumentLiveMapCapture<TMode>;
+  (options: DocumentLiveMapCaptureOptions): DocumentLiveMapCapture<TMode>;
+};
+
+/** Optimistic revision guard plus explicit complete-root identity admission policy. */
 export type DocumentLiveMapInstallOptions = Readonly<{
   expectedRev?: number;
+  identity?: DocumentLiveMapInstallIdentity;
 }>;
 
 declare const LIVEMAP_DOCUMENT_PATH_BRAND: unique symbol;
@@ -432,7 +457,7 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   readonly mode: TMode;
   readonly rev: number;
   root: () => HsonNode;
-  capture: () => DocumentLiveMapCapture<TMode>;
+  capture: DocumentLiveMapCaptureApi<TMode>;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
     capture: DocumentLiveMapCapture,

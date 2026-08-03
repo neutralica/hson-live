@@ -80,10 +80,15 @@ export { make_livemap_store_api } from "./api/livemap/livemap.store.js";
 export {
     LiveMapDocumentAttributeNotFoundError,
     LiveMapDocumentInstallError,
+    LiveMapDocumentIdentityProvenanceError,
     LiveMapDocumentMutationError,
     LiveMapDocumentStagingError,
 } from "./api/livemap/livemap.error.js";
-export type { LiveMapDocumentMutationErrorCode } from "./api/livemap/livemap.error.js";
+export type {
+    LiveMapDocumentIdentityProvenanceErrorCode,
+    LiveMapDocumentInstallFailureCode,
+    LiveMapDocumentMutationErrorCode,
+} from "./api/livemap/livemap.error.js";
 export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
 export {
     LiveMapDocumentPathError,
@@ -162,6 +167,10 @@ export type {
     DataLiveMapMode,
     DocumentLiveMapMode,
     DocumentLiveMapCapture,
+    DocumentLiveMapCaptureApi,
+    DocumentLiveMapCaptureIdentity,
+    DocumentLiveMapCaptureOptions,
+    DocumentLiveMapInstallIdentity,
     DocumentLiveMapInstallOptions,
     LiveMapDocumentPath,
     LiveMapDocumentPathInput,

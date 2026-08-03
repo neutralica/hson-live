@@ -272,7 +272,7 @@ function map_from_snapshot(
       }));
     } else if (is_document_map(map)) {
       const capture = decode_livehost_document_snapshot(snapshot);
-      map.restore(capture);
+      map.restore(capture, { identity: "preserve-metadata" });
     } else {
       throw new Error("LiveHost bootstrap reconstructed an unsupported map mode.");
     }

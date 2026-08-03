@@ -456,11 +456,28 @@ Common reads are `root()`, `capture()`, `document.content()`,
 top-level detached content and has `replace`, `insert`, `remove`, and `move`.
 Mutations accept a path/quid document target and return graph-domain commits.
 
-`install(capture, { expectedRev? })` atomically replaces a same-mode document and
-advances revision. `restore` installs the exact captured revision without an
-ordinary commit. `replay(commit)` validates identity targets, operation domain,
-and exact revision continuity. `commits.observe` is the supported graph
-publication surface.
+`capture()` remains the durable exact-metadata compatibility form. Explicit
+capture categories are additive:
+
+```ts
+map.capture({ identity: "same-epoch" });
+map.capture({ identity: "preserve-metadata" });
+map.capture({ identity: "strip" });
+```
+
+Same-epoch output is an exact local object capability; copying or serializing it
+removes that proof. Preserve-metadata output retains QUID bytes for durable
+structure but does not transfer old handles. Strip output removes QUID metadata
+from the detached capture without mutating or minting into the source.
+
+`install(capture, { expectedRev?, identity? })` atomically replaces a same-mode
+document and advances revision. `restore` installs the exact captured revision
+without an ordinary commit. Admission supports `same-epoch`,
+`preserve-metadata`, `strip`, and `reject`. The compatibility default is
+`preserve-metadata`: claims are validated and become fresh map-local overlay
+identity, not proof of the source map's epoch. `replay(commit)` validates
+identity witnesses, operation domain, and exact revision continuity.
+`commits.observe` is the supported graph publication surface.
 
 ## Unsafe node handles
 
@@ -505,8 +522,9 @@ transition and one commit.
 LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the
 DOM projection API and has different runtime constraints. A server-created data
 capture can be transferred as JSON and restored into a compatible map. Document
-captures contain HSON nodes; LiveHost recovery serializes them as HSON or
-negotiated view-state rather than by blindly JSON-stringifying the capture.
+captures contain HSON nodes; LiveHost recovery serializes their durable
+structural form as HSON or negotiated view-state. Neither wire format carries
+the local same-epoch capability.
 
 Passing browser `Element` objects belongs to other hson/LiveTree construction
 paths and is unavailable in Node/Worker execution. Synchronization coordination
@@ -519,8 +537,9 @@ Most invalid projected operations throw before mutation. Schema failures use the
 internal `LiveMapSchemaError` class (not package-root exported) but expose
 structured validation information through schema validation APIs. Revision
 conflicts throw a revision error internally. Public document errors include
-`LiveMapDocumentInstallError`, `LiveMapDocumentMutationError`, and
-`LiveMapDocumentAttributeNotFoundError`, with exported document mutation codes.
+`LiveMapDocumentInstallError`, `LiveMapDocumentIdentityProvenanceError`,
+`LiveMapDocumentMutationError`, and `LiveMapDocumentAttributeNotFoundError`,
+with exported provenance, install, and mutation reason codes.
 
 Normal missing reads return `undefined`; missing deletes are no-ops. Normal
 write errors do not partially change the graph.

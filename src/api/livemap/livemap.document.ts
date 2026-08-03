@@ -9,6 +9,8 @@ import type {
   DataLiveMapMode,
   DocumentLiveMap,
   DocumentLiveMapCapture,
+  DocumentLiveMapCaptureApi,
+  DocumentLiveMapCaptureOptions,
   DocumentLiveMapInstallOptions,
   DocumentLiveMapMode,
   ElementLiveMap,
@@ -40,6 +42,7 @@ import {
 } from "./livemap.document.mutation.js";
 import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
+import { capture_livemap_document } from "./livemap.document.capture.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -202,19 +205,22 @@ function make_document_livemap(
   };
 
   if (mode === "element") {
+    const capture: DocumentLiveMapCaptureApi<"element"> = (
+      options?: DocumentLiveMapCaptureOptions,
+    ) => capture_livemap_document(
+      controller.identityEpoch,
+      "element",
+      core.rev,
+      core.root(),
+      options,
+    );
     const elementMap: ElementLiveMap = Object.freeze({
       ...shared,
       mode,
       get rev() {
         return core.rev;
       },
-      capture: (): DocumentLiveMapCapture<"element"> => Object.freeze({
-        kind: "hson-document",
-        version: 2,
-        mode: "element",
-        rev: core.rev,
-        root: core.root(),
-      }),
+      capture,
       document,
       element: Object.freeze({
         node: () => detached_top_level_element(core.root()),
@@ -224,19 +230,22 @@ function make_document_livemap(
     return elementMap;
   }
 
+  const capture: DocumentLiveMapCaptureApi<"fragment"> = (
+    options?: DocumentLiveMapCaptureOptions,
+  ) => capture_livemap_document(
+    controller.identityEpoch,
+    "fragment",
+    core.rev,
+    core.root(),
+    options,
+  );
   const fragmentMap: FragmentLiveMap = Object.freeze({
     ...shared,
     mode,
     get rev() {
       return core.rev;
     },
-    capture: (): DocumentLiveMapCapture<"fragment"> => Object.freeze({
-      kind: "hson-document",
-      version: 2,
-      mode: "fragment",
-      rev: core.rev,
-      root: core.root(),
-    }),
+    capture,
     document,
   });
   register_livemap_document_identity_overlay(fragmentMap, controller.overlay);

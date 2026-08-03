@@ -4,6 +4,7 @@ export { make_livemap_store_api } from "./livemap.store.js";
 export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,
+  LiveMapDocumentIdentityProvenanceError,
   LiveMapDocumentMutationError,
   LiveMapDocumentStagingError,
   LiveMapSchemaError,
@@ -40,7 +41,11 @@ export {
   make_livemap_schema,
 } from "./livemap.schema.js";
 
-export type { LiveMapDocumentMutationErrorCode } from "./livemap.error.js";
+export type {
+  LiveMapDocumentIdentityProvenanceErrorCode,
+  LiveMapDocumentInstallFailureCode,
+  LiveMapDocumentMutationErrorCode,
+} from "./livemap.error.js";
 export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js";
 export type * from "../../types/livemap.types.js";
 export type {

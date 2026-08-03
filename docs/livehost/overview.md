@@ -277,6 +277,13 @@ Document clients may negotiate supported snapshot formats. Current document reco
 * exact view-state version 2 snapshots (version 1 rejects as unsupported);
 * ordered canonical replay after the snapshot cut.
 
+Both snapshot formats are durable structural captures. They preserve canonical
+QUID metadata where present, but no serialized snapshot, `logicalMapId`,
+`incarnationId`, or session credential proves the source map's local identity
+epoch. A receiving mirror validates the claims into a new local sparse overlay;
+old browser/runtime handles do not cross that boundary. The ordered tail remains
+path-authoritative and can replay after an explicitly identity-free checkpoint.
+
 Persistence format and client recovery format are intentionally separate.
 
 A persistent host may store:
@@ -337,6 +344,12 @@ The adapter is responsible for:
 * returning one coherent checkpoint-plus-tail state on load.
 
 LiveHost treats all loaded persistence material as untrusted and validates identity, map kind, mode, format, revision continuity, commit envelopes, replay success, and final revision before registration.
+
+The persisted view-state checkpoint is exact durable metadata, not a persisted
+live-epoch token. Loading after process restart creates a new document-map epoch,
+admits preserved QUID strings as fresh local claims, and replays the canonical
+path tail. This preserves structural and lookup continuity without claiming that
+old process or browser objects survived.
 
 Checkpoints
 
