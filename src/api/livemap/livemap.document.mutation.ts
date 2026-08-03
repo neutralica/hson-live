@@ -26,8 +26,13 @@ import { clone_live_root } from "./livemap.editor.js";
 import {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
+  preserve_livemap_document_identity_at_path,
+  reconcile_livemap_document_identity_overlay,
+  type LiveMapDocumentIdentityEffect,
   type LiveMapDocumentIdentityOverlay,
+  type LiveMapDocumentIdentityReconciliation,
 } from "./livemap.document.identity.js";
+import { append_document_path } from "./livemap.document.path.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
   decode_document_attr_value,
@@ -49,6 +54,7 @@ export type PreparedDocumentMutation<TOp extends LiveMapGraphOp = LiveMapGraphOp
   root: HsonNode;
   overlay: LiveMapDocumentIdentityOverlay;
   operation: TOp;
+  identityEffects: readonly LiveMapDocumentIdentityEffect[];
 }>;
 
 /** Internal state boundary implemented by the shared LiveMap Core. */
@@ -230,7 +236,7 @@ function prepare_set_document_attr(
     name,
     value: clone_attr_value(value),
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function remove_document_attr(
@@ -266,7 +272,7 @@ function prepare_remove_document_attr(
     target,
     name,
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function prepare_replace_document_attrs(
@@ -301,7 +307,7 @@ function prepare_replace_document_attrs(
     target: preparedTarget.target,
     attrs: clone_node(attrs),
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function replace_document_content(
@@ -345,7 +351,7 @@ function prepare_replace_document_content(
     index,
     replacement: clone_content(replacement, operationName),
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function insert_document_content(
@@ -391,7 +397,7 @@ function prepare_insert_document_content(
     index,
     content: clone_content(content, operationName),
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function remove_document_content(
@@ -425,7 +431,7 @@ function prepare_remove_document_content(
     target: preparedTarget.target,
     index,
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function move_document_content(
@@ -472,7 +478,7 @@ function prepare_move_document_content(
     from,
     to,
   });
-  return prepare_finished_mutation(mode, root, operation, operationName);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
 
 function finish_mutation<TOp extends LiveMapGraphOp>(
@@ -485,12 +491,13 @@ function finish_mutation<TOp extends LiveMapGraphOp>(
 function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
   expectedMode: DocumentLiveMapMode,
   root: HsonNode,
+  currentOverlay: LiveMapDocumentIdentityOverlay,
   operation: TOp,
   operationName: DocumentOperation,
 ): PreparedDocumentMutation<TOp> {
-  let overlay: LiveMapDocumentIdentityOverlay;
+  let reconciliation;
   try {
-    overlay = build_livemap_document_identity_overlay(root, expectedMode);
+    reconciliation = reconcile_operation_identity(currentOverlay, operation);
   } catch (cause) {
     if (cause instanceof LiveMapDocumentIdentityError) {
       throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, cause.message, cause);
@@ -513,7 +520,51 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
     );
   }
 
-  return { root, overlay, operation };
+  return {
+    root,
+    overlay: reconciliation.overlay,
+    operation,
+    identityEffects: reconciliation.effects,
+  };
+}
+
+function reconcile_operation_identity(
+  overlay: LiveMapDocumentIdentityOverlay,
+  operation: LiveMapGraphOp,
+): LiveMapDocumentIdentityReconciliation {
+  if (operation.op === "replace-root") {
+    throw new LiveMapDocumentIdentityError(
+      "OVERLAY_INVARIANT",
+      "Whole-root identity replacement must use the document admission boundary.",
+    );
+  }
+  if (operation.op === "set-attr" || operation.op === "remove-attr" || operation.op === "replace-attrs") {
+    return preserve_livemap_document_identity_at_path(overlay, operation.target.path);
+  }
+  if (operation.op === "insert-content") {
+    return reconcile_livemap_document_identity_overlay(
+      overlay,
+      { kind: "insert", parent: operation.target.path, index: operation.index },
+      { content: operation.content, path: append_document_path(operation.target.path, operation.index) },
+    );
+  }
+  if (operation.op === "replace-content") {
+    return reconcile_livemap_document_identity_overlay(
+      overlay,
+      { kind: "replace", parent: operation.target.path, index: operation.index },
+      { content: operation.replacement, path: append_document_path(operation.target.path, operation.index) },
+    );
+  }
+  if (operation.op === "remove-content") {
+    return reconcile_livemap_document_identity_overlay(
+      overlay,
+      { kind: "delete", parent: operation.target.path, index: operation.index },
+    );
+  }
+  return reconcile_livemap_document_identity_overlay(
+    overlay,
+    { kind: "move", parent: operation.target.path, from: operation.from, to: operation.to },
+  );
 }
 
 /** Validate and plan one graph operation against a detached candidate root. */

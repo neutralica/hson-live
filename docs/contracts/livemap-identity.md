@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, and Unit 3 sparse QUID/path overlay contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 3 sparse QUID/path overlay contract, and Unit 4 operation-derived reconciliation contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -94,9 +94,13 @@ Each active document LiveMap owns one derived `QUID -> canonical path` and `cano
 
 `document.byQuid` first reads the current overlay path, resolves that path against the current owned root, and returns a detached clone. QUID request lowering uses the same forward lookup. Optional commit witnesses use the reverse path lookup; they never route or repair an invalid path. Repeated reads do not rebuild or rescan the graph.
 
-The controller owns root, ordinary revision, and overlay as one coherent state. Construction, mutation planning, replay, install, and restore build and validate a candidate overlay before the state is published. Failed duplicate or malformed candidates publish neither root, revision, overlay, history, nor observations. Exact captures serialize the canonical graph and QUID metadata, not the derived overlay.
+The controller owns root, ordinary revision, and overlay as one coherent state. Construction and complete-root admission build an overlay; ordinary mutation and replay derive one through operation reconciliation before state publication. Failed duplicate or malformed candidates publish neither root, revision, overlay, history, nor observations. Exact captures serialize the canonical graph and QUID metadata, not the derived overlay.
 
-Unit 3 deliberately rebuilds the overlay once from each final candidate graph before publication. This is a correctness-first full candidate scan, separate from retained sparse storage. Unit 4 will derive operation-specific reconciliation and later performance work will address whole-root candidate cloning; neither optimization is represented as complete here.
+Ordinary attribute and content operations reconcile this overlay from the same canonical path operation that changes the detached graph candidate. Attribute operations retain the exact overlay. Insert and replacement scan only incoming content for QUID claims, then transform sparse existing paths. Removal and movement transform sparse existing paths without rediscovering nodes in the graph. Derived `preserved`, `moved`, `retired`, and `introduced` effects are internal evidence, never caller commands or separately serialized history.
+
+Replay uses the same operation reducer and the staged overlay from each prior ordinal, so witnesses observe the exact staged identity correspondence. Exact no-ops publish neither root, revision, overlay, nor identity effects. A failed ordinal discards every detached graph, overlay, and effect candidate. Successful publication installs root, revision, and overlay before observers run.
+
+Whole-root external admission remains deliberately different: construction, install, restore, decoded snapshot admission, and `replace-root` replay perform one complete validation scan because the complete ownership domain changes. Capture serializes only canonical graph metadata and revision. Ordinary operation reconciliation retains `O(Q)` overlay storage, visits sparse entries rather than graph nodes, and scans only incoming subtrees; whole-root graph cloning and invariant validation remain separate later performance seams.
 
 The overlay never mints QUIDs, owns LiveTree claims, retains DOM nodes, or manages LiveTree CSS, event, animation, resource, handle, or lifecycle records. Reflection may read the current path/QUID correspondence through an internal read-only facade, while `LiveTreeRuntime` remains the sole owner of active LiveTree identity.
 
@@ -148,3 +152,7 @@ Automated acceptance coverage must continue to establish:
 11. QUID-free graphs retain an empty overlay, and no overlay retains graph-node pointers.
 12. Root, revision, and overlay install coherently only after candidate validation.
 13. Overlay construction and lookup never mint QUIDs or mutate LiveTree runtime ownership.
+14. Ordinary document operations derive overlay changes from their canonical path effects without rebuilding the whole overlay from the candidate graph.
+15. Incoming content admission visits only the incoming subtree for new QUID claims and rejects collisions with surviving sparse claims before publication.
+16. Derived identity effects cannot be submitted, replayed, persisted, or published independently of the accepted canonical commit.
+17. Replay validates witnesses against the overlay produced by prior staged ordinals and installs only the final coherent root/revision/overlay state.

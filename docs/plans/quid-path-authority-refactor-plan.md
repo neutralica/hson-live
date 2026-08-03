@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0, 1, and 3 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0, 1, 3, and 4 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -8,7 +8,9 @@ Unit 0 settles one additional point that supersedes the earlier draft below: QUI
 
 Unit 1 supersedes the inspection-baseline statements below that say mutation commits preserve the caller's request-target form. `LiveMapDocumentRequestTarget` remains path-or-QUID for active compatibility calls, while every newly constructed `LiveMapGraphOp` uses `LiveMapDocumentCommitTarget`, a validated path plus optional non-routing witness. The Unit 3 sparse overlay now performs bounded synchronous QUID-request lowering; replay retains one named legacy QUID adapter, and the old LiveHost wire decoder remains a compatibility input pending Unit 8. The inventory below remains useful as historical migration evidence, not as the post-Unit-1 operation contract.
 
-Unit 3 replaces the retained QUID-to-node index with one immutable, bidirectional QUID/path overlay per document map. The overlay is derived and nonserialized, retains no graph pointers, and stores entries only for present QUIDs. Root, revision, and overlay are installed as one controller state after candidate validation. `document.byQuid`, request lowering, witness checks, and narrow reflection correspondence now consume overlay paths. The current correctness strategy rebuilds the overlay once from each final candidate before publication; operation-specific incremental reconciliation remains Unit 4 work.
+Unit 3 replaced the retained QUID-to-node index with one immutable, bidirectional QUID/path overlay per document map. The overlay is derived and nonserialized, retains no graph pointers, and stores entries only for present QUIDs. Root, revision, and overlay are installed as one controller state after candidate validation. `document.byQuid`, request lowering, witness checks, and narrow reflection correspondence consume overlay paths. Its initial correctness strategy rebuilt from each candidate graph; Unit 4 now supersedes that ordinary-operation seam.
+
+Unit 4 replaces that ordinary-operation rebuild seam with the shared document operation reducer. Attribute operations preserve the exact overlay; content insert/replace scan only admitted incoming subtrees and reconcile surviving sparse claims; remove/move transform sparse paths through Unit 1 semantics. Replay consumes each staged overlay from the same reducer. Derived identity effects remain internal, noncanonical, and nonserialized. Complete-root construction, install, restore, and replacement retain one bounded admission scan.
 
 ## Inspection baseline
 
@@ -579,10 +581,11 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Dependency:** Unit 1 path utilities.
 - **Suggested commit direction:** `refactor(livemap): add sparse document identity overlay`.
 - **Implemented boundary:** One scanner validates syntax, placement, uniqueness, and both directions; retained storage is `O(Q)` with no node pointers; captures omit the derived overlay; reflection reads a narrow internal facade; no LiveTree or LiveHost wire semantics changed.
-- **Current follow-up:** Candidate mutation/replay/install rebuilding remains one full final-graph scan before publication. Unit 4 must replace this correctness seam with operation-derived reconciliation without introducing independent overlay commands.
+- **Completed follow-up:** Unit 4 replaced ordinary mutation/replay full-overlay reconstruction with operation-derived reconciliation. Complete-root construction/install/restore/replacement scans remain intentional admission boundaries.
 
 ### Unit 4 — Atomic operation-to-overlay reconciliation
 
+- **Status:** Implemented and executable.
 - **Goal:** One reducer plans graph plus overlay plus derived identity effects from the ordinary canonical commit and installs them atomically.
 - **Production ownership:** central document transition planner, mutation/replay/install/core transition boundary.
 - **Public/API effect:** No intended surface change.
@@ -591,6 +594,9 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Helpers must independently patch overlay, rollback cannot be proved, or derived identity effects become independent commands.
 - **Dependency:** Units 0, 1, 3.
 - **Suggested commit direction:** `refactor(livemap): reconcile graph and live identity atomically`.
+- **Implemented boundary:** Ordinary mutation and replay share one graph-operation reducer and one copy-on-write sparse overlay reconciler. Incoming identity admission is subtree-local, witnesses consume ordinal-staged overlays, exact no-ops discard derived effects, and controller publication remains one root/revision/overlay swap.
+- **Complexity evidence:** Deterministic counters distinguish whole-root builds, sparse entries visited/changed, and incoming nodes visited. Ordinary operations perform no full overlay rebuild; full scans remain at complete-root admission boundaries. Whole-root graph cloning and canonical invariant validation are not represented as solved by this identity unit.
+- **Next authority work:** Unit 5 retains the broader queued/stale QUID-request authority work. Unit 1's synchronous compatibility lowering remains unchanged here.
 
 ### Unit 5 — Lower QUID requests before commit
 

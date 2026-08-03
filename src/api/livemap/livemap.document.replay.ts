@@ -22,11 +22,16 @@ import {
   prepare_document_graph_operation,
   prepare_legacy_quid_target_graph_operation,
 } from "./livemap.document.mutation.js";
+import {
+  replace_livemap_document_identity_overlay_effects,
+  type LiveMapDocumentIdentityEffect,
+} from "./livemap.document.identity.js";
 
 export type PreparedDocumentReplay = Readonly<{
   root: HsonNode;
   overlay: PreparedDocumentInstall["overlay"];
   commit: LiveMapGraphCommit;
+  identityEffects: readonly LiveMapDocumentIdentityEffect[];
 }>;
 
 export type LiveMapDocumentReplayController = Readonly<{
@@ -51,6 +56,7 @@ export function replay_livemap_document_commit(
   let root = clone_live_root(controller.root());
   let overlay: PreparedDocumentInstall["overlay"] = controller.overlay();
   const operations: LiveMapGraphOp[] = [];
+  const identityEffects: LiveMapDocumentIdentityEffect[] = [];
 
   for (const [index, rawOperation] of envelope.ops.entries()) {
     if (is_replace_root_operation(rawOperation)) {
@@ -69,6 +75,7 @@ export function replay_livemap_document_commit(
         root: rawOperation.root,
       }, controller.mode);
       root = prepared.root;
+      identityEffects.push(...replace_livemap_document_identity_overlay_effects(overlay, prepared.overlay));
       overlay = prepared.overlay;
       operations.push(Object.freeze({
         domain: "graph",
@@ -100,6 +107,7 @@ export function replay_livemap_document_commit(
     root = prepared.root;
     overlay = prepared.overlay;
     operations.push(prepared.operation);
+    identityEffects.push(...prepared.identityEffects);
   }
 
   if (operations.length === 0) {
@@ -111,7 +119,12 @@ export function replay_livemap_document_commit(
     rev: envelope.rev,
     ops: Object.freeze(operations),
   });
-  return controller.applyReplay({ root, overlay, commit });
+  return controller.applyReplay({
+    root,
+    overlay,
+    commit,
+    identityEffects: Object.freeze(identityEffects),
+  });
 }
 
 function is_legacy_quid_target_operation(input: unknown): boolean {

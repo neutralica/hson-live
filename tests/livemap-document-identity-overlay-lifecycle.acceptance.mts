@@ -4,6 +4,7 @@ import { hson } from "../src/hson.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import {
+  livemap_document_identity_accounting,
   livemap_document_identity_overlay_build_count,
   livemap_document_identity_overlay_for,
 } from "../src/api/livemap/livemap.document.identity.ts";
@@ -52,19 +53,21 @@ check("construction completes exactly one overlay build", () => {
   assert.equal(livemap_document_identity_overlay_for(map).size, 1);
 });
 
-check("accepted mutation rebuilds the sparse overlay exactly once", () => {
+check("accepted attr mutation reconciles without a full overlay rebuild", () => {
   const map = element(`<main @${Q1}/>`);
-  const before = livemap_document_identity_overlay_build_count();
+  const before = livemap_document_identity_accounting();
   map.document.attrs.set(rootTarget, "id", "changed");
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
+  const after = livemap_document_identity_accounting();
+  assert.equal(after.fullBuilds, before.fullBuilds);
+  assert.equal(after.reconciliations, before.reconciliations + 1);
 });
 
-check("accepted mutation atomically installs a new overlay with the root", () => {
+check("accepted attr mutation atomically retains the exact overlay with the new root", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_for(map);
   map.document.attrs.set(rootTarget, "id", "changed");
   const after = livemap_document_identity_overlay_for(map);
-  assert.notEqual(after, before);
+  assert.equal(after, before);
   assert.equal(after.quidAtPath(validate_document_path([])), Q1);
 });
 
@@ -106,13 +109,13 @@ check("restore builds its candidate overlay once and installs the exact revision
   assert.equal(target.document.byQuid(Q2)?.$_attrs?.id, "two");
 });
 
-check("single-operation replay rebuilds one staged overlay", () => {
+check("single-operation replay reconciles without a full overlay rebuild", () => {
   const source = element(`<main @${Q1}/>`);
   const commit = source.document.attrs.set(rootTarget, "id", "replayed");
   const target = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_build_count();
   target.replay(commit);
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
+  assert.equal(livemap_document_identity_overlay_build_count(), before);
   assert.equal(target.document.byQuid(Q1)?.$_attrs?.id, "replayed");
 });
 
@@ -185,11 +188,13 @@ check("failed QUID request performs no candidate overlay build", () => {
   assert.equal(target.rev, 0);
 });
 
-check("QUID-free accepted transitions rebuild to an empty overlay", () => {
+check("QUID-free accepted transitions retain an empty overlay without rebuilding", () => {
   const target = element(`<main/>`);
+  const overlayBefore = livemap_document_identity_overlay_for(target);
   const before = livemap_document_identity_overlay_build_count();
   target.document.attrs.set(rootTarget, "id", "clean");
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
+  assert.equal(livemap_document_identity_overlay_build_count(), before);
+  assert.equal(livemap_document_identity_overlay_for(target), overlayBefore);
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
@@ -225,13 +230,13 @@ check("commit observers see the already-installed root and overlay", () => {
   assert.equal(target.document.byQuid(Q1), undefined);
 });
 
-check("canonical no-op candidates are built once without revision or publication", () => {
+check("canonical no-op candidates reconcile without rebuild revision or publication", () => {
   const target = element(`<main @${Q1} id="same"/>`);
   const events: LiveMapCommitObservation[] = [];
   target.commits.observe((event) => events.push(event));
   const before = livemap_document_identity_overlay_build_count();
   const commit = target.document.attrs.set(rootTarget, "id", "same");
-  assert.equal(livemap_document_identity_overlay_build_count(), before + 1);
+  assert.equal(livemap_document_identity_overlay_build_count(), before);
   assert.equal(commit.changed, false);
   assert.equal(target.rev, 0);
   assert.deepEqual(events, []);
