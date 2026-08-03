@@ -6,6 +6,13 @@ Scope: corrected production/test audit plus Unit 10R-A and Unit 10R-B implementa
 
 Decision status: Units 10R-A and 10R-B implemented; public active-epoch LiveMap handles remain deferred
 
+Unit 12T subsequently adds runtime-lifetime issued-QUID accounting. Linked
+canonical acquisition preflights that shared runtime ledger and retries retired
+runtime candidates before LiveMap commits. Reflection still preserves absence,
+never mints, and performs no runtime rekey. Independent test cases that require
+equal bytes use independent runtime lifetimes; active same-runtime collision
+proofs remain unchanged.
+
 ## Audit baseline
 
 The audit started from clean, committed worktrees:

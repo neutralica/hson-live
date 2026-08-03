@@ -13,6 +13,8 @@ export type LiveTreeRuntime = {
   readonly quidToNode: Map<string, HsonNode>;
   readonly nodeToQuid: WeakMap<HsonNode, string>;
   readonly pendingQuidClaims: Map<string, HsonNode>;
+  /** Every QUID lineage admitted or minted during this runtime lifetime. */
+  readonly issuedQuids: Set<string>;
   readonly ownerDisposables: Map<string, Set<() => void>>;
   readonly ownerDisposableKinds: Map<string, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
@@ -27,6 +29,7 @@ function make_runtime(): LiveTreeRuntime {
     quidToNode: new Map(),
     nodeToQuid: new WeakMap(),
     pendingQuidClaims: new Map(),
+    issuedQuids: new Set(),
     ownerDisposables: new Map(),
     ownerDisposableKinds: new Map(),
     styleDocuments: new Set(),
@@ -174,6 +177,7 @@ export function dispose_livetree_runtime(runtime: LiveTreeRuntime): void {
     }
   }
   runtime.styleDocuments.clear();
+  runtime.issuedQuids.clear();
   runtime.disposed = true;
 }
 

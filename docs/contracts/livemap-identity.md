@@ -83,14 +83,15 @@ For a LiveMap-linked document projection, LiveMap owns canonical graph metadata 
 
 LiveTree does not become path-authoritative. Standalone identity does not depend on LiveMap revisions, while linked identity follows the canonical LiveMap claim without creating a second namespace.
 
-The Unit 12P audit found that standalone terminal disposal releases runtime QUID
-bytes and supported terminal-restoration workflows later re-admit those bytes.
-Exact retained LiveTree handles remain exact-node anchored and disposed, but a
-stored raw QUID can therefore resolve to another node later in the same runtime.
-The current public inputs carry no provenance that distinguishes intentional
-terminal restoration from unrelated reuse. Adding a runtime issued ledger would
-break supported restoration, so that broader LiveTree problem remains a Unit
-12P stop condition rather than an implicit behavior change.
+Unit 12T closes standalone runtime raw-QUID ABA with the explicitly approved
+same-runtime non-reuse contract. Each `LiveTreeRuntime` retains every admitted
+or minted QUID in a monotonic issued ledger for that runtime lifetime. Terminal
+disposal removes the active claim but not its issued bytes. Ordinary supplied
+admission and allocation cannot reactivate them; equal bytes may be admitted
+only by a fresh runtime. Exact retained LiveTree handles remain exact-node
+anchored and disposed forever. Linked LiveMap registration still preflights the
+shared runtime namespace and retries a runtime-retired candidate before its
+canonical commit is accepted.
 
 ## LiveMap path and QUID roles
 
@@ -292,7 +293,7 @@ Every controlled boundary has one of four meanings:
 1. **Same-epoch live capture** preserves canonical QUID metadata and carries an opaque exact-object capability issued by the same active map epoch. `capture({ identity: "same-epoch" })` creates that local capability. `install` or `restore` must explicitly request `identity: "same-epoch"`; copied, spread, JSON-round-tripped, view-state-decoded, stale, mutated, or foreign captures reject. The capability is held out of band in a `WeakMap`, has no enumerable or serialized field, authorizes nothing, and becomes stale when a changed durable install or durable restore replaces the map epoch.
 2. **Durable structural capture** preserves the exact canonical graph, QUID metadata, and revision. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, LiveHost snapshots, bootstrap, recovery, and persistence checkpoints use this category. Installation validates all claims and admits preserved strings as fresh map-local active overlay claims. It does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
 3. **Identity-free projection** intentionally removes QUID metadata. `capture({ identity: "strip" })`, install/restore with `identity: "strip"`, HSON `noQuid`, and ordinary application JSON are examples. The source is unchanged, the installed overlay is empty or reduced to remaining claims, and exact canonical equality is lost when metadata was removed. This is valid projection, not corruption.
-4. **External graph admission** covers every graph without trusted same-epoch provenance, including syntactically valid serialized QUIDs. Install/restore policy is explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Public acquisition remains ensure-if-absent only; there is no rekey, raw assignment, replacement, or retirement API. Construction, authored transforms, graph-content insertion, LiveTree import, and graft retain their existing collision-aware admission rules and never treat the bytes as proof of prior handle continuity.
+4. **External graph admission** covers every graph without trusted same-epoch provenance, including syntactically valid serialized QUIDs. Install/restore policy is explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Internal owner-authorized acquisition remains ensure-if-absent only; no public acquisition, rekey, raw assignment, replacement, or retirement API is exposed. Construction, authored transforms, graph-content insertion, LiveTree import, and graft retain their existing collision-aware admission rules and never treat the bytes as proof of prior handle continuity.
 
 The core distinction is:
 

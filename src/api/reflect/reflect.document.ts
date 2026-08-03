@@ -28,6 +28,7 @@ import {
   preflight_supplied_livetree_quid,
   type SuppliedLiveTreeQuidReservation,
 } from "../livetree/quid/data-quid.js";
+import { LiveTreeQuidReuseError } from "../livetree/livetree.error.js";
 import {
   assert_node_element_link,
   get_el_for_node,
@@ -462,6 +463,12 @@ export function reflect_document_in_runtime(
               runtime,
             );
           } catch (cause) {
+            if (cause instanceof LiveTreeQuidReuseError) {
+              throw new LiveMapDocumentIdentityParticipantCollisionError(
+                "Canonical QUID candidate was already issued in the selected LiveTree runtime.",
+                { cause },
+              );
+            }
             throw new DocumentReflectError(
               DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
               "Projected node cannot accept the supplied canonical QUID.",

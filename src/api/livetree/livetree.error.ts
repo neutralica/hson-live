@@ -7,6 +7,7 @@ export const LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE = "LIVETREE_INVALID_ATTR
 export const LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE = "LIVETREE_PROTECTED_ATTRIBUTE" as const;
 export const LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE = "LIVETREE_INVALID_ATTRIBUTE_VALUE" as const;
 export const LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE = "LIVETREE_ATTRIBUTE_NOT_FOUND" as const;
+export const LIVETREE_QUID_REUSE_ERROR_CODE = "LIVETREE_QUID_REUSE" as const;
 
 export type LiveTreeAttributeErrorCode =
   | typeof LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE
@@ -68,6 +69,16 @@ export class LiveTreeDisposedError extends Error {
     this.name = "LiveTreeDisposedError";
     this.operation = operation;
     this.formerQuid = formerQuid;
+  }
+}
+
+/** Stable failure for ordinary admission of identity retired in this runtime lifetime. @internal */
+export class LiveTreeQuidReuseError extends Error {
+  readonly code = LIVETREE_QUID_REUSE_ERROR_CODE;
+
+  constructor(readonly quid: string) {
+    super(`LiveTree QUID "${quid}" was already issued in this runtime and cannot be reused.`);
+    this.name = "LiveTreeQuidReuseError";
   }
 }
 

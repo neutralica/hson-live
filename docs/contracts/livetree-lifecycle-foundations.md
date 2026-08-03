@@ -32,6 +32,12 @@ actively owned. Detach and reattachment preserve the claim, cloning creates
 fresh identity, and terminal removal releases it. HSON `.noQuid()` is an output
 filter only; it does not mutate the graph or its active ownership.
 
+Release is active-state release, not namespace reuse. The owning runtime keeps
+the retired QUID in its monotonic issued ledger. Ordinary construction,
+admission, grafting, copying, parsing, or decoding cannot use those bytes again
+in that runtime. A fresh runtime starts a fresh issued lifetime. No restoration
+artifact, identity generation, or second identifier is introduced.
+
 Patch 3 makes the lifecycle registry the canonical owner of continuing runtime
 resources created for a LiveTree QUID:
 

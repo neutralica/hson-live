@@ -16,7 +16,10 @@ import {
   type LifecycleResourceKind,
   type LifecycleResourceCounts,
 } from "../api/livetree/managers/lifecycle-registry.js";
-import { get_node_by_quid } from "../api/livetree/quid/data-quid.js";
+import {
+  get_node_by_quid,
+  set_livetree_quid_candidate_source_for_tests,
+} from "../api/livetree/quid/data-quid.js";
 import {
   create_livetree_runtime,
   dispose_livetree_runtime,
@@ -62,6 +65,25 @@ export function livetree_runtime_test_claim_count(
   handle: LiveTreeRuntimeTestHandle,
 ): number {
   return runtime_for_handle(handle).quidToNode.size;
+}
+
+export function livetree_runtime_test_issued_count(
+  handle: LiveTreeRuntimeTestHandle,
+): number {
+  return runtime_for_handle(handle).issuedQuids.size;
+}
+
+export function livetree_runtime_test_pending_count(
+  handle: LiveTreeRuntimeTestHandle,
+): number {
+  return runtime_for_handle(handle).pendingQuidClaims.size;
+}
+
+export function set_livetree_runtime_test_quid_candidate_source(
+  handle: LiveTreeRuntimeTestHandle,
+  source: (() => string) | undefined,
+): void {
+  set_livetree_quid_candidate_source_for_tests(runtime_for_handle(handle), source);
 }
 
 export function livetree_runtime_test_resource_counts(

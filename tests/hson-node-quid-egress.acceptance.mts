@@ -15,6 +15,9 @@ import type { HsonNode } from "../src/core/types.ts";
 
 const Q1 = "0000000000000101";
 const Q2 = "0000000000000102";
+const Q3 = "0000000000000103";
+const Q4 = "0000000000000104";
+const Q5 = "0000000000000105";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -219,7 +222,7 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
 
 check("serialization never mints an absent descendant identity", () => {
   const child = element("span");
-  const root = element("main", [child], Q1);
+  const root = element("main", [child], Q3);
   new LiveTree(root);
   try {
     assert.equal(read_hson_node_quid(child), undefined);
@@ -233,18 +236,18 @@ check("serialization never mints an absent descendant identity", () => {
 });
 
 check("LiveTree graph-backed markup validates exactly the emitted scope", () => {
-  const child = element("em", [], Q2);
-  const root = element("section", [child], Q1);
+  const child = element("em", [], Q5);
+  const root = element("section", [child], Q4);
   const unrelated = element("aside", [], "not-canonical");
   const tree = new LiveTree(root);
   try {
     assert.equal(
       tree.content.markup.innerHTML,
-      `<em hson:quid="${Q2}"></em>`,
+      `<em hson:quid="${Q5}"></em>`,
     );
     assert.equal(
       tree.content.markup.outerHTML,
-      `<section hson:quid="${Q1}"><em hson:quid="${Q2}"></em></section>`,
+      `<section hson:quid="${Q4}"><em hson:quid="${Q5}"></em></section>`,
     );
     assert.equal(unrelated.$_meta?.[HSON_META_QUID], "not-canonical");
 
@@ -252,7 +255,7 @@ check("LiveTree graph-backed markup validates exactly the emitted scope", () => 
     assert.throws(() => tree.content.markup.innerHTML, /Invalid persisted QUID/);
     assert.throws(() => tree.content.markup.outerHTML, /Invalid persisted QUID/);
   } finally {
-    child.$_meta = { [HSON_META_QUID]: Q2 };
+    child.$_meta = { [HSON_META_QUID]: Q5 };
     destroy_subtree_quids(root);
   }
 });

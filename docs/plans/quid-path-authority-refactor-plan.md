@@ -718,7 +718,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 12 — Million-node and namespace proof
 
-- **Status:** Still blocked. The LiveMap portion of Unit 12P is implemented, but the LiveTreeRuntime audit reached the specified broader-defect stop condition. Namespace occupancy must use lifetime-issued `I`, not active `Q`.
+- **Status:** Ready to resume after completed Units 12P and 12T. Namespace occupancy must use lifetime-issued `I`, not active `Q`, in both LiveMap and LiveTreeRuntime domains.
 - **Goal:** Prove sparse memory/time, eliminate per-operation full scans where required, and finalize allocator/no-reuse/worker policy.
 - **Production ownership:** path-local candidate performance work, overlay implementation, benchmark/diagnostic suites.
 - **Public/API effect:** None intended.
@@ -730,14 +730,14 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 12P — Same-owner-epoch QUID non-reuse prerequisite
 
-- **Status:** Blocked after completing the LiveMap correction. One immutable issued-QUID ledger is owned by each document or projected LiveMap identity epoch; active retirement never releases its bytes for reuse.
+- **Status:** Complete for LiveMap; its former standalone runtime stop is resolved by Unit 12T.
 - **Invariant:** One QUID byte string denotes at most one identity lifetime per exact owner epoch. Active claims `Q` are a subset of issued claims `I`.
 - **Allocation and admission:** Local allocation checks `I` plus staged/runtime reservations and retries. Replay never allocates. Ordinary replay, insertion, and replacement reject retired same-epoch bytes atomically; active collision is reported separately.
 - **Epoch/provenance:** Fresh owner epochs seed `I` from admitted active metadata and may reuse old-epoch bytes after handles are fenced. Exact Unit 7 same-epoch restoration retains the living monotonic ledger, including post-capture issues; copied or foreign material cannot use the exception.
-- **Runtime audit:** `LiveTreeRuntime` has the same raw-lookup ABA edge, but supported terminal restoration deliberately re-admits serialized bytes. Current inputs cannot distinguish restoration from unrelated reuse. A narrow ledger breaks public consumer cases, so the specified broader-defect stop condition applies and no LiveTree production change is included.
+- **Runtime follow-up:** Unit 12T adopts approved Candidate B. Every `LiveTreeRuntime` owns lifetime-issued `I`; terminal disposal retires active ownership without releasing bytes for ordinary same-runtime reuse. No restoration exception is claimed.
 - **Complexity:** Active overlays remain `O(Q)`, issued ledgers are `O(I)`, and handles are `O(H)`; no graph pointers or handles are retained by issued state.
 - **Scope:** No encoding, generator, eligibility, public handle, transport, persistence version, second identifier, generation, or cross-runtime uniqueness change.
-- **Dependency effect:** Unit 12 must not resume until the LiveTree provenance/restoration conflict is separately resolved. Its eventual namespace proof must measure `I` as occupancy.
+- **Dependency effect:** Unit 12 may resume and must measure `I` as occupancy across both owner-epoch and runtime-lifetime domains.
 - **Suggested commit direction:** `fix(livemap): prevent same-epoch QUID reuse`.
 
 ### Unit 13 — Encoding selection and migration

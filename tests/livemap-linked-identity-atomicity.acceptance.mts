@@ -35,8 +35,14 @@ Reflect.set(globalThis.document, "querySelector", () => undefined);
 Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 
 let checks = 0;
+let runtime: ReturnType<typeof _create_livetree_runtime_test_handle>;
 function check(name: string, run: () => void): void {
-  run();
+  runtime = _create_livetree_runtime_test_handle();
+  try {
+    run();
+  } finally {
+    _dispose_livetree_runtime_test_handle(runtime);
+  }
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
@@ -44,7 +50,6 @@ function check(name: string, run: () => void): void {
 const Q1 = "0000000000002201";
 const Q2 = "0000000000002202";
 const Q3 = "0000000000002203";
-const runtime = _create_livetree_runtime_test_handle();
 function reflected(source: string) {
   const map = element(source);
   const binding = _reflect_document_for_runtime_test(runtime, map);
@@ -258,6 +263,5 @@ check("different existing QUID is classified explicitly by the reducer", () => {
   );
 });
 
-_dispose_livetree_runtime_test_handle(runtime);
 process.stdout.write(`LiveMap linked identity atomicity acceptance: ${checks}/${checks}\n`);
 emit_hson_live_test_completion("livemap.linked-identity-atomicity", checks, checks, 0);

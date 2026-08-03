@@ -93,12 +93,17 @@ Identity is stable through movement, detach, and reattachment, but it is not a s
 - when a graph becomes live, active uniqueness and ownership are enforced atomically without partial registry claims;
 - detach retains identity and reattachment keeps the same QUID;
 - `cloneBranch()` issues fresh QUIDs;
-- terminal destruction releases active QUID ownership;
+- terminal destruction releases active QUID ownership but retains the bytes in
+  the runtime's issued ledger;
+- ordinary admission cannot reuse retired bytes in that runtime; the same bytes
+  may be admitted in a fresh runtime lifetime;
 - `.noQuid()` filters output only and does not mutate the source graph, release ownership, or change lifecycle state;
 - parse/serialize cycles may normalize source spelling and structure; and
 - ordinary transform APIs are graph conversions, not LiveTree identity persistence APIs.
 
 QUID is graph identity, not trust, authorization, authentication, or execution capability. Sanitization and active identity ownership are separate boundaries.
+A raw QUID resolves only while its claim is active. After terminal removal it
+remains absent and cannot retarget to unrelated content in the same runtime.
 
 `hostRootNode()` exposes the graph root used by a handle. `adoptRoots(root)` rebinds that context and is mainly relevant when attaching or moving branches.
 
@@ -189,4 +194,4 @@ Sanitization is not a general validator for arbitrary HSON graphs. Use the untru
 
 The intended public design places LiveTree methods and getters on the prototype. In the current source, `append`, `empty`, `find`, and `findAll` are assigned as per-instance fields. That implementation discrepancy should not be treated as a documented API guarantee.
 
-© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0 
+© 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

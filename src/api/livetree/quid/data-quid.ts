@@ -18,6 +18,7 @@ import {
   type HsonNodeQuidClaim,
 } from '../../../core/hson-node-quid.js';
 import { is_ordinary_element_node } from '../../../core/node-guards.js';
+import { LiveTreeQuidReuseError } from "../livetree.error.js";
 import {
   assert_graph_runtime_available,
   bind_graph_runtime,
@@ -41,6 +42,8 @@ import {
  * `drop_quid()`.
  */
 export const LIVETREE_QUID_MINT_RETRY_LIMIT = 32;
+
+const QUID_CANDIDATE_SOURCE_FOR_TESTS = new WeakMap<LiveTreeRuntime, () => string>();
 
 export type SuppliedLiveTreeQuidReservation = Readonly<{
   readonly applied: boolean;
@@ -66,9 +69,20 @@ function assert_livetree_quid_eligible(node: HsonNode, operation: string): void 
 
 function assert_quid_available(q: string, n: HsonNode, runtime: LiveTreeRuntime): void {
   const registered = runtime.quidToNode.get(q);
-  if (!registered || registered === n) return;
+  if (registered === n) return;
+  if (registered !== undefined) {
+    throw new Error(`Duplicate QUID \"${q}\" is already registered to another node.`);
+  }
 
-  throw new Error(`Duplicate QUID \"${q}\" is already registered to another node.`);
+  const pending = runtime.pendingQuidClaims.get(q);
+  if (pending !== undefined && pending !== n) {
+    throw new Error(`Duplicate QUID \"${q}\" is reserved for another node.`);
+  }
+  if (runtime.issuedQuids.has(q)) throw new LiveTreeQuidReuseError(q);
+}
+
+function record_issued_quid(q: string, runtime: LiveTreeRuntime): void {
+  runtime.issuedQuids.add(q);
 }
 
 /** Generate one canonical 80-bit persisted QUID from secure random bytes. */
@@ -76,13 +90,26 @@ export function mint_quid(): string {
   return mint_hson_node_quid();
 }
 
+/** Narrow deterministic candidate seam for diagnostics only. @internal */
+export function set_livetree_quid_candidate_source_for_tests(
+  runtime: LiveTreeRuntime,
+  source: (() => string) | undefined,
+): void {
+  if (source === undefined) QUID_CANDIDATE_SOURCE_FOR_TESTS.delete(runtime);
+  else QUID_CANDIDATE_SOURCE_FOR_TESTS.set(runtime, source);
+}
+
 function mint_available_quid(
   runtime: LiveTreeRuntime,
   reserved: ReadonlySet<string> = new Set(),
 ): string {
   for (let attempt = 0; attempt < LIVETREE_QUID_MINT_RETRY_LIMIT; attempt += 1) {
-    const candidate = mint_quid();
-    if (!reserved.has(candidate) && !runtime.quidToNode.has(candidate)) return candidate;
+    const candidate = QUID_CANDIDATE_SOURCE_FOR_TESTS.get(runtime)?.() ?? mint_quid();
+    if (!is_persisted_quid(candidate)) continue;
+    if (!reserved.has(candidate)
+      && !runtime.quidToNode.has(candidate)
+      && !runtime.pendingQuidClaims.has(candidate)
+      && !runtime.issuedQuids.has(candidate)) return candidate;
   }
   throw new Error(
     `Unable to generate an available LiveTree QUID after ${LIVETREE_QUID_MINT_RETRY_LIMIT} secure attempts.`,
@@ -151,6 +178,8 @@ export function admit_livetree_quid_graph(
     runtime.quidToNode.set(rootQuid, root);
     runtime.nodeToQuid.set(root, rootQuid);
   }
+  for (const claim of claims) record_issued_quid(claim.quid, runtime);
+  record_issued_quid(rootQuid, runtime);
   bind_graph_runtime(root, runtime);
   record_livetree_materialization("quidEnsureCalls");
   record_livetree_materialization(
@@ -175,6 +204,7 @@ export function admit_livetree_quid_graph_preserving_absence(
   for (const claim of claims) {
     runtime.quidToNode.set(claim.quid, claim.node);
     runtime.nodeToQuid.set(claim.node, claim.quid);
+    record_issued_quid(claim.quid, runtime);
   }
   bind_graph_runtime(root, runtime);
   if (claims.length !== 0) {
@@ -200,6 +230,7 @@ export function register_supplied_livetree_quid(
     && runtime.nodeToQuid.get(node) === q;
   runtime.quidToNode.set(q, node);
   runtime.nodeToQuid.set(node, q);
+  record_issued_quid(q, runtime);
   if (!alreadyRegistered) record_livetree_materialization("quidRegistryWrites", 2);
   return q;
 }
@@ -228,12 +259,16 @@ export function preflight_supplied_livetree_quid(
   if ((active !== undefined && active !== node) || (pending !== undefined && pending !== node)) {
     throw new Error("Supplied canonical QUID collides in the selected LiveTree runtime.");
   }
+  if (active === undefined && runtime.issuedQuids.has(quid)) {
+    throw new LiveTreeQuidReuseError(quid);
+  }
   const element = get_el_for_node(node);
   if (element !== undefined && element.getAttribute(HSON_QUID_MARKUP_NAME) !== null) {
     throw new Error("Supplied QUID target DOM element already carries identity metadata.");
   }
   runtime.pendingQuidClaims.set(quid, node);
   let applied = false;
+  const issuedBefore = runtime.issuedQuids.has(quid);
 
   const rollback = (): void => {
     if (!applied) return;
@@ -244,6 +279,7 @@ export function preflight_supplied_livetree_quid(
     if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
       currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
     }
+    if (!issuedBefore) runtime.issuedQuids.delete(quid);
     applied = false;
   };
 
@@ -266,6 +302,7 @@ export function preflight_supplied_livetree_quid(
         assign_hson_node_quid(node, quid);
         runtime.quidToNode.set(quid, node);
         runtime.nodeToQuid.set(node, quid);
+        record_issued_quid(quid, runtime);
         applied = true;
         record_livetree_materialization("quidRegistryWrites", 2);
       } catch (cause) {
@@ -275,6 +312,7 @@ export function preflight_supplied_livetree_quid(
         if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
           currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
         }
+        if (!issuedBefore) runtime.issuedQuids.delete(quid);
         throw cause;
       }
     },
@@ -346,12 +384,12 @@ export function ensure_quid(
 
   // Persisted identity cannot silently steal another node's registry entry.
   assert_quid_available(q, n, runtime);
-  if (persist) assign_hson_node_quid(n, q);
-
   assert_graph_runtime_available(n, runtime);
+  if (persist) assign_hson_node_quid(n, q);
   bind_graph_runtime(n, runtime);
   runtime.quidToNode.set(q, n);
   runtime.nodeToQuid.set(n, q);
+  record_issued_quid(q, runtime);
   record_livetree_materialization("quidEnsureCalls");
   record_livetree_materialization("quidRegistryWrites", 2);
 
@@ -379,19 +417,10 @@ export function get_node_by_quid(
 /***************************************
  * reindex_quid
  *
- * Re-establish registry bindings after the
- * caller structurally replaced a node but
- * preserved the same QUID.
+ * Re-establish complete registry bindings for an already-active exact node.
  *
- * Typical use:
- *   - a transform clones/rebuilds a subtree,
- *     but keeps logical identity.
- *   - After replacement, call reindex_quid
- *     on the new node so QUID → node resolves
- *     correctly.
- *
- * This is not a detach/remove operation. Reindexing may restore this node's
- * registry entry, but it must not overwrite another live owner.
+ * This is not a detach/remove or restoration operation. An issued-but-inactive
+ * QUID cannot be reindexed onto replacement content in the same runtime.
  ***************************************/
 export function reindex_quid(
   n: HsonNode,
@@ -401,11 +430,12 @@ export function reindex_quid(
   const q = get_quid(n, runtime);
   if (!q) return;
 
-  // Reindexing may restore this node, but may not overwrite another owner.
+  // Reindexing may complete active exact-node indexes, but may not reuse identity.
   assert_quid_available(q, n, runtime);
   bind_graph_runtime(n, runtime);
   runtime.nodeToQuid.set(n, q);
   runtime.quidToNode.set(q, n);
+  record_issued_quid(q, runtime);
 }
 
 export { HSON_META_QUID };
@@ -428,7 +458,8 @@ export const HSON_QUID_MARKUP_NAME =
  *   `hson:quid` attribute if the node is
  *   currently mounted.
  *
- * Used when explicitly destroying or resetting identity ownership.
+ * Used when explicitly destroying active identity ownership. The runtime's
+ * issued ledger remains monotonic and is not reset here.
  *
  * Not used for normal detach/removeSelf flows. A detached branch still owns its
  * HSON nodes and persisted QUIDs so it can remain valid while unmounted and may
@@ -530,6 +561,7 @@ export function remint_quid(
   bind_graph_runtime(n, runtime);
   runtime.quidToNode.set(q, n);
   runtime.nodeToQuid.set(n, q);
+  record_issued_quid(q, runtime);
   return q;
 }
 

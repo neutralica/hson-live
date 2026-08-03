@@ -4,6 +4,12 @@ Date: 2026-08-02
 
 Audit mode: source-only, read-only investigation; no builds, tests, generators, formatters, or repository-mutating commands were run.
 
+> Subsequent executable authority: Units 12P and 12T now give LiveMap owner
+> epochs and standalone LiveTree runtimes separate monotonic issued-QUID
+> ledgers. Same-runtime terminal QUID reuse rejects; a fresh runtime may admit
+> equal bytes. The original forensic observations below remain historical input,
+> not the current non-reuse contract.
+
 ## 1. Executive conclusion
 
 The proposed eight-character encoding does **not yet match the whole architecture**. It can fit the ephemeral LiveTree identity role, but the repository currently uses the same `quid` field for two materially different contracts:

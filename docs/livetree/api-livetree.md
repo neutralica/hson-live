@@ -138,8 +138,15 @@ validates syntax, eligibility, and placement without claiming active runtime
 ownership; established duplicate valid values may therefore remain cold.
 Activation claims QUIDs and enforces uniqueness atomically. Detach and
 reattachment retain identity, `cloneBranch()` assigns fresh identity throughout
-the clone, terminal removal releases active ownership, and serializer
+the clone, terminal removal releases active ownership while retaining the QUID
+as issued for that runtime lifetime, and serializer
 `.noQuid()` filters output without changing the graph or runtime.
+
+An ordinary graph supplying an issued-but-inactive QUID is rejected rather than
+treated as restoration. Copying, serializing, decoding, or rebuilding equal
+content supplies no continuation authority. `find.byQuid(q)` is absent after
+terminal removal and cannot later retarget inside that runtime. Equal bytes may
+be admitted in a separately created runtime.
 
 `removeSelf()` is a deprecated terminal alias for `remove()`. `removeChildren()`
 is deprecated but temporarily retains its specialized legacy behavior: it

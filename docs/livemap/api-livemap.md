@@ -510,6 +510,12 @@ the repository's established canonical continuity. This prevents stored
 document raw-QUID request targets from silently retargeting. Raw QUIDs still do
 not survive owner-epoch replacement as identity claims.
 
+The linked LiveTree projection also participates in its runtime's lifetime
+issued ledger. If LiveMap allocation proposes bytes retired by a prior claim in
+that runtime, Reflection rejects the local reservation and the map-owned
+allocator retries before canonical publication. This adds no public acquisition
+or restoration surface.
+
 `document.byQuid`, path-or-QUID active mutation targets, `LiveTree.quid`,
 `LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch
 compatibility surfaces. Raw QUIDs are not application IDs, authorization,

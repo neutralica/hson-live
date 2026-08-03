@@ -42,6 +42,8 @@ export {
   create_livetree_runtime_test_handle as _create_livetree_runtime_test_handle,
   dispose_livetree_runtime_test_handle as _dispose_livetree_runtime_test_handle,
   livetree_runtime_test_claim_count as _livetree_runtime_test_claim_count,
+  livetree_runtime_test_issued_count as _livetree_runtime_test_issued_count,
+  livetree_runtime_test_pending_count as _livetree_runtime_test_pending_count,
   livetree_runtime_test_css_manager as _livetree_runtime_test_css_manager,
   livetree_runtime_test_owns_document as _livetree_runtime_test_owns_document,
   livetree_runtime_test_resource_counts as _livetree_runtime_test_resource_counts,
@@ -50,6 +52,7 @@ export {
   own_livetree_runtime_test_disposable as _own_livetree_runtime_test_disposable,
   project_livetree_for_runtime_test as _project_livetree_for_runtime_test,
   register_livetree_runtime_test_document as _register_livetree_runtime_test_document,
+  set_livetree_runtime_test_quid_candidate_source as _set_livetree_runtime_test_quid_candidate_source,
 } from "./livetree-runtime.test.js";
 export type {
   LiveTreeRuntimeTestHandle as _LiveTreeRuntimeTestHandle,

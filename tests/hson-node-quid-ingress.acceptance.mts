@@ -33,6 +33,11 @@ const Q3 = "0000000000000003";
 const Q4 = "0000000000000004";
 const Q5 = "0000000000000005";
 const Q6 = "0000000000000006";
+const Q7 = "0000000000000007";
+const Q8 = "0000000000000008";
+const Q9 = "0000000000000009";
+const Q10 = "000000000000000a";
+const Q11 = "000000000000000b";
 const QUID_ATTR = "hson:quid";
 
 let checks = 0;
@@ -914,7 +919,7 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
     if (retriedTree !== undefined) destroy_subtree_quids(retriedTree.node);
   }
 
-  const exhausted = element("exhausted", undefined, [element("cold-supplied", Q4)]);
+  const exhausted = element("exhausted", undefined, [element("cold-supplied", Q7)]);
   const exhaustedBefore = structuredClone(exhausted);
   const exhaustedProfile = begin_livetree_materialization_profile();
   let exhaustedCalls = 0;
@@ -930,7 +935,7 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
     assert.equal(exhaustedCalls, LIVETREE_QUID_MINT_RETRY_LIMIT);
     assert.deepEqual(exhausted, exhaustedBefore);
     assert.equal(get_node_by_quid(Q1), owner);
-    assert.equal(get_node_by_quid(Q4), undefined);
+    assert.equal(get_node_by_quid(Q7), undefined);
     assert.equal(
       Object.values(exhaustedMetrics).every((value) => value === 0),
       true,
@@ -944,16 +949,16 @@ check("unpublished generated collisions retry and exhaustion is atomic", () => {
 check("cold Element identity is claimed unchanged while absent identity is minted on materialization", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
-      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q8}" data-user="kept">Save</button>`,
     );
     const parsed = hson.fromTrustedHtml(source).toNode();
-    assert.equal(read_hson_node_quid(must_tag(parsed, "button")), Q4);
-    assert.equal(get_node_by_quid(Q4), undefined);
+    assert.equal(read_hson_node_quid(must_tag(parsed, "button")), Q8);
+    assert.equal(get_node_by_quid(Q8), undefined);
 
     const claimed = hsonLiveTree.fromTrustedHtml(source);
     try {
-      assert.equal(read_hson_node_quid(claimed.node), Q4);
-      assert.equal(get_node_by_quid(Q4), claimed.node);
+      assert.equal(read_hson_node_quid(claimed.node), Q8);
+      assert.equal(get_node_by_quid(Q8), claimed.node);
       assert.equal(claimed.node.$_attrs?.["data-user"], "kept");
     } finally {
       destroy_subtree_quids(claimed.node);
@@ -977,10 +982,10 @@ check("cold Element identity is claimed unchanged while absent identity is minte
 check("actively owned Element identity rejects a second owner without mutation or remint", () => {
   with_browser_ingress_dom(() => {
     const source = browser_source_element(
-      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q9}" data-user="kept">Save</button>`,
     );
     const owner = hsonLiveTree.fromTrustedHtml(
-      `<button hson:quid="${Q4}" data-user="kept">Save</button>`,
+      `<button hson:quid="${Q9}" data-user="kept">Save</button>`,
     );
     const ownerBefore = structuredClone(owner.node);
     const sourceBefore = source.innerHTML;
@@ -996,8 +1001,8 @@ check("actively owned Element identity rejects a second owner without mutation o
       assert.equal(second, undefined);
       assert.deepEqual(owner.node, ownerBefore);
       assert.equal(source.innerHTML, sourceBefore);
-      assert.equal(read_hson_node_quid(owner.node), Q4);
-      assert.equal(get_node_by_quid(Q4), owner.node);
+      assert.equal(read_hson_node_quid(owner.node), Q9);
+      assert.equal(get_node_by_quid(Q9), owner.node);
     } finally {
       if (second !== undefined) destroy_subtree_quids(second.node);
       destroy_subtree_quids(owner.node);
@@ -1008,21 +1013,21 @@ check("actively owned Element identity rejects a second owner without mutation o
 check("cloneBranch keeps fresh identity semantics independently of Element ingestion", () => {
   with_browser_ingress_dom(() => {
     const source = hsonLiveTree.fromTrustedHtml(
-      `<button hson:quid="${Q4}"><span hson:quid="${Q5}">Save</span></button>`,
+      `<button hson:quid="${Q10}"><span hson:quid="${Q11}">Save</span></button>`,
     );
     const clone = source.cloneBranch();
     try {
       const sourceSpan = must_tag(source.node, "span");
       const cloneSpan = must_tag(clone.node, "span");
-      assert.notEqual(read_hson_node_quid(clone.node), Q4);
-      assert.notEqual(read_hson_node_quid(cloneSpan), Q5);
+      assert.notEqual(read_hson_node_quid(clone.node), Q10);
+      assert.notEqual(read_hson_node_quid(cloneSpan), Q11);
       assert.equal(is_persisted_quid(read_hson_node_quid(clone.node)), true);
       assert.equal(is_persisted_quid(read_hson_node_quid(cloneSpan)), true);
       for (const wrapper of nodes(clone.node).filter((node) => node.$_tag.startsWith("_hson_"))) {
         assert.equal(read_hson_node_quid(wrapper), undefined);
       }
-      assert.equal(read_hson_node_quid(source.node), Q4);
-      assert.equal(read_hson_node_quid(sourceSpan), Q5);
+      assert.equal(read_hson_node_quid(source.node), Q10);
+      assert.equal(read_hson_node_quid(sourceSpan), Q11);
     } finally {
       destroy_subtree_quids(clone.node);
       destroy_subtree_quids(source.node);

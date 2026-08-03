@@ -89,6 +89,15 @@ runtime. No path may reconstruct a handle in the compatibility default runtime.
   children and clears projection resources without destroying their handles or
   QUID claims.
 
+Each runtime owns active claims `Q` and a monotonic issued ledger `I`, with
+`Q <= I`. Admission and minting add validated bytes to both; terminal removal
+removes only `Q`; runtime disposal discards both. Allocation checks active,
+pending, incoming-reserved, and issued values. Ordinary supplied content whose
+QUID is issued but inactive rejects with `LIVETREE_QUID_REUSE`. There is no
+same-runtime terminal-restoration exception; a fresh runtime may admit equal
+bytes. The ledger stores only strings, so active state is `O(Q)`, lifetime
+namespace state is `O(I)`, and a QUID-free runtime has `Q = I = 0`.
+
 `src/api/livetree/methods/remove-self.ts` is not imported by any production or
 test module. Its partial root-only QUID release is not the public removal path.
 

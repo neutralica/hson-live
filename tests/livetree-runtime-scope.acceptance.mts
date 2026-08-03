@@ -274,10 +274,15 @@ check("detach retains identity and resources in its runtime", () => {
   assert.equal(cleaned, 1);
 });
 
-check("released supplied identity can be restored in the intended runtime", () => {
+check("released supplied identity cannot be reused in the same runtime", () => {
   const runtime = _create_livetree_runtime_test_handle();
   runtimeTree(runtime, node("main", SAME_QUID)).remove();
-  assert.equal(runtimeTree(runtime, node("main", SAME_QUID)).quid, SAME_QUID);
+  assert.throws(
+    () => runtimeTree(runtime, node("main", SAME_QUID)),
+    (error: unknown) => typeof error === "object"
+      && error !== null
+      && Reflect.get(error, "code") === "LIVETREE_QUID_REUSE",
+  );
 });
 
 check("clone is structural-only, fresh, and remains in the source runtime", () => {
@@ -533,7 +538,13 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
   const original = runtimeTree(runtime, node("section", restoredQuid));
   const originalElement = projectInto(runtime, original, document);
   original.remove();
-  const restored = runtimeTree(runtime, node("section", restoredQuid));
+  assert.throws(
+    () => runtimeTree(runtime, node("section", restoredQuid)),
+    (error: unknown) => typeof error === "object"
+      && error !== null
+      && Reflect.get(error, "code") === "LIVETREE_QUID_REUSE",
+  );
+  const restored = runtimeTree(runtime, node("section", "0000000000000rt6"));
   const restoredElement = projectInto(runtime, restored, document);
   assertCleanProjection(restoredElement);
   assert.equal(originalElement.getAttribute("hson:quid"), null);
