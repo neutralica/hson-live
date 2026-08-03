@@ -9,6 +9,7 @@ import { assert_livetree_node_active } from "../livetree-state.js";
 import {
   runtime_for_tree,
   type LiveTreeRuntime,
+  with_linked_livetree_construction_runtime,
   with_livetree_construction_runtime,
 } from "../runtime/livetree-runtime.js";
 
@@ -25,6 +26,15 @@ export function create_livetree_in_runtime(
 ): LiveTree {
   assert_livetree_node_active(node, "create a LiveTree handle");
   return with_livetree_construction_runtime(node, runtime, () => new LiveTree(node));
+}
+
+/** Construct a LiveMap-linked handle while preserving canonical QUID absence. @internal */
+export function create_linked_livetree_in_runtime(
+  node: HsonNode,
+  runtime: LiveTreeRuntime,
+): LiveTree {
+  assert_livetree_node_active(node, "create a linked LiveTree handle");
+  return with_linked_livetree_construction_runtime(node, runtime, () => new LiveTree(node));
 }
 
 

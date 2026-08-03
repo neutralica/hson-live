@@ -12,7 +12,7 @@ import type {
   LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
-import { create_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
+import { create_linked_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import {
   document_binding_for_node,
@@ -131,7 +131,7 @@ export function reflect_document_in_runtime(
   }
   let tree: LiveTree;
   try {
-    tree = create_livetree_in_runtime(sourceElement, runtime);
+    tree = create_linked_livetree_in_runtime(sourceElement, runtime);
   } catch (cause) {
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Initial LiveTree projection construction failed.");
@@ -318,7 +318,7 @@ export function reflect_document_in_runtime(
     const pathKey = path_key(path);
     const persistedQuid = livemap_document_identity_overlay_for(map.document)
       .quidAtPath(path);
-    if (persistedQuid !== undefined && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
+    if (node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Projected element did not preserve its canonical persisted QUID.",
@@ -854,8 +854,7 @@ function validate_registration(
       "Projected element registration is missing or belongs to another binding.",
     );
   }
-  if (registration.persistedQuid !== undefined
-    && registration.node.$_meta?.[HSON_META_QUID] !== registration.persistedQuid) {
+  if (registration.node.$_meta?.[HSON_META_QUID] !== registration.persistedQuid) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Projected element no longer carries its expected persisted QUID.",
@@ -894,8 +893,8 @@ function validate_registration(
       "Mounted projected element resolves to a different HSON node.",
     );
   }
-  if (registration.persistedQuid !== undefined
-    && element.getAttribute(HSON_QUID_MARKUP_NAME) !== registration.persistedQuid) {
+  const projectedDomQuid = element.getAttribute(HSON_QUID_MARKUP_NAME) ?? undefined;
+  if (projectedDomQuid !== registration.persistedQuid) {
     throw new DocumentReflectError(
       DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
       "Mounted projected element does not carry its expected persisted QUID.",

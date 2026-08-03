@@ -19,6 +19,22 @@ export type DocumentBoundTextMutation =
   | Readonly<{ kind: "insert"; index: number; value: string | boolean | number | null }>
   | Readonly<{ kind: "overwrite"; value: string | boolean | number | null }>;
 
+export const LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE =
+  "LIVETREE_LINKED_IDENTITY_REQUIRED" as const;
+
+/** Unit 10R-A boundary for linked facilities that cannot operate without QUID ownership. */
+export class LiveTreeLinkedIdentityRequiredError extends Error {
+  public readonly code = LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE;
+
+  public constructor(public readonly operation: string) {
+    super(
+      `LiveTree ${operation} requires canonical identity for this document-bound node; `
+      + "authority-owned acquisition is deferred to Unit 10R-B.",
+    );
+    this.name = "LiveTreeLinkedIdentityRequiredError";
+  }
+}
+
 export type DocumentBindingNodeRegistration = Readonly<{
   owner: object;
   canonicalTarget: LiveMapDocumentTarget;

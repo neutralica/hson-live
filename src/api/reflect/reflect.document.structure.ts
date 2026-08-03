@@ -13,10 +13,13 @@ import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import type { CanonicalPublicAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentCommitTarget, LiveMapGraphOp } from "../../types/livemap.types.js";
-import { project_livetree } from "../livetree/creation/project-live-tree.js";
+import { project_linked_livetree } from "../livetree/creation/project-live-tree.js";
 import { index_subtree_ownership, release_subtree_ownership } from "../livetree/lifecycle/graph-ownership.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
-import { get_node_by_quid } from "../livetree/quid/data-quid.js";
+import {
+  admit_livetree_quid_graph_preserving_absence,
+  get_node_by_quid,
+} from "../livetree/quid/data-quid.js";
 import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
 import { collect_subtree_nodes } from "../livetree/utils/subtree-traversal.js";
@@ -209,6 +212,7 @@ export function apply_document_structural_transaction(plan: DocumentStructuralPl
     release_subtree_ownership(removed);
     dispose_node_deep(removed, plan.runtime);
   }
+  admit_livetree_quid_graph_preserving_absence(plan.root.node, plan.runtime);
   index_subtree_ownership(plan.root.node);
 
   for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
@@ -390,7 +394,7 @@ function flatten_dom_item(
   }
   const existing = get_el_for_node(item);
   if (existing !== undefined) return [existing];
-  return [project_livetree(item, namespace, runtime, ownerDocument)];
+  return [project_linked_livetree(item, namespace, runtime, ownerDocument)];
 }
 
 function validate_shadow_against_canonical(shadow: ShadowNode, canonical: HsonNode): void {

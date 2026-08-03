@@ -103,17 +103,17 @@ check("compatible mounted snapshot retains root and bounded descendant identity"
   binding.dispose();
 });
 
-check("detached QUID-less snapshot retains projection-local root identity", () => {
+check("detached QUID-less snapshot preserves canonical root identity absence", () => {
   const map = element(`<main class="old"/>`);
   const binding = hsonReflect(map);
   const root = binding.tree.node;
-  const projectionQuid = root.$_meta?.["quid"];
+  assert.equal(root.$_meta?.["quid"], undefined);
   const restored = element(`<main class="restored" "detached"/>`);
   restored.document.attrs.set(path(), "rev", 1);
   map.restore(restored.capture());
   assert.equal(binding.tree.node, root);
   assert.equal(get_el_for_node(root), undefined);
-  assert.equal(root.$_meta?.["quid"], projectionQuid);
+  assert.equal(root.$_meta?.["quid"], undefined);
   assert.equal(map.element.node().$_meta?.["quid"], undefined);
   assert.equal(binding.sourceRevision, 1);
   binding.dispose();

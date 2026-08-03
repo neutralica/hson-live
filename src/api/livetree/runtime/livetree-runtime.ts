@@ -39,6 +39,7 @@ const DEFAULT_LIVETREE_RUNTIME = make_runtime();
 const RUNTIME_FOR_NODE = new WeakMap<HsonNode, LiveTreeRuntime>();
 const RUNTIME_FOR_TREE = new WeakMap<object, LiveTreeRuntime>();
 const REQUESTED_CONSTRUCTION_RUNTIME = new WeakMap<HsonNode, LiveTreeRuntime>();
+const REQUESTED_LINKED_CONSTRUCTION = new WeakSet<HsonNode>();
 const RUNTIME_FOR_DOCUMENT = new WeakMap<Document, LiveTreeRuntime>();
 
 function collect_runtime_graph(root: HsonNode): readonly HsonNode[] {
@@ -183,6 +184,11 @@ export function requested_runtime_for_construction(node: HsonNode): LiveTreeRunt
   return REQUESTED_CONSTRUCTION_RUNTIME.get(node);
 }
 
+/** Whether an internal document projection requested authority-preserving construction. @internal */
+export function linked_livetree_construction_requested(node: HsonNode): boolean {
+  return REQUESTED_LINKED_CONSTRUCTION.has(node);
+}
+
 /** Synchronous construction seam used by internal factories and diagnostics. @internal */
 export function with_livetree_construction_runtime<T>(
   node: HsonNode,
@@ -196,5 +202,20 @@ export function with_livetree_construction_runtime<T>(
   } finally {
     if (prior === undefined) REQUESTED_CONSTRUCTION_RUNTIME.delete(node);
     else REQUESTED_CONSTRUCTION_RUNTIME.set(node, prior);
+  }
+}
+
+/** Construct one LiveMap-linked handle without granting standalone mint authority. @internal */
+export function with_linked_livetree_construction_runtime<T>(
+  node: HsonNode,
+  runtime: LiveTreeRuntime,
+  construct: () => T,
+): T {
+  const wasLinked = REQUESTED_LINKED_CONSTRUCTION.has(node);
+  REQUESTED_LINKED_CONSTRUCTION.add(node);
+  try {
+    return with_livetree_construction_runtime(node, runtime, construct);
+  } finally {
+    if (!wasLinked) REQUESTED_LINKED_CONSTRUCTION.delete(node);
   }
 }

@@ -2,8 +2,10 @@
 
 import {
   admit_livetree_quid_graph,
+  admit_livetree_quid_graph_preserving_absence,
   ensure_quid,
-  get_node_by_quid,
+  get_quid,
+  register_supplied_livetree_quid,
 } from "./quid/data-quid.js";
 import { HsonNode } from "../../core/types.js";
 import { ListenerBuilder } from "../../types/listen.types.js";
@@ -46,21 +48,28 @@ import {
 import type { DetachedLiveContent, LiveTreeLifecycleResult } from "../../types/lifecycle.types.js";
 import { guard_api_surface } from "./utils/guard-api-surface.js";
 import { record_livetree_materialization } from "./debug/materialization-profile.js";
-import { assert_document_structural_mutation_allowed } from "./lifecycle/document-binding-state.js";
+import {
+  assert_document_structural_mutation_allowed,
+  document_binding_for_node,
+  LiveTreeLinkedIdentityRequiredError,
+} from "./lifecycle/document-binding-state.js";
 import {
   bind_tree_runtime,
   default_livetree_runtime,
+  linked_livetree_construction_requested,
   requested_runtime_for_construction,
   runtime_for_node,
   runtime_for_tree,
+  type LiveTreeRuntime,
 } from "./runtime/livetree-runtime.js";
 
 /**
  * Create a stable `NodeRef` for a given `HsonNode`.
  *
  * Behavior:
- * - Ensures the node has a QUID via `ensure_quid(node)` and stores it
- *   as `q` on the reference.
+ * - Retains the exact node independently of whether canonical identity exists.
+ * - Resolves `q` from existing identity and rejects linked acquisition until
+ *   the authority-owned Unit 10R-B flow exists.
  * - Provides `resolveNode()` which currently returns the original
  *   `HsonNode` directly.
  * - Provides `resolveElement()` which returns the associated DOM
@@ -76,9 +85,18 @@ import {
  */
 class LiveTreeNodeRef implements NodeRef {
   public constructor(
-    public readonly q: string,
     private readonly referencedNode: HsonNode,
+    private readonly runtime: LiveTreeRuntime,
   ) {}
+
+  public get q(): string {
+    const existing = get_quid(this.referencedNode, this.runtime);
+    if (existing !== undefined) return existing;
+    if (document_binding_for_node(this.referencedNode) !== undefined) {
+      throw new LiveTreeLinkedIdentityRequiredError("QUID access");
+    }
+    return ensure_quid(this.referencedNode, undefined, this.runtime);
+  }
 
   public resolveNode(): HsonNode {
     return this.referencedNode;
@@ -89,10 +107,9 @@ class LiveTreeNodeRef implements NodeRef {
   }
 }
 
-function makeRef(node: HsonNode, admittedQuid: string | undefined, tree: LiveTree): NodeRef {
+function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  const q = admittedQuid ?? ensure_quid(node, undefined, runtime_for_tree(tree));
-  return new LiveTreeNodeRef(q, node);
+  return new LiveTreeNodeRef(node, runtime_for_tree(tree));
 }
 
 /**
@@ -105,7 +122,7 @@ function makeRef(node: HsonNode, admittedQuid: string | undefined, tree: LiveTre
  * - Typed element creation via `.create`.
  *
  * Instances maintain:
- * - nodeRef: A `NodeRef` that pins the current node and QUID.
+ * - nodeRef: A `NodeRef` that pins the exact current node and resolves QUID on demand.
  * - hostRoot: HSON node representing the historic root of the subtree.
  * - Lazily constructed managers for style (`StyleManager`) and dataset (`DataManager`).
  */
@@ -161,13 +178,13 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @param input - Either a `HsonNode` or another `LiveTree`.
    * @see makeRef
    */
-  private setRef(input: HsonNode | LiveTree, admittedQuid?: string): void {
+  private setRef(input: HsonNode | LiveTree): void {
     this.invalidate_dom_api();
     if (input instanceof LiveTree) {
-      this.nodeRef = makeRef(input.node, admittedQuid, this);
+      this.nodeRef = makeRef(input.node, this);
       return;
     }
-    this.nodeRef = makeRef(input, admittedQuid, this);
+    this.nodeRef = makeRef(input, this);
   }
   /**
    * Internal helper to assign the `hostRoot` for this `LiveTree`.
@@ -216,11 +233,18 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
         ?? runtime_for_node(inputNode)
         ?? default_livetree_runtime();
     assert_livetree_node_active(inputNode, "create a LiveTree handle");
-    const admittedQuid = admit_livetree_quid_graph(inputNode, runtime);
+    const linkedConstruction = linked_livetree_construction_requested(inputNode);
+    if (linkedConstruction) {
+      admit_livetree_quid_graph_preserving_absence(inputNode, runtime);
+    } else if (document_binding_for_node(inputNode) !== undefined) {
+      register_supplied_livetree_quid(inputNode, runtime);
+    } else {
+      admit_livetree_quid_graph(inputNode, runtime);
+    }
     bind_tree_runtime(this, runtime);
     record_livetree_materialization("liveTreeInstances");
     this.setRoot(input);
-    this.setRef(input, admittedQuid);
+    this.setRef(input);
     const node = this.nodeRef.resolveNode();
     if (!node) throw new Error("LiveTree constructor: ref did not resolve");
     index_subtree_ownership(node);

@@ -1,6 +1,10 @@
 // project-live-tree.ts
 import { Primitive } from "../../../core/types.js";
-import { ensure_quid, HSON_QUID_MARKUP_NAME } from "../quid/data-quid.js";
+import {
+  ensure_quid,
+  HSON_QUID_MARKUP_NAME,
+  register_supplied_livetree_quid,
+} from "../quid/data-quid.js";
 import { set_attrs_safe } from "../../../safety/safe-mount.safe.js";
 import { HsonNode } from "../../../core/types.js";
 import { SVG_NS } from "../../transform/utils/node-utils/node-from-svg.js";
@@ -23,6 +27,9 @@ import {
   runtime_for_node,
   type LiveTreeRuntime,
 } from "../runtime/livetree-runtime.js";
+import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
+
+type ProjectionIdentityAuthority = "standalone" | "linked";
 
 
 
@@ -51,11 +58,9 @@ import {
  *   ensuring nested SVG-in-HTML and HTML-in-SVG patterns render
  *   correctly.
  *
- * IMPORTANT:
- * - This function is purely about DOM materialization. It does *not*
- *   assign QUIDs, update `NODE_ELEMENT_MAP`, or otherwise manage
- *   identity; that responsibility lives with `LiveTree` and related
- *   helpers.
+ * Identity admission follows the selected authority: standalone projection may
+ * mint, while LiveMap-linked projection admits only canonical supplied claims.
+ * Both modes establish exact node/element correspondence.
  *
  * @param node - The HSON node or primitive value to project.
  * @param parentNs - The current namespace context (`"html"` or `"svg"`),
@@ -69,6 +74,36 @@ export function project_livetree(
     ? runtime_for_node(node) ?? default_livetree_runtime()
     : default_livetree_runtime(),
   ownerDocument: Document = document,
+): Node {
+  const identityAuthority: ProjectionIdentityAuthority = is_Node(node)
+    && document_binding_for_node(node) !== undefined
+    ? "linked"
+    : "standalone";
+  return project_livetree_with_authority(
+    node,
+    parentNs,
+    runtime,
+    ownerDocument,
+    identityAuthority,
+  );
+}
+
+/** Project one Reflection-owned subtree without minting missing QUIDs. @internal */
+export function project_linked_livetree(
+  node: HsonNode | Primitive,
+  parentNs: "html" | "svg",
+  runtime: LiveTreeRuntime,
+  ownerDocument: Document,
+): Node {
+  return project_livetree_with_authority(node, parentNs, runtime, ownerDocument, "linked");
+}
+
+function project_livetree_with_authority(
+  node: HsonNode | Primitive,
+  parentNs: "html" | "svg",
+  runtime: LiveTreeRuntime,
+  ownerDocument: Document,
+  identityAuthority: ProjectionIdentityAuthority,
 ): Node {
   register_runtime_document(runtime, ownerDocument);
   record_livetree_materialization("domProjectionCalls");
@@ -103,11 +138,12 @@ export function project_livetree(
         const payload =
           is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
-          frag.appendChild(project_livetree(
+          frag.appendChild(project_livetree_with_authority(
             payload as HsonNode | Primitive,
             parentNs,
             runtime,
             ownerDocument,
+            identityAuthority,
           ));
         }
       }
@@ -116,11 +152,12 @@ export function project_livetree(
 
     // _hson_root/_hson_obj/_hson_elem -> render their children directly
     for (const child of n.$_content ?? []) {
-      frag.appendChild(project_livetree(
+      frag.appendChild(project_livetree_with_authority(
         child as HsonNode | Primitive,
         parentNs,
         runtime,
         ownerDocument,
+        identityAuthority,
       ));
     }
     return frag;
@@ -167,13 +204,17 @@ export function project_livetree(
 
   // single source of truth for mapping HsonNode -> Element
   link_node_to_el(n, el);
-  const quid = ensure_quid(n, undefined, runtime); // uses meta if present, mints if not
+  const quid = identityAuthority === "linked"
+    ? register_supplied_livetree_quid(n, runtime)
+    : ensure_quid(n, undefined, runtime);
 
-  // reflect QUID onto DOM
-  if (ns === "svg") {
-    el.setAttribute(HSON_QUID_MARKUP_NAME, quid);
-  } else {
-    set_attrs_safe(el as HTMLElement, HSON_QUID_MARKUP_NAME, quid);
+  // `hson:quid` represents an actual identity claim, not DOM existence.
+  if (quid !== undefined) {
+    if (ns === "svg") {
+      el.setAttribute(HSON_QUID_MARKUP_NAME, quid);
+    } else {
+      set_attrs_safe(el as HTMLElement, HSON_QUID_MARKUP_NAME, quid);
+    }
   }
   // reflect $_attrs
   const a = n.$_attrs;
@@ -239,22 +280,35 @@ export function project_livetree(
         const payload =
           is_Node(ii) && Array.isArray(ii.$_content) ? ii.$_content[0] : null;
         if (payload != null) {
-          el.appendChild(project_livetree(
+          el.appendChild(project_livetree_with_authority(
             payload as HsonNode | Primitive,
             ns,
             runtime,
             ownerDocument,
+            identityAuthority,
           ));
         }
       }
     } else {
       for (const c of container.$_content ?? []) {
-        el.appendChild(project_livetree(c as HsonNode | Primitive, ns, runtime, ownerDocument));
+        el.appendChild(project_livetree_with_authority(
+          c as HsonNode | Primitive,
+          ns,
+          runtime,
+          ownerDocument,
+          identityAuthority,
+        ));
       }
     }
   } else {
     for (const c of kids) {
-      el.appendChild(project_livetree(c as HsonNode | Primitive, ns, runtime, ownerDocument));
+      el.appendChild(project_livetree_with_authority(
+        c as HsonNode | Primitive,
+        ns,
+        runtime,
+        ownerDocument,
+        identityAuthority,
+      ));
     }
   }
 

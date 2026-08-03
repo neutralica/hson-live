@@ -28,6 +28,10 @@ import {
 import type { LiveTree } from "../livetree.js";
 import { get_el_for_node } from "../utils/node-map-helpers.js";
 import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
+import { get_quid } from "../quid/data-quid.js";
+import { runtime_for_tree } from "../runtime/livetree-runtime.js";
+
+const UNASSIGNED_QUID_DIAGNOSTIC = "<unassigned>";
 
 const FLAG_NAMES = new WeakMap<HsonNode, Set<string>>();
 
@@ -50,7 +54,7 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         throw new LiveTreeAttributeError(
           LIVETREE_ATTRIBUTE_NOT_FOUND_ERROR_CODE,
           "must.get",
-          tree.quid,
+          diagnostic_quid(tree),
           `ordinary attribute ${JSON.stringify(key)} is absent`,
           { attributeName: key },
         );
@@ -413,7 +417,11 @@ function attr_error(
   attributeName: string | undefined,
   reason: string,
 ): LiveTreeAttributeError {
-  return new LiveTreeAttributeError(code, operation, tree.quid, reason, { attributeName });
+  return new LiveTreeAttributeError(code, operation, diagnostic_quid(tree), reason, { attributeName });
+}
+
+function diagnostic_quid(tree: LiveTree): string {
+  return get_quid(tree.node, runtime_for_tree(tree)) ?? UNASSIGNED_QUID_DIAGNOSTIC;
 }
 
 function is_plain_record(value: unknown): value is Readonly<Record<string, unknown>> {

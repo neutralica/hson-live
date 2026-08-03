@@ -83,17 +83,16 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
   binding.dispose();
 });
 
-check("QUID-less compatible root retains projection-local identity without mutating canonical state", () => {
+check("QUID-less compatible root preserves canonical identity absence", () => {
   const map = element(`<main class="old"/>`);
   const binding = hsonReflect(map);
   const root = binding.tree.node;
-  const projectionQuid = root.$_meta?.["quid"];
-  assert.equal(typeof projectionQuid, "string");
+  assert.equal(root.$_meta?.["quid"], undefined);
   const replacement = element(`<main class="next" "text"/>`);
   map.install(replacement.capture());
   assert.equal(binding.status, "active");
   assert.equal(binding.tree.node, root);
-  assert.equal(root.$_meta?.["quid"], projectionQuid);
+  assert.equal(root.$_meta?.["quid"], undefined);
   assert.equal(map.element.node().$_meta?.["quid"], undefined);
   binding.dispose();
 });

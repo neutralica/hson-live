@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, and Unit 7 capture/provenance contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, and Unit 10R-A reflected no-mint ownership boundary shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -41,7 +41,7 @@ An explicitly named identity-stripping projection may compare or serialize a dif
 
 ## LiveTree QUID authority
 
-LiveTree is the originating and primary active-identity consumer. One `LiveTreeRuntime` owns its active QUID namespace.
+LiveTree is the originating and primary active-identity consumer for standalone graphs under LiveTree authority. One `LiveTreeRuntime` owns its active QUID namespace and browser/runtime objects.
 
 LiveTree preserves these semantics:
 
@@ -54,7 +54,9 @@ LiveTree preserves these semantics:
 - clones receive fresh identity; and
 - malformed or duplicate active claims reject without partial admission.
 
-LiveTree does not become path-authoritative, and its identity does not depend on LiveMap revisions.
+For a LiveMap-linked document projection, LiveMap owns canonical graph metadata and Reflection owns correspondence. The linked LiveTree runtime binds exact HSON and DOM objects, admits supplied canonical QUIDs, and preserves QUID absence. It never mints merely to construct, wrap, find, traverse, diagnose, or render a linked node. `LiveTree.quid` and facilities that require QUID ownership reject with `LIVETREE_LINKED_IDENTITY_REQUIRED` while that canonical claim is absent; the future authority-owned acquisition flow belongs to Unit 10R-B.
+
+LiveTree does not become path-authoritative. Standalone identity does not depend on LiveMap revisions, while linked identity follows the canonical LiveMap claim without creating a second namespace.
 
 ## LiveMap path and QUID roles
 
@@ -122,6 +124,8 @@ Ordinary local structural commits transform projected registration paths through
 
 A move retains the exact projected subtree and therefore its LiveTree handles, DOM, CSS, events, animation, and lifecycle resources. Replacement is conservative: only a compatible ordinary-element root with the same persisted QUID and tag may reuse the exact root node; differing-QUID or incompatible replacements retire the old subtree. QUID-free documents use the same path routing and require no identity evidence.
 
+Reflection construction and DOM materialization are authority-sensitive. A supplied canonical QUID is collision-checked into the selected runtime and emitted as the same `hson:quid` value. An absent canonical QUID remains absent from the projected node, runtime QUID registry, and DOM. Runtime routing, wrapping, reverse DOM lookup, structural correspondence, replacement, and disposal use exact-node and exact-element maps and do not require a QUID. Standalone construction, projection, and graft retain their established minting behavior.
+
 LiveMap and LiveTree registries remain separate. The sparse LiveMap overlay owns canonical QUID/path lookup; `LiveTreeRuntime` owns exact active nodes and their resources. Reflection's `byQuid` table is binding-local validation evidence, not a canonical router and not a replacement runtime registry.
 
 While a tree is reflected, public LiveTree attribute mutations and the representable `text.set`/`text.add`/`text.insert`, `empty`, and nested `remove` cases delegate to canonical LiveMap operations. Append, create, detach, detached-content append, `removeChildren`, and ambiguous/destructive text cases reject before local structural mutation. The guard prevents ordinary public API drift. Explicit unsafe raw-node or raw-DOM mutation can bypass it; the next delegation or canonical observation validates path, attrs, QUID, node/DOM links, and fails the binding on divergence. There is no in-place drift repair. Disposal followed by a fresh reflection binding rebuilds correspondence from canonical state.
@@ -181,7 +185,7 @@ One document LiveMap epoch and one `LiveTreeRuntime` epoch are separate owners. 
 | LiveHost recovery | Durable snapshot plus path-authoritative tail | Snapshot creates/replaces the mirror epoch; tail needs no QUID routing | No protocol change |
 | persistence checkpoint | Durable exact view-state capture | Authority restart creates a new local map epoch | No storage change |
 | persistence tail | Durable path-authoritative commits; graph content may preserve QUIDs | Replayed against the reconstructed local overlay; QUID is never the sole target | No storage change |
-| Reflect initial binding | External/current-map claims are collision-checked into a LiveTree runtime | Exact binding/runtime objects provide LiveTree provenance | No semantic change |
+| Reflect initial binding | Current-map claims are collision-checked into a LiveTree runtime; absent claims remain absent | Exact binding/runtime objects provide LiveTree provenance without requiring a QUID | Unit 10R-A removes projection-local minting |
 | Reflect rebuild/root convergence | Complete correspondence admission; same-QUID reuse remains conservative | A fresh binding does not inherit old browser handles; an active binding retains runtime evidence | No semantic change |
 | LiveTree graft/import | External admission with existing syntax, duplicate, runtime-owner, and collision checks | Admitted values are fresh/current-runtime claims unless the exact runtime already owns the graph | No semantic change |
 | debug/diagnostic serialization | Diagnostic metadata preservation | Never provenance, authorization, or a persistence promise | Documentation clarification |
@@ -213,7 +217,7 @@ Automated acceptance coverage must continue to establish:
 5. Controlled exact capture and persistence may preserve QUIDs.
 6. `noQuid` explicitly abandons exact identity continuity.
 7. Serialized QUID bytes alone establish neither provenance nor authority.
-8. LiveTree remains QUID-authoritative for active exact-node identity.
+8. Standalone LiveTree remains QUID-authoritative; a LiveMap-linked runtime owns exact runtime objects but cannot originate canonical identity metadata.
 9. LiveMap paths remain the planned authoritative target for durable structural operations.
 10. Every installed document QUID has exactly one overlay path, and every overlay path resolves to the same graph QUID.
 11. QUID-free graphs retain an empty overlay, and no overlay retains graph-node pointers.
@@ -244,3 +248,7 @@ Automated acceptance coverage must continue to establish:
 36. Rename retains the source position and subtree, retires an existing destination, and rejects a missing source.
 37. Projected move uses nonnegative safe final indexes and shifts each intervening sibling exactly once.
 38. Projected rename/move preserve exact transport, replay, feed, link, store, and LiveHost history intent without minting QUIDs or enabling object/array QUID eligibility.
+39. Reflection preserves canonical QUID absence for roots and descendants and emits no `hson:quid` without a canonical claim.
+40. Supplied canonical QUIDs are admitted unchanged into the selected runtime and DOM; collision validation remains runtime-local and atomic.
+41. Exact-node wrapping, traversal, reverse DOM lookup, diagnostics, ordinary delegated mutations, replacement, and disposal do not mint linked identity.
+42. Until Unit 10R-B supplies authority-owned acquisition, linked QUID-dependent facilities reject explicitly rather than minting privately or exposing a second identity namespace.

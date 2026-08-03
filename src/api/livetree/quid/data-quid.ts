@@ -140,6 +140,50 @@ export function admit_livetree_quid_graph(
   return rootQuid;
 }
 
+/**
+ * Admit only QUIDs supplied by an authority-owned graph.
+ *
+ * Unlike standalone admission, this path never mints and preserves an absent
+ * root claim. It is used by LiveMap-linked Reflection.
+ */
+export function admit_livetree_quid_graph_preserving_absence(
+  root: HsonNode,
+  runtime: LiveTreeRuntime = runtime_for_operation(root),
+): string | undefined {
+  assert_hson_node_quid_eligible(root, "admit linked");
+  const claims = preflight_livetree_quid_graph(root, runtime);
+  for (const claim of claims) {
+    runtime.quidToNode.set(claim.quid, claim.node);
+    runtime.nodeToQuid.set(claim.node, claim.quid);
+  }
+  bind_graph_runtime(root, runtime);
+  if (claims.length !== 0) {
+    record_livetree_materialization("quidRegistryWrites", 2 * claims.length);
+  }
+  return read_hson_node_quid(root);
+}
+
+/** Register one supplied canonical claim without minting an absent claim. @internal */
+export function register_supplied_livetree_quid(
+  node: HsonNode,
+  runtime: LiveTreeRuntime = runtime_for_operation(node),
+): string | undefined {
+  const q = read_hson_node_quid(node);
+  if (q === undefined) {
+    if (runtime_for_node(node) !== runtime) bind_graph_runtime(node, runtime);
+    return undefined;
+  }
+  assert_hson_node_quid_eligible(node, "register supplied");
+  assert_quid_available(q, node, runtime);
+  if (runtime_for_node(node) !== runtime) bind_graph_runtime(node, runtime);
+  const alreadyRegistered = runtime.quidToNode.get(q) === node
+    && runtime.nodeToQuid.get(node) === q;
+  runtime.quidToNode.set(q, node);
+  runtime.nodeToQuid.set(node, q);
+  if (!alreadyRegistered) record_livetree_materialization("quidRegistryWrites", 2);
+  return q;
+}
+
 /***************************************
  * get_quid
  *

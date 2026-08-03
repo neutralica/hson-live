@@ -10,6 +10,7 @@ import { LiveTree } from "../livetree.js";
 import { make_css_var_facade, make_style_setter, StyleSetter } from "./style-setter.js";
 import { make_style_get_many, make_style_getter, StyleGetMany, StyleGetter } from "./style-getter.js";
 import { ensure_node_attrs, prune_empty_node_attrs } from "../../../core/node-storage.js";
+import { document_binding_for_node } from "../lifecycle/document-binding-state.js";
 
 /* ------------------------------ RUNTIME KEYS -------------------------------- */
 
@@ -428,6 +429,16 @@ export class StyleManager<TTree extends LiveTree> {
 
         const val = value == null ? "" : String(value);
 
+        if (document_binding_for_node(this.tree.node) !== undefined) {
+            const next = { ...readAllStyleFromNode(this.tree.node) };
+            const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
+            if (val === "") delete next[key];
+            else next[key] = val;
+            if (Object.keys(next).length === 0) this.tree.attrs.drop("style");
+            else this.tree.attrs.set("style", next);
+            return this.tree;
+        }
+
         applyStyleToNode(this.tree.node, kebab, val);
         return this.tree;
     }
@@ -452,6 +463,15 @@ export class StyleManager<TTree extends LiveTree> {
         const kebab = propertyName.startsWith("--")
             ? propertyName
             : camel_to_kebab(propertyName);
+
+        if (document_binding_for_node(this.tree.node) !== undefined) {
+            const next = { ...readAllStyleFromNode(this.tree.node) };
+            const key = kebab.startsWith("--") ? kebab : kebab_to_camel(kebab);
+            delete next[key];
+            if (Object.keys(next).length === 0) this.tree.attrs.drop("style");
+            else this.tree.attrs.set("style", next);
+            return this.tree;
+        }
 
         removeStyleFromNode(this.tree.node, kebab);
         return this.tree;
@@ -478,6 +498,10 @@ export class StyleManager<TTree extends LiveTree> {
      */
     private clearAll(): void {
         const node = this.tree.node;
+        if (document_binding_for_node(node) !== undefined) {
+            this.tree.attrs.drop("style");
+            return;
+        }
         if (!node.$_attrs) return;
 
         const attrs = node.$_attrs as HsonAttrs;
