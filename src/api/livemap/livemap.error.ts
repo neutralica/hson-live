@@ -156,6 +156,9 @@ export type LiveMapDocumentMutationErrorCode =
   | "INVALID_DOCUMENT_CONTENT_INDEX"
   | "INVALID_DOCUMENT_REPLACEMENT"
   | "INVALID_DOCUMENT_IDENTITY"
+  | "DOCUMENT_IDENTITY_INELIGIBLE"
+  | "DOCUMENT_IDENTITY_COLLISION"
+  | "DOCUMENT_IDENTITY_DIFFERENT"
   | "DOCUMENT_MODE_MISMATCH";
 
 export class LiveMapDocumentMutationError extends Error {
@@ -171,7 +174,8 @@ export class LiveMapDocumentMutationError extends Error {
     | "replace-content"
     | "insert-content"
     | "remove-content"
-    | "move-content";
+    | "move-content"
+    | "ensure-quid";
   readonly reason: string;
 
   constructor(
@@ -185,6 +189,23 @@ export class LiveMapDocumentMutationError extends Error {
     this.code = code;
     this.operation = operation;
     this.reason = reason;
+  }
+}
+
+export type LiveMapDocumentIdentityRegistrationErrorCode =
+  | "LIVEMAP_IDENTITY_ALLOCATOR_EXHAUSTED"
+  | "LIVEMAP_IDENTITY_PARTICIPANT_REQUIRED"
+  | "LIVEMAP_IDENTITY_PROJECTION_NOT_APPLIED";
+
+/** Stable internal-authority acquisition failure without exposing candidate values. */
+export class LiveMapDocumentIdentityRegistrationError extends Error {
+  public constructor(
+    public readonly code: LiveMapDocumentIdentityRegistrationErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "LiveMapDocumentIdentityRegistrationError";
   }
 }
 

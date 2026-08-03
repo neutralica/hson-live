@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0 through 7 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0 through 7, Unit 2, and reflected prerequisites 10R-A/10R-B implemented and executable; the public Unit 10 handle and later-unit architecture remain a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -687,6 +687,8 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** API encourages application persistence, bypasses collision owner, or requires weakening LiveTree.
 - **Dependency:** Units 3, 4, 7.
 - **Suggested commit direction:** `feat(livemap): add explicit epoch-scoped identity handles`.
+- **Completed prerequisite 10R-A:** Linked construction/projection preserves canonical QUID absence, exact-node/DOM correspondence is QUID-free, and supplied claims are admitted without private minting.
+- **Completed prerequisite 10R-B:** Existing linked QUID demand delegates through one exact binding; LiveMap owns secure collision-aware allocation and the path-authoritative `ensure-quid` canonical operation; Reflection owns local preflight and rollback-safe supplied claim; replay/LiveHost transport use the recorded QUID without allocation. Public map acquisition and active-epoch handles remain absent.
 
 ### Unit 11 — Optional object/array QUID eligibility
 

@@ -68,8 +68,8 @@ import {
  *
  * Behavior:
  * - Retains the exact node independently of whether canonical identity exists.
- * - Resolves `q` from existing identity and rejects linked acquisition until
- *   the authority-owned Unit 10R-B flow exists.
+ * - Resolves standalone `q` locally and delegates linked acquisition through
+ *   the active canonical document binding.
  * - Provides `resolveNode()` which currently returns the original
  *   `HsonNode` directly.
  * - Provides `resolveElement()` which returns the associated DOM
@@ -87,14 +87,17 @@ class LiveTreeNodeRef implements NodeRef {
   public constructor(
     private readonly referencedNode: HsonNode,
     private readonly runtime: LiveTreeRuntime,
+    private readonly linked: boolean,
   ) {}
 
   public get q(): string {
+    if (this.linked) {
+      const binding = document_binding_for_node(this.referencedNode);
+      if (binding !== undefined) return binding.requireCanonicalIdentity();
+      throw new LiveTreeLinkedIdentityRequiredError("QUID access on a stale linked binding");
+    }
     const existing = get_quid(this.referencedNode, this.runtime);
     if (existing !== undefined) return existing;
-    if (document_binding_for_node(this.referencedNode) !== undefined) {
-      throw new LiveTreeLinkedIdentityRequiredError("QUID access");
-    }
     return ensure_quid(this.referencedNode, undefined, this.runtime);
   }
 
@@ -109,7 +112,11 @@ class LiveTreeNodeRef implements NodeRef {
 
 function makeRef(node: HsonNode, tree: LiveTree): NodeRef {
   assert_livetree_node_active(node, "create a LiveTree handle");
-  return new LiveTreeNodeRef(node, runtime_for_tree(tree));
+  return new LiveTreeNodeRef(
+    node,
+    runtime_for_tree(tree),
+    document_binding_for_node(node) !== undefined || linked_livetree_construction_requested(node),
+  );
 }
 
 /**

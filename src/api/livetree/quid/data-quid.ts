@@ -12,6 +12,7 @@ import {
   collect_hson_node_quid_claims,
   HsonNodeQuidValidationError,
   index_unique_hson_node_quid_claims,
+  is_persisted_quid,
   mint_hson_node_quid,
   read_hson_node_quid,
   remove_hson_node_quid,
@@ -40,6 +41,13 @@ import {
  * `drop_quid()`.
  */
 export const LIVETREE_QUID_MINT_RETRY_LIMIT = 32;
+
+export type SuppliedLiveTreeQuidReservation = Readonly<{
+  readonly applied: boolean;
+  claim: () => void;
+  rollback: () => void;
+  release: () => void;
+}>;
 
 function runtime_for_operation(n: HsonNode, runtime?: LiveTreeRuntime): LiveTreeRuntime {
   return runtime ?? runtime_for_node(n) ?? default_livetree_runtime();
@@ -182,6 +190,88 @@ export function register_supplied_livetree_quid(
   runtime.nodeToQuid.set(node, q);
   if (!alreadyRegistered) record_livetree_materialization("quidRegistryWrites", 2);
   return q;
+}
+
+/**
+ * Reserve one supplied canonical QUID for one exact currently-unquidded linked node.
+ * Preflight is mutation-free apart from the scoped runtime reservation itself.
+ * @internal
+ */
+export function preflight_supplied_livetree_quid(
+  node: HsonNode,
+  quid: string,
+  runtime: LiveTreeRuntime = runtime_for_operation(node),
+): SuppliedLiveTreeQuidReservation {
+  if (!is_persisted_quid(quid)) throw new Error("Supplied canonical QUID is malformed.");
+  assert_hson_node_quid_eligible(node, "preflight supplied");
+  if (runtime.disposed) throw new Error("LiveTree runtime scope has been disposed.");
+  if (runtime_for_node(node) !== runtime) {
+    throw new Error("Supplied QUID target is not owned by the selected LiveTree runtime.");
+  }
+  if (read_hson_node_quid(node) !== undefined || runtime.nodeToQuid.get(node) !== undefined) {
+    throw new Error("Supplied QUID target already carries runtime identity.");
+  }
+  const active = runtime.quidToNode.get(quid);
+  const pending = runtime.pendingQuidClaims.get(quid);
+  if ((active !== undefined && active !== node) || (pending !== undefined && pending !== node)) {
+    throw new Error("Supplied canonical QUID collides in the selected LiveTree runtime.");
+  }
+  const element = get_el_for_node(node);
+  if (element !== undefined && element.getAttribute(HSON_QUID_MARKUP_NAME) !== null) {
+    throw new Error("Supplied QUID target DOM element already carries identity metadata.");
+  }
+  runtime.pendingQuidClaims.set(quid, node);
+  let applied = false;
+
+  const rollback = (): void => {
+    if (!applied) return;
+    if (runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
+    if (runtime.nodeToQuid.get(node) === quid) runtime.nodeToQuid.delete(node);
+    if (read_hson_node_quid(node) === quid) remove_hson_node_quid(node);
+    const currentElement = get_el_for_node(node);
+    if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
+      currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
+    }
+    applied = false;
+  };
+
+  const reservation: SuppliedLiveTreeQuidReservation = Object.freeze({
+    get applied() { return applied; },
+    claim(): void {
+      if (applied) return;
+      if (runtime.pendingQuidClaims.get(quid) !== node
+        || runtime.quidToNode.has(quid)
+        || runtime.nodeToQuid.has(node)
+        || read_hson_node_quid(node) !== undefined) {
+        throw new Error("Supplied canonical QUID reservation is no longer claimable.");
+      }
+      const currentElement = get_el_for_node(node);
+      if (currentElement !== undefined && currentElement.getAttribute(HSON_QUID_MARKUP_NAME) !== null) {
+        throw new Error("Supplied QUID target DOM metadata changed after preflight.");
+      }
+      try {
+        currentElement?.setAttribute(HSON_QUID_MARKUP_NAME, quid);
+        assign_hson_node_quid(node, quid);
+        runtime.quidToNode.set(quid, node);
+        runtime.nodeToQuid.set(node, quid);
+        applied = true;
+        record_livetree_materialization("quidRegistryWrites", 2);
+      } catch (cause) {
+        if (runtime.quidToNode.get(quid) === node) runtime.quidToNode.delete(quid);
+        if (runtime.nodeToQuid.get(node) === quid) runtime.nodeToQuid.delete(node);
+        if (read_hson_node_quid(node) === quid) remove_hson_node_quid(node);
+        if (currentElement?.getAttribute(HSON_QUID_MARKUP_NAME) === quid) {
+          currentElement.removeAttribute(HSON_QUID_MARKUP_NAME);
+        }
+        throw cause;
+      }
+    },
+    rollback,
+    release(): void {
+      if (runtime.pendingQuidClaims.get(quid) === node) runtime.pendingQuidClaims.delete(quid);
+    },
+  });
+  return reservation;
 }
 
 /***************************************

@@ -17,10 +17,6 @@ import {
   _livetree_runtime_test_claim_count,
   _reflect_document_for_runtime_test,
 } from "../src/diagnostics/index.ts";
-import {
-  LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
-  LiveTreeLinkedIdentityRequiredError,
-} from "../src/api/livetree/lifecycle/document-binding-state.ts";
 import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
@@ -45,11 +41,6 @@ function close(binding: ReturnType<typeof reflected>["binding"]): void {
 
 function assert_no_claims(): void {
   assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
-}
-
-function assert_linked_identity_required(run: () => unknown): void {
-  assert.throws(run, (cause: unknown) => cause instanceof LiveTreeLinkedIdentityRequiredError
-    && cause.code === LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE);
 }
 
 check("QUID-less reflected root preserves metadata absence", () => {
@@ -214,23 +205,25 @@ check("compatible QUID-less root install retains absence", () => {
   close(binding);
 });
 
-check("linked QUID access rejects explicitly without minting", () => {
-  const { binding } = reflected(`<main/>`);
-  assert_linked_identity_required(() => binding.tree.quid);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
-  assert_no_claims();
+check("linked QUID access acquires exactly one canonical claim", () => {
+  const { map, binding } = reflected(`<main/>`);
+  const quid = binding.tree.quid;
+  assert.equal(binding.tree.node.$_meta?.quid, quid);
+  assert.equal(map.element.node().$_meta?.quid, quid);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
 
-check("QUID-scoped CSS and events reject explicitly without minting", () => {
+check("QUID-scoped CSS and events share one authority-owned acquisition", () => {
   const profile = begin_livetree_materialization_profile();
-  const { binding } = reflected(`<main/>`);
-  assert_linked_identity_required(() => binding.tree.css);
-  assert_linked_identity_required(() => binding.tree.events);
+  const { map, binding } = reflected(`<main/>`);
+  assert.ok(binding.tree.css);
+  assert.ok(binding.tree.events);
   const result = profile.stop();
   assert.equal(result.quidEnsureCalls, 0);
-  assert.equal(result.quidRegistryWrites, 0);
-  assert_no_claims();
+  assert.equal(result.quidRegistryWrites, 2);
+  assert.equal(map.rev, 1);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   close(binding);
 });
 

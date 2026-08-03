@@ -26,6 +26,7 @@ import {
   replace_livemap_document_identity_overlay_effects,
   type LiveMapDocumentIdentityEffect,
 } from "./livemap.document.identity.js";
+import { preflight_livemap_document_identity_replay } from "./livemap.document.registration.js";
 
 export type PreparedDocumentReplay = Readonly<{
   root: HsonNode;
@@ -119,12 +120,17 @@ export function replay_livemap_document_commit(
     rev: envelope.rev,
     ops: Object.freeze(operations),
   });
-  return controller.applyReplay({
-    root,
-    overlay,
-    commit,
-    identityEffects: Object.freeze(identityEffects),
-  });
+  const reservation = preflight_livemap_document_identity_replay(controller, commit);
+  try {
+    return controller.applyReplay({
+      root,
+      overlay,
+      commit,
+      identityEffects: Object.freeze(identityEffects),
+    });
+  } finally {
+    reservation?.release();
+  }
 }
 
 function is_legacy_quid_target_operation(input: unknown): boolean {

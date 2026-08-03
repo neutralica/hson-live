@@ -237,6 +237,45 @@ export function preserve_livemap_document_identity_at_path(
   });
 }
 
+/** Add one validated canonical registration without scanning unrelated graph nodes. */
+export function register_livemap_document_identity_at_path(
+  overlay: LiveMapDocumentIdentityOverlay,
+  quid: string,
+  path: LiveMapDocumentPath,
+): LiveMapDocumentIdentityReconciliation {
+  completedOverlayReconciliations += 1;
+  const existingPath = overlay.pathForQuid(quid);
+  if (existingPath !== undefined && !document_path_equal(existingPath, path)) {
+    throw new LiveMapDocumentIdentityError(
+      "DUPLICATE_QUID",
+      `LiveMap document QUID ${JSON.stringify(quid)} is already active at canonical path ${encode_document_path(existingPath)}.`,
+    );
+  }
+  const existingQuid = overlay.quidAtPath(path);
+  if (existingQuid !== undefined) {
+    if (existingQuid === quid) {
+      return Object.freeze({ overlay, effects: Object.freeze([]) });
+    }
+    throw new LiveMapDocumentIdentityError(
+      "OVERLAY_INVARIANT",
+      `LiveMap document canonical path ${encode_document_path(path)} already carries a different QUID.`,
+    );
+  }
+
+  const quidToPath = new Map(entries_for_overlay(overlay));
+  const pathToQuid = new Map<string, string>();
+  for (const [activeQuid, activePath] of quidToPath) {
+    pathToQuid.set(encode_document_path(activePath), activeQuid);
+  }
+  add_overlay_entry(quidToPath, pathToQuid, quid, path);
+  completedOverlayEntriesVisited += overlay.size;
+  completedOverlayEntriesChanged += 1;
+  return Object.freeze({
+    overlay: make_overlay(quidToPath, pathToQuid),
+    effects: Object.freeze([Object.freeze({ kind: "introduced" as const, quid, path })]),
+  });
+}
+
 /** Derive whole-domain replacement evidence after the admitted root was scanned. */
 export function replace_livemap_document_identity_overlay_effects(
   current: LiveMapDocumentIdentityOverlay,

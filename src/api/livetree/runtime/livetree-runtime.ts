@@ -12,6 +12,7 @@ import type { LifecycleResourceKind } from "../managers/lifecycle-registry.js";
 export type LiveTreeRuntime = {
   readonly quidToNode: Map<string, HsonNode>;
   readonly nodeToQuid: WeakMap<HsonNode, string>;
+  readonly pendingQuidClaims: Map<string, HsonNode>;
   readonly ownerDisposables: Map<string, Set<() => void>>;
   readonly ownerDisposableKinds: Map<string, Map<() => void, LifecycleResourceKind>>;
   readonly styleDocuments: Set<Document>;
@@ -25,6 +26,7 @@ function make_runtime(): LiveTreeRuntime {
   return {
     quidToNode: new Map(),
     nodeToQuid: new WeakMap(),
+    pendingQuidClaims: new Map(),
     ownerDisposables: new Map(),
     ownerDisposableKinds: new Map(),
     styleDocuments: new Set(),
@@ -155,6 +157,7 @@ export function dispose_livetree_runtime(runtime: LiveTreeRuntime): void {
   if (runtime.disposed) return;
   if (
     runtime.quidToNode.size !== 0
+    || runtime.pendingQuidClaims.size !== 0
     || runtime.ownerDisposables.size !== 0
     || runtime.ownerDisposableKinds.size !== 0
   ) {

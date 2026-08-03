@@ -193,7 +193,10 @@ export function document_path_effect_for_graph_operation(
   operation: LiveMapGraphOp,
 ): LiveMapDocumentPathEffect | undefined {
   if (operation.op === "replace-root") return Object.freeze({ kind: "replace-root" });
-  if (operation.op === "set-attr" || operation.op === "remove-attr" || operation.op === "replace-attrs") {
+  if (operation.op === "set-attr"
+    || operation.op === "remove-attr"
+    || operation.op === "replace-attrs"
+    || operation.op === "ensure-quid") {
     return undefined;
   }
   if (operation.op === "insert-content") {

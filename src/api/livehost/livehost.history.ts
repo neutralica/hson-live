@@ -232,6 +232,14 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveHostCanonicalOp {
       attrs: clone_node(op.attrs),
     });
   }
+  if (op.op === "ensure-quid") {
+    return Object.freeze({
+      domain: "graph",
+      op: "ensure-quid",
+      target,
+      quid: op.quid,
+    });
+  }
   if (op.op === "replace-content") {
     return Object.freeze({
       domain: "graph",

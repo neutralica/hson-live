@@ -43,6 +43,7 @@ import {
 import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { capture_livemap_document } from "./livemap.document.capture.js";
+import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -192,6 +193,7 @@ function make_document_livemap(
     attrs,
   });
   register_livemap_document_identity_overlay(document, controller.overlay);
+  register_livemap_document_identity_authority(document, controller);
 
   const shared = {
     root: () => core.root(),

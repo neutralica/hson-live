@@ -18,10 +18,6 @@ import {
 } from "../src/diagnostics/index.ts";
 import { graft } from "../src/api/livetree/creation/graft.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import {
-  LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
-  LiveTreeLinkedIdentityRequiredError,
-} from "../src/api/livetree/lifecycle/document-binding-state.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
 const syntheticDocument = globalThis.document;
@@ -41,11 +37,6 @@ function check(name: string, run: () => void): void {
 
 const runtime = _create_livetree_runtime_test_handle();
 const SUPPLIED = "0000000000001101";
-
-function assert_linked_identity_required(run: () => unknown): void {
-  assert.throws(run, (cause: unknown) => cause instanceof LiveTreeLinkedIdentityRequiredError
-    && cause.code === LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE);
-}
 
 check("standalone LiveTree construction still mints root identity", () => {
   const tree = _create_livetree_for_runtime_test(runtime, projected_element(`<main/>`));
@@ -182,12 +173,14 @@ check("identity stripping remains an explicit metadata fence", () => {
   assert.equal(livemap_document_identity_overlay_for(target).size, 0);
 });
 
-check("linked QUID-dependent access rejects rather than minting", () => {
+check("linked explicit QUID demand registers exactly one canonical identity", () => {
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  assert_linked_identity_required(() => binding.tree.quid);
-  assert.equal(binding.tree.node.$_meta?.quid, undefined);
-  assert.equal(_livetree_runtime_test_claim_count(runtime), 0);
+  const quid = binding.tree.quid;
+  assert.equal(map.rev, 1);
+  assert.equal(map.element.node().$_meta?.quid, quid);
+  assert.equal(binding.tree.node.$_meta?.quid, quid);
+  assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   binding.dispose();
   binding.tree.remove();
 });

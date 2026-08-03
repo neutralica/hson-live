@@ -636,6 +636,14 @@ export type LiveMapGraphMoveContentOp = Readonly<{
   to: number;
 }>;
 
+/** Internal-authority registration of one supplied system QUID at a canonical path. */
+export type LiveMapGraphEnsureQuidOp = Readonly<{
+  domain: "graph";
+  op: "ensure-quid";
+  target: LiveMapDocumentCommitTarget;
+  quid: string;
+}>;
+
 /** Canonical graph-domain operations; distinct from projected JSON writes. */
 export type LiveMapGraphOp =
   | LiveMapGraphReplaceRootOp
@@ -645,7 +653,8 @@ export type LiveMapGraphOp =
   | LiveMapGraphReplaceContentOp
   | LiveMapGraphInsertContentOp
   | LiveMapGraphRemoveContentOp
-  | LiveMapGraphMoveContentOp;
+  | LiveMapGraphMoveContentOp
+  | LiveMapGraphEnsureQuidOp;
 
 /** Select a LiveMap operation domain; bare use preserves the existing data domain. */
 export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =

@@ -160,6 +160,7 @@ export type {
     LiveMapGraphInsertContentOp,
     LiveMapGraphRemoveContentOp,
     LiveMapGraphMoveContentOp,
+    LiveMapGraphEnsureQuidOp,
     LiveMapGraphCommit,
     LiveMapFeedEvent,
     LiveMapFeedListener,

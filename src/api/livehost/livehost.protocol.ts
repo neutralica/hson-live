@@ -336,6 +336,11 @@ function decode_graph_op(
       ? undefined
       : Object.freeze({ domain: "graph", op: "replace-attrs", target, attrs });
   }
+  if (value.op === "ensure-quid") {
+    if (!has_exact_keys(value, ["domain", "op", "target", "quid"])
+      || !is_persisted_quid(value.quid)) return undefined;
+    return Object.freeze({ domain: "graph", op: "ensure-quid", target, quid: value.quid });
+  }
   if (value.op === "replace-content") {
     if (!has_exact_keys(value, ["domain", "op", "target", "index", "replacement"])) return undefined;
     const index = required_rev(value.index);

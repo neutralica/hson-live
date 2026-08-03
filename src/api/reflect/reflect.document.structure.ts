@@ -46,7 +46,7 @@ type ShadowNode = {
   readonly node: HsonNode;
   readonly fresh: boolean;
   readonly parent?: ShadowNode;
-  readonly persistedQuid?: string;
+  persistedQuid?: string;
   readonly replacementSource?: HsonNode;
   attrs: CanonicalPublicAttrs;
   content: ShadowContent[];
@@ -96,6 +96,15 @@ export function plan_document_structural_transaction(
       }
       case "replace-attrs":
         target.attrs = must_attrs(operation.attrs);
+        break;
+      case "ensure-quid":
+        if (target.persistedQuid !== undefined && target.persistedQuid !== operation.quid) {
+          throw new DocumentReflectError(
+            DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+            "Projected structural target already carries a different canonical QUID.",
+          );
+        }
+        target.persistedQuid = operation.quid;
         break;
       case "insert-content":
         affectedOwners.add(nearest_ordinary_owner(target));

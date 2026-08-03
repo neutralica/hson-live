@@ -87,22 +87,27 @@ function makeBroadcastProxy<T extends object>(
 
 export class TreeSelector implements TreeSelectorType {
   private readonly contents: LiveTree[];
-  public readonly listen: LiveTreeListen;
-  public readonly style: LiveTreeStyle;
-  public readonly css: LiveTreeCss;
-  public readonly data: LiveTree["data"];
+  private listenInternal: LiveTreeListen | undefined;
+  private styleInternal: LiveTreeStyle | undefined;
+  private cssInternal: LiveTreeCss | undefined;
+  private dataInternal: LiveTree["data"] | undefined;
 
   public constructor(trees: LiveTree[]) {
     // Defensive copy to avoid external mutation.
     this.contents = [...trees];
 
-    // Broadcast proxies.
-    this.listen = makeBroadcastProxy(this.contents, (t) => t.listen);
-
-    this.style = makeBroadcastProxy(this.contents, (t) => t.style);
-    this.css = makeBroadcastProxy(this.contents, (t) => t.css);
-
-    this.data = makeBroadcastProxy(this.contents, (t) => t.data);
+  }
+  public get listen(): LiveTreeListen {
+    return this.listenInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.listen);
+  }
+  public get style(): LiveTreeStyle {
+    return this.styleInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.style);
+  }
+  public get css(): LiveTreeCss {
+    return this.cssInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.css);
+  }
+  public get data(): LiveTree["data"] {
+    return this.dataInternal ??= makeBroadcastProxy(this.contents, (tree) => tree.data);
   }
   public get length(): number {
     return this.contents.length;

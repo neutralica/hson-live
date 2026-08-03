@@ -22,14 +22,14 @@ export type DocumentBoundTextMutation =
 export const LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE =
   "LIVETREE_LINKED_IDENTITY_REQUIRED" as const;
 
-/** Unit 10R-A boundary for linked facilities that cannot operate without QUID ownership. */
+/** Stable failure for a linked handle whose canonical identity authority is unavailable. */
 export class LiveTreeLinkedIdentityRequiredError extends Error {
   public readonly code = LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE;
 
   public constructor(public readonly operation: string) {
     super(
       `LiveTree ${operation} requires canonical identity for this document-bound node; `
-      + "authority-owned acquisition is deferred to Unit 10R-B.",
+      + "its active authority binding is unavailable or does not support this context.",
     );
     this.name = "LiveTreeLinkedIdentityRequiredError";
   }
@@ -40,6 +40,7 @@ export type DocumentBindingNodeRegistration = Readonly<{
   canonicalTarget: LiveMapDocumentTarget;
   canonicalPath: readonly number[];
   persistedQuid?: string;
+  requireCanonicalIdentity: () => string;
   delegateAttrs: (mutation: DocumentBoundAttrsMutation) => void;
   delegateText: (mutation: DocumentBoundTextMutation) => void;
   delegateEmpty: () => void;

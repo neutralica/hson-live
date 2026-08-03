@@ -23,7 +23,11 @@ import {
   type DocumentBoundTextMutation,
 } from "../livetree/lifecycle/document-binding-state.js";
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
-import { HSON_QUID_MARKUP_NAME } from "../livetree/quid/data-quid.js";
+import {
+  HSON_QUID_MARKUP_NAME,
+  preflight_supplied_livetree_quid,
+  type SuppliedLiveTreeQuidReservation,
+} from "../livetree/quid/data-quid.js";
 import {
   assert_node_element_link,
   get_el_for_node,
@@ -64,6 +68,14 @@ import {
   livemap_document_identity_overlay_for,
   type LiveMapDocumentIdentityEffect,
 } from "../livemap/livemap.document.identity.js";
+import {
+  LiveMapDocumentIdentityParticipantCollisionError,
+  livemap_document_identity_reservation_for,
+  register_livemap_document_identity_participant,
+  require_livemap_document_canonical_identity,
+  type LiveMapDocumentIdentityAppliedClaim,
+  type LiveMapDocumentIdentityCommitReservation,
+} from "../livemap/livemap.document.registration.js";
 import {
   append_document_path,
   document_path_effect_for_graph_operation,
@@ -151,6 +163,7 @@ export function reflect_document_in_runtime(
   let correspondenceEntriesChanged = 0;
   let identityEffectsConsumed = 0;
   let off: LiveMapDisposer | undefined;
+  let offIdentityParticipant: (() => void) | undefined;
 
   const fail = (failure: DocumentReflectError): void => {
     if (currentStatus === "failed" || currentStatus === "disposed") return;
@@ -159,6 +172,8 @@ export function reflect_document_in_runtime(
     const disposeObserver = off;
     off = undefined;
     disposeObserver?.();
+    offIdentityParticipant?.();
+    offIdentityParticipant = undefined;
   };
 
   const assert_delegation_ready = (registration: ProjectedRegistration): void => {
@@ -282,6 +297,8 @@ export function reflect_document_in_runtime(
     const disposeObserver = off;
     off = undefined;
     disposeObserver?.();
+    offIdentityParticipant?.();
+    offIdentityParticipant = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     byPath.clear();
     byQuid.clear();
@@ -332,6 +349,10 @@ export function reflect_document_in_runtime(
       canonicalPath: path,
       canonicalTarget,
       ...(persistedQuid === undefined ? {} : { persistedQuid }),
+      requireCanonicalIdentity: () => require_livemap_document_canonical_identity(
+        map.document,
+        registration.canonicalTarget,
+      ),
       delegateAttrs: (mutation) => delegate_attrs(registration, mutation),
       delegateText: (mutation) => delegate_text(registration, mutation),
       delegateEmpty: () => delegate_empty(registration),
@@ -380,6 +401,162 @@ export function reflect_document_in_runtime(
     byQuid.clear();
     walk(tree.node, []);
     wholeCorrespondenceBuilds += 1;
+  };
+
+  const refresh_registration_at_path = (path: LiveMapDocumentPath): void => {
+    const prior = byPath.get(path_key(path));
+    if (prior === undefined) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+        "Canonical identity registration has no exact projected correspondence.",
+      );
+    }
+    unregister_document_binding_node(prior.node, owner);
+    registrations = registrations.filter((registration) => registration !== prior);
+    byPath.delete(path_key(path));
+    if (prior.persistedQuid !== undefined) byQuid.delete(prior.persistedQuid);
+    register(prior.node, path);
+  };
+
+  const preflight_identity_operations = (
+    operations: readonly LiveMapGraphOp[],
+  ): LiveMapDocumentIdentityCommitReservation => {
+    type Pending = { registration: ProjectedRegistration; path: LiveMapDocumentPath };
+    type Claim = {
+      registration: ProjectedRegistration;
+      node: HsonNode;
+      quid: string;
+      path: LiveMapDocumentPath | undefined;
+      reservation: SuppliedLiveTreeQuidReservation;
+    };
+    let pending: Pending[] = registrations.map((registration) => ({
+      registration,
+      path: registration.canonicalPath,
+    }));
+    const claims: Claim[] = [];
+
+    try {
+      for (const operation of operations) {
+        if (operation.op === "ensure-quid") {
+          const pendingTarget = pending.find((entry) => document_path_equal(entry.path, operation.target.path));
+          if (pendingTarget === undefined) {
+            throw new DocumentReflectError(
+              DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+              "Canonical identity registration target has no exact projected correspondence.",
+            );
+          }
+          validate_bound_registration(pendingTarget.registration);
+          const activeCollision = runtime.quidToNode.get(operation.quid);
+          const pendingCollision = runtime.pendingQuidClaims.get(operation.quid);
+          if ((activeCollision !== undefined && activeCollision !== pendingTarget.registration.node)
+            || (pendingCollision !== undefined && pendingCollision !== pendingTarget.registration.node)) {
+            throw new LiveMapDocumentIdentityParticipantCollisionError(
+              "Canonical QUID candidate collides in the selected LiveTree runtime.",
+            );
+          }
+          let runtimeReservation: SuppliedLiveTreeQuidReservation;
+          try {
+            runtimeReservation = preflight_supplied_livetree_quid(
+              pendingTarget.registration.node,
+              operation.quid,
+              runtime,
+            );
+          } catch (cause) {
+            throw new DocumentReflectError(
+              DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+              "Projected node cannot accept the supplied canonical QUID.",
+              cause,
+            );
+          }
+          claims.push({
+            registration: pendingTarget.registration,
+            node: pendingTarget.registration.node,
+            quid: operation.quid,
+            path: pendingTarget.path,
+            reservation: runtimeReservation,
+          });
+          continue;
+        }
+
+        const effect = document_path_effect_for_graph_operation(operation);
+        if (effect === undefined) continue;
+        if (effect.kind === "replace-root") {
+          throw new DocumentReflectError(
+            DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+            "Identity registration cannot compose with root replacement.",
+          );
+        }
+        pending = pending.flatMap((entry) => {
+          const transformed = transform_document_path(entry.path, effect);
+          return transformed.kind === "retired"
+            ? []
+            : transformed.kind === "invalid"
+              ? (() => { throw new DocumentReflectError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason); })()
+              : [{ registration: entry.registration, path: transformed.path }];
+        });
+        for (const claim of claims) {
+          if (claim.path === undefined) continue;
+          const transformed = transform_document_path(claim.path, effect);
+          if (transformed.kind === "invalid") {
+            throw new DocumentReflectError(DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, transformed.reason);
+          }
+          claim.path = transformed.kind === "retired" ? undefined : transformed.path;
+        }
+      }
+    } catch (cause) {
+      for (const claim of claims) claim.reservation.release();
+      throw cause;
+    }
+
+    let applied = false;
+    const appliedClaims: LiveMapDocumentIdentityAppliedClaim[] = [];
+    const claimed: Claim[] = [];
+    return Object.freeze({
+      get applied() { return applied; },
+      apply(): readonly LiveMapDocumentIdentityAppliedClaim[] {
+        if (applied) return Object.freeze([...appliedClaims]);
+        try {
+          for (const claim of claims) {
+            if (claim.path === undefined) continue;
+            if (resolve_raw_node(tree.node, claim.path) !== claim.node) {
+              throw new DocumentReflectError(
+                DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+                "Preflighted identity target no longer resolves to the same exact projected node.",
+              );
+            }
+            claim.reservation.claim();
+            claimed.push(claim);
+            appliedClaims.push(Object.freeze({ path: claim.path, quid: claim.quid }));
+          }
+          applied = true;
+          return Object.freeze([...appliedClaims]);
+        } catch (cause) {
+          for (const claim of claimed.reverse()) claim.reservation.rollback();
+          throw cause;
+        }
+      },
+      release(): void {
+        for (const claim of claims) claim.reservation.release();
+      },
+    });
+  };
+
+  const verify_existing_identity = (path: LiveMapDocumentPath, quid: string): void => {
+    const registration = byPath.get(path_key(path));
+    if (registration === undefined || registration.persistedQuid !== quid) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Canonical identity is not registered to the expected projected correspondence.",
+      );
+    }
+    validate_bound_registration(registration);
+    if (runtime.quidToNode.get(quid) !== registration.node
+      || runtime.nodeToQuid.get(registration.node) !== quid) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Canonical identity disagrees with the selected LiveTree runtime registry.",
+      );
+    }
   };
 
   const consume_identity_effects = (
@@ -670,6 +847,14 @@ export function reflect_document_in_runtime(
     }
     if (!commit.changed || commit.ops.length === 0) return;
     consume_identity_effects(commit);
+    const hasIdentityRegistration = commit.ops.some((operation) => operation.op === "ensure-quid");
+    const identityReservation = livemap_document_identity_reservation_for(commit);
+    if (hasIdentityRegistration && identityReservation === undefined) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Canonical identity registration reached Reflection without local preflight evidence.",
+      );
+    }
     const replaceRoot = commit.ops.length === 1 && commit.ops[0]?.op === "replace-root"
       ? commit.ops[0]
       : undefined;
@@ -691,7 +876,8 @@ export function reflect_document_in_runtime(
         && operation.op !== "insert-content"
         && operation.op !== "remove-content"
         && operation.op !== "move-content"
-        && operation.op !== "replace-content"))) {
+        && operation.op !== "replace-content"
+        && operation.op !== "ensure-quid"))) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
         "Changed graph operation is unsupported by this document binding proof.",
@@ -716,16 +902,23 @@ export function reflect_document_in_runtime(
       );
       try {
         apply_document_structural_transaction(plan);
+        identityReservation?.apply();
       } catch (cause) {
         prune_removed_registrations(plan.finalNodes);
         throw cause;
       }
       reconcile_correspondence_incrementally(commit.ops);
+      for (const claim of identityReservation?.apply() ?? []) {
+        refresh_registration_at_path(claim.path);
+      }
       for (const registration of registrations) validate_bound_registration(registration);
       currentRevision = commit.rev;
       updatesApplied += 1;
       return;
     }
+
+    const appliedIdentityClaims = identityReservation?.apply() ?? Object.freeze([]);
+    for (const claim of appliedIdentityClaims) refresh_registration_at_path(claim.path);
 
     const planned = new Map<ProjectedRegistration, CanonicalPublicAttrs>();
     for (const operation of commit.ops) {
@@ -772,6 +965,10 @@ export function reflect_document_in_runtime(
   try {
     walk(tree.node, []);
     wholeCorrespondenceBuilds += 1;
+    offIdentityParticipant = register_livemap_document_identity_participant(map.document, Object.freeze({
+      preflight: preflight_identity_operations,
+      verifyExisting: verify_existing_identity,
+    }));
     off = map.commits.observe(on_observation);
     if (map.rev !== capturedRevision) {
       throw new DocumentReflectError(
@@ -783,6 +980,8 @@ export function reflect_document_in_runtime(
   } catch (cause) {
     off?.();
     off = undefined;
+    offIdentityParticipant?.();
+    offIdentityParticipant = undefined;
     for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
     ACTIVE_DOCUMENT_BINDINGS.delete(map);
     throw as_binding_error(cause, DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE, "Document binding initialization failed.");

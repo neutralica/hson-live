@@ -211,11 +211,14 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 | `replace-content` | HSON-node parent path; existing index | Old subtree at the slot is retired; siblings retain paths; replacement owns the slot | Exact canonical replacement is a no-op; invalid slot/content, identity, mode, path, or witness conflicts reject. |
 | `remove-content` | HSON-node parent path; existing index | Removed subtree retires; later siblings shift `-1` | A missing slot conflicts; a resulting document-mode change conflicts. |
 | `move-content` | HSON-node parent path; existing `from` and `to` | Moved subtree and descendants move to final index `to`; intervening siblings shift once | `from === to` is a no-op; malformed/out-of-range indexes conflict. |
+| `ensure-quid` | Eligible ordinary-element path; system-generated recorded QUID | Adds canonical `$_meta.quid` without structural path change | Existing same QUID is an operation-level no-op; malformed, colliding, ineligible, or different-existing claims reject. Replay never allocates. |
 | `replace-root` | No target; same document mode | Every old path retires and the supplied canonical root becomes authoritative | Exact root equality is a no-op at install; in replay it must be the sole operation and mode must match. |
 
 `move-content.to` is the final position after removal, not a pre-removal insertion boundary. Thus moving `1 -> 3` in `[a,b,c,d]` yields `[a,c,d,b]`, while `3 -> 1` yields `[a,d,b,c]`.
 
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
+
+`ensure-quid` is produced only by the internal LiveMap authority in response to exact linked identity demand. Candidate generation is outside replay and outside the canonical operation reducer. One changed registration advances the ordinary revision once and publishes through ordinary commit/history/feed observers; reuse publishes nothing. The operation is additive in current exact LiveHost graph transport because it preserves the established graph discriminants, path target, and recorded scalar value without changing the envelope version.
 
 ### Projected rename and move intent
 

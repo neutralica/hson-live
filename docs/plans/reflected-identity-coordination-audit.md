@@ -2,9 +2,9 @@
 
 Date: 2026-08-03
 
-Scope: corrected production/test audit plus Unit 10R-A implementation record for `hson-live`
+Scope: corrected production/test audit plus Unit 10R-A and Unit 10R-B implementation record for `hson-live`
 
-Decision status: Unit 10R-A implemented; authority-owned acquisition remains Unit 10R-B
+Decision status: Units 10R-A and 10R-B implemented; public active-epoch LiveMap handles remain deferred
 
 ## Audit baseline
 
@@ -31,6 +31,16 @@ The audit treats completed executable units as authoritative. In particular, the
 The ownership leak described below was corrected without adding acquisition. Reflection now uses linked construction and projection paths that bind exact nodes, preserve supplied canonical claims, and preserve absence. Linked wrapping and reverse DOM lookup use exact-object maps. Diagnostics and inline style no longer force private identity. QUID-dependent APIs return an existing supplied claim or reject with `LIVETREE_LINKED_IDENTITY_REQUIRED`; they never mint for a linked node.
 
 Standalone construction, projection, find, graft, `.quid`, CSS, and event ownership keep their established QUID behavior. No public map identity API, allocator, registration operation, runtime rekey, protocol change, or expanded eligibility was added.
+
+## Unit 10R-B implementation result
+
+Linked `.quid` and existing QUID-owned CSS, event, animation, binding, canvas, and resource paths now delegate through the exact active document registration. The internal map authority resolves its current canonical path, reuses an existing claim without publication, or securely allocates one candidate with bounded canonical/runtime collision retry. Reflection supplies the sole local preflight participant, reserves without publishing, and atomically claims the recorded value on the same exact projected HSON and DOM objects after canonical acceptance.
+
+The new `ensure-quid` graph operation is path-authoritative and ordinary revisioned canonical state. The sparse overlay derives one introduced claim, replay never allocates, and current LiveHost history/protocol/recovery/persistence shapes carry the operation additively without a version change. Multi-operation replay proves registration before/after move, registration before removal, multiple registrations, and failed-later-operation atomicity.
+
+QUID-free rendering, wrapping, traversal, diagnostics, inline style, and ordinary mutation remain QUID-free. Multi-result selector manager broadcasters are now lazy prototype getters so constructing a traversal result does not accidentally instantiate CSS identity ownership. No public `ensureIdentity`/`retain`, handle capability, raw setter, rekey, object/array eligibility, remote consensus, or cross-runtime identity coordination was added.
+
+Sections 1–13 below retain the original Unit 10R-A audit and prerequisite reasoning as historical evidence. Statements there phrased as “future Unit 10R-B” or “until Unit 10R-B” are resolved by the implementation result above; the ownership analysis and stop-condition rationale remain authoritative.
 
 ## 1. Executive verdict
 
@@ -439,11 +449,9 @@ After Unit 10R-B passes, the public handle portion of Unit 10 can choose the acq
 
 ## 14. Readiness verdict
 
-Current Unit 10R-A code is **not yet ready for the Unit 10 public handle implementation**, but the reason is now bounded: authority-owned allocation, registration commit, preflight, replay, and linked delegation remain absent. Linked construction and rendering no longer mutate identity metadata outside LiveMap authority.
+Units 10R-A and 10R-B are ready for the public Unit 10 active-epoch handle implementation. Linked construction and rendering do not mutate identity metadata outside LiveMap authority, and exact linked demand now closes allocation, preflight, canonical registration, replay, transport, and supplied runtime publication without a broad LiveTree redesign or rekey.
 
-It is ready for Unit 10R-B. Unit 10R-A proves that exact-object runtime maps, DOM maps, Unit 6 binding registration, sparse canonical overlay, and the path-authoritative reducer need no broad LiveTree redesign or runtime rekey.
-
-After Unit 10R-B, the reflected-map decision gate should resolve to safe local coordination:
+Unit 10R-B resolves the reflected-map decision gate to safe local coordination:
 
 ```text
 no private projection QUID

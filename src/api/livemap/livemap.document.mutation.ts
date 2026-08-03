@@ -1,7 +1,12 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { ELEM_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
-import { is_Node } from "../../core/node-guards.js";
+import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
+import {
+  assign_hson_node_quid,
+  is_persisted_quid,
+  read_hson_node_quid,
+} from "../../core/hson-node-quid.js";
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapAttrsMutationApi,
@@ -13,6 +18,7 @@ import type {
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
   LiveMapGraphInsertContentOp,
+  LiveMapGraphEnsureQuidOp,
   LiveMapGraphMoveContentOp,
   LiveMapGraphOp,
   LiveMapGraphRemoveAttrOp,
@@ -27,6 +33,7 @@ import {
   build_livemap_document_identity_overlay,
   LiveMapDocumentIdentityError,
   preserve_livemap_document_identity_at_path,
+  register_livemap_document_identity_at_path,
   reconcile_livemap_document_identity_overlay,
   type LiveMapDocumentIdentityEffect,
   type LiveMapDocumentIdentityOverlay,
@@ -531,6 +538,67 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
   };
 }
 
+/** Plan one recorded ensure-if-absent registration; allocation is owned elsewhere. @internal */
+export function prepare_ensure_document_quid(
+  inputRoot: HsonNode,
+  mode: DocumentLiveMapMode,
+  overlay: LiveMapDocumentIdentityOverlay,
+  targetInput: unknown,
+  quidInput: unknown,
+): PreparedDocumentMutation<LiveMapGraphEnsureQuidOp> {
+  const operationName = "ensure-quid";
+  if (!is_persisted_quid(quidInput)) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_IDENTITY",
+      operationName,
+      "recorded QUID is malformed",
+    );
+  }
+  const root = clone_live_root(inputRoot);
+  const preparedTarget = prepare_target(
+    root,
+    mode,
+    overlay,
+    targetInput,
+    operationName,
+    "commit",
+  );
+  if (!is_ordinary_element_node(preparedTarget.endpoint)) {
+    throw mutation_error(
+      "DOCUMENT_IDENTITY_INELIGIBLE",
+      operationName,
+      "target must be an eligible ordinary document element",
+    );
+  }
+  const existing = read_hson_node_quid(preparedTarget.endpoint);
+  if (existing !== undefined && existing !== quidInput) {
+    throw mutation_error(
+      "DOCUMENT_IDENTITY_DIFFERENT",
+      operationName,
+      "target already carries a different canonical QUID",
+    );
+  }
+
+  const operation: LiveMapGraphEnsureQuidOp = Object.freeze({
+    domain: "graph",
+    op: operationName,
+    target: preparedTarget.target,
+    quid: quidInput,
+  });
+  if (existing === quidInput) {
+    return prepare_finished_mutation(mode, root, overlay, operation, operationName);
+  }
+  if (overlay.pathForQuid(quidInput) !== undefined) {
+    throw mutation_error(
+      "DOCUMENT_IDENTITY_COLLISION",
+      operationName,
+      "recorded QUID collides with another canonical node",
+    );
+  }
+  assign_hson_node_quid(preparedTarget.endpoint, quidInput);
+  return prepare_finished_mutation(mode, root, overlay, operation, operationName);
+}
+
 function reconcile_operation_identity(
   overlay: LiveMapDocumentIdentityOverlay,
   operation: LiveMapGraphOp,
@@ -543,6 +611,13 @@ function reconcile_operation_identity(
   }
   if (operation.op === "set-attr" || operation.op === "remove-attr" || operation.op === "replace-attrs") {
     return preserve_livemap_document_identity_at_path(overlay, operation.target.path);
+  }
+  if (operation.op === "ensure-quid") {
+    return register_livemap_document_identity_at_path(
+      overlay,
+      operation.quid,
+      operation.target.path,
+    );
   }
   const effect = document_path_effect_for_graph_operation(operation);
   if (effect === undefined || effect.kind === "replace-root") {
@@ -635,6 +710,10 @@ function prepare_graph_operation(
   if (input.op === "move-content") {
     must_exact_keys(input, ["domain", "op", "target", "from", "to"], input.op);
     return prepare_move_document_content(root, mode, overlay, input.target, input.from, input.to, targetAuthority);
+  }
+  if (input.op === "ensure-quid") {
+    must_exact_keys(input, ["domain", "op", "target", "quid"], input.op);
+    return prepare_ensure_document_quid(root, mode, overlay, input.target, input.quid);
   }
   throw mutation_error("INVALID_DOCUMENT_REPLACEMENT", "replace-content", `unsupported graph operation ${JSON.stringify(input.op)}`);
 }

@@ -54,6 +54,7 @@ import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root 
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
 import type { LiveMapDocumentReplayController, PreparedDocumentReplay } from "./livemap.document.replay.js";
+import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   LiveMapTransitionError,
   make_livemap_transition_controller,
@@ -641,6 +642,7 @@ function make_livemap_core_from_owned_root(
           rev,
           ops: Object.freeze([candidate.operation]),
         });
+      register_livemap_document_identity_candidate_commit(candidate, commit);
       if (commit.changed) register_livemap_document_identity_effects(commit, candidate.identityEffects);
       const transition = prepare_document_transition(
         owned.root,
