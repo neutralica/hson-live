@@ -1030,10 +1030,12 @@ check("cloneBranch keeps fresh identity semantics independently of Element inges
   });
 });
 
-check("VSN eligibility and validated raw HsonNode ingress remain unchanged", () => {
+check("VSN eligibility expands only to semantic projected containers", () => {
   const cleanVsn: HsonNode = { $_tag: "_hson_future", $_content: [] };
   assert.equal(read_hson_node_quid(cleanVsn), undefined);
   assert.throws(() => ensure_quid(cleanVsn), /ineligible/i);
+  assert.equal(read_hson_node_quid(hsonTransform.fromHson(`<@${Q5}>`).toNode()), Q5);
+  assert.equal(read_hson_node_quid(hsonTransform.fromHson(`«@${Q5}»`).toNode()), Q5);
 
   const validRaw = document_root(element("main", Q6));
   assert.equal(

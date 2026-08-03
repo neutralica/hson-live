@@ -16,6 +16,7 @@ export type {
   LiveMap,
   LiveMapPathHandle,
   LiveMapProxy,
+  LiveMapProjectedIdentityHandle,
   LivePath,
   LivePathPart,
 } from "../../types/livemap.types.js";

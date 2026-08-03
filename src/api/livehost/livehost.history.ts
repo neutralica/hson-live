@@ -5,6 +5,7 @@ import type {
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapGraphOp,
+  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapOp,
   LivePath,
 } from "../../types/livemap.types.js";
@@ -196,7 +197,13 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
   throw new Error("LiveHost canonical commit operation kind is invalid.");
 }
 
-function canonical_graph_op(op: LiveMapGraphOp): LiveHostCanonicalOp {
+function is_projected_ensure_quid_op(
+  op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp,
+): op is LiveMapProjectedGraphEnsureQuidOp {
+  return op.op === "ensure-quid" && "projected" in op.target && op.target.projected === true;
+}
+
+function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp): LiveHostCanonicalOp {
   if (op.op === "replace-root") {
     return Object.freeze({
       domain: "graph",
@@ -205,73 +212,82 @@ function canonical_graph_op(op: LiveMapGraphOp): LiveHostCanonicalOp {
       root: encode_livehost_graph_content(clone_live_root(op.root)),
     });
   }
+  if (is_projected_ensure_quid_op(op)) {
+    return Object.freeze({
+      domain: "graph",
+      op: "ensure-quid",
+      target: Object.freeze({ kind: "path", path: must_path(op.target.path), projected: true }),
+      quid: op.quid,
+    });
+  }
+  const documentOp: LiveMapGraphOp = op;
   const target = Object.freeze({
     kind: "path" as const,
-    path: validate_document_path(op.target.path),
-    ...(op.target.witness === undefined
+    path: validate_document_path(documentOp.target.path),
+    ...(documentOp.target.witness === undefined
       ? {}
-      : { witness: Object.freeze({ quid: op.target.witness.quid }) }),
+      : { witness: Object.freeze({ quid: documentOp.target.witness.quid }) }),
   });
-  if (op.op === "set-attr") {
+  if (documentOp.op === "set-attr") {
     return Object.freeze({
       domain: "graph",
       op: "set-attr",
       target,
-      name: op.name,
-      value: clone_node(op.value),
+      name: documentOp.name,
+      value: clone_node(documentOp.value),
     });
   }
-  if (op.op === "remove-attr") {
-    return Object.freeze({ domain: "graph", op: "remove-attr", target, name: op.name });
+  if (documentOp.op === "remove-attr") {
+    return Object.freeze({ domain: "graph", op: "remove-attr", target, name: documentOp.name });
   }
-  if (op.op === "replace-attrs") {
+  if (documentOp.op === "replace-attrs") {
     return Object.freeze({
       domain: "graph",
       op: "replace-attrs",
       target,
-      attrs: clone_node(op.attrs),
+      attrs: clone_node(documentOp.attrs),
     });
   }
-  if (op.op === "ensure-quid") {
+  if (documentOp.op === "ensure-quid") {
     return Object.freeze({
       domain: "graph",
       op: "ensure-quid",
       target,
-      quid: op.quid,
+      quid: documentOp.quid,
     });
   }
-  if (op.op === "replace-content") {
+  if (documentOp.op === "replace-content") {
     return Object.freeze({
       domain: "graph",
       op: "replace-content",
       target,
-      index: op.index,
+      index: documentOp.index,
       replacement: encode_livehost_graph_content(
-        is_Node(op.replacement) ? clone_live_root(op.replacement) : op.replacement,
+        is_Node(documentOp.replacement) ? clone_live_root(documentOp.replacement) : documentOp.replacement,
       ),
     });
   }
-  if (op.op === "insert-content") {
+  if (documentOp.op === "insert-content") {
     return Object.freeze({
       domain: "graph",
       op: "insert-content",
       target,
-      index: op.index,
+      index: documentOp.index,
       content: encode_livehost_graph_content(
-        is_Node(op.content) ? clone_live_root(op.content) : op.content,
+        is_Node(documentOp.content) ? clone_live_root(documentOp.content) : documentOp.content,
       ),
     });
   }
-  if (op.op === "remove-content") {
-    return Object.freeze({ domain: "graph", op: "remove-content", target, index: op.index });
+  if (documentOp.op === "remove-content") {
+    return Object.freeze({ domain: "graph", op: "remove-content", target, index: documentOp.index });
   }
-  if (op.op === "move-content") {
+  if (documentOp.op === "move-content") {
     return Object.freeze({
       domain: "graph",
       op: "move-content",
       target,
-      from: op.from,
-      to: op.to,
+      from: documentOp.from,
+      to: documentOp.to,
     });
   }
   throw new Error("LiveHost canonical graph operation discriminant is invalid.");
@@ -301,7 +317,13 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     throw new Error("LiveHost canonical changed commit must contain operations.");
   }
   const documentMode = map.mode === "element" || map.mode === "fragment";
-  if (commit.ops.some((operation) => ("domain" in operation) !== documentMode)) {
+  const projectedIdentityOnly = !documentMode && commit.ops.every((operation) => (
+    "domain" in operation
+    && operation.op === "ensure-quid"
+    && "projected" in operation.target
+    && operation.target.projected === true
+  ));
+  if (commit.ops.some((operation) => ("domain" in operation) !== documentMode && !projectedIdentityOnly)) {
     throw new Error(`LiveHost canonical commit operation domain is incompatible with ${map.mode}.`);
   }
   if (documentMode && commit.ops.some((operation) =>
@@ -310,7 +332,7 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     && operation.mode !== map.mode)) {
     throw new Error(`LiveHost canonical root replacement is incompatible with ${map.mode}.`);
   }
-  if (!documentMode && (
+  if (!documentMode && !projectedIdentityOnly && (
     commit.format !== "structural-json"
     || commit.formatVersion !== 1
     || typeof commit.payload !== "string"
@@ -326,7 +348,7 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     mode: map.mode,
     ops: Object.freeze(commit.ops.map((operation) =>
       "domain" in operation ? canonical_graph_op(operation) : canonical_op(operation))),
-    ...(documentMode ? {} : {
+    ...(documentMode || projectedIdentityOnly ? {} : {
       format: "structural-json" as const,
       formatVersion: 1 as const,
       payload: commit.payload as string,

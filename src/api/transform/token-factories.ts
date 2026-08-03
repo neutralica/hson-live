@@ -9,8 +9,14 @@ export const CREATE_OPEN_TOKEN = (tag: string, rawAttrs: RawAttr[], pos: Positio
 export const CREATE_END_TOKEN = (close: CloseKind, pos: Position): TokenClose =>
   ({ kind: TOKEN_KIND.CLOSE, close, pos });
 
-export const CREATE_ARR_OPEN_TOKEN = (variant: ArraySymbol, pos: Position): TokenArrayOpen =>
-  ({ kind: TOKEN_KIND.ARR_OPEN, symbol: variant, pos });
+export const CREATE_ARR_OPEN_TOKEN = (
+  variant: ArraySymbol,
+  pos: Position,
+  quid?: TokenArrayOpen["quid"],
+): TokenArrayOpen =>
+  (quid
+    ? { kind: TOKEN_KIND.ARR_OPEN, symbol: variant, quid, pos }
+    : { kind: TOKEN_KIND.ARR_OPEN, symbol: variant, pos });
 
 export const CREATE_ARR_CLOSE_TOKEN = (variant: ArraySymbol, pos: Position): TokenArrayClose =>
   ({ kind: TOKEN_KIND.ARR_CLOSE, symbol: variant, pos });

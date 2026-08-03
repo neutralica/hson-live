@@ -2,7 +2,6 @@ import { ARR_TAG, ELEM_TAG, OBJ_TAG, ROOT_TAG } from "../../core/constants.js";
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
-import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import type { HsonNode } from "../../core/types.js";
 import type {
   ClassifiedLiveMap,
@@ -46,11 +45,16 @@ import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.
 import { capture_livemap_document } from "./livemap.document.capture.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
 import { make_livemap_document_identity_api } from "./livemap.document.identity-handle.js";
+import {
+  build_livemap_projected_identity_overlay,
+  type LiveMapProjectedIdentityOverlay,
+} from "./livemap.projected.identity.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
   mode: LiveMapRootMode;
   documentOverlay?: LiveMapDocumentIdentityOverlay;
+  projectedOverlay?: LiveMapProjectedIdentityOverlay;
 }>;
 
 /** Clone, validate, classify, and establish document identity before ownership. */
@@ -78,11 +82,9 @@ export function prepare_livemap_root(input: HsonNode): PreparedLiveMapRoot {
     };
   }
 
-  // Preserve canonical QUID validation for non-document maps without
-  // retaining any per-node identity structure.
-  scan_hson_node_quids(root);
+  const projectedOverlay = build_livemap_projected_identity_overlay(root);
   classify_live_root_mode(root);
-  return { root, mode };
+  return { root, mode, projectedOverlay };
 }
 
 /** Validate and classify one canonical LiveMap root without using JSON projection. */

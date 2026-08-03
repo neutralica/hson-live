@@ -1,7 +1,5 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import {
-  is_persisted_quid,
-  mint_hson_node_quid,
   read_hson_node_quid,
 } from "../../core/hson-node-quid.js";
 import type {
@@ -21,8 +19,13 @@ import {
   type LiveMapDocumentMutationController,
   type PreparedDocumentMutation,
 } from "./livemap.document.mutation.js";
+import {
+  allocate_livemap_quid,
+  LIVEMAP_QUID_MINT_RETRY_LIMIT,
+  set_livemap_quid_candidate_source_for_tests,
+} from "./livemap.quid-allocation.js";
 
-export const LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT = 32;
+export const LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT = LIVEMAP_QUID_MINT_RETRY_LIMIT;
 
 export type LiveMapDocumentIdentityAppliedClaim = Readonly<{
   path: LiveMapDocumentPath;
@@ -50,11 +53,8 @@ export class LiveMapDocumentIdentityParticipantCollisionError extends Error {
   }
 }
 
-type CandidateSource = () => string;
-
 const authorityForOwner = new WeakMap<object, LiveMapDocumentMutationController>();
 const participantForAuthority = new WeakMap<object, LiveMapDocumentIdentityParticipant>();
-const candidateSourceForAuthority = new WeakMap<object, CandidateSource>();
 const reservedForAuthority = new WeakMap<object, Set<string>>();
 const reservationForCandidate = new WeakMap<object, LiveMapDocumentIdentityCommitReservation>();
 const reservationForCommit = new WeakMap<LiveMapGraphCommit, LiveMapDocumentIdentityCommitReservation>();
@@ -92,11 +92,10 @@ export function register_livemap_document_identity_participant(
 /** Narrow deterministic allocator seam for authoritative tests only. @internal */
 export function set_livemap_document_quid_candidate_source_for_tests(
   owner: object,
-  source: CandidateSource | undefined,
+  source: (() => string) | undefined,
 ): void {
   const authority = require_authority(owner);
-  if (source === undefined) candidateSourceForAuthority.delete(authority);
-  else candidateSourceForAuthority.set(authority, source);
+  set_livemap_quid_candidate_source_for_tests(authority, source);
 }
 
 /** Authority-owned explicit acquisition for the public map-local capability. */
@@ -154,15 +153,13 @@ function acquire_livemap_document_canonical_identity(
     return existing;
   }
 
-  const source = candidateSourceForAuthority.get(authority) ?? mint_hson_node_quid;
   const reserved = reservedForAuthority.get(authority) ?? new Set<string>();
   reservedForAuthority.set(authority, reserved);
-  for (let attempt = 0; attempt < LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT; attempt += 1) {
-    const candidateQuid = source();
-    if (!is_persisted_quid(candidateQuid)
-      || reserved.has(candidateQuid)
-      || authority.overlay().pathForQuid(candidateQuid) !== undefined) continue;
-
+  const allocated = allocate_livemap_quid(
+    authority,
+    (candidateQuid) => reserved.has(candidateQuid)
+      || authority.overlay().pathForQuid(candidateQuid) !== undefined,
+    (candidateQuid) => {
     let prepared: PreparedDocumentMutation<LiveMapGraphEnsureQuidOp>;
     let reservation: LiveMapDocumentIdentityCommitReservation | undefined;
     try {
@@ -175,7 +172,7 @@ function acquire_livemap_document_canonical_identity(
       );
       reservation = participant?.preflight(Object.freeze([prepared.operation]));
     } catch (cause) {
-      if (cause instanceof LiveMapDocumentIdentityParticipantCollisionError) continue;
+      if (cause instanceof LiveMapDocumentIdentityParticipantCollisionError) return Object.freeze({ claimed: false });
       throw cause;
     }
 
@@ -196,12 +193,13 @@ function acquire_livemap_document_canonical_identity(
         );
       }
       participant?.verifyExisting(target.path, candidateQuid);
-      return candidateQuid;
+      return Object.freeze({ claimed: true, value: candidateQuid });
     } finally {
       reservation?.release();
       reserved.delete(candidateQuid);
     }
-  }
+  });
+  if (allocated !== undefined) return allocated;
   throw new LiveMapDocumentIdentityRegistrationError(
     "LIVEMAP_IDENTITY_ALLOCATOR_EXHAUSTED",
     `LiveMap could not allocate an available document QUID after ${LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT} secure attempts.`,

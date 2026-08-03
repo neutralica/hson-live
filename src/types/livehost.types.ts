@@ -11,6 +11,7 @@ import type {
   LiveMapDocumentCommitTarget,
   LiveMapDocumentTarget,
   LiveMapGraphOp,
+  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
   LiveMapCommit,
   LiveMapAuthority,
@@ -182,6 +183,8 @@ export type LiveHostEncodedGraphOp =
   | LiveHostEncodedGraphReplaceContentOp
   | LiveHostEncodedGraphInsertContentOp;
 
+export type LiveHostEncodedProjectedEnsureQuidOp = LiveMapProjectedGraphEnsureQuidOp;
+
 export type LiveHostCanonicalOp =
   | LiveHostCanonicalSetOp
   | LiveHostCanonicalDeleteOp
@@ -189,7 +192,8 @@ export type LiveHostCanonicalOp =
   | LiveHostCanonicalSpliceOp
   | LiveHostCanonicalRenameOp
   | LiveHostCanonicalMoveOp
-  | LiveHostEncodedGraphOp;
+  | LiveHostEncodedGraphOp
+  | LiveHostEncodedProjectedEnsureQuidOp;
 
 /** One immutable changed commit in an incarnation's authoritative stream. */
 export type LiveHostCanonicalCommit = Readonly<{

@@ -269,6 +269,7 @@ function map_from_snapshot(
         format: capture.format,
         formatVersion: capture.formatVersion,
         payload: capture.payload,
+        root: capture.root,
       }));
     } else if (is_document_map(map)) {
       const capture = decode_livehost_document_snapshot(snapshot);

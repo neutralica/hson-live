@@ -255,7 +255,9 @@ function verify_mode(name: string, authority: ReturnType<typeof create_livehost>
 }
 
 check("data-object bootstrap installs exact state and revision", () => {
-  verify_mode("data-object", create_livehost({ state: { value: 1 }, authority: "shared" }));
+  const authority = create_livehost({ state: { value: {} }, authority: "shared" });
+  authority.map.ensureIdentity(["value"]);
+  verify_mode("data-object", authority);
 });
 
 check("data-array bootstrap installs exact state and revision", () => {

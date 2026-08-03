@@ -61,6 +61,29 @@ export class LiveMapProjectedMutationError extends Error {
   }
 }
 
+export type LiveMapProjectedIdentityErrorCode =
+  | "PROJECTED_IDENTITY_TARGET_NOT_FOUND"
+  | "PROJECTED_IDENTITY_INELIGIBLE"
+  | "PROJECTED_IDENTITY_INVARIANT"
+  | "PROJECTED_IDENTITY_COLLISION"
+  | "PROJECTED_IDENTITY_ALLOCATOR_EXHAUSTED";
+
+/** Stable projected-container identity failure emitted before publication. */
+export class LiveMapProjectedIdentityError extends Error {
+  readonly path: LivePath;
+
+  constructor(
+    readonly code: LiveMapProjectedIdentityErrorCode,
+    path: LivePath,
+    readonly reason: string,
+    options?: ErrorOptions,
+  ) {
+    super(`Invalid LiveMap projected identity at ${format_live_path(path)}: ${reason}`, options);
+    this.name = "LiveMapProjectedIdentityError";
+    this.path = clone_live_path(path);
+  }
+}
+
 export class LiveMapSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
   readonly path: LivePath;

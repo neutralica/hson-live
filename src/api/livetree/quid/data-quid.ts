@@ -7,7 +7,6 @@ import { get_el_for_node } from '../utils/node-map-helpers.js';
 import { collect_subtree_nodes } from '../utils/subtree-traversal.js';
 import { record_livetree_materialization } from '../debug/materialization-profile.js';
 import {
-  assert_hson_node_quid_eligible,
   assign_hson_node_quid,
   collect_hson_node_quid_claims,
   HsonNodeQuidValidationError,
@@ -18,6 +17,7 @@ import {
   remove_hson_node_quid,
   type HsonNodeQuidClaim,
 } from '../../../core/hson-node-quid.js';
+import { is_ordinary_element_node } from '../../../core/node-guards.js';
 import {
   assert_graph_runtime_available,
   bind_graph_runtime,
@@ -53,6 +53,17 @@ function runtime_for_operation(n: HsonNode, runtime?: LiveTreeRuntime): LiveTree
   return runtime ?? runtime_for_node(n) ?? default_livetree_runtime();
 }
 
+/** LiveTree remains ordinary-element-only even though LiveMap data containers are canonically eligible. */
+function assert_livetree_quid_eligible(node: HsonNode, operation: string): void {
+  const eligible: boolean = is_ordinary_element_node(node);
+  if (eligible) return;
+  throw new HsonNodeQuidValidationError(
+    "INELIGIBLE_QUID",
+    `Cannot ${operation} QUID metadata on ineligible HSON structural node "${node.$_tag}".`,
+    { node, value: node.$_meta?.[HSON_META_QUID] },
+  );
+}
+
 function assert_quid_available(q: string, n: HsonNode, runtime: LiveTreeRuntime): void {
   const registered = runtime.quidToNode.get(q);
   if (!registered || registered === n) return;
@@ -82,6 +93,7 @@ function unique_incoming_claims(
   root: HsonNode,
 ): readonly HsonNodeQuidClaim[] {
   const claims = collect_hson_node_quid_claims(root);
+  for (const claim of claims) assert_livetree_quid_eligible(claim.node, "admit");
   try {
     index_unique_hson_node_quid_claims(claims);
   } catch (cause) {
@@ -124,7 +136,7 @@ export function admit_livetree_quid_graph(
   root: HsonNode,
   runtime: LiveTreeRuntime = runtime_for_operation(root),
 ): string {
-  assert_hson_node_quid_eligible(root, "admit");
+  assert_livetree_quid_eligible(root, "admit");
   const claims = preflight_livetree_quid_graph(root, runtime);
   const existingRootQuid = get_quid(root, runtime);
   const reserved = new Set(claims.map((claim) => claim.quid));
@@ -158,7 +170,7 @@ export function admit_livetree_quid_graph_preserving_absence(
   root: HsonNode,
   runtime: LiveTreeRuntime = runtime_for_operation(root),
 ): string | undefined {
-  assert_hson_node_quid_eligible(root, "admit linked");
+  assert_livetree_quid_eligible(root, "admit linked");
   const claims = preflight_livetree_quid_graph(root, runtime);
   for (const claim of claims) {
     runtime.quidToNode.set(claim.quid, claim.node);
@@ -181,7 +193,7 @@ export function register_supplied_livetree_quid(
     if (runtime_for_node(node) !== runtime) bind_graph_runtime(node, runtime);
     return undefined;
   }
-  assert_hson_node_quid_eligible(node, "register supplied");
+  assert_livetree_quid_eligible(node, "register supplied");
   assert_quid_available(q, node, runtime);
   if (runtime_for_node(node) !== runtime) bind_graph_runtime(node, runtime);
   const alreadyRegistered = runtime.quidToNode.get(q) === node
@@ -203,7 +215,7 @@ export function preflight_supplied_livetree_quid(
   runtime: LiveTreeRuntime = runtime_for_operation(node),
 ): SuppliedLiveTreeQuidReservation {
   if (!is_persisted_quid(quid)) throw new Error("Supplied canonical QUID is malformed.");
-  assert_hson_node_quid_eligible(node, "preflight supplied");
+  assert_livetree_quid_eligible(node, "preflight supplied");
   if (runtime.disposed) throw new Error("LiveTree runtime scope has been disposed.");
   if (runtime_for_node(node) !== runtime) {
     throw new Error("Supplied QUID target is not owned by the selected LiveTree runtime.");
@@ -292,11 +304,14 @@ export function get_quid(
   runtime: LiveTreeRuntime = runtime_for_operation(n),
 ): string | undefined {
   const q = read_hson_node_quid(n);
-  if (q !== undefined) return q;
+  if (q !== undefined) {
+    assert_livetree_quid_eligible(n, "read");
+    return q;
+  }
 
   const registeredQ = runtime.nodeToQuid.get(n);
   if (registeredQ === undefined) return undefined;
-  assert_hson_node_quid_eligible(n, "read");
+  assert_livetree_quid_eligible(n, "read");
   return registeredQ;
 }
 
@@ -323,7 +338,7 @@ export function ensure_quid(
   opts?: { persist?: boolean },
   runtime: LiveTreeRuntime = runtime_for_operation(n),
 ): string {
-  assert_hson_node_quid_eligible(n, "ensure");
+  assert_livetree_quid_eligible(n, "ensure");
   const persist = opts?.persist ?? true; // default true
 
   let q = get_quid(n, runtime);
@@ -357,7 +372,7 @@ export function get_node_by_quid(
 ): HsonNode | undefined {
   record_livetree_materialization("quidLookups");
   const node = runtime.quidToNode.get(q);
-  if (node !== undefined) assert_hson_node_quid_eligible(node, "resolve");
+  if (node !== undefined) assert_livetree_quid_eligible(node, "resolve");
   return node;
 }
 
@@ -382,7 +397,7 @@ export function reindex_quid(
   n: HsonNode,
   runtime: LiveTreeRuntime = runtime_for_operation(n),
 ): void {
-  assert_hson_node_quid_eligible(n, "reindex");
+  assert_livetree_quid_eligible(n, "reindex");
   const q = get_quid(n, runtime);
   if (!q) return;
 
@@ -427,7 +442,7 @@ export function drop_quid(
   const hasMetadataQuid = n.$_meta?.[HSON_META_QUID] !== undefined;
   const registryQuid = runtime.nodeToQuid.get(n);
   if (hasMetadataQuid || registryQuid !== undefined) {
-    assert_hson_node_quid_eligible(n, "drop");
+    assert_livetree_quid_eligible(n, "drop");
   }
   const metadataQuid = read_hson_node_quid(n);
 
@@ -503,7 +518,7 @@ export function remint_quid(
   opts?: { persist?: boolean; scrubMeta?: boolean },
   runtime: LiveTreeRuntime = runtime_for_operation(n),
 ): string {
-  assert_hson_node_quid_eligible(n, "remint");
+  assert_livetree_quid_eligible(n, "remint");
   const q = mint_available_quid(runtime);
 
   // Drop old identity ownership before claiming a new QUID for the same node.

@@ -214,8 +214,14 @@ function arrayItemNode(wrapper: HsonNode, ctx: SerializeContext): HsonNode {
 
 function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string {
   const pad = indent(ctx, depth);
+  if (node.$_attrs && Object.keys(node.$_attrs).length !== 0) {
+    _throw_transform_err("serialize-hson: _hson_arr may not carry $_attrs", "serialize_hson.emitArray");
+  }
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
+  const quid = meta?.[HSON_META_QUID];
+  const header = quid === undefined ? "«" : `«@${quid}`;
   const wrappers = node.$_content;
-  if (wrappers.length === 0) return `${pad}«»`;
+  if (wrappers.length === 0) return `${pad}${header}»`;
 
   const rendered = wrappers.map((wrapper) => {
     if (!is_Node(wrapper)) {
@@ -233,8 +239,8 @@ function emitArray(node: HsonNode, depth: number, ctx: SerializeContext): string
     );
   });
 
-  if (ctx.options.layout === "compact") return `«${rendered.join(",")}»`;
-  return `${pad}«\n${rendered.join(",\n")}\n${pad}»`;
+  if (ctx.options.layout === "compact") return `${header}${quid === undefined ? "" : " "}${rendered.join(",")}»`;
+  return `${pad}${header}\n${rendered.join(",\n")}\n${pad}»`;
 }
 
 function emitObjectMember(
@@ -304,7 +310,10 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
       "serialize_hson.emitObject",
     );
   }
-  if (node.$_content.length === 0) return `${pad}<>`;
+  const meta = effectiveMeta(node.$_tag, node.$_meta, ctx.options.noQuid);
+  const quid = meta?.[HSON_META_QUID];
+  const header = quid === undefined ? "<" : `<@${quid}`;
+  if (node.$_content.length === 0) return `${pad}${header}>`;
 
   if (
     node.$_content.length === 1
@@ -340,11 +349,11 @@ function emitObject(node: HsonNode, depth: number, ctx: SerializeContext): strin
 
   if (ctx.options.layout === "readable") {
     if (rendered.length === 1 && !rendered[0].includes("\n")) {
-      return `${pad}<${rendered[0].trimStart()}>`;
+      return `${pad}${header}${quid === undefined ? "" : " "}${rendered[0].trimStart()}>`;
     }
-    return `${pad}<\n${rendered.join("\n")}\n${pad}>`;
+    return `${pad}${header}\n${rendered.join("\n")}\n${pad}>`;
   }
-  return `<${rendered.join(" ")}>`;
+  return `${header}${quid === undefined ? "" : " "}${rendered.join(" ")}>`;
 }
 
 function emitElementCluster(

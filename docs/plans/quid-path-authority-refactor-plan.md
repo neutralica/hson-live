@@ -174,6 +174,10 @@ The durable records that cannot currently be interpreted after QUID removal are 
 
 ## 4. Document operation and path matrix
 
+> Historical audit snapshot: this matrix records the pre-refactor state used to
+> derive Units 1–5 and 11. The completed-unit sections below are authoritative
+> for current projected move, rename, and sparse identity behavior.
+
 ### Current staging contract
 
 Document paths are canonical numeric `$_content` paths, not `LivePath`. Local public document mutations currently emit only one operation, but replay accepts a multi-operation commit. During replay, later targets resolve against the staged graph produced by earlier operations ([`livemap.document.replay.ts`](../../src/api/livemap/livemap.document.replay.ts#L44)). `replace-root` must be the sole operation.
@@ -454,6 +458,10 @@ If a target is absent, duplicated, malformed, or the tail has a gap, stop. Requi
 
 ## 11. QUID eligibility and minting implications
 
+> Historical expansion gate, now satisfied by Unit 11. Current eligibility is
+> ordinary document elements plus semantic projected `_hson_obj` and
+> `_hson_arr` containers; LiveTree remains ordinary-element-only.
+
 ### Current hard-coded element eligibility
 
 - Core QUID eligibility is `is_ordinary_element_node` ([`hson-node-quid.ts`](../../src/core/hson-node-quid.ts#L83)).
@@ -465,7 +473,7 @@ If a target is absent, duplicated, malformed, or the tail has a gap, stop. Requi
 
 The exact view-state codec already serializes arbitrary node metadata bags, but canonical validation rejects QUIDs on structural VSNs. Serialization capability is therefore not proof of eligibility.
 
-### Future expansion gate
+### Expansion gate satisfied by Unit 11
 
 Object and array nodes may become independently identity-bearing only after:
 
@@ -481,7 +489,7 @@ Primitive carriers should remain ineligible: they are values, not independently 
 
 ### Minting discipline
 
-LiveMap currently never mints, which is correct. Preserve the ordinary path. A future explicit API may conceptually be `retain(path)` or `ensureLiveIdentity(path)`, but its public shape is an unresolved API decision. It must:
+LiveMap mints only through explicit owner-authorized acquisition. The resolved public APIs are `document.ensureIdentity(...)` and projected `map.ensureIdentity(path)`; ordinary admission, reads, traversal, move, rename, and mutation remain non-minting. They must:
 
 - run through the active map overlay owner;
 - use collision-aware generation and no-reuse policy for that epoch;
@@ -695,6 +703,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 11 — Optional object/array QUID eligibility
 
+- **Status:** Complete. Semantic projected `_hson_obj` and `_hson_arr` values are eligible only through explicit `map.ensureIdentity(path)` acquisition. Primitive/scalar carriers, property wrappers, and array-item wrappers remain ineligible.
 - **Goal:** Expand the single QUID concept only for independently retained object/array nodes after semantics are proven.
 - **Production ownership:** metadata registry, core validators, transforms, overlay, handle API, DOM guards.
 - **Public/API effect:** New valid metadata placements; potentially observable canonical format expansion.
@@ -703,6 +712,9 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Canonical graph shape changes unexpectedly, wrappers/primitives become eligible accidentally, or operation identity remains ambiguous.
 - **Dependency:** Units 2, 4, 7, 10.
 - **Suggested commit direction:** `feat(identity): admit retained object and array nodes`.
+- **Implemented boundary:** Projected maps own a mode-specific sparse QUID/path overlay with no node pointers. The Unit 2 rename/move operations, splice, delete, set, and replace derive overlay effects without structural-equality inference or ordinary-operation minting. A parallel `LiveMapProjectedIdentityHandle` preserves the document handle lifecycle while returning detached projected values. Document and projected registration share `ensure-quid` and one collision-aware map allocator; replay uses recorded bytes.
+- **Transport closure:** Durable projected captures include the exact canonical root. Additive anonymous HSON object/array QUID headers preserve metadata through LiveHost snapshot, bootstrap, recovery, and client restore without changing the QUID encoding or protocol version. Projected feeds, links, selectors, stores, and schemas continue to observe only the user value.
+- **Executable result:** Three focused launchers add 22 acquisition, 23 rename/move/lifecycle, and 25 closure/propagation checks. A 2,000-row QUID-free fixture retains zero claims, and sparse reconciliation visits only the one registered entry in the focused accounting proof.
 
 ### Unit 12 — Million-node and namespace proof
 
@@ -712,7 +724,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Compatibility effect:** Internal performance only.
 - **Tests:** all conceptual cases in section 12 across Node/browser/worker where practical; deterministic allocator injection only for tests.
 - **Stop conditions:** Any identity structure is `O(N)` for zero-QUID maps, ordinary mutation mints, or allocator reset can revive stale handles in one epoch.
-- **Dependency:** Units 3–5; Unit 11 cases optional if eligibility is deferred.
+- **Dependency:** Units 3–5 and the completed Unit 11 projected-container cases.
 - **Suggested commit direction:** `perf(livemap): prove sparse identity at million-node scale`.
 
 ### Unit 13 — Encoding selection and migration
@@ -723,7 +735,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Compatibility effect:** Major or explicitly versioned compatibility change; fixture/fingerprint migration.
 - **Tests:** collision retry/no-reuse, old/new decode policy, browser selectors, workers, mirrors, all exact widths/alphabet.
 - **Stop conditions:** Any unchecked live allocator remains, retained persisted v1 history is not migrated, or namespace/no-reuse ownership is ambiguous.
-- **Dependency:** Units 0–10 and 12; Unit 11 is optional.
+- **Dependency:** Units 0–12, including completed Unit 11 eligibility.
 - **Suggested commit direction:** `refactor(identity): shorten checked epoch-scoped QUIDs`.
 
 The first implementation target is Unit 0, followed by Unit 1. Encoding work must not be combined with them.

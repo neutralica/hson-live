@@ -156,8 +156,8 @@ check("secure minting uses exactly ten bytes, stays lowercase, and fails without
   });
 });
 
-check("all current and future-prefix VSNs are cleanly readable but reject mutation", () => {
-  for (const tag of [...EVERY_VSN, "_hson_future"]) {
+check("only semantic projected containers expand the established VSN eligibility boundary", () => {
+  for (const tag of [...EVERY_VSN.filter((tag) => tag !== "_hson_obj" && tag !== "_hson_arr"), "_hson_future"]) {
     const value = node(tag, [], tag === "_hson_ii" ? { [HSON_META_INDEX]: "0" } : undefined);
     const before = structuredClone(value);
     assert.equal(read_hson_node_quid(value), undefined);
@@ -176,10 +176,18 @@ check("all current and future-prefix VSNs are cleanly readable but reject mutati
       assert.deepEqual(value, before);
     }
   }
+  for (const value of [node("_hson_obj"), node("_hson_arr")]) {
+    assert.equal(assign_hson_node_quid(value, q(1000)), q(1000));
+    assert.equal(remove_hson_node_quid(value), q(1000));
+  }
+  const transparent = node("_hson_obj", [node("_hson_val", [true])]);
+  assert.throws(() => assign_hson_node_quid(transparent, q(1001)), (cause) => (
+    cause instanceof HsonNodeQuidValidationError && cause.code === "INELIGIBLE_QUID"
+  ));
 });
 
-check("QUID-bearing VSN metadata is rejected and never repaired or relocated", () => {
-  for (const [index, tag] of [...EVERY_VSN, "_hson_future"].entries()) {
+check("QUID-bearing ineligible VSN metadata is rejected while semantic containers preserve it", () => {
+  for (const [index, tag] of [...EVERY_VSN.filter((tag) => tag !== "_hson_obj" && tag !== "_hson_arr"), "_hson_future"].entries()) {
     const persisted = q(1100 + index);
     const value = node(tag, [], { [HSON_META_QUID]: persisted });
     for (const operation of [
@@ -196,6 +204,10 @@ check("QUID-bearing VSN metadata is rejected and never repaired or relocated", (
       );
       assert.equal(value.$_meta?.[HSON_META_QUID], persisted);
     }
+  }
+  for (const [index, tag] of ["_hson_obj", "_hson_arr"].entries()) {
+    const persisted = q(1300 + index);
+    assert.equal(read_hson_node_quid(node(tag, [], { [HSON_META_QUID]: persisted })), persisted);
   }
 });
 

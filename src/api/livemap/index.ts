@@ -9,6 +9,7 @@ export {
   LiveMapDocumentMutationError,
   LiveMapDocumentStagingError,
   LiveMapProjectedMutationError,
+  LiveMapProjectedIdentityError,
   LiveMapSchemaError,
 } from "./livemap.error.js";
 export {
@@ -49,6 +50,7 @@ export type {
   LiveMapDocumentInstallFailureCode,
   LiveMapDocumentMutationErrorCode,
   LiveMapProjectedMutationErrorCode,
+  LiveMapProjectedIdentityErrorCode,
 } from "./livemap.error.js";
 export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js";
 export type * from "../../types/livemap.types.js";

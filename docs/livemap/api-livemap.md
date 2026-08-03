@@ -450,6 +450,47 @@ Links are one-way and the disposer stops propagation. There is no general
 bidirectional loop-prevention contract, so do not connect contradictory links
 in both directions. Target schema validation can reject propagation atomically.
 
+## Projected container identity
+
+Projected data maps provide one explicit identity-following capability for
+semantic object and array values:
+
+```ts
+const handle = map.ensureIdentity(["rows", 1]);
+
+handle.active; // exact owner epoch still contains this container
+handle.path(); // current frozen projected path, or undefined
+handle.snap(); // detached current object/array value, or undefined
+handle.dispose(); // releases this handle only
+```
+
+`ensureIdentity(path)` is synchronous and path-only. It reuses existing valid
+metadata without a revision, or records one system-generated QUID through an
+ordinary `ensure-quid` commit and advances the ordinary revision once. Callers
+cannot provide the QUID. Root object/array values use `[]`; nested containers use
+ordinary `LivePath` keys and indexes. Primitives, object-property wrappers,
+array-item wrappers, missing paths, and document modes are ineligible.
+
+`LiveMapProjectedIdentityHandle` follows the exact container through object-key
+rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf
+mutation preserves it. Direct or ancestor deletion/replacement, structurally
+equal explicit replacement, whole-root replacement, durable restore, disposal,
+or owner-epoch replacement makes it inactive. An exact same-epoch
+capture/restore may retain continuity; copied, decoded, or foreign captures may
+not. Multiple handles can share a claim, and disposal never removes metadata.
+
+The QUID is canonical HSON metadata but is not a projected property, array item,
+enumerable key, or schema field. `snap()`, feeds, links, selectors, and stores see
+the same projected value before and after acquisition. Commit observers see the
+identity registration. HSON snapshots preserve object/array identity in
+anonymous container headers, while identity-stripped capture and `noQuid`
+intentionally omit it.
+
+`map.at(path)` remains a passive location: it follows whatever currently
+occupies that path and never mints merely because it is created, read, bound, or
+subscribed. Projected mode adds no `byQuid` or `fromQuid` constructor. Raw QUID
+bytes cannot recreate a handle or cross an owner/epoch boundary.
+
 ## Document LiveMaps
 
 Document modes deliberately do not expose projected `snap`/`set` APIs.
@@ -471,8 +512,8 @@ The API reuses existing valid QUID metadata as a no-op. Otherwise the LiveMap
 securely allocates a QUID, records it with one ordinary path-authoritative
 `ensure-quid` commit, advances the ordinary revision once, and reconciles the
 sparse overlay. It never assigns identity to unrelated nodes. Only ordinary
-elements are eligible; primitives, structural carriers, and projected
-object/array modes are rejected.
+elements are eligible for the document API; primitives, structural carriers,
+and projected data modes are rejected there.
 
 Handles follow content moves and insertion shifts and survive attribute
 changes. Removal or replacement without explicit same-QUID continuity makes
@@ -533,7 +574,8 @@ normalization, commits, revisions, feeds, subscriptions, links, and host
 authority. Physical child indexes count HSON-node children, not raw `$_content`
 slots. They also bypass sparse-overlay reconciliation, identity handles,
 Reflection, history, and persistence. Do not use `meta()` as identity
-registration; use `document.ensureIdentity`. Do not use node handles for
+registration; use projected `map.ensureIdentity(path)` or
+`document.ensureIdentity(...)` as appropriate. Do not use node handles for
 ordinary state changes or hosted canonical mutations.
 
 ## LiveMap and SSR
@@ -559,10 +601,11 @@ transition and one commit.
 
 LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the
 DOM projection API and has different runtime constraints. A server-created data
-capture can be transferred as JSON and restored into a compatible map. Document
-captures contain HSON nodes; LiveHost recovery serializes their durable
-structural form as HSON or negotiated view-state. Neither wire format carries
-the local same-epoch capability.
+capture includes exact structural transport, a detached projected compatibility
+value, and a detached canonical root so hidden identity metadata can be durably
+restored. Document captures likewise contain HSON nodes; LiveHost recovery
+serializes durable structural form as HSON or negotiated view-state. Neither
+wire format carries the local same-epoch capability.
 
 Passing browser `Element` objects belongs to other hson/LiveTree construction
 paths and is unavailable in Node/Worker execution. Synchronization coordination
@@ -574,7 +617,9 @@ product contract.
 Most invalid projected operations throw before mutation. Schema failures use the
 internal `LiveMapSchemaError` class (not package-root exported) but expose
 structured validation information through schema validation APIs. Revision
-conflicts throw a revision error internally. Public document errors include
+conflicts throw a revision error internally. Projected identity acquisition
+reports `LiveMapProjectedIdentityError` with a stable reason code and path.
+Public document errors include
 `LiveMapDocumentInstallError`, `LiveMapDocumentIdentityProvenanceError`,
 `LiveMapDocumentMutationError`, and `LiveMapDocumentAttributeNotFoundError`,
 with exported provenance, install, and mutation reason codes.

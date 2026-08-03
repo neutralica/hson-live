@@ -50,6 +50,7 @@ import type {
   LiveMapDocumentTarget,
   LiveMapGraphCommit,
   LiveMapGraphOp,
+  LiveMapProjectedGraphEnsureQuidOp,
   LiveMapRootMode,
   LivePath,
 } from "../../types/livemap.types.js";
@@ -68,7 +69,9 @@ import { validate_document_path } from "../livemap/livemap.document.path.js";
 import { LiveMapReplayInputError } from "../livemap/livemap.error.js";
 
 type WithDecodedDocumentWireTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
-  ? Omit<TOperation, "target"> & Readonly<{ target: LiveHostDocumentWireTarget }>
+  ? TOperation["target"] extends Readonly<{ projected: true }>
+    ? TOperation
+    : Omit<TOperation, "target"> & Readonly<{ target: LiveHostDocumentWireTarget }>
   : TOperation;
 
 export type LiveHostDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Readonly<{
@@ -76,6 +79,15 @@ export type LiveHostDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Re
 }>;
 
 type LiveHostCompatibilityCanonicalOp = WithDecodedDocumentWireTarget<LiveHostCanonicalOp>;
+
+function is_projected_identity_operation(
+  operation: LiveHostCompatibilityCanonicalOp,
+): operation is LiveMapProjectedGraphEnsureQuidOp {
+  return "domain" in operation
+    && operation.op === "ensure-quid"
+    && "projected" in operation.target
+    && operation.target.projected === true;
+}
 
 /** Explicit legacy wire input retained only until exact-base lowering. */
 export type LiveHostCanonicalCommitCompatibility = Omit<LiveHostCanonicalCommit, "ops"> & Readonly<{
@@ -183,6 +195,25 @@ function decode_projected_canonical_op(value: unknown): LiveHostCanonicalOp | un
     return Object.freeze({ kind: "move", path, from: value.from, to: value.to, prev, next });
   }
   return undefined;
+}
+
+function decode_projected_identity_op(value: unknown): LiveHostCanonicalOp | undefined {
+  if (!is_record(value)
+    || value.domain !== "graph"
+    || value.op !== "ensure-quid"
+    || !has_exact_keys(value, ["domain", "op", "target", "quid"])
+    || !is_persisted_quid(value.quid)
+    || !is_record(value.target)
+    || !has_exact_keys(value.target, ["kind", "path", "projected"])
+    || value.target.kind !== "path"
+    || value.target.projected !== true
+    || !is_live_path(value.target.path)) return undefined;
+  return Object.freeze({
+    domain: "graph",
+    op: "ensure-quid",
+    target: Object.freeze({ kind: "path", path: Object.freeze([...value.target.path]), projected: true }),
+    quid: value.quid,
+  });
 }
 
 function is_nonnegative_safe_integer(value: unknown): value is number {
@@ -417,7 +448,9 @@ function decode_canonical_commit(
       ? allowLegacyQuid
         ? decode_graph_op(item, mode, true)
         : decode_graph_op(item, mode, false)
-      : decode_projected_canonical_op(item);
+      : is_record(item) && item.domain === "graph"
+        ? decode_projected_identity_op(item)
+        : decode_projected_canonical_op(item);
     if (!op) return undefined;
     ops.push(op);
   }
@@ -459,6 +492,9 @@ export function decode_livehost_document_commit(
   for (const operation of commit.ops) {
     if (!("domain" in operation)) {
       throw new Error("LiveHost document commit contains a projected operation.");
+    }
+    if (is_projected_identity_operation(operation)) {
+      throw new Error("LiveHost document commit contains a projected identity operation.");
     }
     if (operation.op === "replace-root") {
       const root = decode_livehost_graph_content(operation.root);

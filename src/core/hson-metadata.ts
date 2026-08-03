@@ -5,6 +5,8 @@ import {
   HSON_META_MARKUP_PREFIX,
   HSON_META_QUID,
   II_TAG,
+  OBJ_TAG,
+  ARR_TAG,
 } from "./constants.js";
 import { is_persisted_quid } from "./persisted-quid.js";
 import type { HsonMeta } from "./types.js";
@@ -12,7 +14,7 @@ import type { HsonMeta } from "./types.js";
 export type HsonMetadataKey = keyof HsonMeta;
 export type HsonMetadataValueMode = "valued" | "flag";
 export type HsonMetadataHsonProjection = "quid-sigil" | "array-order";
-export type HsonMetadataNodeKind = "ordinary-element" | "array-item-wrapper";
+export type HsonMetadataNodeKind = "ordinary-element" | "array-item-wrapper" | "projected-container";
 
 export type HsonMetadataDefinition = Readonly<{
   key: HsonMetadataKey;
@@ -23,8 +25,8 @@ export type HsonMetadataDefinition = Readonly<{
   validateValue(value: unknown): value is string;
 }>;
 
-const ORDINARY_ELEMENT_NODE_KINDS: readonly HsonMetadataNodeKind[] =
-  Object.freeze(["ordinary-element"]);
+const QUID_NODE_KINDS: readonly HsonMetadataNodeKind[] =
+  Object.freeze(["ordinary-element", "projected-container"]);
 const ARRAY_ITEM_WRAPPER_NODE_KINDS: readonly HsonMetadataNodeKind[] =
   Object.freeze(["array-item-wrapper"]);
 
@@ -32,7 +34,7 @@ const DEFINITIONS = {
   [HSON_META_QUID]: Object.freeze({
     key: HSON_META_QUID,
     markupName: `${HSON_META_MARKUP_PREFIX}${HSON_META_QUID}`,
-    allowedNodeKinds: ORDINARY_ELEMENT_NODE_KINDS,
+    allowedNodeKinds: QUID_NODE_KINDS,
     valueMode: "valued",
     hsonProjection: "quid-sigil",
     validateValue: (value: unknown): value is string =>
@@ -87,6 +89,7 @@ export function hson_metadata_candidate_key(
 
 function node_kind_for_tag(nodeTag: string): HsonMetadataNodeKind | undefined {
   if (nodeTag === II_TAG) return "array-item-wrapper";
+  if (nodeTag === OBJ_TAG || nodeTag === ARR_TAG) return "projected-container";
   if (!nodeTag.startsWith(HSON_SYS_PREFIX) && !EVERY_VSN.includes(nodeTag)) {
     return "ordinary-element";
   }

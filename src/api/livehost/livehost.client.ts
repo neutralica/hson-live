@@ -6,7 +6,9 @@ import type {
   LiveMap,
   LiveMapAuthority,
   LiveMapDocumentContent,
+  LiveMapGraphCommit,
   LiveMapOp,
+  LiveMapProjectedGraphEnsureQuidOp,
 } from "../../types/livemap.types.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
@@ -241,6 +243,31 @@ function local_ops(commit: LiveHostCanonicalCommitCompatibility): readonly LiveM
   });
 }
 
+function projected_identity_replay(
+  commit: LiveHostCanonicalCommitCompatibility,
+  prevRev: number,
+): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> | undefined {
+  const operations: LiveMapProjectedGraphEnsureQuidOp[] = [];
+  for (const op of commit.ops) {
+    if (!("domain" in op)
+      || op.op !== "ensure-quid"
+      || !("projected" in op.target)
+      || op.target.projected !== true) return undefined;
+    operations.push(Object.freeze({
+      domain: "graph",
+      op: "ensure-quid",
+      target: Object.freeze({ kind: "path", path: Object.freeze([...op.target.path]), projected: true }),
+      quid: op.quid,
+    }));
+  }
+  return Object.freeze({
+    changed: true,
+    prevRev,
+    rev: prevRev + 1,
+    ops: Object.freeze(operations),
+  });
+}
+
 function clone_action_payload(value: JsonValue): JsonValue {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) {
@@ -450,6 +477,8 @@ export function create_livehost_client<
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
         ? replay_livehost_document_commit_compat(map, commit)
+        : projected_identity_replay(commit, localRevBefore) !== undefined
+          ? map.replay(projected_identity_replay(commit, localRevBefore)!)
         : commit.format === "structural-json"
           && commit.formatVersion === 1
           && typeof commit.payload === "string"
@@ -522,6 +551,7 @@ export function create_livehost_client<
           format: capture.format,
           formatVersion: capture.formatVersion,
           payload: capture.payload,
+          root: capture.root,
         }));
         if (schema) map.schema.use(schema);
       } else if (is_document_live_map(map)) {

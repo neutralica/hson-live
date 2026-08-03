@@ -35,8 +35,6 @@ import {
   type LiveHostOutboundDocumentSnapshotEnvelope,
 } from "./livehost.document-snapshot.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
-import { projected_value_to_hson_root } from "../../core/projected-value-graph.js";
-import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 const DEFAULT_MAX_TAIL_COMMITS = 256;
@@ -383,8 +381,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               documentSnapshotEncoding,
             ));
           } else {
-            if (!("payload" in capture) || typeof capture.payload !== "string") {
-              throw new Error("LiveHost recovery snapshot has no exact projected payload.");
+            if (!("payload" in capture) || typeof capture.payload !== "string" || !("root" in capture) || !is_Node(capture.root)) {
+              throw new Error("LiveHost recovery snapshot has no exact projected graph.");
             }
             snapshotBody = Object.freeze({
               logicalMapId: stream.logicalMapId,
@@ -392,9 +390,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
               rev: capture.rev,
               mode: map.mode,
               hson: serialize_hson(
-                detach_hson_root_value(
-                  projected_value_to_hson_root(decode_projected_value_payload(capture.payload)),
-                ),
+                detach_hson_root_value(capture.root),
                 { noBreak: true },
               ),
             });

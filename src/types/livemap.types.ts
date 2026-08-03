@@ -108,6 +108,15 @@ export type LiveMapCoreSnap<TValue = JsonValue | undefined> = {
   (): TValue;
 };
 
+export type LiveMapCaptureIdentity = "same-epoch" | "preserve-metadata" | "strip";
+export type LiveMapCaptureOptions = Readonly<{ identity: LiveMapCaptureIdentity }>;
+export type LiveMapRestoreOptions = Readonly<{ identity?: LiveMapCaptureIdentity | "reject" }>;
+
+export type LiveMapCoreReplay = {
+  (input: LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
+  (input: LiveMapReplay): LiveMapCommit;
+};
+
 /**
  * Static value projection for a LivePath.
  *
@@ -262,13 +271,18 @@ export type LiveMapCore<
   debug: LiveMapDebugApi;
   readonly rev: number;
   /** Emit exact structural JSON plus a detached JavaScript compatibility view. */
-  capture: () => LiveMapCapture<TValue>;
+  capture: {
+    (): LiveMapCanonicalCapture<TValue>;
+    (options: LiveMapCaptureOptions): LiveMapCanonicalCapture<TValue>;
+  };
   /** Atomically restore exact-v1 state, or bounded legacy JavaScript-value state. */
-  restore: (capture: LiveMapCaptureInput<TValue>) => void;
+  restore: (capture: LiveMapCaptureInput<TValue>, options?: LiveMapRestoreOptions) => void;
   /** Apply exact-v1 state, or bounded legacy JavaScript-value state, at one base revision. */
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
   /** Replay an exact data commit/envelope, or bounded legacy projected operations. */
-  replay: (input: LiveMapReplay) => LiveMapCommit;
+  replay: LiveMapCoreReplay;
+  /** Explicitly retain exact identity for one current projected container. */
+  ensureIdentity: (path: LivePath) => LiveMapProjectedIdentityHandle;
 }>;
 
 /**
@@ -368,6 +382,14 @@ export type LiveMapDocumentIdentityHandle = Readonly<{
   dispose: () => void;
 }>;
 
+/** Opaque active-epoch capability for one projected object or array value. */
+export type LiveMapProjectedIdentityHandle<TValue extends JsonValue = JsonValue> = Readonly<{
+  readonly active: boolean;
+  path: () => LivePath | undefined;
+  snap: () => TValue | undefined;
+  dispose: () => void;
+}>;
+
 /** Optional same-epoch diagnostic evidence; never a routing address. */
 export type LiveMapDocumentTargetWitness = Readonly<{ quid: string }>;
 
@@ -376,6 +398,13 @@ export type LiveMapDocumentCommitTarget = Readonly<{
   kind: "path";
   path: LiveMapDocumentPath;
   witness?: LiveMapDocumentTargetWitness;
+}>;
+
+/** Projected-path target stored only by canonical identity registration. */
+export type LiveMapProjectedIdentityCommitTarget = Readonly<{
+  kind: "path";
+  path: LivePath;
+  projected: true;
 }>;
 
 /** @deprecated Compatibility name for the live request-target union. */
@@ -663,12 +692,16 @@ export type LiveMapGraphMoveContentOp = Readonly<{
 }>;
 
 /** Internal-authority registration of one supplied system QUID at a canonical path. */
-export type LiveMapGraphEnsureQuidOp = Readonly<{
+export type LiveMapGraphEnsureQuidOp<
+  TTarget extends LiveMapDocumentCommitTarget | LiveMapProjectedIdentityCommitTarget = LiveMapDocumentCommitTarget,
+> = Readonly<{
   domain: "graph";
   op: "ensure-quid";
-  target: LiveMapDocumentCommitTarget;
+  target: TTarget;
   quid: string;
 }>;
+
+export type LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphEnsureQuidOp<LiveMapProjectedIdentityCommitTarget>;
 
 /** Canonical graph-domain operations; distinct from projected JSON writes. */
 export type LiveMapGraphOp =
@@ -687,7 +720,7 @@ export type LiveMapOp<TDomain extends "data" | "graph" = "data"> =
   TDomain extends "graph" ? LiveMapGraphOp : LiveMapDataOp;
 
 /** Full shared operation family used by the generic commit envelope. */
-export type LiveMapAnyOp = LiveMapOp<"data" | "graph">;
+export type LiveMapAnyOp = LiveMapOp<"data" | "graph"> | LiveMapProjectedGraphEnsureQuidOp;
 
 /**
  * Normalized mutation record returned by Core.
@@ -712,7 +745,7 @@ export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
 }> & Partial<LiveMapStructuralJsonEnvelope>;
 
 /** Existing commit envelope specialized to graph-domain operations. */
-export type LiveMapGraphCommit<TOp extends LiveMapGraphOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
+export type LiveMapGraphCommit<TOp extends LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
 
 /** Why a canonical commit became visible on one LiveMap instance. */
 export type LiveMapCommitOrigin = "authoritative" | "replay";
@@ -1062,9 +1095,13 @@ export type LiveMapLegacyCapture<TValue = JsonValue | undefined> = Readonly<{
   value: TValue;
 }>;
 
-/** Exact capture plus the detached public JavaScript view retained for compatibility. */
+/** Exact transport plus the detached public JavaScript view retained for compatibility. */
 export type LiveMapCapture<TValue = JsonValue | undefined> =
   LiveMapExactCapture & LiveMapLegacyCapture<TValue>;
+
+/** Current canonical projected capture, additively retaining the detached exact graph. */
+export type LiveMapCanonicalCapture<TValue = JsonValue | undefined> =
+  LiveMapCapture<TValue> & Readonly<{ root: HsonNode }>;
 
 export type LiveMapCaptureInput<TValue = JsonValue | undefined> =
   | LiveMapExactCapture

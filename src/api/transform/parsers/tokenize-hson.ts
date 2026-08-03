@@ -142,7 +142,29 @@ class HsonScanner {
     this.skipTrivia();
     if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
-    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos));
+    let quid: { value: string; start: Position; end: Position } | undefined;
+    if (this.peek() === "@") {
+      const quidPos = this.position();
+      this.consumeExpected("@");
+      if (this.atEnd() || isHsonTrivia(this.peek()) || this.peek() === ">") {
+        this.fail(`missing persisted QUID value after "@"`, quidPos, "HSON_OBJECT_QUID_INVALID");
+      }
+      const value = this.scanBareToken();
+      if (!is_persisted_quid(value)) {
+        this.fail(`invalid persisted QUID "${value}"`, quidPos, "HSON_OBJECT_QUID_INVALID");
+      }
+      quid = { value, start: quidPos, end: this.previousPosition() };
+      const separated = this.skipTrivia();
+      if (this.peek() !== ">" && !separated) {
+        this.fail(
+          `required trivia is missing after persisted object QUID declaration`,
+          this.position(),
+          "HSON_REQUIRED_TRIVIA_MISSING",
+        );
+      }
+    }
+
+    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos, quid));
     if (this.peek() === ">") {
       const closePos = this.position();
       this.consumeExpected(">");
@@ -496,7 +518,29 @@ class HsonScanner {
     const symbol: ArraySymbol = opener === "«" ? ARR_SYMBOL.guillemet : ARR_SYMBOL.bracket;
     const openPos = this.position();
     this.consumeExpected(opener);
-    this.tokens.push(CREATE_ARR_OPEN_TOKEN(symbol, openPos));
+    this.skipTrivia();
+    let quid: { value: string; start: Position; end: Position } | undefined;
+    if (this.peek() === "@") {
+      const quidPos = this.position();
+      this.consumeExpected("@");
+      if (this.atEnd() || isHsonTrivia(this.peek()) || this.peek() === closer) {
+        this.fail(`missing persisted QUID value after "@"`, quidPos, "HSON_ARRAY_QUID_INVALID");
+      }
+      const value = this.scanBareToken();
+      if (!is_persisted_quid(value)) {
+        this.fail(`invalid persisted QUID "${value}"`, quidPos, "HSON_ARRAY_QUID_INVALID");
+      }
+      quid = { value, start: quidPos, end: this.previousPosition() };
+      const separated = this.skipTrivia();
+      if (this.peek() !== closer && !separated) {
+        this.fail(
+          `required trivia is missing after persisted array QUID declaration`,
+          this.position(),
+          "HSON_REQUIRED_TRIVIA_MISSING",
+        );
+      }
+    }
+    this.tokens.push(CREATE_ARR_OPEN_TOKEN(symbol, openPos, quid));
 
     let expectItem = true;
     let sawItem = false;

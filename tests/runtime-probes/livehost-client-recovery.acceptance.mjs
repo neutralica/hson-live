@@ -201,6 +201,15 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal(traced.find((event) => event.phase === "recovery.complete" && event.status === "success").details.finalRev, host.stream.headRev);
   const serializedTrace = JSON.stringify(traced);
   assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
+
+  const identityHost = hson.liveHost.create({ state: { container: [] }, logicalMapId: "map-identity-snapshot" });
+  identityHost.map.ensureIdentity(["container"]);
+  const identityPair = socket_pair();
+  const identityClient = attach(identityHost, identityPair, { recovery: { logicalMapId: identityHost.stream.logicalMapId } });
+  assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
+  const identityRev = identityClient.map.rev;
+  assert.equal(identityClient.map.ensureIdentity(["container"]).active, true);
+  assert.equal(identityClient.map.rev, identityRev);
 });
 
 await check("replay applies exact commits once and current emits no body", async () => {
@@ -245,6 +254,17 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(currentEvents.find((event) => event.phase === "recovery.plan").details.strategy, "already-current");
   assert.equal(currentEvents.some((event) => event.phase === "recovery.material"), false);
   assert.equal(currentEvents.find((event) => event.phase === "recovery.complete" && event.status === "success").details.outcome, "already-current");
+
+  const identityHost = hson.liveHost.create({ state: { container: {} }, logicalMapId: "map-identity-replay" });
+  const identityBase = identityHost.stream.headRev;
+  const identityMirror = hson.liveMap.fromJson(identityHost.map.snap());
+  identityHost.map.ensureIdentity(["container"]);
+  const identityPair = socket_pair();
+  const identityClient = attach(identityHost, identityPair, recovery_options(identityHost, identityMirror, identityBase));
+  assert.equal((await identityClient.recovery.recover()).strategy, "replay");
+  const identityRev = identityClient.map.rev;
+  assert.equal(identityClient.map.ensureIdentity(["container"]).active, true);
+  assert.equal(identityClient.map.rev, identityRev);
 });
 
 await check("small history falls back to snapshot", async () => {

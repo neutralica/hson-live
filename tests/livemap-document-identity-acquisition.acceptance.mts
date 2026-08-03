@@ -71,7 +71,9 @@ check("registration commits use one frozen path-authoritative target", () => {
   map.commits.observe((observation) => {
     if (observation.kind === "commit") {
       const candidate = observation.commit.ops[0];
-      if (candidate !== undefined && "domain" in candidate) operation = candidate;
+      if (candidate !== undefined
+        && "domain" in candidate
+        && (candidate.op !== "ensure-quid" || !("projected" in candidate.target))) operation = candidate as LiveMapGraphCommit["ops"][number];
     }
   });
   map.document.ensureIdentity(target());

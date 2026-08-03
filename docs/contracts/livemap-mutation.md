@@ -219,11 +219,16 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
 
 `ensure-quid` is produced only by the internal LiveMap authority in response to
-`document.ensureIdentity` or exact linked identity demand. Callers provide only
-the path; they cannot select the QUID. Candidate generation is outside replay
-and outside the canonical operation reducer. One changed registration advances
-the ordinary revision once and publishes through ordinary
-commit/history/feed observers; reuse publishes nothing. The operation is
+`document.ensureIdentity`, projected `map.ensureIdentity(path)`, or exact linked
+identity demand. Callers provide only the path; they cannot select the QUID.
+Document commits use the numeric document commit target; projected commits use
+`{ kind: "path", path: LivePath, projected: true }`. Both are path-authoritative,
+and neither accepts a raw-QUID route. Candidate generation is outside replay and
+outside the canonical operation reducer. One changed registration advances the
+ordinary revision once and publishes through ordinary canonical commit and
+history observers; reuse publishes nothing. Projected value feeds, links, and
+stores publish nothing for metadata-only registration because their values are
+unchanged. The operation is
 additive in current exact LiveHost graph transport because it preserves the
 established graph discriminants, path target, and recorded scalar value without
 changing the envelope version. Replay validates the recorded value and never
@@ -231,9 +236,11 @@ allocates.
 
 Identity acquisition accepts a path-only target even though active ordinary
 document mutations retain path-or-QUID request compatibility. This fence keeps
-raw QUID bytes from becoming handle constructors. Ineligible ordinary
-primitives, structural carriers, object/array projected modes, malformed paths,
-and graph/overlay disagreement reject before publication.
+raw QUID bytes from becoming handle constructors. Ineligible primitives and
+structural carriers, malformed paths, and graph/overlay disagreement reject
+before publication. Projected eligibility is restricted to the semantic
+`_hson_obj` or `_hson_arr` reached by the supplied user path; property and
+array-item wrappers are never registration targets.
 
 ### Projected rename and move intent
 
@@ -249,8 +256,17 @@ Both operations carry exact ordered `prev` and `next` witnesses in commits and
 exact structural transport. Replay checks the staged `prev`, applies the semantic
 operation directly in carrier space, and verifies `next`. Newly produced history
 never collapses either operation to `set`, `replace`, or inferred structural
-equality. No QUID is minted; later projected identity work can transform path
-prefixes directly from `path`, `from`, and `to`.
+equality. No QUID is minted. Unit 11 transforms sparse identity paths directly
+from `path`, `from`, and `to` without guessing from shape.
+
+Rename rewrites the moved source prefix, preserves descendant suffixes, and
+retires claims below a displaced destination. Move applies the final post-removal
+index, follows descendants, and shifts intervening siblings exactly once.
+Splice shifts surviving later claims and retires removed ranges. Delete, set,
+and replace retire claims at or below the displaced target, including
+structurally equal explicit replacement. Descendant leaf mutation does not
+retire an identified ancestor container. These are metadata/path effects only;
+ordinary mutation never allocates a QUID.
 
 apply
 

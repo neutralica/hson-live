@@ -374,7 +374,11 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             idx++;
         }
 
-        return CREATE_NODE({ $_tag: ARR_TAG, $_content: items });
+        const node = CREATE_NODE({ $_tag: ARR_TAG, $_content: items });
+        if (arrOpen.quid !== undefined) {
+            assign_ingested_hson_node_quid(node, arrOpen.quid.value, "parse_tokens");
+        }
+        return node;
     }
 
     /* drive the stream */
