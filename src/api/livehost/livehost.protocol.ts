@@ -170,7 +170,23 @@ function decode_projected_canonical_op(value: unknown): LiveHostCanonicalOp | un
       next,
     });
   }
+  if (value.kind === "rename") {
+    if (!has_exact_keys(value, ["kind", "path", "from", "to", "prev", "next"])) return undefined;
+    if (typeof value.from !== "string" || typeof value.to !== "string" || !prev.present || !next.present) return undefined;
+    if (!is_record(prev.value) || Array.isArray(prev.value) || !is_record(next.value) || Array.isArray(next.value)) return undefined;
+    return Object.freeze({ kind: "rename", path, from: value.from, to: value.to, prev, next });
+  }
+  if (value.kind === "move") {
+    if (!has_exact_keys(value, ["kind", "path", "from", "to", "prev", "next"])) return undefined;
+    if (!is_nonnegative_safe_integer(value.from) || !is_nonnegative_safe_integer(value.to)) return undefined;
+    if (!prev.present || !next.present || !Array.isArray(prev.value) || !Array.isArray(next.value)) return undefined;
+    return Object.freeze({ kind: "move", path, from: value.from, to: value.to, prev, next });
+  }
   return undefined;
+}
+
+function is_nonnegative_safe_integer(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function decode_mode(value: unknown): LiveMapRootMode | undefined {

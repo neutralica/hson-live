@@ -554,7 +554,10 @@ Their current semantics include:
 - object `setMany` may create several keys;
 - `deleteKey` may be a no-op when the key is absent;
 - `deleteMany` may ignore absent requested keys;
-- `renameKey` may be a no-op when the source key is absent;
+- `renameKey` rejects when the source key is absent;
+- `renameKey` replaces an existing destination while retaining the source entry's
+  position and removing the old destination position;
+- `renameKey(from, from)` is a no-op only after the source is proven present;
 - `clear` replaces the object with an empty object.
 
 These helpers are useful when idempotent object-domain commands are preferable to the strict generic path operations.
@@ -723,18 +726,22 @@ delete
 replace
 ```
 
-Higher-level API calls may normalize into these canonical operation forms.
+Higher-level API calls normalize into canonical operation forms. Object rename
+and array move are retained as semantic `rename` and `move` operations; they are
+not reconstructed from equal before/after values.
 
 For example:
 
 - an object helper may produce one or more canonical sets or deletes;
-- an array operation may produce an endpoint replacement;
+- object `renameKey` produces one canonical rename;
+- array `move` produces one canonical move using nonnegative safe final indexes;
+- other array transformations may produce an endpoint replacement;
 - a batch may contain several canonical operations;
 - a document mutation may use the document-capable canonical representation.
 
-Commits describe accepted state transitions, not user intent.
-
-A call such as `renameKey` need not produce a `renameKey` wire or replay operation if its deterministic canonical result is represented as delete plus set.
+Commits describe accepted semantic state transitions. Rename and move intent is
+canonical because later sparse identity reconciliation must distinguish movement
+from delete-plus-insert or replacement.
 
 ---
 

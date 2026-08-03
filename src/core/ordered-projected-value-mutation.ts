@@ -80,6 +80,57 @@ export function ordered_projected_object_merge(
   return candidate;
 }
 
+/** Rename one own object entry in place and retire any existing destination entry. */
+export function ordered_projected_object_rename(
+  root: OrderedProjectedValue,
+  path: OrderedProjectedPath,
+  from: string,
+  to: string,
+): OrderedProjectedValue {
+  const current = ordered_projected_value_at(root, path);
+  if (!is_ordered_projected_object(current)) {
+    throw new Error("Ordered projected rename endpoint is not an object.");
+  }
+  const sourceIndex = object_entry_index(current, from);
+  if (sourceIndex === -1) {
+    throw new Error("Ordered projected rename source does not exist.");
+  }
+  if (from === to) return root;
+
+  const next = ordered_projected_object(current.entries.flatMap(([key, value]) => {
+    if (key === from) return [[to, value] as const];
+    if (key === to) return [];
+    return [[key, value] as const];
+  }));
+  return ordered_projected_value_replace(root, path, next);
+}
+
+/** Move one existing array item to its final post-removal index. */
+export function ordered_projected_array_move(
+  root: OrderedProjectedValue,
+  path: OrderedProjectedPath,
+  from: number,
+  to: number,
+): OrderedProjectedValue {
+  const current = ordered_projected_value_at(root, path);
+  if (!Array.isArray(current)) {
+    throw new Error("Ordered projected move endpoint is not an array.");
+  }
+  if (!Number.isSafeInteger(from) || from < 0 || from >= current.length) {
+    throw new Error("Ordered projected move source is invalid.");
+  }
+  if (!Number.isSafeInteger(to) || to < 0 || to >= current.length) {
+    throw new Error("Ordered projected move destination is invalid.");
+  }
+  if (from === to) return root;
+
+  const items = [...current];
+  const [moved] = items.splice(from, 1);
+  if (moved === undefined) throw new Error("Ordered projected move source does not exist.");
+  items.splice(to, 0, moved);
+  return ordered_projected_value_replace(root, path, ordered_projected_array(items));
+}
+
 /** Apply one dense array splice and return the immutable candidate and removals. */
 export function ordered_projected_array_splice(
   root: OrderedProjectedValue,

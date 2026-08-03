@@ -38,6 +38,29 @@ export class LiveMapProjectedValueError extends TypeError {
   }
 }
 
+export type LiveMapProjectedMutationErrorCode =
+  | "INVALID_OBJECT_RENAME_SOURCE"
+  | "INVALID_OBJECT_RENAME_DESTINATION"
+  | "OBJECT_RENAME_SOURCE_NOT_FOUND"
+  | "INVALID_ARRAY_MOVE_SOURCE"
+  | "INVALID_ARRAY_MOVE_DESTINATION";
+
+/** Stable projected helper failure emitted before any canonical publication. */
+export class LiveMapProjectedMutationError extends Error {
+  readonly path: LivePath;
+
+  constructor(
+    readonly code: LiveMapProjectedMutationErrorCode,
+    readonly operation: "rename" | "move",
+    path: LivePath,
+    readonly reason: string,
+  ) {
+    super(`Invalid LiveMap projected ${operation} at ${format_live_path(path)}: ${reason}`);
+    this.name = "LiveMapProjectedMutationError";
+    this.path = clone_live_path(path);
+  }
+}
+
 export class LiveMapSchemaError extends Error {
   readonly code = "SCHEMA_VALIDATION" as const;
   readonly path: LivePath;

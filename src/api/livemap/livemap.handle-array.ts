@@ -10,6 +10,7 @@ import { materialize_projected_value } from "../../core/projected-value-material
 import type { LiveMapArrayItem, LiveMapArrayShape, LiveMapCore, LiveMapPathArrayApi, LivePath } from "../../types/livemap.types.js";
 import { array_index_error, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
+import { LiveMapProjectedMutationError } from "./livemap.error.js";
 
 type LiveMapArrayHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "splice">;
 
@@ -133,7 +134,18 @@ export function make_livemap_array_api<TValue = JsonValue | undefined>(
       const resolvedIndex = arrayIndex(current, handlePath, index);
       return splice(resolvedIndex, 1, [must_ordered_projected_value(value, [...handlePath, resolvedIndex])]);
     },
-    move: (fromIndex, toIndex) => set(arrayMove(read(), handlePath, fromIndex, toIndex)),
+    move: (fromIndex, toIndex) => {
+      const current = read();
+      must_array_move_index(current, handlePath, fromIndex, "source");
+      must_array_move_index(current, handlePath, toIndex, "destination");
+      if (fromIndex === toIndex) return projected.commit([]);
+      return projected.commit([{
+        kind: "move",
+        path: handlePath,
+        from: fromIndex,
+        to: toIndex,
+      }]);
+    },
     unique: () => set(arrayUnique(read())),
     removeValue: (value) => set(arrayRemoveValue(read(), must_ordered_projected_value(value, handlePath))),
     removeAll: (value) => set(arrayRemoveAll(read(), must_ordered_projected_value(value, handlePath))),
@@ -251,16 +263,19 @@ function arrayRemoveAll(
   return value.filter((candidate) => !ordered_projected_value_equal(candidate, item));
 }
 
-function arrayMove(
+function must_array_move_index(
   value: readonly OrderedProjectedValue[],
   path: LivePath,
-  fromIndex: number,
-  toIndex: number,
-): readonly OrderedProjectedValue[] {
-  const next = [...value];
-  const [item] = next.splice(arrayIndex(next, path, fromIndex), 1);
-  next.splice(arrayInsertIndex(next, path, toIndex), 0, item as OrderedProjectedValue);
-  return next;
+  index: number,
+  role: "source" | "destination",
+): void {
+  if (Number.isSafeInteger(index) && index >= 0 && index < value.length) return;
+  throw new LiveMapProjectedMutationError(
+    role === "source" ? "INVALID_ARRAY_MOVE_SOURCE" : "INVALID_ARRAY_MOVE_DESTINATION",
+    "move",
+    path,
+    `${role} index ${String(index)} does not resolve in the staged array`,
+  );
 }
 
 function arrayIndex(value: readonly OrderedProjectedValue[], path: LivePath, index: number): number {

@@ -27,11 +27,27 @@ export type LiveMapProjectedSpliceWrite = Readonly<{
   items: readonly OrderedProjectedValue[];
 }>;
 
+export type LiveMapProjectedRenameWrite = Readonly<{
+  kind: "rename";
+  path: LivePath;
+  from: string;
+  to: string;
+}>;
+
+export type LiveMapProjectedMoveWrite = Readonly<{
+  kind: "move";
+  path: LivePath;
+  from: number;
+  to: number;
+}>;
+
 export type LiveMapProjectedPropagationWrite =
   | LiveMapProjectedSetWrite
   | LiveMapProjectedReplaceWrite
   | LiveMapProjectedDeleteWrite
-  | LiveMapProjectedSpliceWrite;
+  | LiveMapProjectedSpliceWrite
+  | LiveMapProjectedRenameWrite
+  | LiveMapProjectedMoveWrite;
 
 export type LiveMapProjectedFeedEvent = Readonly<{
   commit: LiveMapCommit;

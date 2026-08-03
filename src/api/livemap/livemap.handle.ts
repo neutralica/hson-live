@@ -11,7 +11,7 @@ import {
   livemap_projected_propagation,
   type LiveMapProjectedPropagationWrite,
 } from "./livemap.projected-propagation.js";
-import { is_ordered_projected_object, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
@@ -80,6 +80,46 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
               return;
             }
             if (event.value === undefined) return;
+            if (event.ops.length > 0 && event.ops.every((op) => op.kind === "rename" || op.kind === "move")) {
+              const targetProjected = livemap_projected_propagation(targetInternals.core);
+              const supported = targetProjected !== undefined && event.ops.every((op) => {
+                const path = Object.freeze([
+                  ...targetInternals.path,
+                  ...op.path.slice(handlePath.length),
+                ]);
+                const current = targetProjected.read(path);
+                return current !== undefined && ordered_projected_value_equal(current, op.prev);
+              });
+              if (!supported) {
+                write_projected_handle_link(targetInternals, event.value, "set");
+                return;
+              }
+              const writes = event.ops.flatMap((op): readonly LiveMapProjectedPropagationWrite[] => {
+                if (!path_is_prefix(handlePath, op.path)) return [];
+                if (op.kind === "rename") return [Object.freeze({
+                  kind: op.kind,
+                  path: Object.freeze([
+                    ...targetInternals.path,
+                    ...op.path.slice(handlePath.length),
+                  ]),
+                  from: op.from,
+                  to: op.to,
+                })];
+                return [Object.freeze({
+                  kind: op.kind,
+                  path: Object.freeze([
+                    ...targetInternals.path,
+                    ...op.path.slice(handlePath.length),
+                  ]),
+                  from: op.from,
+                  to: op.to,
+                })];
+              });
+              if (writes.length > 0) {
+                commit_projected_handle_link(targetInternals, writes);
+                return;
+              }
+            }
             write_projected_handle_link(
               targetInternals,
               event.value,

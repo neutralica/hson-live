@@ -18,7 +18,7 @@ import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
-import { LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
+import { LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
@@ -28,7 +28,9 @@ import {
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
 import {
+  ordered_projected_array_move,
   ordered_projected_array_splice,
+  ordered_projected_object_rename,
   ordered_projected_value_at,
   ordered_projected_value_delete,
   ordered_projected_value_replace,
@@ -64,6 +66,8 @@ import {
   type LiveMapProjectedDeleteWrite,
   type LiveMapProjectedPropagation,
   type LiveMapProjectedPropagationWrite,
+  type LiveMapProjectedMoveWrite,
+  type LiveMapProjectedRenameWrite,
   type LiveMapProjectedReplaceWrite,
   type LiveMapProjectedSetWrite,
   type LiveMapProjectedSpliceWrite,
@@ -88,12 +92,16 @@ type LiveMapProjectedSetWriteOp = LiveMapProjectedSetWrite;
 type LiveMapProjectedReplaceWriteOp = LiveMapProjectedReplaceWrite;
 type LiveMapProjectedDeleteWriteOp = LiveMapProjectedDeleteWrite;
 type LiveMapProjectedSpliceWriteOp = LiveMapProjectedSpliceWrite;
+type LiveMapProjectedRenameWriteOp = LiveMapProjectedRenameWrite;
+type LiveMapProjectedMoveWriteOp = LiveMapProjectedMoveWrite;
 
 type LiveMapCoreWriteOp =
   | LiveMapProjectedSetWriteOp
   | LiveMapProjectedReplaceWriteOp
   | LiveMapProjectedDeleteWriteOp
   | LiveMapProjectedSpliceWriteOp
+  | LiveMapProjectedRenameWriteOp
+  | LiveMapProjectedMoveWriteOp
   | LiveMapConstructiveSetWriteOp;
 
 type BuiltLiveMapCore = Readonly<{
@@ -1095,6 +1103,26 @@ function must_core_array_value(value: OrderedProjectedValue | undefined, path: L
   return value;
 }
 
+function must_core_object_value(value: OrderedProjectedValue | undefined, path: LivePath): OrderedProjectedObject {
+  if (!is_ordered_projected_object(value)) throw path_kind_error(path, "object");
+  return value;
+}
+
+function must_core_move_index(
+  value: readonly OrderedProjectedValue[],
+  path: LivePath,
+  index: number,
+  role: "source" | "destination",
+): void {
+  if (Number.isSafeInteger(index) && index >= 0 && index < value.length) return;
+  throw new LiveMapProjectedMutationError(
+    role === "source" ? "INVALID_ARRAY_MOVE_SOURCE" : "INVALID_ARRAY_MOVE_DESTINATION",
+    "move",
+    path,
+    `${role} index ${String(index)} does not resolve in the staged array`,
+  );
+}
+
 function normalize_splice_start(length: number, start: number, path: LivePath): number {
   if (!Number.isInteger(start)) throw new Error(`LiveMap array splice start is not a valid index at ${JSON.stringify(path)}: ${String(start)}`);
   if (start < 0) return Math.max(length + start, 0);
@@ -1339,6 +1367,48 @@ function plan_write_ops(
       continue;
     }
 
+    if (op.kind === "rename") {
+      const prev = must_core_object_value(ordered_projected_value_at(candidate, op.path), op.path);
+      if (!prev.entries.some(([key]) => key === op.from)) {
+        throw new LiveMapProjectedMutationError(
+          "OBJECT_RENAME_SOURCE_NOT_FOUND",
+          "rename",
+          op.path,
+          `source key ${JSON.stringify(op.from)} is not an own entry`,
+        );
+      }
+      if (op.from === op.to) continue;
+      candidate = ordered_projected_object_rename(candidate, op.path, op.from, op.to);
+      const next = must_core_object_value(ordered_projected_value_at(candidate, op.path), op.path);
+      transportOps.push(Object.freeze({
+        kind: "rename",
+        path: clone_live_path(op.path),
+        from: op.from,
+        to: op.to,
+        prev,
+        next,
+      }));
+      continue;
+    }
+
+    if (op.kind === "move") {
+      const prev = must_core_array_value(ordered_projected_value_at(candidate, op.path), op.path);
+      must_core_move_index(prev, op.path, op.from, "source");
+      must_core_move_index(prev, op.path, op.to, "destination");
+      if (op.from === op.to) continue;
+      candidate = ordered_projected_array_move(candidate, op.path, op.from, op.to);
+      const next = must_core_array_value(ordered_projected_value_at(candidate, op.path), op.path);
+      transportOps.push(Object.freeze({
+        kind: "move",
+        path: clone_live_path(op.path),
+        from: op.from,
+        to: op.to,
+        prev,
+        next,
+      }));
+      continue;
+    }
+
     if (op.kind === "set") {
       const prev = ordered_projected_value_at(candidate, op.path);
       candidate = ordered_projected_value_set(candidate, op.path, op.value);
@@ -1506,6 +1576,22 @@ function projected_write_op_from_transport(op: LiveMapProjectedDataOp): Exclude<
       start: op.start,
       deleteCount: op.removed.length,
       items: op.inserted,
+    });
+  }
+  if (op.kind === "rename") {
+    return Object.freeze({
+      kind: op.kind,
+      path: clone_live_path(op.path),
+      from: op.from,
+      to: op.to,
+    });
+  }
+  if (op.kind === "move") {
+    return Object.freeze({
+      kind: op.kind,
+      path: clone_live_path(op.path),
+      from: op.from,
+      to: op.to,
     });
   }
   return Object.freeze({

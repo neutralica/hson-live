@@ -9,6 +9,8 @@ import {
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type {
   LiveMapDataOp,
+  LiveMapMoveOp,
+  LiveMapRenameOp,
   LiveMapSpliceOp,
   LiveMapStructuralJsonEnvelope,
   LivePath,
@@ -45,10 +47,30 @@ type ProjectedSpliceOp = Readonly<{
   next: readonly OrderedProjectedValue[];
 }>;
 
+type ProjectedRenameOp = Readonly<{
+  kind: "rename";
+  path: LivePath;
+  from: string;
+  to: string;
+  prev: OrderedProjectedObject;
+  next: OrderedProjectedObject;
+}>;
+
+type ProjectedMoveOp = Readonly<{
+  kind: "move";
+  path: LivePath;
+  from: number;
+  to: number;
+  prev: readonly OrderedProjectedValue[];
+  next: readonly OrderedProjectedValue[];
+}>;
+
 export type LiveMapProjectedDataOp =
   | ProjectedSetOrReplaceOp
   | ProjectedDeleteOp
-  | ProjectedSpliceOp;
+  | ProjectedSpliceOp
+  | ProjectedRenameOp
+  | ProjectedMoveOp;
 
 export class LiveMapTransportCodecError extends Error {
   readonly reason: string;
@@ -120,6 +142,28 @@ export function materialize_livemap_projected_op(op: LiveMapProjectedDataOp): Li
     });
     return splice;
   }
+  if (op.kind === "rename") {
+    const rename: LiveMapRenameOp = Object.freeze({
+      kind: op.kind,
+      path: Object.freeze([...op.path]),
+      from: op.from,
+      to: op.to,
+      prev: materialize_projected_value(op.prev),
+      next: materialize_projected_value(op.next),
+    });
+    return rename;
+  }
+  if (op.kind === "move") {
+    const move: LiveMapMoveOp = Object.freeze({
+      kind: op.kind,
+      path: Object.freeze([...op.path]),
+      from: op.from,
+      to: op.to,
+      prev: materialize_projected_value(op.prev),
+      next: materialize_projected_value(op.next),
+    });
+    return move;
+  }
   return Object.freeze({
     kind: op.kind,
     path: Object.freeze([...op.path]),
@@ -140,6 +184,16 @@ function projected_op_to_carrier(op: LiveMapProjectedDataOp): OrderedProjectedOb
       ["next", ordered_projected_array(op.next)],
     ]);
   }
+  if (op.kind === "rename" || op.kind === "move") {
+    return ordered_projected_object([
+      ["kind", op.kind],
+      ["path", ordered_projected_array(op.path)],
+      ["from", op.from],
+      ["to", op.to],
+      ["prev", op.prev],
+      ["next", op.next],
+    ]);
+  }
   return ordered_projected_object([
     ["kind", op.kind],
     ["path", ordered_projected_array(op.path)],
@@ -151,7 +205,7 @@ function projected_op_to_carrier(op: LiveMapProjectedDataOp): OrderedProjectedOb
 function carrier_to_projected_op(value: OrderedProjectedValue, opIndex: number): LiveMapProjectedDataOp {
   const record = must_record(value, opIndex);
   const kind = record_value(record, "kind");
-  if (kind !== "set" && kind !== "replace" && kind !== "delete" && kind !== "splice") {
+  if (kind !== "set" && kind !== "replace" && kind !== "delete" && kind !== "splice" && kind !== "rename" && kind !== "move") {
     throw new LiveMapTransportCodecError("kind is not supported", opIndex);
   }
 
@@ -167,6 +221,30 @@ function carrier_to_projected_op(value: OrderedProjectedValue, opIndex: number):
       start,
       removed: must_array(record_value(record, "removed"), "removed", opIndex),
       inserted: must_array(record_value(record, "inserted"), "inserted", opIndex),
+      prev: must_array(record_value(record, "prev"), "prev", opIndex),
+      next: must_array(record_value(record, "next"), "next", opIndex),
+    });
+  }
+
+  if (kind === "rename") {
+    must_exact_keys(record, ["kind", "path", "from", "to", "prev", "next"], opIndex);
+    return Object.freeze({
+      kind,
+      path: must_path(record_value(record, "path"), opIndex),
+      from: must_string(record_value(record, "from"), "rename from", opIndex),
+      to: must_string(record_value(record, "to"), "rename to", opIndex),
+      prev: must_object(record_value(record, "prev"), "prev", opIndex),
+      next: must_object(record_value(record, "next"), "next", opIndex),
+    });
+  }
+
+  if (kind === "move") {
+    must_exact_keys(record, ["kind", "path", "from", "to", "prev", "next"], opIndex);
+    return Object.freeze({
+      kind,
+      path: must_path(record_value(record, "path"), opIndex),
+      from: must_move_index(record_value(record, "from"), "move from", opIndex),
+      to: must_move_index(record_value(record, "to"), "move to", opIndex),
       prev: must_array(record_value(record, "prev"), "prev", opIndex),
       next: must_array(record_value(record, "next"), "next", opIndex),
     });
@@ -214,6 +292,33 @@ function must_array(
     throw new LiveMapTransportCodecError(`${field} is not an array`, opIndex);
   }
   return value;
+}
+
+function must_object(
+  value: OrderedProjectedValue | undefined,
+  field: string,
+  opIndex: number,
+): OrderedProjectedObject {
+  if (is_ordered_projected_object(value)) return value;
+  throw new LiveMapTransportCodecError(`${field} is not an object`, opIndex);
+}
+
+function must_string(
+  value: OrderedProjectedValue | undefined,
+  field: string,
+  opIndex: number,
+): string {
+  if (typeof value === "string") return value;
+  throw new LiveMapTransportCodecError(`${field} is not a string`, opIndex);
+}
+
+function must_move_index(
+  value: OrderedProjectedValue | undefined,
+  field: string,
+  opIndex: number,
+): number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  throw new LiveMapTransportCodecError(`${field} is not a non-negative safe integer`, opIndex);
 }
 
 function must_path(value: OrderedProjectedValue | undefined, opIndex: number): LivePath {

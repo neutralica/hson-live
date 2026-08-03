@@ -217,6 +217,23 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
 
+### Projected rename and move intent
+
+Projected object rename and array move are canonical semantic operations rather
+than broad endpoint replacements:
+
+| Operation | Domain | Exact effect | No-op and conflict rules |
+|---|---|---|---|
+| `rename` | Existing ordered object at `path`; own string `from`; string `to` | The source subtree is relabeled at its former position. An existing destination entry retires at its former position. Descendants retain their suffixes. | Missing source and invalid keys reject. `from === to` is a no-op only after source validation. |
+| `move` | Existing dense array at `path`; nonnegative safe `from` and `to` valid in the staged array | The source subtree occupies final post-removal index `to`; intervening siblings shift once. Descendants retain their suffixes. | Invalid, negative, unsafe, or out-of-range indexes reject. `from === to` is a no-op. |
+
+Both operations carry exact ordered `prev` and `next` witnesses in commits and
+exact structural transport. Replay checks the staged `prev`, applies the semantic
+operation directly in carrier space, and verifies `next`. Newly produced history
+never collapses either operation to `set`, `replace`, or inferred structural
+equality. No QUID is minted; later projected identity work can transform path
+prefixes directly from `path`, `from`, and `to`.
+
 apply
 
 apply({ prevRev, value }) conditionally replaces the projected root.

@@ -83,11 +83,13 @@ export {
     LiveMapDocumentIdentityProvenanceError,
     LiveMapDocumentMutationError,
     LiveMapDocumentStagingError,
+    LiveMapProjectedMutationError,
 } from "./api/livemap/livemap.error.js";
 export type {
     LiveMapDocumentIdentityProvenanceErrorCode,
     LiveMapDocumentInstallFailureCode,
     LiveMapDocumentMutationErrorCode,
+    LiveMapProjectedMutationErrorCode,
 } from "./api/livemap/livemap.error.js";
 export { format_live_path, path_is_prefix, paths_overlap } from "./api/livemap/livemap.path.js";
 export {
@@ -147,6 +149,8 @@ export type {
     LiveMapOp,
     LiveMapAnyOp,
     LiveMapDataOp,
+    LiveMapRenameOp,
+    LiveMapMoveOp,
     LiveMapGraphOp,
     LiveMapGraphReplaceRootOp,
     LiveMapGraphSetAttrOp,
@@ -318,6 +322,8 @@ export type {
     LiveHostCanonicalHistoryOptions,
     LiveHostCanonicalOp,
     LiveHostCanonicalReplaceOp,
+    LiveHostCanonicalRenameOp,
+    LiveHostCanonicalMoveOp,
     LiveHostCanonicalSetOp,
     LiveHostCanonicalSpliceOp,
     LiveHostCanonicalStream,

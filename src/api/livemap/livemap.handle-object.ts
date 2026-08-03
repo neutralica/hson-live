@@ -26,6 +26,7 @@ import {
   path_kind_error,
 } from "./livemap.guard.js";
 import { livemap_projected_propagation } from "./livemap.projected-propagation.js";
+import { LiveMapProjectedMutationError } from "./livemap.error.js";
 
 type LiveMapObjectHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "set" | "replace" | "setMany" | "delete" | "batch">;
 
@@ -98,14 +99,23 @@ export function make_livemap_object_api<TValue = JsonValue | undefined>(
         .map(([key]) => ({ kind: "delete" as const, path: [...handlePath, key] })));
     },
     renameKey: (fromKey: unknown, toKey: unknown) => {
-      const fromObjectKey = must_object_key(fromKey, handlePath);
-      const toObjectKey = must_object_key(toKey, handlePath);
+      const fromObjectKey = must_rename_key(fromKey, "source", handlePath);
+      const toObjectKey = must_rename_key(toKey, "destination", handlePath);
       const value = read();
-      if (object_entry_index(value, fromObjectKey) === -1 || fromObjectKey === toObjectKey) return noChange();
+      if (object_entry_index(value, fromObjectKey) === -1) {
+        throw new LiveMapProjectedMutationError(
+          "OBJECT_RENAME_SOURCE_NOT_FOUND",
+          "rename",
+          handlePath,
+          `source key ${JSON.stringify(fromObjectKey)} is not an own entry`,
+        );
+      }
+      if (fromObjectKey === toObjectKey) return noChange();
       return projected.commit([{
-        kind: "replace",
+        kind: "rename",
         path: handlePath,
-        value: object_rename_key(value, fromObjectKey, toObjectKey),
+        from: fromObjectKey,
+        to: toObjectKey,
       }]);
     },
   };
@@ -141,15 +151,12 @@ function object_omit(value: OrderedProjectedObject, keys: readonly string[]): Or
   return ordered_projected_object(value.entries.filter(([key]) => !omitted.has(key)));
 }
 
-/** Rename in the source position and remove an existing destination entry. */
-function object_rename_key(
-  value: OrderedProjectedObject,
-  fromKey: string,
-  toKey: string,
-): OrderedProjectedObject {
-  return ordered_projected_object(value.entries.flatMap(([key, item]) => {
-    if (key === fromKey) return [[toKey, item] as const];
-    if (key === toKey) return [];
-    return [[key, item] as const];
-  }));
+function must_rename_key(value: unknown, role: "source" | "destination", path: LivePath): string {
+  if (typeof value === "string") return value;
+  throw new LiveMapProjectedMutationError(
+    role === "source" ? "INVALID_OBJECT_RENAME_SOURCE" : "INVALID_OBJECT_RENAME_DESTINATION",
+    "rename",
+    path,
+    `${role} key is not a string`,
+  );
 }

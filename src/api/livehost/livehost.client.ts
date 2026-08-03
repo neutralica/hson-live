@@ -228,6 +228,14 @@ function local_ops(commit: LiveHostCanonicalCommitCompatibility): readonly LiveM
       if (!Array.isArray(prev) || !Array.isArray(next)) throw new Error("Canonical splice values must be arrays.");
       return { kind: "splice", path: op.path, start: op.start, removed: op.removed, inserted: op.inserted, prev, next };
     }
+    if (op.kind === "rename") {
+      if (!op.prev.present || next === undefined) throw new Error("Canonical rename witness value is absent.");
+      return { kind: "rename", path: op.path, from: op.from, to: op.to, prev: op.prev.value, next };
+    }
+    if (op.kind === "move") {
+      if (!op.prev.present || next === undefined) throw new Error("Canonical move witness value is absent.");
+      return { kind: "move", path: op.path, from: op.from, to: op.to, prev: op.prev.value, next };
+    }
     if (next === undefined) throw new Error(`Canonical ${op.kind} next value is absent.`);
     return { kind: op.kind, path: op.path, prev, next };
   });

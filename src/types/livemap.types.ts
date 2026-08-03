@@ -545,8 +545,34 @@ export type LiveMapReplaceOp = Readonly<{
   next: JsonValue | undefined;
 }>;
 
+/** Identity-preserving movement of one own object entry to a new key. */
+export type LiveMapRenameOp = Readonly<{
+  kind: "rename";
+  path: LivePath;
+  from: string;
+  to: string;
+  prev: JsonValue;
+  next: JsonValue;
+}>;
+
+/** Identity-preserving movement of one array item to its final index. */
+export type LiveMapMoveOp = Readonly<{
+  kind: "move";
+  path: LivePath;
+  from: number;
+  to: number;
+  prev: JsonValue;
+  next: JsonValue;
+}>;
+
 /** Normalized operation emitted by a LiveMap mutation. */
-export type LiveMapDataOp = LiveMapSetOp | LiveMapDeleteOp | LiveMapReplaceOp | LiveMapSpliceOp;
+export type LiveMapDataOp =
+  | LiveMapSetOp
+  | LiveMapDeleteOp
+  | LiveMapReplaceOp
+  | LiveMapSpliceOp
+  | LiveMapRenameOp
+  | LiveMapMoveOp;
 
 /** Complete canonical document-root replacement; deliberately not a data op. */
 export type LiveMapGraphReplaceRootOp = Readonly<{
@@ -896,9 +922,8 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
 /**
  * Array-scoped helper API.
  *
- * Helpers read the current array at the handle path, build a complete next
- * array, then write it through `set` at the array endpoint. That means array
- * helpers require the array path itself to resolve.
+ * Helpers require the array path itself to resolve. Array move retains semantic
+ * movement intent; other whole-array transformations may use endpoint writes.
  */
 export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   is: () => boolean;

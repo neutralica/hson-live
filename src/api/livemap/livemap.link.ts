@@ -9,6 +9,7 @@ import {
   type LiveMapProjectedFeedEvent,
   type LiveMapProjectedPropagationWrite,
 } from "./livemap.projected-propagation.js";
+import { ordered_projected_value_equal } from "../../core/ordered-projected-value.js";
 
 /**
  * Link one LiveMap core to another in one direction.
@@ -62,7 +63,12 @@ function apply_projected_link_event(
   }
 
   if (event.ops.some((op) => op.kind === "delete" || op.kind === "splice")
-    || event.ops.some((op) => op.kind === "replace" && path_is_prefix(op.path, sourcePath))) {
+    || event.ops.some((op) => op.kind === "replace" && path_is_prefix(op.path, sourcePath))
+    || event.ops.some((op) => (
+      (op.kind === "rename" || op.kind === "move")
+      && op.path.length < sourcePath.length
+      && path_is_prefix(op.path, sourcePath)
+    ))) {
     commit_projected_link(target, [Object.freeze({
       kind: "replace",
       path: targetSourcePath,
@@ -73,6 +79,40 @@ function apply_projected_link_event(
 
   const writes: LiveMapProjectedPropagationWrite[] = [];
   for (const op of event.ops) {
+    if (op.kind === "rename") {
+      const path = link_target_path(op.path, options);
+      if (path === undefined) continue;
+      const targetProjected = livemap_projected_propagation(target);
+      const current = targetProjected?.read(path);
+      if (current === undefined || !ordered_projected_value_equal(current, op.prev)) {
+        commit_projected_link(target, [Object.freeze({ kind: "replace", path: targetSourcePath, value: event.value })]);
+        return;
+      }
+      writes.push(Object.freeze({
+        kind: op.kind,
+        path,
+        from: op.from,
+        to: op.to,
+      }));
+      continue;
+    }
+    if (op.kind === "move") {
+      const path = link_target_path(op.path, options);
+      if (path === undefined) continue;
+      const targetProjected = livemap_projected_propagation(target);
+      const current = targetProjected?.read(path);
+      if (current === undefined || !ordered_projected_value_equal(current, op.prev)) {
+        commit_projected_link(target, [Object.freeze({ kind: "replace", path: targetSourcePath, value: event.value })]);
+        return;
+      }
+      writes.push(Object.freeze({
+        kind: op.kind,
+        path,
+        from: op.from,
+        to: op.to,
+      }));
+      continue;
+    }
     if (op.kind !== "set" && op.kind !== "replace") continue;
     const path = link_target_path(op.path, options);
     if (path === undefined) continue;

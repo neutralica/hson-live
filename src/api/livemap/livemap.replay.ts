@@ -9,6 +9,7 @@ import {
   type LiveMapProjectedDataOp,
 } from "./livemap.transport.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import { is_ordered_projected_object, type OrderedProjectedObject } from "../../core/ordered-projected-value.js";
 
 export type AdmittedLiveMapReplay = Readonly<{
   prevRev: number;
@@ -68,7 +69,7 @@ function must_legacy_replay_op(value: unknown, opIndex: number): LiveMapProjecte
   }
 
   const kind = value.kind;
-  if (kind !== "set" && kind !== "delete" && kind !== "replace" && kind !== "splice") {
+  if (kind !== "set" && kind !== "delete" && kind !== "replace" && kind !== "splice" && kind !== "rename" && kind !== "move") {
     throw new LiveMapReplayInputError("kind is not supported", opIndex);
   }
 
@@ -101,6 +102,34 @@ function must_legacy_replay_op(value: unknown, opIndex: number): LiveMapProjecte
       start: value.start as number,
       removed: must_projected_array(value.removed, "removed", opIndex),
       inserted: must_projected_array(value.inserted, "inserted", opIndex),
+      prev: must_projected_array(value.prev, "prev", opIndex),
+      next: must_projected_array(value.next, "next", opIndex),
+    });
+  }
+
+  if (kind === "rename") {
+    if (typeof value.from !== "string" || typeof value.to !== "string") {
+      throw new LiveMapReplayInputError("rename keys are not strings", opIndex);
+    }
+    return Object.freeze({
+      kind,
+      path,
+      from: value.from,
+      to: value.to,
+      prev: must_projected_object(value.prev, "prev", opIndex),
+      next: must_projected_object(value.next, "next", opIndex),
+    });
+  }
+
+  if (kind === "move") {
+    if (!is_nonnegative_safe_integer(value.from) || !is_nonnegative_safe_integer(value.to)) {
+      throw new LiveMapReplayInputError("move indexes are not non-negative safe integers", opIndex);
+    }
+    return Object.freeze({
+      kind,
+      path,
+      from: value.from,
+      to: value.to,
       prev: must_projected_array(value.prev, "prev", opIndex),
       next: must_projected_array(value.next, "next", opIndex),
     });
@@ -144,6 +173,20 @@ function must_projected_array(
     throw new LiveMapReplayInputError(`${field} is not an array`, opIndex);
   }
   return projected;
+}
+
+function must_projected_object(
+  value: unknown,
+  field: string,
+  opIndex: number,
+): OrderedProjectedObject {
+  const projected = must_projected(value, field, opIndex);
+  if (is_ordered_projected_object(projected)) return projected;
+  throw new LiveMapReplayInputError(`${field} is not an object`, opIndex);
+}
+
+function is_nonnegative_safe_integer(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function must_own_field(

@@ -139,6 +139,38 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
     });
   }
 
+  if (op.kind === "rename") {
+    if (op.prev === null || typeof op.prev !== "object" || Array.isArray(op.prev)
+      || op.next === null || typeof op.next !== "object" || Array.isArray(op.next)) {
+      throw new Error("LiveHost canonical rename prev and next values must be objects.");
+    }
+    return Object.freeze({
+      kind: op.kind,
+      path,
+      from: op.from,
+      to: op.to,
+      prev: wire_value(op.prev, "rename prev value"),
+      next: wire_value(op.next, "rename next value"),
+    });
+  }
+
+  if (op.kind === "move") {
+    if (!Number.isSafeInteger(op.from) || op.from < 0 || !Number.isSafeInteger(op.to) || op.to < 0) {
+      throw new Error("LiveHost canonical move indexes must be non-negative safe integers.");
+    }
+    if (!Array.isArray(op.prev) || !Array.isArray(op.next)) {
+      throw new Error("LiveHost canonical move prev and next values must be arrays.");
+    }
+    return Object.freeze({
+      kind: op.kind,
+      path,
+      from: op.from,
+      to: op.to,
+      prev: wire_value(op.prev, "move prev value"),
+      next: wire_value(op.next, "move next value"),
+    });
+  }
+
   if (op.next === undefined) {
     throw new Error(`LiveHost canonical ${op.kind} next value must be present.`);
   }

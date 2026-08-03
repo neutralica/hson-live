@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0, 1, 3, 4, 5, 6, and 7 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0 through 7 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -566,6 +566,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 2 — Preserve projected move and rename intent
 
+- **Status:** Implemented and executable.
 - **Goal:** Add explicit semantic move/rename operations or equivalent internal intent before object/array QUID eligibility.
 - **Production ownership:** projected operation types, handle array/object helpers, planning/replay/transport.
 - **Public/API effect:** Existing helper behavior retained; commit operation family may grow.
@@ -574,6 +575,9 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Same-node movement can only be inferred from equal values or a permanent node ID.
 - **Dependency:** Unit 0; can proceed parallel to document-only Units 1–6 but must precede Unit 11.
 - **Suggested commit direction:** `feat(livemap): retain move and rename operation intent`.
+- **Implemented boundary:** Projected helpers now emit carrier-native `rename` and `move` operations with exact ordered before/after witnesses. Rename rejects a missing source, retains its position, and replaces an existing destination. Move accepts only nonnegative safe staged-array indexes and interprets `to` as the final post-removal index.
+- **Propagation result:** Exact structural-json replay, bounded legacy replay, feeds, links, stores, LiveHost canonical history, sync, recovery, and client replay retain the semantic kind. Existing transport and LiveHost versions remain sufficient and unchanged.
+- **Identity result:** The operation fields provide the future sparse projected overlay with explicit prefix movement and sibling-shift evidence. Object/array QUID eligibility, projected overlays, registration, and minting remain absent.
 
 ### Unit 3 — Central sparse document identity overlay
 

@@ -252,7 +252,9 @@ one map and expose no persistent or process-global identifier.
 - `setMany(values)`: shallow child writes;
 - `deleteKey(key)`: missing key is a no-op;
 - `deleteMany(keys)`: one normalized commit;
-- `renameKey(from, to)`: moves the value; source must exist and target must not;
+- `renameKey(from, to)`: moves the source entry in place; a missing source rejects,
+  an existing destination is replaced, and `from === to` is a no-op after source
+  validation;
 - `clear()`: removes all keys in one commit.
 
 These methods reject a non-object or missing handle endpoint. They do not replace
@@ -268,16 +270,19 @@ Writes include `push`, `pushMany`, `unshift`, `unshiftMany`, `pop`, `shift`,
 `clear`, `reverse`, `sortNumbers`, `sortStrings`, `splice`, `insert`, `remove`,
 `replace`, `move`, `unique`, `removeValue`, and `removeAll`.
 
-Helpers require an existing array endpoint, construct the complete next array,
-and write it through the normal pipeline. Indexes are integers and are checked
-against the operation's valid range. `move(from, to)` preserves all other order;
-the destination is interpreted after removal. Empty pop/shift and transformations
+Helpers require an existing array endpoint and write through the normal pipeline.
+`move(from, to)` is a semantic operation whose indexes must be nonnegative safe
+integers resolving in the staged array. Negative-index convenience does not apply
+to move. The destination is the final index after removal, and each intervening
+sibling shifts exactly once. Empty pop/shift and transformations
 that produce an equal array return no-op commits.
 
 ## Commit pipeline and observation
 
-Data ops are normalized final-state operations:
-`set`, `delete`, `replace`, and `splice`. Multi-key and batch writes may produce
+Data ops are normalized semantic operations:
+`set`, `delete`, `replace`, `splice`, `rename`, and `move`. Rename and move retain
+movement intent plus exact before/after witnesses for deterministic replay.
+Multi-key and batch writes may produce
 many ops in one envelope. The pipeline is:
 
 1. validate and normalize intent;

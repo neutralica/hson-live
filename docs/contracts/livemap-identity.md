@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, and Unit 7 capture/provenance contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, and Unit 7 capture/provenance contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -240,3 +240,7 @@ Automated acceptance coverage must continue to establish:
 32. Durable install/restore replaces the local map epoch only when it replaces authoritative state; valid same-epoch installation retains it.
 33. View-state, graph-content, LiveHost snapshot/bootstrap/recovery, and persistence formats remain durable structural formats and carry no persisted epoch capability.
 34. Identity stripping happens before ownership/admission, never as a silent mutation of a LiveMap-owned graph.
+35. Projected object rename and array move remain explicit canonical operation intent; equality never infers movement.
+36. Rename retains the source position and subtree, retires an existing destination, and rejects a missing source.
+37. Projected move uses nonnegative safe final indexes and shifts each intervening sibling exactly once.
+38. Projected rename/move preserve exact transport, replay, feed, link, store, and LiveHost history intent without minting QUIDs or enabling object/array QUID eligibility.

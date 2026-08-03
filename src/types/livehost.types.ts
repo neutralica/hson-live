@@ -134,6 +134,24 @@ export type LiveHostCanonicalSpliceOp = Readonly<{
   next: LiveHostWireValue;
 }>;
 
+export type LiveHostCanonicalRenameOp = Readonly<{
+  kind: "rename";
+  path: LivePath;
+  from: string;
+  to: string;
+  prev: LiveHostWireValue;
+  next: LiveHostWireValue;
+}>;
+
+export type LiveHostCanonicalMoveOp = Readonly<{
+  kind: "move";
+  path: LivePath;
+  from: number;
+  to: number;
+  prev: LiveHostWireValue;
+  next: LiveHostWireValue;
+}>;
+
 export type LiveHostEncodedGraphReplaceRootOp = Omit<
   Extract<LiveMapGraphOp, { op: "replace-root" }>,
   "root"
@@ -169,6 +187,8 @@ export type LiveHostCanonicalOp =
   | LiveHostCanonicalDeleteOp
   | LiveHostCanonicalReplaceOp
   | LiveHostCanonicalSpliceOp
+  | LiveHostCanonicalRenameOp
+  | LiveHostCanonicalMoveOp
   | LiveHostEncodedGraphOp;
 
 /** One immutable changed commit in an incarnation's authoritative stream. */

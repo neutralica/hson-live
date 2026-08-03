@@ -22,6 +22,7 @@ export type { AnimSpec } from "./animate.types.js";
 export type { KeyframesInput, KeyframesName, KeyframeSelector, CssDeclMap } from "./keyframes.types.js";
 export type { SvgLiveTree } from "./svg.types.js";
 export type { LivePath, LivePathPart, LiveMapEditResult, LiveMapCommit, LiveMapOp, LiveMapAnyOp, LiveMapDataOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapGraphSetAttrOp, LiveMapGraphRemoveAttrOp, LiveMapGraphReplaceAttrsOp, LiveMapGraphReplaceContentOp, LiveMapGraphInsertContentOp, LiveMapGraphRemoveContentOp, LiveMapGraphMoveContentOp, LiveMapGraphCommit, LiveMapCommitOrigin, LiveMapCommitObservation, LiveMapCommitObserver, LiveMapCommitObserverApi, LiveMapFeedEvent, LiveMapFeedListener, LiveMapDisposer, LiveMapCore, LiveMapDebugApi, LiveMapNodeHandle, LiveMapPathHandle, LiveMapNodeAttrs, LiveMapNodeAttrValue, LiveMapProxy, LiveMap, LiveMapSubApi, LiveMapRootMode, DataLiveMapMode, DocumentLiveMapMode, DocumentLiveMapCapture, DocumentLiveMapCaptureApi, DocumentLiveMapCaptureIdentity, DocumentLiveMapCaptureOptions, DocumentLiveMapInstallIdentity, DocumentLiveMapInstallOptions, LiveMapDocumentPath, LiveMapDocumentPathInput, LiveMapDocumentRequestTarget, LiveMapDocumentCommitTarget, LiveMapDocumentTargetWitness, LiveMapDocumentTarget, LiveMapDocumentAttributeValue, LiveMapDocumentAttrs, LiveMapDocumentContent, DocumentLiveMapAttrsMustApi, DocumentLiveMapAttrsReadApi, DocumentLiveMapAttrsMutationApi, DocumentLiveMapAttrsApi, DocumentLiveMapContentApi, LiveMapDocumentApi, ElementLiveMap, FragmentLiveMap, DocumentLiveMap, LiveMapAuthority, ClassifiedLiveMap } from "./livemap.types.js";
+export type { LiveMapRenameOp, LiveMapMoveOp } from "./livemap.types.js";
 export type {
   CollectionReflect,
   CollectionReflectOptions,
@@ -126,6 +127,8 @@ export type {
   LiveHostCanonicalHistoryOptions,
   LiveHostCanonicalOp,
   LiveHostCanonicalReplaceOp,
+  LiveHostCanonicalRenameOp,
+  LiveHostCanonicalMoveOp,
   LiveHostCanonicalSetOp,
   LiveHostCanonicalSpliceOp,
   LiveHostCanonicalStream,
