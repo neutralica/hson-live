@@ -19,10 +19,8 @@ import type {
   LiveHostCanonicalCommit,
   LiveHostCanonicalOp,
   LiveHostDocumentWireTarget,
-  LiveHostServerCanonicalCommitMessage,
   LiveHostServerActionStatusMessage,
   LiveHostServerRecoveryCaughtUpMessage,
-  LiveHostServerRecoveryCommitMessage,
   LiveHostServerRecoveryErrorMessage,
   LiveHostServerRecoveryPlanMessage,
   LiveHostSnapshotCapabilities,
@@ -56,7 +54,9 @@ import type {
   LivePath,
 } from "../../types/livemap.types.js";
 import type {
+  LiveHostDecodedServerCanonicalCommitMessage,
   LiveHostDecodedServerMessage,
+  LiveHostDecodedServerRecoveryCommitMessage,
   LiveHostDecodedServerRecoverySnapshotMessage,
   LiveHostValidatedSnapshotEnvelope,
 } from "./livehost.document-snapshot.js";
@@ -65,6 +65,7 @@ import {
   is_livehost_encoded_graph_content,
 } from "./livehost.graph-content-codec.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
+import { LiveMapReplayInputError } from "../livemap/livemap.error.js";
 
 type WithDecodedDocumentWireTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
   ? Omit<TOperation, "target"> & Readonly<{ target: LiveHostDocumentWireTarget }>
@@ -72,6 +73,13 @@ type WithDecodedDocumentWireTarget<TOperation> = TOperation extends Readonly<{ t
 
 export type LiveHostDecodedDocumentCommit = Omit<LiveMapGraphCommit, "ops"> & Readonly<{
   ops: readonly WithDecodedDocumentWireTarget<LiveMapGraphOp>[];
+}>;
+
+type LiveHostCompatibilityCanonicalOp = WithDecodedDocumentWireTarget<LiveHostCanonicalOp>;
+
+/** Explicit legacy wire input retained only until exact-base lowering. */
+export type LiveHostCanonicalCommitCompatibility = Omit<LiveHostCanonicalCommit, "ops"> & Readonly<{
+  ops: readonly LiveHostCompatibilityCanonicalOp[];
 }>;
 
 function ok<T>(value: T): LiveHostResult<T> {
@@ -256,7 +264,21 @@ export function decode_livehost_document_attrs(value: unknown): LiveMapDocumentA
   return decode_document_attrs(value);
 }
 
-function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCanonicalOp | undefined {
+function decode_graph_op(
+  value: unknown,
+  mode: DocumentLiveMapMode,
+  allowLegacyQuid: false,
+): LiveHostCanonicalOp | undefined;
+function decode_graph_op(
+  value: unknown,
+  mode: DocumentLiveMapMode,
+  allowLegacyQuid: true,
+): LiveHostCompatibilityCanonicalOp | undefined;
+function decode_graph_op(
+  value: unknown,
+  mode: DocumentLiveMapMode,
+  allowLegacyQuid: boolean,
+): LiveHostCompatibilityCanonicalOp | undefined {
   if (!is_record(value) || value.domain !== "graph") return undefined;
   if (value.op === "replace-root") {
     if (!has_exact_keys(value, ["domain", "op", "mode", "root"]) || value.mode !== mode) return undefined;
@@ -271,7 +293,9 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCan
   }
 
   const canonicalTarget = decode_document_commit_target(value.target);
-  const legacyTarget = canonicalTarget === undefined ? decode_document_target(value.target) : undefined;
+  const legacyTarget = allowLegacyQuid && canonicalTarget === undefined
+    ? decode_document_target(value.target)
+    : undefined;
   const target = canonicalTarget ?? (legacyTarget?.kind === "quid" ? legacyTarget : undefined);
   if (target === undefined) return undefined;
   if (value.op === "set-attr") {
@@ -332,8 +356,18 @@ function decode_graph_op(value: unknown, mode: DocumentLiveMapMode): LiveHostCan
   return undefined;
 }
 
-/** @internal Strict persisted/network canonical commit decoder. */
-export function decode_livehost_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
+function decode_canonical_commit(
+  value: unknown,
+  allowLegacyQuid: false,
+): LiveHostCanonicalCommit | undefined;
+function decode_canonical_commit(
+  value: unknown,
+  allowLegacyQuid: true,
+): LiveHostCanonicalCommitCompatibility | undefined;
+function decode_canonical_commit(
+  value: unknown,
+  allowLegacyQuid: boolean,
+): LiveHostCanonicalCommitCompatibility | undefined {
   if (!is_record(value)) return undefined;
   const transportPresent = Object.hasOwn(value, "format")
     || Object.hasOwn(value, "formatVersion")
@@ -356,10 +390,12 @@ export function decode_livehost_canonical_commit(value: unknown): LiveHostCanoni
     || typeof value.payload !== "string"
   )) return undefined;
   if (!Array.isArray(value.ops) || value.ops.length === 0) return undefined;
-  const ops: LiveHostCanonicalOp[] = [];
+  const ops: LiveHostCompatibilityCanonicalOp[] = [];
   for (const item of value.ops) {
     const op = mode === "element" || mode === "fragment"
-      ? decode_graph_op(item, mode)
+      ? allowLegacyQuid
+        ? decode_graph_op(item, mode, true)
+        : decode_graph_op(item, mode, false)
       : decode_projected_canonical_op(item);
     if (!op) return undefined;
     ops.push(op);
@@ -379,9 +415,21 @@ export function decode_livehost_canonical_commit(value: unknown): LiveHostCanoni
   });
 }
 
+/** @internal Strict current canonical decoder; QUID-only targets are rejected. */
+export function decode_livehost_canonical_commit(value: unknown): LiveHostCanonicalCommit | undefined {
+  return decode_canonical_commit(value, false);
+}
+
+/** @internal Bounded legacy decoder; callers must lower against an exact staged base. */
+export function decode_livehost_canonical_commit_compat(
+  value: unknown,
+): LiveHostCanonicalCommitCompatibility | undefined {
+  return decode_canonical_commit(value, true);
+}
+
 /** @internal Convert an encoded document commit into detached LiveMap-domain operations. */
 export function decode_livehost_document_commit(
-  commit: LiveHostCanonicalCommit,
+  commit: LiveHostCanonicalCommitCompatibility,
 ): LiveHostDecodedDocumentCommit {
   if (commit.mode !== "element" && commit.mode !== "fragment") {
     throw new Error("LiveHost canonical commit is not a document commit.");
@@ -417,8 +465,13 @@ export function decode_livehost_document_commit(
  */
 export function replay_livehost_document_commit_compat(
   map: DocumentLiveMap,
-  commit: LiveHostCanonicalCommit,
+  commit: LiveHostCanonicalCommitCompatibility,
 ): LiveMapGraphCommit {
+  if (commit.mode !== map.mode) {
+    throw new LiveMapReplayInputError(
+      `legacy LiveHost document commit mode ${commit.mode} is incompatible with exact base mode ${map.mode}`,
+    );
+  }
   return Reflect.apply(map.replay, map, [decode_livehost_document_commit(commit)]);
 }
 
@@ -699,17 +752,21 @@ function decode_recovery_server_message(
   if (!id) return fail("LiveHost recovery server message requires non-empty id.");
 
   if (value.type === "recovery-commit") {
-    const commit = decode_livehost_canonical_commit(value.commit);
+    const commit = allowViewStateSnapshots
+      ? decode_livehost_canonical_commit_compat(value.commit)
+      : decode_livehost_canonical_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "phase", "commit"]) || (value.phase !== "body" && value.phase !== "tail") || !commit) {
       return fail("Malformed LiveHost recovery commit message.");
     }
-    const message: LiveHostServerRecoveryCommitMessage = { type: "recovery-commit", id, phase: value.phase, commit };
+    const message: LiveHostDecodedServerRecoveryCommitMessage = { type: "recovery-commit", id, phase: value.phase, commit };
     return ok(message);
   }
   if (value.type === "commit") {
-    const commit = decode_livehost_canonical_commit(value.commit);
+    const commit = allowViewStateSnapshots
+      ? decode_livehost_canonical_commit_compat(value.commit)
+      : decode_livehost_canonical_commit(value.commit);
     if (!has_exact_keys(value, ["type", "id", "commit"]) || !commit) return fail("Malformed LiveHost canonical commit message.");
-    const message: LiveHostServerCanonicalCommitMessage = { type: "commit", id, commit };
+    const message: LiveHostDecodedServerCanonicalCommitMessage = { type: "commit", id, commit };
     return ok(message);
   }
   if (value.type === "recovery-snapshot") {
@@ -871,7 +928,19 @@ function decode_action_status_server_message(value: Readonly<Record<string, unkn
 function is_legacy_livehost_server_message(
   message: LiveHostDecodedServerMessage,
 ): message is LiveHostServerMessage {
-  return message.type !== "recovery-snapshot" || "hson" in message.snapshot;
+  if (message.type === "recovery-snapshot") return "hson" in message.snapshot;
+  if (message.type === "recovery-commit" || message.type === "commit") {
+    return is_current_canonical_commit(message.commit);
+  }
+  return true;
+}
+
+function is_current_canonical_commit(
+  commit: LiveHostCanonicalCommitCompatibility,
+): commit is LiveHostCanonicalCommit {
+  return commit.ops.every((operation) => !("domain" in operation)
+    || operation.op === "replace-root"
+    || operation.target.kind === "path");
 }
 
 function decode_livehost_server_message_internal(

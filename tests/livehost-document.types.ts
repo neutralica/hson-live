@@ -8,6 +8,7 @@ import type {
   LiveHostForMap,
   LiveHostClientForMap,
   LiveHostDocumentActionPayloads,
+  LiveHostEncodedGraphOp,
   LiveMapDocumentAttrs,
   LiveMapDocumentAttributeValue,
   LiveMapGraphReplaceAttrsOp,
@@ -34,6 +35,15 @@ const replacementOperation: LiveMapGraphReplaceAttrsOp = {
   attrs: replacementAttrs,
 };
 void replacementOperation;
+
+const invalidCanonicalWireOperation: LiveHostEncodedGraphOp = {
+  domain: "graph",
+  op: "remove-attr",
+  // @ts-expect-error current canonical LiveHost operations cannot retain QUID-only targets
+  target: { kind: "quid", quid: "0000000000000001" },
+  name: "title",
+};
+void invalidCanonicalWireOperation;
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends (<T>() => T extends TRight ? 1 : 2)

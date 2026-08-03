@@ -139,27 +139,27 @@ export type LiveHostEncodedGraphReplaceRootOp = Omit<
   "root"
 > & Readonly<{ root: LiveHostEncodedGraphContent }>;
 
-/** Unit 1 compatibility boundary for pre-path-authority LiveHost wire data. */
+/** Bounded compatibility target for pre-path-authority LiveHost wire data. */
 export type LiveHostDocumentWireTarget =
   | LiveMapDocumentCommitTarget
   | Extract<LiveMapDocumentTarget, { kind: "quid" }>;
 
-type WithLiveHostDocumentWireTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
-  ? Omit<TOperation, "target"> & Readonly<{ target: LiveHostDocumentWireTarget }>
+type WithLiveHostCanonicalDocumentTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
+  ? Omit<TOperation, "target"> & Readonly<{ target: LiveMapDocumentCommitTarget }>
   : never;
 
 export type LiveHostEncodedGraphReplaceContentOp = Omit<
-  WithLiveHostDocumentWireTarget<Extract<LiveMapGraphOp, { op: "replace-content" }>>,
+  WithLiveHostCanonicalDocumentTarget<Extract<LiveMapGraphOp, { op: "replace-content" }>>,
   "replacement"
 > & Readonly<{ replacement: LiveHostEncodedGraphContent }>;
 
 export type LiveHostEncodedGraphInsertContentOp = Omit<
-  WithLiveHostDocumentWireTarget<Extract<LiveMapGraphOp, { op: "insert-content" }>>,
+  WithLiveHostCanonicalDocumentTarget<Extract<LiveMapGraphOp, { op: "insert-content" }>>,
   "content"
 > & Readonly<{ content: LiveHostEncodedGraphContent }>;
 
 export type LiveHostEncodedGraphOp =
-  | WithLiveHostDocumentWireTarget<Exclude<LiveMapGraphOp, { op: "replace-root" | "replace-content" | "insert-content" }>>
+  | WithLiveHostCanonicalDocumentTarget<Exclude<LiveMapGraphOp, { op: "replace-root" | "replace-content" | "insert-content" }>>
   | LiveHostEncodedGraphReplaceRootOp
   | LiveHostEncodedGraphReplaceContentOp
   | LiveHostEncodedGraphInsertContentOp;

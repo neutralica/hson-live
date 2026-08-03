@@ -31,6 +31,7 @@ import {
   DOCUMENT_REFLECT_CONTENT_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_CONTENT_PATH_INVALID_ERROR_CODE,
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+  DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_REUSE_INCOMPATIBLE_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
   DocumentReflectError,
@@ -68,6 +69,7 @@ export function plan_document_structural_transaction(
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
   const affectedOwners = new Set<ShadowNode>();
+  const incomingRoots: ShadowContent[] = [];
 
   for (const operation of operations) {
     if (operation.op === "replace-root") {
@@ -95,7 +97,11 @@ export function plan_document_structural_transaction(
       case "insert-content":
         affectedOwners.add(nearest_ordinary_owner(target));
         assert_insert_index(target, operation.index, operation.op);
-        target.content.splice(operation.index, 0, shadow_insert_content(target, operation.content));
+        {
+          const inserted = shadow_insert_content(target, operation.content);
+          target.content.splice(operation.index, 0, inserted);
+          incomingRoots.push(inserted);
+        }
         break;
       case "remove-content":
         affectedOwners.add(nearest_ordinary_owner(target));
@@ -115,7 +121,9 @@ export function plan_document_structural_transaction(
         affectedOwners.add(nearest_ordinary_owner(target));
         assert_existing_index(target, operation.index, operation.op);
         const current = target.content[operation.index];
-        target.content[operation.index] = plan_replacement(target, current, operation.replacement);
+        const replacement = plan_replacement(target, current, operation.replacement);
+        target.content[operation.index] = replacement;
+        incomingRoots.push(replacement);
         break;
       }
     }
@@ -125,7 +133,7 @@ export function plan_document_structural_transaction(
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
   const finalNodes = new Set<HsonNode>();
   collect_shadow_nodes(root, finalNodes);
-  validate_final_quids(root, oldNodes, finalNodes, runtime);
+  validate_incoming_quids(incomingRoots, oldNodes, finalNodes, runtime);
   const removedRoots = find_removed_roots(projectedRoot, finalNodes);
   const mountedAffectedOwners = [...affectedOwners]
     .map((shadow) => shadow.node)
@@ -289,6 +297,14 @@ function resolve_shadow_target(root: ShadowNode, target: LiveMapDocumentCommitTa
     if (!is_shadow_node(child)) throw content_path_error(operation);
     current = child;
   }
+  if (target.witness !== undefined
+    && current.persistedQuid !== undefined
+    && current.persistedQuid !== target.witness.quid) {
+    throw new DocumentReflectError(
+      DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+      `Canonical path target for ${operation} does not match its persisted-QUID witness.`,
+    );
+  }
   return current;
 }
 
@@ -418,6 +434,32 @@ function validate_final_quids(
       );
     }
   });
+}
+
+function validate_incoming_quids(
+  incomingRoots: readonly ShadowContent[],
+  oldNodes: ReadonlySet<HsonNode>,
+  finalNodes: ReadonlySet<HsonNode>,
+  runtime: LiveTreeRuntime,
+): void {
+  const visited = new Set<ShadowNode>();
+  const visit = (shadow: ShadowContent): void => {
+    if (!is_shadow_node(shadow) || visited.has(shadow) || !finalNodes.has(shadow.node)) return;
+    visited.add(shadow);
+    const quid = shadow.persistedQuid;
+    if (quid !== undefined) {
+      const registered = get_node_by_quid(quid, runtime);
+      if (registered !== undefined && registered !== shadow.node
+        && (!oldNodes.has(registered) || finalNodes.has(registered))) {
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+          "Inserted persisted QUID is owned by another active LiveTree node.",
+        );
+      }
+    }
+    for (const child of shadow.content) visit(child);
+  };
+  for (const root of incomingRoots) visit(root);
 }
 
 function find_removed_roots(root: HsonNode, finalNodes: ReadonlySet<HsonNode>): HsonNode[] {

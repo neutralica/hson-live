@@ -1,5 +1,6 @@
 import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { is_persisted_quid } from "../../core/persisted-quid.js";
+import { read_hson_node_quid } from "../../core/hson-node-quid.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
@@ -157,7 +158,33 @@ function resolve_quid_request(
   if (path === undefined) {
     throw document_error("DOCUMENT_TARGET_NOT_FOUND", operation, `no element carries persisted QUID ${JSON.stringify(quid)}`);
   }
-  return Object.freeze({ path, endpoint: resolve_path(root, mode, path, operation) });
+  const endpoint = resolve_path(root, mode, path, operation);
+  if (!is_ordinary_element_node(endpoint)) {
+    throw document_error(
+      "INVALID_DOCUMENT_IDENTITY",
+      operation,
+      `active QUID ${JSON.stringify(quid)} resolves to an ineligible endpoint`,
+    );
+  }
+  let activeQuid: string | undefined;
+  try {
+    activeQuid = read_hson_node_quid(endpoint);
+  } catch (cause) {
+    throw document_error(
+      "INVALID_DOCUMENT_IDENTITY",
+      operation,
+      `active QUID ${JSON.stringify(quid)} resolves through inconsistent metadata`,
+      cause,
+    );
+  }
+  if (activeQuid !== quid) {
+    throw document_error(
+      "INVALID_DOCUMENT_IDENTITY",
+      operation,
+      `active QUID ${JSON.stringify(quid)} disagrees with its installed overlay path`,
+    );
+  }
+  return Object.freeze({ path, endpoint });
 }
 
 function resolve_path(

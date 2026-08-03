@@ -18,7 +18,6 @@ import type {
   LiveHostActionPayloads,
   LiveHostActionRequestId,
   LiveHostActionStatusId,
-  LiveHostCanonicalCommit,
   LiveHostClient,
   LiveHostClientForMap,
   LiveHostClientActionMessage,
@@ -63,6 +62,7 @@ import {
   decode_livehost_client_server_message,
   replay_livehost_document_commit_compat,
   is_livehost_json_value,
+  type LiveHostCanonicalCommitCompatibility,
 } from "./livehost.protocol.js";
 import {
   encode_livehost_graph_content,
@@ -218,7 +218,7 @@ function reject_pending_action_statuses(
   for (const status of statuses) status.reject(error);
 }
 
-function local_ops(commit: LiveHostCanonicalCommit): readonly LiveMapOp[] {
+function local_ops(commit: LiveHostCanonicalCommitCompatibility): readonly LiveMapOp[] {
   return commit.ops.map((op): LiveMapOp => {
     if ("domain" in op) throw new Error("Canonical graph operation cannot replay on a projected mirror.");
     const prev = op.prev.present ? op.prev.value : undefined;
@@ -403,7 +403,7 @@ export function create_livehost_client<
     return true;
   }
 
-  function apply_commit(commit: LiveHostCanonicalCommit, phase: "body" | "tail" | "live"): void {
+  function apply_commit(commit: LiveHostCanonicalCommitCompatibility, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
     const logicalMapId = options.recovery?.logicalMapId;
     if (!logicalMapId || commit.logicalMapId !== logicalMapId || commit.incarnationId !== incarnationId) {

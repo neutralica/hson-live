@@ -32,7 +32,10 @@ import {
   type LiveMapDocumentIdentityOverlay,
   type LiveMapDocumentIdentityReconciliation,
 } from "./livemap.document.identity.js";
-import { append_document_path } from "./livemap.document.path.js";
+import {
+  append_document_path,
+  document_path_effect_for_graph_operation,
+} from "./livemap.document.path.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
   decode_document_attr_value,
@@ -541,30 +544,28 @@ function reconcile_operation_identity(
   if (operation.op === "set-attr" || operation.op === "remove-attr" || operation.op === "replace-attrs") {
     return preserve_livemap_document_identity_at_path(overlay, operation.target.path);
   }
+  const effect = document_path_effect_for_graph_operation(operation);
+  if (effect === undefined || effect.kind === "replace-root") {
+    throw new LiveMapDocumentIdentityError(
+      "OVERLAY_INVARIANT",
+      "Document mutation did not produce a local structural path effect.",
+    );
+  }
   if (operation.op === "insert-content") {
     return reconcile_livemap_document_identity_overlay(
       overlay,
-      { kind: "insert", parent: operation.target.path, index: operation.index },
+      effect,
       { content: operation.content, path: append_document_path(operation.target.path, operation.index) },
     );
   }
   if (operation.op === "replace-content") {
     return reconcile_livemap_document_identity_overlay(
       overlay,
-      { kind: "replace", parent: operation.target.path, index: operation.index },
+      effect,
       { content: operation.replacement, path: append_document_path(operation.target.path, operation.index) },
     );
   }
-  if (operation.op === "remove-content") {
-    return reconcile_livemap_document_identity_overlay(
-      overlay,
-      { kind: "delete", parent: operation.target.path, index: operation.index },
-    );
-  }
-  return reconcile_livemap_document_identity_overlay(
-    overlay,
-    { kind: "move", parent: operation.target.path, from: operation.from, to: operation.to },
-  );
+  return reconcile_livemap_document_identity_overlay(overlay, effect);
 }
 
 /** Validate and plan one graph operation against a detached candidate root. */

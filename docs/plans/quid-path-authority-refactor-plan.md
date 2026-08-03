@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0, 1, 3, and 4 implemented and executable; later-unit architecture remains a plan.
+Status: Units 0, 1, 3, 4, 5, and 6 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -11,6 +11,10 @@ Unit 1 supersedes the inspection-baseline statements below that say mutation com
 Unit 3 replaced the retained QUID-to-node index with one immutable, bidirectional QUID/path overlay per document map. The overlay is derived and nonserialized, retains no graph pointers, and stores entries only for present QUIDs. Root, revision, and overlay are installed as one controller state after candidate validation. `document.byQuid`, request lowering, witness checks, and narrow reflection correspondence consume overlay paths. Its initial correctness strategy rebuilt from each candidate graph; Unit 4 now supersedes that ordinary-operation seam.
 
 Unit 4 replaces that ordinary-operation rebuild seam with the shared document operation reducer. Attribute operations preserve the exact overlay; content insert/replace scan only admitted incoming subtrees and reconcile surviving sparse claims; remove/move transform sparse paths through Unit 1 semantics. Replay consumes each staged overlay from the same reducer. Derived identity effects remain internal, noncanonical, and nonserialized. Complete-root construction, install, restore, and replacement retain one bounded admission scan.
+
+Unit 5 completes the request/canonical split across the remaining authority surfaces. Active LiveMap and LiveHost action requests may still use QUIDs, but resolution occurs inside the accepting staged transaction. Canonical LiveMap and LiveHost types, current protocol decoding, history, recovery, client application, and new persistence appends are path-only with an optional witness. Named internal compatibility readers lower old QUID-only commits from the exact checkpoint/base graph and normalize them immediately; no protocol version or persistence rewrite was required for new-format correctness.
+
+Unit 6 makes document Reflection path-first. The exact accepted commit privately carries Unit 4 identity effects to the binding; paths route, witnesses validate, moves retain exact projected subtrees, and compatible same-QUID replacements remain conservative continuity cases. Ordinary local operations update binding correspondence through the shared Unit 1 transform without a whole-domain rebuild. Initialization, snapshots, and compatible root replacement retain the legitimate complete-build boundary. LiveTree runtime registries and public semantics remain unchanged.
 
 ## Inspection baseline
 
@@ -345,7 +349,7 @@ An exact canonical no-op has no revision, history, persistence append, or feed. 
 
 ### Reflection timing
 
-Reflection currently receives a commit after canonical map installation, plans a shadow result, applies graph/DOM changes, disposes removed LiveTree nodes, and rebuilds correspondence ([`reflect.document.ts`](../../src/api/reflect/reflect.document.ts#L432), [`reflect.document.structure.ts`](../../src/api/reflect/reflect.document.structure.ts#L196)). Preserve this order. Feed it path-authoritative operations plus derived identity effects from the same accepted commit. Do not allow reflection to modify the LiveMap overlay or to make LiveTree identity path-authoritative.
+Reflection receives a commit after canonical map installation, validates the commit-keyed derived identity evidence, plans a path-routed shadow result, applies graph/DOM changes, disposes removed LiveTree nodes, and then publishes correspondence. Ordinary local operations transform existing registrations and walk only introduced final subtrees; initialization, snapshots, and compatible root convergence may rebuild the complete correspondence domain. Observer failure never rolls back the already-installed LiveMap state. Reflection does not modify the LiveMap overlay and LiveTree identity remains runtime/QUID-authoritative.
 
 ## 8. QUID-targeted API migration
 
@@ -404,15 +408,15 @@ Same-epoch provenance must not be encoded only as the QUID itself. A local captu
 
 ## 10. LiveHost migration implications
 
-### Current dependency
+### Unit 5 audit result
 
-`LiveHostCanonicalCommit` has no document-commit format version and directly embeds `LiveHostEncodedGraphOp`, whose target inherits the path-or-QUID union ([`livehost.types.ts`](../../src/types/livehost.types.ts#L136), [`livehost.types.ts`](../../src/types/livehost.types.ts#L164)). Strict decoding accepts exact current keys and raw QUID targets ([`livehost.protocol.ts`](../../src/api/livehost/livehost.protocol.ts#L297)). Recovery transports those commits, clients decode them back to LiveMap graph ops, and mirrors replay them ([`livehost.protocol.ts`](../../src/api/livehost/livehost.protocol.ts#L344), [`livehost.client.ts`](../../src/api/livehost/livehost.client.ts#L406)). Persistence stores exact canonical commits and reconstructs a checkpoint by ordered replay ([`livehost.persistence.ts`](../../src/api/livehost/livehost.persistence.ts#L306)).
+`LiveHostCanonicalCommit` still has no document-commit format version, but `LiveHostEncodedGraphOp` now embeds only path-authoritative `LiveMapDocumentCommitTarget` values. Strict current decoding rejects raw QUID targets. Recovery, clients, and new persistence appends therefore consume or produce only paths plus optional witnesses.
 
-Therefore retained QUID-targeted history is the largest migration risk.
+Retained pre-Unit-5 QUID-targeted history remains compatibility input. Internal client and persistence readers admit that old shape only where an exact base graph is available, translate its contiguous operations in ordinal-staged order, and immediately expose the normalized path commit. This closes current correctness without adding a canonical v2 field or rewriting persistence. Durable migration tooling remains relevant only if deployments need old records rewritten rather than bounded read compatibility.
 
-### New canonical format
+### Conditional future canonical format
 
-Introduce a versioned document commit representation, for example `canonicalFormatVersion: 2`, in which every graph operation target is a numeric document path and may contain an optional non-routing witness. Graph content remains exact structural content; its codec version need change only if admission/category bytes change.
+Unit 5 proved that the existing envelope can enforce numeric document paths with optional non-routing witnesses without a version field. A future `canonicalFormatVersion: 2` is therefore conditional on negotiation, provenance, or storage requirements introduced by later units; it is not required merely to eliminate newly produced QUID-only targets. Graph content remains exact structural content; its codec version need change only if admission/category bytes change.
 
 At action execution:
 
@@ -596,29 +600,36 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Suggested commit direction:** `refactor(livemap): reconcile graph and live identity atomically`.
 - **Implemented boundary:** Ordinary mutation and replay share one graph-operation reducer and one copy-on-write sparse overlay reconciler. Incoming identity admission is subtree-local, witnesses consume ordinal-staged overlays, exact no-ops discard derived effects, and controller publication remains one root/revision/overlay swap.
 - **Complexity evidence:** Deterministic counters distinguish whole-root builds, sparse entries visited/changed, and incoming nodes visited. Ordinary operations perform no full overlay rebuild; full scans remain at complete-root admission boundaries. Whole-root graph cloning and canonical invariant validation are not represented as solved by this identity unit.
-- **Next authority work:** Unit 5 retains the broader queued/stale QUID-request authority work. Unit 1's synchronous compatibility lowering remains unchanged here.
+- **Completed follow-up:** Unit 5 closes queued/stale request lowering and the LiveHost canonical boundary without changing the operation reducer.
 
 ### Unit 5 — Lower QUID requests before commit
 
+- **Status:** Implemented and executable.
 - **Goal:** Keep QUID reads/mutations as live request APIs while ensuring all returned document commits are path-authoritative.
-- **Production ownership:** document target normalization, attrs/content APIs, staged authority.
-- **Public/API effect:** Existing target requests remain; returned commit target changes from caller-selected union to path target.
-- **Compatibility effect:** Behavioral/type change for consumers asserting raw QUID commit targets; likely major-version surface unless dual typings/versioned commit API are offered.
-- **Tests:** QUID request at revision R, stale queued request, witness mismatch, deletion/reuse, batch staging.
+- **Production ownership:** document target normalization, attrs/content APIs, staged authority, LiveHost canonical types/decoders/client/persistence compatibility, and reflection registration typing.
+- **Public/API effect:** Existing target requests remain; canonical LiveMap and LiveHost operation types expose only a path plus optional witness.
+- **Compatibility effect:** Current canonical decoding is strict. Named internal client/persistence readers retain bounded old QUID-only input, require its exact base, and immediately normalize it; no wire version or persistence-format rewrite is introduced.
+- **Tests:** QUID request at revision R; queued and deduplicated authority; witness mismatch; deletion, replacement, and sibling movement; multi-operation staging; history/recovery/persistence path closure; exact-base legacy translation.
 - **Stop conditions:** Resolution occurs outside the accepting transaction or a raw QUID remains the sole canonical target.
 - **Dependency:** Unit 4.
-- **Suggested commit direction:** `refactor(livemap): lower QUID targets to revisioned paths`.
+- **Suggested commit direction:** `refactor(livemap): lower QUID requests to canonical paths`.
+- **Implemented boundary:** All active request families resolve through the installed ordinal-staged overlay. Current canonical decoders reject QUID-only targets. LiveHost actions, history, recovery, and new persistence records carry only path targets; reflection QUIDs remain continuity evidence; `document.byQuid` remains read-only; unsafe debug mutation remains explicitly outside the contract.
+- **Legacy limit:** Compatibility lowering is possible only with the exact base graph and matching mode. Persistence load supplies that base and normalizes in memory. Isolated or unresolved legacy history remains a hard rejection/recheckpoint case; any future durable record rewrite belongs to Unit 9, not this unit.
 
 ### Unit 6 — Path-first reflection with derived identity effects
 
+- **Status:** Implemented and executable.
 - **Goal:** Remove reflection's need to route canonical commits by QUID while preserving same-QUID exact-node continuity and all LiveTree ownership.
-- **Production ownership:** `reflect.document.ts`, structural planner, binding registration.
-- **Public/API effect:** No intended `reflect_document` surface change.
-- **Compatibility effect:** More precise failure categories; no LiveTree semantic change.
-- **Tests:** path-only attrs/content, shifted paths, same-QUID compatible replacement, QUID-free root replacement, CSS/event/resource survival and retirement.
+- **Production ownership:** `reflect.document.ts`, structural planner, the shared document path helper, and one private commit/effect adapter in LiveMap identity ownership.
+- **Public/API effect:** The reflection facade is unchanged; deterministic diagnostics add whole-build, incremental-update, correspondence-change, and consumed-effect counts.
+- **Compatibility effect:** Current canonical commits are path-only. Legacy QUID-only input is translated against its exact staged base before Reflection observes it. No LiveTree semantic, LiveHost protocol, or persistence format change.
+- **Tests:** 62 focused checks cover path-only attrs/content, carrier paths, QUID-free routing, matching/absent/conflicting witnesses, shifted correspondence, same-QUID compatible replacement, move CSS/event/resource continuity, failure isolation, fresh-binding recovery, and complete-build accounting.
 - **Stop conditions:** Repair requires path-authoritative LiveTree handles or weakens runtime collision/lifecycle rules.
 - **Dependency:** Units 4 and 5.
-- **Suggested commit direction:** `refactor(reflect): consume path commits and derived identity effects`.
+- **Suggested commit direction:** `refactor(reflect): apply document commits by canonical path`.
+- **Implemented boundary:** Path is the sole canonical route. Identity effects are derived, private, and validated against the final overlay. Local structural correspondence is incremental; root/snapshot convergence is the only complete-build boundary. The structural planner retains conservative full result validation, so Unit 6 does not claim to solve whole-graph cloning or validation cost.
+- **QUID-only mutation limit:** No supported public canonical metadata registration/rekey operation exists. Unit 6 does not invent one; QUID changes remain structural replacement/root admission cases until a separately designed path-authoritative registration and LiveTree rekey contract exists.
+- **Direct LiveTree audit:** Attributes and representable text/empty/remove operations delegate to canonical mutations. Append/create/detach/remove-children and ambiguous destructive cases reject before local mutation. Unsafe raw graph/DOM bypass can drift; validation fails the binding, and recovery is disposal plus fresh reflection rather than silent repair.
 
 ### Unit 7 — Explicit capture and epoch provenance
 
@@ -633,6 +644,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 8 — LiveHost path-authoritative canonical commit v2
 
+- **Status:** Deferred and conditional. The Unit 5 audit found no existing new-format correctness defect that requires a v2 field.
 - **Goal:** Version document canonical commits and emit only path targets with optional witnesses; negotiate recovery format.
 - **Production ownership:** LiveHost types, history, protocol, actions, recovery, client.
 - **Public/API effect:** New canonical commit/protocol version; action request targets remain compatible.
@@ -644,6 +656,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 9 — Legacy history and persistence migration bridge
 
+- **Status:** Deferred and conditional. Unit 5 supplies bounded exact-base read compatibility and in-memory normalization without rewriting records.
 - **Goal:** Translate checkpoint-plus-v1-tail to v2 atomically and retain read compatibility for bounded migration.
 - **Production ownership:** persistence decoder/store migration and deployment tooling; `hson-demo2` integration fixtures.
 - **Public/API effect:** Persistence adapter records gain explicit versions/migration outcome.
@@ -708,9 +721,9 @@ The first implementation target is Unit 0, followed by Unit 1. Encoding work mus
 | Public behavior | QUID requests return path-targeted commits in later units; external serialized QUID alone does not prove active provenance; QUID-only canonical changes remain revision-worthy | Document and stage path/admission changes behind version/compatibility mode. Likely major for direct commit assertions/admission behavior. |
 | Serialized HSON/HTML/JSON | Bytes may still carry QUID; admission semantics change | Encoding width requires explicit version/migration. Category metadata should be versioned where encoded. |
 | LiveMap capture/view-state | Exact v2 currently preserves QUID and revision | Add a new version/category rather than silently reinterpret v2 persistence. |
-| LiveHost canonical commit | Raw QUID targets removed from new history | Mandatory commit format version and negotiation. |
-| LiveHost protocol | Exact-key decoders and recovery messages carry canonical commits | Version capability negotiation; bounded dual decode. |
-| Persistence | Checkpoint plus exact canonical tail may rely on QUID | Atomic checkpoint-plus-tail translator; never discard assumed user data. |
+| LiveHost canonical commit | Raw QUID targets removed from new history | Existing envelope is path-closed in Unit 5; version only if later semantics require negotiation. |
+| LiveHost protocol | Exact-key decoders and recovery messages carry canonical commits | Strict current decode plus isolated bounded compatibility decode; version only for a future format change. |
+| Persistence | Old checkpoint plus exact canonical tail may contain QUID targets | Unit 5 lowers on exact-base load; add an atomic rewrite tool only when durable migration is required. |
 | Bootstrap/recovery | Snapshot can preserve QUID but tail becomes path-only | Version snapshot category/provenance separately from structural correctness. |
 | Fixtures/fingerprints | Exact 16-character values, selectors, payloads, canonical hashes | Migrate only in Unit 13, after protocol/persistence conversion. |
 | `hson-demo2` | Live raw-QUID UI and browser shape assertions are observable | Preserve behavior until compatibility unit; migrate tests with public package APIs, not dist-internal imports. |
@@ -721,7 +734,7 @@ These are real compatibility surfaces. `package.json` publishes root, `./livetre
 
 ### Major-version boundary
 
-Path-authoritative internal history can land additively, but changing the shape of returned public document commits and strict wire/storage records is a compatibility change. If the package cannot offer dual v1/v2 commit types and negotiated protocol while retaining sound typing, group Units 5, 8, and 9 into a deliberate major-version migration. Do not force LiveTree API changes into that major solely for convenience.
+Unit 5 closes the canonical target type and current decoder while preserving the path-or-QUID action request union and bounded exact-base compatibility readers. It does not add or rewrite a serialized format. A major-version boundary is still appropriate if a later unit adds negotiated commit fields, changes capture provenance, or removes the compatibility reader; do not force LiveTree API changes into that major solely for convenience.
 
 ## 15. Executable final invariants
 

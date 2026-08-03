@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 3 sparse QUID/path overlay contract, and Unit 4 operation-derived reconciliation contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, and Unit 5 QUID-request lowering boundary shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -84,7 +84,7 @@ Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-o
 
 A commit target may carry `witness: { quid }`. The path always routes. A matching active endpoint QUID validates same-epoch intent; an active different endpoint QUID reports a structured witness conflict; no endpoint QUID leaves identity-free replay available. A witness elsewhere cannot repair or reroute an invalid path, and raw bytes remain insufficient epoch provenance.
 
-Pre-Unit-1 QUID-targeted replay is retained behind one explicitly named legacy adapter. Successful legacy replay immediately normalizes the operation to path plus witness. LiveHost's existing decoder may still admit the old wire shape until its separately versioned protocol unit, but new authoritative history is produced from path-authoritative LiveMap commits.
+Pre-Unit-1 QUID-targeted replay is retained behind explicitly named compatibility adapters. Successful compatibility replay lowers each operation against its exact staged base and immediately normalizes it to path plus witness. Current canonical LiveHost decoding rejects QUID-only targets; only internal client and persistence compatibility readers admit the old shape. New authoritative history is produced from path-authoritative LiveMap commits.
 
 `LiveMapPathHandle` follows a projected location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
 
@@ -103,6 +103,28 @@ Replay uses the same operation reducer and the staged overlay from each prior or
 Whole-root external admission remains deliberately different: construction, install, restore, decoded snapshot admission, and `replace-root` replay perform one complete validation scan because the complete ownership domain changes. Capture serializes only canonical graph metadata and revision. Ordinary operation reconciliation retains `O(Q)` overlay storage, visits sparse entries rather than graph nodes, and scans only incoming subtrees; whole-root graph cloning and invariant validation remain separate later performance seams.
 
 The overlay never mints QUIDs, owns LiveTree claims, retains DOM nodes, or manages LiveTree CSS, event, animation, resource, handle, or lifecycle records. Reflection may read the current path/QUID correspondence through an internal read-only facade, while `LiveTreeRuntime` remains the sole owner of active LiveTree identity.
+
+## Request lowering and canonical closure
+
+Path-or-QUID unions are request surfaces only. Document attribute and content APIs, LiveHost built-in document actions, and custom LiveHost handlers operating on their staged draft may accept a QUID request. Resolution occurs inside the accepting mutation or replay transaction against that ordinal's current owned graph and sparse overlay. Queue delay therefore cannot freeze an earlier path, and a deduplicated retry joins or reuses one action execution rather than resolving again against a later base.
+
+Every newly produced `LiveMapGraphOp`, `LiveHostEncodedGraphOp`, history entry, recovery body or tail, client-applied canonical commit, and persistence append uses a validated path target. A QUID may remain only as an optional non-routing witness. No current canonical encoder or public current-format decoder accepts a QUID as the operation's sole address.
+
+Legacy QUID-only canonical input is bounded compatibility data, not a second canonical model. Translation requires the exact checkpoint/base graph and matching map mode, resolves operations in ordinal order through the staged overlay, rejects missing, malformed, duplicate, or conflicting identity, and publishes only the normalized path commit. The persistence reader performs this normalization in memory without rewriting stored records. An isolated legacy operation without its exact base cannot be translated and must not be guessed, discarded, or resolved against a final graph.
+
+Reflection registrations retain path-authoritative commit targets; their QUID correspondence remains live continuity evidence only. `document.byQuid` is a read-only current-epoch lookup and never creates a commit. `map.debug.node(...)` remains an explicitly unsafe bypass and is not part of the lowering guarantee.
+
+## Path-first document reflection
+
+Document Reflection resolves every current canonical operation from its validated path. An optional QUID witness is checked only after that path resolves; a QUID found elsewhere cannot redirect the operation. The accepted commit carries its Unit 4 `preserved`, `moved`, `retired`, and `introduced` evidence through a private commit-keyed adapter, without adding public commit fields or a second serialized stream. Reflection validates that evidence against its prior projected correspondence and the already-installed final LiveMap overlay, but never mutates the overlay.
+
+Ordinary local structural commits transform projected registration paths through the same Unit 1 path-effect helper used by LiveMap reconciliation. Surviving moved registrations are rebound to their new paths, retired registrations are removed, and only introduced final subtrees are walked for new registrations. Attribute commits do not rebuild correspondence. Complete initialization, snapshot convergence, and compatible `replace-root` convergence may perform a whole-correspondence build because the complete projected domain is being admitted. The structural planner still performs conservative complete graph/result validation; Unit 6 removes whole-domain correspondence and QUID rediscovery from ordinary local commits, not the separately documented graph-cloning/validation performance seam.
+
+A move retains the exact projected subtree and therefore its LiveTree handles, DOM, CSS, events, animation, and lifecycle resources. Replacement is conservative: only a compatible ordinary-element root with the same persisted QUID and tag may reuse the exact root node; differing-QUID or incompatible replacements retire the old subtree. QUID-free documents use the same path routing and require no identity evidence.
+
+LiveMap and LiveTree registries remain separate. The sparse LiveMap overlay owns canonical QUID/path lookup; `LiveTreeRuntime` owns exact active nodes and their resources. Reflection's `byQuid` table is binding-local validation evidence, not a canonical router and not a replacement runtime registry.
+
+While a tree is reflected, public LiveTree attribute mutations and the representable `text.set`/`text.add`/`text.insert`, `empty`, and nested `remove` cases delegate to canonical LiveMap operations. Append, create, detach, detached-content append, `removeChildren`, and ambiguous/destructive text cases reject before local structural mutation. The guard prevents ordinary public API drift. Explicit unsafe raw-node or raw-DOM mutation can bypass it; the next delegation or canonical observation validates path, attrs, QUID, node/DOM links, and fails the binding on divergence. There is no in-place drift repair. Disposal followed by a fresh reflection binding rebuilds correspondence from canonical state.
 
 ## LiveMap does not mint implicitly
 
@@ -156,3 +178,15 @@ Automated acceptance coverage must continue to establish:
 15. Incoming content admission visits only the incoming subtree for new QUID claims and rejects collisions with surviving sparse claims before publication.
 16. Derived identity effects cannot be submitted, replayed, persisted, or published independently of the accepted canonical commit.
 17. Replay validates witnesses against the overlay produced by prior staged ordinals and installs only the final coherent root/revision/overlay state.
+18. Path-or-QUID targets remain active request data; canonical LiveMap and LiveHost operation types admit only paths plus optional witnesses.
+19. QUID requests lower inside the accepting staged transaction and never before authority queue admission.
+20. Changed LiveHost actions publish path targets; no-op and failed actions publish no canonical commit.
+21. New history, recovery tails, client canonical application, and persistence appends contain no QUID-only targets.
+22. Current canonical protocol decoding rejects QUID-only targets, while named compatibility readers remain isolated from public current-format output.
+23. Legacy translation requires the exact base and lowers each ordinal against its current staged overlay; it never guesses or resolves against the final graph.
+24. Reflection QUIDs are correspondence evidence rather than canonical routing authority.
+25. Read-only QUID lookup and unsafe debug access do not redefine canonical mutation guarantees.
+26. Ordinary local Reflection operations transform correspondence through the shared canonical path effect and never rebuild the whole correspondence domain.
+27. Reflection consumes derived identity evidence from the accepted commit without adding a public field or mutating the LiveMap overlay.
+28. Move preserves exact projected subtree identity; replacement reuse requires compatible same-QUID evidence.
+29. Public reflected-tree structural mutation either delegates one exact canonical operation or rejects before local drift; unsafe bypass drift fails validation and requires a fresh binding to rebuild.

@@ -8,7 +8,8 @@ import type {
   LiveMapCommitObservation,
   LiveMapDisposer,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentTarget,
+  LiveMapDocumentPath,
+  LiveMapGraphCommit,
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
 import { create_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
@@ -58,8 +59,20 @@ import {
   default_livetree_runtime,
   type LiveTreeRuntime,
 } from "../livetree/runtime/livetree-runtime.js";
-import { livemap_document_identity_overlay_for } from "../livemap/livemap.document.identity.js";
-import { validate_document_path } from "../livemap/livemap.document.path.js";
+import {
+  livemap_document_identity_effects_for,
+  livemap_document_identity_overlay_for,
+  type LiveMapDocumentIdentityEffect,
+} from "../livemap/livemap.document.identity.js";
+import {
+  append_document_path,
+  document_path_effect_for_graph_operation,
+  document_path_equal,
+  document_path_is_prefix,
+  encode_document_path,
+  transform_document_path,
+  validate_document_path,
+} from "../livemap/livemap.document.path.js";
 
 export type DocumentReflectStatus = "initializing" | "active" | "replacing" | "failed" | "disposed";
 
@@ -68,11 +81,20 @@ export type DocumentReflect = Readonly<{
   readonly status: DocumentReflectStatus;
   readonly sourceRevision: number;
   readonly failure: DocumentReflectError | undefined;
-  diagnostics: () => Readonly<{ updatesApplied: number; registeredElements: number }>;
+  diagnostics: () => Readonly<{
+    updatesApplied: number;
+    registeredElements: number;
+    wholeCorrespondenceBuilds: number;
+    incrementalCorrespondenceUpdates: number;
+    correspondenceEntriesChanged: number;
+    identityEffectsConsumed: number;
+  }>;
   dispose: () => void;
 }>;
 
-type ProjectedRegistration = DocumentBindingNodeRegistration & Readonly<{
+type ProjectedRegistration = Omit<DocumentBindingNodeRegistration, "canonicalTarget" | "canonicalPath"> & Readonly<{
+  canonicalTarget: LiveMapDocumentCommitTarget;
+  canonicalPath: LiveMapDocumentPath;
   node: HsonNode;
 }>;
 
@@ -124,6 +146,10 @@ export function reflect_document_in_runtime(
   let currentRevision = capturedRevision;
   let currentFailure: DocumentReflectError | undefined;
   let updatesApplied = 0;
+  let wholeCorrespondenceBuilds = 0;
+  let incrementalCorrespondenceUpdates = 0;
+  let correspondenceEntriesChanged = 0;
+  let identityEffectsConsumed = 0;
   let off: LiveMapDisposer | undefined;
 
   const fail = (failure: DocumentReflectError): void => {
@@ -211,9 +237,9 @@ export function reflect_document_in_runtime(
     if (!is_Node(bucket) || bucket.$_tag !== ELEM_TAG) {
       throw delegation_unsupported("text mutation requires canonical _hson_elem storage");
     }
-    const bucketTarget: LiveMapDocumentTarget = Object.freeze({
+    const bucketTarget: LiveMapDocumentCommitTarget = Object.freeze({
       kind: "path",
-      path: Object.freeze([...registration.canonicalPath, 0]),
+      path: validate_document_path([...registration.canonicalPath, 0]),
     });
     if (mutation.kind === "add") {
       map.document.content.insert(bucketTarget, bucket.$_content.length, text);
@@ -273,7 +299,7 @@ export function reflect_document_in_runtime(
       return undefined;
     }
     const index = registration.canonicalPath[registration.canonicalPath.length - 1]!;
-    const parentPath = Object.freeze(registration.canonicalPath.slice(0, -1));
+    const parentPath = validate_document_path(registration.canonicalPath.slice(0, -1));
     map.document.content.remove(Object.freeze({ kind: "path", path: parentPath }), index);
     return 1;
   };
@@ -288,17 +314,17 @@ export function reflect_document_in_runtime(
 
   const register = (node: HsonNode, canonicalPath: readonly number[]): void => {
     if (!is_ordinary_element_node(node)) return;
-    const path = Object.freeze([...canonicalPath]);
+    const path = validate_document_path(canonicalPath);
     const pathKey = path_key(path);
     const persistedQuid = livemap_document_identity_overlay_for(map.document)
-      .quidAtPath(validate_document_path(path));
+      .quidAtPath(path);
     if (persistedQuid !== undefined && node.$_meta?.[HSON_META_QUID] !== persistedQuid) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
         "Projected element did not preserve its canonical persisted QUID.",
       );
     }
-    const canonicalTarget: LiveMapDocumentTarget = Object.freeze({ kind: "path", path });
+    const canonicalTarget: LiveMapDocumentCommitTarget = Object.freeze({ kind: "path", path });
     let registration: ProjectedRegistration;
     registration = Object.freeze({
       owner,
@@ -353,6 +379,187 @@ export function reflect_document_in_runtime(
     byPath.clear();
     byQuid.clear();
     walk(tree.node, []);
+    wholeCorrespondenceBuilds += 1;
+  };
+
+  const consume_identity_effects = (
+    commit: LiveMapGraphCommit,
+  ): readonly LiveMapDocumentIdentityEffect[] => {
+    const effects = livemap_document_identity_effects_for(commit);
+    if (effects === undefined) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Changed document commit is missing its derived identity-effect evidence.",
+      );
+    }
+    const expected = new Map<string, LiveMapDocumentPath | undefined>();
+    let expectedSize = byQuid.size;
+
+    const current_path = (quid: string): LiveMapDocumentPath | undefined => {
+      if (expected.has(quid)) return expected.get(quid);
+      return byQuid.get(quid)?.canonicalPath;
+    };
+
+    const require_path = (
+      quid: string,
+      path: LiveMapDocumentPath,
+      kind: LiveMapDocumentIdentityEffect["kind"],
+    ): void => {
+      const current = current_path(quid);
+      if (current === undefined || !document_path_equal(current, path)) {
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+          `Derived ${kind} identity effect disagrees with projected correspondence for QUID ${JSON.stringify(quid)}.`,
+        );
+      }
+    };
+
+    for (const effect of effects) {
+      if (effect.kind === "preserved") {
+        require_path(effect.quid, effect.path, effect.kind);
+        expected.set(effect.quid, effect.path);
+        continue;
+      }
+      if (effect.kind === "moved") {
+        require_path(effect.quid, effect.from, effect.kind);
+        expected.set(effect.quid, effect.to);
+        continue;
+      }
+      if (effect.kind === "retired") {
+        require_path(effect.quid, effect.formerPath, effect.kind);
+        expected.set(effect.quid, undefined);
+        expectedSize -= 1;
+        continue;
+      }
+      if (current_path(effect.quid) !== undefined) {
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+          `Derived introduced identity effect duplicates active QUID ${JSON.stringify(effect.quid)}.`,
+        );
+      }
+      expected.set(effect.quid, effect.path);
+      expectedSize += 1;
+    }
+
+    const overlay = livemap_document_identity_overlay_for(map.document);
+    if (overlay.size !== expectedSize) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Derived identity effects do not account for the canonical final sparse overlay.",
+      );
+    }
+    for (const [quid, path] of expected) {
+      const finalPath = overlay.pathForQuid(quid);
+      const mismatch = path === undefined
+        ? finalPath !== undefined
+        : finalPath === undefined
+          || !document_path_equal(finalPath, path)
+          || overlay.quidAtPath(path) !== quid;
+      if (mismatch) {
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+          `Derived identity effects disagree with the canonical final path for QUID ${JSON.stringify(quid)}.`,
+        );
+      }
+    }
+    identityEffectsConsumed += effects.length;
+    return effects;
+  };
+
+  const reconcile_correspondence_incrementally = (
+    operations: readonly LiveMapGraphOp[],
+  ): void => {
+    type PendingRegistration = {
+      registration: ProjectedRegistration;
+      path: LiveMapDocumentPath;
+      changed: boolean;
+    };
+    let pending: PendingRegistration[] = registrations.map((registration) => ({
+      registration,
+      path: registration.canonicalPath,
+      changed: false,
+    }));
+    const retired = new Set<ProjectedRegistration>();
+    let introducedPaths: LiveMapDocumentPath[] = [];
+
+    for (const operation of operations) {
+      const effect = document_path_effect_for_graph_operation(operation);
+      if (effect === undefined) continue;
+      if (effect.kind === "replace-root") {
+        throw new DocumentReflectError(
+          DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
+          "Root replacement cannot use incremental document correspondence.",
+        );
+      }
+
+      const nextPending: PendingRegistration[] = [];
+      for (const entry of pending) {
+        const transformed = transform_document_path(entry.path, effect);
+        if (transformed.kind === "invalid") {
+          throw new DocumentReflectError(
+            DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
+            `Projected correspondence path transform failed: ${transformed.reason}.`,
+          );
+        }
+        if (transformed.kind === "retired") {
+          retired.add(entry.registration);
+          continue;
+        }
+        nextPending.push({
+          registration: entry.registration,
+          path: transformed.path,
+          changed: entry.changed || transformed.kind === "moved",
+        });
+      }
+      pending = nextPending;
+
+      const nextIntroduced: LiveMapDocumentPath[] = [];
+      for (const path of introducedPaths) {
+        const transformed = transform_document_path(path, effect);
+        if (transformed.kind === "invalid") {
+          throw new DocumentReflectError(
+            DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
+            `Introduced projected path transform failed: ${transformed.reason}.`,
+          );
+        }
+        if (transformed.kind !== "retired") nextIntroduced.push(transformed.path);
+      }
+      introducedPaths = nextIntroduced;
+
+      if (operation.op === "insert-content" || operation.op === "replace-content") {
+        introducedPaths.push(append_document_path(operation.target.path, operation.index));
+      }
+    }
+
+    const moved = pending.filter((entry) => entry.changed);
+    const unchanged = pending.filter((entry) => !entry.changed);
+    for (const registration of retired) unregister_document_binding_node(registration.node, owner);
+    for (const entry of moved) unregister_document_binding_node(entry.registration.node, owner);
+
+    registrations = unchanged.map((entry) => entry.registration);
+    byPath.clear();
+    byQuid.clear();
+    for (const registration of registrations) {
+      byPath.set(path_key(registration.canonicalPath), registration);
+      if (registration.persistedQuid !== undefined) byQuid.set(registration.persistedQuid, registration);
+    }
+    for (const entry of moved) register(entry.registration.node, entry.path);
+
+    const introducedRoots = introducedPaths.filter((path, index, paths) =>
+      !paths.some((candidate, candidateIndex) => candidateIndex !== index
+        && document_path_is_prefix(candidate, path)
+        && (candidate.length < path.length || candidateIndex < index)));
+    let introducedRegistrations = 0;
+    for (const path of introducedRoots) {
+      const node = resolve_raw_node(tree.node, path);
+      if (node === undefined) continue;
+      const priorCount = registrations.length;
+      walk(node, path);
+      introducedRegistrations += registrations.length - priorCount;
+    }
+
+    incrementalCorrespondenceUpdates += 1;
+    correspondenceEntriesChanged += retired.size + moved.length + introducedRegistrations;
   };
 
   const resolve_registration = (target: LiveMapDocumentCommitTarget): ProjectedRegistration => {
@@ -361,6 +568,14 @@ export function reflect_document_in_runtime(
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
         "Canonical attribute target has no projected element correspondence.",
+      );
+    }
+    if (target.witness !== undefined
+      && registration.persistedQuid !== undefined
+      && registration.persistedQuid !== target.witness.quid) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
+        "Canonical attribute path does not match its persisted-QUID witness.",
       );
     }
     return registration;
@@ -454,6 +669,7 @@ export function reflect_document_in_runtime(
       );
     }
     if (!commit.changed || commit.ops.length === 0) return;
+    consume_identity_effects(commit);
     const replaceRoot = commit.ops.length === 1 && commit.ops[0]?.op === "replace-root"
       ? commit.ops[0]
       : undefined;
@@ -504,8 +720,7 @@ export function reflect_document_in_runtime(
         prune_removed_registrations(plan.finalNodes);
         throw cause;
       }
-      prune_removed_registrations(plan.finalNodes);
-      rebuild_correspondence();
+      reconcile_correspondence_incrementally(commit.ops);
       for (const registration of registrations) validate_bound_registration(registration);
       currentRevision = commit.rev;
       updatesApplied += 1;
@@ -556,6 +771,7 @@ export function reflect_document_in_runtime(
 
   try {
     walk(tree.node, []);
+    wholeCorrespondenceBuilds += 1;
     off = map.commits.observe(on_observation);
     if (map.rev !== capturedRevision) {
       throw new DocumentReflectError(
@@ -584,14 +800,21 @@ export function reflect_document_in_runtime(
           "Document binding has been disposed.",
         );
       }
-      return Object.freeze({ updatesApplied, registeredElements: registrations.length });
+      return Object.freeze({
+        updatesApplied,
+        registeredElements: registrations.length,
+        wholeCorrespondenceBuilds,
+        incrementalCorrespondenceUpdates,
+        correspondenceEntriesChanged,
+        identityEffectsConsumed,
+      });
     },
     dispose: dispose_binding,
   });
   return binding;
 }
 
-function read_map_attrs(map: ElementLiveMap, target: LiveMapDocumentTarget): CanonicalPublicAttrs {
+function read_map_attrs(map: ElementLiveMap, target: LiveMapDocumentCommitTarget): CanonicalPublicAttrs {
   const values: Record<string, unknown> = {};
   for (const name of map.document.attrs.keys(target)) values[name] = map.document.attrs.must.get(target, name);
   const attrs = decode_public_attrs(values);

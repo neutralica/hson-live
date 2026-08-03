@@ -29,7 +29,7 @@ import {
 } from "./livehost.core.js";
 import { make_livehost_canonical_commit } from "./livehost.history.js";
 import {
-  decode_livehost_canonical_commit,
+  decode_livehost_canonical_commit_compat,
   replay_livehost_document_commit_compat,
 } from "./livehost.protocol.js";
 import { create_live_trace_context } from "./livehost.trace.js";
@@ -322,20 +322,27 @@ function validate_persisted_state(
       if (persisted.logicalMapId !== checkpoint.logicalMapId
         || persisted.incarnationId !== checkpoint.incarnationId
         || persisted.mapKind !== "document") throw invalid_state();
-      const canonical = decode_livehost_canonical_commit(persisted.commit);
-      if (canonical === undefined
-        || canonical.logicalMapId !== checkpoint.logicalMapId
-        || canonical.incarnationId !== checkpoint.incarnationId
-        || canonical.mode !== checkpoint.mode
-        || canonical.prevRev !== expectedPrevRev
-        || canonical.rev !== expectedPrevRev + 1) throw invalid_state();
+      const decoded = decode_livehost_canonical_commit_compat(persisted.commit);
+      if (decoded === undefined
+        || decoded.logicalMapId !== checkpoint.logicalMapId
+        || decoded.incarnationId !== checkpoint.incarnationId
+        || decoded.mode !== checkpoint.mode
+        || decoded.prevRev !== expectedPrevRev
+        || decoded.rev !== expectedPrevRev + 1) throw invalid_state();
+      const applied = replay_livehost_document_commit_compat(map, decoded);
+      const canonical = make_livehost_canonical_commit(
+        map,
+        applied,
+        checkpoint.logicalMapId,
+        checkpoint.incarnationId,
+        expectedPrevRev,
+      );
       const persistedCommit = Object.freeze({
         logicalMapId: checkpoint.logicalMapId,
         incarnationId: checkpoint.incarnationId,
         mapKind: "document" as const,
         commit: canonical,
       });
-      replay_livehost_document_commit_compat(map, canonical);
       commits.push(persistedCommit);
       canonicalCommits.push(canonical);
       expectedPrevRev = canonical.rev;

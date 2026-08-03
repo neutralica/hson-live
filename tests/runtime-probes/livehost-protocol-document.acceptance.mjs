@@ -2,6 +2,7 @@ import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
 import { encode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
+import { decode_livehost_canonical_commit_compat } from "../../src/api/livehost/livehost.protocol.ts";
 
 let checks = 0;
 
@@ -50,12 +51,12 @@ check("projected commits retain their exact data operation domain", () => {
   assert.equal(graphInData.ok, false);
 });
 
-check("document commits decode canonical paths and the bounded legacy QUID wire seam", () => {
+check("document commits decode only current canonical path targets", () => {
   const valid = decode(commit("element", [
     {
       domain: "graph",
       op: "set-attr",
-      target: { kind: "quid", quid: "0000000000000001" },
+      target: { kind: "path", path: [], witness: { quid: "0000000000000001" } },
       name: "style",
       value: { color: "red", _hover: { color: "blue" } },
     },
@@ -106,24 +107,22 @@ check("document commits decode canonical paths and the bounded legacy QUID wire 
   assert.equal(valid.value.commit.ops[0].domain, "graph");
 });
 
-check("document recovery transport retains legacy QUID input until replay lowering", () => {
+check("legacy QUID recovery input is isolated behind the compatibility decoder", () => {
+  const legacy = commit("fragment", [{
+    domain: "graph",
+    op: "replace-attrs",
+    target: { kind: "quid", quid: "0000000000000001" },
+    attrs: { hidden: false, style: { color: "red" }, title: "recovered" },
+  }]);
   const decoded = decode_livehost_server_message(JSON.stringify({
     type: "recovery-commit",
     id: "replace-attrs-recovery",
     phase: "body",
-    commit: commit("fragment", [{
-      domain: "graph",
-      op: "replace-attrs",
-      target: { kind: "quid", quid: "0000000000000001" },
-      attrs: { hidden: false, style: { color: "red" }, title: "recovered" },
-    }]),
+    commit: legacy,
   }));
-  assert.equal(decoded.ok, true);
-  if (!decoded.ok || decoded.value.type !== "recovery-commit") {
-    throw new Error("Expected decoded recovery commit");
-  }
-  assert.equal(decoded.value.commit.ops.length, 1);
-  assert.equal(decoded.value.commit.ops[0]?.op, "replace-attrs");
+  assert.equal(decoded.ok, false);
+  const compatibility = decode_livehost_canonical_commit_compat(legacy);
+  assert.equal(compatibility?.ops[0]?.op, "replace-attrs");
 });
 
 check("replace-root requires canonical same-mode HSON and persisted identity", () => {

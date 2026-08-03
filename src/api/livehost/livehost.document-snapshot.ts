@@ -1,9 +1,12 @@
 import type { DocumentLiveMapCapture } from "../../types/livemap.types.js";
 import type {
   LiveHostServerMessage,
+  LiveHostServerCanonicalCommitMessage,
+  LiveHostServerRecoveryCommitMessage,
   LiveHostServerRecoverySnapshotMessage,
   LiveHostSnapshotEnvelope,
 } from "../../types/livehost.types.js";
+import type { LiveHostCanonicalCommitCompatibility } from "./livehost.protocol.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
@@ -52,10 +55,29 @@ export type LiveHostDecodedServerRecoverySnapshotMessage = Readonly<{
   snapshot: LiveHostValidatedSnapshotEnvelope;
 }>;
 
+/** @internal Legacy commit input remains isolated from the public canonical message type. */
+export type LiveHostDecodedServerRecoveryCommitMessage = Omit<
+  LiveHostServerRecoveryCommitMessage,
+  "commit"
+> & Readonly<{ commit: LiveHostCanonicalCommitCompatibility }>;
+
+/** @internal Legacy live-tail input remains isolated until exact-base lowering. */
+export type LiveHostDecodedServerCanonicalCommitMessage = Omit<
+  LiveHostServerCanonicalCommitMessage,
+  "commit"
+> & Readonly<{ commit: LiveHostCanonicalCommitCompatibility }>;
+
 /** @internal Server messages accepted by the client-side transport decoder. */
 export type LiveHostDecodedServerMessage =
-  | Exclude<LiveHostServerMessage, LiveHostServerRecoverySnapshotMessage>
-  | LiveHostDecodedServerRecoverySnapshotMessage;
+  | Exclude<
+      LiveHostServerMessage,
+      LiveHostServerRecoverySnapshotMessage
+      | LiveHostServerRecoveryCommitMessage
+      | LiveHostServerCanonicalCommitMessage
+    >
+  | LiveHostDecodedServerRecoverySnapshotMessage
+  | LiveHostDecodedServerRecoveryCommitMessage
+  | LiveHostDecodedServerCanonicalCommitMessage;
 
 /** @internal */
 export type LiveHostDocumentSnapshotDecodeErrorCode =

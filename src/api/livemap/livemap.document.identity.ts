@@ -7,6 +7,7 @@ import {
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
+  LiveMapGraphCommit,
   LiveMapDocumentPath,
 } from "../../types/livemap.types.js";
 import {
@@ -278,6 +279,7 @@ export function assert_livemap_document_identity_overlay(
 
 const overlayOwners = new WeakMap<object, () => LiveMapDocumentIdentityOverlay>();
 const overlayEntries = new WeakMap<LiveMapDocumentIdentityOverlay, ReadonlyMap<string, LiveMapDocumentPath>>();
+const commitIdentityEffects = new WeakMap<LiveMapGraphCommit, readonly LiveMapDocumentIdentityEffect[]>();
 let completedOverlayBuilds = 0;
 let completedOverlayReconciliations = 0;
 let completedOverlayEntriesVisited = 0;
@@ -298,6 +300,21 @@ export function livemap_document_identity_accounting(): LiveMapDocumentIdentityA
     overlayEntriesChanged: completedOverlayEntriesChanged,
     incomingNodesVisited: completedIncomingNodesVisited,
   });
+}
+
+/** Attach derived identity evidence to the exact internal commit envelope. */
+export function register_livemap_document_identity_effects(
+  commit: LiveMapGraphCommit,
+  effects: readonly LiveMapDocumentIdentityEffect[],
+): void {
+  commitIdentityEffects.set(commit, effects);
+}
+
+/** Resolve derived identity evidence without widening the public commit shape. */
+export function livemap_document_identity_effects_for(
+  commit: LiveMapGraphCommit,
+): readonly LiveMapDocumentIdentityEffect[] | undefined {
+  return commitIdentityEffects.get(commit);
 }
 
 /** Register one internal façade owner without widening its public shape. */

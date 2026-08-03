@@ -68,6 +68,10 @@ import {
   type LiveMapProjectedSetWrite,
   type LiveMapProjectedSpliceWrite,
 } from "./livemap.projected-propagation.js";
+import {
+  register_livemap_document_identity_effects,
+  replace_livemap_document_identity_overlay_effects,
+} from "./livemap.document.identity.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -563,6 +567,14 @@ function make_livemap_core_from_owned_root(
             root: clone_live_root(candidate.root),
           })]),
         });
+      if (commit.changed) {
+        const currentOverlay = owned.documentOverlay;
+        if (currentOverlay === undefined) throw new Error("LiveMap document identity overlay is unavailable.");
+        register_livemap_document_identity_effects(
+          commit,
+          replace_livemap_document_identity_overlay_effects(currentOverlay, candidate.overlay),
+        );
+      }
       const transition = prepare_document_transition(
         owned.root,
         commit,
@@ -601,6 +613,7 @@ function make_livemap_core_from_owned_root(
           rev,
           ops: Object.freeze([candidate.operation]),
         });
+      if (commit.changed) register_livemap_document_identity_effects(commit, candidate.identityEffects);
       const transition = prepare_document_transition(
         owned.root,
         commit,
@@ -618,6 +631,7 @@ function make_livemap_core_from_owned_root(
     },
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
+      register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
       owned = {
         root: candidate.root,
         documentOverlay: candidate.overlay,

@@ -4,6 +4,7 @@ import type { HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
   LiveMapDocumentPath,
+  LiveMapGraphOp,
 } from "../../types/livemap.types.js";
 
 export type LiveMapDocumentPathFailureCode =
@@ -183,6 +184,34 @@ export type LiveMapDocumentPathTransform =
   | Readonly<{ kind: "moved"; path: LiveMapDocumentPath }>
   | Readonly<{ kind: "retired"; reason: "deleted" | "replaced" | "root-replaced" }>
   | Readonly<{ kind: "invalid"; reason: string }>;
+
+/**
+ * Derive the one canonical path effect represented by a graph operation.
+ * Attribute operations preserve locations and therefore have no path effect.
+ */
+export function document_path_effect_for_graph_operation(
+  operation: LiveMapGraphOp,
+): LiveMapDocumentPathEffect | undefined {
+  if (operation.op === "replace-root") return Object.freeze({ kind: "replace-root" });
+  if (operation.op === "set-attr" || operation.op === "remove-attr" || operation.op === "replace-attrs") {
+    return undefined;
+  }
+  if (operation.op === "insert-content") {
+    return Object.freeze({ kind: "insert", parent: operation.target.path, index: operation.index });
+  }
+  if (operation.op === "remove-content") {
+    return Object.freeze({ kind: "delete", parent: operation.target.path, index: operation.index });
+  }
+  if (operation.op === "replace-content") {
+    return Object.freeze({ kind: "replace", parent: operation.target.path, index: operation.index });
+  }
+  return Object.freeze({
+    kind: "move",
+    parent: operation.target.path,
+    from: operation.from,
+    to: operation.to,
+  });
+}
 
 /**
  * Transform one known structural location through one canonical content
