@@ -206,9 +206,9 @@ check("byQuid returns detached public material", () => {
   close(binding);
 });
 
-check("public acquisition adds no raw-QUID assignment or alternate name", () => {
+check("the public façade adds no acquisition, raw-QUID assignment, or alternate name", () => {
   const { map, binding } = reflected(`<main/>`);
-  assert.equal(typeof map.document.ensureIdentity, "function");
+  assert.equal(Reflect.get(map.document, "ensureIdentity"), undefined);
   assert.equal(Reflect.get(map.document, "retain"), undefined);
   assert.equal(Reflect.get(map.document, "setQuid"), undefined);
   close(binding);

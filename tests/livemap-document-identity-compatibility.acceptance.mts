@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { element, mount } from "./helpers/reflect-unit6.mts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import { hson } from "../src/hson.ts";
 import {
   _create_livetree_runtime_test_handle,
@@ -66,7 +67,7 @@ check("active raw-QUID mutation requests still lower to canonical paths", () => 
 check("raw-QUID compatibility does not authorize handle reconstruction", () => {
   const map = element(`<main @${Q1}/>`);
   assert.throws(
-    () => Reflect.apply(map.document.ensureIdentity, map.document, [{ kind: "quid", quid: Q1 }]),
+    () => acquire_document_identity(map.document, { kind: "quid", quid: Q1 } as never),
     errorCode("INVALID_DOCUMENT_TARGET"),
   );
   assert.equal(Reflect.get(map.document, "fromQuid"), undefined);
@@ -81,7 +82,7 @@ check("new registration is observable through the ordinary commit feed", () => {
       operations.push(operation !== undefined && "domain" in operation ? operation.op : "none");
     }
   });
-  map.document.ensureIdentity(target());
+  acquire_document_identity(map.document, target());
   assert.deepEqual(operations, ["ensure-quid"]);
 });
 
@@ -89,14 +90,14 @@ check("existing registration publishes no feed event", () => {
   const map = element(`<main @${Q1}/>`);
   let events = 0;
   map.commits.observe(() => events += 1);
-  map.document.ensureIdentity(target());
+  acquire_document_identity(map.document, target());
   assert.equal(events, 0);
 });
 
 check("fragment ordinary elements support the same sparse API", () => {
   const map = hson.liveMap.fromHson(`<a/><b/>`);
   if (map.mode !== "fragment") throw new Error("expected fragment fixture");
-  const handle = map.document.ensureIdentity(target(1));
+  const handle = acquire_document_identity(map.document, target(1));
   assert.equal(handle.snap()?.$_tag, "b");
   assert.deepEqual(handle.path(), [1]);
 });
@@ -104,7 +105,7 @@ check("fragment ordinary elements support the same sparse API", () => {
 check("fragment structural roots remain ineligible", () => {
   const map = hson.liveMap.fromHson(`<a/><b/>`);
   if (map.mode !== "fragment") throw new Error("expected fragment fixture");
-  assert.throws(() => map.document.ensureIdentity(target()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
+  assert.throws(() => acquire_document_identity(map.document, target()), errorCode("DOCUMENT_IDENTITY_INELIGIBLE"));
 });
 
 check("projected object maps expose no document identity surface", () => {
@@ -128,14 +129,14 @@ check("one acquisition adds only one sparse overlay entry", () => {
   const children = Array.from({ length: 1_000 }, (_, index) => `<n data=${index}/>`).join("");
   const map = element(`<main ${children}/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  map.document.ensureIdentity(target(0, 500));
+  acquire_document_identity(map.document, target(0, 500));
   assert.equal(livemap_document_identity_overlay_for(map).size, 1);
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.data, "500");
 });
 
 check("unsafe debug metadata edits bypass overlay and revision reconciliation", () => {
   const map = element(`<main @${Q1}/>`);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   const meta = map.debug.node(["main"]).meta();
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   delete meta.quid;
@@ -149,12 +150,12 @@ check("supported acquisition rejects a debug-created graph-overlay disagreement"
   const meta = map.debug.node(["main"]).meta();
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   delete meta.quid;
-  assert.throws(() => map.document.ensureIdentity(target()), errorCode("INVALID_DOCUMENT_IDENTITY"));
+  assert.throws(() => acquire_document_identity(map.document, target()), errorCode("INVALID_DOCUMENT_IDENTITY"));
 });
 
 check("identity-free capture output strips acquired metadata intentionally", () => {
   const map = element(`<main/>`);
-  map.document.ensureIdentity(target());
+  acquire_document_identity(map.document, target());
   assert.equal(map.capture({ identity: "strip" }).root.$_meta?.quid, undefined);
   const restored = element(`<main/>`);
   restored.restore(map.capture({ identity: "strip" }));
@@ -164,7 +165,7 @@ check("identity-free capture output strips acquired metadata intentionally", () 
 check("durable epoch replacement fences stale raw bytes from old handles", () => {
   const map = element(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   map.restore(element(`<article @${Q1}/>`).capture());
   assert.equal(map.document.byQuid(Q1)?.$_tag, "article");
   assert.equal(handle.active, false);
@@ -181,12 +182,12 @@ check("reflected construction remains QUID-free before explicit demand", () => {
   _dispose_livetree_runtime_test_handle(runtime);
 });
 
-check("public acquisition coordinates with an active Reflection participant", () => {
+check("internal acquisition coordinates with an active Reflection participant", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   set_livemap_document_quid_candidate_source_for_tests(map.document, () => Q1);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(binding.tree.node.$_meta?.quid, Q1);
   assert.equal(binding.tree.quid, Q1);
@@ -201,7 +202,7 @@ check("reflected acquisition preserves the exact projected node and DOM", () => 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   const projected = binding.tree.node;
   const dom = mount(projected);
-  const quid = map.document.ensureIdentity(target()).snap()?.$_meta?.quid;
+  const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
   assert.equal(binding.tree.node, projected);
   assert.equal(mount(binding.tree.node), dom);
   assert.equal(dom.getAttribute("hson:quid"), quid);
@@ -214,7 +215,7 @@ check("reflected acquisition installs one protected runtime claim", () => {
   const runtime = _create_livetree_runtime_test_handle();
   const map = element(`<main/>`);
   const binding = _reflect_document_for_runtime_test(runtime, map);
-  const quid = map.document.ensureIdentity(target()).snap()?.$_meta?.quid;
+  const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   assert.equal(_lookup_livetree_runtime_test_node(runtime, quid!), binding.tree.node);
   binding.dispose();
@@ -228,7 +229,7 @@ check("existing reflected canonical identity is reused without a commit", () => 
   const binding = _reflect_document_for_runtime_test(runtime, map);
   let events = 0;
   map.commits.observe(() => events += 1);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   assert.equal(handle.snap()?.$_meta?.quid, Q1);
   assert.equal(binding.tree.quid, Q1);
   assert.equal(events, 0);
@@ -239,14 +240,14 @@ check("existing reflected canonical identity is reused without a commit", () => 
 
 check("raw QUID strings remain diagnostic rather than application identity", () => {
   const map = element(`<main/>`);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   const raw = handle.snap()?.$_meta?.quid;
   assert.equal(typeof raw, "string");
   assert.equal(Reflect.get(handle, "quid"), undefined);
   assert.equal(Reflect.get(map.document, "fromQuid"), undefined);
 });
 
-check("identity acquisition adds no public LiveHost or remote registration action", () => {
+check("internal identity acquisition adds no public LiveHost or remote registration action", () => {
   const map = element(`<main/>`);
   assert.equal(Reflect.get(map.document, "requestIdentity"), undefined);
   assert.equal(Reflect.get(map.document, "ensureIdentityWithQuid"), undefined);

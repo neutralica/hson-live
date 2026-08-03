@@ -24,7 +24,7 @@ Worker: fnv1a32-400fb5be
 
 The 87th `hson-live` launcher is the committed tagged-template launcher introduced by the current `hson-live` commit. No additional or unexplained baseline difference was present. This table records the pre-implementation audit baseline; Unit 10R-A production, test, and documentation changes were made afterward without staging or committing them.
 
-The audit treats completed executable units as authoritative. In particular, the sparse document overlay from Units 3–5 already exists. The missing facility is not a QUID/path index; it is authority-correct explicit acquisition and propagation into a linked projection.
+The audit treats completed executable units as authoritative. In particular, the sparse document overlay from Units 3–5 already exists. The missing facility is not a QUID/path index; it is authority-correct internal acquisition and propagation into a linked projection.
 
 ## Unit 10R-A implementation result
 
@@ -38,7 +38,7 @@ Linked `.quid` and existing QUID-owned CSS, event, animation, binding, canvas, a
 
 The new `ensure-quid` graph operation is path-authoritative and ordinary revisioned canonical state. The sparse overlay derives one introduced claim, replay never allocates, and current LiveHost history/protocol/recovery/persistence shapes carry the operation additively without a version change. Multi-operation replay proves registration before/after move, registration before removal, multiple registrations, and failed-later-operation atomicity.
 
-QUID-free rendering, wrapping, traversal, diagnostics, inline style, and ordinary mutation remain QUID-free. Multi-result selector manager broadcasters are now lazy prototype getters so constructing a traversal result does not accidentally instantiate CSS identity ownership. No public `ensureIdentity`/`retain`, handle capability, raw setter, rekey, object/array eligibility, remote consensus, or cross-runtime identity coordination was added.
+QUID-free rendering, wrapping, traversal, diagnostics, inline style, and ordinary mutation remain QUID-free. Multi-result selector manager broadcasters are now lazy prototype getters so constructing a traversal result does not accidentally instantiate CSS identity ownership. No public identity-acquisition method, handle capability, raw setter, rekey, object/array eligibility, remote consensus, or cross-runtime identity coordination was added.
 
 Sections 1–13 below retain the original Unit 10R-A audit and prerequisite reasoning as historical evidence. Statements there phrased as “future Unit 10R-B” or “until Unit 10R-B” are resolved by the implementation result above; the ownership analysis and stop-condition rationale remain authoritative.
 
@@ -243,7 +243,7 @@ Runtime-oriented LiveTree APIs remain useful in linked mode. Exact-object DOM, t
 
 ## 7. Required linked-mode delegation and preflight seam — Unit 10R-B
 
-Unit 10R-A intentionally does not implement this seam. The following remains the bounded next prerequisite before public acquisition.
+Unit 10R-A intentionally does not implement this seam. The following remains the bounded next prerequisite before authority-owned internal acquisition.
 
 Unit 6 already provides the correct ownership boundary. `document-binding-state.ts` stores an exact-node registration with:
 
@@ -436,7 +436,7 @@ Unit 10R-B remains the exact next prerequisite:
 
 Units 10R-A and 10R-B must not add:
 
-- the public `ensureIdentity`/`retain` API;
+- any public identity-acquisition API;
 - public identity handles;
 - a user-supplied-QUID setter;
 - runtime rekeying;

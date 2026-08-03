@@ -413,19 +413,19 @@ check("primitive slots replace canonically and identical replacements are no-ops
   errorCode(() => replaceWithUnknown(map, undefined), "INVALID_DOCUMENT_REPLACEMENT");
 });
 
-check("content identity preflight handles removal, addition, collision, duplication and displaced reuse atomically", () => {
+check("content identity preflight handles removal, addition, collision, duplication and explicit continuity atomically", () => {
   const map = element(`<main @0000000000000001 <old @0000000000000005/> <keep @0000000000000006/>/>`);
   const before = map.capture();
 
   const colliding = ordinary(`<new @0000000000000006/>`);
   assertAtomic(map, before, () => map.document.content.replace(path(0), 0, colliding));
-  errorCode(() => map.document.content.replace(path(0), 0, colliding), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.replace(path(0), 0, colliding), "DOCUMENT_IDENTITY_COLLISION");
 
   const duplicate = ordinary(`<section @0000000000000007 <i @0000000000000008/> <b @0000000000000009/>/>`);
   const duplicateNode = nodes(duplicate).find((node) => node.$_tag === "b");
   if (duplicateNode === undefined) throw new Error("expected duplicate fixture node");
   duplicateNode.$_meta = { quid: "0000000000000008" };
-  errorCode(() => map.document.content.replace(path(0), 0, duplicate), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.replace(path(0), 0, duplicate), "DOCUMENT_IDENTITY_COLLISION");
   assert.deepEqual(map.capture(), before);
 
   const malformed = ordinary(`<section/>`);
@@ -433,8 +433,8 @@ check("content identity preflight handles removal, addition, collision, duplicat
   errorCode(() => map.document.content.replace(path(0), 0, malformed), "INVALID_DOCUMENT_IDENTITY");
   assert.deepEqual(map.capture(), before);
 
-  const reuse = ordinary(`<new @0000000000000005 <child/>/>`);
-  const changed = map.document.content.replace(path(0), 0, reuse);
+  const continuity = ordinary(`<new @0000000000000005 <child/>/>`);
+  const changed = map.document.content.replace(path(0), 0, continuity);
   assert.equal(changed.changed, true);
   assert.equal(map.document.byQuid("0000000000000005")?.$_tag, "new");
   assert.equal(map.document.byQuid("0000000000000006")?.$_tag, "keep");
@@ -480,7 +480,7 @@ check("content.insert validates bounds, canonical identity and mode atomically",
     errorCode(() => map.document.content.insert(path(0), index, "x"), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
   const duplicate = ordinary(`<new @0000000000000013/>`);
-  errorCode(() => map.document.content.insert(path(0), 1, duplicate), "INVALID_DOCUMENT_IDENTITY");
+  errorCode(() => map.document.content.insert(path(0), 1, duplicate), "DOCUMENT_IDENTITY_COLLISION");
   errorCode(() => insertWithUnknown(map, { $_tag: "bad" }), "INVALID_DOCUMENT_REPLACEMENT");
   assert.deepEqual(map.capture(), before);
 

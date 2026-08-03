@@ -44,11 +44,12 @@ import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.j
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { capture_livemap_document } from "./livemap.document.capture.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
-import { make_livemap_document_identity_api } from "./livemap.document.identity-handle.js";
+import { make_livemap_document_identity_api, register_livemap_document_identity_api } from "./livemap.document.identity-handle.js";
 import {
   build_livemap_projected_identity_overlay,
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
+import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -196,11 +197,12 @@ function make_document_livemap(
       const node = resolve_document_path(controller.root(), mode, path);
       return is_Node(node) ? clone_live_root(node) : undefined;
     },
-    ensureIdentity: identityApi.ensureIdentity,
     attrs,
   });
+  register_livemap_document_identity_api(document, identityApi);
   register_livemap_document_identity_overlay(document, controller.overlay);
   register_livemap_document_identity_authority(document, controller);
+  register_livemap_identity_epoch_owner(document, controller.identityEpoch);
 
   const shared = {
     root: () => core.root(),
@@ -236,6 +238,7 @@ function make_document_livemap(
       }),
     });
     register_livemap_document_identity_overlay(elementMap, controller.overlay);
+    register_livemap_identity_epoch_owner(elementMap, controller.identityEpoch);
     return elementMap;
   }
 
@@ -258,6 +261,7 @@ function make_document_livemap(
     document,
   });
   register_livemap_document_identity_overlay(fragmentMap, controller.overlay);
+  register_livemap_identity_epoch_owner(fragmentMap, controller.identityEpoch);
   return fragmentMap;
 }
 

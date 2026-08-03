@@ -452,32 +452,24 @@ in both directions. Target schema validation can reject propagation atomically.
 
 ## Projected container identity
 
-Projected data maps provide one explicit identity-following capability for
-semantic object and array values:
+Projected object and array containers can carry sparse canonical QUID metadata,
+but projected maps expose no public identity-acquisition method. Internal
+owner-authorized continuity facilities may ensure one path-authoritative claim,
+producing the ordinary `ensure-quid` commit and revision behavior. Application
+code cannot request a claim or provide its QUID.
 
-```ts
-const handle = map.ensureIdentity(["rows", 1]);
+Internally retained identity follows object-key rename, array move, ancestor
+movement, and insertion/removal shifts. Nested leaf mutation preserves it;
+deletion, replacement, or owner-epoch replacement retires it. Root objects and
+arrays are eligible canonical values, while primitives, property wrappers, and
+array-item wrappers remain ineligible.
 
-handle.active; // exact owner epoch still contains this container
-handle.path(); // current frozen projected path, or undefined
-handle.snap(); // detached current object/array value, or undefined
-handle.dispose(); // releases this handle only
-```
-
-`ensureIdentity(path)` is synchronous and path-only. It reuses existing valid
-metadata without a revision, or records one system-generated QUID through an
-ordinary `ensure-quid` commit and advances the ordinary revision once. Callers
-cannot provide the QUID. Root object/array values use `[]`; nested containers use
-ordinary `LivePath` keys and indexes. Primitives, object-property wrappers,
-array-item wrappers, missing paths, and document modes are ineligible.
-
-`LiveMapProjectedIdentityHandle` follows the exact container through object-key
-rename, array move, ancestor movement, and insertion/removal shifts. Nested leaf
-mutation preserves it. Direct or ancestor deletion/replacement, structurally
-equal explicit replacement, whole-root replacement, durable restore, disposal,
-or owner-epoch replacement makes it inactive. An exact same-epoch
-capture/restore may retain continuity; copied, decoded, or foreign captures may
-not. Multiple handles can share a claim, and disposal never removes metadata.
+Within the current owner epoch, retired QUID bytes remain reserved in an
+internal issued ledger. Allocation retries those bytes, so an unrelated
+container cannot reactivate a stale handle. A new owner epoch starts a fresh
+ledger seeded from admitted active metadata; old handles remain fenced even if
+that epoch later uses equal bytes. Exact same-epoch restoration preserves the
+living ledger rather than rolling it back to capture time.
 
 The QUID is canonical HSON metadata but is not a projected property, array item,
 enumerable key, or schema field. `snap()`, feeds, links, selectors, and stores see
@@ -497,23 +489,11 @@ Document modes deliberately do not expose projected `snap`/`set` APIs.
 Common reads are `root()`, `capture()`, `document.content()`,
 `document.byQuid(quid)`, and document attribute reads.
 
-Explicit live identity is acquired by canonical path:
-
-```ts
-const handle = map.document.ensureIdentity({ kind: "path", path: [0, 1] });
-
-handle.active; // current owner epoch still contains this identity
-handle.path(); // frozen current canonical content path, or undefined
-handle.snap(); // detached current HSON element clone, or undefined
-handle.dispose(); // releases only this handle
-```
-
-The API reuses existing valid QUID metadata as a no-op. Otherwise the LiveMap
-securely allocates a QUID, records it with one ordinary path-authoritative
-`ensure-quid` commit, advances the ordinary revision once, and reconciles the
-sparse overlay. It never assigns identity to unrelated nodes. Only ordinary
-elements are eligible for the document API; primitives, structural carriers,
-and projected data modes are rejected there.
+Document maps expose no public identity-acquisition method. Existing QUIDs may
+still be inspected through the active-epoch `document.byQuid` compatibility
+surface, and internal linked continuity facilities may request a canonical
+path-authoritative claim. Only ordinary elements are eligible for that internal
+document operation.
 
 Handles follow content moves and insertion shifts and survive attribute
 changes. Removal or replacement without explicit same-QUID continuity makes
@@ -521,6 +501,14 @@ them inactive. Changed durable install, durable restore, and replayed root
 replacement fence the old owner epoch; exact same-epoch capture admission may
 preserve continuity. Multiple handles may share one QUID. Disposing a handle
 does not remove metadata or create a commit.
+
+Document identity uses the same owner-epoch issued ledger. Removal or an
+identity-replacing replacement makes `document.byQuid(q)` absent, and the
+retired bytes cannot be allocated, replayed, or introduced on another element
+in that epoch. An explicit replacement that preserves the active QUID retains
+the repository's established canonical continuity. This prevents stored
+document raw-QUID request targets from silently retargeting. Raw QUIDs still do
+not survive owner-epoch replacement as identity claims.
 
 `document.byQuid`, path-or-QUID active mutation targets, `LiveTree.quid`,
 `LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch
@@ -574,9 +562,8 @@ normalization, commits, revisions, feeds, subscriptions, links, and host
 authority. Physical child indexes count HSON-node children, not raw `$_content`
 slots. They also bypass sparse-overlay reconciliation, identity handles,
 Reflection, history, and persistence. Do not use `meta()` as identity
-registration; use projected `map.ensureIdentity(path)` or
-`document.ensureIdentity(...)` as appropriate. Do not use node handles for
-ordinary state changes or hosted canonical mutations.
+registration; no public identity-registration method exists. Do not use node
+handles for ordinary state changes or hosted canonical mutations.
 
 ## LiveMap and SSR
 

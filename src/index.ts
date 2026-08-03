@@ -183,7 +183,6 @@ export type {
     DocumentLiveMapInstallOptions,
     LiveMapDocumentPath,
     LiveMapDocumentPathInput,
-    LiveMapDocumentIdentityTarget,
     LiveMapDocumentIdentityHandle,
     LiveMapProjectedIdentityHandle,
     LiveMapProjectedIdentityCommitTarget,

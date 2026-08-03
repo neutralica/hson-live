@@ -43,7 +43,6 @@ import {
   make_livemap_core,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
-  type LiveMapDocumentIdentityTarget,
   type LiveMapPathHandle,
 } from "hson-live/livemap";
 import { hsonLiveHost as hostSubpath } from "hson-live/livehost";
@@ -243,7 +242,7 @@ void invalidJsonHson;
 declare const rootHsonString: RootHsonString;
 void rootHsonString;
 
-type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle | LiveMapDocumentIdentityHandle | LiveMapDocumentIdentityTarget;
+type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle | LiveMapDocumentIdentityHandle;
 declare const publicTypes: PublicTypes;
 void publicTypes;
 
@@ -253,14 +252,6 @@ void pathHandle.quid;
 
 const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
 if (publicDocumentMap.mode === "element") {
-  const identityTarget: LiveMapDocumentIdentityTarget = { kind: "path", path: [] };
-  const identityHandle: LiveMapDocumentIdentityHandle = publicDocumentMap.document.ensureIdentity(identityTarget);
-  void identityHandle.active;
-  void identityHandle.path();
-  void identityHandle.snap();
-  identityHandle.dispose();
-  // @ts-expect-error Raw QUID strings are not identity-handle constructors.
-  publicDocumentMap.document.ensureIdentity({ kind: "quid", quid: "0000000000000001" });
-  // @ts-expect-error Identity handles do not expose their internal QUID.
-  void identityHandle.quid;
+  const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
+  void documentAcquisitionIsPublic;
 }

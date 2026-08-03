@@ -281,8 +281,6 @@ export type LiveMapCore<
   apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
   /** Replay an exact data commit/envelope, or bounded legacy projected operations. */
   replay: LiveMapCoreReplay;
-  /** Explicitly retain exact identity for one current projected container. */
-  ensureIdentity: (path: LivePath) => LiveMapProjectedIdentityHandle;
 }>;
 
 /**
@@ -357,12 +355,6 @@ export type LiveMapDocumentPathInput = readonly number[];
 export type LiveMapDocumentRequestTarget =
   | Readonly<{ kind: "path"; path: LiveMapDocumentPathInput }>
   | Readonly<{ kind: "quid"; quid: string }>;
-
-/** Path-only target for explicit sparse identity acquisition. */
-export type LiveMapDocumentIdentityTarget = Readonly<{
-  kind: "path";
-  path: LiveMapDocumentPathInput;
-}>;
 
 /**
  * Opaque active-epoch capability for one explicitly identified document node.
@@ -502,8 +494,6 @@ export type LiveMapDocumentApi = Readonly<{
   content: DocumentLiveMapContentApi;
   /** Resolve a QUID in the current owned graph to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
-  /** Ensure sparse identity at one current path and return an active-epoch handle. */
-  ensureIdentity: (target: LiveMapDocumentIdentityTarget) => LiveMapDocumentIdentityHandle;
   /** Canonical ordinary-attribute mutation namespace. */
   attrs: DocumentLiveMapAttrsApi;
 }>;

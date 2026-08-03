@@ -341,6 +341,13 @@ export function livemap_document_identity_accounting(): LiveMapDocumentIdentityA
   });
 }
 
+/** Return detached active QUID bytes for owner-epoch ledger staging. @internal */
+export function livemap_document_identity_quids(
+  overlay: LiveMapDocumentIdentityOverlay,
+): readonly string[] {
+  return Object.freeze([...entries_for_overlay(overlay).keys()]);
+}
+
 /** Attach derived identity evidence to the exact internal commit envelope. */
 export function register_livemap_document_identity_effects(
   commit: LiveMapGraphCommit,

@@ -18,7 +18,7 @@ import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
 import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
-import { LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
+import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
   is_ordered_projected_object,
@@ -76,23 +76,32 @@ import {
 } from "./livemap.projected-propagation.js";
 import {
   register_livemap_document_identity_effects,
+  livemap_document_identity_quids,
   replace_livemap_document_identity_overlay_effects,
 } from "./livemap.document.identity.js";
 import {
   livemap_document_commit_continuity,
-  make_livemap_document_identity_epoch,
   register_livemap_document_commit_continuity,
 } from "./livemap.document.capture.js";
 import {
   apply_livemap_projected_identity_overlay,
+  livemap_projected_identity_quids,
   reconcile_livemap_projected_identity_overlay,
   register_livemap_projected_identity_at_path,
   livemap_projected_identity_has_at_or_below,
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
-import { make_livemap_projected_identity_api } from "./livemap.projected.identity-handle.js";
+import { make_livemap_projected_identity_api, register_livemap_projected_identity_api } from "./livemap.projected.identity-handle.js";
 import { capture_livemap_projected, projected_capture_continuity } from "./livemap.projected.capture.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
+import {
+  type LiveMapIdentityEpochController,
+  LiveMapIdentityEpochError,
+  make_livemap_identity_epoch,
+  register_livemap_identity_epoch_owner,
+  retain_livemap_identity_epoch,
+  stage_livemap_identity_epoch,
+} from "./livemap.identity-epoch.js";
 
 type LiveMapConstructiveSetWriteOp = Readonly<{
   kind: "constructive-set";
@@ -188,7 +197,11 @@ function make_livemap_core_from_owned_root(
   };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
-  const documentIdentityEpoch = make_livemap_document_identity_epoch();
+  const documentIdentityEpoch = make_livemap_identity_epoch(
+    prepared.documentOverlay === undefined
+      ? livemap_projected_identity_quids(require_projected_overlay(prepared.projectedOverlay))
+      : livemap_document_identity_quids(prepared.documentOverlay),
+  );
   // This closure-local schema is fine for the first enforcement pass. Revisit
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
@@ -210,8 +223,22 @@ function make_livemap_core_from_owned_root(
       baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
       install: () => {
         if (initialMode === "element" || initialMode === "fragment") {
-          if (livemap_document_commit_continuity(commit) === "new-epoch") {
-            documentIdentityEpoch.replace();
+          const continuity = livemap_document_commit_continuity(commit);
+          if (continuity === "new-epoch") {
+            documentIdentityEpoch.replace(livemap_document_identity_quids(
+              require_document_overlay(preparedNext.documentOverlay),
+            ));
+          } else if (continuity === "same-epoch") {
+            documentIdentityEpoch.install(retain_livemap_identity_epoch(
+              documentIdentityEpoch.issued(),
+              livemap_document_identity_quids(require_document_overlay(preparedNext.documentOverlay)),
+            ));
+          } else {
+            documentIdentityEpoch.install(stage_livemap_identity_epoch(
+              documentIdentityEpoch.issued(),
+              livemap_document_identity_quids(require_document_overlay(owned.documentOverlay)),
+              livemap_document_identity_quids(require_document_overlay(preparedNext.documentOverlay)),
+            ));
           }
           owned = {
             root: preparedNext.root,
@@ -225,7 +252,15 @@ function make_livemap_core_from_owned_root(
             && operation.kind === "replace"
             && operation.path.length === 0
           ))) {
-            documentIdentityEpoch.replace();
+            documentIdentityEpoch.replace(livemap_projected_identity_quids(
+              require_projected_overlay(preparedNext.projectedOverlay),
+            ));
+          } else {
+            documentIdentityEpoch.install(stage_livemap_identity_epoch(
+              documentIdentityEpoch.issued(),
+              livemap_projected_identity_quids(require_projected_overlay(owned.projectedOverlay)),
+              livemap_projected_identity_quids(require_projected_overlay(preparedNext.projectedOverlay)),
+            ));
           }
           overwrite_hson_node(owned.root, preparedNext.root);
           owned = { ...owned, projectedOverlay: preparedNext.projectedOverlay, revision: commit.rev };
@@ -244,6 +279,13 @@ function make_livemap_core_from_owned_root(
 
   function detachUnsafeReferences(): void {
     const detached = prepare_livemap_root(owned.root);
+    const detachedActive = detached.documentOverlay === undefined
+      ? livemap_projected_identity_quids(require_projected_overlay(detached.projectedOverlay))
+      : livemap_document_identity_quids(detached.documentOverlay);
+    documentIdentityEpoch.install(retain_livemap_identity_epoch(
+      documentIdentityEpoch.issued(),
+      detachedActive,
+    ));
     owned = {
       root: detached.root,
       documentOverlay: detached.documentOverlay,
@@ -391,10 +433,16 @@ function make_livemap_core_from_owned_root(
       ops: Object.freeze([operation]),
     });
     const baseRoot = clone_live_root(owned.root);
+    const nextLedger = stage_livemap_identity_epoch(
+      documentIdentityEpoch.issued(),
+      livemap_projected_identity_quids(require_projected_overlay(owned.projectedOverlay)),
+      livemap_projected_identity_quids(nextOverlay),
+    );
     const transition = transitionController.prepare({
       commit,
       baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
       install: () => {
+        documentIdentityEpoch.install(nextLedger);
         overwrite_hson_node(owned.root, nextRoot);
         owned = { ...owned, projectedOverlay: nextOverlay, revision: commit.rev };
       },
@@ -452,6 +500,20 @@ function make_livemap_core_from_owned_root(
           "replay target already carries a QUID",
         );
       }
+      if (require_projected_overlay(owned.projectedOverlay).pathForQuid(operation.quid) !== undefined) {
+        throw new LiveMapProjectedIdentityError(
+          "PROJECTED_IDENTITY_COLLISION",
+          path,
+          "replay QUID belongs to another active projected container",
+        );
+      }
+      if (documentIdentityEpoch.issued().has(operation.quid)) {
+        throw new LiveMapProjectedIdentityError(
+          "PROJECTED_IDENTITY_REUSE",
+          path,
+          "replay cannot reuse a retired QUID in the same owner epoch",
+        );
+      }
       assign_hson_node_quid(endpoint, operation.quid);
       const nextOverlay = register_livemap_projected_identity_at_path(
         require_projected_overlay(owned.projectedOverlay),
@@ -488,9 +550,6 @@ function make_livemap_core_from_owned_root(
 
     /** Create an ergonomic handle scoped to one projected path. */
     at: ((path: LivePath) => get_path_handle(path)) as unknown as LiveMapCore<JsonValue | undefined>["at"],
-
-    /** Explicitly acquire exact sparse identity for a projected container. */
-    ensureIdentity: projectedIdentityApi.ensureIdentity,
 
     /** Create an ergonomic Proxy path-builder scoped to one projected path. */
     proxy: <const TPath extends LivePath = []>(path?: TPath) =>
@@ -625,7 +684,17 @@ function make_livemap_core_from_owned_root(
       }
       const preparedCandidate = prepare_livemap_root(candidate);
       const continuity = projected_capture_continuity(documentIdentityEpoch, capture as object, options);
-      if (continuity === "new-epoch") documentIdentityEpoch.replace();
+      const restoredQuids = livemap_projected_identity_quids(
+        require_projected_overlay(preparedCandidate.projectedOverlay),
+      );
+      if (continuity === "new-epoch") {
+        documentIdentityEpoch.replace(restoredQuids);
+      } else {
+        documentIdentityEpoch.install(retain_livemap_identity_epoch(
+          documentIdentityEpoch.issued(),
+          restoredQuids,
+        ));
+      }
       owned = {
         root: preparedCandidate.root,
         documentOverlay: undefined,
@@ -656,6 +725,7 @@ function make_livemap_core_from_owned_root(
 
 
   };
+  register_livemap_identity_epoch_owner(core, documentIdentityEpoch);
 
   const pathHandleCache = new Map<string, LiveMapPathHandle>();
 
@@ -678,6 +748,7 @@ function make_livemap_core_from_owned_root(
   }
 
   if (initialMode !== "element" && initialMode !== "fragment") {
+    register_livemap_projected_identity_api(core, projectedIdentityApi);
     return {
       core,
       projected,
@@ -731,12 +802,17 @@ function make_livemap_core_from_owned_root(
           replace_livemap_document_identity_overlay_effects(currentOverlay, candidate.overlay),
         );
       }
+      const candidateQuids = livemap_document_identity_quids(candidate.overlay);
+      const retainedLedger = continuity === "same-epoch"
+        ? retain_livemap_identity_epoch(documentIdentityEpoch.issued(), candidateQuids)
+        : undefined;
       const transition = prepare_document_transition(
         owned.root,
         commit,
         transitionController,
         () => {
-          if (continuity === "new-epoch") documentIdentityEpoch.replace();
+          if (continuity === "new-epoch") documentIdentityEpoch.replace(candidateQuids);
+          else if (retainedLedger !== undefined) documentIdentityEpoch.install(retainedLedger);
           owned = {
             root: candidate.root,
             documentOverlay: candidate.overlay,
@@ -754,7 +830,15 @@ function make_livemap_core_from_owned_root(
       continuity: "same-epoch" | "new-epoch",
     ): void => {
       transitionController.assertPublicMutationAllowed();
-      if (continuity === "new-epoch") documentIdentityEpoch.replace();
+      const candidateQuids = livemap_document_identity_quids(candidate.overlay);
+      if (continuity === "new-epoch") {
+        documentIdentityEpoch.replace(candidateQuids);
+      } else {
+        documentIdentityEpoch.install(retain_livemap_identity_epoch(
+          documentIdentityEpoch.issued(),
+          candidateQuids,
+        ));
+      }
       owned = {
         root: candidate.root,
         documentOverlay: candidate.overlay,
@@ -766,6 +850,24 @@ function make_livemap_core_from_owned_root(
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();
+      let nextLedger;
+      try {
+        nextLedger = stage_livemap_identity_epoch(
+          documentIdentityEpoch.issued(),
+          livemap_document_identity_quids(require_document_overlay(owned.documentOverlay)),
+          livemap_document_identity_quids(candidate.overlay),
+        );
+      } catch (cause) {
+        if (cause instanceof LiveMapIdentityEpochError && cause.code === "SAME_EPOCH_QUID_REUSE") {
+          throw new LiveMapDocumentMutationError(
+            "DOCUMENT_IDENTITY_REUSE",
+            candidate.operation.op,
+            "a retired QUID cannot identify unrelated content in the same owner epoch",
+            { cause },
+          );
+        }
+        throw cause;
+      }
       const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
       const rev = unchanged ? prevRev : prevRev + 1;
@@ -784,6 +886,7 @@ function make_livemap_core_from_owned_root(
         commit,
         transitionController,
         () => {
+          documentIdentityEpoch.install(nextLedger);
           owned = {
             root: candidate.root,
             documentOverlay: candidate.overlay,
@@ -798,7 +901,11 @@ function make_livemap_core_from_owned_root(
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
-      if (candidate.commit.ops[0]?.op === "replace-root") documentIdentityEpoch.replace();
+      if (candidate.commit.ops[0]?.op === "replace-root") {
+        documentIdentityEpoch.replace(livemap_document_identity_quids(candidate.overlay));
+      } else {
+        documentIdentityEpoch.install(candidate.issuedLedger);
+      }
       owned = {
         root: candidate.root,
         documentOverlay: candidate.overlay,
@@ -902,7 +1009,6 @@ const STAGED_DRAFT_UNAVAILABLE_PROPERTIES = new Set<PropertyKey>([
   "commits",
   "debug",
   "feed",
-  "ensureIdentity",
   "linkTo",
   "replay",
   "restore",
@@ -1009,6 +1115,13 @@ function require_projected_overlay(
 ): LiveMapProjectedIdentityOverlay {
   if (overlay !== undefined) return overlay;
   throw new Error("Projected LiveMap identity overlay is unavailable.");
+}
+
+function require_document_overlay(
+  overlay: import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay | undefined,
+): import("./livemap.document.identity.js").LiveMapDocumentIdentityOverlay {
+  if (overlay !== undefined) return overlay;
+  throw new Error("LiveMap document mode is missing its identity overlay.");
 }
 
 /**
@@ -1381,7 +1494,7 @@ function prepare_projected_transition(
   transitionController: LiveMapTransitionController,
   currentOverlay: LiveMapProjectedIdentityOverlay,
   setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
-  identityEpoch: ReturnType<typeof make_livemap_document_identity_epoch>,
+  identityEpoch: LiveMapIdentityEpochController,
 ): PreparedLiveMapTransition {
   const baseRoot = clone_live_root(root);
   const planned = plan_write_ops_with_identity(
@@ -1395,6 +1508,13 @@ function prepare_projected_transition(
   apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
   const replacesRoot = planned.changed
     && writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+  const nextLedger = replacesRoot
+    ? undefined
+    : stage_livemap_identity_epoch(
+      identityEpoch.issued(),
+      livemap_projected_identity_quids(currentOverlay),
+      livemap_projected_identity_quids(nextOverlay),
+    );
   const prevRev = getRev();
   const rev = planned.changed
     ? prevRev + 1
@@ -1413,7 +1533,8 @@ function prepare_projected_transition(
       overwrite_hson_node(root, nextRoot);
       setRev(rev);
       setOverlay(nextOverlay);
-      if (replacesRoot) identityEpoch.replace();
+      if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
+      else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
     },
     notify: (acceptedCommit) => {
       feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => project_live_path(root, feedPath));
@@ -1433,7 +1554,7 @@ function apply_replay_ops(
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
   currentOverlay: LiveMapProjectedIdentityOverlay,
   setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
-  identityEpoch: ReturnType<typeof make_livemap_document_identity_epoch>,
+  identityEpoch: LiveMapIdentityEpochController,
 ): LiveMapCommit {
   const planned = plan_write_ops_with_identity(
     must_projected_root_value(root),
@@ -1447,9 +1568,18 @@ function apply_replay_ops(
     const nextRoot = projected_candidate_graph(root, planned.value, writeOps);
     const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
     apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
+    const replacesRoot = writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+    const nextLedger = replacesRoot
+      ? undefined
+      : stage_livemap_identity_epoch(
+        identityEpoch.issued(),
+        livemap_projected_identity_quids(currentOverlay),
+        livemap_projected_identity_quids(nextOverlay),
+      );
     overwrite_hson_node(root, nextRoot);
     setOverlay(nextOverlay);
-    if (writeOps.some((op) => op.kind === "replace" && op.path.length === 0)) identityEpoch.replace();
+    if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
+    else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
     setRev(rev);
   }
   const commit: LiveMapCommit = Object.freeze({

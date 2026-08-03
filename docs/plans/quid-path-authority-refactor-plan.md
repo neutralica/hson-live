@@ -489,7 +489,7 @@ Primitive carriers should remain ineligible: they are values, not independently 
 
 ### Minting discipline
 
-LiveMap mints only through explicit owner-authorized acquisition. The resolved public APIs are `document.ensureIdentity(...)` and projected `map.ensureIdentity(path)`; ordinary admission, reads, traversal, move, rename, and mutation remain non-minting. They must:
+LiveMap mints only through internal owner-authorized continuity acquisition. No public acquisition method is exposed; ordinary admission, reads, traversal, move, rename, and mutation remain non-minting. Internal acquisition must:
 
 - run through the active map overlay owner;
 - use collision-aware generation and no-reuse policy for that epoch;
@@ -687,10 +687,10 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 10 — Explicit LiveMap identity request and compatibility fences
 
-- **Status:** Complete. `document.ensureIdentity({ kind: "path", path })` is the sole public acquisition name. It returns an opaque active-epoch handle with `active`, `path()`, `snap()`, and `dispose()` and never exposes raw-QUID reconstruction.
+- **Status:** Complete internally; the later public-surface correction removes document and projected acquisition methods from public façades and declarations without removing allocation, registration, overlay, handle, replay, Reflection, or persistence machinery.
 - **Goal:** If demanded by retained LiveMap handles, add one explicit mint/request API; mark raw QUID surfaces live-epoch/diagnostic; preserve LiveTree behavior.
 - **Production ownership:** LiveMap identity handle/overlay API, diagnostics, documentation; LiveTree only regression tests and wording.
-- **Public/API effect:** Additive retained-identity API; possible deprecations for raw map strings, not removals.
+- **Public/API effect:** No public acquisition method. Raw compatibility surfaces remain bounded to their existing active-epoch contracts.
 - **Compatibility effect:** Demo consumers can migrate from DOM-string round trips to handles where useful.
 - **Tests:** explicit-only minting, handle invalidation, ABA/no-reuse, two maps, LiveTree construction/projection/graft/detach/clone/CSS/events/resources unchanged.
 - **Stop conditions:** API encourages application persistence, bypasses collision owner, or requires weakening LiveTree.
@@ -698,12 +698,12 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Suggested commit direction:** `feat(livemap): add explicit sparse identity handles`.
 - **Completed prerequisite 10R-A:** Linked construction/projection preserves canonical QUID absence, exact-node/DOM correspondence is QUID-free, and supplied claims are admitted without private minting.
 - **Completed prerequisite 10R-B:** Existing linked QUID demand delegates through one exact binding; LiveMap owns secure collision-aware allocation and the path-authoritative `ensure-quid` canonical operation; Reflection owns local preflight and rollback-safe supplied claim; replay/LiveHost transport use the recorded QUID without allocation.
-- **Implemented boundary:** Public path-only acquisition reuses the 10R-B authority seam on reflected maps and commits locally on unreflected maps. Existing claims are no-ops. Handles resolve through the Unit 3 overlay, follow Unit 4 path effects, and fence removal, replacement, disposal, and owner-epoch replacement. Raw QUID lookup/mutation/LiveTree/diagnostic surfaces remain available only as active-epoch compatibility APIs; no setter, `fromQuid`, global registry, public LiveHost action, replacement/retirement, object/array eligibility, or rekeying is added.
+- **Implemented boundary:** Internal path-only acquisition reuses the 10R-B authority seam on reflected maps and commits locally where an internal continuity facility requires it. Existing claims are no-ops. Handle machinery resolves through the Unit 3 overlay and retains Unit 4 lifecycle effects. Raw QUID lookup/mutation/LiveTree/diagnostic surfaces remain active-epoch compatibility APIs; no setter, `fromQuid`, global registry, public LiveHost action, replacement/retirement, or rekeying is added.
 - **Executable result:** Three focused launchers add 23 acquisition, 24 handle-lifecycle, and 23 compatibility/Reflection checks. A deterministic 1,000-node fixture proves zero-QUID overlay storage remains empty and one request adds one entry; the full encoding remains 16 characters.
 
 ### Unit 11 — Optional object/array QUID eligibility
 
-- **Status:** Complete. Semantic projected `_hson_obj` and `_hson_arr` values are eligible only through explicit `map.ensureIdentity(path)` acquisition. Primitive/scalar carriers, property wrappers, and array-item wrappers remain ineligible.
+- **Status:** Complete internally. Semantic projected `_hson_obj` and `_hson_arr` values are eligible only through internal owner-authorized acquisition. No projected public acquisition method is exposed. Primitive/scalar carriers, property wrappers, and array-item wrappers remain ineligible.
 - **Goal:** Expand the single QUID concept only for independently retained object/array nodes after semantics are proven.
 - **Production ownership:** metadata registry, core validators, transforms, overlay, handle API, DOM guards.
 - **Public/API effect:** New valid metadata placements; potentially observable canonical format expansion.
@@ -718,6 +718,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 12 — Million-node and namespace proof
 
+- **Status:** Still blocked. The LiveMap portion of Unit 12P is implemented, but the LiveTreeRuntime audit reached the specified broader-defect stop condition. Namespace occupancy must use lifetime-issued `I`, not active `Q`.
 - **Goal:** Prove sparse memory/time, eliminate per-operation full scans where required, and finalize allocator/no-reuse/worker policy.
 - **Production ownership:** path-local candidate performance work, overlay implementation, benchmark/diagnostic suites.
 - **Public/API effect:** None intended.
@@ -726,6 +727,18 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Stop conditions:** Any identity structure is `O(N)` for zero-QUID maps, ordinary mutation mints, or allocator reset can revive stale handles in one epoch.
 - **Dependency:** Units 3–5 and the completed Unit 11 projected-container cases.
 - **Suggested commit direction:** `perf(livemap): prove sparse identity at million-node scale`.
+
+### Unit 12P — Same-owner-epoch QUID non-reuse prerequisite
+
+- **Status:** Blocked after completing the LiveMap correction. One immutable issued-QUID ledger is owned by each document or projected LiveMap identity epoch; active retirement never releases its bytes for reuse.
+- **Invariant:** One QUID byte string denotes at most one identity lifetime per exact owner epoch. Active claims `Q` are a subset of issued claims `I`.
+- **Allocation and admission:** Local allocation checks `I` plus staged/runtime reservations and retries. Replay never allocates. Ordinary replay, insertion, and replacement reject retired same-epoch bytes atomically; active collision is reported separately.
+- **Epoch/provenance:** Fresh owner epochs seed `I` from admitted active metadata and may reuse old-epoch bytes after handles are fenced. Exact Unit 7 same-epoch restoration retains the living monotonic ledger, including post-capture issues; copied or foreign material cannot use the exception.
+- **Runtime audit:** `LiveTreeRuntime` has the same raw-lookup ABA edge, but supported terminal restoration deliberately re-admits serialized bytes. Current inputs cannot distinguish restoration from unrelated reuse. A narrow ledger breaks public consumer cases, so the specified broader-defect stop condition applies and no LiveTree production change is included.
+- **Complexity:** Active overlays remain `O(Q)`, issued ledgers are `O(I)`, and handles are `O(H)`; no graph pointers or handles are retained by issued state.
+- **Scope:** No encoding, generator, eligibility, public handle, transport, persistence version, second identifier, generation, or cross-runtime uniqueness change.
+- **Dependency effect:** Unit 12 must not resume until the LiveTree provenance/restoration conflict is separately resolved. Its eventual namespace proof must measure `I` as occupancy.
+- **Suggested commit direction:** `fix(livemap): prevent same-epoch QUID reuse`.
 
 ### Unit 13 — Encoding selection and migration
 

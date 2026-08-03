@@ -23,16 +23,21 @@ import {
   prepare_legacy_quid_target_graph_operation,
 } from "./livemap.document.mutation.js";
 import {
+  livemap_document_identity_quids,
   replace_livemap_document_identity_overlay_effects,
   type LiveMapDocumentIdentityEffect,
 } from "./livemap.document.identity.js";
 import { preflight_livemap_document_identity_replay } from "./livemap.document.registration.js";
+import type { LiveMapIdentityEpochController, LiveMapIssuedQuidLedger } from "./livemap.identity-epoch.js";
+import { stage_livemap_identity_epoch } from "./livemap.identity-epoch.js";
+import { LiveMapIdentityEpochError } from "./livemap.identity-epoch.js";
 
 export type PreparedDocumentReplay = Readonly<{
   root: HsonNode;
   overlay: PreparedDocumentInstall["overlay"];
   commit: LiveMapGraphCommit;
   identityEffects: readonly LiveMapDocumentIdentityEffect[];
+  issuedLedger: LiveMapIssuedQuidLedger;
 }>;
 
 export type LiveMapDocumentReplayController = Readonly<{
@@ -40,6 +45,7 @@ export type LiveMapDocumentReplayController = Readonly<{
   rev: () => number;
   root: () => HsonNode;
   overlay: () => PreparedDocumentInstall["overlay"];
+  identityEpoch: LiveMapIdentityEpochController;
   applyReplay: (candidate: PreparedDocumentReplay) => LiveMapGraphCommit;
   commits: LiveMapCommitObserverApi;
 }>;
@@ -56,6 +62,7 @@ export function replay_livemap_document_commit(
 
   let root = clone_live_root(controller.root());
   let overlay: PreparedDocumentInstall["overlay"] = controller.overlay();
+  let issuedLedger = controller.identityEpoch.issued();
   const operations: LiveMapGraphOp[] = [];
   const identityEffects: LiveMapDocumentIdentityEffect[] = [];
 
@@ -106,6 +113,23 @@ export function replay_livemap_document_commit(
       );
     }
     root = prepared.root;
+    try {
+      issuedLedger = stage_livemap_identity_epoch(
+        issuedLedger,
+        livemap_document_identity_quids(overlay),
+        livemap_document_identity_quids(prepared.overlay),
+      );
+    } catch (cause) {
+      if (cause instanceof LiveMapIdentityEpochError && cause.code === "SAME_EPOCH_QUID_REUSE") {
+        throw new LiveMapDocumentStagingError(index, new LiveMapDocumentMutationError(
+          "DOCUMENT_IDENTITY_REUSE",
+          prepared.operation.op,
+          "replay cannot reuse a retired QUID in the same owner epoch",
+          { cause },
+        ));
+      }
+      throw cause;
+    }
     overlay = prepared.overlay;
     operations.push(prepared.operation);
     identityEffects.push(...prepared.identityEffects);
@@ -127,6 +151,7 @@ export function replay_livemap_document_commit(
       overlay,
       commit,
       identityEffects: Object.freeze(identityEffects),
+      issuedLedger,
     });
   } finally {
     reservation?.release();

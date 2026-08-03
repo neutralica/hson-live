@@ -143,7 +143,6 @@ import type {
   DocumentLiveMapCapture,
   DocumentLiveMapInstallOptions,
   LiveMapDocumentPath,
-  LiveMapDocumentIdentityTarget,
   LiveMapDocumentIdentityHandle,
   LiveMapDocumentTarget,
   LiveMapDocumentAttributeValue,
@@ -388,9 +387,7 @@ import type {
   SanitizerLike,
 } from "hson-live";
 
-declare const rootIdentityTarget: LiveMapDocumentIdentityTarget;
 declare const rootIdentityHandle: LiveMapDocumentIdentityHandle;
-void rootIdentityTarget;
 void rootIdentityHandle;
 
 void [

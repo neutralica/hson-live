@@ -510,7 +510,14 @@ function prepare_finished_mutation<TOp extends LiveMapGraphOp>(
     reconciliation = reconcile_operation_identity(currentOverlay, operation);
   } catch (cause) {
     if (cause instanceof LiveMapDocumentIdentityError) {
-      throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, cause.message, cause);
+      throw mutation_error(
+        cause.code === "DUPLICATE_QUID"
+          ? "DOCUMENT_IDENTITY_COLLISION"
+          : "INVALID_DOCUMENT_IDENTITY",
+        operationName,
+        cause.message,
+        cause,
+      );
     }
     throw mutation_error("INVALID_DOCUMENT_IDENTITY", operationName, "candidate persisted identity is invalid", cause);
   }

@@ -24,6 +24,7 @@ import {
   LIVEMAP_QUID_MINT_RETRY_LIMIT,
   set_livemap_quid_candidate_source_for_tests,
 } from "./livemap.quid-allocation.js";
+import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 
 export const LIVEMAP_DOCUMENT_QUID_MINT_RETRY_LIMIT = LIVEMAP_QUID_MINT_RETRY_LIMIT;
 
@@ -53,7 +54,11 @@ export class LiveMapDocumentIdentityParticipantCollisionError extends Error {
   }
 }
 
-const authorityForOwner = new WeakMap<object, LiveMapDocumentMutationController>();
+type LiveMapDocumentIdentityAuthority = LiveMapDocumentMutationController & Readonly<{
+  identityEpoch: LiveMapIdentityEpochController;
+}>;
+
+const authorityForOwner = new WeakMap<object, LiveMapDocumentIdentityAuthority>();
 const participantForAuthority = new WeakMap<object, LiveMapDocumentIdentityParticipant>();
 const reservedForAuthority = new WeakMap<object, Set<string>>();
 const reservationForCandidate = new WeakMap<object, LiveMapDocumentIdentityCommitReservation>();
@@ -62,7 +67,7 @@ const reservationForCommit = new WeakMap<LiveMapGraphCommit, LiveMapDocumentIden
 /** Register the internal map authority behind one frozen document façade. */
 export function register_livemap_document_identity_authority(
   owner: object,
-  controller: LiveMapDocumentMutationController,
+  controller: LiveMapDocumentIdentityAuthority,
 ): void {
   authorityForOwner.set(owner, controller);
   reservedForAuthority.set(controller, new Set());
@@ -98,7 +103,7 @@ export function set_livemap_document_quid_candidate_source_for_tests(
   set_livemap_quid_candidate_source_for_tests(authority, source);
 }
 
-/** Authority-owned explicit acquisition for the public map-local capability. */
+/** Authority-owned acquisition for the internal map-local capability. */
 export function ensure_livemap_document_canonical_identity(
   owner: object,
   target: LiveMapDocumentCommitTarget,
@@ -106,7 +111,7 @@ export function ensure_livemap_document_canonical_identity(
   return acquire_livemap_document_canonical_identity(owner, target, false);
 }
 
-/** Authority-owned explicit acquisition used by linked LiveTree delegation. */
+/** Authority-owned acquisition used by linked LiveTree delegation. */
 export function require_livemap_document_canonical_identity(
   owner: object,
   target: LiveMapDocumentCommitTarget,
@@ -158,6 +163,7 @@ function acquire_livemap_document_canonical_identity(
   const allocated = allocate_livemap_quid(
     authority,
     (candidateQuid) => reserved.has(candidateQuid)
+      || authority.identityEpoch.issued().has(candidateQuid)
       || authority.overlay().pathForQuid(candidateQuid) !== undefined,
     (candidateQuid) => {
     let prepared: PreparedDocumentMutation<LiveMapGraphEnsureQuidOp>;
@@ -235,7 +241,7 @@ export function livemap_document_identity_reservation_for(
   return reservationForCommit.get(commit);
 }
 
-function require_authority(owner: object): LiveMapDocumentMutationController {
+function require_authority(owner: object): LiveMapDocumentIdentityAuthority {
   const authority = authorityForOwner.get(owner);
   if (authority !== undefined) return authority;
   throw new LiveMapDocumentIdentityRegistrationError(

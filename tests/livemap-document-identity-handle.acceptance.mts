@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { element } from "./helpers/reflect-unit6.mts";
+import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
@@ -23,7 +24,7 @@ function ordinary(tag: string): HsonNode {
 
 function identified(source: string, ...path: number[]) {
   const map = element(source);
-  const handle = map.document.ensureIdentity(target(...path));
+  const handle = acquire_document_identity(map.document, target(...path));
   return { map, handle };
 }
 
@@ -125,7 +126,7 @@ check("deliberate same-QUID replacement follows existing canonical continuity", 
 check("changed durable install replaces the owner epoch", () => {
   const map = element(`<main/>`);
   fixedIdentity(map);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   map.install(element(`<article @${Q1}/>`).capture());
   assert.equal(handle.active, false);
 });
@@ -133,7 +134,7 @@ check("changed durable install replaces the owner epoch", () => {
 check("durable restore replaces the owner epoch even with the same bytes", () => {
   const map = element(`<main/>`);
   fixedIdentity(map);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   map.restore(element(`<main @${Q1}/>`).capture());
   assert.equal(handle.active, false);
 });
@@ -165,7 +166,7 @@ check("copied capture bytes cannot claim handle continuity", () => {
 check("another map carrying the same QUID cannot satisfy this handle", () => {
   const map = element(`<main/>`);
   fixedIdentity(map);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   const foreign = element(`<article @${Q1}/>`);
   assert.equal(foreign.document.byQuid(Q1)?.$_tag, "article");
   assert.equal(handle.snap()?.$_tag, "main");
@@ -173,8 +174,8 @@ check("another map carrying the same QUID cannot satisfy this handle", () => {
 
 check("multiple handles may refer to one canonical identity", () => {
   const map = element(`<main/>`);
-  const first = map.document.ensureIdentity(target());
-  const second = map.document.ensureIdentity(target());
+  const first = acquire_document_identity(map.document, target());
+  const second = acquire_document_identity(map.document, target());
   assert.equal(first.active, true);
   assert.equal(second.active, true);
   assert.equal(first.snap()?.$_meta?.quid, second.snap()?.$_meta?.quid);
@@ -182,8 +183,8 @@ check("multiple handles may refer to one canonical identity", () => {
 
 check("disposing one handle leaves another handle active", () => {
   const map = element(`<main/>`);
-  const first = map.document.ensureIdentity(target());
-  const second = map.document.ensureIdentity(target());
+  const first = acquire_document_identity(map.document, target());
+  const second = acquire_document_identity(map.document, target());
   first.dispose();
   assert.equal(first.active, false);
   assert.equal(second.active, true);
@@ -191,7 +192,7 @@ check("disposing one handle leaves another handle active", () => {
 
 check("handle disposal does not remove canonical QUID metadata", () => {
   const map = element(`<main/>`);
-  const handle = map.document.ensureIdentity(target());
+  const handle = acquire_document_identity(map.document, target());
   const quid = handle.snap()?.$_meta?.quid;
   handle.dispose();
   assert.equal(map.document.byQuid(quid!)?.$_tag, "main");
@@ -215,7 +216,7 @@ check("the handle surface exposes no raw QUID", () => {
 check("replayed root replacement invalidates the prior owner epoch", () => {
   const source = element(`<main/>`);
   fixedIdentity(source);
-  source.document.ensureIdentity(target());
+  acquire_document_identity(source.document, target());
   let replacement: LiveMapGraphCommit | undefined;
   source.commits.observe((observation) => {
     if (observation.kind === "commit") {
@@ -229,7 +230,7 @@ check("replayed root replacement invalidates the prior owner epoch", () => {
 
   const mirror = element(`<main/>`);
   fixedIdentity(mirror);
-  const handle = mirror.document.ensureIdentity(target());
+  const handle = acquire_document_identity(mirror.document, target());
   mirror.replay(replacement!);
   assert.equal(handle.active, false);
 });

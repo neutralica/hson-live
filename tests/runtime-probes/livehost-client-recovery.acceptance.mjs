@@ -2,6 +2,7 @@ import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
 import { decode_livehost_server_message, LiveHostClientRecoveryError, hson } from "../../src/index.ts";
+import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
 
 let checks = 0;
 
@@ -203,12 +204,12 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
 
   const identityHost = hson.liveHost.create({ state: { container: [] }, logicalMapId: "map-identity-snapshot" });
-  identityHost.map.ensureIdentity(["container"]);
+  acquire_projected_identity(identityHost.map, ["container"]);
   const identityPair = socket_pair();
   const identityClient = attach(identityHost, identityPair, { recovery: { logicalMapId: identityHost.stream.logicalMapId } });
   assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
   const identityRev = identityClient.map.rev;
-  assert.equal(identityClient.map.ensureIdentity(["container"]).active, true);
+  assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
   assert.equal(identityClient.map.rev, identityRev);
 });
 
@@ -258,12 +259,12 @@ await check("replay applies exact commits once and current emits no body", async
   const identityHost = hson.liveHost.create({ state: { container: {} }, logicalMapId: "map-identity-replay" });
   const identityBase = identityHost.stream.headRev;
   const identityMirror = hson.liveMap.fromJson(identityHost.map.snap());
-  identityHost.map.ensureIdentity(["container"]);
+  acquire_projected_identity(identityHost.map, ["container"]);
   const identityPair = socket_pair();
   const identityClient = attach(identityHost, identityPair, recovery_options(identityHost, identityMirror, identityBase));
   assert.equal((await identityClient.recovery.recover()).strategy, "replay");
   const identityRev = identityClient.map.rev;
-  assert.equal(identityClient.map.ensureIdentity(["container"]).active, true);
+  assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
   assert.equal(identityClient.map.rev, identityRev);
 });
 

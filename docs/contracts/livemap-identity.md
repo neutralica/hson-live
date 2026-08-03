@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, Unit 10R-B authority-owned linked acquisition, Unit 10 explicit document identity-handle contract, and Unit 11 explicit projected-container identity contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, Unit 10R-B authority-owned linked acquisition, Unit 10 explicit document identity-handle contract, Unit 11 explicit projected-container identity contract, and the implemented LiveMap portion of Unit 12P same-owner-epoch non-reuse. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -39,6 +39,31 @@ There is no separate `identityGeneration`, silent QUID overlay mutation stream, 
 
 An explicitly named identity-stripping projection may compare or serialize a different purpose-built view. It must not be substituted for strict canonical equality when LiveMap decides whether an owned canonical mutation is a no-op or deserves a revision.
 
+## Owner-epoch issued-QUID ledger
+
+Within one exact owner identity epoch, one QUID byte string identifies at most
+one identity lifetime. Each LiveMap epoch owns `Q`, the currently active
+QUID-to-path claims, and `I`, every QUID admitted or allocated during that epoch,
+including retired claims. Every active claim is issued, so `Q <= I`.
+
+Retirement removes a claim from the active overlay but never from the issued
+ledger. Allocation checks issued values and staged reservations; ordinary
+admission and replay reject a retired same-epoch value instead of reminting it.
+Successful transitions install graph, revision, active overlay, and issued
+ledger coherently. Failed transitions publish none of them.
+
+A changed durable install, durable restore, or whole-root owner replacement
+fences old handles and creates a new epoch whose ledger is seeded from newly
+admitted active claims. Equal bytes from an old epoch may then be admitted.
+Exact Unit 7 same-epoch restoration is the only bounded reintroduction
+exception: exact-object provenance proves the restored identity state while the
+living issued ledger remains monotonic and retains post-capture issues. Copied,
+decoded, foreign, or merely equal material cannot claim that exception.
+
+The active overlay retains `O(Q)` path state, the issued ledger retains `O(I)`
+strings without graph pointers or handles, and handles retain `O(H)` closure
+state. A QUID-free epoch has `Q = 0` and `I = 0`.
+
 ## LiveTree QUID authority
 
 LiveTree is the originating and primary active-identity consumer for standalone graphs under LiveTree authority. One `LiveTreeRuntime` owns its active QUID namespace and browser/runtime objects.
@@ -57,6 +82,15 @@ LiveTree preserves these semantics:
 For a LiveMap-linked document projection, LiveMap owns canonical graph metadata and Reflection owns correspondence. The linked LiveTree runtime binds exact HSON and DOM objects, admits supplied canonical QUIDs, and preserves QUID absence. It never mints merely to construct, wrap, find, traverse, diagnose, or render a linked node. `LiveTree.quid` and facilities that genuinely require QUID ownership synchronously delegate through the exact active binding. LiveMap reuses an existing canonical claim or allocates and commits one `ensure-quid` operation; Reflection preflights and installs that supplied value without minting or rekeying. `LIVETREE_LINKED_IDENTITY_REQUIRED` remains only for stale, disposed, or unsupported linked contexts whose authority binding is unavailable.
 
 LiveTree does not become path-authoritative. Standalone identity does not depend on LiveMap revisions, while linked identity follows the canonical LiveMap claim without creating a second namespace.
+
+The Unit 12P audit found that standalone terminal disposal releases runtime QUID
+bytes and supported terminal-restoration workflows later re-admit those bytes.
+Exact retained LiveTree handles remain exact-node anchored and disposed, but a
+stored raw QUID can therefore resolve to another node later in the same runtime.
+The current public inputs carry no provenance that distinguishes intentional
+terminal restoration from unrelated reuse. Adding a runtime issued ledger would
+break supported restoration, so that broader LiveTree problem remains a Unit
+12P stop condition rather than an implicit behavior change.
 
 ## LiveMap path and QUID roles
 
@@ -166,14 +200,14 @@ The 10R-B linked operation remains ordinary-element-only. Unit 11 projected
 container identity is map-local and does not enter Reflection. Neither unit
 enables QUID replacement/retirement, user-selected QUIDs, or runtime rekeying.
 
-## Explicit LiveMap identity acquisition
+## Internal LiveMap identity acquisition
 
-`document.ensureIdentity({ kind: "path", path })` is the sole supported public
-acquisition API. The name reflects its narrow ensure-if-absent behavior: it does
-not establish reference counting, and disposing a returned handle does not
-retire canonical metadata. Acquisition is synchronous and path-only. Active raw
-QUID request targets remain compatible for ordinary mutations, but cannot be
-used to construct a handle.
+LiveMap exposes no public identity-acquisition method on either projected maps
+or `map.document`. Identity is acquired only through internal owner-authorized
+continuity facilities. The internal operation remains synchronous,
+path-authoritative, ensure-if-absent, and non-reference-counted. Active raw QUID
+request targets remain compatible for ordinary mutations, but cannot construct
+an identity capability.
 
 For an eligible current ordinary element, acquisition validates graph/overlay
 agreement, reuses an existing claim without revision or publication, or asks the
@@ -183,7 +217,7 @@ candidate and never mints. An active local Reflection participant uses the
 completed 10R-B preflight/reservation transaction; an unreflected map performs
 the same canonical mutation without creating runtime identity state.
 
-The returned `LiveMapDocumentIdentityHandle` retains the exact map owner, the
+The retained document handle machinery keeps the exact map owner, the
 owner's current identity epoch, and the canonical QUID privately. Its public
 surface is `active`, `path()`, `snap()`, and `dispose()`. `path()` resolves the
 current frozen numeric path through the sparse overlay. `snap()` returns a
@@ -199,10 +233,10 @@ Copied, encoded, foreign, or stale capture material cannot extend continuity.
 Multiple handles may share one QUID; each can be disposed independently, and
 disposal never removes `$_meta.quid` or publishes a commit.
 
-Projected data maps expose one sibling capability: `map.ensureIdentity(path)`.
-It accepts only a current projected `LivePath` resolving to a semantic object or
-array container; callers cannot supply a QUID or acquire through a raw-QUID
-target. The parallel `LiveMapProjectedIdentityHandle` has the same
+Projected data maps retain a parallel internal acquisition seam. It accepts
+only a current projected `LivePath` resolving to a semantic object or array
+container; no public caller can supply a QUID or acquire through a raw-QUID
+target. The projected handle machinery has the same
 `active`/`path()`/`snap()`/`dispose()` lifecycle, while `snap()` honestly returns
 a detached projected object or array rather than an HSON element node.
 
@@ -229,15 +263,15 @@ or survive owner-epoch replacement merely because the same bytes reappear.
 There is no `fromQuid`, global registry, user-supplied-QUID setter, DOM-query
 authoring contract, public replacement/retirement operation, or remote
 LiveHost acquisition action. Projected mode adds no raw-QUID lookup merely for
-symmetry; its public route is the owner/epoch-scoped handle. Application
-identity remains application data.
+symmetry, and there is no public handle-construction route. Application identity
+remains application data.
 
 ## LiveMap does not mint implicitly
 
-A QUID-free LiveMap is complete and fully functional. Except for explicit
-`document.ensureIdentity(...)`, projected `map.ensureIdentity(path)`, or an exact
-linked operation that demands QUID-owned runtime identity, LiveMap does not mint
-merely because a graph is:
+A QUID-free LiveMap is complete and fully functional. Except for an internal
+owner-authorized continuity facility—such as an exact linked operation that
+demands QUID-owned runtime identity—LiveMap does not mint merely because a graph
+is:
 
 - constructed or parsed;
 - traversed or read by path;
@@ -310,12 +344,12 @@ The certified route is: a QUID-bearing source remains unchanged; serialized outp
 
 ## Mutation boundaries
 
-Ordinary LiveMap document APIs protect system metadata. `document.ensureIdentity`
-may add `$_meta.quid` through the canonical `ensure-quid` transition; no
-supported API replaces or removes it, accepts a caller-selected QUID, or treats
-handle disposal as metadata retirement.
+Ordinary LiveMap document APIs protect system metadata. Internal continuity
+facilities may add `$_meta.quid` through the canonical `ensure-quid` transition;
+no supported public API adds, replaces, or removes it, accepts a caller-selected
+QUID, or treats handle disposal as metadata retirement.
 
-`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, handles, Reflection, history, or persistence. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. Supported registration uses `document.ensureIdentity(...)` in document mode or `map.ensureIdentity(path)` in projected mode.
+`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, handles, Reflection, history, or persistence. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. There is no public identity-registration method.
 
 ## Required invariants
 

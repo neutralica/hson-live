@@ -199,9 +199,9 @@ check("standalone event ownership remains available", () => {
   tree.remove();
 });
 
-check("Unit 10 adds only path-based acquisition and no raw reconstruction", () => {
+check("Unit 10 keeps acquisition internal and adds no raw reconstruction", () => {
   const map = element(`<main/>`);
-  assert.equal(typeof map.document.ensureIdentity, "function");
+  assert.equal(Reflect.get(map.document, "ensureIdentity"), undefined);
   assert.equal("retain" in map.document, false);
   assert.equal("fromQuid" in map.document, false);
 });

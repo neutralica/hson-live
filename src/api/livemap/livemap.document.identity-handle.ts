@@ -2,8 +2,8 @@ import { is_ordinary_element_node } from "../../core/node-guards.js";
 import { read_hson_node_quid } from "../../core/hson-node-quid.js";
 import type {
   LiveMapDocumentIdentityHandle,
-  LiveMapDocumentIdentityTarget,
   LiveMapDocumentPath,
+  LiveMapDocumentPathInput,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import type { LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
@@ -17,21 +17,30 @@ type IdentityHandleController = LiveMapDocumentMutationController & Readonly<{
   identityEpoch: LiveMapDocumentIdentityEpochController;
 }>;
 
-/** Build the public path-only sparse identity acquisition capability. */
+export type LiveMapDocumentIdentityTargetInternal = Readonly<{
+  kind: "path";
+  path: LiveMapDocumentPathInput;
+}>;
+
+type LiveMapDocumentIdentityApi = Readonly<{
+  acquire: (target: LiveMapDocumentIdentityTargetInternal) => LiveMapDocumentIdentityHandle;
+}>;
+
+const documentIdentityApiForOwner = new WeakMap<object, LiveMapDocumentIdentityApi>();
+
+/** Build the internal path-only sparse identity acquisition capability. */
 export function make_livemap_document_identity_api(
   owner: () => object,
   controller: IdentityHandleController,
-): Readonly<{
-  ensureIdentity: (target: LiveMapDocumentIdentityTarget) => LiveMapDocumentIdentityHandle;
-}> {
+): LiveMapDocumentIdentityApi {
   return Object.freeze({
-    ensureIdentity: (targetInput) => {
+    acquire: (targetInput) => {
       const request = normalize_document_request_target(targetInput, "ensure-quid");
       if (request.kind !== "path") {
         throw new LiveMapDocumentMutationError(
           "INVALID_DOCUMENT_TARGET",
           "ensure-quid",
-          "explicit identity acquisition requires a canonical path target; raw QUIDs cannot reconstruct handles",
+          "internal identity acquisition requires a canonical path target; raw QUIDs cannot reconstruct handles",
         );
       }
       const target = Object.freeze({
@@ -42,6 +51,24 @@ export function make_livemap_document_identity_api(
       return make_identity_handle(controller, quid, controller.identityEpoch.current());
     },
   });
+}
+
+/** Register internal document identity acquisition without extending the public document façade. */
+export function register_livemap_document_identity_api(
+  owner: object,
+  api: LiveMapDocumentIdentityApi,
+): void {
+  documentIdentityApiForOwner.set(owner, api);
+}
+
+/** Internal acquisition seam for continuity facilities and authoritative tests. */
+export function acquire_livemap_document_identity(
+  owner: object,
+  target: LiveMapDocumentIdentityTargetInternal,
+): LiveMapDocumentIdentityHandle {
+  const api = documentIdentityApiForOwner.get(owner);
+  if (api === undefined) throw new Error("LiveMap document has no internal identity authority.");
+  return api.acquire(target);
 }
 
 function make_identity_handle(

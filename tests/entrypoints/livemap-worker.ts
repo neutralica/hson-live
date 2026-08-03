@@ -6,8 +6,6 @@ import {
   type DocumentLiveMapCaptureIdentity,
   type DocumentLiveMapInstallIdentity,
   type LiveMapDocumentIdentityProvenanceErrorCode,
-  type LiveMapDocumentIdentityHandle,
-  type LiveMapDocumentIdentityTarget,
   type LiveMapDocumentInstallFailureCode,
   type LiveMapMoveOp,
   type LiveMapCanonicalCapture,
@@ -19,9 +17,11 @@ import {
 
 const map = hsonLiveMap.fromJson({ ready: true });
 void map.snap();
-const projectedHandle: LiveMapProjectedIdentityHandle = map.ensureIdentity([]);
+declare const projectedHandle: LiveMapProjectedIdentityHandle;
+const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof map ? true : false = false;
 const projectedCapture: LiveMapCanonicalCapture = map.capture();
 void projectedHandle.path();
+void projectedAcquisitionIsPublic;
 void projectedCapture.root;
 void hsonLiveMap.fromHson(`<worker <ready true>>`);
 void hsonLiveMap.fromNode(map.root());
@@ -33,9 +33,8 @@ if (documentMap.mode === "element") {
   const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";
   const capture = documentMap.capture({ identity: captureIdentity });
   documentMap.install(capture, { identity: installIdentity });
-  const identityTarget: LiveMapDocumentIdentityTarget = { kind: "path", path: [] };
-  const identityHandle: LiveMapDocumentIdentityHandle = documentMap.document.ensureIdentity(identityTarget);
-  identityHandle.dispose();
+  const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof documentMap.document ? true : false = false;
+  void documentAcquisitionIsPublic;
 }
 
 const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDENTITY_EPOCH";

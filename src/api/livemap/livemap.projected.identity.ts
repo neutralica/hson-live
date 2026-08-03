@@ -132,6 +132,13 @@ export function livemap_projected_identity_accounting(): Readonly<{
   });
 }
 
+/** Return detached active QUID bytes for owner-epoch ledger staging. @internal */
+export function livemap_projected_identity_quids(
+  overlay: LiveMapProjectedIdentityOverlay,
+): readonly string[] {
+  return Object.freeze([...require_entries(overlay).keys()]);
+}
+
 export function livemap_projected_identity_has_at_or_below(
   overlay: LiveMapProjectedIdentityOverlay,
   path: LivePath,

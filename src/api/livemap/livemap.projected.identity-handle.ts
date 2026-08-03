@@ -37,6 +37,12 @@ export type LiveMapProjectedIdentityController = Readonly<{
   ) => LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
 }>;
 
+type LiveMapProjectedIdentityApi = Readonly<{
+  acquire: (path: LivePath) => LiveMapProjectedIdentityHandle;
+}>;
+
+const projectedIdentityApiForOwner = new WeakMap<object, LiveMapProjectedIdentityApi>();
+
 /** Narrow deterministic allocator seam for projected identity tests. @internal */
 export function set_livemap_projected_quid_candidate_source_for_tests(
   owner: object,
@@ -49,15 +55,33 @@ export function set_livemap_projected_quid_candidate_source_for_tests(
 export function make_livemap_projected_identity_api(
   owner: () => object,
   controller: LiveMapProjectedIdentityController,
-): Readonly<{ ensureIdentity: (path: LivePath) => LiveMapProjectedIdentityHandle }> {
+): LiveMapProjectedIdentityApi {
   return Object.freeze({
-    ensureIdentity: (pathInput) => {
+    acquire: (pathInput) => {
       const path = clone_live_path(pathInput);
       const current = current_claim(controller, path);
       const quid = current ?? allocate_and_commit(owner(), controller, path);
       return make_handle(controller, quid, controller.identityEpoch.current());
     },
   });
+}
+
+/** Register internal projected identity acquisition without extending the public map façade. */
+export function register_livemap_projected_identity_api(
+  owner: object,
+  api: LiveMapProjectedIdentityApi,
+): void {
+  projectedIdentityApiForOwner.set(owner, api);
+}
+
+/** Internal acquisition seam for continuity facilities and authoritative tests. */
+export function acquire_livemap_projected_identity(
+  owner: object,
+  path: LivePath,
+): LiveMapProjectedIdentityHandle {
+  const api = projectedIdentityApiForOwner.get(owner);
+  if (api === undefined) throw new Error("LiveMap has no internal projected identity authority.");
+  return api.acquire(path);
 }
 
 function current_claim(
@@ -101,7 +125,8 @@ function allocate_and_commit(
 ): string {
   const allocated = allocate_livemap_quid(
     owner,
-    (quid) => controller.overlay().pathForQuid(quid) !== undefined,
+    (quid) => controller.identityEpoch.issued().has(quid)
+      || controller.overlay().pathForQuid(quid) !== undefined,
     (quid) => {
       const root = clone_live_root(controller.root());
       const endpoint = resolve_value_node(root, path);

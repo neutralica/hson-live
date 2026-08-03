@@ -11,6 +11,7 @@ import type {
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
+import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 
 type CaptureCategory = DocumentLiveMapCaptureIdentity | "compatibility";
 
@@ -23,30 +24,10 @@ type CaptureProvenance = Readonly<{
   root: HsonNode;
 }>;
 
-export type LiveMapDocumentIdentityEpochController = Readonly<{
-  owner: object;
-  current: () => number;
-  replace: () => void;
-}>;
+export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochController;
 
 const captureProvenance = new WeakMap<DocumentLiveMapCapture, CaptureProvenance>();
 const commitContinuity = new WeakMap<object, "same-epoch" | "new-epoch">();
-
-/** Create one nonserializable identity epoch owned by one active document map. */
-export function make_livemap_document_identity_epoch(): LiveMapDocumentIdentityEpochController {
-  const owner = Object.freeze({});
-  let epoch = 0;
-  return Object.freeze({
-    owner,
-    current: () => epoch,
-    replace: () => {
-      epoch += 1;
-      if (!Number.isSafeInteger(epoch)) {
-        throw new Error("LiveMap document identity epoch exhausted its local safe-integer counter.");
-      }
-    },
-  });
-}
 
 /** Capture exact metadata, explicit same-epoch provenance, or an identity-free graph. */
 export function capture_livemap_document<TMode extends DocumentLiveMapMode>(

@@ -66,6 +66,7 @@ export type LiveMapProjectedIdentityErrorCode =
   | "PROJECTED_IDENTITY_INELIGIBLE"
   | "PROJECTED_IDENTITY_INVARIANT"
   | "PROJECTED_IDENTITY_COLLISION"
+  | "PROJECTED_IDENTITY_REUSE"
   | "PROJECTED_IDENTITY_ALLOCATOR_EXHAUSTED";
 
 /** Stable projected-container identity failure emitted before publication. */
@@ -181,6 +182,7 @@ export type LiveMapDocumentMutationErrorCode =
   | "INVALID_DOCUMENT_IDENTITY"
   | "DOCUMENT_IDENTITY_INELIGIBLE"
   | "DOCUMENT_IDENTITY_COLLISION"
+  | "DOCUMENT_IDENTITY_REUSE"
   | "DOCUMENT_IDENTITY_DIFFERENT"
   | "DOCUMENT_MODE_MISMATCH";
 
@@ -198,6 +200,7 @@ export class LiveMapDocumentMutationError extends Error {
     | "insert-content"
     | "remove-content"
     | "move-content"
+    | "replace-root"
     | "ensure-quid";
   readonly reason: string;
 

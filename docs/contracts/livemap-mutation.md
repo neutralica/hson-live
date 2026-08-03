@@ -219,8 +219,8 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
 
 `ensure-quid` is produced only by the internal LiveMap authority in response to
-`document.ensureIdentity`, projected `map.ensureIdentity(path)`, or exact linked
-identity demand. Callers provide only the path; they cannot select the QUID.
+an owner-authorized continuity facility, including exact linked identity demand.
+No public LiveMap method requests it, and callers cannot select the QUID.
 Document commits use the numeric document commit target; projected commits use
 `{ kind: "path", path: LivePath, projected: true }`. Both are path-authoritative,
 and neither accepts a raw-QUID route. Candidate generation is outside replay and
@@ -241,6 +241,22 @@ structural carriers, malformed paths, and graph/overlay disagreement reject
 before publication. Projected eligibility is restricted to the semantic
 `_hson_obj` or `_hson_arr` reached by the supplied user path; property and
 array-item wrappers are never registration targets.
+
+### Same-epoch identity non-reuse
+
+Graph staging carries an immutable issued-QUID ledger alongside the sparse
+active overlay. A new `ensure-quid` admission enters both; retirement changes
+only the active overlay. Each later operation in a batch sees QUIDs issued by
+earlier ordinals even if a later ordinal retires them. Allocation retries an
+issued candidate, while replay and incoming QUID-bearing content reject retired
+same-epoch reuse without allocating. Active collision and retired issued reuse
+remain distinct structured conflicts.
+
+Failure publishes neither graph, revision, active overlay, issued ledger,
+history, observation, nor handle state. Whole-root new-epoch admission instead
+validates and seeds a fresh ledger from active metadata. Exact same-epoch
+capture restoration retains the living monotonic ledger; it cannot roll state
+back to the capture-time issued population.
 
 ### Projected rename and move intent
 
