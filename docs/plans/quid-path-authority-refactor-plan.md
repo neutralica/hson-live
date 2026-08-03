@@ -1,6 +1,6 @@
 # QUID responsibility, path authority, and sparse live identity refactor plan
 
-Status: Units 0 through 7, Unit 2, and reflected prerequisites 10R-A/10R-B implemented and executable; the public Unit 10 handle and later-unit architecture remain a plan.
+Status: Units 0 through 7, Unit 2, reflected prerequisites 10R-A/10R-B, and public Unit 10 implemented and executable; later-unit architecture remains a plan.
 
 This plan corrects the architectural recommendation in the earlier [QUID scope and encoding forensic audit](./quid-scope-and-encoding-audit.md). In particular, it does **not** introduce `DocumentNodeId`, a hidden permanent UUID, or a renamed equivalent. One QUID concept remains the optional HSON Live identity affordance. Durable LiveMap structure is addressed by revisioned paths and operation semantics, while application identity remains user data.
 
@@ -679,6 +679,7 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 
 ### Unit 10 — Explicit LiveMap identity request and compatibility fences
 
+- **Status:** Complete. `document.ensureIdentity({ kind: "path", path })` is the sole public acquisition name. It returns an opaque active-epoch handle with `active`, `path()`, `snap()`, and `dispose()` and never exposes raw-QUID reconstruction.
 - **Goal:** If demanded by retained LiveMap handles, add one explicit mint/request API; mark raw QUID surfaces live-epoch/diagnostic; preserve LiveTree behavior.
 - **Production ownership:** LiveMap identity handle/overlay API, diagnostics, documentation; LiveTree only regression tests and wording.
 - **Public/API effect:** Additive retained-identity API; possible deprecations for raw map strings, not removals.
@@ -686,9 +687,11 @@ There are fourteen units, numbered 0 through 13. Each is one coherent architectu
 - **Tests:** explicit-only minting, handle invalidation, ABA/no-reuse, two maps, LiveTree construction/projection/graft/detach/clone/CSS/events/resources unchanged.
 - **Stop conditions:** API encourages application persistence, bypasses collision owner, or requires weakening LiveTree.
 - **Dependency:** Units 3, 4, 7.
-- **Suggested commit direction:** `feat(livemap): add explicit epoch-scoped identity handles`.
+- **Suggested commit direction:** `feat(livemap): add explicit sparse identity handles`.
 - **Completed prerequisite 10R-A:** Linked construction/projection preserves canonical QUID absence, exact-node/DOM correspondence is QUID-free, and supplied claims are admitted without private minting.
-- **Completed prerequisite 10R-B:** Existing linked QUID demand delegates through one exact binding; LiveMap owns secure collision-aware allocation and the path-authoritative `ensure-quid` canonical operation; Reflection owns local preflight and rollback-safe supplied claim; replay/LiveHost transport use the recorded QUID without allocation. Public map acquisition and active-epoch handles remain absent.
+- **Completed prerequisite 10R-B:** Existing linked QUID demand delegates through one exact binding; LiveMap owns secure collision-aware allocation and the path-authoritative `ensure-quid` canonical operation; Reflection owns local preflight and rollback-safe supplied claim; replay/LiveHost transport use the recorded QUID without allocation.
+- **Implemented boundary:** Public path-only acquisition reuses the 10R-B authority seam on reflected maps and commits locally on unreflected maps. Existing claims are no-ops. Handles resolve through the Unit 3 overlay, follow Unit 4 path effects, and fence removal, replacement, disposal, and owner-epoch replacement. Raw QUID lookup/mutation/LiveTree/diagnostic surfaces remain available only as active-epoch compatibility APIs; no setter, `fromQuid`, global registry, public LiveHost action, replacement/retirement, object/array eligibility, or rekeying is added.
+- **Executable result:** Three focused launchers add 23 acquisition, 24 handle-lifecycle, and 23 compatibility/Reflection checks. A deterministic 1,000-node fixture proves zero-QUID overlay storage remains empty and one request adds one entry; the full encoding remains 16 characters.
 
 ### Unit 11 — Optional object/array QUID eligibility
 

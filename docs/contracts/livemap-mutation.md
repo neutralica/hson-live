@@ -218,7 +218,22 @@ Live calls accept `LiveMapDocumentRequestTarget` (`path` or compatibility `quid`
 
 Mutation, replay, and reflection consume the same path-authoritative operation semantics. The neutral document-path module owns validation, resolution, ordering, equality, prefix, append/parent, deterministic encoding, and insertion/deletion/replacement/move/root path transforms. It contains no QUID behavior.
 
-`ensure-quid` is produced only by the internal LiveMap authority in response to exact linked identity demand. Candidate generation is outside replay and outside the canonical operation reducer. One changed registration advances the ordinary revision once and publishes through ordinary commit/history/feed observers; reuse publishes nothing. The operation is additive in current exact LiveHost graph transport because it preserves the established graph discriminants, path target, and recorded scalar value without changing the envelope version.
+`ensure-quid` is produced only by the internal LiveMap authority in response to
+`document.ensureIdentity` or exact linked identity demand. Callers provide only
+the path; they cannot select the QUID. Candidate generation is outside replay
+and outside the canonical operation reducer. One changed registration advances
+the ordinary revision once and publishes through ordinary
+commit/history/feed observers; reuse publishes nothing. The operation is
+additive in current exact LiveHost graph transport because it preserves the
+established graph discriminants, path target, and recorded scalar value without
+changing the envelope version. Replay validates the recorded value and never
+allocates.
+
+Identity acquisition accepts a path-only target even though active ordinary
+document mutations retain path-or-QUID request compatibility. This fence keeps
+raw QUID bytes from becoming handle constructors. Ineligible ordinary
+primitives, structural carriers, object/array projected modes, malformed paths,
+and graph/overlay disagreement reject before publication.
 
 ### Projected rename and move intent
 

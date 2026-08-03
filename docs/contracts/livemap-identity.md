@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, and Unit 10R-B authority-owned linked acquisition shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
+This document defines the executable Unit 0 identity contract, Unit 1 canonical document-path contract, Unit 2 projected movement-intent contract, Unit 3 sparse QUID/path overlay contract, Unit 4 operation-derived reconciliation contract, Unit 5 QUID-request lowering boundary, Unit 6 path-first Reflection contract, Unit 7 capture/provenance contract, Unit 10R-A reflected no-mint ownership boundary, Unit 10R-B authority-owned linked acquisition, and Unit 10 explicit sparse identity-handle contract shared by canonical HSON graphs, LiveMap, LiveTree, and controlled LiveHost persistence. Later units must preserve these rules unless an explicit architectural revision replaces them.
 
 ## One QUID concept
 
@@ -17,7 +17,7 @@ A QUID is not:
 - authorization, authentication, a capability, or a security token; or
 - proof that serialized bytes belong to an active live epoch.
 
-Only ordinary elements are currently QUID-eligible. Expanding eligibility, changing the encoding, or defining a retained-identity API is outside Unit 0.
+Only ordinary elements are currently QUID-eligible. Unit 10 adds explicit acquisition for those elements only. Expanding eligibility or changing the encoding remains deferred.
 
 ## Canonical graph state and revisions
 
@@ -138,7 +138,54 @@ Before acceptance, the one active local Reflection participant proves that the c
 
 Expected preflight, collision, malformed-input, stale-correspondence, and canonical staging failures publish nothing. The runtime claim is rollback-safe. An unexpected host/DOM failure after canonical acceptance follows the existing post-commit Reflection failure contract: the canonical claim remains authoritative, the binding fails closed, and a fresh binding can admit it. No remote participant or mirror consensus is required.
 
-The operation remains ordinary-element-only. It does not enable projected object/array QUIDs, public map identity handles, QUID replacement/retirement, user-selected QUIDs, or runtime rekeying.
+The operation remains ordinary-element-only. It does not enable projected object/array QUIDs, QUID replacement/retirement, user-selected QUIDs, or runtime rekeying.
+
+## Explicit LiveMap identity acquisition
+
+`document.ensureIdentity({ kind: "path", path })` is the sole supported public
+acquisition API. The name reflects its narrow ensure-if-absent behavior: it does
+not establish reference counting, and disposing a returned handle does not
+retire canonical metadata. Acquisition is synchronous and path-only. Active raw
+QUID request targets remain compatible for ordinary mutations, but cannot be
+used to construct a handle.
+
+For an eligible current ordinary element, acquisition validates graph/overlay
+agreement, reuses an existing claim without revision or publication, or asks the
+map-owned collision-aware allocator for a candidate and publishes one ordinary
+path-authoritative `ensure-quid` commit. Replay always consumes the recorded
+candidate and never mints. An active local Reflection participant uses the
+completed 10R-B preflight/reservation transaction; an unreflected map performs
+the same canonical mutation without creating runtime identity state.
+
+The returned `LiveMapDocumentIdentityHandle` retains the exact map owner, the
+owner's current identity epoch, and the canonical QUID privately. Its public
+surface is `active`, `path()`, `snap()`, and `dispose()`. `path()` resolves the
+current frozen numeric path through the sparse overlay. `snap()` returns a
+detached clone of the current ordinary element. The handle follows insertion
+shifts and `move-content`, survives attribute changes and compatible explicit
+same-QUID continuity, and becomes inactive when the claim is removed, replaced,
+or fenced by owner-epoch replacement.
+
+Changed durable install, durable restore, and replayed root replacement create
+new owner epochs. Same-epoch install/restore preserves a handle only when the
+exact Unit 7 capture capability is accepted and its QUID remains present.
+Copied, encoded, foreign, or stale capture material cannot extend continuity.
+Multiple handles may share one QUID; each can be disposed independently, and
+disposal never removes `$_meta.quid` or publishes a commit.
+
+## Raw-QUID compatibility fences
+
+The following compatibility surfaces remain available within their current
+active owner epoch: `document.byQuid`, path-or-QUID mutation requests,
+`LiveTree.quid`, `LiveTree.find.byQuid`, and diagnostic QUID output. They are
+lookup/routing conveniences and continuity evidence, not application identity,
+authorization, durable handle references, or proof of provenance. A raw string
+cannot recreate a `LiveMapDocumentIdentityHandle`, cross a map or runtime owner,
+or survive owner-epoch replacement merely because the same bytes reappear.
+
+There is no `fromQuid`, global registry, user-supplied-QUID setter, DOM-query
+authoring contract, public replacement/retirement operation, or remote
+LiveHost acquisition action. Application identity remains application data.
 
 ## LiveMap does not mint implicitly
 
@@ -212,9 +259,12 @@ The certified route is: a QUID-bearing source remains unchanged; serialized outp
 
 ## Mutation boundaries
 
-Ordinary LiveMap document APIs protect system metadata and currently expose no supported operation that directly adds, replaces, or removes `$_meta.quid`.
+Ordinary LiveMap document APIs protect system metadata. `document.ensureIdentity`
+may add `$_meta.quid` through the canonical `ensure-quid` transition; no
+supported API replaces or removes it, accepts a caller-selected QUID, or treats
+handle disposal as metadata retirement.
 
-`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, or subscriptions. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. A future path-authoritative registration operation belongs at the canonical document mutation/transition seam.
+`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, handles, Reflection, history, or persistence. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. Supported registration uses `document.ensureIdentity`.
 
 ## Required invariants
 

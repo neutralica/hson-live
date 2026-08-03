@@ -17,6 +17,7 @@ import type {
   FragmentLiveMap,
   LiveMap,
   LiveMapCore,
+  LiveMapDocumentApi,
   LiveMapRootMode,
   LiveMapGraphCommit,
 } from "../../types/livemap.types.js";
@@ -44,6 +45,7 @@ import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.j
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { capture_livemap_document } from "./livemap.document.capture.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
+import { make_livemap_document_identity_api } from "./livemap.document.identity-handle.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -180,7 +182,9 @@ function make_document_livemap(
       move: mutationApi.moveContent,
     },
   ));
-  const document = Object.freeze({
+  let document: LiveMapDocumentApi;
+  const identityApi = make_livemap_document_identity_api(() => document, controller);
+  document = Object.freeze({
     root: () => core.root(),
     content,
     byQuid: (quid: string) => {
@@ -190,6 +194,7 @@ function make_document_livemap(
       const node = resolve_document_path(controller.root(), mode, path);
       return is_Node(node) ? clone_live_root(node) : undefined;
     },
+    ensureIdentity: identityApi.ensureIdentity,
     attrs,
   });
   register_livemap_document_identity_overlay(document, controller.overlay);

@@ -662,6 +662,7 @@ function make_livemap_core_from_owned_root(
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
+      if (candidate.commit.ops[0]?.op === "replace-root") documentIdentityEpoch.replace();
       owned = {
         root: candidate.root,
         documentOverlay: candidate.overlay,

@@ -99,14 +99,30 @@ export function set_livemap_document_quid_candidate_source_for_tests(
   else candidateSourceForAuthority.set(authority, source);
 }
 
-/** Authority-owned explicit acquisition used only by linked LiveTree delegation. */
+/** Authority-owned explicit acquisition for the public map-local capability. */
+export function ensure_livemap_document_canonical_identity(
+  owner: object,
+  target: LiveMapDocumentCommitTarget,
+): string {
+  return acquire_livemap_document_canonical_identity(owner, target, false);
+}
+
+/** Authority-owned explicit acquisition used by linked LiveTree delegation. */
 export function require_livemap_document_canonical_identity(
   owner: object,
   target: LiveMapDocumentCommitTarget,
 ): string {
+  return acquire_livemap_document_canonical_identity(owner, target, true);
+}
+
+function acquire_livemap_document_canonical_identity(
+  owner: object,
+  target: LiveMapDocumentCommitTarget,
+  requireParticipant: boolean,
+): string {
   const authority = require_authority(owner);
   const participant = participantForAuthority.get(authority);
-  if (participant === undefined) {
+  if (requireParticipant && participant === undefined) {
     throw new LiveMapDocumentIdentityRegistrationError(
       "LIVEMAP_IDENTITY_PARTICIPANT_REQUIRED",
       "Linked identity acquisition requires one active local Reflection participant.",
@@ -134,7 +150,7 @@ export function require_livemap_document_canonical_identity(
     );
   }
   if (existing !== undefined) {
-    participant.verifyExisting(target.path, existing);
+    participant?.verifyExisting(target.path, existing);
     return existing;
   }
 
@@ -148,7 +164,7 @@ export function require_livemap_document_canonical_identity(
       || authority.overlay().pathForQuid(candidateQuid) !== undefined) continue;
 
     let prepared: PreparedDocumentMutation<LiveMapGraphEnsureQuidOp>;
-    let reservation: LiveMapDocumentIdentityCommitReservation;
+    let reservation: LiveMapDocumentIdentityCommitReservation | undefined;
     try {
       prepared = prepare_ensure_document_quid(
         authority.root(),
@@ -157,14 +173,14 @@ export function require_livemap_document_canonical_identity(
         target,
         candidateQuid,
       );
-      reservation = participant.preflight(Object.freeze([prepared.operation]));
+      reservation = participant?.preflight(Object.freeze([prepared.operation]));
     } catch (cause) {
       if (cause instanceof LiveMapDocumentIdentityParticipantCollisionError) continue;
       throw cause;
     }
 
     reserved.add(candidateQuid);
-    reservationForCandidate.set(prepared, reservation);
+    if (reservation !== undefined) reservationForCandidate.set(prepared, reservation);
     try {
       const commit = authority.applyMutation(prepared);
       if (!commit.changed || commit.ops[0]?.op !== "ensure-quid") {
@@ -173,16 +189,16 @@ export function require_livemap_document_canonical_identity(
           "Canonical identity acquisition did not publish its registration operation.",
         );
       }
-      if (!reservation.applied) {
+      if (reservation !== undefined && !reservation.applied) {
         throw new LiveMapDocumentIdentityRegistrationError(
           "LIVEMAP_IDENTITY_PROJECTION_NOT_APPLIED",
           "Canonical identity committed, but the local projection did not install the supplied claim.",
         );
       }
-      participant.verifyExisting(target.path, candidateQuid);
+      participant?.verifyExisting(target.path, candidateQuid);
       return candidateQuid;
     } finally {
-      reservation.release();
+      reservation?.release();
       reserved.delete(candidateQuid);
     }
   }

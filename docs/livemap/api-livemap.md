@@ -456,6 +456,37 @@ Document modes deliberately do not expose projected `snap`/`set` APIs.
 Common reads are `root()`, `capture()`, `document.content()`,
 `document.byQuid(quid)`, and document attribute reads.
 
+Explicit live identity is acquired by canonical path:
+
+```ts
+const handle = map.document.ensureIdentity({ kind: "path", path: [0, 1] });
+
+handle.active; // current owner epoch still contains this identity
+handle.path(); // frozen current canonical content path, or undefined
+handle.snap(); // detached current HSON element clone, or undefined
+handle.dispose(); // releases only this handle
+```
+
+The API reuses existing valid QUID metadata as a no-op. Otherwise the LiveMap
+securely allocates a QUID, records it with one ordinary path-authoritative
+`ensure-quid` commit, advances the ordinary revision once, and reconciles the
+sparse overlay. It never assigns identity to unrelated nodes. Only ordinary
+elements are eligible; primitives, structural carriers, and projected
+object/array modes are rejected.
+
+Handles follow content moves and insertion shifts and survive attribute
+changes. Removal or replacement without explicit same-QUID continuity makes
+them inactive. Changed durable install, durable restore, and replayed root
+replacement fence the old owner epoch; exact same-epoch capture admission may
+preserve continuity. Multiple handles may share one QUID. Disposing a handle
+does not remove metadata or create a commit.
+
+`document.byQuid`, path-or-QUID active mutation targets, `LiveTree.quid`,
+`LiveTree.find.byQuid`, and diagnostic QUID output remain active-epoch
+compatibility surfaces. Raw QUIDs are not application IDs, authorization,
+durable references, or handle constructors. There is no `fromQuid`, raw setter,
+public replacement/retirement operation, or user-selected QUID API.
+
 `document.attrs` provides `get`, `has`, `keys`, `must.get`, `set`, `drop`,
 `setMany`, `dropMany`, `clear`, and `replace`. `document.content` is callable for
 top-level detached content and has `replace`, `insert`, `remove`, and `move`.
@@ -500,8 +531,10 @@ and `move`.
 These mutate the owned HSON graph directly and bypass projected schema,
 normalization, commits, revisions, feeds, subscriptions, links, and host
 authority. Physical child indexes count HSON-node children, not raw `$_content`
-slots. Do not use node handles for ordinary state changes or hosted canonical
-mutations.
+slots. They also bypass sparse-overlay reconciliation, identity handles,
+Reflection, history, and persistence. Do not use `meta()` as identity
+registration; use `document.ensureIdentity`. Do not use node handles for
+ordinary state changes or hosted canonical mutations.
 
 ## LiveMap and SSR
 

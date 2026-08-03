@@ -81,12 +81,14 @@ export {
     LiveMapDocumentAttributeNotFoundError,
     LiveMapDocumentInstallError,
     LiveMapDocumentIdentityProvenanceError,
+    LiveMapDocumentIdentityRegistrationError,
     LiveMapDocumentMutationError,
     LiveMapDocumentStagingError,
     LiveMapProjectedMutationError,
 } from "./api/livemap/livemap.error.js";
 export type {
     LiveMapDocumentIdentityProvenanceErrorCode,
+    LiveMapDocumentIdentityRegistrationErrorCode,
     LiveMapDocumentInstallFailureCode,
     LiveMapDocumentMutationErrorCode,
     LiveMapProjectedMutationErrorCode,
@@ -179,6 +181,8 @@ export type {
     DocumentLiveMapInstallOptions,
     LiveMapDocumentPath,
     LiveMapDocumentPathInput,
+    LiveMapDocumentIdentityTarget,
+    LiveMapDocumentIdentityHandle,
     LiveMapDocumentRequestTarget,
     LiveMapDocumentCommitTarget,
     LiveMapDocumentTargetWitness,

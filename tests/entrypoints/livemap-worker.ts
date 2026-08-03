@@ -5,6 +5,8 @@ import {
   type DocumentLiveMapCaptureIdentity,
   type DocumentLiveMapInstallIdentity,
   type LiveMapDocumentIdentityProvenanceErrorCode,
+  type LiveMapDocumentIdentityHandle,
+  type LiveMapDocumentIdentityTarget,
   type LiveMapDocumentInstallFailureCode,
   type LiveMapMoveOp,
   type LiveMapProjectedMutationErrorCode,
@@ -23,6 +25,9 @@ if (documentMap.mode === "element") {
   const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";
   const capture = documentMap.capture({ identity: captureIdentity });
   documentMap.install(capture, { identity: installIdentity });
+  const identityTarget: LiveMapDocumentIdentityTarget = { kind: "path", path: [] };
+  const identityHandle: LiveMapDocumentIdentityHandle = documentMap.document.ensureIdentity(identityTarget);
+  identityHandle.dispose();
 }
 
 const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDENTITY_EPOCH";

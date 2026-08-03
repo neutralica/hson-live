@@ -344,6 +344,30 @@ export type LiveMapDocumentRequestTarget =
   | Readonly<{ kind: "path"; path: LiveMapDocumentPathInput }>
   | Readonly<{ kind: "quid"; quid: string }>;
 
+/** Path-only target for explicit sparse identity acquisition. */
+export type LiveMapDocumentIdentityTarget = Readonly<{
+  kind: "path";
+  path: LiveMapDocumentPathInput;
+}>;
+
+/**
+ * Opaque active-epoch capability for one explicitly identified document node.
+ *
+ * The handle does not expose its canonical QUID. It resolves through the
+ * owning map's current sparse overlay and cannot be reconstructed from raw
+ * metadata bytes.
+ */
+export type LiveMapDocumentIdentityHandle = Readonly<{
+  /** Whether the exact owner epoch still contains this live identity. */
+  readonly active: boolean;
+  /** Resolve the identity's current frozen canonical content path. */
+  path: () => LiveMapDocumentPath | undefined;
+  /** Return a detached clone of the current canonical node. */
+  snap: () => HsonNode | undefined;
+  /** Release this handle without removing canonical QUID metadata. */
+  dispose: () => void;
+}>;
+
 /** Optional same-epoch diagnostic evidence; never a routing address. */
 export type LiveMapDocumentTargetWitness = Readonly<{ quid: string }>;
 
@@ -449,6 +473,8 @@ export type LiveMapDocumentApi = Readonly<{
   content: DocumentLiveMapContentApi;
   /** Resolve a QUID in the current owned graph to a detached element clone. */
   byQuid: (quid: string) => HsonNode | undefined;
+  /** Ensure sparse identity at one current path and return an active-epoch handle. */
+  ensureIdentity: (target: LiveMapDocumentIdentityTarget) => LiveMapDocumentIdentityHandle;
   /** Canonical ordinary-attribute mutation namespace. */
   attrs: DocumentLiveMapAttrsApi;
 }>;

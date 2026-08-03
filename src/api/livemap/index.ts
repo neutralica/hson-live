@@ -5,6 +5,7 @@ export {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,
   LiveMapDocumentIdentityProvenanceError,
+  LiveMapDocumentIdentityRegistrationError,
   LiveMapDocumentMutationError,
   LiveMapDocumentStagingError,
   LiveMapProjectedMutationError,
@@ -44,6 +45,7 @@ export {
 
 export type {
   LiveMapDocumentIdentityProvenanceErrorCode,
+  LiveMapDocumentIdentityRegistrationErrorCode,
   LiveMapDocumentInstallFailureCode,
   LiveMapDocumentMutationErrorCode,
   LiveMapProjectedMutationErrorCode,
