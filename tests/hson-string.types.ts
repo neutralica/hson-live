@@ -22,6 +22,7 @@ declare const dynamicSerializer: TransformSerialize;
 const direct: HsonString = serialize_hson(node);
 const normalized = hson.transform.string(arbitrary);
 const directlyNormalized: HsonString = hsonString(arbitrary);
+const directlyTagged: HsonString = hsonString`<main/>`;
 const branded: HsonString = normalized;
 const repeated: HsonString = hson.transform.string(branded);
 const directlyRepeated: HsonString = hsonString(directlyNormalized);
@@ -36,6 +37,17 @@ const withoutQuids: HsonString = hsonTransform.fromNode(node).toHson().noQuid().
 const html = hsonTransform.fromNode(node).toHtml().serialize();
 const json = hsonTransform.fromNode(node).toJson().serialize();
 const ordinary: string = direct;
+
+// @ts-expect-error Arrays are not ordinary HSON string inputs.
+hsonString(["<main/>"]);
+// @ts-expect-error Template-like objects are not ordinary HSON string inputs.
+hsonString({ raw: ["<main/>"] });
+// @ts-expect-error Facade aliases retain the same input boundary.
+hson.transform.string(["<main/>"]);
+// @ts-expect-error Tagged admission is exposed only by the named hsonString export.
+hson.transform.string`<main/>`;
+// @ts-expect-error Tagged admission is exposed only by the named hsonString export.
+hsonTransform.string`<main/>`;
 
 // @ts-expect-error Ordinary strings have no official-serializer provenance.
 const invalid: HsonString = arbitrary;
@@ -86,6 +98,7 @@ type ParserInputRemainsString = Expect<
 void fluent;
 void repeated;
 void directlyRepeated;
+void directlyTagged;
 void bareString;
 void bareNumber;
 void bareBoolean;

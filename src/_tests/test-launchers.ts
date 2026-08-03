@@ -69,6 +69,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
+      id: "transform.hson-tagged-template",
+      subject: "Transform",
+      displayName: "HSON tagged-template admission",
+      packageScript: "test:hson-tagged-template",
+      repositoryModule: "tests/hson-tagged-template.acceptance.mts",
+      runtime: "node",
+      executableChecks: 16,
+      collections: ["hson", "admission", "tagged-template", "public-api", "diagnostics", "externally-discoverable"],
+    }),
+    launcher({
       id: "transform.hson-quoted-name-acceptance",
       subject: "Transform",
       displayName: "HSON single-quoted name acceptance and canonicalization",

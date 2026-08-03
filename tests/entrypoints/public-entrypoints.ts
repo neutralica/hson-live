@@ -12,6 +12,11 @@ import {
   type HsonNumber as TransformHsonNumber,
   type TransformSerialize,
 } from "hson-live/transform";
+import {
+  hson as hsonSubpath,
+  hsonString as hsonSubpathString,
+  hsonTransform as hsonSubpathTransform,
+} from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive } from "hson-live/types";
 import {
   hsonCalc as narrowHsonCalc,
@@ -89,6 +94,17 @@ const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
 const inferredNormalizedHson = hson.transform.string(arbitrary);
 const inferredNamedHson = hsonString(arbitrary);
 const inferredTransformNamedHson = transformHsonString(arbitrary);
+const inferredRootTaggedHson: HsonString = hsonString`<main/>`;
+const inferredTransformNamedTaggedHson: HsonString = transformHsonString`<main/>`;
+const inferredHsonSubpathTaggedHson: HsonString = hsonSubpathString`<main/>`;
+// @ts-expect-error Tagged admission is not part of the root Transform facade API.
+hson.transform.string`<main/>`;
+// @ts-expect-error Tagged admission is not part of the Transform subpath facade API.
+transformSubpath.string`<main/>`;
+// @ts-expect-error Tagged admission is not part of the hson subpath facade API.
+hsonSubpath.transform.string`<main/>`;
+// @ts-expect-error Tagged admission is not part of the named Transform facade API.
+hsonSubpathTransform.string`<main/>`;
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
 const inferredJsonText = transformSubpath.fromNode(node).toJson().serialize();
 const hsonText: HsonString = inferredHsonText;
@@ -214,6 +230,9 @@ void operationalRevision;
 void invalidOperationalNumber;
 void invalidAdmittedNumber;
 void repeatedNormalizedHson;
+void inferredRootTaggedHson;
+void inferredTransformNamedTaggedHson;
+void inferredHsonSubpathTaggedHson;
 void transformNamedNormalizedHson;
 void repeatedNamedNormalizedHson;
 void invalidHson;

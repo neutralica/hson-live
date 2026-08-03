@@ -54,12 +54,16 @@ or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
 serialization as an `HsonString`:
 
 ```ts
-import { hson } from "hson-live";
+import { hson, hsonString } from "hson-live";
 import type { HsonString } from "hson-live/transform";
 
 const normalized: HsonString = hson.transform.string(
   `<p "first"<em "middle"/>"last"/>`,
 );
+
+const tagged: HsonString = hsonString`
+  <p "first"<em "middle"/>"last"/>
+`;
 ```
 
 The equivalent named producer is exported as `hsonString(source)` from both
@@ -67,6 +71,39 @@ The equivalent named producer is exported as `hsonString(source)` from both
 function. The named Transform export imports only the HSON parser, serializer,
 and their required canonical graph boundaries; it does not initialize browser,
 LiveTree, LiveMap, or LiveHost surfaces.
+
+The named `hsonString` export also accepts a standard JavaScript or TypeScript
+tagged template with no substitutions:
+
+```ts
+const view = hsonString`<main/>`;
+```
+
+The Transform facade methods remain ordinary string-call APIs; tagged-template
+admission is intentionally exposed only through the named `hsonString` export.
+
+The tag passes its single raw template segment to the same parser, root
+detachment, canonical graph admission, default serializer, and branding path
+as the ordinary call. Raw input keeps HSON in charge of escapes such as `\\`,
+`\"`, `\'`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`; JavaScript's cooked
+template value is not used.
+The result remains a primitive branded `HsonString`, and canonicalization is
+identical to `hsonString(source)`.
+
+Template substitutions are unsupported and reject with a structured Transform
+admission error before any segment concatenation or HSON parsing. JavaScript
+still evaluates every `${...}` expression before it invokes the tag. The `${`
+sequence and backticks belong to JavaScript template grammar: use an HSON
+Unicode escape such as `\u0024` for a dollar sign that would otherwise begin a
+substitution, and `\u0060` for U+0060 where that HSON escape is valid. Escaping
+a host backtick leaves a backslash followed by a backtick in the raw segment;
+that is not a supported HSON escape and is deliberately left for the ordinary
+HSON parser to reject.
+
+Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy
+of the host file. In particular, JavaScript normalizes physical CRLF template
+line terminators to LF. Static diagnostics that need original-file offsets must
+map against the original host source text rather than this runtime string.
 
 The returned spelling may differ from the source because the method reparses
 the source into canonical `HsonNode` state and serializes that graph with the
