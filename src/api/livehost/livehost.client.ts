@@ -914,7 +914,7 @@ export function create_livehost_client<
     const stopClose = options.socket.onClose(disconnect);
     if (stopClose) disposers.push(stopClose);
     if (options.recovery) install_recovery_messages();
-    if (!options.recovery && !options.session) send({ type: "hello", clientId, lastSeq: seq });
+    if (!options.recovery && !options.session) send({ type: "hello", clientId });
     return disconnect;
   }
 

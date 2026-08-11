@@ -188,7 +188,7 @@ High priority after the Node LiveHost refactor and before SSR:
 
 - LiveHost/client/history/persistence process counters used for fallback,
   session, trace, map, incarnation, action, and recovery identifiers.
-- LiveHost hosted-map and exclusive-authority weak registries: object-safe now,
+- LiveHost hosted-map and authority weak registries: object-safe now,
   but their process ownership model belongs to the Node LiveHost refactor.
 - mutable transform sanitizer injection in
   `transform/constructors/construct-output-2.ts`.

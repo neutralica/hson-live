@@ -7,6 +7,9 @@ import {
   LiveHostPersistenceError,
 } from "../../src/index.ts";
 import { canonical_hson_graph_equal } from "../../src/core/canonical-hson-equal.ts";
+import { create_persistent_livehost_internal } from "../../src/api/livehost/livehost.persistence.ts";
+import { LiveHostAuthorityError } from "../../src/api/livehost/livehost.authority.ts";
+import { get_livemap_staged_authority } from "../../src/api/livemap/livemap.authority.ts";
 
 let checks = 0;
 async function check(name, fn) {
@@ -120,8 +123,7 @@ await check("initial checkpoint is durable before a persistent host is returned"
   let returned = false;
   const creating = create_persistent_livehost({
     map,
-    authority: "exclusive",
-    persistence: adapter,
+        persistence: adapter,
     logicalMapId: "persistent-initial",
     incarnationId: "persistent-initial-incarnation",
   }).then((host) => { returned = true; return host; });
@@ -143,7 +145,7 @@ await check("initial checkpoint failure rolls back exclusive management", async 
   adapter.failCheckpoint = new Error("unavailable");
   const map = element();
   await assert.rejects(
-    create_persistent_livehost({ map, authority: "exclusive", persistence: adapter }),
+    create_persistent_livehost({ map, persistence: adapter }),
     (cause) => cause instanceof LiveHostPersistenceError
       && cause.code === "LIVEHOST_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
   );
@@ -153,7 +155,7 @@ await check("initial checkpoint failure rolls back exclusive management", async 
 await check("append completes before graph revision notifications history and publication", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   const append = adapter.deferAppend();
   const observations = [];
   map.commits.observe((event) => observations.push(event.kind));
@@ -179,7 +181,7 @@ await check("append completes before graph revision notifications history and pu
 await check("append failure is inert and a later queued mutation succeeds", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   adapter.failAppend = new Error("append rejected");
   await assert.rejects(
     host.mutate((draft) => draft.document.attrs.set(root, "failed", true)),
@@ -193,10 +195,45 @@ await check("append failure is inert and a later queued mutation succeeds", asyn
   host.dispose();
 });
 
+await check("post-append realization failure terminally fences memory and reload realizes durable lineage", async () => {
+  const adapter = new MemoryPersistenceAdapter();
+  const map = element();
+  const host = await create_persistent_livehost_internal({
+    map,
+    persistence: adapter,
+    logicalMapId: "post-append-terminal",
+    incarnationId: "post-append-terminal-incarnation",
+  }, {
+    afterDurableAppend: (transition) => get_livemap_staged_authority(map).discard(transition),
+  });
+  await assert.rejects(
+    host.mutate((draft) => draft.document.attrs.set(root, "durable", true)),
+    (cause) => cause instanceof LiveHostAuthorityError && cause.code === "LIVEHOST_AUTHORITY_TERMINAL",
+  );
+  assert.equal(adapter.state("post-append-terminal").commits.length, 1);
+  assert.equal(map.rev, 0);
+  assert.equal(host.stream.headRev, 0);
+  assert.throws(
+    () => host.recovery.plan({ logicalMapId: host.stream.logicalMapId }),
+    (cause) => cause?.code === "LIVEHOST_RECOVERY_DISPOSED",
+  );
+  await assert.rejects(host.mutate((draft) => draft.document.attrs.set(root, "later", true)));
+  host.dispose();
+  await tick();
+
+  const store = create_livehost_persistent_store(adapter);
+  const loaded = await store.load("post-append-terminal");
+  assert.equal(loaded.ok, true);
+  assert.equal(loaded.value.map.rev, 1);
+  assert.equal(loaded.value.stream.headRev, 1);
+  assert.equal(loaded.value.map.document.attrs.get(root, "durable"), true);
+  await store.unload("post-append-terminal");
+});
+
 await check("adapter append identity is idempotent and conflicting content rejects", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(root, "idempotent", 1));
   const persisted = adapter.state(host.stream.logicalMapId).commits[0];
   await adapter.appendCommit(persisted);
@@ -210,7 +247,7 @@ await check("adapter append identity is idempotent and conflicting content rejec
 await check("no-op skips persistence while ordered changed commits remain contiguous", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   const noop = await host.mutate((draft) => draft.document.attrs.drop(root, "absent"));
   assert.equal(noop.changed, false);
   for (const value of [1, 2, 3]) {
@@ -226,7 +263,7 @@ await check("no-op skips persistence while ordered changed commits remain contig
 await check("checkpoint is atomic silent and orders a following mutation after replacement", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(root, "count", 1));
   const replacement = adapter.deferCheckpoint();
   const checkpoint = host.checkpoint();
@@ -251,7 +288,7 @@ await check("checkpoint is atomic silent and orders a following mutation after r
 await check("checkpoint failure preserves the prior durable chain and host health", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(root, "count", 1));
   const before = adapter.state(host.stream.logicalMapId);
   adapter.failCheckpoint = new Error("checkpoint rejected");
@@ -266,7 +303,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
   const map = element(`<main @000001010/>`);
-  const created = await store.create("persistent-reload", { map, authority: "exclusive" });
+  const created = await store.create("persistent-reload", { map });
   assert.equal(created.ok, true);
   const host = created.value;
   await host.mutate((draft) => draft.document.attrs.setMany(root, {
@@ -306,7 +343,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
 await check("simultaneous loads coalesce and a failed coalesced load can retry", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const seedStore = create_livehost_persistent_store(adapter);
-  const seeded = await seedStore.create("coalesced", { map: element(), authority: "exclusive" });
+  const seeded = await seedStore.create("coalesced", { map: element() });
   assert.equal(seeded.ok, true);
   await seedStore.unload("coalesced");
 
@@ -336,7 +373,7 @@ await check("creation and load for one ID share one deterministic in-flight host
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
   const checkpoint = adapter.deferCheckpoint();
-  const creating = store.create("creation-race", { map: element(), authority: "exclusive" });
+  const creating = store.create("creation-race", { map: element() });
   const loading = store.load("creation-race");
   await tick();
   assert.equal(adapter.loadCalls.includes("creation-race"), false);
@@ -351,7 +388,7 @@ await check("creation and load for one ID share one deterministic in-flight host
 await check("restored authority serves legacy HSON modern view-state and replay recovery", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
-  const created = await store.create("recovery-after-load", { map: element(), authority: "exclusive" });
+  const created = await store.create("recovery-after-load", { map: element() });
   const host = created.value;
   await host.mutate((draft) => draft.document.attrs.set(root, "one", "1"));
   await host.checkpoint();
@@ -396,8 +433,7 @@ await check("exclusive actions persist through the gate and projected persistenc
   const actionMap = element();
   const actionHost = await create_persistent_livehost({
     map: actionMap,
-    authority: "exclusive",
-    persistence: actionAdapter,
+        persistence: actionAdapter,
     actions: {
       set: (context) => { void context.mutate((draft) => draft.document.attrs.set(root, "action", true)); },
     },
@@ -414,7 +450,7 @@ await check("exclusive actions persist through the gate and projected persistenc
   const targetMap = hson.liveMap.fromJson({ value: 0 });
   const projectedAdapter = new MemoryPersistenceAdapter();
   await assert.rejects(
-    create_persistent_livehost({ map: targetMap, authority: "exclusive", persistence: projectedAdapter }),
+    create_persistent_livehost({ map: targetMap, persistence: projectedAdapter }),
     (cause) => cause instanceof LiveHostPersistenceError
       && cause.code === "LIVEHOST_PERSISTENCE_MAP_KIND_UNSUPPORTED",
   );
@@ -426,7 +462,7 @@ await check("exclusive actions persist through the gate and projected persistenc
 await check("host destruction waits for an active durable append before releasing management", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const map = element();
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   const append = adapter.deferAppend();
   const mutation = host.mutate((draft) => draft.document.attrs.set(root, "late", true));
   await tick();
@@ -438,11 +474,11 @@ await check("host destruction waits for an active durable append before releasin
   assert.equal(map.document.attrs.set(root, "released", true).rev, 2);
 });
 
-await check("shared configuration and projected maps cannot opt into persistence", async () => {
+await check("ordinary constructor and projected maps cannot opt into persistence", async () => {
   const adapter = new MemoryPersistenceAdapter();
   assert.throws(() => hson.liveHost.create({ map: element(), persistence: adapter }));
   await assert.rejects(
-    create_persistent_livehost({ map: hson.liveMap.fromJson({ value: 0 }), authority: "exclusive", persistence: adapter }),
+    create_persistent_livehost({ map: hson.liveMap.fromJson({ value: 0 }), persistence: adapter }),
     (cause) => cause instanceof LiveHostPersistenceError
       && cause.code === "LIVEHOST_PERSISTENCE_MAP_KIND_UNSUPPORTED",
   );
@@ -451,7 +487,7 @@ await check("shared configuration and projected maps cannot opt into persistence
 await check("corrupt persisted envelopes and tails reject without partial registration", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const seed = create_livehost_persistent_store(adapter);
-  const created = await seed.create("corruption-seed", { map: element(), authority: "exclusive" });
+  const created = await seed.create("corruption-seed", { map: element() });
   await created.value.mutate((draft) => draft.document.attrs.set(root, "one", 1));
   await created.value.mutate((draft) => draft.document.attrs.set(root, "two", 2));
   const valid = adapter.state("corruption-seed");

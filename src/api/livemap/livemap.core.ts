@@ -940,6 +940,8 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
       });
       const draft = facade_for_livemap_root(draftBuilt.core, preparedDraft, draftBuilt.document);
+      register_livemap_projected_propagation(draftBuilt.core, draftBuilt.projected);
+      register_livemap_projected_propagation(draft, draftBuilt.projected);
       const observations: Array<Readonly<{
         commit: LiveMapCommit<LiveMapAnyOp>;
         origin: "authoritative" | "replay";

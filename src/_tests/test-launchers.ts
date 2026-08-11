@@ -951,11 +951,11 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livehost.authority",
       subject: "LiveHost",
-      displayName: "Exclusive LiveHost authority",
+      displayName: "LiveHost authority",
       packageScript: "test:livehost-authority",
       repositoryModule: "tests/runtime-probes/livehost-authority.acceptance.mjs",
       runtime: "node",
-      executableChecks: 19,
+      executableChecks: 21,
       collections: ["authority", "lifecycle", "commit"],
     }),
     launcher({
@@ -965,7 +965,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-persistence",
       repositoryModule: "tests/runtime-probes/livehost-persistence.acceptance.mjs",
       runtime: "node",
-      executableChecks: 16,
+      executableChecks: 17,
       collections: ["persistence", "authority", "recovery"],
     }),
     launcher({

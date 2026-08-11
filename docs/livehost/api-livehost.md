@@ -37,7 +37,7 @@ factory functions. Public types are also exported by `hson-live/types`.
   encode/decode functions, and their exported types.
 - **Experimental but callable:** HTTP HSON bootstrap, browser/Node socket
   adapters, the Node application host, document-mode recovery negotiation,
-  exclusive authority, persistence, tracing, and lower-level stream/recovery
+  hosted authority, persistence, tracing, and lower-level stream/recovery
   helpers.
 - **Diagnostic:** `.debug()` methods, trace sinks, and `hson.liveHost.debug`.
 - **Internal:** staged-authority gates, session manager implementation, graph
@@ -95,7 +95,7 @@ snapshots remain separate because they also own exact mode and revision and
 support empty-fragment restoration.
 
 Projected-data routes use LiveMap's separate versioned `structural-json`
-payload. Feeds, sync delivery, canonical history, resume, links, and recovery
+payload. Feeds, sync delivery, canonical history, links, and recovery
 preserve that exact payload internally, including semantic object order and
 `-0`; public callback/message value fields remain detached JavaScript
 compatibility projections. Exact fields take precedence over legacy values,
@@ -105,7 +105,7 @@ currently assigned.
 
 ## `create_livehost(options?)`
 
-**Stable for data hosts; experimental for document/exclusive modes.**
+**Stable for data hosts; experimental for document modes.**
 
 The factory is synchronous. Supply either `state` or an existing `map`, not both.
 Omitting both creates a projected object map from `{}`.
@@ -135,7 +135,6 @@ Important options:
 - `actions`: partial action-handler map.
 - `schema`: host-level validators/decoders for state and action payloads.
 - `authorizeAction(context)`: sync or async authorization hook.
-- `authority`: `"shared"` (default) or `"exclusive"`.
 - `sessionId`: fixed ID or factory for legacy connection hellos.
 - `logicalMapId`, `incarnationId`: canonical recovery identity.
 - `history`: `{ maxCommits?, maxBytes? }`; defaults are 1,024 commits and
@@ -157,15 +156,15 @@ host.sessions;
 host.actionRequests;
 host.seq;
 host.schema;
+host.mutate(callback);
 host.dispatch_action(message);
 host.connect(socket);
 host.dispose();
 ```
 
-In `"shared"` mode `host.map` is the original mutable map. In `"exclusive"`
-mode it is a read/observe facade and mutations must use `host.mutate(...)` or an
-action's `ctx.mutate(...)`. A map cannot simultaneously have conflicting shared
-and exclusive host authorities.
+`host.map` is a read/observe facade. Mutations must use `host.mutate(...)` or an
+action's `ctx.mutate(...)`. The original map and retained mutation surfaces are
+fenced while hosted, and a second Host cannot claim the same map.
 
 ## Actions
 
@@ -175,9 +174,9 @@ promise of either.
 
 `LiveHostActionContextForMap` provides:
 
-- `map`: current readable map (restricted in exclusive mode);
+- `map`: current read-only hosted map;
 - `mutate(callback)`: serialized staged mutation, returning a commit;
-- `seq`: current legacy protocol sequence;
+- `seq`: successful action chronology and live action-associated publication marker;
 - `origin`: direct or resumable-session origin;
 - `emit_event(name, payload)`: sends a transient event to the originating
   attached session and returns whether delivery occurred.
@@ -239,9 +238,11 @@ host.stream.history.debug();
 Consumers ignore exact duplicate revisions, but a revision gap is not silently
 applied. Recovery is required. A revision ahead of authority is rejected.
 
-The older `hello`/`patch`/`sync` sequence channel remains public for projected
-subscriptions. Canonical `rev` is the recovery and persistence ordering key;
-`seq` is the connection protocol sequence and is not a substitute for `rev`.
+The `hello`/`patch`/`sync` channel remains public for current projected
+subscriptions. A hello returns one current whole-state snapshot and never
+appends historical path sync frames. Canonical `rev` is the recovery and
+persistence ordering key; `seq` records successful action chronology and live
+action-associated publication, not graph history and not a recovery cursor.
 
 ## Snapshots, replay, and recovery
 
@@ -431,7 +432,7 @@ authorities. Bootstrap packages contain no session credential.
 
 ## Persistence
 
-**Experimental; document modes only; exclusive authority required.**
+**Experimental; document modes only.**
 
 ```ts
 interface LiveHostPersistenceAdapter {
@@ -448,11 +449,16 @@ appends for the same map/incarnation/revision must be idempotent and conflicting
 repeats must reject. `checkpoint()` atomically replaces the checkpoint and
 removes commits through its revision.
 
+Durable append is the irreversible commit point. After it succeeds, the exact
+prepared transition must be realized. An impossible post-append realization
+failure terminally fences mutation, recovery, and connection service; storage is
+not rolled back or rewritten, and deterministic reload realizes the appended
+record.
+
 ```ts
 const document = hson.liveMap.fromTrustedHtml("<main>Hello</main>");
 const persistent = await create_persistent_livehost({
-  authority: "exclusive",
-  map: document,
+    map: document,
   logicalMapId: "home",
   persistence: adapter,
 });
@@ -463,7 +469,7 @@ await persistent.checkpoint();
 `create_livehost_persistent_store(adapter)` can create, load, unload, list, and
 connect named document authorities. Load validates checkpoint and commits,
 restores the exact revision, and replays a contiguous canonical tail. Unload
-disposes the host and waits for exclusive work to close; it does not delete
+disposes the host and waits for authority work to close; it does not delete
 backend data. Projected-data persistence is explicitly reserved and rejected.
 
 ## SSR and server execution
@@ -502,7 +508,7 @@ socket server and shutdown behavior.
 
 **Experimental.** Every authority exposes `activity.snapshot()` and
 `activity.on_change()`. The snapshot contains counts only for connections,
-retained sessions, actions, recovery attempts, exclusive mutations, and
+retained sessions, actions, recovery attempts, hosted mutations, and
 persistence work. It contains no identities, credentials, paths, payloads, or
 graph state. A newly created authority is idle. A detached resumable session
 remains active until goodbye, expiry, or authority disposal.
@@ -602,8 +608,8 @@ families include:
 - session credential, expiry, fencing, attachment, and goodbye codes;
 - `LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED` for document maps;
 - schema state/payload failures;
-- persistence errors exposed by `LiveHostPersistenceError`, including exclusive
-  authority, unsupported map kind, initial checkpoint, append, checkpoint, and
+- persistence errors exposed by `LiveHostPersistenceError`, including wrong
+  constructor, unsupported map kind, initial checkpoint, append, checkpoint, and
   invalid persisted state failures.
 
 Socket `send`/listener failures are isolated where publication can continue;

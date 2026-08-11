@@ -19,6 +19,12 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
+async function check_async(name: string, run: () => Promise<void>): Promise<void> {
+  await run();
+  checks += 1;
+  process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
 const map = (value: Parameters<typeof hson.liveMap.fromJson>[0]) => hson.liveMap.fromJson(value);
 
 check("rename intent reaches canonical commit observers", () => {
@@ -146,18 +152,20 @@ check("exact no-op move suppresses feeds and stores", () => {
   assert.deepEqual([feeds, stores], [0, 0]);
 });
 
-check("LiveHost history retains rename intent", () => {
-  const host = create_livehost({ state: { source: 1 }, authority: "shared" });
-  host.map.at([]).object.renameKey("source", "destination");
+await check_async("LiveHost history retains rename intent", async () => {
+  const host = create_livehost({ state: { source: 1 } });
+  await host.mutate((draft) => draft.at([]).object.renameKey("source", "destination"));
   const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "rename");
+  host.dispose();
 });
 
-check("LiveHost history retains move intent", () => {
-  const host = create_livehost({ state: { items: [1, 2] }, authority: "shared" });
-  host.map.at(["items"]).array.move(0, 1);
+await check_async("LiveHost history retains move intent", async () => {
+  const host = create_livehost({ state: { items: [1, 2] } });
+  await host.mutate((draft) => draft.at(["items"]).array.move(0, 1));
   const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "move");
+  host.dispose();
 });
 
 check("legacy public rename replay remains bounded and deterministic", () => {

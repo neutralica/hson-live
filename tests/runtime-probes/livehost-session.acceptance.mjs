@@ -80,8 +80,8 @@ function host_fixture(extra = {}) {
     history: extra.history,
     recovery: extra.recovery,
     actions: {
-      set(ctx, value) { ctx.map.set(["value"], value); },
-      increment(ctx) { ctx.map.set(["value"], ctx.map.snap().value + 1); },
+      async set(ctx, value) { await ctx.mutate((draft) => draft.set(["value"], value)); },
+      async increment(ctx) { await ctx.mutate((draft) => draft.set(["value"], ctx.map.snap().value + 1)); },
     },
     sessions: {
       graceMs: extra.graceMs ?? 100,
@@ -133,7 +133,7 @@ await check("basic reattachment restores session subscriptions and uses replay",
   const originalSessionId = first.client.session.sessionId;
   const options = resume_options(host, first.client, credential);
   first.pair.close();
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
 
   const second = connect_client(host, options);
   const attached = await second.client.session.reattach();
@@ -281,7 +281,7 @@ await check("expired session can create a new session and snapshot-recover the s
   const { host, clock } = host_fixture({ logicalMapId: "expired-new", graceMs: 5, history: { maxCommits: 0, maxBytes: 0 } });
   const first = await create_recovered(host);
   first.pair.close();
-  host.map.set(["value"], 8);
+  await host.mutate((draft) => draft.set(["value"], 8));
   clock.advance(6);
   const fresh = connect_client(host, { session: {}, recovery: { logicalMapId: host.stream.logicalMapId } });
   await fresh.client.session.create();
@@ -295,7 +295,7 @@ await check("reattached session uses snapshot when canonical history is unavaila
   const first = await create_recovered(host);
   const options = resume_options(host, first.client, first.client.session.credential);
   first.pair.close();
-  host.map.set(["value"], 6);
+  await host.mutate((draft) => draft.set(["value"], 6));
   const second = connect_client(host, options);
   await second.client.session.reattach();
   const result = await second.client.recovery.recover();

@@ -608,20 +608,17 @@ function optional_string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function optional_seq(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
-}
-
 function decode_hello_message(value: Readonly<Record<string, unknown>>): LiveHostResult<LiveHostClientHelloMessage> {
+  if (Object.hasOwn(value, "lastSeq")) {
+    return fail("LiveHost hello no longer accepts an action-sequence recovery cursor.");
+  }
   const clientId = optional_string(value.clientId);
   const hostId = optional_string(value.hostId);
-  const lastSeq = optional_seq(value.lastSeq);
 
   return ok({
     type: "hello",
     ...(clientId ? { clientId } : {}),
     ...(hostId ? { hostId } : {}),
-    ...(lastSeq !== undefined ? { lastSeq } : {}),
   });
 }
 

@@ -42,7 +42,6 @@ export {
   create_persistent_livehost,
   LiveHostPersistenceError,
 } from "./livehost.persistence.js";
-export { make_livehost_resume_log } from "./livehost.resume.js";
 export { make_livehost_sync_manager } from "./livehost.sync.js";
 export { make_livehost_canonical_stream } from "./livehost.history.js";
 export { make_livehost_recovery_planner } from "./livehost.recovery.js";

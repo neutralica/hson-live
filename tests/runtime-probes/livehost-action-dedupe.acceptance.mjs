@@ -143,7 +143,7 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                ctx.map.set(['value'], value);
+                await ctx.mutate((draft) => draft.set(['value'], value));
                 completed.resolve();
                 return { value };
             },
@@ -155,9 +155,9 @@ function fixture(options = {}) {
                 executions += 1;
                 throw new Error('expected failure');
             },
-            mutateFail(ctx, value) {
+            async mutateFail(ctx, value) {
                 executions += 1;
-                ctx.map.set(['value'], value);
+                await ctx.mutate((draft) => draft.set(['value'], value));
                 throw new Error('after mutation');
             },
             noop() {
@@ -172,7 +172,7 @@ function fixture(options = {}) {
                 executions += 1;
                 entered.resolve();
                 await gate.promise;
-                ctx.map.set(['value'], value);
+                await ctx.mutate((draft) => draft.set(['value'], value));
                 return value;
             },
             reentrant(_ctx, value) {

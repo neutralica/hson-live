@@ -56,12 +56,12 @@ function fixture(trace, identity = {}) {
       },
     },
     actions: {
-      update(ctx, payload) {
-        ctx.map.set(["value"], payload.value);
+      async update(ctx, payload) {
+        await ctx.mutate((draft) => draft.set(["value"], payload.value));
         return { accepted: true };
       },
-      unchanged(ctx) {
-        ctx.map.set(["value"], ctx.map.snap().value);
+      async unchanged(ctx) {
+        await ctx.mutate((draft) => draft.set(["value"], ctx.map.snap().value));
       },
     },
   });
@@ -149,7 +149,7 @@ await check("successful remote action emits ordered redacted lifecycle events", 
   });
   const creation = events.find((event) => event.phase === "commit.creation");
   const publication = events.find((event) => event.phase === "commit.publication");
-  assert.ok(events.indexOf(transition) < events.indexOf(publication));
+  assert.ok(events.indexOf(publication) < events.indexOf(transition));
   for (const event of [creation, publication]) {
     assert.equal(event?.details.sourceTraceId, traceId);
     assert.equal(event?.details.requestId, "request-1");
@@ -230,8 +230,8 @@ await check("overlapping async actions keep commit causation isolated", async ()
     incarnationId: "overlap-incarnation",
     trace: collector,
     actions: {
-      async slow(ctx) { await slowGate; ctx.map.set(["value"], 2); },
-      fast(ctx) { ctx.map.set(["value"], 1); },
+      async slow(ctx) { await slowGate; await ctx.mutate((draft) => draft.set(["value"], 2)); },
+      async fast(ctx) { await ctx.mutate((draft) => draft.set(["value"], 1)); },
     },
   });
   host.connect(pair.server);

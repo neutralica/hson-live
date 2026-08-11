@@ -2,10 +2,7 @@
 # LiveHost
 LiveHost is hson-live’s authoritative hosting layer for shared live state and live documents.
 It combines a `LiveMap` with ordered mutation authority, actions, authorization, sessions, recovery, persistence, and transport-facing publication. A hosted map remains the canonical application state; LiveHost determines how that state may change, how accepted changes are ordered, and how clients recover and continue from the same authority.
-LiveHost currently supports two authority modes:
-- **shared authority**, which preserves ordinary direct `LiveMap` mutation;
-- **exclusive authority**, which makes the host the sole public mutation path.
-Exclusive document hosts may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
+LiveHost is authoritative over every hosted `LiveMap`. Hosted canonical transitions pass through one host-owned FIFO; the original map and all retained mutation surfaces are fenced for the lifetime of that ownership. Document hosts may additionally use backend-agnostic durable persistence. In that configuration, every changed commit is appended durably before it becomes visible in memory or to connected clients.
 LiveHost does not yet provide server-side HTML projection, DOM adoption, or LiveTree participation in the browser. Those systems are the next projection layer built on top of the authority, persistence, and recovery model described here.
 ---
 ## Place in hson-live
@@ -28,7 +25,7 @@ A common authoritative document stack is:
 
 persistent storage
         ↓
-exclusive LiveHost
+LiveHost
         ↓
 DocumentLiveMap
         ↓
@@ -36,7 +33,7 @@ future server/client projection
         ↓
 LiveTree, DOM, canvas, SVG, or another renderer
 
-LiveHost does not replace LiveMap. It owns and governs a LiveMap when the application needs shared authority, remote actions, recovery, or persistence.
+LiveHost does not replace LiveMap. LiveMap remains the graph reducer; LiveHost owns ordering, optional durability, accepted history, publication, and recovery.
 
 ⸻
 
@@ -54,34 +51,16 @@ client or server intent
 → publication
 → client recovery or continuation
 
-The exact mutation path depends on the authority mode.
-
-Shared authority
-
-Shared mode preserves the original LiveMap model:
-
-direct LiveMap mutation
-→ accepted commit
-→ host observes commit
-→ history
-→ publication
-
-The application may retain and mutate the original map directly. This is useful when the host observes an already-owned map or when strict single-authority control is unnecessary.
-
-Shared mode does not provide durable-before-visible persistence guarantees because changes may occur outside a host-controlled asynchronous gate.
-
-Exclusive authority
-
-Exclusive mode places all public mutation behind the host:
+All public mutation is placed behind the host:
 
 FIFO authority queue
 → detached preparation
 → asynchronous authority gate
-→ acceptance
-→ explicit history ingestion
-→ publication
+→ acceptance with isolated LiveMap notification
+→ explicit Host history ingestion
+→ Host publication
 
-The original map, retained handles, proxies, document helpers, schema mutation, restore/replay routes, and debug mutation surfaces are dynamically fenced while exclusive management is active.
+The original map, retained handles, proxies, document helpers, schema mutation, restore/replay routes, and debug mutation surfaces are dynamically fenced while host management is active.
 
 Application code mutates through:
 
@@ -92,7 +71,7 @@ await host.mutate((draft) => {
 
 Actions mutate through the same queue by calling context.mutate(...).
 
-Exclusive authority provides one ordered mutation boundary for:
+LiveHost provides one ordered mutation boundary for:
 
 * direct host mutations;
 * action mutations;
@@ -123,7 +102,7 @@ Typical uses include:
 * path subscriptions;
 * linked maps.
 
-Projected-data maps may use shared or exclusive authority.
+Projected-data maps use the same strict hosted authority as document maps.
 
 Durable persistence for projected-data hosts is intentionally deferred until hson-live has a stable exact projected checkpoint format.
 
@@ -141,7 +120,7 @@ A DocumentLiveMap exposes the HSON document graph directly, including:
 
 Document maps are the basis for authoritative live documents and future server projection.
 
-Exclusive document hosts may be persistent.
+Document hosts may be persistent.
 
 ⸻
 
@@ -159,14 +138,14 @@ Preparation validates and computes the complete candidate without changing autho
 
 This distinction allows LiveHost to perform asynchronous work between preparation and acceptance without exposing a partially applied mutation.
 
-For exclusive persistent hosts, the path becomes:
+For persistent hosts, the path becomes:
 
 prepare exact transition
 → durably append exact commit
 → accept exact transition
-→ notify
-→ ingest history
-→ publish
+→ accept with isolated LiveMap notification
+→ ingest Host history
+→ publish from that history
 
 If durable append fails, acceptance never occurs.
 
@@ -219,11 +198,9 @@ action name
 → zero or more queued mutations
 → result or controlled error
 
-In shared mode, action handlers may use the ordinary mutable map context.
+In action handlers:
 
-In exclusive mode:
-
-* context.map is read-only;
+* `context.map` is read-only;
 * mutations use context.mutate(...);
 * awaited and unawaited action mutations are tracked;
 * acknowledgment waits until all tracked mutations settle;
@@ -305,15 +282,14 @@ The persistence adapter is never exposed as a client recovery source. Persisted 
 
 ⸻
 
-Persistent exclusive document hosts
+Persistent document hosts
 
-Backend-agnostic persistence is available for exclusive document hosts.
+Backend-agnostic persistence is available for document hosts.
 
 Creation uses:
 
 const host = await create_persistent_livehost({
-  authority: "exclusive",
-  persistence: adapter,
+    persistence: adapter,
   map,
 });
 
@@ -379,7 +355,7 @@ registry miss
 → persisted-state validation
 → checkpoint restore
 → ordered replay
-→ exclusive management activation
+→ host management activation
 → registry installation
 → ordinary client recovery
 
@@ -389,9 +365,9 @@ Concurrent loads for the same logical map share one in-flight operation and conv
 
 Managed-map fencing
 
-Exclusive hosting must prevent mutation bypass through references obtained before hosting.
+Hosting prevents mutation bypass through references obtained before hosting.
 
-While a map is exclusively managed, LiveMap dynamically fences public mutation routes, including:
+While a map is hosted, LiveMap dynamically fences public mutation routes, including:
 
 * projected setters and deletion;
 * update, apply, splice, and batches;
@@ -405,9 +381,7 @@ While a map is exclusively managed, LiveMap dynamically fences public mutation r
 
 Management activation installs a detached owned graph. A raw graph reference obtained before hosting therefore no longer points at the authoritative graph.
 
-Two exclusive hosts cannot manage the same map. An exclusive host and a shared host cannot simultaneously host the same managed map. Shared/shared observation remains supported.
-
-Management is released only after active authority work settles during host destruction or persistent-store unload.
+Two Hosts cannot manage the same map. Ownership is released only after active authority work settles during host destruction or persistent-store unload.
 
 ⸻
 
@@ -417,7 +391,7 @@ LiveMap links propagate accepted source changes to target maps.
 
 An unmanaged target retains ordinary synchronous link behavior.
 
-A target managed by an exclusive host registers an internal scheduler. After source acceptance, link propagation enqueues a separate target mutation through the target host’s authority FIFO.
+A target managed by a host registers an internal scheduler. After source acceptance, link propagation enqueues a separate target mutation through the target host’s authority FIFO.
 
 This preserves:
 
@@ -443,17 +417,17 @@ The candidate is rejected before acceptance. Authoritative state is unchanged, a
 
 Authority-gate failure
 
-For an exclusive host, asynchronous approval or durable append rejects. The prepared transition is discarded. No mutation becomes visible, and the queue may continue.
+Asynchronous approval or durable append may reject before the durable boundary. The prepared transition is discarded, no mutation becomes visible, and the queue may continue.
 
 Acceptance failure
 
-A failure before installation completes may place exclusive authority into a terminal failed state because the accepted ordering boundary can no longer be trusted.
+After durable append succeeds, the exact transition is committed. An impossible realization failure terminally fences mutation, recovery, and connection service; persisted history is not rolled back or rewritten and reload realizes the durable record.
 
 Notification failure
 
 The state is already accepted. It is not rolled back.
 
-Exclusive authority uses isolated notification handling so observer failure remains distinct from authoritative rejection.
+Hosted authority uses isolated notification handling so observer failure remains distinct from authoritative rejection.
 
 History-ingestion failure
 
@@ -490,31 +464,21 @@ Future server projection will require an additional distinction between authorit
 
 Current public construction patterns
 
-Shared host
+Nonpersistent host
 
 const host = create_livehost({
-  map,
-});
-
-Use shared mode when direct map ownership remains outside or alongside the host.
-
-Nonpersistent exclusive host
-
-const host = create_livehost({
-  authority: "exclusive",
-  map,
+    map,
 });
 await host.mutate((draft) => {
   return draft.set(["status"], "ready");
 });
 
-Use exclusive mode when all public mutation must pass through one ordered authority queue.
+All hosted mutation passes through this ordered authority queue.
 
-Persistent exclusive document host
+Persistent document host
 
 const host = await create_persistent_livehost({
-  authority: "exclusive",
-  persistence,
+    persistence,
   map: documentMap,
 });
 await host.mutate((draft) => {
@@ -522,7 +486,7 @@ await host.mutate((draft) => {
 });
 await host.checkpoint();
 
-Use this mode when authoritative document commits must become durable before visibility.
+Use this constructor when authoritative document commits must become durable before visibility.
 
 Persistent store
 
@@ -562,7 +526,7 @@ This overview introduces the complete system but does not replace focused chapte
 
 Continue with:
 
-* Authority⁠￼ — shared, exclusive, staged, managed, and persistent mutation ordering;
+* Authority⁠￼ — staged, managed, and persistent mutation ordering;
 * actions.md — action handlers, contexts, deduplication, and authorization;
 * sessions-and-protocol.md — connections, sessions, envelopes, and publication;
 * recovery.md — snapshots, replay, capabilities, incarnations, and cursors;
@@ -576,22 +540,16 @@ Until those chapters exist, this overview is the canonical high-level account of
 
 Summary
 
-LiveHost turns a LiveMap into an ordered shared authority.
+LiveHost turns a LiveMap into one ordered authority.
 
-Its current architecture supports:
-
-shared observation
-or
-exclusive FIFO authority
-or
-exclusive durable document authority
+Its current architecture supports a strict FIFO authority, with an optional durable gate for document hosts.
 
 The complete persistent document path is:
 
 load checkpoint and commit tail
 → validate
 → restore exact DocumentLiveMap
-→ resume exclusive authority
+→ resume LiveHost authority
 → prepare mutation
 → durably append commit
 → accept

@@ -219,7 +219,7 @@ It does not change mutation semantics.
 ---
 # Relationship to LiveHost
 Handles and proxies are local LiveMap interfaces.
-When a LiveMap is managed by an exclusive LiveHost, public mutation routes become dynamically fenced.
+When a LiveMap is managed by LiveHost, public mutation routes become dynamically fenced.
 Existing handles and proxies continue to reference the graph, but mutation operations are rejected because authoritative changes must pass through the owning LiveHost.
 Read operations continue to function normally.
 This allows application code to retain graph references without bypassing host authority.

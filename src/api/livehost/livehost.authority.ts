@@ -88,7 +88,9 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
       context: TContext | undefined,
     ) => void;
     event?: (event: LiveHostAuthorityEvent) => void;
+    afterGate?: (transition: PreparedLiveMapTransition) => void;
     released?: () => void;
+    terminal?: (error: LiveHostAuthorityError) => void;
   }>,
 ): LiveHostExclusiveAuthority<TMap, TContext> {
   const staged = get_livemap_staged_authority(map);
@@ -109,11 +111,12 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
       ? cause
       : new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost exclusive authority entered a terminal state.",
+        "LiveHost authority entered a terminal state.",
         { cause },
       );
     emit({ phase: "failed", source: "host", queueDepth: queue.length, errorCode: error.code });
     while (queue.length > 0) queue.shift()?.reject(error);
+    try { options.terminal?.(error); } catch { /* Terminal fencing is best effort and cannot restore authority. */ }
     return error;
   }
 
@@ -148,13 +151,15 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
           changed: true,
         });
         try {
-          await options.gate?.({
-            map,
-            transition,
-            commit: transition.commit,
-            baseRevision: transition.baseRevision,
-            nextRevision: transition.nextRevision,
-          });
+          if (options.gate !== undefined) {
+            await options.gate({
+              map,
+              transition,
+              commit: transition.commit,
+              baseRevision: transition.baseRevision,
+              nextRevision: transition.nextRevision,
+            });
+          }
         } catch (cause) {
           staged.discard(transition);
           const error = structured_gate_error(cause) ?? new LiveHostAuthorityError(
@@ -174,6 +179,7 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
           nextRevision: transition.nextRevision,
           changed: true,
         });
+        options.afterGate?.(transition);
       }
 
       let acceptance;
@@ -261,13 +267,13 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     if (state === "failed") {
       return Promise.reject(new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost exclusive authority is terminally failed.",
+        "LiveHost authority is terminally failed.",
       ));
     }
     if (state !== "open") {
       return Promise.reject(new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost exclusive authority is closed.",
+        "LiveHost authority is closed.",
       ));
     }
     return new Promise((resolve, reject) => {
@@ -281,13 +287,13 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     if (state === "failed") {
       return Promise.reject(new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost exclusive authority is terminally failed.",
+        "LiveHost authority is terminally failed.",
       ));
     }
     if (state !== "open") {
       return Promise.reject(new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost exclusive authority is closed.",
+        "LiveHost authority is closed.",
       ));
     }
     return new Promise<TResult>((resolve, reject) => {
@@ -309,7 +315,7 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
       state = "closing";
       const error = new LiveHostAuthorityError(
         "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost exclusive authority is closing.",
+        "LiveHost authority is closing.",
       );
       while (queue.length > 0) queue.shift()?.reject(error);
       release_if_idle();

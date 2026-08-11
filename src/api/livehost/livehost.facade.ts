@@ -3,7 +3,6 @@ import { create_livehost } from "./livehost.core.js";
 import { make_livehost_canonical_stream } from "./livehost.history.js";
 import { decode_livehost_message, encode_livehost_message } from "./livehost.protocol.js";
 import { make_livehost_recovery_planner } from "./livehost.recovery.js";
-import { make_livehost_resume_log } from "./livehost.resume.js";
 import { create_livehost_store } from "./livehost.store.js";
 import { make_livehost_sync_manager } from "./livehost.sync.js";
 
@@ -22,7 +21,6 @@ export const hsonLiveHost = Object.freeze({
   debug: Object.freeze({
     canonicalStream: make_livehost_canonical_stream,
     recoveryPlanner: make_livehost_recovery_planner,
-    resumeLog: make_livehost_resume_log,
     syncManager: make_livehost_sync_manager,
   }),
 });

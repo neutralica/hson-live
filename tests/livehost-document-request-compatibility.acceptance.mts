@@ -188,74 +188,80 @@ check("internal compatibility client decoder admits bounded legacy input", () =>
   assert.equal(decoded.ok, true);
 });
 
-check("LiveHost path action publishes a canonical path target", () => {
+check("LiveHost path action publishes a canonical path target", async () => {
   const map = element(`<main/>`);
   const host = hson.liveHost.create({ map, logicalMapId: "path-action" });
-  readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "path", path: [] }, name: "id", value: "path",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(action, draft));
   assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), { kind: "path", path: [] });
   host.dispose();
 });
 
-check("LiveHost QUID action lowers inside mutation execution", () => {
+check("LiveHost QUID action lowers inside mutation execution", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.liveHost.create({ map, logicalMapId: "quid-action" });
-  readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "quid",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(action, draft));
   assert.deepEqual(operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]), {
     kind: "path", path: [], witness: { quid: Q1 },
   });
   host.dispose();
 });
 
-check("changed LiveHost history contains no QUID-only target", () => {
+check("changed LiveHost history contains no QUID-only target", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.liveHost.create({ map });
-  readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "x",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(action, draft));
   const target = operationTarget(host.stream.history.replay_after(0)?.[0]?.ops[0]);
   assert.equal(field(target, "kind"), "path");
   host.dispose();
 });
 
-check("no-op LiveHost action publishes no canonical commit", () => {
+check("no-op LiveHost action publishes no canonical commit", async () => {
   const map = element(`<main id="same" @${Q1}/>`);
   const host = hson.liveHost.create({ map });
-  const commit = readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "same",
-  }).execute();
+  });
+  const commit = await host.mutate((draft) => executeOnDraft(action, draft));
   assert.equal(commit.changed, false);
   assert.equal(host.stream.history.debug().retainedCommitCount, 0);
   host.dispose();
 });
 
-check("failed LiveHost QUID resolution changes no authority state", () => {
+check("failed LiveHost QUID resolution changes no authority state", async () => {
   const map = element(`<main/>`);
   const host = hson.liveHost.create({ map });
   const before = map.capture();
-  assert.throws(() => readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "bad",
-  }).execute());
+  });
+  await assert.rejects(host.mutate((draft) => executeOnDraft(action, draft)));
   assert.deepEqual(map.capture(), before);
   host.dispose();
 });
 
-check("failed LiveHost QUID resolution appends no history", () => {
+check("failed LiveHost QUID resolution appends no history", async () => {
   const map = element(`<main/>`);
   const host = hson.liveHost.create({ map });
-  assert.throws(() => readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "bad",
-  }).execute());
+  });
+  await assert.rejects(host.mutate((draft) => executeOnDraft(action, draft)));
   assert.equal(host.stream.history.debug().retainedCommitCount, 0);
   host.dispose();
 });
 
 check("exclusive FIFO resolves queued QUID request after the preceding move", async () => {
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/>`);
-  const host = hson.liveHost.create({ map, authority: "exclusive" });
+  const host = hson.liveHost.create({ map });
   const move = readyAction(map, "document.content.move", {
     target: { kind: "path", path: [0] }, from: 0, to: 1,
   });
@@ -272,7 +278,7 @@ check("exclusive FIFO resolves queued QUID request after the preceding move", as
 
 check("deduplicated QUID action executes and resolves once", async () => {
   const map = element(`<main @${Q1}/>`);
-  const host = hson.liveHost.create({ map, authority: "exclusive" });
+  const host = hson.liveHost.create({ map });
   const dedupe = make_livehost_action_dedupe_store(() => map.rev, () => 0);
   const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "once",
@@ -305,12 +311,13 @@ check("deduplicated QUID action executes and resolves once", async () => {
   host.dispose();
 });
 
-check("recovery replay body exposes path-authoritative history", () => {
+check("recovery replay body exposes path-authoritative history", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.liveHost.create({ map, logicalMapId: "recovery-paths" });
-  readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "one", value: "1",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(action, draft));
   const plan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: host.stream.incarnationId,
@@ -322,21 +329,23 @@ check("recovery replay body exposes path-authoritative history", () => {
   host.dispose();
 });
 
-check("recovery tail generated after the cut contains path targets", () => {
+check("recovery tail generated after the cut contains path targets", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.liveHost.create({ map, logicalMapId: "recovery-tail-paths" });
-  readyAction(map, "document.attrs.set", {
+  const first = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "one", value: "1",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(first, draft));
   const plan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
   });
   if (plan.outcome === "reject") throw new Error("Unexpected recovery rejection");
-  readyAction(map, "document.attrs.set", {
+  const second = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "two", value: "2",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(second, draft));
   const completed = plan.complete();
   assert.equal(targetField(completed.tail[0]?.ops[0], "kind"), "path");
   plan.dispose();
@@ -348,8 +357,7 @@ check("persistence load lowers a legacy tail from its exact checkpoint base", as
   const original = element(`<main @${Q1}/>`);
   const initial = await create_persistent_livehost({
     map: original,
-    authority: "exclusive",
-    persistence: adapter,
+        persistence: adapter,
     logicalMapId: "unit-5-host",
     incarnationId: "unit-5-incarnation",
   });
@@ -377,7 +385,7 @@ check("persistence load lowers a legacy tail from its exact checkpoint base", as
 check("new persistence append stores a path target", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const map = element(`<main @${Q1}/>`);
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
     { kind: "quid", quid: Q1 }, "id", "persisted",
   ));
@@ -388,7 +396,7 @@ check("new persistence append stores a path target", async () => {
 check("new persistence append retains only an optional witness QUID", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const map = element(`<main @${Q1}/>`);
-  const host = await create_persistent_livehost({ map, authority: "exclusive", persistence: adapter });
+  const host = await create_persistent_livehost({ map, persistence: adapter });
   await host.mutate((draft) => draft.document.attrs.set(
     { kind: "quid", quid: Q1 }, "id", "persisted",
   ));
@@ -398,12 +406,13 @@ check("new persistence append retains only an optional witness QUID", async () =
   host.dispose();
 });
 
-check("Unit 5 adds no canonical protocol version field", () => {
+check("Unit 5 adds no canonical protocol version field", async () => {
   const map = element(`<main @${Q1}/>`);
   const host = hson.liveHost.create({ map, logicalMapId: "unchanged-format" });
-  readyAction(map, "document.attrs.set", {
+  const action = readyAction(map, "document.attrs.set", {
     target: { kind: "quid", quid: Q1 }, name: "id", value: "x",
-  }).execute();
+  });
+  await host.mutate((draft) => executeOnDraft(action, draft));
   const commit = host.stream.history.replay_after(0)?.[0];
   assert.deepEqual(Object.keys(commit ?? {}).sort(), [
     "incarnationId", "logicalMapId", "mode", "ops", "prevRev", "rev",

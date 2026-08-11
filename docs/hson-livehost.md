@@ -4,7 +4,7 @@
 <!-- 
 LiveHost is the authority, session, and synchronization layer for shared LiveMap state. It allows an HSON-backed graph to move beyond local application memory by placing an authority boundary around the graph. A host owns canonical state, accepts domain actions or graph-operation proposals, validates them, applies accepted changes, assigns authoritative ordering, and publishes ordered updates to remote mirrors across a transport boundary.
 
-In the intended model, each shared map has one authoritative host. Clients may mirror state, subscribe to paths or channels, request work, and propose changes, but they do not independently declare canonical history. This single-authority model reduces state divergence by routing accepted changes through one graph owner and one revision sequence.
+Each hosted map has one authoritative host. Clients may mirror state, subscribe to paths or channels, request work, and propose changes, but they do not independently declare canonical history. This single-authority model reduces state divergence by routing accepted changes through one graph owner and one revision sequence.
 
 LiveHost favors domain actions as the primary remote boundary. Instead of allowing arbitrary remote path writes, a client can submit an intent such as document.rename. The host action handler can validate input, authorize the caller, enforce invariants, update the authoritative LiveMap, record domain meaning, and return a safe result. Lower-level graph mutation proposals may also be supported for editors and developer tools, but such proposals remain non-canonical until accepted by the host.
 
@@ -32,7 +32,11 @@ In the intended model, each shared map has one authoritative host. That host own
 
 Clients mirror host state. They can request work, subscribe to state, and propose changes where a protocol permits it, but they do not independently declare a competing canonical history.
 
-This single-authority model is contract direction. The current implementation already centralizes actions and state in one host, but its `seq` counter is an action-response sequence rather than the authoritative LiveMap revision. A completed protocol must make canonical ordering and its relationship to map commits explicit.
+This single-authority model is implemented. LiveMap performs graph reduction;
+LiveHost orders hosted transitions, durably gates them where configured, records
+the accepted lineage, publishes it, and recovers clients from it. The `seq`
+counter records successful action chronology; it is not a graph revision or a
+state-recovery cursor.
 
 ---
 
@@ -55,8 +59,10 @@ type DocumentActions = {
 const host = hson.liveHost.create<DocumentState, DocumentActions>({
   state: { documents: {} },
   actions: {
-    "document.rename": (ctx, input) => {
-      ctx.map.at(["documents"]).object.setKey(input.id, input.document);
+    "document.rename": async (ctx, input) => {
+      await ctx.mutate((draft) =>
+        draft.at(["documents"]).object.setKey(input.id, input.document),
+      );
       return { renamed: input.id };
     },
   },
@@ -67,7 +73,7 @@ An action name can become a durable application boundary. It gives the host a pl
 
 Typed asynchronous action handlers and payload decoders are implemented. The current handler receives the authoritative LiveMap and can emit a connection-scoped event. Remote actions now have an optional host-owned `authorizeAction(context)` checkpoint after payload validation and before deduplication or handler execution. Context contains the resolved action, safe session identity, stable map/incarnation identity, and a deeply frozen detached validated payload. The handler receives a separate detached payload.
 
-Policies may return a boolean or promise. False is `LIVEHOST_ACTION_FORBIDDEN`; throw/rejection is the distinct generic `LIVEHOST_ACTION_AUTHORIZATION_FAILED`. Fresh executions, joining attempts, and cached retries are reauthorized independently; decisions are never cached. Omission is implicit allow and is not access control. This is authorization, not authentication, roles, ACL persistence, subscription authorization, or action-enumeration concealment. It adds no wire fields. Hosted document actions have not landed, but will pass through this boundary.
+Policies may return a boolean or promise. False is `LIVEHOST_ACTION_FORBIDDEN`; throw/rejection is the distinct generic `LIVEHOST_ACTION_AUTHORIZATION_FAILED`. Fresh executions, joining attempts, and cached retries are reauthorized independently; decisions are never cached. Omission is implicit allow and is not access control. This is authorization, not authentication, roles, ACL persistence, subscription authorization, or action-enumeration concealment. It adds no wire fields. Hosted document actions pass through this boundary.
 
 A narrow opt-in structured-tracing pilot is also implemented for the current action lifecycle. It observes accepted envelopes, session authority, lookup, payload validation, authorization, handler execution, revision boundaries, response dispatch, and subscription publication through a caller-supplied local sink. Configured policies have a real authorization span; omission emits an honest implicit-allow skip. Events are redacted, are never protocol data or replay history, and sink failures are semantically isolated. Bounded collector and explicit console adapters are exported from `hson-live/diagnostics`. This is diagnostics infrastructure, not the authorization decision itself or a distributed tracing platform.
 
@@ -98,7 +104,7 @@ canonical revision.
 
 ---
 
-## Snapshots, replay, and resume
+## Snapshots, replay, and recovery
 
 A recovery snapshot is complete projected state at a known authoritative revision. The current JSON message envelope carries compact HSON text:
 
@@ -112,7 +118,7 @@ type LiveHostSnapshotEnvelope = Readonly<{
 ```
 
 The host obtains one atomic LiveMap capture and serializes a recovery snapshot
-at that exact revision. Projected commits and sync/resume routes retain
+at that exact revision. Projected commits and current sync routes retain
 LiveMap's exact versioned `structural-json` payload internally; detached
 JavaScript value fields are compatibility views. Document graph content uses
 its separate versioned HSON codec. A client stages, validates, and installs a
@@ -134,15 +140,15 @@ is host-language syntax and is not part of the HSON payload.
 
 A reconnecting client can present its last confirmed revision. If the host still retains every later commit, it can replay them in order. If history is unavailable, the host sends a current snapshot. Snapshot replacement remains the source-of-truth fallback rather than an exceptional failure.
 
-The implementation has both bounded canonical commit history for
-revision-based recovery and a legacy bounded `sync` resume log keyed by session
-sequence. Exact projected payload fields pass through the legacy log unchanged;
-its public JavaScript values remain lossy compatibility fields. Canonical
-recovery chooses current, ordered replay, snapshot, or rejection, detects gaps
-and revisions ahead of authority, and installs snapshots atomically.
+The implementation has bounded canonical commit history for revision-based
+recovery. Canonical recovery chooses current, ordered replay, snapshot, or
+rejection, detects gaps and revisions ahead of authority, and installs snapshots
+atomically. A projected hello carries one current whole-state snapshot and is
+never followed by historical path sync frames. Live subscriptions still publish
+the value currently present at a subscribed path.
 
 Durable retention remains an explicit persistence policy rather than a property
-of the in-memory history or legacy resume log.
+of in-memory history.
 
 ---
 
@@ -175,7 +181,7 @@ Authoritative state survives in snapshots and commits. An event is a transient n
 ctx.emit_event("job.progress", { completed: 12, total: 20 });
 ```
 
-Connection-scoped JSON events are implemented. They are delivered immediately, have no sequence field, are not recorded in the resume log, and are not replayed. That behavior is appropriate for ephemeral signals but not for facts that a reconnecting client must recover.
+Connection-scoped JSON events are implemented. They are delivered immediately, have no sequence field, are not recorded as history, and are not replayed. That behavior is appropriate for ephemeral signals but not for facts that a reconnecting client must recover.
 
 The design rule is simple: if missing the information would make the mirror incorrect, it belongs in authoritative state or an explicitly durable stream, not only in an event.
 

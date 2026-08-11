@@ -110,8 +110,7 @@ function socket_pair(): Readonly<{
 function fixture(state: JsonValue = { value: 1 }, history?: Readonly<{ maxCommits: number }>) {
   const authority = create_livehost({
     state,
-    authority: "shared",
-    logicalMapId: "bootstrap-map",
+        logicalMapId: "bootstrap-map",
     incarnationId: "bootstrap-incarnation",
     ...(history === undefined ? {} : { history }),
   });
@@ -255,26 +254,24 @@ function verify_mode(name: string, authority: ReturnType<typeof create_livehost>
 }
 
 check("data-object bootstrap installs exact state and revision", () => {
-  const authority = create_livehost({ state: { value: {} }, authority: "shared" });
+  const authority = create_livehost({ state: { value: {} } });
   verify_mode("data-object", authority);
 });
 
 check("data-array bootstrap installs exact state and revision", () => {
-  verify_mode("data-array", create_livehost({ state: [1, 2], authority: "shared" }));
+  verify_mode("data-array", create_livehost({ state: [1, 2] }));
 });
 
 check("element bootstrap installs exact state and revision", () => {
   verify_mode("element", create_livehost({
     map: hson.liveMap.fromHson(`<main @000000001 "hello"/>`),
-    authority: "shared",
-  }));
+      }));
 });
 
 check("fragment bootstrap installs exact state and revision", () => {
   verify_mode("fragment", create_livehost({
     map: hson.liveMap.fromHson(`"before" <em @000000002 "middle"/>`),
-    authority: "shared",
-  }));
+      }));
 });
 
 check("preinstalled mirror continues as current through existing recovery", async () => {
@@ -296,8 +293,8 @@ check("preinstalled mirror continues as current through existing recovery", asyn
 
 check("commits after HTTP cut replay exactly once", async () => {
   const { authority, bootstrap } = fixture();
-  authority.map.set(["value"], 2);
-  authority.map.set(["value"], 3);
+  await authority.mutate((draft) => draft.set(["value"], 2));
+  await authority.mutate((draft) => draft.set(["value"], 3));
   const pair = socket_pair();
   authority.connect(pair.server);
   const client = create_livehost_bootstrap_client(install_livehost_bootstrap(bootstrap), { socket: pair.client });
@@ -311,7 +308,7 @@ check("commits after HTTP cut replay exactly once", async () => {
 
 check("duplicate revision delivery after bootstrap recovery is ignored", async () => {
   const { authority, bootstrap } = fixture();
-  authority.map.set(["value"], 2);
+  await authority.mutate((draft) => draft.set(["value"], 2));
   const commit = authority.stream.history.replay_after(0)?.[0];
   assert.ok(commit);
   const pair = socket_pair();
@@ -338,10 +335,9 @@ check("revision gap after bootstrap recovery fails through the existing client p
     state: { value: 1 },
     logicalMapId: bootstrap.logicalMapId,
     incarnationId: bootstrap.incarnationId,
-    authority: "shared",
-  });
-  other.map.set(["value"], 2);
-  other.map.set(["value"], 3);
+      });
+  await other.mutate((draft) => draft.set(["value"], 2));
+  await other.mutate((draft) => draft.set(["value"], 3));
   const gap = other.stream.history.replay_after(1)?.[0];
   assert.ok(gap);
   pair.server.send(JSON.stringify({ type: "commit", id: request.id, commit: gap }));
@@ -353,13 +349,13 @@ check("revision gap after bootstrap recovery fails through the existing client p
 
 check("commit published during recovery is ordered after the selected body", async () => {
   const { authority, bootstrap } = fixture();
-  authority.map.set(["value"], 2);
+  await authority.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   let publishedTail = false;
   pair.before_server_delivery((message) => {
     if (message.type !== "recovery-plan" || publishedTail) return;
     publishedTail = true;
-    authority.map.set(["value"], 3);
+    void authority.mutate((draft) => draft.set(["value"], 3));
   });
   authority.connect(pair.server);
   const client = create_livehost_bootstrap_client(install_livehost_bootstrap(bootstrap), { socket: pair.client });
@@ -373,7 +369,7 @@ check("commit published during recovery is ordered after the selected body", asy
 
 check("history eviction replaces the bootstrap mirror through existing snapshot recovery", async () => {
   const { authority, bootstrap } = fixture({ value: 1 }, { maxCommits: 0 });
-  authority.map.set(["value"], 2);
+  await authority.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   authority.connect(pair.server);
   const client = create_livehost_bootstrap_client(install_livehost_bootstrap(bootstrap), { socket: pair.client });
@@ -388,8 +384,7 @@ check("incarnation replacement never treats revision equality as current", async
   const first = fixture();
   const replacement = create_livehost({
     state: { value: 9 },
-    authority: "shared",
-    logicalMapId: first.bootstrap.logicalMapId,
+        logicalMapId: first.bootstrap.logicalMapId,
     incarnationId: "replacement-incarnation",
   });
   const pair = socket_pair();
@@ -404,7 +399,7 @@ check("incarnation replacement never treats revision equality as current", async
 
 check("different logical authority rejects continuation", async () => {
   const first = fixture();
-  const wrong = create_livehost({ state: { value: 9 }, logicalMapId: "other-map", authority: "shared" });
+  const wrong = create_livehost({ state: { value: 9 }, logicalMapId: "other-map" });
   const pair = socket_pair();
   wrong.connect(pair.server);
   const client = create_livehost_bootstrap_client(install_livehost_bootstrap(first.bootstrap), { socket: pair.client });
@@ -417,13 +412,11 @@ check("equal route-local selectors stay isolated across application-owned author
   const left = create_livehost({
     state: { owner: "left" },
     logicalMapId: "left-map",
-    authority: "shared",
-  });
+      });
   const right = create_livehost({
     state: { owner: "right" },
     logicalMapId: "right-map",
-    authority: "shared",
-  });
+      });
   const leftBootstrap = capture_livehost_bootstrap(left, "local:equal", "/left");
   const rightBootstrap = capture_livehost_bootstrap(right, "local:equal", "/right");
   assert.equal(leftBootstrap.authoritySelector, rightBootstrap.authoritySelector);
@@ -458,7 +451,7 @@ check("bootstrap capture and installation are DOM, CSS, and LiveTree-runtime fre
   assert.equal("document" in globalThis, false);
   assert.equal("window" in globalThis, false);
   assert.equal("CSSStyleSheet" in globalThis, false);
-  const captured = capture_livehost_bootstrap(create_livehost({ state: { ready: true }, authority: "shared" }), "probe:dom-free", "/ws");
+  const captured = capture_livehost_bootstrap(create_livehost({ state: { ready: true } }), "probe:dom-free", "/ws");
   const capture = install_livehost_bootstrap(captured).map.capture();
   assert.equal("value" in capture, true);
   assert.deepEqual("value" in capture ? capture.value : undefined, { ready: true });
@@ -467,8 +460,7 @@ check("bootstrap capture and installation are DOM, CSS, and LiveTree-runtime fre
 check("real HTTP helper and WebSocket continuation share one application authority", async () => {
   const authority = create_livehost({
     state: { value: 1 },
-    authority: "shared",
-    logicalMapId: "network-map",
+        logicalMapId: "network-map",
     incarnationId: "network-incarnation",
   });
   const selector = "probe:network";
@@ -518,7 +510,7 @@ check("real HTTP helper and WebSocket continuation share one application authori
     assert.equal(response.headers.get("content-type"), LIVEHOST_BOOTSTRAP_MEDIA_TYPE);
     assert.equal(response.headers.get("cache-control"), "no-store");
     const bootstrap = decode_livehost_bootstrap(await response.text());
-    authority.map.set(["value"], 2);
+    await authority.mutate((draft) => draft.set(["value"], 2));
     const websocket = new WebSocket(new URL(bootstrap.continuation.endpoint, host.url));
     await new Promise<void>((resolve, reject) => {
       websocket.once("open", resolve);
@@ -530,7 +522,7 @@ check("real HTTP helper and WebSocket continuation share one application authori
     );
     const recovered = await client.connect_and_recover();
     assert.equal(recovered.strategy, "replay");
-    authority.map.set(["value"], 3);
+    await authority.mutate((draft) => draft.set(["value"], 3));
     await new Promise((resolve) => setTimeout(resolve, 10));
     assert.deepEqual(client.map.capture(), authority.map.capture());
     assert.equal(client.map.rev, authority.stream.headRev);
@@ -544,7 +536,7 @@ check("real HTTP helper and WebSocket continuation share one application authori
 });
 
 check("HTTP accepts wildcard media type and rejects incompatible Accept", async () => {
-  const authority = create_livehost({ state: { value: 1 }, authority: "shared" });
+  const authority = create_livehost({ state: { value: 1 } });
   const application: NodeHostedApplication = {
     name: "accept-probe",
     authorities: [{ kind: "exact", value: "accept:one" }],
@@ -577,7 +569,7 @@ check("HTTP accepts wildcard media type and rejects incompatible Accept", async 
 });
 
 check("HTTP rejects method, missing selector, unknown authority, and hides stacks", async () => {
-  const authority = create_livehost({ state: { value: 1 }, authority: "shared" });
+  const authority = create_livehost({ state: { value: 1 } });
   const handler = (request: IncomingMessage, response: ServerResponse) =>
     handle_node_livehost_bootstrap_request(request, response, {
       resolve: (selector) => selector === "known"
@@ -615,7 +607,7 @@ check("HTTP rejects method, missing selector, unknown authority, and hides stack
 });
 
 check("HTTP encoded-size failure is deterministic and no-store", async () => {
-  const authority = create_livehost({ state: { payload: "large" }, authority: "shared" });
+  const authority = create_livehost({ state: { payload: "large" } });
   const application: NodeHostedApplication = {
     name: "size",
     authorities: [{ kind: "exact", value: "size:one" }],

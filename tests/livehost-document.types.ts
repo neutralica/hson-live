@@ -20,6 +20,7 @@ import type {
   LiveHostPersistedDocumentCheckpoint,
   LiveHostPersistedMapState,
 } from "../src/index.ts";
+import type { LiveHostReadonlyMap } from "../src/types/livehost.types.ts";
 
 const replacementAttrs: LiveMapDocumentAttrs = {
   count: 0,
@@ -88,24 +89,23 @@ tree.attr;
 tree.flag;
 
 const projectedHost: LiveHost<{ count: number }> = create_livehost({ state: { count: 0 } });
-const projectedMap: LiveMap<{ count: number }> = projectedHost.map;
-type ProjectedMapIsNarrow = Assert<typeof projectedHost.map extends LiveMap<{ count: number }> ? true : false>;
-const exclusiveProjectedHost = create_livehost<{ count: number }, { increment: number }>({
+const projectedMap: LiveHostReadonlyMap<LiveMap<{ count: number }>> = projectedHost.map;
+type ProjectedMapIsNarrow = Assert<typeof projectedHost.map extends LiveHostReadonlyMap<LiveMap<{ count: number }>> ? true : false>;
+const authoritativeProjectedHost = create_livehost<{ count: number }, { increment: number }>({
   state: { count: 0 },
-  authority: "exclusive",
-  actions: {
+    actions: {
     async increment(context, amount) {
       context.map.snap(["count"]);
-      // @ts-expect-error exclusive action contexts expose a read-only map
+      // @ts-expect-error hosted action contexts expose a read-only map
       context.map.set(["count"], amount);
       await context.mutate((draft) => draft.set(["count"], amount));
     },
   },
 });
-exclusiveProjectedHost.map.snap(["count"]);
-exclusiveProjectedHost.mutate((draft) => draft.set(["count"], 1));
-// @ts-expect-error exclusive hosts expose a read-only map
-exclusiveProjectedHost.map.set(["count"], 1);
+authoritativeProjectedHost.map.snap(["count"]);
+authoritativeProjectedHost.mutate((draft) => draft.set(["count"], 1));
+// @ts-expect-error hosted maps expose a read-only map
+authoritativeProjectedHost.map.set(["count"], 1);
 
 const socket = {
   send() {},
@@ -139,16 +139,15 @@ type ExistingProjectedSubscribeIsCallable = Assert<
 const elementCandidate = hson.liveMap.fromHson(`<main/>`);
 if (elementCandidate.mode !== "element") throw new Error("Expected element map");
 const elementHost = create_livehost({ map: elementCandidate });
-type ElementMapIsExact = Assert<Equal<typeof elementHost.map, ElementLiveMap>>;
-const exclusiveElementHost = create_livehost({ map: elementCandidate, authority: "exclusive" });
-exclusiveElementHost.map.document.attrs.get({ kind: "path", path: [] }, "id");
-exclusiveElementHost.mutate((draft) => draft.document.attrs.set(
+type ElementMapIsExact = Assert<typeof elementHost.map extends LiveHostReadonlyMap<ElementLiveMap> ? true : false>;
+elementHost.map.document.attrs.get({ kind: "path", path: [] }, "id");
+elementHost.mutate((draft) => draft.document.attrs.set(
   { kind: "path", path: [] },
   "id",
   "exclusive",
 ));
-// @ts-expect-error exclusive document maps omit mutation methods
-exclusiveElementHost.map.document.attrs.set({ kind: "path", path: [] }, "id", "direct");
+// @ts-expect-error hosted document maps omit mutation methods
+elementHost.map.document.attrs.set({ kind: "path", path: [] }, "id", "direct");
 declare const persistenceAdapter: LiveHostPersistenceAdapter;
 declare const persistedCommit: LiveHostPersistedCommit;
 declare const persistedCheckpoint: LiveHostPersistedDocumentCheckpoint;
@@ -158,8 +157,7 @@ persistenceAdapter.replaceCheckpoint(persistedCheckpoint);
 void persistedState;
 const persistentElementHost = create_persistent_livehost({
   map: elementCandidate,
-  authority: "exclusive",
-  persistence: persistenceAdapter,
+    persistence: persistenceAdapter,
 });
 persistentElementHost.then((host) => {
   host.checkpoint();
@@ -170,7 +168,7 @@ persistentElementHost.then((host) => {
 // @ts-expect-error persistence is available only through the async persistent constructor
 create_livehost({ map: elementCandidate, persistence: persistenceAdapter });
 // @ts-expect-error projected-data persistence is deliberately unsupported in version one
-create_persistent_livehost({ map: existingProjectedMap, authority: "exclusive", persistence: persistenceAdapter });
+create_persistent_livehost({ map: existingProjectedMap, persistence: persistenceAdapter });
 const elementHostAlias: LiveHostForMap<ElementLiveMap> = elementHost;
 const documentTarget = { kind: "path", path: [] } as const;
 const optionalAttr = elementCandidate.document.attrs.get(documentTarget, "title");
@@ -208,12 +206,12 @@ const fragmentHost = create_livehost({
   map: fragmentCandidate,
   actions: {
     inspect(context) {
-      const exact: FragmentLiveMap = context.map;
+      const exact: LiveHostReadonlyMap<FragmentLiveMap> = context.map;
       return exact.mode;
     },
   },
 });
-type FragmentMapIsExact = Assert<Equal<typeof fragmentHost.map, FragmentLiveMap>>;
+type FragmentMapIsExact = Assert<typeof fragmentHost.map extends LiveHostReadonlyMap<FragmentLiveMap> ? true : false>;
 
 const client = create_livehost_client({
   socket,

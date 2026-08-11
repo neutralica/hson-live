@@ -31,7 +31,7 @@ LiveMap
   links, capture, restore, and replay
 
 LiveHost
-  shared authority, actions, sessions, transport, persistence,
+  hosted authority, actions, sessions, transport, persistence,
   and remote recovery
 ```
 
@@ -1009,7 +1009,7 @@ A retained proxy may continue resolving its path against current state, but call
 
 Where an endpoint has been deleted or changed to an incompatible type, proxy operations fail according to current path semantics.
 
-Exclusive management by LiveHost may dynamically fence proxy mutations while leaving permitted reads available.
+LiveHost management may dynamically fence proxy mutations while leaving permitted reads available.
 
 That management behavior belongs to LiveHost; the proxy itself remains a LiveMap feature.
 
@@ -1645,7 +1645,7 @@ Debug access is not a stable replacement for public application APIs.
 
 A debug mutation route, where present, may bypass ordinary guarantees and should be treated as privileged internal tooling.
 
-When a map is under exclusive external management, debug mutation may be fenced to prevent authority bypass.
+When a map is hosted, debug mutation is fenced to prevent authority bypass.
 
 ---
 
@@ -1883,7 +1883,7 @@ LiveMap supplies:
 
 LiveHost supplies:
 
-- authority modes;
+- hosted mutation ordering;
 - mutation queues;
 - actions;
 - authorization;
@@ -1896,7 +1896,7 @@ LiveHost supplies:
 
 A standalone LiveMap does not need to understand connections or storage.
 
-An exclusively hosted LiveMap may have its public mutation surfaces dynamically fenced so all writes pass through the host’s ordered authority.
+A hosted LiveMap has its public mutation surfaces dynamically fenced so all writes pass through the host’s ordered authority.
 
 Those management rules are described in the LiveHost documentation.
 

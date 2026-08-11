@@ -228,7 +228,7 @@ await check("existing element authority publishes detached graph history and rep
   const initial = `<main @000000001 <p @000000002 "old"/>/>`;
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-replay" });
-  const sourceCommit = authority.document.attrs.set({ kind: "quid", quid: "000000002" }, "title", "kept");
+  const sourceCommit = await host.mutate((draft) => draft.document.attrs.set({ kind: "quid", quid: "000000002" }, "title", "kept"));
   const retained = host.stream.history.replay_after(0, 1);
   assert.equal(host.map, authority);
   assert.equal(host.stream.mode, "element");
@@ -256,7 +256,7 @@ await check("node-bearing fragment history is detached and incremental replay pr
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-fragment-replay" });
   const replacement = element(`<article @000000004 "new"/>`).element.node();
-  const sourceCommit = authority.document.content.replace(root, 0, replacement);
+  const sourceCommit = await host.mutate((draft) => draft.document.content.replace(root, 0, replacement));
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -284,7 +284,7 @@ await check("insert-content history detaches canonical nodes from source commits
   const authority = fragment(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-insert-history" });
   const content = element(`<b @00000001h/>`).element.node();
-  const sourceCommit = authority.document.content.insert(root, 1, content);
+  const sourceCommit = await host.mutate((draft) => draft.document.content.insert(root, 1, content));
   const retained = host.stream.history.replay_after(0, 1)?.[0];
   const sourceOp = sourceCommit.ops[0];
   const retainedOp = retained?.ops[0];
@@ -304,7 +304,7 @@ await check("insert-content history detaches canonical nodes from source commits
 await check("element snapshot recovery restores exact revision, mode, and persisted QUIDs in place", async () => {
   const authority = element(`<main @000000005 <p @000000006/>/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-element-snapshot" });
-  authority.document.attrs.set(root, "class", "ready");
+  await host.mutate((draft) => draft.document.attrs.set(root, "class", "ready"));
   const mirror = element(`<aside @000000007/>`);
   const { client } = attach(host, mirror);
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
@@ -489,7 +489,7 @@ await check("view-state negotiation is acknowledged for replay-only recovery", a
   const authority = element(`<main @000000049/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "view-state-replay-only" });
   const mirror = element(`<main @000000049/>`);
-  authority.document.attrs.set(root, "title", "replayed");
+  await host.mutate((draft) => draft.document.attrs.set(root, "title", "replayed"));
   const { client, pair } = attach(host, mirror, {
     incarnationId: host.stream.incarnationId,
     lastAppliedRev: 0,
@@ -605,7 +605,7 @@ await check("view-state snapshot recovery applies the existing JSON replay tail 
   pair.set_before_server_delivery((message) => {
     if (!queuedTail && message.type === "recovery-plan" && message.outcome === "snapshot") {
       queuedTail = true;
-      authority.document.attrs.set(root, "title", "tail-applied");
+      void host.mutate((draft) => draft.document.attrs.set(root, "title", "tail-applied"));
     }
   });
   const client = hson.liveHost.client({
@@ -714,48 +714,18 @@ await check("view-state codec failures are translated without payload disclosure
   assert.equal(client.recovery.failure.cause, error.cause);
 });
 
-await check("negotiated view-state encoding failure sends neither snapshot nor HSON fallback tail", async () => {
+await check("strict authority rejects malformed canonical state before recovery service", async () => {
   const privateStyle = "private-invalid-inline-style";
-  const events = [];
   const authority = element(`<main/>`);
-  const host = hson.liveHost.create({
-    map: authority,
-    logicalMapId: "view-state-encode-failure",
-    trace: { emit(event) { events.push(event); } },
-  });
   const ownedRoot = authority.debug.node([]).must();
   const ownedMain = find_node(ownedRoot, "main");
   ownedMain.$_attrs = { style: { _hover: { color: privateStyle } } };
-
-  let planningError;
-  assert.throws(
-    () => host.recovery.plan_with_snapshot_encoding(
-      { logicalMapId: host.stream.logicalMapId },
-      { format: "view-state", formatVersion: 2 },
-    ),
-    (error) => {
-      planningError = error;
-      return error.code === "LIVEHOST_RECOVERY_SNAPSHOT_FAILED";
-    },
-  );
-  assert.equal(planningError.cause instanceof LiveHostDocumentSnapshotEncodeError, true);
-  assert.equal(planningError.cause.code, "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED");
-  assert.equal(planningError.cause.cause instanceof ViewStateSnapshotCodecError, true);
-  assert.equal(planningError.message.includes(privateStyle), false);
-
-  const mirror = element(`<aside/>`);
-  const { client, pair } = attach(host, mirror);
-  await assert.rejects(
-    client.recovery.recover(),
-    (error) => error.code === "LIVEHOST_RECOVERY_SNAPSHOT_FAILED",
-  );
-  const sent = pair.serverSent.map(JSON.parse);
-  assert.equal(sent.some((message) => message.type === "recovery-snapshot"), false);
-  assert.equal(sent.some((message) => message.type === "recovery-commit"), false);
-  assert.equal(sent.some((message) => message.type === "recovery-caught-up"), false);
-  assert.equal(JSON.stringify(sent).includes(privateStyle), false);
-  assert.equal(JSON.stringify(events).includes(privateStyle), false);
-  assert.equal(events.some((event) => event.phase === "recovery.complete" && event.status === "success"), false);
+  let message = "";
+  assert.throws(() => hson.liveHost.create({ map: authority }), (error) => {
+    message = error.message;
+    return /malformed canonical HSON root/.test(message);
+  });
+  assert.equal(message.includes(privateStyle), false);
 });
 
 await check("unsupported internal snapshot encoding rejects before material construction", async () => {
@@ -776,8 +746,8 @@ await check("document history gap falls back to a same-mode snapshot", async () 
   const authority = element(initial);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-gap", history: { maxCommits: 1 } });
   const mirror = element(initial);
-  authority.document.attrs.set(root, "class", "one");
-  authority.document.attrs.set(root, "title", "two");
+  await host.mutate((draft) => draft.document.attrs.set(root, "class", "one"));
+  await host.mutate((draft) => draft.document.attrs.set(root, "title", "two"));
   const { client } = attach(host, mirror, { incarnationId: host.stream.incarnationId, lastAppliedRev: 0 });
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   assert.equal(client.map.mode, "element");
@@ -817,7 +787,7 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
   const trace = { emit(event) { events.push(event); } };
   const authority = element(`<main/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "document-trace", trace });
-  authority.document.attrs.set(root, "class", "ready");
+  await host.mutate((draft) => draft.document.attrs.set(root, "class", "ready"));
   const replayPlan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: host.stream.incarnationId,
@@ -851,13 +821,12 @@ await check("document tracing summarizes domain, origin, mode, revision, and rec
 
   const replayEvents = [];
   const replayAuthority = element(`<main/>`);
-  hson.liveHost.create({ map: replayAuthority, trace: { emit(event) { replayEvents.push(event); } } });
+  const replayHost = hson.liveHost.create({ map: replayAuthority, trace: { emit(event) { replayEvents.push(event); } } });
   const source = element(`<main/>`);
-  replayAuthority.replay(source.document.attrs.set(root, "title", "replayed"));
-  const replayPublication = replayEvents.find((event) => event.phase === "commit.publication");
-  assert.equal(replayPublication?.status, "skip");
-  assert.equal(replayPublication?.details.origin, "replay");
+  assert.throws(() => replayAuthority.replay(source.document.attrs.set(root, "title", "replayed")));
+  assert.equal(replayEvents.some((event) => event.phase === "commit.publication"), false);
   assert.equal(JSON.stringify(replayEvents).includes("replayed"), false);
+  replayHost.dispose();
 });
 
 await check("hosted document action carries action causation into commit publication without attrs", async () => {

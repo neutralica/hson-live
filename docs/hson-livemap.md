@@ -345,7 +345,7 @@ LiveHost does not turn LiveMap into a CRDT or provide automatic divergent-histor
 This preserves a clean separation:
 
 - LiveMap defines local state and semantic changes;
-- LiveHost defines authority, sessions, transport, and resume policy; and
+- LiveHost defines authority, sessions, transport, and revision-based recovery; and
 - LiveTree defines presentation and DOM behavior.
 
 CRDT behavior, multi-master consensus, and automatic divergent-history merging are not goals of the initial architecture.

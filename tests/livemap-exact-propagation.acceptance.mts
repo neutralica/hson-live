@@ -9,7 +9,6 @@ import { livemap_projected_propagation } from "../src/api/livemap/livemap.projec
 import { decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
 import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
 import { make_livehost_recovery_planner } from "../src/api/livehost/livehost.recovery.ts";
-import { make_livehost_resume_log } from "../src/api/livehost/livehost.resume.ts";
 import { make_livehost_sync_manager } from "../src/api/livehost/livehost.sync.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
@@ -256,7 +255,7 @@ check("store listener mutation cannot affect dangerous-key state", () => {
   assert.deepEqual(keys(capability(valueMap).read(["value"])), ["__proto__", "constructor", "prototype"]);
 });
 
-check("LiveHost canonical commits and resume entries retain exact payloads", () => {
+check("LiveHost canonical commits retain exact payloads", () => {
   const valueMap = map(object([["value", object([])]]));
   const stream = make_livehost_canonical_stream(valueMap, { logicalMapId: "map", incarnationId: "inc" });
   let canonical: LiveHostCanonicalCommit | undefined;
@@ -264,28 +263,6 @@ check("LiveHost canonical commits and resume entries retain exact payloads", () 
   capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
   assert.equal(canonical?.format, "structural-json");
   assert.equal(typeof canonical?.payload, "string");
-
-  const resume = make_livehost_resume_log();
-  const compatibilityValue = Object.defineProperty(
-    { "1": 1, "2": 2, "10": 10, negative: -0 },
-    "__proto__",
-    { value: "data", enumerable: true, writable: true, configurable: true },
-  ) as JsonValue;
-  const message: LiveHostServerSyncMessage = {
-    type: "sync", seq: 1, path: ["value"], value: compatibilityValue,
-    format: "structural-json", formatVersion: 1, payload: JSON.stringify({ "10": 10, "2": 2, "1": 1 }),
-  };
-  resume.record_sync(message);
-  const replayed = resume.replay_after(0)[0];
-  assert.equal(replayed?.payload, message.payload);
-  assert.equal(Object.getPrototypeOf(replayed?.value), Object.prototype);
-  assert.equal(Object.hasOwn(replayed?.value as object, "__proto__"), true);
-  assert.equal((replayed?.value as Record<string, JsonValue>).__proto__, "data");
-  assert.equal(Object.is((replayed?.value as Record<string, JsonValue>).negative, -0), true);
-  assert.throws(
-    () => resume.record_sync({ type: "sync", seq: 2, path: ["value"], value: 0, format: "structural-json" }),
-    /invalid exact transport envelope/,
-  );
 });
 
 check("LiveHost sync and recovery use exact projected transport", () => {

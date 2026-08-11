@@ -1,6 +1,8 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { LiveHostRecoveryError, hson } from "../../src/index.ts";
+import { make_livehost_canonical_stream } from "../../src/api/livehost/livehost.history.ts";
+import { make_livehost_recovery_planner } from "../../src/api/livehost/livehost.recovery.ts";
 
 let checks = 0;
 
@@ -27,9 +29,18 @@ function project_snapshot_hson(source) {
   return hson.fromNode(node).toJson().value();
 }
 
+function recovery_host(options) {
+  const map = hson.liveMap.fromJson(options.state);
+  const stream = make_livehost_canonical_stream(map, {
+    ...(options.history === undefined ? {} : { history: options.history }),
+  });
+  const recovery = make_livehost_recovery_planner(map, stream, options.recovery);
+  return { map, stream, recovery };
+}
+
 // Already-current recovery works even when the history ring is empty.
 {
-  const host = hson.liveHost.create({
+  const host = recovery_host({
     state: { value: 0 },
     history: { maxCommits: 0, maxBytes: 0 },
   });
@@ -45,7 +56,7 @@ checks += 1;
 // Replay is contiguous and a reentrant mutation during body publication lands
 // in the tail, after every replay commit and exactly once.
 {
-  const host = hson.liveHost.create({ state: { value: 0 } });
+  const host = recovery_host({ state: { value: 0 } });
   const baseRev = host.stream.headRev;
   host.map.set(["value"], 1);
   host.map.set(["value"], 2);
@@ -75,7 +86,7 @@ checks += 1;
 // the cut and one while capture is prepared belong to the snapshot; a mutation
 // immediately after the fixed cut belongs only to the tail.
 {
-  const host = hson.liveHost.create({ state: { value: 0 } });
+  const host = recovery_host({ state: { value: 0 } });
   const plan = host.recovery.plan(
     { logicalMapId: host.stream.logicalMapId },
     {
@@ -121,7 +132,7 @@ checks += 1;
     },
     count: 42,
   };
-  const host = hson.liveHost.create({ state });
+  const host = recovery_host({ state });
   const plan = host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
   assert.equal(plan.outcome, "snapshot");
   assert.equal(typeof plan.body.hson, "string");
@@ -134,7 +145,7 @@ checks += 1;
 
 // Same logical map but a different incarnation resets through a snapshot.
 {
-  const host = hson.liveHost.create({ state: { value: 4 } });
+  const host = recovery_host({ state: { value: 4 } });
   const plan = host.recovery.plan({
     logicalMapId: host.stream.logicalMapId,
     incarnationId: "obsolete-incarnation",
@@ -149,7 +160,7 @@ checks += 1;
 
 // Same-incarnation revision-ahead is a hard classified rejection.
 {
-  const host = hson.liveHost.create({ state: { value: 0 } });
+  const host = recovery_host({ state: { value: 0 } });
   const plan = host.recovery.plan(request_for(host, host.stream.headRev + 1));
   assert.equal(plan.outcome, "reject");
   assert.equal(plan.error.code, "REVISION_AHEAD_OF_AUTHORITY");
@@ -159,7 +170,7 @@ checks += 1;
 
 // Incomplete history falls back to snapshot; Patch 1 coverage remains exact.
 {
-  const host = hson.liveHost.create({
+  const host = recovery_host({
     state: { value: 0 },
     history: { maxCommits: 1, maxBytes: 1_000_000 },
   });
@@ -180,7 +191,7 @@ checks += 1;
 // Tail overflow aborts visibly, clears queued state, emits no completion, and
 // leaves both stream and planner reusable.
 {
-  const host = hson.liveHost.create({
+  const host = recovery_host({
     state: { value: 0 },
     recovery: { maxTailCommits: 1, maxTailBytes: 1_000_000 },
   });
@@ -208,7 +219,7 @@ checks += 1;
 
 // Explicit disposal releases the subscription and all queued state.
 {
-  const host = hson.liveHost.create({ state: { value: 0 } });
+  const host = recovery_host({ state: { value: 0 } });
   const cut = host.stream.headRev;
   const plan = host.recovery.plan(request_for(host, cut), {
     after_cut: () => host.map.set(["value"], 1),
@@ -227,7 +238,7 @@ checks += 1;
 
 // The byte bound is enforced independently of the commit-count bound.
 {
-  const host = hson.liveHost.create({
+  const host = recovery_host({
     state: { value: 0 },
     recovery: { maxTailCommits: 100, maxTailBytes: 1 },
   });
@@ -243,7 +254,7 @@ checks += 1;
 // Snapshot-planning and observer failures dispose cleanly and do not poison a
 // later attempt or Patch 1 canonical history.
 {
-  const host = hson.liveHost.create({ state: { value: 0 } });
+  const host = recovery_host({ state: { value: 0 } });
   expect_recovery_error(() => {
     host.recovery.plan(
       { logicalMapId: host.stream.logicalMapId },

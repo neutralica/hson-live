@@ -26,7 +26,7 @@ function fixture(options = {}) {
     state: { value: 0 }, logicalMapId: "auth-map", incarnationId: "auth-inc", sessionId: () => `session-${++session}`,
     schema: { actions: { set: { payload: (v) => typeof v === "object" && v !== null && !Array.isArray(v) && typeof v.value === "number" }, gated: { payload: (v) => typeof v === "number" } } },
     actions: {
-      set(ctx, payload) { executions += 1; ctx.map.set(["value"], payload.value); return payload; },
+      async set(ctx, payload) { executions += 1; await ctx.mutate((draft) => draft.set(["value"], payload.value)); return payload; },
       async gated(_ctx, payload) { executions += 1; await options.gate?.promise; return payload; },
     },
     ...(options.authorizeAction ? { authorizeAction: options.authorizeAction } : {}),

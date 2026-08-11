@@ -116,7 +116,6 @@ export {
   LiveHostPersistenceError,
 } from "./api/livehost/livehost.persistence.js";
 export type { LiveHostPersistenceErrorCode } from "./api/livehost/livehost.persistence.error.js";
-export { make_livehost_resume_log } from "./api/livehost/livehost.resume.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
 export {
     LiveHostDisconnectedError,

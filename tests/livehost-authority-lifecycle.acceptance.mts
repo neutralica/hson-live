@@ -333,8 +333,7 @@ check("persistent append and checkpoint work are reported as authority activity"
   if (map.mode !== "element") throw new Error("expected element map");
   const host = await create_persistent_livehost({
     map,
-    authority: "exclusive",
-    persistence: adapter,
+        persistence: adapter,
     logicalMapId: "persistent-activity",
   });
   const mutation = host.mutate((draft) => draft.document.attrs.set({ kind: "path", path: [] }, "ready", true));

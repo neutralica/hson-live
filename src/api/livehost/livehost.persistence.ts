@@ -4,7 +4,7 @@ import type {
   LiveMapCommit,
 } from "../../types/livemap.types.js";
 import type {
-  ExclusiveLiveHostForMap,
+  LiveHostForMap,
   LiveHostActionPayloads,
   LiveHostCanonicalCommit,
   LiveHostDisposer,
@@ -40,6 +40,7 @@ import {
 import { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { acquire_livehost_internal_activity } from "./livehost.activity.js";
+import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
 export { LiveHostPersistenceError } from "./livehost.persistence.error.js";
 
 type PersistentHostInternals = Readonly<{ authorityHost: object }>;
@@ -140,7 +141,7 @@ function make_persistence_gate(
 }
 
 function persistent_host_view<TMap extends DocumentLiveMap, TActions extends LiveHostActionPayloads>(
-  authorityHost: ExclusiveLiveHostForMap<TMap, TActions>,
+  authorityHost: LiveHostForMap<TMap, TActions>,
   map: TMap,
   adapter: LiveHostPersistenceAdapter,
   options: PersistenceTraceOptions,
@@ -193,12 +194,19 @@ export async function create_persistent_livehost<
 >(
   options: PersistentDocumentLiveHostOptions<TMap, TActions>,
 ): Promise<PersistentLiveHostForMap<TMap, TActions>> {
-  if (options.authority !== "exclusive") {
-    throw new LiveHostPersistenceError(
-      "LIVEHOST_PERSISTENCE_REQUIRES_EXCLUSIVE",
-      "LiveHost persistence requires exclusive authority.",
-    );
-  }
+  return create_persistent_livehost_internal(options);
+}
+
+/** @internal Synthetic post-append failure seam for authority invariant tests. */
+export async function create_persistent_livehost_internal<
+  TMap extends DocumentLiveMap,
+  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+>(
+  options: PersistentDocumentLiveHostOptions<TMap, TActions>,
+  internal: Readonly<{
+    afterDurableAppend?: (transition: PreparedLiveMapTransition) => void;
+  }> = {},
+): Promise<PersistentLiveHostForMap<TMap, TActions>> {
   if (options.map.mode !== "element" && options.map.mode !== "fragment") {
     throw new LiveHostPersistenceError(
       "LIVEHOST_PERSISTENCE_MAP_KIND_UNSUPPORTED",
@@ -213,7 +221,10 @@ export async function create_persistent_livehost<
       if (identity === undefined) throw new Error("Persistent LiveHost identity is unavailable.");
       return identity;
     }, options, () => activityHost),
-  }) as ExclusiveLiveHostForMap<TMap, TActions>;
+    ...(internal.afterDurableAppend === undefined
+      ? {}
+      : { afterAuthorityGate: internal.afterDurableAppend }),
+  }) as LiveHostForMap<TMap, TActions>;
   activityHost = authorityHost;
   identity = Object.freeze({
     logicalMapId: authorityHost.stream.logicalMapId,
@@ -371,7 +382,6 @@ async function restore_persistent_livehost(
   let activityHost: object | undefined;
   const options: PersistentDocumentLiveHostOptions = {
     map: validated.map,
-    authority: "exclusive",
     persistence: adapter,
     logicalMapId: validated.checkpoint.logicalMapId,
     incarnationId: validated.checkpoint.incarnationId,
@@ -386,7 +396,7 @@ async function restore_persistent_livehost(
       baseRevision: validated.checkpoint.rev,
       commits: validated.canonicalCommits,
     },
-  }) as ExclusiveLiveHostForMap<DocumentLiveMap>;
+  }) as LiveHostForMap<DocumentLiveMap>;
   activityHost = authorityHost;
   identity = Object.freeze({
     logicalMapId: authorityHost.stream.logicalMapId,

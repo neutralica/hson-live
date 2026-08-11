@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
 import { decode_livehost_server_message, LiveHostClientRecoveryError, hson } from "../../src/index.ts";
 import { acquire_projected_identity } from "../helpers/livemap-identity-internal.mts";
+import { create_livehost_internal } from "../../src/api/livehost/livehost.core.ts";
+import { make_livehost_canonical_commit } from "../../src/api/livehost/livehost.history.ts";
 
 let checks = 0;
 
@@ -157,7 +159,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const events = [];
   const trace = trace_sink(events);
   const host = hson.liveHost.create({ state: { value: 7 }, logicalMapId: "map-snapshot", trace });
-  host.map.set(["value"], 8);
+  await host.mutate((draft) => draft.set(["value"], 8));
   const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 0 });
   mirror.schema.use(schema);
@@ -166,7 +168,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   pair.set_before_server_delivery((message) => {
     if (!queuedTail && message.type === "recovery-plan" && message.outcome === "snapshot") {
       queuedTail = true;
-      host.map.set(["value"], 9);
+      void host.mutate((draft) => draft.set(["value"], 9));
     }
   });
   const client = attach(host, pair, { map: mirror, recovery: { logicalMapId: host.stream.logicalMapId }, trace });
@@ -203,8 +205,9 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const serializedTrace = JSON.stringify(traced);
   assert.equal(serializedTrace.includes(snapshotMessage.snapshot.hson), false);
 
-  const identityHost = hson.liveHost.create({ state: { container: [] }, logicalMapId: "map-identity-snapshot" });
-  acquire_projected_identity(identityHost.map, ["container"]);
+  const identityMap = hson.liveMap.fromJson({ container: [] });
+  acquire_projected_identity(identityMap, ["container"]);
+  const identityHost = hson.liveHost.create({ map: identityMap, logicalMapId: "map-identity-snapshot" });
   const identityPair = socket_pair();
   const identityClient = attach(identityHost, identityPair, { recovery: { logicalMapId: identityHost.stream.logicalMapId } });
   assert.equal((await identityClient.recovery.recover()).strategy, "snapshot");
@@ -219,8 +222,8 @@ await check("replay applies exact commits once and current emits no body", async
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-replay", trace });
   const base = host.stream.headRev;
   const mirror = hson.liveMap.fromJson(host.map.snap());
-  host.map.set(["value"], 1);
-  host.map.set(["value"], 2);
+  await host.mutate((draft) => draft.set(["value"], 1));
+  await host.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace });
   const revs = [];
@@ -256,10 +259,28 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(currentEvents.some((event) => event.phase === "recovery.material"), false);
   assert.equal(currentEvents.find((event) => event.phase === "recovery.complete" && event.status === "success").details.outcome, "already-current");
 
-  const identityHost = hson.liveHost.create({ state: { container: {} }, logicalMapId: "map-identity-replay" });
-  const identityBase = identityHost.stream.headRev;
-  const identityMirror = hson.liveMap.fromJson(identityHost.map.snap());
-  acquire_projected_identity(identityHost.map, ["container"]);
+  const identitySource = hson.liveMap.fromJson({ container: {} });
+  let identityCommit;
+  identitySource.commits.observe((event) => { if (event.kind === "commit") identityCommit = event.commit; });
+  acquire_projected_identity(identitySource, ["container"]);
+  const identityBase = 0;
+  const identityHost = create_livehost_internal({
+    map: identitySource,
+    logicalMapId: "map-identity-replay",
+    incarnationId: "map-identity-replay-incarnation",
+  }, {
+    initialHistory: {
+      baseRevision: identityBase,
+      commits: [make_livehost_canonical_commit(
+        identitySource,
+        identityCommit,
+        "map-identity-replay",
+        "map-identity-replay-incarnation",
+        identityBase,
+      )],
+    },
+  });
+  const identityMirror = hson.liveMap.fromJson({ container: {} });
   const identityPair = socket_pair();
   const identityClient = attach(identityHost, identityPair, recovery_options(identityHost, identityMirror, identityBase));
   assert.equal((await identityClient.recovery.recover()).strategy, "replay");
@@ -272,8 +293,8 @@ await check("small history falls back to snapshot", async () => {
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-fallback", history: { maxCommits: 1, maxBytes: 1_000_000 } });
   const base = host.stream.headRev;
   const mirror = hson.liveMap.fromJson(host.map.snap());
-  host.map.set(["value"], 1);
-  host.map.set(["value"], 2);
+  await host.mutate((draft) => draft.set(["value"], 1));
+  await host.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
   const client = attach(host, pair, recovery_options(host, mirror, base));
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
@@ -354,13 +375,13 @@ await check("cut boundary puts pre-cut in body and post-cut in tail", async () =
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-cut" });
   const base = host.stream.headRev;
   const mirror = hson.liveMap.fromJson(host.map.snap());
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
   const pair = socket_pair();
   let mutated = false;
   pair.set_before_server_delivery((message) => {
     if (message.type === "recovery-plan" && !mutated) {
       mutated = true;
-      host.map.set(["value"], 2);
+      void host.mutate((draft) => draft.set(["value"], 2));
     }
   });
   const client = attach(host, pair, recovery_options(host, mirror, base));
@@ -383,9 +404,10 @@ await check("reentrant canonical publication remains ordered", async () => {
   const revs = [];
   client.recovery.on_change((change) => {
     revs.push(change.rev);
-    if (change.map.snap().value === 1) host.map.set(["value"], 2);
+    if (change.map.snap().value === 1) void host.mutate((draft) => draft.set(["value"], 2));
   });
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(revs, [base + 1, base + 2]);
   assert.deepEqual(client.map.snap(), { value: 2 });
 });
@@ -396,7 +418,7 @@ await check("valid duplicate is ignored after full decode", async () => {
   const client = attach(host, pair, { recovery: { logicalMapId: host.stream.logicalMapId } });
   await client.recovery.recover();
   const base = client.recovery.lastAppliedRev;
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
   const commit = host.stream.history.replay_after(base, base + 1)[0];
   const recoverRequest = pair.clientSent.map(JSON.parse).find((message) => message.type === "recover");
   const before = client.recovery.debug().consumerNotifications;
@@ -556,7 +578,7 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-conflict" });
   const mirror = hson.liveMap.fromJson({ value: 100 });
   const base = host.stream.headRev;
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
   const pair = socket_pair();
   const events = [];
   const client = attach(host, pair, { ...recovery_options(host, mirror, base), trace: trace_sink(events) });
@@ -650,16 +672,15 @@ await check("legacy value snapshot fails as a protocol envelope error", async ()
 });
 
 await check("tail overflow is visible and a fresh recovery succeeds", async () => {
-  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-overflow", recovery: { maxTailCommits: 1, maxTailBytes: 1_000_000 } });
+  const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-overflow", recovery: { maxTailCommits: 1, maxTailBytes: 1 } });
   const mirror = hson.liveMap.fromJson(host.map.snap());
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
   const pair = socket_pair();
   let overflow = true;
   pair.set_before_server_delivery((message) => {
     if (overflow && message.type === "recovery-plan") {
       overflow = false;
-      host.map.set(["value"], 2);
-      host.map.set(["value"], 3);
+      void host.mutate((draft) => draft.set(["value"], 2));
     }
   });
   const client = attach(host, pair, recovery_options(host, mirror, 0));
@@ -692,7 +713,7 @@ await check("two clients recover independently with replay and snapshot", async 
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-multi", trace });
   const base = host.stream.headRev;
   const replayMirror = hson.liveMap.fromJson(host.map.snap());
-  host.map.set(["value"], 1);
+  await host.mutate((draft) => draft.set(["value"], 1));
   const replayPair = socket_pair();
   const snapshotPair = socket_pair();
   const replayClient = attach(host, replayPair, { ...recovery_options(host, replayMirror, base), trace });
@@ -703,7 +724,7 @@ await check("two clients recover independently with replay and snapshot", async 
   ]);
   assert.equal(replayResult.strategy, "replay");
   assert.equal(snapshotResult.strategy, "snapshot");
-  host.map.set(["value"], 2);
+  await host.mutate((draft) => draft.set(["value"], 2));
   assert.deepEqual(replayClient.map.snap(), { value: 2 });
   assert.deepEqual(snapshotClient.map.snap(), { value: 2 });
   assert.equal(replayClient.recovery.lastAppliedRev, host.stream.headRev);
@@ -722,7 +743,7 @@ await check("two clients recover independently with replay and snapshot", async 
   }), true);
 });
 
-await check("legacy hello synchronization remains unchanged", async () => {
+await check("hello synchronization uses only the current snapshot", async () => {
   const events = [];
   const host = hson.liveHost.create({ state: { value: "legacy" }, trace: trace_sink(events) });
   const pair = socket_pair();
@@ -732,10 +753,7 @@ await check("legacy hello synchronization remains unchanged", async () => {
   assert.deepEqual(client.map.snap(), host.map.snap());
   assert.equal(pair.clientSent.map(JSON.parse).some((message) => message.type === "hello"), true);
   assert.equal(pair.clientSent.map(JSON.parse).some((message) => message.type === "recover"), false);
-  const plan = events.find((event) => event.phase === "resume.plan");
-  assert.equal(plan.details.strategy, "snapshot");
-  assert.equal(plan.details.snapshotPresent, true);
-  assert.equal("requestedRev" in plan.details, false);
+  assert.equal(events.some((event) => event.phase === "resume.plan"), false);
 });
 
 function ws_socket(ws) {
@@ -780,8 +798,8 @@ await check("real WebSocket reconnect uses a new session and recovers state", as
   const close1 = closed(ws1);
   ws1.close();
   await close1;
-  host.map.set(["value"], 1);
-  host.map.set(["value"], 2);
+  await host.mutate((draft) => draft.set(["value"], 1));
+  await host.mutate((draft) => draft.set(["value"], 2));
 
   const ws2 = new WebSocket(url);
   await opened(ws2);
