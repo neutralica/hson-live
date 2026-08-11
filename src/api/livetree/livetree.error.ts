@@ -72,7 +72,7 @@ export class LiveTreeDisposedError extends Error {
   }
 }
 
-/** Stable failure for ordinary admission of identity retired in this runtime lifetime. @internal */
+/** Stable failure for ordinary admission of identity retired in this runtime lifetime. */
 export class LiveTreeQuidReuseError extends Error {
   readonly code = LIVETREE_QUID_REUSE_ERROR_CODE;
 

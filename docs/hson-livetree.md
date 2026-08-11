@@ -127,7 +127,7 @@ LiveTree exposes two related traversal models.
 
 Terminal disposal recursively releases QUID registry ownership and persisted `hson:quid`, removes listeners and QUID-scoped CSS, drains registered disposables, drops node-element mappings, and marks every node disposed. Only `isDisposed` and repeated `remove()` are safe lifecycle surfaces afterward; meaningful reads and mutations throw the stable `LiveTreeDisposedError`.
 
-Browser-owned `documentElement`, `head`, and `body` roots are protected from detach and removal. Ordinary application roots are not. `removeSelf` is a deprecated alias for terminal `remove`; `removeChildren` remains a deprecated specialized semantic-element filter until its 3.0 deletion.
+Browser-owned `documentElement`, `head`, and `body` roots are protected from detach and removal. Ordinary application roots are not. `removeSelf` is a deprecated alias for terminal `remove`; `removeChildren` is a deprecated specialized semantic-element filter. Use the canonical lifecycle and content APIs in new code.
 
 Manager namespaces specialize common mutations:
 
@@ -190,8 +190,8 @@ Sanitization is not a general validator for arbitrary HSON graphs. Use the untru
 
 ---
 
-## Current implementation note
+## Prototype contract
 
-The intended public design places LiveTree methods and getters on the prototype. In the current source, `append`, `empty`, `find`, and `findAll` are assigned as per-instance fields. That implementation discrepancy should not be treated as a documented API guarantee.
+LiveTree methods and getters, including `append`, `empty`, `find`, and `findAll`, live on the `LiveTree` prototype. Instances retain only their node/runtime state; constructing another tree does not create another set of method functions.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0

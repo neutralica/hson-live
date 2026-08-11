@@ -8,8 +8,13 @@ export {
   LiveMapDocumentIdentityRegistrationError,
   LiveMapDocumentMutationError,
   LiveMapDocumentStagingError,
+  LiveMapProjectedTransportError,
+  LiveMapProjectedValueError,
   LiveMapProjectedMutationError,
   LiveMapProjectedIdentityError,
+  LiveMapReplayError,
+  LiveMapReplayInputError,
+  LiveMapRevError,
   LiveMapSchemaError,
 } from "./livemap.error.js";
 export {
@@ -56,16 +61,27 @@ export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js"
 export type * from "../../types/livemap.types.js";
 export type {
   InferLiveMapSchema,
+  InferLiveMapSchemaChoice,
   InferLiveMapSchemaInput,
+  InferLiveMapSchemaShape,
   InferLiveMapSchemaToken,
   LiveMapSchema,
   LiveMapSchemaBuilder,
+  LiveMapSchemaChoice,
   LiveMapSchemaInput,
   LiveMapSchemaIssue,
   LiveMapSchemaKind,
+  LiveMapSchemaMustApi,
+  LiveMapSchemaRefinement,
+  LiveMapSchemaResolution,
   LiveMapSchemaRule,
   LiveMapSchemaShape,
   LiveMapSchemaToken,
   LiveMapSchemaValidation,
   LiveMapSchemaValue,
+  LiveMapSchemaVariants,
 } from "./livemap.schema.js";
+export type {
+  ProjectedValueAdmissionCode,
+  ProjectedValuePath,
+} from "../../core/projected-value-admission.js";

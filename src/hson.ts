@@ -33,6 +33,16 @@ export {
   hsonCalc,
   liveHost,
 };
+export {
+  TransformError,
+  is_transform_error,
+  read_transform_error_details,
+} from "./core/errors.js";
+export type {
+  TransformErrorDetails,
+  TransformErrorRelated,
+  TransformErrorSource,
+} from "./core/errors.js";
 
 /**
  * Complete browser/full-ecosystem convenience facade.

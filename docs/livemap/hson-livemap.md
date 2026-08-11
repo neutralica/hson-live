@@ -89,17 +89,16 @@ The projected reader converts the current node payload into detached JSON
 values. `root()` likewise returns a detached structural clone of the canonical
 graph. Only `debug.node(path)` exposes intentionally live graph access.
 
-Document roots are now classified separately as `element` or `fragment` and do
-not expose the projected data surface. Their `element` or `fragment` capability
-returns detached canonical nodes/content, and their revision-coupled capture is
-discriminated by `kind: "hson-document"` and `version: 2`. Version-1 captures
-reject explicitly as unsupported. Document maps now
-support same-mode `install(capture)` plus three local incremental canonical
-operations. The capability syntax follows LiveTree/LiveMap namespaces:
-`element.attrs.set(...)`, `element.attrs.drop(...)`, and
-`element.content.replace(...)`, with equivalent `fragment` capabilities. There
-are no `setAttrs`-style methods. Graph replay, document batching/subscriptions,
-and LiveTree projection remain future work.
+Document roots are classified separately as `element` or `fragment` and do not
+expose the projected data surface. `element.node()`, `document.root()`, and
+`document.content()` return detached canonical values. Revision-coupled capture
+is discriminated by `kind: "hson-document"` and `version: 2`; version-1 captures
+reject explicitly as unsupported. Document maps support same-mode `install`,
+exact-revision `restore`, graph `replay`, commit observation, and canonical
+document mutation. Attribute and content operations live under `map.document`,
+for example `map.document.attrs.set(target, name, value)` and
+`map.document.content.replace(target, index, replacement)`. There are no
+`setAttrs`-style methods and no projected data methods on document maps.
 
 ---
 
@@ -267,8 +266,9 @@ capture with optional sparse persisted identity before atomically swapping root
 and QUID index. It advances the target's revision once and does not adopt the
 source `capture.rev`.
 The resulting commit contains one `{ domain: "graph", op: "replace-root" }`
-operation. Graph apply/replay and authoritative recovery installation do not
-exist yet.
+operation. `restore(capture)` replaces canonical state at the capture's exact
+revision, and `replay(commit)` validates and applies one canonical graph commit.
+Document maps do not expose the projected data-map `apply` method.
 
 Incremental document operations use a shared discriminated path-or-QUID target.
 Numeric document paths traverse physical canonical `$_content`; they are not

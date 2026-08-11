@@ -12,15 +12,16 @@ import type {
   InferLiveMapSchemaInput,
   LiveMapSchema,
   LiveMapSchemaBuilder,
+  LiveMapSchemaInput,
 } from "./livemap.schema.js";
 
 type LiveMapSchemaNamespace = LiveMapSchemaBuilder & Readonly<{
-  define: <const TInput>(
+  define: <const TInput extends LiveMapSchemaInput>(
     makeShape: (schema: LiveMapSchemaBuilder) => TInput,
-  ) => LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
-  make: <const TInput>(
+  ) => LiveMapSchema<Exclude<InferLiveMapSchemaInput<TInput>, undefined>>;
+  make: <const TInput extends LiveMapSchemaInput>(
     input: TInput,
-  ) => LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
+  ) => LiveMapSchema<Exclude<InferLiveMapSchemaInput<TInput>, undefined>>;
 }>;
 
 const schema: LiveMapSchemaNamespace = Object.assign(

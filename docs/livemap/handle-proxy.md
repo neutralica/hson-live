@@ -1,245 +1,107 @@
-# Handles and Proxies
-`LiveMap` provides several ways to navigate and manipulate a live graph.
-They are intentionally different abstractions rather than alternate spellings of the same API.
-- **Path APIs** are explicit, deterministic, and ideal for reusable library code.
-- **Handles** represent stable references to specific graph locations and expose richer structural operations.
-- **Proxies** provide an ergonomic JavaScript view for application code while remaining backed by the same canonical graph.
-All three operate on the same authoritative `LiveMap`. Choosing one affects only how application code expresses mutations—not how the underlying graph behaves.
----
-# Design goals
-The navigation APIs were designed around several principles.
-A navigation model should:
-- avoid duplicating application state;
-- preserve one canonical graph;
-- expose structural identity when needed;
-- support deterministic mutation;
-- remain usable with TypeScript;
-- scale from simple application code to low-level graph manipulation.
-No single API satisfies all of those goals equally well.
-Instead, LiveMap provides complementary interfaces.
----
-# Path APIs
-The fundamental LiveMap interface is path-based.
+# LiveMap paths, handles, and proxies
+
+Projected-data LiveMaps expose one canonical state through three related access
+styles. Explicit map methods perform path-based reads and writes, `at(path)`
+returns a stable path handle, and `proxy(path?)` provides property/index syntax
+for building a path. None of these surfaces owns a second copy of state.
+
+## Explicit paths
+
+A projected path is a readonly array of string object keys and numeric array
+indexes:
+
 ```ts
-map.get(["users", 0, "name"]);
-map.set(
-    ["users", 0, "name"],
-    "Alice",
-);
-map.delete([
-    "users",
-    0,
-    "name",
-]);
+map.snap(["users", 0, "name"]);
+map.set(["users", 0, "name"], "Alice");
+map.delete(["users", 0, "name"]);
 ```
-Paths are arrays consisting of:
-- object keys;
-- array indexes.
-Projected-data paths intentionally resemble JSON navigation.
-For document maps, specialized document APIs generally provide a clearer interface than manually navigating structural paths.
-Path operations are:
-- explicit;
-- serializable;
-- deterministic;
-- stable across transports;
-- appropriate for reusable libraries.
-Nearly every higher-level LiveMap feature ultimately delegates to path operations.
----
-# Handles
-A handle represents a stable logical location inside a LiveMap.
-Unlike a path array, a handle provides behavior.
-Conceptually:
-```text
-LiveMap
-    ↓
-Handle
-    ↓
-graph location
-```
-Handles expose convenience operations for the represented location.
-Typical examples include:
-- reading values;
-- setting values;
-- structural insertion;
-- deletion;
-- movement;
-- attribute access;
-- child traversal;
-- subscriptions.
-Rather than repeatedly writing:
+
+The empty path is the projected root. `snap()` reads that root, while
+`snap(path)` reads one location. Composite results are detached from canonical
+state. Mutations use the normal admission, schema, revision, commit, feed, and
+authority rules.
+
+There is no map-level `get(path)` or `has(path)` API. Use `snap`, a path handle,
+or `handle.object.hasKey(key)` as appropriate.
+
+## Path handles
+
+`map.at(path)` returns a cached `LiveMapPathHandle` for that exact location:
+
 ```ts
-map.set(
-    ["settings", "theme"],
-    "dark",
-);
-```
-a handle may represent:
-```text
-["settings"]
-```
-allowing:
-```ts
-settingsHandle.set(
-    "theme",
-    "dark",
-);
-```
-The underlying mutation semantics remain identical.
----
-# Handle lifetime
-Handles are logical graph references.
-They survive unrelated mutations elsewhere in the graph.
-Operations that replace or remove the represented location affect subsequent handle behavior according to the documented API contract.
-Handles should generally be preferred whenever application code repeatedly operates on the same graph location.
----
-# Document handles
-Document maps expose richer handles representing HSON nodes.
-These provide document-oriented operations rather than projected-data operations.
-Examples include:
-- attributes;
-- ordered content;
-- insertion;
-- replacement;
-- movement;
-- element creation;
-- text operations;
-- structural traversal.
-Document handles intentionally resemble DOM manipulation while remaining independent of browser APIs.
----
-# Proxies
-LiveMap proxies provide an ergonomic JavaScript view over the same graph.
-Conceptually:
-```text
-proxy.user.name = "Alice"
-```
-becomes:
-```text
-LiveMap
-    ↓
-canonical mutation
-    ↓
-revision
-    ↓
-subscriptions
-```
-The proxy itself owns no state.
-Every property access ultimately delegates to the authoritative LiveMap.
----
-# Why proxies exist
-Many applications naturally prefer JavaScript object syntax.
-For example:
-```ts
-proxy.settings.theme = "dark";
-proxy.todos.push({
-    title: "Write docs",
+const settings = map.at(["settings"]);
+
+settings.snap();
+settings.at(["theme"]).set("dark");
+settings.object.setKey("density", "compact");
+const stop = settings.feed((event) => {
+  console.log(event.value);
 });
 ```
-is often clearer than repeated explicit path operations.
-Proxies therefore improve readability without introducing a second state model.
----
-# Mutation behavior
-Proxy mutation is never local.
-Assignments, deletion, array operations, and helper methods perform ordinary LiveMap mutations.
-They therefore participate in:
-- schema validation;
-- commit generation;
-- revisions;
-- feeds;
-- subscriptions;
-- links.
-A proxy assignment is not a cached JavaScript property write.
-It is a graph mutation.
----
-# Structural identity
-A proxy represents a view over a graph location.
-It does not become the underlying object.
-JavaScript identity therefore should not be interpreted as graph identity.
-Applications should avoid treating proxies as detached data structures.
-Instead, think of them as live windows into the graph.
----
-# Proxy helper methods
-Because JavaScript property syntax cannot conveniently express every graph operation, proxies expose helper methods.
-Examples include:
-- batch mutation;
-- subscriptions;
-- refresh;
-- metadata;
-- structural operations.
-These helper methods intentionally use reserved names beginning with:
-```text
-$_
-```
-For example:
+
+A path handle exposes:
+
+- `rev`, `path()`, `snap()`, and relative `at(path)`;
+- `set`, `setMany`, `replace`, `delete`, and `update`;
+- `object` and `array` helper namespaces;
+- `feed(listener)`; and
+- one-way `linkTo(target)`.
+
+The handle follows its stored location. It is not a document-node identity
+handle and does not silently follow a value that moves elsewhere. Removal or
+replacement changes what subsequent reads at that location observe.
+
+Document maps use their separate `document`, `element`, or `fragment`
+capabilities. They do not expose the projected path-handle surface.
+
+## Proxies
+
+`map.proxy()` creates a path-building proxy:
+
 ```ts
-proxy.$_handle();
-proxy.$_subscribe(...);
-proxy.$_path();
+const state = map.proxy();
+
+state.user.name.$_.snap();
+state.user.name.$_.set("Grace");
+state.tags[0].$_.replace("writer");
 ```
-Ordinary graph properties therefore remain available without colliding with proxy infrastructure.
----
-# Paths, handles, and proxies together
-The three interfaces complement one another.
-Use path APIs when:
-- writing reusable utilities;
-- serializing operations;
-- implementing transports;
-- expressing deterministic algorithms.
-Use handles when:
-- repeatedly manipulating one graph location;
-- performing structural operations;
-- interacting with document nodes;
-- writing reusable graph components.
-Use proxies when:
-- writing application logic;
-- expressing UI behavior;
-- reading and writing nested properties naturally;
-- exploring state interactively.
-All three ultimately operate on the same graph.
----
-# Revisions
-Every mutation—regardless of interface—produces the same underlying LiveMap behavior.
-The following operations are equivalent:
+
+Property and index reads extend the represented path. `$_` is a property, not a
+method: it exits proxy traversal and returns the ordinary path handle. All reads
+and mutations then use that handle's current API.
+
+Direct JavaScript mutation is rejected:
+
 ```ts
-map.set(["count"], 5);
-countHandle.set(5);
-proxy.count = 5;
+state.user.name = "Grace"; // throws
+delete state.user.name;    // throws
 ```
-Each performs:
-```text
-validation
-→ staged mutation
-→ accepted transition
-→ commit
-→ revision
-→ feeds
-→ subscriptions
-```
-The navigation API affects only developer ergonomics.
-It does not change mutation semantics.
----
-# Relationship to LiveHost
-Handles and proxies are local LiveMap interfaces.
-When a LiveMap is managed by LiveHost, public mutation routes become dynamically fenced.
-Existing handles and proxies continue to reference the graph, but mutation operations are rejected because authoritative changes must pass through the owning LiveHost.
-Read operations continue to function normally.
-This allows application code to retain graph references without bypassing host authority.
----
-# TypeScript
-The three interfaces provide different strengths for static typing.
-Path APIs expose deterministic library behavior.
-Handles expose richer graph-specific methods.
-Proxies expose property inference that closely resembles ordinary JavaScript while remaining backed by LiveMap.
-Applications are free to mix the interfaces as appropriate.
----
-# Summary
-LiveMap intentionally provides three navigation models rather than one universal interface.
-```text
-Path API
-    deterministic graph operations
-Handle
-    stable graph reference with behavior
-Proxy
-    ergonomic JavaScript view
-```
-Each presents a different programming model over the same canonical graph.
-Choosing between them changes only how application code expresses navigation—not how the underlying LiveMap stores state, validates mutations, generates revisions, or interacts with subscriptions, schemas, links, or LiveHost authority.
+
+The proxy also rejects direct property definition, prototype changes, and
+extensibility changes. It does not implement transparent assignment, array
+methods, subscriptions, metadata helpers, `$_handle()`, or `$_subscribe()`.
+
+Repeated access to the same child path returns the same cached proxy, and `$_`
+returns the map's cached handle for that path. This is location identity only;
+the proxy is not the projected object itself.
+
+## Reserved property behavior
+
+Promise/debugger/Object probe names such as `then`, `toJSON`, `constructor`, and
+`__proto__` are inert proxy reads. Canonical non-negative integer property names
+become numeric path segments. When data uses one of those spellings as an object
+key, address it through explicit paths or the parent handle's object helpers.
+
+## Hosted maps
+
+When LiveHost manages a map, reads through existing handles and proxies continue
+to resolve current state. Mutation methods remain subject to the same authority
+fencing as direct map writes; retaining a handle or proxy does not bypass the
+host.
+
+## Choosing a surface
+
+Use explicit paths for reusable algorithms and transport-adjacent code. Use a
+path handle when several operations share one location. Use a proxy when
+property/index traversal makes application code clearer, then use `$_` for the
+actual read or mutation.

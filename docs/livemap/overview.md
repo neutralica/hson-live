@@ -319,19 +319,20 @@ Where APIs return paths, those paths should be treated as snapshots of the relev
 Projected-data maps provide ordinary value reads through methods such as:
 
 ```ts
-map.get(path)
-map.has(path)
+map.snap(path)
+map.at(path).snap()
 ```
 
-`get(path)` returns the projected value at the path.
-
-`has(path)` distinguishes a missing path from a path whose value is a valid falsy or nullable value.
+`snap(path)` and the path-handle `snap()` method return the projected value at
+the path. Missing locations return `undefined`; falsy and nullable values remain
+distinct from absence. Object handles provide `hasKey(key)` when key membership
+must be tested directly.
 
 Examples:
 
 ```ts
-map.get(["profile", "name"]);
-map.has(["profile", "nickname"]);
+map.snap(["profile", "name"]);
+map.at(["profile"]).object.hasKey("nickname");
 ```
 
 Reads do not mutate the graph or advance the revision.
@@ -347,7 +348,7 @@ The exact cloning and snapshot guarantees of each getter are documented in the A
 The empty path addresses the entire projected root:
 
 ```ts
-map.get([]);
+map.snap();
 ```
 
 Root reads are useful for:
@@ -367,10 +368,10 @@ Repeated whole-root reads should not replace path-specific reads or subscription
 Projected-data maps may expose physical HSON nodes through an explicit node-oriented surface:
 
 ```ts
-map.node(path)
+map.debug.node(path)
 ```
 
-This is different from `get(path)`.
+This is different from `snap(path)` and is explicitly unsafe live graph access.
 
 Conceptually:
 
@@ -830,7 +831,7 @@ Schemas can express constraints such as:
 - exact or open object behavior;
 - required and optional properties;
 - nullable values;
-- readonly paths;
+- descriptive readonly metadata;
 - primitive types;
 - literal values;
 - finite choices;
@@ -872,7 +873,7 @@ Resolution determines:
 - whether a missing property may be created;
 - whether a property is optional;
 - whether a value may be null;
-- whether a path is readonly;
+- whether a path carries readonly metadata;
 - which item schema governs an array index;
 - whether exact-object restrictions permit a key;
 - which custom validator applies.
@@ -928,22 +929,12 @@ LiveMap instead validates a detached combined candidate before acceptance.
 
 ---
 
-## Readonly schema paths
+## Readonly schema metadata
 
-Readonly schema constraints prevent ordinary public mutation of protected paths.
-
-Readonly is a mutation rule, not a JavaScript object-freezing mechanism.
-
-It applies through all equivalent public projected mutation routes, including:
-
-- direct setters;
-- object helpers;
-- array helpers;
-- proxies;
-- batches;
-- update callbacks.
-
-Privileged historical restoration and internal graph installation are separate operations with their own safety boundaries.
+The current `readonly` modifier is descriptive schema metadata. It appears in
+resolved rules but does not reject or fence writes through setters, helpers,
+batches, handles, or proxies. It is not JavaScript object freezing or an access
+control boundary.
 
 ---
 
@@ -982,11 +973,14 @@ proxy.user.name
 proxy.items[0]
 ```
 
-Special `$_` methods expose explicit LiveMap operations where ordinary JavaScript property syntax would be ambiguous.
+The `$_` property exits proxy traversal and returns the ordinary path handle,
+which exposes explicit LiveMap operations.
 
 The proxy is not a plain mutable object.
 
-Property assignment, deletion, method calls, and path access are translated into canonical LiveMap operations.
+Property and index reads extend the represented path. Direct assignment,
+JavaScript `delete`, and property definition throw; mutations must go through
+the `$_` path handle.
 
 Proxy behavior must preserve parity with the corresponding direct APIs:
 

@@ -139,18 +139,55 @@ type OptionalSchemaShapeKeys<TShape extends LiveMapSchemaShape> = {
 
 type RequiredSchemaShapeKeys<TShape extends LiveMapSchemaShape> = Exclude<keyof TShape, OptionalSchemaShapeKeys<TShape>>;
 
-type InferLiveMapSchemaTuple<TItems extends readonly LiveMapSchemaInput[]> = {
-  readonly [Index in keyof TItems]: InferLiveMapSchemaInput<TItems[Index]>;
-};
+type InferLiveMapSchemaPresent<TInput extends LiveMapSchemaInput> =
+  Exclude<InferLiveMapSchemaInput<TInput>, undefined>;
+
+type AllLiveMapSchemaTupleItemsOptional<TItems extends readonly LiveMapSchemaInput[]> =
+  TItems extends readonly [] ? true :
+  TItems extends readonly [
+    infer THead extends LiveMapSchemaInput,
+    ...infer TTail extends readonly LiveMapSchemaInput[],
+  ] ? undefined extends InferLiveMapSchemaInput<THead>
+      ? AllLiveMapSchemaTupleItemsOptional<TTail>
+      : false
+    : false;
+
+type InferOptionalLiveMapSchemaTuple<TItems extends readonly LiveMapSchemaInput[]> =
+  TItems extends readonly [
+    infer THead extends LiveMapSchemaInput,
+    ...infer TTail extends readonly LiveMapSchemaInput[],
+  ] ? readonly [
+      InferLiveMapSchemaPresent<THead>?,
+      ...InferOptionalLiveMapSchemaTuple<TTail>,
+    ]
+    : readonly [];
+
+type InferLiveMapSchemaTuple<TItems extends readonly LiveMapSchemaInput[]> =
+  TItems extends readonly [
+    infer THead extends LiveMapSchemaInput,
+    ...infer TTail extends readonly LiveMapSchemaInput[],
+  ] ? AllLiveMapSchemaTupleItemsOptional<TItems> extends true
+      ? InferOptionalLiveMapSchemaTuple<TItems>
+      : readonly [
+          InferLiveMapSchemaPresent<THead>,
+          ...InferLiveMapSchemaTuple<TTail>,
+        ]
+    : readonly [];
 
 type InferLiveMapTaggedSchema<TDiscriminator extends string, TVariants extends LiveMapSchemaVariants> = {
   [Tag in keyof TVariants & string]: Simplify<InferLiveMapSchemaShape<TVariants[Tag]> & { [Key in TDiscriminator]: Tag }>;
 }[keyof TVariants & string];
 
 type DeepPartialSchemaValue<TValue> =
-  TValue extends readonly (infer Item)[] ? readonly DeepPartialSchemaValue<Item>[] :
-  TValue extends object ? string extends keyof TValue ? Readonly<Record<string, DeepPartialSchemaValue<TValue[string]>>> : { [Key in keyof TValue]?: DeepPartialSchemaValue<TValue[Key]> } :
-  TValue;
+  TValue extends readonly unknown[]
+    ? number extends TValue["length"]
+      ? readonly DeepPartialSchemaValue<Exclude<TValue[number], undefined>>[]
+      : { readonly [Index in keyof TValue]?: DeepPartialSchemaValue<Exclude<TValue[Index], undefined>> }
+    : TValue extends object
+      ? string extends keyof TValue
+        ? Readonly<Record<string, DeepPartialSchemaValue<Exclude<TValue[string], undefined>>>>
+        : { [Key in keyof TValue]?: DeepPartialSchemaValue<Exclude<TValue[Key], undefined>> }
+      : TValue;
 
 type Simplify<TValue> = { [Key in keyof TValue]: TValue[Key] } & {};
 
@@ -170,13 +207,13 @@ export type LiveMapSchemaBuilder = Readonly<{
   boolean: LiveMapSchemaToken<boolean>;
   null: LiveMapSchemaToken<null>;
   literal: <const TValues extends readonly JsonValue[]>(...values: TValues) => LiveMapSchemaToken<TValues[number]>;
-  pick: <const TChoices extends readonly LiveMapSchemaChoice[]>(...choices: TChoices) => LiveMapSchemaToken<InferLiveMapSchemaChoice<TChoices[number]>>;
+  pick: <const TChoices extends readonly LiveMapSchemaChoice[]>(...choices: TChoices) => LiveMapSchemaToken<Exclude<InferLiveMapSchemaChoice<TChoices[number]>, undefined>>;
   tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
-  lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput) => LiveMapSchemaToken<InferLiveMapSchemaInput<TInput>>;
-  refine: <TValue>(base: LiveMapSchemaInput<TValue>, label: string, validate: LiveMapSchemaRefinement<TValue & JsonValue>) => LiveMapSchemaToken<TValue>;
-  array: <TInput extends LiveMapSchemaInput>(item: TInput) => LiveMapSchemaToken<readonly InferLiveMapSchemaInput<TInput>[]>;
+  lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
+  refine: <TInput extends LiveMapSchemaInput>(base: TInput, label: string, validate: LiveMapSchemaRefinement<InferLiveMapSchemaPresent<TInput>>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
+  array: <TInput extends LiveMapSchemaInput>(item: TInput) => LiveMapSchemaToken<readonly InferLiveMapSchemaPresent<TInput>[]>;
   tuple: <TItems extends readonly LiveMapSchemaInput[]>(...items: TItems) => LiveMapSchemaToken<InferLiveMapSchemaTuple<TItems>>;
-  record: <TInput extends LiveMapSchemaInput>(value: TInput) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaInput<TInput>>>>;
+  record: <TInput extends LiveMapSchemaInput>(value: TInput) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaPresent<TInput>>>>;
   object: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
   partial: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<Partial<InferLiveMapSchemaShape<TShape>>>;
   deepPartial: <TShape extends LiveMapSchemaShape>(shape: TShape) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaShape<TShape>>>;
@@ -188,7 +225,7 @@ export type LiveMapSchemaToken<TValue = unknown> = Readonly<{
   optional: LiveMapSchemaToken<TValue | undefined>;
   nullable: LiveMapSchemaToken<TValue | null>;
   readonly: LiveMapSchemaToken<TValue>;
-  array: LiveMapSchemaToken<readonly TValue[]>;
+  array: LiveMapSchemaToken<readonly Exclude<TValue, undefined>[]>;
   readonly __value?: TValue;
 }>;
 
@@ -273,12 +310,16 @@ export const LIVEMAP_SCHEMA = LIVEMAP_SCHEMA_RUNTIME as unknown as LiveMapSchema
  * The returned schema carries both runtime validation rules and an inferred
  * TypeScript value type used by schema-bound LiveMap APIs.
  */
-export function define_livemap_schema<const TInput>(makeShape: (schema: LiveMapSchemaBuilder) => TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
+export function define_livemap_schema<const TInput extends LiveMapSchemaInput>(
+  makeShape: (schema: LiveMapSchemaBuilder) => TInput,
+): LiveMapSchema<InferLiveMapSchemaPresent<TInput>> {
   return make_livemap_schema(makeShape(LIVEMAP_SCHEMA));
 }
 
-export function make_livemap_schema<const TInput>(input: TInput): LiveMapSchema<InferLiveMapSchemaInput<TInput>> {
-  const root = normalize_schema_input(input as LiveMapSchemaInput);
+export function make_livemap_schema<const TInput extends LiveMapSchemaInput>(
+  input: TInput,
+): LiveMapSchema<InferLiveMapSchemaPresent<TInput>> {
+  const root = normalize_schema_input(input);
   const compiledRules = collect_schema_rules(root, [], []);
   const rules = Object.freeze(compiledRules.map(({ rule }) => rule));
   const resolve = (
@@ -304,7 +345,7 @@ export function make_livemap_schema<const TInput>(input: TInput): LiveMapSchema<
     must,
     validateRoot: (value: JsonValue | undefined) => validate_public_schema_root(root, value),
     validateValue: (path: LivePath, value: JsonValue | undefined) => validate_public_schema_value(root, path, value),
-  }) as LiveMapSchema<InferLiveMapSchemaInput<TInput>>;
+  }) as LiveMapSchema<InferLiveMapSchemaPresent<TInput>>;
 }
 
 /** Validate one already-admitted candidate without materializing or rereading caller state. */

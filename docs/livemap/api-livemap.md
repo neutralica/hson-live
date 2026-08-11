@@ -6,12 +6,15 @@ LiveMap owns a canonical HSON graph and exposes either projected JSON-path state
 access.
 
 ```ts
-import { hson, link_livemap } from "hson-live";
-import type { LiveMap, LiveMapCommit, LivePath } from "hson-live";
+import { hson } from "hson-live";
+import { hsonLiveMap, link_livemap } from "hson-live/livemap";
+import type { LiveMap, LiveMapCommit, LivePath } from "hson-live/livemap";
 ```
 
-Public types are also available from `hson-live/types`. There is no
-`hson-live/livemap` package subpath.
+`hson-live/livemap` is the supported subsystem entrypoint for LiveMap values,
+helpers, structured errors, and types. The root remains the umbrella entrypoint,
+and `hson-live/types` remains a broad type barrel rather than the owner of the
+LiveMap vocabulary.
 
 ## Stability boundary
 
@@ -349,8 +352,9 @@ Builder tokens:
   `refine(base, label, predicate)`.
 
 `object` validates declared properties but allows extra keys; `exact` rejects
-them. `readonly` rejects writes overlapping the rule. Tuple indexes are bounded.
-`refine` runs custom validation after its base succeeds.
+them. `readonly` is descriptive metadata in the resolved rule and does not
+reject writes. Tuple indexes are bounded. `refine` runs custom validation after
+its base succeeds.
 
 Schema values use the same admission domain as mutations. `optional` means the
 property may be missing; a present property whose value is `undefined` is
@@ -359,9 +363,10 @@ then compared using ordered SameValue semantics. Refinement callbacks receive
 fresh detached JavaScript materializations, so mutating one callback's input
 cannot alter the candidate or another refinement.
 
-Schema objects expose `validate(value)`, `rules`, `match(path)`,
-`resolve(path)`, `has(path)`, and throwing `must.*` inspection. Attached maps
-mirror lookup through `map.schema`; `get()` returns the attached schema.
+Schema objects expose `validateRoot(value)`, `validateValue(path, value)`,
+`rules`, `match(path)`, `resolve(path)`, `has(path)`, and throwing `must.resolve`
+inspection. Attached maps mirror lookup through `map.schema`; `get()` returns
+the attached schema.
 
 Validation returns structured issues with codes including `TYPE_MISMATCH`,
 `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`,

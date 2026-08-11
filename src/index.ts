@@ -2,6 +2,16 @@
 
 export { hson, hsonCalc, hsonNumber, hsonString, type HsonFacade } from "./hson.js";
 export {
+    TransformError,
+    is_transform_error,
+    read_transform_error_details,
+} from "./core/errors.js";
+export type {
+    TransformErrorDetails,
+    TransformErrorRelated,
+    TransformErrorSource,
+} from "./core/errors.js";
+export {
     HSON_CALC_FUNCTION_REQUIRED,
 } from "./api/transform/hson-calc.js";
 export {
@@ -21,16 +31,23 @@ export {
     LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
     LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
     LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
+    LIVETREE_QUID_REUSE_ERROR_CODE,
     LiveTreeAttributeError,
     LiveTreeBatchError,
     LiveTreeAlreadyAttachedError,
     LiveTreeDisposedError,
     LiveTreeProtectedRootError,
+    LiveTreeQuidReuseError,
 } from "./api/livetree/livetree.error.js";
+export {
+    LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
+    LiveTreeLinkedIdentityRequiredError,
+} from "./api/livetree/lifecycle/document-binding-state.js";
 export type { LiveTreeAttributeErrorCode } from "./api/livetree/livetree.error.js";
 export type { DetachedLiveContent, LiveTreeLifecycleResult } from "./types/lifecycle.types.js";
 export { CssManager } from "./api/livetree/managers/css-manager.js";
 export { make_tree_selector } from "./api/livetree/creation/make-tree-selector.js";
+export { TreeSelector } from "./api/livetree/creation/tree-selector.js";
 
 export { make_livemap_core } from "./api/livemap/livemap.core.js";
 export { reflect_collection } from "./api/reflect/reflect.collection.js";
@@ -84,7 +101,12 @@ export {
     LiveMapDocumentIdentityRegistrationError,
     LiveMapDocumentMutationError,
     LiveMapDocumentStagingError,
+    LiveMapProjectedTransportError,
+    LiveMapProjectedValueError,
     LiveMapProjectedMutationError,
+    LiveMapReplayError,
+    LiveMapReplayInputError,
+    LiveMapRevError,
 } from "./api/livemap/livemap.error.js";
 export type {
     LiveMapDocumentIdentityProvenanceErrorCode,
@@ -124,11 +146,20 @@ export {
     LiveHostClientSessionError,
     LiveHostRecoveryError,
 } from "./api/livehost/livehost.error.js";
-export { make_livehost_sync_manager } from "./api/livehost/livehost.sync.js";
+export {
+    make_livehost_sync_manager,
+    type LiveHostSyncManager,
+    type LiveHostSyncSend,
+    type LiveHostSyncSession,
+} from "./api/livehost/livehost.sync.js";
 export { make_livehost_canonical_stream } from "./api/livehost/livehost.history.js";
 export { make_livehost_recovery_planner } from "./api/livehost/livehost.recovery.js";
 export { decode_livehost_message, decode_livehost_server_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
 export { create_livehost } from "./api/livehost/livehost.core.js";
+export {
+    LiveHostAuthorityError,
+    type LiveHostAuthorityErrorCode,
+} from "./api/livehost/livehost.authority.js";
 export type {
     LiveMapPathHandle,
     LiveMapProxy,

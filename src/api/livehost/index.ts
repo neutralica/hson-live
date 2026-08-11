@@ -42,7 +42,12 @@ export {
   create_persistent_livehost,
   LiveHostPersistenceError,
 } from "./livehost.persistence.js";
-export { make_livehost_sync_manager } from "./livehost.sync.js";
+export {
+  make_livehost_sync_manager,
+  type LiveHostSyncManager,
+  type LiveHostSyncSend,
+  type LiveHostSyncSession,
+} from "./livehost.sync.js";
 export { make_livehost_canonical_stream } from "./livehost.history.js";
 export { make_livehost_recovery_planner } from "./livehost.recovery.js";
 export {
@@ -69,4 +74,8 @@ export { create_live_trace_console_sink } from "./livehost.trace.console.js";
 
 export type { LiveHostPersistenceErrorCode } from "./livehost.persistence.error.js";
 export type { LiveHostGraphContentCodecErrorCode } from "./livehost.graph-content-codec.js";
+export {
+  LiveHostAuthorityError,
+  type LiveHostAuthorityErrorCode,
+} from "./livehost.authority.js";
 export type * from "../../types/livehost.types.js";

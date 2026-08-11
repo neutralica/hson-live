@@ -406,11 +406,9 @@ The root package is the umbrella entrypoint:
 
 ```ts
 import { hson } from "hson-live";
-import type {
-  LiveMap,
-  LiveTree,
-  LiveHost,
-} from "hson-live/types";
+import type { LiveMap } from "hson-live/livemap";
+import type { LiveTree } from "hson-live/livetree";
+import type { LiveHost } from "hson-live/livehost";
 ```
 
 LiveHost’s environment-neutral network surface is available from:

@@ -6,13 +6,22 @@ import {
   type HsonNumber,
 } from "hson-live";
 import {
+  TransformError,
   hsonString as transformHsonString,
   hsonTransform as transformSubpath,
+  is_transform_error,
+  read_transform_error_details,
   type HsonString,
   type HsonNumber as TransformHsonNumber,
+  type TransformErrorDetails,
+  type TransformErrorRelated,
+  type TransformErrorSource,
+  type TransformOutputRenderFormat,
+  type TransformRender,
   type TransformSerialize,
 } from "hson-live/transform";
 import {
+  TransformError as HsonSubpathTransformError,
   hson as hsonSubpath,
   hsonString as hsonSubpathString,
   hsonTransform as hsonSubpathTransform,
@@ -32,20 +41,59 @@ import type { HSON_NUMBER_BRAND } from "hson-live/transform";
 // @ts-expect-error HsonString is intentionally not exported from the package root.
 import type { HsonString as RootHsonString } from "hson-live";
 import {
+  ContentManager,
+  LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
+  LIVETREE_QUID_REUSE_ERROR_CODE,
+  LiveTreeLinkedIdentityRequiredError,
+  LiveTreeQuidReuseError,
+  TreeSelector,
   hsonLiveTree as treeSubpath,
   LiveTree,
+  type AttrHandle,
+  type CanvasApi,
+  type ClassApi,
+  type ContentMarkupApi,
+  type DataApi,
+  type FindMany,
+  type FlagHandle,
+  type GraftConstructor,
+  type IdApi,
+  type ListenerBuilder,
+  type LiveTreeBindApi,
   type LiveTreeLifecycleResult,
+  type PropertyManager,
+  type PropertyRegistration,
+  type TreeEvents,
 } from "hson-live/livetree";
 // @ts-expect-error The obsolete construction engine is not a public export.
 import { construct_tree } from "hson-live/livetree";
 import {
+  LiveMapProjectedTransportError,
+  LiveMapProjectedValueError,
+  LiveMapReplayError,
+  LiveMapReplayInputError,
+  LiveMapRevError,
+  define_livemap_schema,
   hsonLiveMap as mapSubpath,
   make_livemap_core,
+  make_livemap_schema,
+  type InferLiveMapSchema,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
   type LiveMapPathHandle,
+  type LiveMapSchemaResolution,
+  type LiveMapSchemaValue,
+  type ProjectedValueAdmissionCode,
+  type ProjectedValuePath,
 } from "hson-live/livemap";
-import { hsonLiveHost as hostSubpath } from "hson-live/livehost";
+import {
+  LiveHostAuthorityError,
+  hsonLiveHost as hostSubpath,
+  type LiveHostAuthorityErrorCode,
+  type LiveHostSyncManager,
+  type LiveHostSyncSend,
+  type LiveHostSyncSession,
+} from "hson-live/livehost";
 import {
   hsonReflect as reflectSubpath,
   type CollectionReflect,
@@ -64,6 +112,22 @@ void treeSubpath;
 void hostSubpath;
 void reflectSubpath;
 void LiveTree;
+void TreeSelector;
+void ContentManager;
+void TransformError;
+void HsonSubpathTransformError;
+void is_transform_error;
+void read_transform_error_details;
+void LiveTreeQuidReuseError;
+void LiveTreeLinkedIdentityRequiredError;
+void LIVETREE_QUID_REUSE_ERROR_CODE;
+void LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE;
+void LiveMapProjectedTransportError;
+void LiveMapProjectedValueError;
+void LiveMapReplayError;
+void LiveMapReplayInputError;
+void LiveMapRevError;
+void LiveHostAuthorityError;
 void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
@@ -85,6 +149,138 @@ type Equal<Left, Right> =
     ? true
     : false;
 type Expect<Value extends true> = Value;
+
+type PublicTransformClosure =
+  | TransformErrorDetails
+  | TransformErrorRelated
+  | TransformErrorSource
+  | TransformOutputRenderFormat
+  | TransformRender<"json">;
+type PublicLiveTreeClosure =
+  | AttrHandle<LiveTree>
+  | CanvasApi<LiveTree>
+  | ClassApi<LiveTree>
+  | ContentMarkupApi
+  | DataApi<LiveTree>
+  | FindMany
+  | FlagHandle<LiveTree>
+  | GraftConstructor
+  | IdApi<LiveTree>
+  | ListenerBuilder
+  | LiveTreeBindApi<LiveTree>
+  | PropertyManager
+  | PropertyRegistration
+  | TreeEvents;
+type PublicLiveMapClosure =
+  | LiveMapSchemaResolution
+  | ProjectedValueAdmissionCode
+  | ProjectedValuePath;
+type PublicLiveHostClosure =
+  | LiveHostAuthorityErrorCode
+  | LiveHostSyncManager
+  | LiveHostSyncSend
+  | LiveHostSyncSession;
+declare const publicDeclarationClosure:
+  | PublicTransformClosure
+  | PublicLiveTreeClosure
+  | PublicLiveMapClosure
+  | PublicLiveHostClosure;
+void publicDeclarationClosure;
+
+const declarationTruthSchema = define_livemap_schema((schema) => ({
+  optionalObject: schema.number.optional,
+  array: schema.array(schema.number.optional),
+  arrayToken: schema.number.optional.array,
+  tupleTrailing: schema.tuple(schema.string, schema.number.optional),
+  tupleNonTrailing: schema.tuple(schema.number.optional, schema.string),
+  nested: schema.array(schema.tuple(schema.number, schema.string.optional)),
+  nullable: schema.string.nullable,
+  literal: schema.literal("draft", "ready"),
+  readonlyValue: schema.number.readonly,
+  record: schema.record(schema.number.optional),
+  picked: schema.pick(schema.number.optional, "auto"),
+  lazy: schema.lazy(() => schema.number.optional),
+  refined: schema.refine(schema.number.optional, "finite", Number.isFinite),
+  deep: schema.deepPartial({
+    child: { count: schema.number },
+    tuple: schema.tuple(schema.string, schema.number),
+    list: schema.array(schema.object({ id: schema.number })),
+  }),
+}));
+
+type DeclarationTruth = InferLiveMapSchema<typeof declarationTruthSchema>;
+type OptionalObjectIsOptional = Expect<
+  Equal<{} extends Pick<DeclarationTruth, "optionalObject"> ? true : false, true>
+>;
+type OptionalObjectPresentValue = Expect<
+  Equal<Exclude<DeclarationTruth["optionalObject"], undefined>, number>
+>;
+type ArrayPresentItem = Expect<Equal<DeclarationTruth["array"][number], number>>;
+type ArrayTokenPresentItem = Expect<Equal<DeclarationTruth["arrayToken"][number], number>>;
+type TrailingOptionalTuple = Expect<
+  Equal<DeclarationTruth["tupleTrailing"], readonly [string, number?]>
+>;
+type NonTrailingOptionalTuple = Expect<
+  Equal<DeclarationTruth["tupleNonTrailing"], readonly [number, string]>
+>;
+type NestedArrayTuple = Expect<
+  Equal<DeclarationTruth["nested"][number], readonly [number, string?]>
+>;
+type NullableRemainsDistinct = Expect<Equal<DeclarationTruth["nullable"], string | null>>;
+type LiteralUnionPreserved = Expect<Equal<DeclarationTruth["literal"], "draft" | "ready">>;
+type ReadonlyMetadataDoesNotChangeValue = Expect<Equal<DeclarationTruth["readonlyValue"], number>>;
+type RecordPresentValue = Expect<Equal<DeclarationTruth["record"][string], number>>;
+type PickPresentValue = Expect<Equal<DeclarationTruth["picked"], number | "auto">>;
+type LazyPresentValue = Expect<Equal<DeclarationTruth["lazy"], number>>;
+type RefinedPresentValue = Expect<Equal<DeclarationTruth["refined"], number>>;
+type DeepPartialTuple = Expect<
+  Equal<NonNullable<DeclarationTruth["deep"]["tuple"]>, readonly [string?, number?]>
+>;
+type DeepPartialArrayItem = Expect<
+  Equal<NonNullable<DeclarationTruth["deep"]["list"]>[number], { id?: number }>
+>;
+type RootExcludesUndefined = Expect<Equal<undefined extends DeclarationTruth ? true : false, false>>;
+type SchemaValueAliasAgrees = Expect<
+  Equal<LiveMapSchemaValue<typeof declarationTruthSchema>, DeclarationTruth>
+>;
+
+const schemaBoundMap = mapSubpath.fromJson({}).schema.use(declarationTruthSchema);
+const typedTupleItem = schemaBoundMap.at(["tupleTrailing", 0]).snap();
+const typedOptionalTupleItem = schemaBoundMap.at(["tupleTrailing", 1]).snap();
+const typedArrayItem = schemaBoundMap.at(["array", 0]).snap();
+schemaBoundMap.at(["readonlyValue"]).set(1);
+type LiteralTuplePathRemainsExact = Expect<Equal<typeof typedTupleItem, string>>;
+type OptionalTuplePathRemainsExact = Expect<Equal<typeof typedOptionalTupleItem, number | undefined>>;
+type ArrayPathExcludesImpossibleUndefined = Expect<Equal<typeof typedArrayItem, number>>;
+
+const validOptionalObject: Pick<DeclarationTruth, "optionalObject"> = {};
+const validOptionalTuple: DeclarationTruth["tupleTrailing"] = ["ready"];
+const validNullable: DeclarationTruth["nullable"] = null;
+// @ts-expect-error Explicit undefined is not an admitted present optional object value.
+const invalidOptionalObject: Pick<DeclarationTruth, "optionalObject"> = { optionalObject: undefined };
+// @ts-expect-error Explicit undefined is not an admitted present array item.
+const invalidArrayItem: DeclarationTruth["array"] = [1, undefined];
+// @ts-expect-error Explicit undefined is not an admitted present optional tuple item.
+const invalidTupleItem: DeclarationTruth["tupleTrailing"] = ["ready", undefined];
+// @ts-expect-error Nullability does not imply optionality or admit undefined.
+const invalidNullable: DeclarationTruth["nullable"] = undefined;
+// @ts-expect-error A schema root must be an existing LiveMap schema input.
+make_livemap_schema(42);
+// @ts-expect-error A schema shape cannot contain explicit undefined.
+make_livemap_schema({ value: undefined });
+// @ts-expect-error A schema factory must return an existing LiveMap schema input.
+define_livemap_schema(() => undefined);
+// @ts-expect-error The public schema facade rejects a non-schema input.
+mapSubpath.schema.make(42);
+// @ts-expect-error The public schema facade requires its factory to return a schema input.
+mapSubpath.schema.define(() => 42);
+void validOptionalObject;
+void validOptionalTuple;
+void validNullable;
+void invalidOptionalObject;
+void invalidArrayItem;
+void invalidTupleItem;
+void invalidNullable;
 
 declare const node: HsonNode;
 declare const arbitrary: string;

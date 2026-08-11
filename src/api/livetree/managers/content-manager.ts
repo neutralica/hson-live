@@ -19,7 +19,7 @@ type ContentItem = HsonNode | Primitive;
  * These strings are serialized from the HSON node graph, not read from a
  * mounted DOM element. They are therefore available for detached branches.
  */
-type ContentMarkupApi = Readonly<{
+export type ContentMarkupApi = Readonly<{
   /** Serialized child markup for the owner node. */
   readonly innerHTML: string;
   /** Serialized owner-node markup, including the owner tag itself. */

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import {
   hson,
+  TransformError,
+  is_transform_error,
+  read_transform_error_details,
   LiveTree,
   LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
   LIVETREE_DISPOSED_ERROR_CODE,
@@ -11,13 +14,18 @@ import {
   LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
   LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
   LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
+  LIVETREE_QUID_REUSE_ERROR_CODE,
+  LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
   LiveTreeAttributeError,
   LiveTreeBatchError,
   LiveTreeAlreadyAttachedError,
   LiveTreeDisposedError,
   LiveTreeProtectedRootError,
+  LiveTreeQuidReuseError,
+  LiveTreeLinkedIdentityRequiredError,
   CssManager,
   make_tree_selector,
+  TreeSelector,
   make_livemap_core,
   reflect_collection,
   create_live_inspector,
@@ -54,6 +62,11 @@ import {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,
   LiveMapDocumentMutationError,
+  LiveMapProjectedTransportError,
+  LiveMapProjectedValueError,
+  LiveMapReplayError,
+  LiveMapReplayInputError,
+  LiveMapRevError,
   format_live_path,
   path_is_prefix,
   paths_overlap,
@@ -84,6 +97,7 @@ import {
   decode_livehost_server_message,
   encode_livehost_message,
   create_livehost,
+  LiveHostAuthorityError,
   LiveMapSchemaError,
   snap_live_path,
   make_livemap_schema,
@@ -102,6 +116,27 @@ import {
   CONTENT_KEY,
   make_sanitizer,
 } from "../src/index.ts";
+import {
+  TransformError as TransformSubpathError,
+  is_transform_error as is_transform_subpath_error,
+  read_transform_error_details as read_transform_subpath_error_details,
+} from "../src/api/transform/index.ts";
+import { TransformError as HsonSubpathTransformError } from "../src/hson.ts";
+import {
+  LiveTreeLinkedIdentityRequiredError as LiveTreeSubpathLinkedIdentityRequiredError,
+  LiveTreeQuidReuseError as LiveTreeSubpathQuidReuseError,
+  TreeSelector as LiveTreeSubpathTreeSelector,
+} from "../src/api/livetree/index.ts";
+import {
+  LiveMapProjectedTransportError as LiveMapSubpathProjectedTransportError,
+  LiveMapProjectedValueError as LiveMapSubpathProjectedValueError,
+  LiveMapReplayError as LiveMapSubpathReplayError,
+  LiveMapReplayInputError as LiveMapSubpathReplayInputError,
+  LiveMapRevError as LiveMapSubpathRevError,
+} from "../src/api/livemap/index.ts";
+import {
+  LiveHostAuthorityError as LiveHostSubpathAuthorityError,
+} from "../src/api/livehost/index.ts";
 import type {
   HsonFacade,
   LiveHostDocumentSnapshotEncoding,
@@ -388,6 +423,9 @@ import type {
 
 const compatibilityValues = {
   hson,
+  TransformError,
+  is_transform_error,
+  read_transform_error_details,
   LiveTree,
   LIVETREE_ALREADY_ATTACHED_ERROR_CODE,
   LIVETREE_DISPOSED_ERROR_CODE,
@@ -398,13 +436,18 @@ const compatibilityValues = {
   LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
   LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE,
   LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE,
+  LIVETREE_QUID_REUSE_ERROR_CODE,
+  LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
   LiveTreeAttributeError,
   LiveTreeBatchError,
   LiveTreeAlreadyAttachedError,
   LiveTreeDisposedError,
   LiveTreeProtectedRootError,
+  LiveTreeQuidReuseError,
+  LiveTreeLinkedIdentityRequiredError,
   CssManager,
   make_tree_selector,
+  TreeSelector,
   make_livemap_core,
   reflect_collection,
   create_live_inspector,
@@ -441,6 +484,11 @@ const compatibilityValues = {
   LiveMapDocumentAttributeNotFoundError,
   LiveMapDocumentInstallError,
   LiveMapDocumentMutationError,
+  LiveMapProjectedTransportError,
+  LiveMapProjectedValueError,
+  LiveMapReplayError,
+  LiveMapReplayInputError,
+  LiveMapRevError,
   format_live_path,
   path_is_prefix,
   paths_overlap,
@@ -471,6 +519,7 @@ const compatibilityValues = {
   decode_livehost_server_message,
   encode_livehost_message,
   create_livehost,
+  LiveHostAuthorityError,
   LiveMapSchemaError,
   snap_live_path,
   make_livemap_schema,
@@ -489,6 +538,20 @@ const compatibilityValues = {
   CONTENT_KEY,
   make_sanitizer,
 };
+
+assert.equal(TransformError, TransformSubpathError);
+assert.equal(TransformError, HsonSubpathTransformError);
+assert.equal(is_transform_error, is_transform_subpath_error);
+assert.equal(read_transform_error_details, read_transform_subpath_error_details);
+assert.equal(TreeSelector, LiveTreeSubpathTreeSelector);
+assert.equal(LiveTreeQuidReuseError, LiveTreeSubpathQuidReuseError);
+assert.equal(LiveTreeLinkedIdentityRequiredError, LiveTreeSubpathLinkedIdentityRequiredError);
+assert.equal(LiveMapProjectedTransportError, LiveMapSubpathProjectedTransportError);
+assert.equal(LiveMapProjectedValueError, LiveMapSubpathProjectedValueError);
+assert.equal(LiveMapReplayError, LiveMapSubpathReplayError);
+assert.equal(LiveMapReplayInputError, LiveMapSubpathReplayInputError);
+assert.equal(LiveMapRevError, LiveMapSubpathRevError);
+assert.equal(LiveHostAuthorityError, LiveHostSubpathAuthorityError);
 
 for (const [name, value] of Object.entries(compatibilityValues)) {
   assert.notEqual(value, undefined, `root compatibility export ${name}`);
