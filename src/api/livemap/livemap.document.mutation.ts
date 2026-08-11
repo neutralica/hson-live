@@ -818,6 +818,16 @@ function insertion_content(endpoint: HsonNode, content: LiveMapDocumentContent):
   return content;
 }
 
+/** Build the exact canonical carrier accepted by the existing insert planner. @internal */
+export function make_internal_document_content_carrier(
+  contentInput: LiveMapDocumentContent,
+): HsonNode {
+  const content = clone_content(contentInput, "insert-content");
+  const carrier: HsonNode = { $_tag: ELEM_TAG, $_content: [] };
+  carrier.$_content.push(insertion_content(carrier, content));
+  return carrier;
+}
+
 function clone_attr_value(value: LiveMapDocumentAttributeValue): LiveMapDocumentAttributeValue {
   return typeof value === "object" && value !== null ? clone_node(value) : value;
 }

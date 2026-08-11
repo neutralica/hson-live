@@ -1,16 +1,28 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
+import * as publicApi from "../src/index.ts";
+import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
+import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import {
   InternalDocumentTraversalError,
+  lower_internal_document_content_insert,
+  lower_internal_document_content_remove,
   lower_internal_document_content_slot,
   lower_internal_document_content_target,
   lower_internal_document_element_target,
   resolve_internal_document_location,
+  type InternalDocumentContentMutationLowering,
   type InternalDocumentLogicalEdge,
 } from "../src/api/livemap/livemap.document.logical.ts";
-import type { DocumentLiveMap, ElementLiveMap, FragmentLiveMap } from "../src/types/livemap.types.ts";
+import type {
+  DocumentLiveMap,
+  ElementLiveMap,
+  FragmentLiveMap,
+  LiveMapDocumentContent,
+} from "../src/types/livemap.types.ts";
+import { FakeElement, install_fake_document } from "./helpers/fake-document.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 let checks = 0;
@@ -37,6 +49,12 @@ function fragment(source: string): FragmentLiveMap {
   return map;
 }
 
+function emptyFragment(): FragmentLiveMap {
+  const map = hson.liveMap.fromNode({ $_tag: "_hson_root", $_content: [] });
+  if (map.mode !== "fragment") throw new Error("Expected empty fragment map");
+  return map;
+}
+
 function resolve(map: DocumentLiveMap, edges: readonly InternalDocumentLogicalEdge[]) {
   return resolve_internal_document_location(map.root(), map.mode, edges);
 }
@@ -54,6 +72,35 @@ function tagAt(map: DocumentLiveMap, edges: readonly InternalDocumentLogicalEdge
   const resolved = resolve(map, edges);
   if (resolved.kind !== "node") throw new Error("Expected a logical node endpoint");
   return resolved.value.$_tag;
+}
+
+function logicalContent(map: DocumentLiveMap) {
+  return resolve(map, map.mode === "element" ? [facet("content")] : []);
+}
+
+function applyLowering(map: DocumentLiveMap, lowering: InternalDocumentContentMutationLowering) {
+  if (lowering.kind === "content-insert") {
+    return map.document.content.insert(lowering.target, lowering.index, lowering.content);
+  }
+  if (lowering.kind === "content-remove") {
+    return map.document.content.remove(lowering.target, lowering.index);
+  }
+  const replacement = hson.liveMap.fromNode(lowering.root);
+  if (replacement.mode !== map.mode) {
+    throw new Error(`Materialized ${replacement.mode} root cannot replace ${map.mode} owner`);
+  }
+  return map.install(replacement.capture());
+}
+
+function insertLogical(map: DocumentLiveMap, index: number, contentValue: LiveMapDocumentContent) {
+  return applyLowering(
+    map,
+    lower_internal_document_content_insert(logicalContent(map), index, contentValue),
+  );
+}
+
+function removeLogical(map: DocumentLiveMap, index: number) {
+  return applyLowering(map, lower_internal_document_content_remove(logicalContent(map), index));
 }
 
 check("element logical root is the ordinary root at the direct physical empty path", () => {
@@ -293,6 +340,258 @@ check("replay preserves logical location semantics in a DOM-free runtime", () =>
   target.replay(source.document.content.move(contentTarget, 0, 1));
   assert.equal(tagAt(target, [content(0)]), "b");
   assert.equal(tagAt(target, [content(1)]), "a");
+});
+
+check("empty element content resolution is passive and preserves exact state", () => {
+  const map = element(`<main/>`);
+  const beforeRoot = map.root();
+  const beforeCapture = map.capture();
+  const observations: unknown[] = [];
+  map.commits.observe((observation) => observations.push(observation));
+  assert.deepEqual(logicalContent(map), {
+    kind: "content",
+    scope: "element",
+    length: 0,
+    physical: { kind: "none", reason: "empty-element-content", ownerPath: [] },
+  });
+  assert.deepEqual(map.root(), beforeRoot);
+  assert.deepEqual(map.capture(), beforeCapture);
+  assert.equal(map.rev, 0);
+  assert.equal(observations.length, 0);
+});
+
+check("empty element insertion lowers to its real owner with one transient carrier", () => {
+  const map = element(`<main/>`);
+  const lowering = lower_internal_document_content_insert(logicalContent(map), 0, "first");
+  assert.equal(lowering.kind, "content-insert");
+  if (lowering.kind !== "content-insert") return;
+  assert.deepEqual(lowering.target, { kind: "path", path: [] });
+  assert.equal(lowering.index, 0);
+  assert.equal(typeof lowering.content === "object" && lowering.content !== null
+    ? lowering.content.$_tag
+    : undefined, "_hson_elem");
+  assert.deepEqual(map.element.node(), ordinary(`<main/>`));
+});
+
+check("first empty-element string insertion uses existing string-carrier normalization once", () => {
+  const map = element(`<main/>`);
+  const commit = insertLogical(map, 0, "first");
+  assert.equal(commit.changed, true);
+  assert.deepEqual([commit.prevRev, commit.rev, map.rev], [0, 1, 1]);
+  assert.equal(commit.ops[0]?.op, "insert-content");
+  const carrier = map.element.node().$_content[0];
+  assert.equal(typeof carrier === "object" && carrier !== null ? carrier.$_tag : undefined, "_hson_elem");
+  assert.equal(typeof carrier === "object" && carrier !== null
+    && typeof carrier.$_content[0] === "object" && carrier.$_content[0] !== null
+    ? carrier.$_content[0].$_tag
+    : undefined, "_hson_str");
+  assert.equal(JSON.stringify(map.root()).includes("quid"), false);
+});
+
+check("first empty-element ordinary-node insertion materializes canonical element content", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<span/>`));
+  assert.equal(tagAt(map, [content(0)]), "span");
+  assert.deepEqual(map.document.content().map((item) =>
+    typeof item === "object" && item !== null ? item.$_tag : item), ["main"]);
+});
+
+check("invalid insertion indexes reject before empty-element materialization", () => {
+  const map = element(`<main/>`);
+  traversalCode(
+    () => lower_internal_document_content_insert(logicalContent(map), 1, "x"),
+    "CONTENT_INDEX_OUT_OF_RANGE",
+  );
+  traversalCode(
+    () => lower_internal_document_content_insert(logicalContent(map), -1, "x"),
+    "INVALID_EDGE_INDEX",
+  );
+  assert.deepEqual(map.element.node(), ordinary(`<main/>`));
+  assert.equal(map.rev, 0);
+});
+
+check("after first insertion element content uses the ordinary carrier path", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  assert.deepEqual(logicalContent(map), {
+    kind: "content",
+    scope: "element",
+    length: 1,
+    physical: { kind: "carrier", path: [0], carrierPaths: [[0]] },
+  });
+  assert.deepEqual(resolve(map, [content(0)]).physical, {
+    kind: "carrier",
+    path: [0, 0],
+    carrierPaths: [[0]],
+  });
+});
+
+check("subsequent logical insertion reuses the materialized content owner", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  const commit = insertLogical(map, 1, ordinary(`<b/>`));
+  assert.equal(commit.ops[0]?.op, "insert-content");
+  assert.deepEqual([tagAt(map, [content(0)]), tagAt(map, [content(1)])], ["a", "b"]);
+  assert.equal(map.rev, 2);
+});
+
+check("subsequent replacement uses the existing physical slot planner", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  const slot = lower_internal_document_content_slot(resolve(map, [content(0)]));
+  map.document.content.replace(slot.target, slot.index, ordinary(`<b/>`));
+  assert.equal(tagAt(map, [content(0)]), "b");
+});
+
+check("subsequent movement uses the existing materialized content planner", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  insertLogical(map, 1, ordinary(`<b/>`));
+  const target = lower_internal_document_content_target(logicalContent(map));
+  map.document.content.move(target, 0, 1);
+  assert.deepEqual([tagAt(map, [content(0)]), tagAt(map, [content(1)])], ["b", "a"]);
+});
+
+check("removing the final logical element item removes its carrier canonically", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  const commit = removeLogical(map, 0);
+  assert.equal(commit.ops[0]?.op, "remove-content");
+  assert.deepEqual(map.element.node(), ordinary(`<main/>`));
+  assert.deepEqual(logicalContent(map).physical, {
+    kind: "none",
+    reason: "empty-element-content",
+    ownerPath: [],
+  });
+});
+
+check("reinsertion after returning an element to empty rematerializes normally", () => {
+  const map = element(`<main/>`);
+  insertLogical(map, 0, ordinary(`<a/>`));
+  removeLogical(map, 0);
+  insertLogical(map, 0, ordinary(`<b/>`));
+  assert.equal(tagAt(map, [content(0)]), "b");
+  assert.equal(map.rev, 3);
+});
+
+check("empty fragment resolution is passive and has no synthetic root path", () => {
+  const map = emptyFragment();
+  const before = map.capture();
+  assert.deepEqual(logicalContent(map), {
+    kind: "content",
+    scope: "fragment",
+    length: 0,
+    physical: { kind: "none", reason: "empty-fragment" },
+  });
+  assert.deepEqual(map.capture(), before);
+  assert.equal(map.rev, 0);
+});
+
+check("first empty-fragment insertion lowers through existing root replacement", () => {
+  const map = emptyFragment();
+  const lowering = lower_internal_document_content_insert(logicalContent(map), 0, "first");
+  assert.equal(lowering.kind, "replace-root");
+  const commit = applyLowering(map, lowering);
+  assert.equal(commit.ops[0]?.op, "replace-root");
+  assert.equal(map.mode, "fragment");
+  assert.equal(tagAt(map, [content(0)]), "_hson_str");
+  assert.deepEqual([commit.prevRev, commit.rev, map.rev], [0, 1, 1]);
+  assert.equal(JSON.stringify(map.root()).includes("quid"), false);
+});
+
+check("empty-fragment invalid insertion indexes reject without materialization", () => {
+  const map = emptyFragment();
+  traversalCode(
+    () => lower_internal_document_content_insert(logicalContent(map), 1, "x"),
+    "CONTENT_INDEX_OUT_OF_RANGE",
+  );
+  assert.deepEqual(map.root(), { $_tag: "_hson_root", $_content: [] });
+  assert.equal(map.rev, 0);
+
+  const elementLowering = lower_internal_document_content_insert(
+    logicalContent(map),
+    0,
+    ordinary(`<aside/>`),
+  );
+  if (elementLowering.kind !== "replace-root") throw new Error("Expected fragment root materialization");
+  const reclassified = hson.liveMap.fromNode(elementLowering.root);
+  assert.equal(reclassified.mode, "element");
+  assert.throws(() => map.install(reclassified.capture()));
+  assert.equal(map.rev, 0);
+});
+
+check("materialized fragment content returns to direct path lowering and normal inserts", () => {
+  const map = emptyFragment();
+  insertLogical(map, 0, "first");
+  assert.deepEqual(logicalContent(map).physical, { kind: "direct", path: [] });
+  insertLogical(map, 1, ordinary(`<aside/>`));
+  assert.deepEqual([tagAt(map, [content(0)]), tagAt(map, [content(1)])], ["_hson_str", "aside"]);
+});
+
+check("last fragment removal restores the canonical unmaterialized empty root", () => {
+  const map = emptyFragment();
+  insertLogical(map, 0, "first");
+  const removed = removeLogical(map, 0);
+  assert.equal(removed.ops[0]?.op, "replace-root");
+  assert.deepEqual(map.root(), { $_tag: "_hson_root", $_content: [] });
+  insertLogical(map, 0, "again");
+  assert.equal(resolve(map, [content(0), raw(0)]).kind, "primitive");
+  assert.equal(map.rev, 3);
+});
+
+check("replay reproduces first empty-element materialization as ordinary insert history", () => {
+  const source = element(`<main/>`);
+  const target = element(`<main/>`);
+  const commit = insertLogical(source, 0, ordinary(`<span/>`));
+  target.replay(commit);
+  assert.deepEqual(target.root(), source.root());
+  assert.equal(tagAt(target, [content(0)]), "span");
+});
+
+check("replay reproduces first empty-fragment materialization as ordinary root history", () => {
+  const source = emptyFragment();
+  const target = emptyFragment();
+  const commit = insertLogical(source, 0, "first");
+  target.replay(commit);
+  assert.deepEqual(target.root(), source.root());
+  assert.equal(tagAt(target, [content(0)]), "_hson_str");
+});
+
+check("public entrypoints expose no internal insertion-boundary representation", () => {
+  assert.equal(Reflect.has(publicApi, "lower_internal_document_content_insert"), false);
+  assert.equal(Reflect.has(publicApi, "lower_internal_document_content_remove"), false);
+  assert.equal(Reflect.has(publicApi, "make_internal_document_content_carrier"), false);
+});
+
+check("Reflection consumes first carrier materialization through existing commit handling", () => {
+  install_fake_document();
+  const map = element(`<main/>`);
+  const binding = hsonReflect(map);
+  const rootDom = project_livetree(binding.tree.node) as unknown as FakeElement;
+  const beforeProjection = structuredClone(binding.tree.node);
+
+  logicalContent(map);
+  assert.deepEqual(binding.tree.node, beforeProjection);
+  assert.equal(binding.sourceRevision, 0);
+  assert.equal(rootDom.childNodes.length, 0);
+
+  const commit = insertLogical(map, 0, ordinary(`<span/>`));
+  assert.equal(commit.ops[0]?.op, "insert-content");
+  assert.equal(binding.sourceRevision, 1);
+
+  // CHANGED: narrow the first content item before reading node-only $_tag.
+  const carrier = binding.tree.node.$_content[0];
+  assert.ok(typeof carrier === "object" && carrier !== null);
+  assert.equal(carrier.$_tag, "_hson_elem");
+
+  assert.equal(
+    rootDom.childNodes[0] instanceof FakeElement
+      ? rootDom.childNodes[0].tagName
+      : undefined,
+    "span",
+  );
+
+  binding.dispose();
 });
 
 process.stdout.write(`# ${checks} internal logical document traversal checks passed\n`);

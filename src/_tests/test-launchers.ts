@@ -735,7 +735,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-logical-traversal",
       repositoryModule: "tests/livemap-document-logical-traversal.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 45,
       collections: ["document", "path", "traversal", "canonical-graph", "externally-discoverable"],
     }),
     launcher({

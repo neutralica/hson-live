@@ -11,10 +11,12 @@ import type {
 } from "../../core/types.js";
 import type {
   DocumentLiveMapMode,
+  LiveMapDocumentContent,
   LiveMapDocumentPath,
   LiveMapDocumentRequestTarget,
 } from "../../types/livemap.types.js";
 import { classify_live_root_mode } from "./livemap.document.js";
+import { make_internal_document_content_carrier } from "./livemap.document.mutation.js";
 import {
   append_document_path,
   parent_document_path,
@@ -88,6 +90,23 @@ export type InternalDocumentLogicalResolution =
     value: Readonly<HsonMeta>;
     access: "protected";
     physical: InternalDocumentPhysicalAssociation;
+  }>;
+
+export type InternalDocumentContentMutationLowering =
+  | Readonly<{
+    kind: "content-insert";
+    target: LiveMapDocumentRequestTarget;
+    index: number;
+    content: LiveMapDocumentContent;
+  }>
+  | Readonly<{
+    kind: "content-remove";
+    target: LiveMapDocumentRequestTarget;
+    index: number;
+  }>
+  | Readonly<{
+    kind: "replace-root";
+    root: HsonNode;
   }>;
 
 export type InternalDocumentTraversalFailureCode =
@@ -236,6 +255,87 @@ export function lower_internal_document_element_target(
     return Object.freeze({ kind: "path", path: resolution.physical.path });
   }
   throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "the logical endpoint is not an ordinary element target");
+}
+
+/**
+ * Lower logical insertion without inventing a path for absent canonical state.
+ * The returned instruction is transient and must be handed to an existing
+ * content-insert or root-replacement planner.
+ */
+export function lower_internal_document_content_insert(
+  resolution: InternalDocumentLogicalResolution,
+  indexInput: number,
+  content: LiveMapDocumentContent,
+): InternalDocumentContentMutationLowering {
+  const index = validated_edge_index(indexInput);
+  if (resolution.kind !== "content") {
+    throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "insertion requires a logical content container");
+  }
+  if (index > resolution.length) {
+    throw traversal_error(
+      "CONTENT_INDEX_OUT_OF_RANGE",
+      `logical insertion index ${index} is outside 0 through ${resolution.length}`,
+    );
+  }
+  if (resolution.physical.kind === "direct" || resolution.physical.kind === "carrier") {
+    return Object.freeze({
+      kind: "content-insert",
+      target: Object.freeze({ kind: "path", path: resolution.physical.path }),
+      index,
+      content,
+    });
+  }
+  if (resolution.physical.kind !== "none" || index !== 0) {
+    throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "empty content can materialize only at insertion index zero");
+  }
+  const carrier = make_internal_document_content_carrier(content);
+  if (resolution.physical.reason === "empty-element-content"
+    && resolution.physical.ownerPath !== undefined) {
+    return Object.freeze({
+      kind: "content-insert",
+      target: Object.freeze({ kind: "path", path: resolution.physical.ownerPath }),
+      index: 0,
+      content: carrier,
+    });
+  }
+  const root: HsonNode = { $_tag: ROOT_TAG, $_content: [carrier] };
+  return Object.freeze({ kind: "replace-root", root });
+}
+
+/** Lower logical removal, collapsing the last materialized owner canonically. */
+export function lower_internal_document_content_remove(
+  resolution: InternalDocumentLogicalResolution,
+  indexInput: number,
+): InternalDocumentContentMutationLowering {
+  const index = validated_edge_index(indexInput);
+  if (resolution.kind !== "content" || index >= resolution.length) {
+    throw traversal_error("CONTENT_INDEX_OUT_OF_RANGE", "logical removal index is outside current content");
+  }
+  if (resolution.physical.kind !== "direct" && resolution.physical.kind !== "carrier") {
+    throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "logical content has no materialized removal target");
+  }
+  if (resolution.length > 1) {
+    return Object.freeze({
+      kind: "content-remove",
+      target: Object.freeze({ kind: "path", path: resolution.physical.path }),
+      index,
+    });
+  }
+  if (resolution.scope === "fragment") {
+    const root: HsonNode = { $_tag: ROOT_TAG, $_content: [] };
+    return Object.freeze({ kind: "replace-root", root });
+  }
+  const carrierPath = resolution.physical.path;
+  const carrierIndex = carrierPath[carrierPath.length - 1];
+  const ownerPath = parent_document_path(carrierPath);
+  if (carrierIndex === undefined || ownerPath === undefined) {
+    throw traversal_error("PHYSICAL_TARGET_UNAVAILABLE", "element carrier has no owning content slot");
+  }
+  return Object.freeze({
+    kind: "content-remove",
+    target: Object.freeze({ kind: "path", path: ownerPath }),
+    index: carrierIndex,
+  });
 }
 
 function document_root_cursor(root: HsonNode, mode: DocumentLiveMapMode): TraversalCursor {
@@ -463,7 +563,7 @@ function cursor_physical_association(
   });
 }
 
-function validated_edge_index(index: number, edgeIndex: number): number {
+function validated_edge_index(index: number, edgeIndex?: number): number {
   if (!Number.isSafeInteger(index) || index < 0) {
     throw traversal_error("INVALID_EDGE_INDEX", "content indexes must be non-negative safe integers", edgeIndex);
   }
