@@ -522,7 +522,7 @@ class CollectionReflector<TItem extends JsonValue> {
   }
 
   private readItem(source: LiveMapPathHandle<readonly TItem[]>, ordinal: number): DesiredItem<TItem> {
-    const itemSource = source.at([ordinal]) as LiveMapPathHandle<TItem>;
+    const itemSource = source.at([ordinal] as LivePath) as unknown as LiveMapPathHandle<TItem>;
     const value = itemSource.snap();
     if (value === undefined) {
       throw new CollectionReflectError(

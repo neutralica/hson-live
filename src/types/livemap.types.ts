@@ -117,25 +117,87 @@ export type LiveMapCoreReplay = {
   (input: LiveMapReplay): LiveMapCommit;
 };
 
+declare const LIVEMAP_INVALID_STATIC_PATH: unique symbol;
+type LiveMapInvalidStaticPath = Readonly<{ [LIVEMAP_INVALID_STATIC_PATH]: true }>;
+
+type LiveMapTupleSegment<TValue extends readonly unknown[], THead extends number> =
+  number extends THead
+  ? TValue[number] | undefined
+  : `${THead}` extends keyof TValue
+  ? TValue[THead & keyof TValue]
+  : LiveMapInvalidStaticPath;
+
+type LiveMapArraySegment<TValue extends readonly unknown[], THead extends number> =
+  number extends TValue["length"]
+  ? TValue[number] | undefined
+  : LiveMapTupleSegment<TValue, THead>;
+
+type LiveMapObjectSegment<TValue extends object, THead> =
+  THead extends string
+  ? string extends THead
+  ? JsonValue | undefined
+  : THead extends keyof TValue
+  ? TValue[THead] | (string extends keyof TValue ? undefined : never)
+  : LiveMapInvalidStaticPath
+  : LiveMapInvalidStaticPath;
+
+type LiveMapPathSegmentBranch<TValue, THead> =
+  unknown extends TValue
+  ? JsonValue | undefined
+  : TValue extends null | undefined
+  ? LiveMapInvalidStaticPath
+  : TValue extends readonly unknown[]
+  ? THead extends number
+  ? LiveMapArraySegment<TValue, THead>
+  : LiveMapInvalidStaticPath
+  : TValue extends object
+  ? LiveMapObjectSegment<TValue, THead>
+  : LiveMapInvalidStaticPath;
+
+type LiveMapPathSegmentBranches<TValue, THead> =
+  TValue extends unknown ? LiveMapPathSegmentBranch<TValue, THead> : never;
+
+type LiveMapReachablePathSegment<TValue, THead> = Exclude<
+  LiveMapPathSegmentBranches<TValue, THead>,
+  LiveMapInvalidStaticPath
+>;
+
+type LiveMapPathSegmentValue<TValue, THead> =
+  [LiveMapReachablePathSegment<TValue, THead>] extends [never]
+  ? LiveMapInvalidStaticPath
+  : LiveMapReachablePathSegment<TValue, THead>
+    | ([Extract<LiveMapPathSegmentBranches<TValue, THead>, LiveMapInvalidStaticPath>] extends [never]
+      ? never
+      : undefined);
+
+type ResolveLiveMapPathValue<TValue, TPath extends LivePath> =
+  number extends TPath["length"]
+  ? JsonValue | undefined
+  : TPath extends readonly []
+  ? TValue
+  : TPath extends readonly [infer THead, ...infer TRest]
+  ? ResolveLiveMapPathValue<
+    LiveMapPathSegmentValue<TValue, THead>,
+    Extract<TRest, LivePath>
+  >
+  : JsonValue | undefined;
+
 /**
  * Static value projection for a LivePath.
  *
- * Known object keys and array indexes narrow through `TValue`; unknown or
- * impossible paths fall back to `JsonValue | undefined` so dynamic path usage
- * remains possible without pretending the value is statically known.
+ * Exact literal paths narrow recursively. Branches that cannot continue below
+ * an optional, nullable, union, or indexed ancestor contribute `undefined`.
+ * A literal path that cannot traverse any branch resolves to `never`, while a
+ * broad runtime `LivePath` retains the validated `JsonValue | undefined` route.
  */
-export type LiveMapPathValue<TValue, TPath extends LivePath> =
-  TPath extends readonly []
-  ? TValue
-  : TPath extends readonly [infer THead, ...infer TRest]
-  ? THead extends keyof NonNullable<TValue>
-  ? LiveMapPathValue<NonNullable<TValue>[THead], Extract<TRest, LivePath>>
-  : THead extends number
-  ? NonNullable<TValue> extends readonly (infer TItem)[]
-  ? LiveMapPathValue<TItem, Extract<TRest, LivePath>>
-  : JsonValue | undefined
-  : JsonValue | undefined
-  : JsonValue | undefined;
+type PublicLiveMapPathValue<TResult> =
+  [TResult] extends [LiveMapInvalidStaticPath]
+  ? never
+  : TResult;
+
+export type LiveMapPathValue<TValue, TPath extends LivePath> = PublicLiveMapPathValue<
+  ResolveLiveMapPathValue<TValue, TPath>
+>;
 
 /** Remove `undefined` from write positions while preserving JSON value shape. */
 export type LiveMapWriteValue<TValue> = [Exclude<TValue, undefined>] extends [JsonValue]
@@ -250,7 +312,9 @@ export type LiveMapCore<
   snap: LiveMapCoreSnap<TValue>;
   schema: LiveMapCoreSchemaApi<TValue>;
   withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
-  at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   /** Set a resolved projected path; plain objects expand into shallow child sets. */
   set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCommit;
@@ -940,7 +1004,9 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   path: () => LivePath;
   snap: () => TValue;
   /** Create a child handle relative to this handle's projected path. */
-  at: <const TPath extends LivePath>(path: TPath) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   /** Set this resolved handle path; plain objects expand into shallow child sets. */
   set: (value: LiveMapSetValue<TValue>) => LiveMapCommit;
   /** Exact replacement at this handle path using replace-shaped commit ops. */

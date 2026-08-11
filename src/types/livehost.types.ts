@@ -927,7 +927,9 @@ type LiveHostReadonlyPathHandle<TValue> = Pick<
   LiveMapPathHandle<TValue>,
   "rev" | "path" | "snap" | "feed"
 > & Readonly<{
-  at: <const TPath extends LivePath>(path: TPath) => LiveHostReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveHostReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
   array: LiveHostReadonlyPathArrayApi<TValue>;
   object: LiveHostReadonlyPathObjectApi<TValue>;
 }>;
@@ -937,7 +939,9 @@ type LiveHostReadonlyDataMap<TValue, TMap extends LiveMap<TValue>> = Pick<
   "mode" | "rev" | "root" | "snap" | "capture" | "commits" | "feed" | "sub"
 > & Readonly<{
   schema: Pick<LiveMapCoreSchemaApi<TValue>, "get" | "match" | "resolve" | "has" | "must">;
-  at: <const TPath extends LivePath>(path: TPath) => LiveHostReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
+  at: <const TPath extends LivePath>(
+    path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
+  ) => LiveHostReadonlyPathHandle<LiveMapPathValue<TValue, TPath>>;
 }>;
 
 /** Read and observation surface exposed by a hosted authority. */

@@ -26,7 +26,7 @@ import {
   hsonString as hsonSubpathString,
   hsonTransform as hsonSubpathTransform,
 } from "hson-live/hson";
-import type { HsonNode, HsonSemanticPrimitive } from "hson-live/types";
+import type { HsonNode, HsonSemanticPrimitive, JsonValue } from "hson-live/types";
 import {
   hsonCalc as narrowHsonCalc,
   hsonNumber as narrowHsonNumber,
@@ -78,11 +78,13 @@ import {
   make_livemap_core,
   make_livemap_schema,
   type InferLiveMapSchema,
+  type LiveMap,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
   type LiveMapPathHandle,
   type LiveMapSchemaResolution,
   type LiveMapSchemaValue,
+  type LivePath,
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
@@ -150,6 +152,130 @@ type Equal<Left, Right> =
     : false;
 type Expect<Value extends true> = Value;
 
+type ProjectedPathTruth = Readonly<{
+  required: Readonly<{ leaf: string }>;
+  optional?: Readonly<{ name: string }>;
+  nullable: Readonly<{ name: string }> | null;
+  optionalNullable?: Readonly<{ name: string }> | null;
+  tuple: readonly [string, number?];
+  array: readonly Readonly<{ name?: string }>[];
+  nestedTuple: readonly [Readonly<{ child?: Readonly<{ value: string }> }>, Readonly<{ leaf: number }>?];
+  unionAll: Readonly<{ shared: number }> | Readonly<{ shared: string }>;
+  unionSome: Readonly<{ only: boolean }> | Readonly<{ other: number }>;
+  unionNone: Readonly<{ left: number }> | Readonly<{ right: string }>;
+  dictionary: Readonly<Record<string, Readonly<{ value: number }>>>;
+  primitive: number;
+  literal: "ready";
+  readonlyTuple: readonly [Readonly<{ code: "fixed" }>, 2];
+  deep?: Readonly<{
+    branch: Readonly<{
+      rows: readonly [Readonly<{ value: "tuple" }>] | readonly Readonly<{ value: "array" }>[];
+    }>;
+  }>;
+}>;
+
+declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
+declare const dynamicPath: LivePath;
+declare const dynamicObjectKey: string;
+declare const dynamicTupleIndex: number;
+declare const dynamicArrayIndex: number;
+
+const requiredObjectLeaf = projectedPathMap.at(["required", "leaf"]).snap();
+const optionalObjectEndpoint = projectedPathMap.at(["optional"]).snap();
+const optionalObjectLeaf = projectedPathMap.at(["optional", "name"]).snap();
+const nullableObjectEndpoint = projectedPathMap.at(["nullable"]).snap();
+const nullableObjectLeaf = projectedPathMap.at(["nullable", "name"]).snap();
+const optionalNullableEndpoint = projectedPathMap.at(["optionalNullable"]).snap();
+const optionalNullableLeaf = projectedPathMap.at(["optionalNullable", "name"]).snap();
+const requiredTuplePosition = projectedPathMap.at(["tuple", 0]).snap();
+const optionalTuplePosition = projectedPathMap.at(["tuple", 1]).snap();
+const dynamicTuplePosition = projectedPathMap.at(["tuple", dynamicTupleIndex]).snap();
+const literalArrayPosition = projectedPathMap.at(["array", 0]).snap();
+const dynamicArrayPosition = projectedPathMap.at(["array", dynamicArrayIndex]).snap();
+const nestedArrayOptionalLeaf = projectedPathMap.at(["array", 0, "name"]).snap();
+const nestedTupleOptionalLeaf = projectedPathMap.at(["nestedTuple", 0, "child", "value"]).snap();
+const optionalNestedTuplePosition = projectedPathMap.at(["nestedTuple", 1, "leaf"]).snap();
+const allUnionBranches = projectedPathMap.at(["unionAll", "shared"]).snap();
+const someUnionBranches = projectedPathMap.at(["unionSome", "only"]).snap();
+const broadDynamicPath = projectedPathMap.at(dynamicPath).snap();
+const indexedObjectLiteralKey = projectedPathMap.at(["dictionary", "entry"]).snap();
+const broadDynamicObjectKey = projectedPathMap.at(["dictionary", dynamicObjectKey]).snap();
+const preservedLiteral = projectedPathMap.at(["literal"]).snap();
+const preservedReadonlyTuple = projectedPathMap.at(["readonlyTuple"]).snap();
+const deepRepresentativePath = projectedPathMap.at(["deep", "branch", "rows", 0, "value"]).snap();
+const relativeRequiredLeaf = projectedPathMap.at(["required"]).at(["leaf"]).snap();
+projectedPathMap.sub.path(["required"], (next, prev) => {
+  type RequiredPathSubscriberNext = Expect<Equal<typeof next, Readonly<{ leaf: string }>>>;
+  type RequiredPathSubscriberPrev = Expect<Equal<typeof prev, Readonly<{ leaf: string }>>>;
+  return undefined;
+});
+projectedPathMap.sub.path(["dictionary"], (next, prev) => {
+  type IndexedPathSubscriberNext = Expect<Equal<
+    typeof next,
+    Readonly<Record<string, Readonly<{ value: number }>>>
+  >>;
+  type IndexedPathSubscriberPrev = Expect<Equal<
+    typeof prev,
+    Readonly<Record<string, Readonly<{ value: number }>>>
+  >>;
+  return undefined;
+});
+
+type RequiredObjectLeaf = Expect<Equal<typeof requiredObjectLeaf, string>>;
+type OptionalObjectEndpoint = Expect<Equal<typeof optionalObjectEndpoint, Readonly<{ name: string }> | undefined>>;
+type OptionalObjectLeaf = Expect<Equal<typeof optionalObjectLeaf, string | undefined>>;
+type NullableObjectEndpoint = Expect<Equal<typeof nullableObjectEndpoint, Readonly<{ name: string }> | null>>;
+type NullableObjectLeaf = Expect<Equal<typeof nullableObjectLeaf, string | undefined>>;
+type OptionalNullableEndpoint = Expect<Equal<
+  typeof optionalNullableEndpoint,
+  Readonly<{ name: string }> | null | undefined
+>>;
+type OptionalNullableLeaf = Expect<Equal<typeof optionalNullableLeaf, string | undefined>>;
+type RequiredTuplePosition = Expect<Equal<typeof requiredTuplePosition, string>>;
+type OptionalTuplePosition = Expect<Equal<typeof optionalTuplePosition, number | undefined>>;
+type DynamicTuplePosition = Expect<Equal<typeof dynamicTuplePosition, string | number | undefined>>;
+type LiteralArrayPosition = Expect<Equal<
+  typeof literalArrayPosition,
+  Readonly<{ name?: string }> | undefined
+>>;
+type DynamicArrayPosition = Expect<Equal<
+  typeof dynamicArrayPosition,
+  Readonly<{ name?: string }> | undefined
+>>;
+type NestedArrayOptionalLeaf = Expect<Equal<typeof nestedArrayOptionalLeaf, string | undefined>>;
+type NestedTupleOptionalLeaf = Expect<Equal<typeof nestedTupleOptionalLeaf, string | undefined>>;
+type OptionalNestedTuplePosition = Expect<Equal<typeof optionalNestedTuplePosition, number | undefined>>;
+type AllUnionBranches = Expect<Equal<typeof allUnionBranches, string | number>>;
+type SomeUnionBranches = Expect<Equal<typeof someUnionBranches, boolean | undefined>>;
+type BroadDynamicPath = Expect<Equal<typeof broadDynamicPath, JsonValue | undefined>>;
+type IndexedObjectLiteralKey = Expect<Equal<
+  typeof indexedObjectLiteralKey,
+  Readonly<{ value: number }> | undefined
+>>;
+type BroadDynamicObjectKey = Expect<Equal<typeof broadDynamicObjectKey, JsonValue | undefined>>;
+type PreservedLiteral = Expect<Equal<typeof preservedLiteral, "ready">>;
+type PreservedReadonlyTuple = Expect<Equal<
+  typeof preservedReadonlyTuple,
+  readonly [Readonly<{ code: "fixed" }>, 2]
+>>;
+type DeepRepresentativePath = Expect<Equal<typeof deepRepresentativePath, "tuple" | "array" | undefined>>;
+type RelativeRequiredLeaf = Expect<Equal<typeof relativeRequiredLeaf, string>>;
+
+// @ts-expect-error Exact object keys outside every branch are statically impossible.
+projectedPathMap.at(["required", "missing"]);
+// @ts-expect-error Exact primitive endpoints cannot be traversed further.
+projectedPathMap.at(["primitive", "missing"]);
+// @ts-expect-error Position two is outside the known tuple shape.
+projectedPathMap.at(["tuple", 2]);
+// @ts-expect-error No union member contains the requested key.
+projectedPathMap.at(["unionNone", "missing"]);
+// @ts-expect-error A missing read branch does not admit undefined as canonical state.
+projectedPathMap.at(["optional", "name"]).set(undefined);
+// @ts-expect-error Exact replacement also excludes missing-read undefined.
+projectedPathMap.at(["array", 0]).replace(undefined);
+// @ts-expect-error Updaters cannot turn missing reachability into an undefined write.
+projectedPathMap.at(["optional", "name"]).update(() => undefined);
+
 type PublicTransformClosure =
   | TransformErrorDetails
   | TransformErrorRelated
@@ -189,6 +315,9 @@ void publicDeclarationClosure;
 
 const declarationTruthSchema = define_livemap_schema((schema) => ({
   optionalObject: schema.number.optional,
+  optionalBranch: schema.object({ name: schema.string }).optional,
+  nullableBranch: schema.object({ name: schema.string }).nullable,
+  optionalNullableBranch: schema.object({ name: schema.string }).nullable.optional,
   array: schema.array(schema.number.optional),
   arrayToken: schema.number.optional.array,
   tupleTrailing: schema.tuple(schema.string, schema.number.optional),
@@ -248,10 +377,20 @@ const schemaBoundMap = mapSubpath.fromJson({}).schema.use(declarationTruthSchema
 const typedTupleItem = schemaBoundMap.at(["tupleTrailing", 0]).snap();
 const typedOptionalTupleItem = schemaBoundMap.at(["tupleTrailing", 1]).snap();
 const typedArrayItem = schemaBoundMap.at(["array", 0]).snap();
+const typedOptionalBranch = schemaBoundMap.at(["optionalBranch", "name"]).snap();
+const typedNullableBranch = schemaBoundMap.at(["nullableBranch", "name"]).snap();
+const typedOptionalNullableBranch = schemaBoundMap.at(["optionalNullableBranch", "name"]).snap();
+const typedSchemaLiteral = schemaBoundMap.at(["literal"]).snap();
 schemaBoundMap.at(["readonlyValue"]).set(1);
 type LiteralTuplePathRemainsExact = Expect<Equal<typeof typedTupleItem, string>>;
 type OptionalTuplePathRemainsExact = Expect<Equal<typeof typedOptionalTupleItem, number | undefined>>;
-type ArrayPathExcludesImpossibleUndefined = Expect<Equal<typeof typedArrayItem, number>>;
+type ArrayPathIncludesRuntimeAbsence = Expect<Equal<typeof typedArrayItem, number | undefined>>;
+type SchemaOptionalBranchReachability = Expect<Equal<typeof typedOptionalBranch, string | undefined>>;
+type SchemaNullableBranchReachability = Expect<Equal<typeof typedNullableBranch, string | undefined>>;
+type SchemaOptionalNullableBranchReachability = Expect<Equal<typeof typedOptionalNullableBranch, string | undefined>>;
+type SchemaLiteralPathRemainsExact = Expect<Equal<typeof typedSchemaLiteral, "draft" | "ready">>;
+// @ts-expect-error Schema evidence rejects keys absent from the exact inferred shape.
+schemaBoundMap.at(["missingSchemaKey"]);
 
 const validOptionalObject: Pick<DeclarationTruth, "optionalObject"> = {};
 const validOptionalTuple: DeclarationTruth["tupleTrailing"] = ["ready"];

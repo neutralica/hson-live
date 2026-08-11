@@ -77,7 +77,7 @@ export function make_livemap_proxy<TValue = JsonValue | undefined, TPath extends
   return new Proxy(target, {
     get: (_target, property) => {
       if (property === "$_") {
-        pathHandle ??= core.at(path as TPath);
+        pathHandle ??= core.at(path as LivePath) as unknown as LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
         return pathHandle;
       }
 

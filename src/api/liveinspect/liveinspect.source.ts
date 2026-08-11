@@ -31,7 +31,7 @@ export function normalize_inspector_source(
   origin?: LiveInspectorSourceOrigin,
 ): NormalizedInspectorSource {
   if (is_livemap(source)) {
-    const handle = source.at([]) as LiveMapPathHandle;
+    const handle = source.at([] as LivePath) as unknown as LiveMapPathHandle;
     must_supported_json(handle.snap());
     return Object.freeze({ handle, map: source, origin: origin ?? "livemap" });
   }
