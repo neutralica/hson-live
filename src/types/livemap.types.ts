@@ -566,6 +566,8 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   readonly mode: TMode;
   readonly rev: number;
   root: () => HsonNode;
+  /** Create a passive location at one logical ordered-content coordinate. */
+  at: (path: readonly number[]) => LiveMapDocumentLocation;
   capture: DocumentLiveMapCaptureApi<TMode>;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
@@ -583,6 +585,18 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   commits: LiveMapCommitObserverApi;
   /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
   debug: LiveMapDebugApi;
+}>;
+
+/** Structural return type for document `at(...)`; intentionally not exported. */
+type LiveMapDocumentLocation = Readonly<{
+  /** Current revision of the owning document map. */
+  readonly rev: number;
+  /** Return a detached copy of this logical authoring coordinate. */
+  path: () => readonly number[];
+  /** Read the detached current occupant, or `undefined` when absent. */
+  snap: () => HsonNode | Primitive | undefined;
+  /** Create a child location relative to this logical coordinate. */
+  at: (path: readonly number[]) => LiveMapDocumentLocation;
 }>;
 
 export type ElementLiveMap = DocumentLiveMapShared<"element"> & Readonly<{

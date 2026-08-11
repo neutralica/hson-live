@@ -50,6 +50,7 @@ import {
   type LiveMapProjectedIdentityOverlay,
 } from "./livemap.projected.identity.js";
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
+import { make_livemap_document_location_factory } from "./livemap.document.location.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -187,6 +188,7 @@ function make_document_livemap(
   ));
   let document: LiveMapDocumentApi;
   const identityApi = make_livemap_document_identity_api(() => document, controller);
+  const at = make_livemap_document_location_factory(core, mode);
   document = Object.freeze({
     root: () => core.root(),
     content,
@@ -206,6 +208,7 @@ function make_document_livemap(
 
   const shared = {
     root: () => core.root(),
+    at,
     debug: core.debug,
     install: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>
       install_livemap_document_capture(controller, capture, options),

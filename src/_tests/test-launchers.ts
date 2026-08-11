@@ -739,6 +739,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["document", "path", "traversal", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.document-location",
+      subject: "LiveMap",
+      displayName: "Public logical document locations",
+      packageScript: "test:livemap-document-location",
+      repositoryModule: "tests/livemap-document-location.acceptance.mts",
+      runtime: "node",
+      executableChecks: 26,
+      collections: ["document", "path", "traversal", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.document-staging",
       subject: "LiveMap",
       displayName: "Staged canonical document operations",

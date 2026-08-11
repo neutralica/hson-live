@@ -29,6 +29,18 @@ void hsonLiveMap.schema.define((shape) => ({ ready: shape.boolean }));
 
 const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
 if (documentMap.mode === "element") {
+  const documentLocation = documentMap.at([0]);
+  const documentEndpoint = documentLocation.at([1]).snap();
+  const logicalPath: readonly number[] = documentLocation.path();
+  void documentEndpoint;
+  void logicalPath;
+  void documentLocation.rev;
+  // @ts-expect-error logical document paths do not accept projected string keys
+  documentMap.at(["content"]);
+  // @ts-expect-error document locations intentionally omit projected mutation helpers
+  documentLocation.set(documentMap.element.node());
+  // @ts-expect-error document-specific namespaces do not duplicate passive traversal
+  documentMap.document.at([0]);
   const captureIdentity: DocumentLiveMapCaptureIdentity = "same-epoch";
   const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";
   const capture = documentMap.capture({ identity: captureIdentity });

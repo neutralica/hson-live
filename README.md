@@ -166,11 +166,30 @@ map.at(["items"]).array.push("three");
 console.log(map.snap());
 ```
 
+`map.at(...)` is the common passive-location operation for both projected and
+document maps. Projected paths traverse logical JSON object members and array
+indexes. Document paths contain numeric indexes into ordered authored content:
+
+```ts
+const document = hson.liveMap.fromHson(`<main <section <p "hello"/>/>/>`);
+
+if (document.mode === "element") {
+  const paragraph = document.at([0, 0]);
+  console.log(paragraph.snap());
+}
+```
+
+Document locations are fixed logical coordinates that re-resolve against the
+current map revision. They are passive, return detached reads, and do not count
+the internal `_hson_elem` carrier. Specialized attribute and content mutations
+remain under `map.document.attrs` and `map.document.content`. Physical document
+paths remain the low-level coordinates used by those canonical operations.
+
 LiveMap provides:
 
 - object and array state;
 - canonical document maps;
-- projected path handles;
+- projected path handles and passive logical document locations;
 - atomic `set`, `replace`, `delete`, and `splice` operations;
 - synchronous batches;
 - revisioned commits;

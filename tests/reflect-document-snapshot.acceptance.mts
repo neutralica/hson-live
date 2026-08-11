@@ -59,6 +59,7 @@ function with_capture(
     mode: "element",
     get rev() { return map.rev; },
     root: map.root,
+    at: map.at,
     capture,
     install: map.install,
     restore: map.restore,
