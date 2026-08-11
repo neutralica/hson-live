@@ -165,7 +165,6 @@ check("logical and raw indexes require non-negative safe integers", () => {
     traversalCode(() => resolve(map, [edge]), "INVALID_EDGE_INDEX");
   }
 });
-
 check("malformed element graphs fail exact canonical admission instead of being repaired", () => {
   const malformed: HsonNode = {
     $_tag: "_hson_root",
@@ -174,11 +173,21 @@ check("malformed element graphs fail exact canonical admission instead of being 
       $_content: [{ $_tag: "main", $_content: ["raw-text-without-carrier"] }],
     }],
   };
-  traversalCode(() => resolve_internal_document_location(malformed, "element", []), "INVALID_DOCUMENT_ROOT");
-  const cluster = malformed.$_content[0];
-  assert.equal(typeof cluster === "object" && cluster !== null ? cluster.$_content[0]?.$_content[0] : undefined, "raw-text-without-carrier");
-});
 
+  traversalCode(
+    () => resolve_internal_document_location(malformed, "element", []),
+    "INVALID_DOCUMENT_ROOT",
+  );
+
+  const cluster = malformed.$_content[0];
+  assert.ok(typeof cluster === "object" && cluster !== null);
+
+  // CHANGED: narrow the nested content item before accessing node-only $_content.
+  const main = cluster.$_content[0];
+  assert.ok(typeof main === "object" && main !== null);
+
+  assert.equal(main.$_content[0], "raw-text-without-carrier");
+});
 check("tag is a readonly facet owned by the element path rather than a content path", () => {
   assert.deepEqual(resolve(element(`<main/>`), [facet("tag")]), {
     kind: "facet",
