@@ -300,6 +300,13 @@ export function create_livehost_client<
   const makeActionAttemptId = options.actionAttemptId ?? make_action_attempt_id;
   const makeActionStatusId = options.actionStatusId ?? make_action_status_id;
   let map: ClassifiedLiveMap = classified_live_map(options.map);
+  const initialRecoveryCursor = options.recovery?.cursor;
+  if (initialRecoveryCursor !== undefined && initialRecoveryCursor.lastAppliedRev !== map.rev) {
+    throw new LiveHostClientRecoveryError(
+      "LIVEHOST_RECOVERY_CURSOR_MISMATCH",
+      `LiveHost recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
+    );
+  }
   const pendingActions = new Map<LiveHostActionId, PendingAction[]>();
   const pendingActionAttemptsByRequest = new Map<LiveHostActionRequestId, LiveHostActionId[]>();
   const pendingActionStatuses = new Map<LiveHostActionStatusId, PendingActionStatus>();
@@ -681,6 +688,7 @@ export function create_livehost_client<
       || caught.incarnationId !== plan.incarnationId
       || caught.throughRev < plan.headRev
       || incarnationId !== caught.incarnationId
+      || map.rev !== lastAppliedRev
       || lastAppliedRev !== caught.throughRev) {
       fail_recovery("LIVEHOST_RECOVERY_CAUGHT_UP_MISMATCH", "Caught-up boundary does not match the installed mirror cursor.");
       return true;

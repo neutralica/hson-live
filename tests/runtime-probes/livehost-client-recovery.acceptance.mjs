@@ -76,6 +76,18 @@ function recovery_options(host, map, rev, incarnationId = host.stream.incarnatio
   };
 }
 
+function restore_projected_revision(map, rev) {
+  const capture = map.capture();
+  map.restore({
+    rev,
+    format: capture.format,
+    formatVersion: capture.formatVersion,
+    payload: capture.payload,
+  });
+  assert.equal(map.rev, rev);
+  return map;
+}
+
 function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
   return {
     logicalMapId,
@@ -152,6 +164,42 @@ await check("protocol rejects legacy value snapshots and malformed HSON envelope
     const decoded = decode_livehost_server_message(JSON.stringify({ ...base, snapshot }));
     assert.equal(decoded.ok, false);
     assert.match(decoded.ok ? "" : decoded.error.message, /Malformed LiveHost recovery snapshot message/);
+  }
+});
+
+await check("recovery cursor admission requires the supplied mirror revision", () => {
+  const matchingPair = socket_pair();
+  const matchingMirror = restore_projected_revision(hson.liveMap.fromJson({ value: 1 }), 2);
+  const matching = hson.liveHost.client({
+    socket: matchingPair.client,
+    map: matchingMirror,
+    recovery: {
+      logicalMapId: "cursor-matching",
+      cursor: { incarnationId: "inc", lastAppliedRev: 2 },
+    },
+  });
+  assert.equal(matching.map, matchingMirror);
+  assert.equal(matching.recovery.lastAppliedRev, matchingMirror.rev);
+
+  for (const [label, mirrorRev, cursorRev] of [
+    ["lower", 2, 1],
+    ["higher", 2, 3],
+  ]) {
+    const pair = socket_pair();
+    const mirror = restore_projected_revision(hson.liveMap.fromJson({ value: label }), mirrorRev);
+    assert.throws(
+      () => hson.liveHost.client({
+        socket: pair.client,
+        map: mirror,
+        recovery: {
+          logicalMapId: `cursor-${label}`,
+          cursor: { incarnationId: "inc", lastAppliedRev: cursorRev },
+        },
+      }),
+      (error) => error instanceof LiveHostClientRecoveryError
+        && error.code === "LIVEHOST_RECOVERY_CURSOR_MISMATCH",
+    );
+    assert.equal(pair.clientSent.length, 0);
   }
 });
 
@@ -235,6 +283,8 @@ await check("replay applies exact commits once and current emits no body", async
   const notifications = client.recovery.debug().consumerNotifications;
   const current = await client.recovery.recover();
   assert.equal(current.strategy, "current");
+  assert.equal(client.map.rev, client.recovery.lastAppliedRev);
+  assert.equal(client.recovery.lastAppliedRev, current.headRev);
   assert.equal(client.recovery.debug().consumerNotifications, notifications);
   const requestIds = pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").map((message) => message.id);
   const emitted = pair.serverSent.map(JSON.parse);
@@ -320,6 +370,7 @@ await check("revision ahead rejects without replacing the mirror", async () => {
   const trace = trace_sink(events);
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-ahead", trace });
   const mirror = hson.liveMap.fromJson({ value: 99 });
+  restore_projected_revision(mirror, host.stream.headRev + 2);
   const pair = socket_pair();
   const client = attach(host, pair, { ...recovery_options(host, mirror, host.stream.headRev + 2), trace });
   await assert.rejects(client.recovery.recover(), (error) => error instanceof LiveHostClientRecoveryError && error.code === "REVISION_AHEAD_OF_AUTHORITY");
@@ -443,6 +494,39 @@ await check("gap stops later application and preserves last valid state", async 
   assert.equal(client.recovery.failure.code, "LIVEHOST_RECOVERY_COMMIT_GAP");
   assert.deepEqual(client.map.snap(), { value: 0 });
   assert.equal(client.recovery.lastAppliedRev, 0);
+});
+
+await check("already-current recovery rejects when the installed mirror revision changes", async () => {
+  const fixture = begin_scripted_projected_recovery("current-mirror-mismatch");
+  fixture.pair.push_server({
+    type: "recovery-plan",
+    id: fixture.id,
+    sessionId: "s",
+    logicalMapId: "current-mirror-mismatch",
+    incarnationId: "inc",
+    headRev: 0,
+    outcome: "current",
+    snapshotEncoding: { format: "hson" },
+  });
+  fixture.mirror.set(["value"], 1);
+  fixture.pair.push_server({
+    type: "recovery-caught-up",
+    id: fixture.id,
+    caughtUp: {
+      kind: "caught_up",
+      logicalMapId: "current-mirror-mismatch",
+      incarnationId: "inc",
+      throughRev: 0,
+    },
+  });
+  await assert.rejects(
+    fixture.promise,
+    (error) => error instanceof LiveHostClientRecoveryError
+      && error.code === "LIVEHOST_RECOVERY_CAUGHT_UP_MISMATCH",
+  );
+  assert.equal(fixture.mirror.rev, 1);
+  assert.equal(fixture.client.recovery.lastAppliedRev, 0);
+  assert.equal(fixture.client.recovery.status, "failed");
 });
 
 await check("client rejects unsupported snapshot negotiation acknowledgments", async () => {
@@ -597,6 +681,7 @@ await check("replay conflict preserves cursor and supports a later snapshot atte
 await check("invalid snapshot retains old mirror and cursor", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
+  restore_projected_revision(mirror, 4);
   const events = [];
   const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "bad-snapshot", cursor: { incarnationId: "old", lastAppliedRev: 4 } }, trace: trace_sink(events) });
   client.connect();
@@ -614,6 +699,7 @@ await check("invalid snapshot retains old mirror and cursor", async () => {
 await check("malformed snapshot HSON fails installation without advancing state", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
+  restore_projected_revision(mirror, 4);
   const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "malformed-hson", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   let notifications = 0;
@@ -639,6 +725,7 @@ await check("valid HSON rejected by the active schema does not replace the mirro
   const pair = socket_pair();
   const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 1 });
+  restore_projected_revision(mirror, 4);
   mirror.schema.use(schema);
   const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "schema-invalid", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
@@ -660,6 +747,7 @@ await check("valid HSON rejected by the active schema does not replace the mirro
 await check("legacy value snapshot fails as a protocol envelope error", async () => {
   const pair = socket_pair();
   const mirror = hson.liveMap.fromJson({ value: 1 });
+  restore_projected_revision(mirror, 4);
   const client = hson.liveHost.client({ socket: pair.client, map: mirror, recovery: { logicalMapId: "legacy-envelope", cursor: { incarnationId: "old", lastAppliedRev: 4 } } });
   client.connect();
   const promise = client.recovery.recover();

@@ -985,7 +985,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-client-recovery",
       repositoryModule: "tests/runtime-probes/livehost-client-recovery.acceptance.mjs",
       runtime: "node-real-websocket",
-      executableChecks: 28,
+      executableChecks: 30,
       collections: ["client", "recovery", "protocol", "websocket"],
     }),
     launcher({

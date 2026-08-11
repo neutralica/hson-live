@@ -125,6 +125,18 @@ function resume_options(host, client, credential) {
   };
 }
 
+function restore_projected_revision(map, rev) {
+  const capture = map.capture();
+  map.restore({
+    rev,
+    format: capture.format,
+    formatVersion: capture.formatVersion,
+    payload: capture.payload,
+  });
+  assert.equal(map.rev, rev);
+  return map;
+}
+
 await check("basic reattachment restores session subscriptions and uses replay", async () => {
   const { host } = host_fixture({ logicalMapId: "basic" });
   const first = await create_recovered(host);
@@ -310,6 +322,7 @@ await check("session credentials cannot weaken revision-ahead validation", async
   const pair = socket_pair();
   host.connect(pair.server);
   const mirror = hson.liveMap.fromJson({ value: 99 });
+  restore_projected_revision(mirror, host.stream.headRev + 5);
   const client = hson.liveHost.client({
     socket: pair.client,
     map: mirror,
