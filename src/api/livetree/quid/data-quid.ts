@@ -85,7 +85,7 @@ function record_issued_quid(q: string, runtime: LiveTreeRuntime): void {
   runtime.issuedQuids.add(q);
 }
 
-/** Generate one canonical 80-bit persisted QUID from secure random bytes. */
+/** Generate one canonical 45-bit persisted QUID from secure random bytes. */
 export function mint_quid(): string {
   return mint_hson_node_quid();
 }

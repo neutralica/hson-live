@@ -89,16 +89,16 @@ async function assert_single_hosted_commit({ host, client, action, payload, veri
 const rootPath = { kind: "path", path: [] };
 
 await check("document.attrs.set lowers a QUID request before authoritative history and replay", async () => {
-  const initial = `<main @0000000000000001 <p @0000000000000002/>/>`;
+  const initial = `<main @000000001 <p @000000002/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attr-set" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
     host,
     client,
     action: "document.attrs.set",
-    payload: { target: { kind: "quid", quid: "0000000000000002" }, name: "title", value: "kept" },
+    payload: { target: { kind: "quid", quid: "000000002" }, name: "title", value: "kept" },
     verify() {
-      assert.equal(host.map.document.byQuid("0000000000000002")?.$_attrs?.title, "kept");
+      assert.equal(host.map.document.byQuid("000000002")?.$_attrs?.title, "kept");
     },
   });
 });
@@ -119,7 +119,7 @@ await check("document.attrs.drop uses a fragment path target and flows through o
 });
 
 await check("document.attrs.setMany preserves unspecified attrs in one hosted replace-attrs commit", async () => {
-  const initial = `<main title="kept" @0000000000000020/>`;
+  const initial = `<main title="kept" @000000020/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attrs-set-many" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
@@ -127,7 +127,7 @@ await check("document.attrs.setMany preserves unspecified attrs in one hosted re
     client,
     action: "document.attrs.setMany",
     payload: {
-      target: { kind: "quid", quid: "0000000000000020" },
+      target: { kind: "quid", quid: "000000020" },
       values: { id: "main", hidden: false, count: 0 },
     },
     verify() {
@@ -156,7 +156,7 @@ await check("document.attrs.dropMany ignores absent and duplicate names in one h
 });
 
 await check("document.attrs.clear preserves persisted metadata and compacts attrs once", async () => {
-  const initial = `<main id="drop" style="color: red" @0000000000000021/>`;
+  const initial = `<main id="drop" style="color: red" @000000021/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attrs-clear" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
@@ -167,14 +167,14 @@ await check("document.attrs.clear preserves persisted metadata and compacts attr
     verify() {
       const node = host.map.element.node();
       assert.equal(node.$_attrs, undefined);
-      assert.deepEqual(node.$_meta, { quid: "0000000000000021" });
-      assert.equal(host.map.document.byQuid("0000000000000021")?.$_tag, "main");
+      assert.deepEqual(node.$_meta, { quid: "000000021" });
+      assert.equal(host.map.document.byQuid("000000021")?.$_tag, "main");
     },
   });
 });
 
 await check("document.attrs.replace installs one exact hosted final-state bag", async () => {
-  const initial = `<main id="old" title="removed" <p @0000000000000022/>/>`;
+  const initial = `<main id="old" title="removed" <p @000000022/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-attrs-replace" });
   const client = await connected_document_client(host, element(initial));
   await assert_single_hosted_commit({
@@ -182,11 +182,11 @@ await check("document.attrs.replace installs one exact hosted final-state bag", 
     client,
     action: "document.attrs.replace",
     payload: {
-      target: { kind: "quid", quid: "0000000000000022" },
+      target: { kind: "quid", quid: "000000022" },
       values: { empty: "", hidden: false, count: 0, nullable: null, style: { color: "red" } },
     },
     verify() {
-      assert.deepEqual(host.map.document.byQuid("0000000000000022")?.$_attrs, {
+      assert.deepEqual(host.map.document.byQuid("000000022")?.$_attrs, {
         count: 0, empty: "", hidden: false, nullable: null, style: { color: "red" },
       });
     },
@@ -194,12 +194,12 @@ await check("document.attrs.replace installs one exact hosted final-state bag", 
 });
 
 await check("document.content.replace uses a path target and replays one canonical node replacement", async () => {
-  const initial = `<main <p @0000000000000003 "old"/>/>`;
+  const initial = `<main <p @000000003 "old"/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-content-replace" });
   const client = await connected_document_client(host, element(initial));
   const replacement = {
     $_tag: "_hson_elem",
-    $_content: [element(`<article @0000000000000004 "new"/>`).element.node()],
+    $_content: [element(`<article @000000004 "new"/>`).element.node()],
   };
   await assert_single_hosted_commit({
     host,
@@ -207,8 +207,8 @@ await check("document.content.replace uses a path target and replays one canonic
     action: "document.content.replace",
     payload: { target: rootPath, index: 0, replacement },
     verify() {
-      assert.equal(host.map.document.byQuid("0000000000000004")?.$_tag, "article");
-      assert.equal(host.map.document.byQuid("0000000000000003"), undefined);
+      assert.equal(host.map.document.byQuid("000000004")?.$_tag, "article");
+      assert.equal(host.map.document.byQuid("000000003"), undefined);
     },
   });
 });
@@ -217,7 +217,7 @@ await check("document.content.insert uses a fragment path and publishes one cano
   const initial = `<a/> <c/>`;
   const host = hson.liveHost.create({ map: fragment(initial), logicalMapId: "hosted-content-insert" });
   const client = await connected_document_client(host, fragment(initial));
-  const content = element(`<b @000000000000001c/>`).element.node();
+  const content = element(`<b @00000001c/>`).element.node();
   await assert_single_hosted_commit({
     host,
     client,
@@ -225,25 +225,25 @@ await check("document.content.insert uses a fragment path and publishes one cano
     payload: { target: rootPath, index: 1, content },
     verify() {
       assert.deepEqual(host.map.document.content().map((item) => item.$_tag), ["a", "b", "c"]);
-      assert.equal(host.map.document.byQuid("000000000000001c")?.$_tag, "b");
+      assert.equal(host.map.document.byQuid("00000001c")?.$_tag, "b");
     },
   });
 });
 
 await check("document.content.remove lowers a QUID request to one canonical path removal", async () => {
-  const initial = `<main @000000000000001d/>`;
+  const initial = `<main @00000001d/>`;
   const authority = element(initial);
   const mirror = element(initial);
   const extra = element(`<aside "kept"/>`).element.node().$_content[0];
-  authority.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 0, extra);
-  mirror.document.content.insert({ kind: "quid", quid: "000000000000001d" }, 0, extra);
+  authority.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
+  mirror.document.content.insert({ kind: "quid", quid: "00000001d" }, 0, extra);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "hosted-content-remove" });
   const client = await connected_document_client(host, mirror);
   await assert_single_hosted_commit({
     host,
     client,
     action: "document.content.remove",
-    payload: { target: { kind: "quid", quid: "000000000000001d" }, index: 0 },
+    payload: { target: { kind: "quid", quid: "00000001d" }, index: 0 },
     verify() {
       assert.equal(host.map.element.node().$_content.length, 0);
     },
@@ -251,7 +251,7 @@ await check("document.content.remove lowers a QUID request to one canonical path
 });
 
 await check("document.content.move uses final-position semantics in one graph operation", async () => {
-  const initial = `<a/> <b @000000000000001e/> <c/> <d/>`;
+  const initial = `<a/> <b @00000001e/> <c/> <d/>`;
   const host = hson.liveHost.create({ map: fragment(initial), logicalMapId: "hosted-content-move" });
   const client = await connected_document_client(host, fragment(initial));
   await assert_single_hosted_commit({
@@ -262,13 +262,13 @@ await check("document.content.move uses final-position semantics in one graph op
     verify() {
       assert.deepEqual(host.map.document.content().map((item) => item.$_tag), ["a", "c", "d", "b"]);
       assert.equal(host.map.element, undefined);
-      assert.equal(host.map.document.byQuid("000000000000001e")?.$_tag, "b");
+      assert.equal(host.map.document.byQuid("00000001e")?.$_tag, "b");
     },
   });
 });
 
 await check("each hosted operation accepts its alternate path or persisted-QUID target style", async () => {
-  const initial = `<main @0000000000000009 id="drop" <p @000000000000000a "old"/>/>`;
+  const initial = `<main @000000009 id="drop" <p @00000000a "old"/>/>`;
   const host = hson.liveHost.create({ map: element(initial) });
   const client = await connected_document_client(host, element(initial));
   const textCluster = element(`<p "new"/>`).element.node().$_content[0];
@@ -279,11 +279,11 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
     value: "path",
   })).type, "ack");
   assert.equal((await client.action("document.attrs.drop", {
-    target: { kind: "quid", quid: "0000000000000009" },
+    target: { kind: "quid", quid: "000000009" },
     name: "id",
   })).type, "ack");
   assert.equal((await client.action("document.content.replace", {
-    target: { kind: "quid", quid: "000000000000000a" },
+    target: { kind: "quid", quid: "00000000a" },
     index: 0,
     replacement: textCluster,
   })).type, "ack");
@@ -302,9 +302,9 @@ await check("each hosted operation accepts its alternate path or persisted-QUID 
     index: 1,
   })).type, "ack");
   assert.equal(host.map.rev, 6);
-  assert.equal(host.map.document.byQuid("0000000000000009")?.$_attrs?.class, "path");
-  assert.equal(host.map.document.byQuid("0000000000000009")?.$_attrs?.id, undefined);
-  const finalParagraphCluster = host.map.document.byQuid("000000000000000a")?.$_content[0];
+  assert.equal(host.map.document.byQuid("000000009")?.$_attrs?.class, "path");
+  assert.equal(host.map.document.byQuid("000000009")?.$_attrs?.id, undefined);
+  const finalParagraphCluster = host.map.document.byQuid("00000000a")?.$_content[0];
   assert.equal(finalParagraphCluster?.$_tag, "_hson_elem");
   assert.equal(finalParagraphCluster?.$_content[0]?.$_tag, "i");
   assert.deepEqual(client.map.capture(), host.map.capture());
@@ -359,7 +359,7 @@ await check("obsolete document.attr actions are unknown", async () => {
 });
 
 await check("payload and local document failures leave authority and history unchanged", async () => {
-  const initial = `<main @0000000000000005 <p/>/>`;
+  const initial = `<main @000000005 <p/>/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-failures" });
   const client = await connected_document_client(host, element(initial));
   const invalid = [
@@ -367,7 +367,7 @@ await check("payload and local document failures leave authority and history unc
     ["document.attrs.set", { target: rootPath, name: "bad name", value: "x" }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.set", { target: rootPath, name: "id", value: { structured: true } }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.set", { target: { kind: "path", path: [99] }, name: "id", value: "x" }, "DOCUMENT_PATH_OUT_OF_RANGE"],
-    ["document.attrs.drop", { target: { kind: "quid", quid: "0000000000000006" }, name: "id" }, "DOCUMENT_TARGET_NOT_FOUND"],
+    ["document.attrs.drop", { target: { kind: "quid", quid: "000000006" }, name: "id" }, "DOCUMENT_TARGET_NOT_FOUND"],
     ["document.attrs.setMany", { target: rootPath }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.setMany", { target: rootPath, values: [] }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
     ["document.attrs.setMany", { target: rootPath, values: { good: "x", "bad name": "x" } }, "LIVEHOST_SCHEMA_INVALID_PAYLOAD"],
@@ -562,10 +562,10 @@ await check("a duplicate structural retry does not insert twice", async () => {
 });
 
 await check("incremental recovery after a hosted action reconstructs an identical document", async () => {
-  const initial = `<main @0000000000000007/>`;
+  const initial = `<main @000000007/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-recovery-replay" });
   const actor = await connected_document_client(host, element(initial));
-  await actor.action("document.attrs.set", { target: { kind: "quid", quid: "0000000000000007" }, name: "class", value: "ready" });
+  await actor.action("document.attrs.set", { target: { kind: "quid", quid: "000000007" }, name: "class", value: "ready" });
   actor.disconnect();
   const recovered = await connected_document_client(host, element(initial), {
     incarnationId: host.stream.incarnationId,
@@ -576,7 +576,7 @@ await check("incremental recovery after a hosted action reconstructs an identica
 });
 
 await check("snapshot fallback after a hosted action reconstructs an identical document", async () => {
-  const initial = `<main @0000000000000008/>`;
+  const initial = `<main @000000008/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-recovery-snapshot", history: { maxCommits: 0 } });
   const actor = await connected_document_client(host, element(initial));
   await actor.action("document.attrs.set", { target: rootPath, name: "title", value: "snapshot" });
@@ -587,11 +587,11 @@ await check("snapshot fallback after a hosted action reconstructs an identical d
   });
   assert.equal(recovered.recovery.strategy, "snapshot");
   assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("0000000000000008")?.$_attrs?.title, "snapshot");
+  assert.equal(recovered.map.document.byQuid("000000008")?.$_attrs?.title, "snapshot");
 });
 
 await check("all four bulk actions survive incremental resume in canonical order", async () => {
-  const initial = `<main id="old" title="drop" @0000000000000023/>`;
+  const initial = `<main id="old" title="drop" @000000023/>`;
   const host = hson.liveHost.create({ map: element(initial), logicalMapId: "hosted-bulk-recovery-replay" });
   const actor = await connected_document_client(host, element(initial));
   await actor.action("document.attrs.setMany", { target: rootPath, values: { class: "ready" } });
@@ -609,11 +609,11 @@ await check("all four bulk actions survive incremental resume in canonical order
   assert.equal(recovered.recovery.strategy, "replay");
   assert.deepEqual(recovered.map.capture(), host.map.capture());
   assert.equal(recovered.map.rev, 4);
-  assert.equal(recovered.map.document.byQuid("0000000000000023")?.$_tag, "main");
+  assert.equal(recovered.map.document.byQuid("000000023")?.$_tag, "main");
 });
 
 await check("all four bulk actions survive snapshot fallback with metadata intact", async () => {
-  const initial = `<main id="old" title="drop" @0000000000000024/>`;
+  const initial = `<main id="old" title="drop" @000000024/>`;
   const host = hson.liveHost.create({
     map: element(initial),
     logicalMapId: "hosted-bulk-recovery-snapshot",
@@ -632,7 +632,7 @@ await check("all four bulk actions survive snapshot fallback with metadata intac
   assert.equal(recovered.recovery.strategy, "snapshot");
   assert.deepEqual(recovered.map.capture(), host.map.capture());
   assert.equal(recovered.map.rev, 4);
-  assert.equal(recovered.map.document.byQuid("0000000000000024")?.$_meta?.["quid"], "0000000000000024");
+  assert.equal(recovered.map.document.byQuid("000000024")?.$_meta?.["quid"], "000000024");
 });
 
 await check("incremental recovery preserves an inserted node and its QUID", async () => {
@@ -642,7 +642,7 @@ await check("incremental recovery preserves an inserted node and its QUID", asyn
   await actor.action("document.content.insert", {
     target: rootPath,
     index: 1,
-    content: element(`<b @000000000000001f/>`).element.node(),
+    content: element(`<b @00000001f/>`).element.node(),
   });
   actor.disconnect();
   const recovered = await connected_document_client(host, fragment(initial), {
@@ -651,11 +651,11 @@ await check("incremental recovery preserves an inserted node and its QUID", asyn
   });
   assert.equal(recovered.recovery.strategy, "replay");
   assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("000000000000001f")?.$_tag, "b");
+  assert.equal(recovered.map.document.byQuid("00000001f")?.$_tag, "b");
 });
 
 await check("snapshot fallback preserves movement order, mode, revision and QUID", async () => {
-  const initial = `<a/> <b @000000000000001g/> <c/>`;
+  const initial = `<a/> <b @00000001g/> <c/>`;
   const host = hson.liveHost.create({
     map: fragment(initial),
     logicalMapId: "hosted-structural-snapshot",
@@ -672,7 +672,7 @@ await check("snapshot fallback preserves movement order, mode, revision and QUID
   assert.equal(recovered.map.mode, "fragment");
   assert.equal(recovered.map.rev, host.map.rev);
   assert.deepEqual(recovered.map.capture(), host.map.capture());
-  assert.equal(recovered.map.document.byQuid("000000000000001g")?.$_tag, "b");
+  assert.equal(recovered.map.document.byQuid("00000001g")?.$_tag, "b");
 });
 
 process.stdout.write(`# ${checks} hosted document action checks passed\n`);

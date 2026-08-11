@@ -27,8 +27,8 @@ import type { ClassifiedLiveMap, ElementLiveMap } from "../src/types/livemap.typ
 import { element, path, projected_element, raw_node } from "./helpers/reflect-unit6.mts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
-const Q1 = "0000000000000v91";
-const Q2 = "0000000000000v92";
+const Q1 = "000000v91";
+const Q2 = "000000v92";
 let checks = 0;
 
 function check(name: string, run: () => void): void {

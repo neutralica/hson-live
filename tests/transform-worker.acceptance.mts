@@ -13,7 +13,7 @@ import {
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 
-const Q1 = "0000000000000001";
+const Q1 = "000000001";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -49,15 +49,15 @@ check("the numeric leaf entrypoint is Worker-safe and preserves negative zero", 
 
 check("Worker-safe Transform produces readable, compact, and no-QUID HSON", () => {
   const node = hsonTransform
-    .fromHson(`<worker @0000000000000001 "ready"/>`)
+    .fromHson(`<worker @000000001 "ready"/>`)
     .toNode();
   assert.equal(
     hsonTransform.fromNode(node).toHson().serialize(),
-    `<worker @0000000000000001 "ready"/>`,
+    `<worker @000000001 "ready"/>`,
   );
   assert.equal(
     hsonTransform.fromNode(node).toHson().noBreak().serialize(),
-    `<worker @0000000000000001 "ready"/>`,
+    `<worker @000000001 "ready"/>`,
   );
   assert.equal(
     hsonTransform.fromNode(node).toHson().noQuid().serialize(),
@@ -170,8 +170,8 @@ check("untrusted Worker parsing admits valid wrapper metadata and rejects malfor
 
 check("untrusted Worker parsing rejects metadata duplicates before htmlparser2", () => {
   for (const source of [
-    `<main hson:quid="${Q1}" hson:quid="0000000000000002"/>`,
-    `<main HSON:QUID="${Q1}" hson:quid="0000000000000002"/>`,
+    `<main hson:quid="${Q1}" hson:quid="000000002"/>`,
+    `<main HSON:QUID="${Q1}" hson:quid="000000002"/>`,
     `<_hson_arr><_hson_ii hson:index="0" hson:index="1"/></_hson_arr>`,
   ]) {
     assert.throws(

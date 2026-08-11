@@ -7,7 +7,7 @@ import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 
-const Q1 = "0000000000002b01";
+const Q1 = "000002b01";
 let checks = 0;
 
 function check(name: string, run: () => void): void {

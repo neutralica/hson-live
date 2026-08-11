@@ -19,8 +19,8 @@ import {
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import type { LiveMapGraphCommit } from "../src/types/livemap.types.ts";
 
-const Q1 = "0000000000002a01";
-const Q2 = "0000000000002a02";
+const Q1 = "000002a01";
+const Q2 = "000002a02";
 let checks = 0;
 
 function check(name: string, run: () => void): void {
@@ -231,7 +231,7 @@ check("no public raw-QUID setter is introduced", () => {
   assert.equal(Reflect.get(document, "retireIdentity"), undefined);
 });
 
-check("the existing 16-character QUID encoding remains unchanged", () => {
+check("the existing 9-character QUID encoding remains unchanged", () => {
   const map = element(`<main/>`);
   const quid = acquire_document_identity(map.document, target()).snap()?.$_meta?.quid;
   assert.equal(quid?.length, PERSISTED_QUID_LENGTH);

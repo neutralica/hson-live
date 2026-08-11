@@ -27,17 +27,17 @@ import { is_persisted_quid } from "../src/core/persisted-quid.ts";
 import { LiveTree } from "../src/api/livetree/livetree.ts";
 import { begin_livetree_materialization_profile } from "../src/api/livetree/debug/materialization-profile.ts";
 
-const Q1 = "0000000000000001";
-const Q2 = "0000000000000002";
-const Q3 = "0000000000000003";
-const Q4 = "0000000000000004";
-const Q5 = "0000000000000005";
-const Q6 = "0000000000000006";
-const Q7 = "0000000000000007";
-const Q8 = "0000000000000008";
-const Q9 = "0000000000000009";
-const Q10 = "000000000000000a";
-const Q11 = "000000000000000b";
+const Q1 = "000000001";
+const Q2 = "000000002";
+const Q3 = "000000003";
+const Q4 = "000000004";
+const Q5 = "000000005";
+const Q6 = "000000006";
+const Q7 = "000000007";
+const Q8 = "000000008";
+const Q9 = "000000009";
+const Q10 = "00000000a";
+const Q11 = "00000000b";
 const QUID_ATTR = "hson:quid";
 
 let checks = 0;
@@ -203,7 +203,7 @@ function with_generated_candidates(
       getRandomValues<T extends ArrayBufferView | null>(array: T): T {
         assert.ok(array instanceof Uint8Array);
         array.fill(0);
-        array[array.length - 1] = finalBytes[Math.min(callCount, finalBytes.length - 1)] ?? 0;
+        array[array.length - 1] = (finalBytes[Math.min(callCount, finalBytes.length - 1)] ?? 0) << 3;
         callCount += 1;
         return array;
       },
@@ -363,11 +363,15 @@ check("HSON object members reject authored QUID syntax", () => {
 
 check("HSON rejects malformed length, alphabet, and uppercase without normalization", () => {
   for (const malformed of [
-    "000000000000001",
-    "000000000000000i",
-    "000000000000000A",
+    "00000001",
+    "0000000001",
+    "000000000001",
+    "0000000000000001",
+    "00000000i",
+    "00000000A",
+    " 000000001",
   ]) {
-    assert.throws(() => parse_hson(`<main @${malformed}/>`), /invalid persisted QUID/);
+    assert.throws(() => parse_hson(`<main @${malformed}/>`), /invalid persisted QUID|missing persisted QUID/);
   }
 });
 

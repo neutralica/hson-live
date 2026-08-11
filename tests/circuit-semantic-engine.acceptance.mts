@@ -191,7 +191,7 @@ check("strict closure detects metadata presence", () => {
   const actual = structuredClone(expected);
   const element = actual.$_content[0] as HsonNode;
   const child = element.$_content[0] as HsonNode;
-  child.$_meta = { quid: "0000000000000001" };
+  child.$_meta = { quid: "000000001" };
   const result = strict_leg(expected, actual);
   assert.equal(result.leg.failure?.difference?.kind, "metadata-presence");
 });
@@ -201,8 +201,8 @@ check("strict closure detects QUID identity", () => {
   const actual = structuredClone(expected);
   const expectedChild = (expected.$_content[0] as HsonNode).$_content[0] as HsonNode;
   const actualChild = (actual.$_content[0] as HsonNode).$_content[0] as HsonNode;
-  expectedChild.$_meta = { quid: "0000000000000001" };
-  actualChild.$_meta = { quid: "0000000000000002" };
+  expectedChild.$_meta = { quid: "000000001" };
+  actualChild.$_meta = { quid: "000000002" };
   const result = strict_leg(expected, actual);
   assert.equal(result.leg.failure?.difference?.kind, "quid-difference");
 });

@@ -72,7 +72,7 @@ function node(
 }
 
 function q(index: number): string {
-  return `000000000000${index.toString().padStart(4, "0")}`;
+  return index.toString().padStart(9, "0");
 }
 
 function withCrypto(value: Crypto | undefined, fn: () => void): void {
@@ -103,52 +103,58 @@ function duplicateError(fn: () => unknown): InstanceType<typeof HsonNodeQuidVali
   return observed;
 }
 
-check("known byte vectors encode to exact 16-character Crockford Base32 values", () => {
-  assert.equal(encode_persisted_quid(new Uint8Array(10)), "0000000000000000");
-  assert.equal(encode_persisted_quid(new Uint8Array(10).fill(255)), "zzzzzzzzzzzzzzzz");
+check("known byte vectors encode to exact 9-character Crockford Base32 values", () => {
+  assert.equal(encode_persisted_quid(new Uint8Array(6)), "000000000");
+  assert.equal(encode_persisted_quid(new Uint8Array(6).fill(255)), "zzzzzzzzz");
   assert.equal(
-    encode_persisted_quid(new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])),
-    "000g40r40m30e209",
+    encode_persisted_quid(new Uint8Array([0, 1, 2, 3, 4, 5])),
+    "000g40r40",
   );
   assert.equal(
-    encode_persisted_quid(new Uint8Array([1, 35, 69, 103, 137, 171, 205, 239, 16, 50])),
-    "04hmasw9nf6yy41j",
+    encode_persisted_quid(new Uint8Array([1, 35, 69, 103, 137, 171])),
+    "04hmasw9n",
   );
-  assert.throws(() => encode_persisted_quid(new Uint8Array(9)), /exactly 10 bytes/);
-  assert.throws(() => encode_persisted_quid(new Uint8Array(11)), /exactly 10 bytes/);
+  assert.throws(() => encode_persisted_quid(new Uint8Array(5)), /exactly 6 bytes/);
+  assert.throws(() => encode_persisted_quid(new Uint8Array(7)), /exactly 6 bytes/);
 });
 
-check("validation accepts only the exact lowercase 16-character alphabet", () => {
-  assert.equal(is_persisted_quid("4k7m2v9d1r6x8qwc"), true);
+check("validation accepts only the exact lowercase 9-character alphabet", () => {
+  assert.equal(is_persisted_quid("d1r6x8qwc"), true);
   for (const malformed of [
     "",
-    "4k7m2v9d1r6x8qw",
-    "4k7m2v9d1r6x8qwcc",
-    "4K7M2V9D1R6X8QWC",
-    "4k7m2v9d1r6x8qwi",
-    "4k7m2v9d1r6x8qwl",
-    "4k7m2v9d1r6x8qwo",
-    "4k7m2v9d1r6x8qwu",
-    "4k7m2v9d1r6x8qw-",
+    "d1r6x8qw",
+    "0d1r6x8qwc",
+    "000d1r6x8qwc",
+    "4k7m2v9d1r6x8qwc",
+    "D1R6X8QWC",
+    "d1r6x8qwi",
+    "d1r6x8qwl",
+    "d1r6x8qwo",
+    "d1r6x8qwu",
+    "d1r6x8qw-",
+    " d1r6x8qwc",
+    "d1r6x8qwc ",
+    "xd1r6x8qwc",
+    "d1r6x8qwcx",
   ]) {
     assert.equal(is_persisted_quid(malformed), false, malformed);
   }
 });
 
-check("secure minting uses exactly ten bytes, stays lowercase, and fails without Web Crypto", () => {
+check("secure minting uses exactly six bytes, stays lowercase, and fails without Web Crypto", () => {
   let requestedLength = 0;
   withCrypto({
     getRandomValues<T extends ArrayBufferView | null>(array: T): T {
       assert.ok(array instanceof Uint8Array);
       requestedLength = array.byteLength;
-      array.set([255, 0, 170, 85, 16, 32, 48, 64, 80, 96]);
+      array.set([255, 0, 170, 85, 16, 32]);
       return array;
     },
   } as Crypto, () => {
     const minted = mint_hson_node_quid();
-    assert.equal(requestedLength, 10);
-    assert.equal(minted, "zw0amn8g40r40m30");
-    assert.match(minted, /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
+    assert.equal(requestedLength, 6);
+    assert.equal(minted, "zw0amn8g4");
+    assert.match(minted, /^[0-9abcdefghjkmnpqrstvwxyz]{9}$/);
     assert.equal(minted, minted.toLowerCase());
   });
   withCrypto(undefined, () => {
@@ -226,7 +232,7 @@ check("ordinary-node assignment, stable ensure, and deliberate removal are canon
 
   const minted = node("fresh");
   const mintedQuid = ensure_hson_node_quid(minted);
-  assert.match(mintedQuid, /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
+  assert.match(mintedQuid, /^[0-9abcdefghjkmnpqrstvwxyz]{9}$/);
   assert.equal(ensure_hson_node_quid(minted), mintedQuid);
   assert.equal(get_node_by_quid(mintedQuid), undefined);
 });
@@ -342,7 +348,7 @@ check("LiveTree and LiveMap accept the same valid QUID and reject the same malfo
   const mapGraph = node("_hson_root", [node("_hson_elem", [mapNode])]);
   assert.deepEqual(build_livemap_document_identity_overlay(mapGraph, "element").pathForQuid(valid), []);
 
-  for (const malformed of ["", "short", "000000000000000I", "000000000000000-"]) {
+  for (const malformed of ["", "short", "00000001", "0000000001", "000000000001", "0000000000000001", "00000000I", "00000000-"]) {
     const malformedTreeNode = node("tree-bad", [], { [HSON_META_QUID]: malformed });
     assert.throws(
       () => ensure_quid(malformedTreeNode),
@@ -408,7 +414,7 @@ check("LiveMap remains non-minting while LiveTree retains canonical minting", ()
 
   const treeNode = node("minted");
   const minted = ensure_quid(treeNode);
-  assert.match(minted, /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
+  assert.match(minted, /^[0-9abcdefghjkmnpqrstvwxyz]{9}$/);
   assert.equal(treeNode.$_meta?.[HSON_META_QUID], minted);
   assert.equal(get_node_by_quid(minted), treeNode);
 });

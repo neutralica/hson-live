@@ -321,7 +321,7 @@ check("valid one-child root detachment returns the exact child identity", () => 
 check("exact detachment preserves child metadata content and root input", () => {
   const child = node("_hson_elem", [{
     $_tag: "main",
-    $_meta: { quid: "0000000000000001" },
+    $_meta: { quid: "000000001" },
     $_content: [],
   }]);
   const attached = root(child);
@@ -451,9 +451,9 @@ check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => 
 });
 
 check("valid QUID metadata survives root detachment and HSON output", () => {
-  const value = publicNode(`<main @0000000000000001/>`);
-  assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "0000000000000001");
-  assert.match(hson.fromNode(value).toHson().serialize(), /@0000000000000001/);
+  const value = publicNode(`<main @000000001/>`);
+  assert.equal((value.$_content[0] as HsonNode).$_meta?.quid, "000000001");
+  assert.match(hson.fromNode(value).toHson().serialize(), /@000000001/);
 });
 
 check("array indexes survive detachment and reconstruction", () => {

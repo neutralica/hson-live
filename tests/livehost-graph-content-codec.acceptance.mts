@@ -24,7 +24,7 @@ function expect_rejection(value: unknown, code: string): void {
 
 check("exact graph payload round-trips nested nodes, typed attributes, structured style, and persisted QUIDs", () => {
   const source = hson.fromHson(
-    `<main @0000000000000001 <input @0000000000000002 checked=false/>/>`,
+    `<main @000000001 <input @000000002 checked=false/>/>`,
   ).toNode();
   assert.equal(source.$_tag, "_hson_elem");
   const main = source.$_content[0];
@@ -40,7 +40,7 @@ check("exact graph payload round-trips nested nodes, typed attributes, structure
   assert.equal(encoded.format, "hson-graph");
   assert.equal(encoded.formatVersion, 2);
   assert.equal(JSON.stringify(encoded).includes("$_tag"), false);
-  assert.match(encoded.payload, /0000000000000001/);
+  assert.match(encoded.payload, /000000001/);
 });
 
 check("canonical primitives round-trip without JSON-node projection", () => {
@@ -80,14 +80,18 @@ check("strict envelopes reject missing, extra, unknown-version, and malformed HS
     { format: "hson-graph", formatVersion: 2, payload: "<broken" },
     "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID",
   );
+  expect_rejection(
+    { format: "hson-graph", formatVersion: 2, payload: "<main @0000000000000001/>" },
+    "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID",
+  );
 });
 
 check("duplicate persisted QUIDs and structurally invalid canonical nodes are rejected", () => {
   const valid = encode_livehost_graph_content(
-    hson.fromHson(`<main @0000000000000001 <p @0000000000000002/>/>`).toNode(),
+    hson.fromHson(`<main @000000001 <p @000000002/>/>`).toNode(),
   );
   expect_rejection(
-    { ...valid, payload: valid.payload.replace("0000000000000002", "0000000000000001") },
+    { ...valid, payload: valid.payload.replace("000000002", "000000001") },
     "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID",
   );
   assert.throws(

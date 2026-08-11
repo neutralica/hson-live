@@ -27,7 +27,7 @@ function decode(value) {
   return decode_livehost_server_message(JSON.stringify({ type: "commit", id: "commit", commit: value }));
 }
 
-function element_root(source = `<main @0000000000000001/>`) {
+function element_root(source = `<main @000000001/>`) {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
   return map.capture().root;
@@ -56,7 +56,7 @@ check("document commits decode only current canonical path targets", () => {
     {
       domain: "graph",
       op: "set-attr",
-      target: { kind: "path", path: [], witness: { quid: "0000000000000001" } },
+      target: { kind: "path", path: [], witness: { quid: "000000001" } },
       name: "style",
       value: { color: "red", _hover: { color: "blue" } },
     },
@@ -71,7 +71,7 @@ check("document commits decode only current canonical path targets", () => {
       op: "replace-content",
       target: { kind: "path", path: [] },
       index: 0,
-      replacement: encode_livehost_graph_content({ $_tag: "span", $_meta: { quid: "0000000000000002" }, $_content: [] }),
+      replacement: encode_livehost_graph_content({ $_tag: "span", $_meta: { quid: "000000002" }, $_content: [] }),
     },
     {
       domain: "graph",
@@ -85,7 +85,7 @@ check("document commits decode only current canonical path targets", () => {
       op: "insert-content",
       target: { kind: "path", path: [] },
       index: 2,
-      content: encode_livehost_graph_content({ $_tag: "aside", $_meta: { quid: "0000000000000003" }, $_content: [] }),
+      content: encode_livehost_graph_content({ $_tag: "aside", $_meta: { quid: "000000003" }, $_content: [] }),
     },
     {
       domain: "graph",
@@ -111,7 +111,7 @@ check("legacy QUID recovery input is isolated behind the compatibility decoder",
   const legacy = commit("fragment", [{
     domain: "graph",
     op: "replace-attrs",
-    target: { kind: "quid", quid: "0000000000000001" },
+    target: { kind: "quid", quid: "000000001" },
     attrs: { hidden: false, style: { color: "red" }, title: "recovered" },
   }]);
   const decoded = decode_livehost_server_message(JSON.stringify({
@@ -144,15 +144,15 @@ check("replace-root requires canonical same-mode HSON and persisted identity", (
   }]));
   assert.equal(mismatched.ok, false);
 
-  const duplicateRoot = structuredClone(element_root(`<main @0000000000000001 <p @0000000000000002/>/>`));
+  const duplicateRoot = structuredClone(element_root(`<main @000000001 <p @000000002/>/>`));
   const stack = [duplicateRoot];
   while (stack.length > 0) {
     const node = stack.pop();
-    if (node.$_tag === "p") node.$_meta["quid"] = "0000000000000001";
+    if (node.$_tag === "p") node.$_meta["quid"] = "000000001";
     for (const child of node.$_content) if (typeof child === "object" && child !== null) stack.push(child);
   }
   const duplicatePayload = encode_livehost_graph_content(
-    element_root(`<main @0000000000000001 <p @0000000000000002/>/>`),
+    element_root(`<main @000000001 <p @000000002/>/>`),
   );
   const duplicate = decode(commit("element", [{
     domain: "graph",
@@ -160,7 +160,7 @@ check("replace-root requires canonical same-mode HSON and persisted identity", (
     mode: "element",
     root: {
       ...duplicatePayload,
-      payload: duplicatePayload.payload.replace("0000000000000002", "0000000000000001"),
+      payload: duplicatePayload.payload.replace("000000002", "000000001"),
     },
   }]));
   assert.equal(duplicate.ok, false);
@@ -170,11 +170,11 @@ check("malformed graph targets, attributes, content, and mixed operations are re
   const invalidOps = [
     { domain: "graph", op: "remove-attr", target: { kind: "quid", quid: "short" }, name: "title" },
     { domain: "graph", op: "remove-attr", target: { kind: "path", path: [-1] }, name: "title" },
-    { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "hson:quid", value: "0000000000000002" },
+    { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "hson:quid", value: "000000002" },
     { domain: "graph", op: "set-attr", target: { kind: "path", path: [] }, name: "title", value: {} },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: [] },
-    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "hson:quid": "0000000000000002" } },
+    { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "hson:quid": "000000002" } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "hson:index": "0" } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "hson:unknown": "x" } },
     { domain: "graph", op: "replace-attrs", target: { kind: "path", path: [] }, attrs: { "": "x" } },

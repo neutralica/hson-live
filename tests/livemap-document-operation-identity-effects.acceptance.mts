@@ -19,10 +19,10 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000000401";
-const Q2 = "0000000000000402";
-const Q3 = "0000000000000403";
-const Q4 = "0000000000000404";
+const Q1 = "000000401";
+const Q2 = "000000402";
+const Q3 = "000000403";
+const Q4 = "000000404";
 const path = (...parts: number[]) => validate_document_path(parts);
 const target = (...parts: number[]) => Object.freeze({ kind: "path" as const, path: path(...parts) });
 

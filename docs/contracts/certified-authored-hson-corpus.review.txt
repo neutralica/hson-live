@@ -4571,7 +4571,7 @@ rationale: An HSON element may contain a nested element.
 claim: An element QUID remains supported.
 classification: literal-accepted-authored-hson
 ingress format: hson
-escaped input: "\"<main @0000000000000001/>\""
+escaped input: "\"<main @000000001/>\""
 verbatim input: —
 semantic shape: element
 slot: element-quid
@@ -4584,14 +4584,14 @@ hand-authored expected graph:
     {
       "$_content": [],
       "$_meta": {
-        "quid": "0000000000000001"
+        "quid": "000000001"
       },
       "$_tag": "main"
     }
   ],
   "$_tag": "_hson_elem"
 }
-exact HSON output: "<main @0000000000000001/>"
+exact HSON output: "<main @000000001/>"
 exact JSON output: —
 exact HTML output: —
 exact diagnostic output: —
@@ -11727,7 +11727,7 @@ rationale: Duplicate decoded element attributes reject with related evidence.
 claim: An element cannot declare two QUIDs.
 classification: literal-rejected-authored-hson
 ingress format: hson
-escaped input: "\"<e @0000000000000001 @0000000000000002/>\""
+escaped input: "\"<e @000000001 @000000002/>\""
 verbatim input: —
 semantic shape: element
 slot: element-quid
@@ -11753,16 +11753,16 @@ structured rejection:
     }
   ],
   "source": {
-    "column": 22,
-    "index": 21,
+    "column": 15,
+    "index": 14,
     "line": 1
   },
   "stage": "tokenization"
 }
 source evidence:
 {
-  "column": 22,
-  "index": 21,
+  "column": 15,
+  "index": 14,
   "line": 1
 }
 path evidence: —
@@ -12670,7 +12670,7 @@ rationale: A property key and value require trivia.
 claim: Object-property QUIDs do not exist in authored HSON.
 classification: literal-rejected-authored-hson
 ingress format: hson
-escaped input: "\"<a @0000000000000001 1>\""
+escaped input: "\"<a @000000001 1>\""
 verbatim input: —
 semantic shape: object
 slot: property-key

@@ -17,8 +17,8 @@ import {
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
-const Q1 = "0000000000000v81";
-const Q2 = "0000000000000v82";
+const Q1 = "000000v81";
+const Q2 = "000000v82";
 let checks = 0;
 
 function check(name: string, run: () => void): void {

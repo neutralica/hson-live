@@ -139,13 +139,13 @@ check("hson.transform.string normalizes irregular and compact source to default 
 
 check("hson.transform.string preserves canonical QUID metadata through default serialization", () => {
   const normalized = hson.transform.string(
-    `<panel class="x" @4k7m2v9d1r6x8qwc hidden "Content"/>`,
+    `<panel class="x" @d1r6x8qwc hidden "Content"/>`,
   );
   assert.equal(
     normalized,
-    `<panel @4k7m2v9d1r6x8qwc class="x" hidden "Content"/>`,
+    `<panel @d1r6x8qwc class="x" hidden "Content"/>`,
   );
-  assert.equal(onlyElement(parse(normalized)).$_meta?.["quid"], "4k7m2v9d1r6x8qwc");
+  assert.equal(onlyElement(parse(normalized)).$_meta?.["quid"], "d1r6x8qwc");
 });
 
 check("hson.transform.string preserves negative zero and empty element/object modes", () => {
@@ -187,19 +187,19 @@ check("hson.transform.string retains existing syntax, name, metadata, and number
   assert.throws(() => hson.transform.string(`<tag "unterminated/>`), /unterminated/i);
   assert.throws(() => hson.transform.string(`<tag bad^name="x"/>`), /unexpected (?:character|token)|invalid/i);
   assert.throws(
-    () => hson.transform.string(`<_hson_obj @0000000000000000>`),
+    () => hson.transform.string(`<_hson_obj @000000000>`),
     /persisted QUID|metadata|_hson_obj/i,
   );
   assert.throws(() => hson.transform.string(`<value NaN>`), /invariant|number|NaN/i);
 });
 
 check("@quid parses into metadata and serializes immediately after the tag", () => {
-  const node = parse(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden "Content"/>`);
+  const node = parse(`<panel class="settings" @d1r6x8qwc hidden "Content"/>`);
   const panel = onlyElement(node);
-  assert.equal(panel.$_meta?.["quid"], "4k7m2v9d1r6x8qwc");
-  assert.equal(compact(node), `<panel @4k7m2v9d1r6x8qwc class="settings" hidden "Content"/>`);
-  assert.equal(compact(parse(`<panel @0000000000000000/>`)), `<panel @0000000000000000/>`);
-  assert.throws(() => parse(`<panel @0000000000000000 @0000000000000000/>`), /duplicate persisted QUID/);
+  assert.equal(panel.$_meta?.["quid"], "d1r6x8qwc");
+  assert.equal(compact(node), `<panel @d1r6x8qwc class="settings" hidden "Content"/>`);
+  assert.equal(compact(parse(`<panel @000000000/>`)), `<panel @000000000/>`);
+  assert.throws(() => parse(`<panel @000000000 @000000000/>`), /duplicate persisted QUID/);
 });
 
 function clone_without_quids(node: HsonNode): HsonNode {
@@ -420,17 +420,17 @@ check("quoted names and escaped string content snapshot", () => {
 });
 
 check("noQuid filters only the exact persisted QUID key", () => {
-  const node = parse(`<tag @0000000000000001 data-user="keep" "value"/>`);
+  const node = parse(`<tag @000000001 data-user="keep" "value"/>`);
   const plain = readable(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
-  assert.match(plain, /@0000000000000001/);
-  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{16}/);
+  assert.match(plain, /@000000001/);
+  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
   assert.match(filtered, /data-user="keep"/);
   assert.notEqual(plain, filtered);
 });
 
 check("noBreak and noQuid compose in either order", () => {
-  const node = parse(`<p @0000000000000002 "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @000000002 "first" <em "middle"/> "last"/>`);
   const left = hson.fromNode(node).toHson().noBreak().noQuid().serialize();
   const right = hson.fromNode(node).toHson().noQuid().noBreak().serialize();
   assert.equal(left, right);
@@ -438,7 +438,7 @@ check("noBreak and noQuid compose in either order", () => {
 });
 
 check("withOptions composes with convenience methods", () => {
-  const node = parse(`<p @0000000000000003 "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @000000003 "first" <em "middle"/> "last"/>`);
   const expected = `<p "first" <em "middle"/> "last"/>`;
   assert.equal(
     hson.fromNode(node).toHson().withOptions({ noBreak: true, noQuid: true }).serialize(),
@@ -455,7 +455,7 @@ check("withOptions composes with convenience methods", () => {
 });
 
 check("repeated options are idempotent", () => {
-  const node = parse(`<tag @0000000000000004 "value"/>`);
+  const node = parse(`<tag @000000004 "value"/>`);
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noBreak().noQuid().noQuid().serialize(),
     `<tag "value"/>`,
@@ -463,16 +463,16 @@ check("repeated options are idempotent", () => {
 });
 
 check("noQuid does not mutate or contaminate the source graph", () => {
-  const node = parse(`<tag @0000000000000005 data-user="keep" "value"/>`);
+  const node = parse(`<tag @000000005 data-user="keep" "value"/>`);
   const before = structuredClone(node);
   const filtered = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(node, before);
-  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{16}/);
-  assert.match(readable(node), /@0000000000000005/);
+  assert.doesNotMatch(filtered, /@[0123456789abcdefghjkmnpqrstvwxyz]{9}/);
+  assert.match(readable(node), /@000000005/);
 });
 
 check("noQuid does not register imported identity", () => {
-  const quid = "0000000000000006";
+  const quid = "000000006";
   const node = parse(`<tag @${quid} "value"/>`);
   assert.equal(get_node_by_quid(quid), undefined);
   hson.fromNode(node).toHson().noQuid().serialize();
@@ -480,7 +480,7 @@ check("noQuid does not register imported identity", () => {
 });
 
 check("parsed noQuid graph equals the graph with only QUID fields removed", () => {
-  const node = parse(`<p @0000000000000007 data-user="keep" "first" <em @0000000000000008 "middle"/>/>`);
+  const node = parse(`<p @000000007 data-user="keep" "first" <em @000000008 "middle"/>/>`);
   const wire = hson.fromNode(node).toHson().noQuid().serialize();
   assert.deepEqual(parse(wire), clone_without_quids(node));
 });
@@ -606,10 +606,10 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
     enabled: true,
   });
   onlyElement(node).$_meta = {
-    quid: "0000000000000009",
+    quid: "000000009",
   };
   const builder = () => hson.fromNode(node).toHson();
-  const plain = `<tag @0000000000000009 count="2" data-user="keep" enabled="true" disabled/>`;
+  const plain = `<tag @000000009 count="2" data-user="keep" enabled="true" disabled/>`;
   const filtered = `<tag count="2" data-user="keep" enabled="true" disabled/>`;
   assert.equal(builder().serialize(), plain);
   assert.equal(builder().noBreak().serialize(), plain);
@@ -622,11 +622,11 @@ check("all HSON option combinations retain quoted ordinary attributes", () => {
 });
 
 check("quoted ordinary attributes are unchanged for structured block content", () => {
-  const node = parse(`<p @000000000000000a "first" <em "middle"/> "last"/>`);
+  const node = parse(`<p @00000000a "first" <em "middle"/> "last"/>`);
   onlyElement(node).$_attrs = { count: 2, disabled: "disabled" };
   assert.equal(
     readable(node),
-    `<p @000000000000000a count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
+    `<p @00000000a count="2" disabled\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
   assert.equal(
     hson.fromNode(node).toHson().noBreak().noQuid().serialize(),
@@ -1061,7 +1061,7 @@ check("canonical closure covers element text, nesting, fragments, QUIDs, and mix
     parse(`<p "text"/>`),
     parse(`<main <section <span "deep"/>/>/>`),
     parse(`<a/><b/>`),
-    parse(`<main @0000000000000013 <aside @0000000000000014/>/>`),
+    parse(`<main @000000013 <aside @000000014/>/>`),
     parse(`<p "before" <em "middle"/> "after"/>`),
   ];
   for (const node of fixtures) assert_hson_closure(node);
@@ -1069,10 +1069,10 @@ check("canonical closure covers element text, nesting, fragments, QUIDs, and mix
 
 check("canonical closure preserves ordinary attributes, structured style, and QUID metadata", () => {
   const node = parse(
-    `<panel @0000000000000015 aria-label="Settings" disabled style="color: red; margin-top: 2px" "ready"/>`,
+    `<panel @000000015 aria-label="Settings" disabled style="color: red; margin-top: 2px" "ready"/>`,
   );
   const source = assert_hson_closure(node);
-  assert.match(source, /@0000000000000015/);
+  assert.match(source, /@000000015/);
   assert.match(source, /aria-label="Settings"/);
   assert.match(source, /disabled/);
   assert.doesNotMatch(source, /\$_meta/);
@@ -1086,7 +1086,7 @@ check("canonical closure preserves ordinary attributes, structured style, and QU
 check("direct and fluent serializers have equivalent closure for every HSON option", () => {
   for (const node of [
     parse(`<record <name "Ada" active true> items «1,2»>`),
-    parse(`<p @0000000000000016 class="copy" "first" <em "middle"/> "last"/>`),
+    parse(`<p @000000016 class="copy" "first" <em "middle"/> "last"/>`),
   ]) {
     const cases = [
       { options: {}, fluent: () => hson.fromNode(node).toHson().serialize() },
@@ -1111,7 +1111,7 @@ check("direct and fluent serializers have equivalent closure for every HSON opti
 
 check("serialization is nonmutating and repeated parse/serialize cycles converge", () => {
   const original = parse(
-    `<article @0000000000000017 data-user="Ada" "before" <strong "middle"/> "after"/>`,
+    `<article @000000017 data-user="Ada" "before" <strong "middle"/> "after"/>`,
   );
   const before = structuredClone(original);
   const first = serialize_hson(original);
@@ -1126,7 +1126,7 @@ check("serialization is nonmutating and repeated parse/serialize cycles converge
     assert.equal(canonical_hson_graph_equal(original, next), true);
     current = next;
   }
-  assert.equal((current.$_content[0] as HsonNode).$_meta?.quid, "0000000000000017");
+  assert.equal((current.$_content[0] as HsonNode).$_meta?.quid, "000000017");
 });
 
 check("forbidden-output inspection distinguishes syntax from user string data", () => {
@@ -1167,7 +1167,7 @@ check("invalid roots and malformed structural crossings fail before compatibilit
 check("object member metadata and QUIDs are outside the HSON serialization domain", () => {
   const member: HsonNode = {
     $_tag: "member",
-    $_meta: { quid: "0000000000000001" },
+    $_meta: { quid: "000000001" },
     $_content: [{
       $_tag: "_hson_obj",
       $_content: [{ $_tag: "_hson_str", $_content: ["value"] }],
@@ -1326,7 +1326,7 @@ check("direct, universal Worker-safe, and browser facade HSON paths serialize id
   for (const node of [
     parse(`<record <name "Ada" active true> items «1,2»>`),
     parse(`«<name "Ada">,<name "Lin">»`),
-    parse(`<main @0000000000000018 class="shell" <span "ready"/>/>`),
+    parse(`<main @000000018 class="shell" <span "ready"/>/>`),
   ]) {
     const direct = serialize_hson(node);
     const universal = hsonTransform.fromNode(node).toHson().serialize();

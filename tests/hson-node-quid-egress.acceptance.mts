@@ -13,11 +13,11 @@ import { HSON_META_QUID } from "../src/core/constants.ts";
 import { read_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
-const Q1 = "0000000000000101";
-const Q2 = "0000000000000102";
-const Q3 = "0000000000000103";
-const Q4 = "0000000000000104";
-const Q5 = "0000000000000105";
+const Q1 = "000000101";
+const Q2 = "000000102";
+const Q3 = "000000103";
+const Q4 = "000000104";
+const Q5 = "000000105";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -207,7 +207,7 @@ check("noQuid is output-only and normal serialization remains repeatable", () =>
     const normal = hson.fromNode(root).toHson().noBreak().serialize();
     const filtered = hson.fromNode(root).toHson().noBreak().noQuid().serialize();
     assert.equal(occurrences(normal, "@"), 2);
-    assert.doesNotMatch(filtered, /@[0-9a-z]{16}/);
+    assert.doesNotMatch(filtered, /@[0-9a-z]{9}/);
     assert.match(filtered, /data-user="keep"/);
     assert.deepEqual(root, before);
     assert.equal(projection.getAttribute(HSON_QUID_MARKUP_NAME), Q1);

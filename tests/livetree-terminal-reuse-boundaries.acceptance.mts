@@ -13,8 +13,8 @@ import {
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
-const Q1 = "0000000000000v01";
-const Q2 = "0000000000000v02";
+const Q1 = "000000v01";
+const Q2 = "000000v02";
 
 let checks = 0;
 function check(name: string, run: () => void): void {

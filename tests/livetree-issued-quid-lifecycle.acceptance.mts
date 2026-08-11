@@ -13,9 +13,9 @@ import {
 import { assign_hson_node_quid } from "../src/core/hson-node-quid.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
-const Q1 = "0000000000000t01";
-const Q2 = "0000000000000t02";
-const Q3 = "0000000000000t03";
+const Q1 = "000000t01";
+const Q2 = "000000t02";
+const Q3 = "000000t03";
 
 let checks = 0;
 function check(name: string, run: () => void): void {

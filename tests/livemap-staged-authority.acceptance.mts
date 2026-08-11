@@ -22,7 +22,7 @@ function data(value = 0): LiveMap {
   return hson.liveMap.fromJson({ value, sibling: "kept" });
 }
 
-function element(source = `<main @0000000000000001 <p @0000000000000002 "old"/>/>`): ElementLiveMap {
+function element(source = `<main @000000001 <p @000000002 "old"/>/>`): ElementLiveMap {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error(`expected element, observed ${map.mode}`);
   return map;
@@ -101,7 +101,7 @@ check("document preparation preserves root, identity, typed attrs and observatio
   const observations: LiveMapCommitObservation[] = [];
   map.commits.observe((event) => observations.push(event));
   const before = map.capture();
-  const target = { kind: "quid", quid: "0000000000000002" } as const;
+  const target = { kind: "quid", quid: "000000002" } as const;
   const transition = authority.prepare((draft) => draft.document.attrs.setMany(target, {
     hidden: false,
     style: { width: { value: 2, unit: "px" } },
@@ -109,7 +109,7 @@ check("document preparation preserves root, identity, typed attrs and observatio
 
   assert.deepEqual(map.capture(), before);
   assert.equal(map.document.attrs.get(target, "hidden"), undefined);
-  assert.equal(map.document.byQuid("0000000000000002")?.$_tag, "p");
+  assert.equal(map.document.byQuid("000000002")?.$_tag, "p");
   assert.deepEqual(observations, []);
   assert.deepEqual(transition.commit.ops.map((op) => "op" in op ? op.op : op.kind), ["replace-attrs"]);
 
@@ -117,20 +117,20 @@ check("document preparation preserves root, identity, typed attrs and observatio
   assert.equal(map.rev, 1);
   assert.equal(map.document.attrs.get(target, "hidden"), false);
   assert.deepEqual(map.document.attrs.get(target, "style"), { width: { value: 2, unit: "px" } });
-  assert.equal(map.document.byQuid("0000000000000002")?.$_tag, "p");
+  assert.equal(map.document.byQuid("000000002")?.$_tag, "p");
   assert.equal(observations.length, 1);
   assert.equal(mustCommitObservation(observations).commit, accepted.commit);
 });
 
 check("document install prepares and accepts one exact replace-root transition", () => {
-  const map = element(`<main @0000000000000001/>`);
-  const replacement = element(`<main @0000000000000001 <section @0000000000000003/>/>`);
+  const map = element(`<main @000000001/>`);
+  const replacement = element(`<main @000000001 <section @000000003/>/>`);
   const authority = get_livemap_staged_authority(map);
   const transition = authority.prepare((draft) => draft.install(replacement.capture()));
-  assert.equal(map.document.byQuid("0000000000000003"), undefined);
+  assert.equal(map.document.byQuid("000000003"), undefined);
   assert.equal(map.rev, 0);
   authority.accept(transition);
-  assert.equal(map.document.byQuid("0000000000000003")?.$_tag, "section");
+  assert.equal(map.document.byQuid("000000003")?.$_tag, "section");
   assert.equal(map.rev, 1);
   assert.deepEqual(transition.commit.ops.map((op) => "op" in op ? op.op : op.kind), ["replace-root"]);
 });
@@ -192,24 +192,24 @@ check("restore, replay, schema changes and unsafe graph divergence invalidate ca
   const restoredDocument = element();
   const restoredDocumentAuthority = get_livemap_staged_authority(restoredDocument);
   const beforeDocumentRestore = restoredDocumentAuthority.prepare((draft) => draft.document.attrs.set(
-    { kind: "quid", quid: "0000000000000002" },
+    { kind: "quid", quid: "000000002" },
     "title",
     "pending",
   ));
-  const restoredSource = element(`<main @0000000000000001 <p @0000000000000002 title="restored"/>/>`);
+  const restoredSource = element(`<main @000000001 <p @000000002 title="restored"/>/>`);
   restoredDocument.restore({ ...restoredSource.capture(), rev: 8 });
   transitionCode(() => restoredDocumentAuthority.accept(beforeDocumentRestore), "LIVEMAP_TRANSITION_STALE");
 
   const replayedDocument = element();
   const replayedDocumentAuthority = get_livemap_staged_authority(replayedDocument);
   const beforeDocumentReplay = replayedDocumentAuthority.prepare((draft) => draft.document.attrs.set(
-    { kind: "quid", quid: "0000000000000002" },
+    { kind: "quid", quid: "000000002" },
     "title",
     "pending",
   ));
   const documentReplaySource = element();
   const documentCommit = documentReplaySource.document.attrs.set(
-    { kind: "quid", quid: "0000000000000002" },
+    { kind: "quid", quid: "000000002" },
     "title",
     "replayed",
   );

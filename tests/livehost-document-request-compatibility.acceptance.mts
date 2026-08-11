@@ -28,8 +28,8 @@ import type {
 } from "../src/types/livehost.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
-const Q1 = "0000000000000721";
-const Q2 = "0000000000000722";
+const Q1 = "000000721";
+const Q2 = "000000722";
 
 let checks = 0;
 let sequence = Promise.resolve();

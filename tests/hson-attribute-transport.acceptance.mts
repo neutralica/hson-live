@@ -17,7 +17,7 @@ import {
 } from "../src/api/transform/utils/html-preflights/ordinary-attribute-transit.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
-const Q1 = "0000000000000001";
+const Q1 = "000000001";
 const ORDINARY_PRIVATE = "_hson_attr_transit_v1_613a62";
 const METADATA_PRIVATE = "_hson_meta_attr_v2_71756964";
 const HTML_NS = "http://www.w3.org/1999/xhtml";

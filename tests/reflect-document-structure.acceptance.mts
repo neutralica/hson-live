@@ -56,10 +56,10 @@ function mount(root: HsonNode): FakeElement {
 }
 
 check("nested raw insertion projects elements, QUID-less nodes, wrappers, and text", () => {
-  const map = element(`<main @0000000000000401 <a @0000000000000402/> <b/> "tail"/>`);
+  const map = element(`<main @000000401 <a @000000402/> <b/> "tail"/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<c @0000000000000403 "inside"/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<c @000000403 "inside"/>`));
   map.document.content.insert(path(0), 2, projected_element(`<d/>`));
   map.document.content.insert(path(0), 3, "middle");
   const wrapper = raw_node(binding.tree.node, [0]);
@@ -77,7 +77,7 @@ check("nested raw insertion projects elements, QUID-less nodes, wrappers, and te
 });
 
 check("remove unregisters deleted content and reindexes shifted QUID-less paths", () => {
-  const map = element(`<main @0000000000000404 <a/> <b/> <c/>/>`);
+  const map = element(`<main @000000404 <a/> <b/> <c/>/>`);
   const binding = hsonReflect(map);
   mount(binding.tree.node);
   const removed = raw_node(binding.tree.node, [0, 1]);
@@ -92,7 +92,7 @@ check("remove unregisters deleted content and reindexes shifted QUID-less paths"
 });
 
 check("forward and backward moves preserve projected node, DOM, and local identity", () => {
-  const map = element(`<main @0000000000000405 <a/> <b @0000000000000406/> <c/>/>`);
+  const map = element(`<main @000000405 <a/> <b @000000406/> <c/>/>`);
   const binding = hsonReflect(map);
   mount(binding.tree.node);
   const moved = raw_node(binding.tree.node, [0, 1]);
@@ -112,17 +112,17 @@ check("forward and backward moves preserve projected node, DOM, and local identi
 });
 
 check("replace preserves compatible same-QUID roots and replaces incompatible roots", () => {
-  const map = element(`<main @0000000000000407 <b @0000000000000408 "old"/>/>`);
+  const map = element(`<main @000000407 <b @000000408 "old"/>/>`);
   const binding = hsonReflect(map);
   mount(binding.tree.node);
   const original = raw_node(binding.tree.node, [0, 0]);
   const originalDom = get_el_for_node(original);
-  map.document.content.replace(path(0), 0, projected_element(`<b @0000000000000408 title="new" "next"/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<b @000000408 title="new" "next"/>`));
   assert.equal(raw_node(binding.tree.node, [0, 0]), original);
   assert.equal(get_el_for_node(original), originalDom);
   assert.equal(original.$_attrs?.title, "new");
 
-  map.document.content.replace(path(0), 0, projected_element(`<em @0000000000000408/>`));
+  map.document.content.replace(path(0), 0, projected_element(`<em @000000408/>`));
   const incompatible = raw_node(binding.tree.node, [0, 0]);
   assert.notEqual(incompatible, original);
   assert.notEqual(get_el_for_node(incompatible), originalDom);
@@ -131,7 +131,7 @@ check("replace preserves compatible same-QUID roots and replaces incompatible ro
 });
 
 check("replace projects text-wrapper/node transitions and primitive leaves at exact raw slots", () => {
-  const map = element(`<main @0000000000000413 "old"/>`);
+  const map = element(`<main @000000413 "old"/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   map.document.content.replace(path(0), 0, projected_element(`<span/>`));
@@ -147,11 +147,11 @@ check("replace projects text-wrapper/node transitions and primitive leaves at ex
 });
 
 check("foreign global QUID ownership rejects insertion before projected mutation", () => {
-  create_livetree(projected_element(`<aside @0000000000000414/>`));
-  const map = element(`<main @0000000000000415 <a/>/>`);
+  create_livetree(projected_element(`<aside @000000414/>`));
+  const map = element(`<main @000000415 <a/>/>`);
   const binding = hsonReflect(map);
   const before = structuredClone(binding.tree.node);
-  map.document.content.insert(path(0), 1, projected_element(`<aside @0000000000000414/>`));
+  map.document.content.insert(path(0), 1, projected_element(`<aside @000000414/>`));
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
   assert.deepEqual(binding.tree.node, before);
@@ -160,7 +160,7 @@ check("foreign global QUID ownership rejects insertion before projected mutation
 });
 
 check("mixed sequential replay projects structural and attrs operations once", () => {
-  const map = element(`<main @0000000000000409 <a/>/>`);
+  const map = element(`<main @000000409 <a/>/>`);
   const binding = hsonReflect(map);
   mount(binding.tree.node);
   const observations: unknown[] = [];
@@ -185,7 +185,7 @@ check("mixed sequential replay projects structural and attrs operations once", (
 });
 
 check("bound public structural and text APIs reject until disposal", () => {
-  const map = element(`<main @0000000000000410 <a/>/>`);
+  const map = element(`<main @000000410 <a/>/>`);
   const binding = hsonReflect(map);
   const branch = create_livetree(projected_element(`<b/>`));
   const before = structuredClone(binding.tree.node);
@@ -207,7 +207,7 @@ check("bound public structural and text APIs reject until disposal", () => {
 });
 
 check("structural DOM failure preserves canonical commit and fails observer-side", () => {
-  const map = element(`<main @0000000000000411 <a/>/>`);
+  const map = element(`<main @000000411 <a/>/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
@@ -222,9 +222,9 @@ check("structural DOM failure preserves canonical commit and fails observer-side
 });
 
 check("incompatible snapshot restore remains observer-isolated", () => {
-  const map = element(`<main @0000000000000416/>`);
+  const map = element(`<main @000000416/>`);
   const binding = hsonReflect(map);
-  const replacement = element(`<article @0000000000000417/>`);
+  const replacement = element(`<article @000000417/>`);
   map.restore(replacement.capture());
   assert.equal(map.element.node().$_tag, "article");
   assert.equal(binding.tree.node.$_tag, "main");
@@ -235,7 +235,7 @@ check("incompatible snapshot restore remains observer-isolated", () => {
 });
 
 check("disposal stops projection and restores unbound structural behavior", () => {
-  const map = element(`<main @0000000000000412 <a/>/>`);
+  const map = element(`<main @000000412 <a/>/>`);
   const binding = hsonReflect(map);
   const retained = binding.tree.node;
   binding.dispose();

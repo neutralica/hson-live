@@ -38,7 +38,7 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000002301";
+const Q1 = "000002301";
 const runtime = _create_livetree_runtime_test_handle();
 function reflected(source: string) {
   const map = element(source);
@@ -105,6 +105,10 @@ check("LiveHost decoder rejects malformed registration QUID", () => {
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "bad" }],
   };
   assert.equal(decode_livehost_canonical_commit(encoded), undefined);
+  assert.equal(decode_livehost_canonical_commit({
+    ...encoded,
+    ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "0000000000000001" }],
+  }), undefined);
 });
 
 check("decoded LiveHost registration replays on a document mirror", () => {
@@ -241,14 +245,14 @@ check("QUID-free unrelated graph retains an empty overlay and runtime", () => {
   _dispose_livetree_runtime_test_handle(sparseRuntime);
 });
 
-check("QUID encoding width and alphabet remain unchanged", () => {
-  assert.equal(PERSISTED_QUID_LENGTH, 16);
+check("QUID encoding uses the strict canonical width and alphabet", () => {
+  assert.equal(PERSISTED_QUID_LENGTH, 9);
   assert.equal(PERSISTED_QUID_ALPHABET, "0123456789abcdefghjkmnpqrstvwxyz");
 });
 
 check("standalone LiveTree retains standalone mint authority", () => {
   const standalone = _create_livetree_for_runtime_test(runtime, element(`<aside/>`).element.node());
-  assert.equal(standalone.quid.length, 16);
+  assert.equal(standalone.quid.length, 9);
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
   standalone.remove();
 });

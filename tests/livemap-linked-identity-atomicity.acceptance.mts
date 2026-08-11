@@ -47,9 +47,9 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000002201";
-const Q2 = "0000000000002202";
-const Q3 = "0000000000002203";
+const Q1 = "000002201";
+const Q2 = "000002202";
+const Q3 = "000002203";
 function reflected(source: string) {
   const map = element(source);
   const binding = _reflect_document_for_runtime_test(runtime, map);

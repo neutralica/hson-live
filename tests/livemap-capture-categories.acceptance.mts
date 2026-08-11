@@ -5,8 +5,8 @@ import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts"
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import type { ElementLiveMap, FragmentLiveMap } from "../src/types/livemap.types.ts";
 
-const Q1 = "0000000000000v71";
-const Q2 = "0000000000000v72";
+const Q1 = "000000v71";
+const Q2 = "000000v72";
 let checks = 0;
 
 function check(name: string, run: () => void): void {

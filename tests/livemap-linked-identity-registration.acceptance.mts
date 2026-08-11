@@ -141,7 +141,7 @@ check("second QUID access is an exact no-op", () => {
 });
 
 check("existing canonical QUID access publishes nothing", () => {
-  const q = "0000000000002101";
+  const q = "000002101";
   const { map, binding } = reflected(`<main @${q}/>`);
   let observations = 0;
   map.commits.observe(() => observations += 1);

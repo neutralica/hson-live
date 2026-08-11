@@ -18,9 +18,9 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000000201";
-const Q2 = "0000000000000202";
-const Q3 = "0000000000000203";
+const Q1 = "000000201";
+const Q2 = "000000202";
+const Q3 = "000000203";
 const rootTarget = { kind: "path", path: [] } as const;
 
 function element(source: string): ElementLiveMap {

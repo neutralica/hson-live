@@ -51,7 +51,7 @@ function mount(root: HsonNode): FakeElement {
 }
 
 check("compatible install retains tree, root, DOM, and bounded descendant identity", () => {
-  const map = element(`<main @0000000000000501 class="old" <p @0000000000000502 "old"/> <i/>/>`);
+  const map = element(`<main @000000501 class="old" <p @000000502 "old"/> <i/>/>`);
   const binding = hsonReflect(map);
   const tree = binding.tree;
   const root = tree.node;
@@ -60,7 +60,7 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
   const paragraphDom = get_el_for_node(paragraph);
   const marker = { retained: true };
   Reflect.set(rootDom, "marker", marker);
-  const replacement = element(`<main @0000000000000501 class="new" <p @0000000000000502 "next"/> <strong/>/>`);
+  const replacement = element(`<main @000000501 class="new" <p @000000502 "next"/> <strong/>/>`);
 
   const commit = map.install(replacement.capture());
 
@@ -98,11 +98,11 @@ check("QUID-less compatible root preserves canonical identity absence", () => {
 });
 
 check("replayed compatible replace-root uses one convergence transaction", () => {
-  const source = element(`<main @0000000000000503/>`);
-  const target = element(`<main @0000000000000503/>`);
+  const source = element(`<main @000000503/>`);
+  const target = element(`<main @000000503/>`);
   const binding = hsonReflect(target);
   const root = binding.tree.node;
-  const replacement = element(`<main @0000000000000503 title="replayed" <b/>/>`);
+  const replacement = element(`<main @000000503 title="replayed" <b/>/>`);
   const commit = source.install(replacement.capture());
   target.replay(commit);
   assert.equal(binding.tree.node, root);
@@ -113,7 +113,7 @@ check("replayed compatible replace-root uses one convergence transaction", () =>
 });
 
 check("canonical-equivalent install performs no convergence", () => {
-  const map = element(`<main @0000000000000504 class="same"/>`);
+  const map = element(`<main @000000504 class="same"/>`);
   const binding = hsonReflect(map);
   const root = binding.tree.node;
   const commit = map.install(map.capture());
@@ -125,29 +125,29 @@ check("canonical-equivalent install performs no convergence", () => {
 });
 
 check("tag and persisted root-QUID transitions fail closed", () => {
-  const tagMap = element(`<main @0000000000000505/>`);
+  const tagMap = element(`<main @000000505/>`);
   const tagBinding = hsonReflect(tagMap);
   const tagRoot = structuredClone(tagBinding.tree.node);
-  tagMap.install(element(`<article @0000000000000505/>`).capture());
+  tagMap.install(element(`<article @000000505/>`).capture());
   assert.equal(tagBinding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
   assert.deepEqual(tagBinding.tree.node, tagRoot);
   tagBinding.dispose();
 
-  const quidMap = element(`<main @0000000000000506/>`);
+  const quidMap = element(`<main @000000506/>`);
   const quidBinding = hsonReflect(quidMap);
   const quidRoot = structuredClone(quidBinding.tree.node);
-  quidMap.install(element(`<main @0000000000000507/>`).capture());
+  quidMap.install(element(`<main @000000507/>`).capture());
   assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE);
   assert.deepEqual(quidBinding.tree.node, quidRoot);
   quidBinding.dispose();
 });
 
 check("descendant QUID collision fails before projected mutation", () => {
-  create_livetree(element(`<aside @0000000000000508/>`).element.node());
-  const map = element(`<main @0000000000000509 <a/>/>`);
+  create_livetree(element(`<aside @000000508/>`).element.node());
+  const map = element(`<main @000000509 <a/>/>`);
   const binding = hsonReflect(map);
   const before = structuredClone(binding.tree.node);
-  map.install(element(`<main @0000000000000509 <aside @0000000000000508/>/>`).capture());
+  map.install(element(`<main @000000509 <aside @000000508/>/>`).capture());
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE);
   assert.deepEqual(binding.tree.node, before);
@@ -156,11 +156,11 @@ check("descendant QUID collision fails before projected mutation", () => {
 });
 
 check("mounted root DOM failure preserves canonical install and fails observer-side", () => {
-  const map = element(`<main @0000000000000510 <a/>/>`);
+  const map = element(`<main @000000510 <a/>/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.failReplace = true;
-  const commit = map.install(element(`<main @0000000000000510 title="canonical" <b/>/>`).capture());
+  const commit = map.install(element(`<main @000000510 title="canonical" <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
   assert.equal(binding.status, "failed");
@@ -171,14 +171,14 @@ check("mounted root DOM failure preserves canonical install and fails observer-s
 });
 
 check("reentrant observation during root DOM convergence fails closed", () => {
-  const map = element(`<main @0000000000000511 <a/>/>`);
+  const map = element(`<main @000000511 <a/>/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
   rootDom.beforeReplace = () => {
     rootDom.beforeReplace = undefined;
     map.document.attrs.set(path(), "reentrant", true);
   };
-  const commit = map.install(element(`<main @0000000000000511 <b/>/>`).capture());
+  const commit = map.install(element(`<main @000000511 <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.rev, 2);
   assert.equal(map.document.attrs.get(path(), "reentrant"), true);

@@ -33,7 +33,7 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const QUID = "4k7m2v9d1r6x8qwc";
+const QUID = "d1r6x8qwc";
 
 function explicit_root(meta: unknown = undefined): JsonValue {
   return {

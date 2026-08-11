@@ -29,8 +29,8 @@ import type { HsonNode } from "../src/core/types.ts";
 import { directIntegerKeyFixture } from "./fixtures/structural-json-order-fixtures.mts";
 
 const LAUNCHER = "transform.canonical-oracle";
-const Q1 = "0000000000000001";
-const Q2 = "0000000000000002";
+const Q1 = "000000001";
+const Q2 = "000000002";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {

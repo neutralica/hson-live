@@ -97,7 +97,7 @@ check("canonical reads preserve primitives and detach structured style", () => {
 });
 
 check("keys is lexical, fresh, frozen, and excludes flags and metadata", () => {
-  const value = tree(`<button disabled @0000000000000201/>`);
+  const value = tree(`<button disabled @000000201/>`);
   value.attrs.setMany({ zeta: 1, alpha: 2, style: { color: "red" } });
   const first = value.attrs.keys();
   const second = value.attrs.keys();
@@ -248,7 +248,7 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
 });
 
 check("drop and dropMany remove only explicit ordinary names atomically", () => {
-  const value = tree(`<main id="one" title="two" class="three" @0000000000000202/>`);
+  const value = tree(`<main id="one" title="two" class="three" @000000202/>`);
   const element = mount(value);
   for (const [name, attrValue] of Object.entries(value.node.$_attrs ?? {})) {
     element.setAttribute(name, String(attrValue));
@@ -275,7 +275,7 @@ check("drop and dropMany remove only explicit ordinary names atomically", () => 
 });
 
 check("clear preserves flags, identity, metadata, tag, and content", () => {
-  const value = tree(`<button disabled id="ordinary" @0000000000000203 "content"/>`);
+  const value = tree(`<button disabled id="ordinary" @000000203 "content"/>`);
   const element = mount(value);
   element.setAttribute("disabled", "disabled");
   element.setAttribute("id", "ordinary");

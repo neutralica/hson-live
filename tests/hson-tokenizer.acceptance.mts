@@ -136,7 +136,7 @@ check("object members require one complete value and reject object headers", () 
     `<a bare>`,
     `<a flag "value">`,
     `<a title="value" "content">`,
-    `<a @0000000000000001 1>`,
+    `<a @000000001 1>`,
   ]) {
     assert.throws(
       () => parse_hson(source),
@@ -191,8 +191,8 @@ check("element grammar and canonical graph remain unchanged", () => {
     [`<a href=// layout\nfoo//bar/>`, `<a href="foo//bar"/>`],
     [`<a <b/>/>`, `<a\n  <b/>\n/>`],
     [
-      `<a @0000000000000001 style="color: red" "before" <b/> "after"/>`,
-      `<a @0000000000000001 style="color: red"\n  "before"\n  <b/>\n  "after"\n/>`,
+      `<a @000000001 style="color: red" "before" <b/> "after"/>`,
+      `<a @000000001 style="color: red"\n  "before"\n  <b/>\n  "after"\n/>`,
     ],
     [`<a/><b/>`, `<a/>\n<b/>`],
   ];
@@ -206,24 +206,24 @@ check("element grammar and canonical graph remain unchanged", () => {
 });
 
 check("header @quid is represented separately from ordinary attributes", () => {
-  const open = tokenize_hson(`<panel class="settings" @4k7m2v9d1r6x8qwc hidden/>`)[0];
+  const open = tokenize_hson(`<panel class="settings" @d1r6x8qwc hidden/>`)[0];
   assert.equal(open.kind, "OPEN");
   if (open.kind !== "OPEN") return;
-  assert.equal(open.quid?.value, "4k7m2v9d1r6x8qwc");
+  assert.equal(open.quid?.value, "d1r6x8qwc");
   assert.deepEqual(open.rawAttrs.map((attr) => attr.name), ["class", "hidden"]);
 });
 
 check("@quid rejects missing, duplicate, and post-content declarations", () => {
   assert.throws(() => tokenize_hson(`<panel @/>`), /missing persisted QUID/);
-  assert.throws(() => tokenize_hson(`<panel @4k7m2v9d1r6x8qwc @0000000000000000/>`), /duplicate persisted QUID/);
-  assert.throws(() => tokenize_hson(`<panel "text" @4k7m2v9d1r6x8qwc/>`), /forbidden after content/);
+  assert.throws(() => tokenize_hson(`<panel @d1r6x8qwc @000000000/>`), /duplicate persisted QUID/);
+  assert.throws(() => tokenize_hson(`<panel "text" @d1r6x8qwc/>`), /forbidden after content/);
 });
 
-check("persisted QUIDs use the canonical 80-bit Base32 contract", () => {
-  assert.equal(encode_persisted_quid(new Uint8Array(10)), "0000000000000000");
-  assert.equal(encode_persisted_quid(new Uint8Array(10).fill(255)), "zzzzzzzzzzzzzzzz");
-  assert.equal(is_persisted_quid("4k7m2v9d1r6x8qwc"), true);
-  for (const value of ["", "4k7m2v9d1r6x8qw", "4k7m2v9d1r6x8qwcc", "4K7M2V9D1R6X8QWC", "4k7m2v9d1r6x8qwi", "4k7m2v9d1r6x8qw-"]) {
+check("persisted QUIDs use the canonical 45-bit Base32 contract", () => {
+  assert.equal(encode_persisted_quid(new Uint8Array(6)), "000000000");
+  assert.equal(encode_persisted_quid(new Uint8Array(6).fill(255)), "zzzzzzzzz");
+  assert.equal(is_persisted_quid("d1r6x8qwc"), true);
+  for (const value of ["", "d1r6x8qw", "0d1r6x8qwc", "4k7m2v9d1r6x8qwc", "D1R6X8QWC", "d1r6x8qwi", "d1r6x8qw-", " d1r6x8qwc", "d1r6x8qwc "]) {
     assert.equal(is_persisted_quid(value), false);
   }
 });
@@ -295,12 +295,12 @@ const token_cases = [
   },
   {
     name: "quoted key attributes flags and metadata",
-    source: `<'display name' @0000000000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
+    source: `<'display name' @000000001 count=2 enabled=true missing=null disabled "Ada"/>`,
     expected: [
       {
         kind: "OPEN",
         tag: "display name",
-        quid: "0000000000000001",
+        quid: "000000001",
         attrs: [
           { name: "count", value: { text: "2", quoted: false } },
           { name: "enabled", value: { text: "true", quoted: false } },
@@ -887,7 +887,7 @@ check("object and root grammar defects expose their stable identities", () => {
     [`<a 1, b 2>`, "HSON_OBJECT_COMMA_FORBIDDEN"],
     [`<a title="x" "v">`, "HSON_OBJECT_ATTRIBUTE_FORBIDDEN"],
     [`<a flag>`, "HSON_OBJECT_FLAG_FORBIDDEN"],
-    [`<a @0000000000000001 1>`, "HSON_OBJECT_QUID_FORBIDDEN"],
+    [`<a @000000001 1>`, "HSON_OBJECT_QUID_FORBIDDEN"],
     [`<a hson:index="0">`, "HSON_AUTHORED_METADATA_FORBIDDEN"],
     [`<<a 1>>`, "legacy-doubled-object-syntax"],
     [`<a 1><b 2>`, "HSON_LEGACY_ADJACENT_OBJECT"],
@@ -904,7 +904,7 @@ check("element grammar and mode defects expose their stable identities", () => {
     [`<e x=/>`, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID"],
     [`<e "x" late/>`, "HSON_ELEMENT_HEADER_AFTER_CONTENT"],
     [`<e @/>`, "HSON_ELEMENT_QUID_INVALID"],
-    [`<e @0000000000000001 @0000000000000002/>`, "HSON_ELEMENT_QUID_INVALID"],
+    [`<e @000000001 @000000002/>`, "HSON_ELEMENT_QUID_INVALID"],
     [`<e <b 1>/>`, "HSON_STRUCTURAL_MODE_CROSSING"],
     [`<e [1]/>`, "HSON_STRUCTURAL_MODE_CROSSING"],
     [`[<e/>]`, "HSON_STRUCTURAL_MODE_CROSSING"],

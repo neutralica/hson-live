@@ -229,7 +229,7 @@ check("malformed graph and duplicate document QUIDs reject", () => {
     mode: "fragment",
     state: {
       format: "hson",
-      payload: `<div @0000000000000001/> <span @0000000000000001/>`,
+      payload: `<div @000000001/> <span @000000001/>`,
     },
   });
   assert.equal(error_code(() => install_livehost_bootstrap(duplicate)), "LIVEHOST_BOOTSTRAP_STATE_INVALID");
@@ -265,14 +265,14 @@ check("data-array bootstrap installs exact state and revision", () => {
 
 check("element bootstrap installs exact state and revision", () => {
   verify_mode("element", create_livehost({
-    map: hson.liveMap.fromHson(`<main @0000000000000001 "hello"/>`),
+    map: hson.liveMap.fromHson(`<main @000000001 "hello"/>`),
     authority: "shared",
   }));
 });
 
 check("fragment bootstrap installs exact state and revision", () => {
   verify_mode("fragment", create_livehost({
-    map: hson.liveMap.fromHson(`"before" <em @0000000000000002 "middle"/>`),
+    map: hson.liveMap.fromHson(`"before" <em @000000002 "middle"/>`),
     authority: "shared",
   }));
 });

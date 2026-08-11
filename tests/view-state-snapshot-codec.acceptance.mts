@@ -206,10 +206,10 @@ check("element capture round-trips with detached nested identity and typed docum
       node("section", [node("_hson_elem", [node("_hson_str", ["inside"])])], {
         "data-user": "nested",
         hidden: false,
-      }, { quid: "0000000000000002" }),
+      }, { quid: "000000002" }),
     ])],
     { count: 0, "data-theme": "dark", title: "0", enabled: true },
-    { quid: "0000000000000001" },
+    { quid: "000000001" },
   ));
   const { encoded, decoded } = round_trip(capture);
   assert.equal(encoded.format, "view-state");
@@ -225,7 +225,7 @@ check("element capture round-trips with detached nested identity and typed docum
 check("nontrivial fragment capture round-trips in order", () => {
   const capture = fragment_capture([
     node("_hson_str", ["before"]),
-    node("article", [], { rank: 2 }, { quid: "0000000000000003" }),
+    node("article", [], { rank: 2 }, { quid: "000000003" }),
     node("_hson_str", ["after"]),
   ]);
   round_trip(capture);
@@ -335,7 +335,7 @@ check("nested inline stylesheet structures fail canonical graph validation", () 
 check("view-state preserves defined QUID metadata and ordinary data attributes exactly", () => {
   const capture = fragment_capture([
     node("_hson_str", ["before"]),
-    node("span", [], { "data-user": "kept" }, { quid: "0000000000000007" }),
+    node("span", [], { "data-user": "kept" }, { quid: "000000007" }),
   ], 4);
   const { decoded } = round_trip(capture);
   const cluster = decoded.root.$_content[0];
@@ -343,7 +343,7 @@ check("view-state preserves defined QUID metadata and ordinary data attributes e
   const span = cluster.$_content[1];
   if (typeof span !== "object" || span === null) throw new Error("Expected span.");
   assert.deepEqual(span.$_attrs, { "data-user": "kept" });
-  assert.deepEqual(span.$_meta, { quid: "0000000000000007" });
+  assert.deepEqual(span.$_meta, { quid: "000000007" });
 });
 
 for (const [tag, key, content] of [
@@ -385,21 +385,26 @@ check("snapshot decoding rejects unsupported structural metadata", () => {
 });
 
 check("persisted QUIDs round-trip and invalid identity is rejected", () => {
-  round_trip(element_capture(node("div", [], undefined, { quid: "0000000000000004" })));
+  round_trip(element_capture(node("div", [], undefined, { quid: "000000004" })));
   const duplicate = fragment_capture([
-    node("div", [], undefined, { quid: "0000000000000005" }),
-    node("span", [], undefined, { quid: "0000000000000005" }),
+    node("div", [], undefined, { quid: "000000005" }),
+    node("span", [], undefined, { quid: "000000005" }),
   ]);
   expect_codec_error(
     () => encode_view_state_snapshot(duplicate),
     "VIEW_STATE_SNAPSHOT_IDENTITY_INVALID",
-    "0000000000000005",
+    "000000005",
   );
   const malformed = element_capture(node("div", [], undefined, { quid: "bad" }));
   expect_codec_error(
     () => encode_view_state_snapshot(malformed),
     "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
     "bad",
+  );
+  expect_codec_error(
+    () => encode_view_state_snapshot(element_capture(node("div", [], undefined, { quid: "0000000000000001" }))),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+    "0000000000000001",
   );
 });
 
@@ -543,8 +548,8 @@ check("semantically valid noncanonical HSON is rejected after deterministic re-e
 });
 
 check("decode rejects duplicate and malformed persisted QUIDs without exposing identity", () => {
-  const firstQuid = "0000000000000010";
-  const secondQuid = "0000000000000011";
+  const firstQuid = "000000010";
+  const secondQuid = "000000011";
   const duplicateSource = encode_view_state_snapshot(fragment_capture([
     node("div", [], undefined, { quid: firstQuid }),
     node("span", [], undefined, { quid: secondQuid }),
@@ -562,7 +567,7 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
   );
   assert.equal(duplicateError.message.includes(duplicateEncoding.payload), false);
 
-  const validQuid = "0000000000000012";
+  const validQuid = "000000012";
   const malformedQuid = "malformed-persisted-quid";
   const malformedSource = encode_view_state_snapshot(element_capture(
     node("div", [], undefined, { quid: validQuid }),
@@ -579,6 +584,18 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
     malformedQuid,
   );
   assert.equal(malformedError.message.includes(malformedEncoding.payload), false);
+
+  const legacyQuid = "0000000000000001";
+  const legacyRepresentation = replace_persisted_quid(
+    decoded_payload_value(malformedSource),
+    validQuid,
+    legacyQuid,
+  );
+  expect_codec_error(
+    () => decode_view_state_snapshot(encoding_with_payload(legacyRepresentation)),
+    "VIEW_STATE_SNAPSHOT_GRAPH_INVALID",
+    legacyQuid,
+  );
 });
 
 check("UTF-8 payload bytes, depth, and node-count limits are enforced", () => {
@@ -623,7 +640,7 @@ check("encoding does not mutate source structure or insertion order", () => {
     style: { zIndex: 1, color: "red" },
     a: "first",
   }, {
-    quid: "0000000000000006",
+    quid: "000000006",
   }), 20);
   const before = structuredClone(capture);
   const root = capture.root.$_content[0];

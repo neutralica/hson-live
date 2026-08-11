@@ -48,11 +48,11 @@ function is_graph_operation(operation: LiveMapAnyOp): operation is LiveMapGraphO
   return "domain" in operation && operation.domain === "graph";
 }
 
-const Q1 = "0000000000000721";
-const Q2 = "0000000000000722";
-const Q3 = "0000000000000723";
-const Q4 = "0000000000000724";
-const COLLISION = "0000000000000791";
+const Q1 = "000000721";
+const Q2 = "000000722";
+const Q3 = "000000723";
+const Q4 = "000000724";
+const COLLISION = "000000791";
 const documentRuntime = _create_livetree_runtime_test_handle();
 
 check("insert incrementally shifts later projected correspondence", () => {

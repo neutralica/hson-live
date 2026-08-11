@@ -27,7 +27,7 @@ void hsonLiveMap.fromHson(`<worker <ready true>>`);
 void hsonLiveMap.fromNode(map.root());
 void hsonLiveMap.schema.define((shape) => ({ ready: shape.boolean }));
 
-const documentMap = hsonLiveMap.fromHson(`<main @0000000000000v01/>`);
+const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
 if (documentMap.mode === "element") {
   const captureIdentity: DocumentLiveMapCaptureIdentity = "same-epoch";
   const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";

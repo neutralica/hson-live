@@ -11,8 +11,8 @@ import {
   set_livemap_projected_quid_candidate_source_for_tests,
 } from "../src/api/livemap/livemap.projected.identity-handle.ts";
 
-const Q1 = "0000000000003a01";
-const Q2 = "0000000000003a02";
+const Q1 = "000003a01";
+const Q2 = "000003a02";
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
@@ -37,7 +37,7 @@ check("new registration publishes the shared ensure-quid operation", () => {
   const owner = map({}); let op: unknown; owner.commits.observe((e) => { if (e.kind === "commit") op = e.commit.ops[0]; }); acquire_projected_identity(owner, []);
   assert.deepEqual(op && typeof op === "object" ? (op as { target: unknown }).target : undefined, { kind: "path", path: [], projected: true });
 });
-check("registration stores a valid 16-character canonical QUID", () => { const owner = map({}); acquire_projected_identity(owner, []); assert.equal(is_persisted_quid(quidAt(owner, [])), true); });
+check("registration stores a valid 9-character canonical QUID", () => { const owner = map({}); acquire_projected_identity(owner, []); assert.equal(is_persisted_quid(quidAt(owner, [])), true); });
 check("existing registration is a no-op", () => { const owner = map({}); const a = acquire_projected_identity(owner, []); const rev = owner.rev; let seen = 0; owner.commits.observe(() => seen += 1); const b = acquire_projected_identity(owner, []); assert.equal(owner.rev, rev); assert.equal(seen, 0); assert.deepEqual(b.path(), a.path()); });
 check("projected JavaScript value is unchanged", () => { const owner = map({ a: [1, { b: true }] }); const before = owner.snap(); acquire_projected_identity(owner, ["a", 1]); assert.deepEqual(owner.snap(), before); });
 check("metadata changes strict canonical equality", () => { const owner = map({}); const before = owner.root(); acquire_projected_identity(owner, []); assert.equal(canonical_hson_graph_equal(before, owner.root()), false); });

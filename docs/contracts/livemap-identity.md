@@ -17,7 +17,7 @@ A QUID is not:
 - authorization, authentication, a capability, or a security token; or
 - proof that serialized bytes belong to an active live epoch.
 
-Ordinary elements and semantic projected object/array container nodes are QUID-eligible. Primitive carriers, object-member wrappers, array-index wrappers, and structural roots that do not themselves represent a projected user value remain ineligible. Eligibility does not imply acquisition: only an explicit owner-authorized identity request may mint. The 16-character encoding remains unchanged.
+Ordinary elements and semantic projected object/array container nodes are QUID-eligible. Primitive carriers, object-member wrappers, array-index wrappers, and structural roots that do not themselves represent a projected user value remain ineligible. Eligibility does not imply acquisition: only an explicit owner-authorized identity request may mint. The canonical encoding is exactly 9 lowercase Base32 characters (45 bits); other widths, including the former 16-character form, are invalid.
 
 ## Canonical graph state and revisions
 
@@ -191,7 +191,7 @@ While a tree is reflected, public LiveTree attribute mutations and the represent
 
 ## Explicit linked identity demand
 
-Unit 10R-B adds one internal authority seam, not a public LiveMap acquisition API. An exact linked projected node may request canonical identity through its active Reflection registration. The map resolves that registration's current path, verifies graph/overlay agreement, reuses an existing QUID as a complete no-op, or generates a collision-checked candidate through the shared secure 16-character generator.
+Unit 10R-B adds one internal authority seam, not a public LiveMap acquisition API. An exact linked projected node may request canonical identity through its active Reflection registration. The map resolves that registration's current path, verifies graph/overlay agreement, reuses an existing QUID as a complete no-op, or generates a collision-checked candidate through the shared secure 9-character generator.
 
 Before acceptance, the one active local Reflection participant proves that the candidate can be claimed by the same exact currently unquidded projected node and reserves it for the synchronous transition. The canonical `ensure-quid` operation contains a path target and the recorded system QUID. Graph metadata, sparse overlay, revision, commit observation, history, and persistence publish through the ordinary document transition. Reflection then claims the supplied value in projected metadata, runtime indexes, and mounted `hson:quid` without replacing the HSON node or DOM element. Replay uses the recorded value and never allocates.
 

@@ -16,8 +16,8 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000000qb1";
-const Q2 = "0000000000000qb2";
+const Q1 = "000000qb1";
+const Q2 = "000000qb2";
 const ROOT = { kind: "path", path: [] } as const;
 const CHILD_CLUSTER = { kind: "path", path: [0] } as const;
 

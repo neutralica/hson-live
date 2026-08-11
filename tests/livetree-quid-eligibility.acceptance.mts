@@ -76,7 +76,7 @@ check("every current and future-prefix clean VSN reads as absent and rejects ide
 
 check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone without repair", () => {
   for (const [index, tag] of vsnTags.entries()) {
-    const q = `000000000000${(0x100 + index).toString(32).padStart(4, "0")}`;
+    const q = (0x100 + index).toString(32).padStart(9, "0");
     const invalid = node(tag);
     const ordinaryBeforeInvalid = node(`before-${index}`);
     const source = node(`root-${index}`, [ordinaryBeforeInvalid, invalid]);
@@ -101,16 +101,16 @@ check("QUID-bearing VSNs reject read, claim, remint, reindex, drop, and clone wi
 });
 
 check("subtree destruction preflights invalid VSN identity before any cleanup", () => {
-  const ordinary = node("kept", [], { [HSON_META_QUID]: "0000000000000200" });
+  const ordinary = node("kept", [], { [HSON_META_QUID]: "000000200" });
   ensure_quid(ordinary);
-  const invalid = node("_hson_elem", [], { [HSON_META_QUID]: "0000000000000201" });
+  const invalid = node("_hson_elem", [], { [HSON_META_QUID]: "000000201" });
   const root = node("destroy-root", [ordinary, invalid]);
 
   assertEligibilityError(() => destroy_subtree_quids(root), "_hson_elem");
-  assert.equal(ordinary.$_meta?.[HSON_META_QUID], "0000000000000200");
-  assert.equal(get_node_by_quid("0000000000000200"), ordinary);
-  assert.equal(invalid.$_meta?.[HSON_META_QUID], "0000000000000201");
-  assert.equal(get_node_by_quid("0000000000000201"), undefined);
+  assert.equal(ordinary.$_meta?.[HSON_META_QUID], "000000200");
+  assert.equal(get_node_by_quid("000000200"), ordinary);
+  assert.equal(invalid.$_meta?.[HSON_META_QUID], "000000201");
+  assert.equal(get_node_by_quid("000000201"), undefined);
 });
 
 check("ordinary nodes retain canonical generation, stable ensure, descendant eligibility, and collision rejection", () => {
@@ -121,7 +121,7 @@ check("ordinary nodes retain canonical generation, stable ensure, descendant eli
   const spanQuid = ensure_quid(span);
 
   for (const q of [rootQuid, sectionQuid, spanQuid]) {
-    assert.match(q, /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
+    assert.match(q, /^[0-9abcdefghjkmnpqrstvwxyz]{9}$/);
   }
   assert.equal(ensure_quid(root), rootQuid);
   assert.equal(ensure_quid(section), sectionQuid);
@@ -187,7 +187,7 @@ check("clone remints every ordinary node and leaves nested VSN wrappers unquidde
   assert.equal(vsnClone.length, vsnSource.length);
   for (const [index, value] of ordinaryClone.entries()) {
     const q = get_quid(value);
-    assert.match(q ?? "", /^[0-9abcdefghjkmnpqrstvwxyz]{16}$/);
+    assert.match(q ?? "", /^[0-9abcdefghjkmnpqrstvwxyz]{9}$/);
     assert.notEqual(q, sourceQuids[index]);
   }
   for (const value of vsnClone) {

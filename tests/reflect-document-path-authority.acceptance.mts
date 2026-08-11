@@ -55,9 +55,9 @@ function observed_commit(events: readonly LiveMapCommitObservation[]): LiveMapGr
   });
 }
 
-const Q1 = "0000000000000701";
-const Q2 = "0000000000000702";
-const Q3 = "0000000000000703";
+const Q1 = "000000701";
+const Q2 = "000000702";
+const Q3 = "000000703";
 
 check("attribute operations route to the projected path", () => {
   const map = element(`<main <a/> <b/>/>`);

@@ -36,7 +36,7 @@ function check(name: string, run: () => void): void {
 }
 
 const runtime = _create_livetree_runtime_test_handle();
-const SUPPLIED = "0000000000001101";
+const SUPPLIED = "000001101";
 
 check("standalone LiveTree construction still mints root identity", () => {
   const tree = _create_livetree_for_runtime_test(runtime, projected_element(`<main/>`));

@@ -19,8 +19,8 @@ import type { LifecycleResourceKind } from "../src/api/livetree/managers/lifecyc
 import { element } from "./helpers/reflect-unit6.mts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
-const Q1 = "0000000000000w01";
-const Q2 = "0000000000000w02";
+const Q1 = "000000w01";
+const Q2 = "000000w02";
 
 const syntheticHead = new FakeElement("head");
 syntheticHead.isConnected = true;
@@ -189,9 +189,13 @@ check("detach retains the same active registry claim", () => {
   assert.equal(_livetree_runtime_test_claim_count(runtime), 1);
 });
 
-check("encoding length and alphabet remain unchanged", () => {
-  assert.equal(PERSISTED_QUID_LENGTH, 16);
+check("encoding uses the strict canonical length and alphabet", () => {
+  assert.equal(PERSISTED_QUID_LENGTH, 9);
   assert.equal(PERSISTED_QUID_ALPHABET, "0123456789abcdefghjkmnpqrstvwxyz");
+  const legacyRuntime = _create_livetree_runtime_test_handle();
+  const legacyNode: HsonNode = { $_tag: "legacy", $_meta: { quid: "0000000000000001" }, $_content: [] };
+  assert.throws(() => _create_livetree_for_runtime_test(legacyRuntime, legacyNode), /invalid persisted QUID/i);
+  assert.equal(_livetree_runtime_test_claim_count(legacyRuntime), 0);
 });
 
 check("withdrawn public identity acquisition methods remain absent", () => {

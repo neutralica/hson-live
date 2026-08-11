@@ -118,7 +118,7 @@ check("detached resumable sessions remain activity until grace expiry", () => {
     state: {},
     sessions: {
       graceMs: 100,
-      credential: () => "credential-0000000000000001",
+      credential: () => "credential-000000001",
       schedule: (_delay, callback) => {
         expiry = callback;
         return () => { expiry = undefined; };
@@ -329,7 +329,7 @@ check("persistent append and checkpoint work are reported as authority activity"
     },
     async replaceCheckpoint() {},
   };
-  const map = hson.liveMap.fromHson(`<main @0000000000002001/>`);
+  const map = hson.liveMap.fromHson(`<main @000002001/>`);
   if (map.mode !== "element") throw new Error("expected element map");
   const host = await create_persistent_livehost({
     map,

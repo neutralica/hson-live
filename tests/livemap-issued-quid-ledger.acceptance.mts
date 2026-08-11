@@ -10,9 +10,9 @@ import { element } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 import type { HsonNode } from "../src/core/types.ts";
 
-const Q1 = "0000000000004p01";
-const Q2 = "0000000000004p02";
-const Q3 = "0000000000004p03";
+const Q1 = "000004p01";
+const Q2 = "000004p02";
+const Q3 = "000004p03";
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);
@@ -41,7 +41,7 @@ check("durable document restore seeds a fresh epoch from active claims", () => {
 check("identity-stripped durable restore seeds an empty new ledger", () => { const m = element(`<main @${Q1}/>`); m.restore(m.capture({ identity: "strip" })); assert.deepEqual(state(m), { epoch: 1, issued: 0 }); });
 check("same-epoch restore never rolls the issued ledger back", () => { const m = map({ a: {}, b: {} }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["a"]); const capture = m.capture({ identity: "same-epoch" }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q2); acquire_projected_identity(m, ["b"]); m.restore(capture, { identity: "same-epoch" }); assert.equal(active(m), 1); assert.equal(state(m).issued, 2); });
 check("a post-capture QUID remains reserved after same-epoch restore", () => { const m = map({ a: {}, b: {} }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q1); acquire_projected_identity(m, ["a"]); const capture = m.capture({ identity: "same-epoch" }); set_livemap_projected_quid_candidate_source_for_tests(m, () => Q2); acquire_projected_identity(m, ["b"]); m.restore(capture, { identity: "same-epoch" }); let calls = 0; set_livemap_projected_quid_candidate_source_for_tests(m, () => ++calls === 1 ? Q2 : Q3); acquire_projected_identity(m, ["b"]); assert.equal(calls, 2); assert.equal(state(m).issued, 3); });
-check("bounded acquire-retire cycles retain O(I) strings and no active claims", () => { const m = map({ slot: {} }); for (let i = 0; i < 25; i += 1) { const quid = `000000000000000${PERSISTED_QUID_ALPHABET[i]}`; set_livemap_projected_quid_candidate_source_for_tests(m, () => quid); acquire_projected_identity(m, ["slot"]); m.delete(["slot"]); if (i !== 24) m.at([]).object.setKey("slot", {}); } assert.equal(active(m), 0); assert.equal(state(m).issued, 25); });
+check("bounded acquire-retire cycles retain O(I) strings and no active claims", () => { const m = map({ slot: {} }); for (let i = 0; i < 25; i += 1) { const quid = `00000000${PERSISTED_QUID_ALPHABET[i]}`; set_livemap_projected_quid_candidate_source_for_tests(m, () => quid); acquire_projected_identity(m, ["slot"]); m.delete(["slot"]); if (i !== 24) m.at([]).object.setKey("slot", {}); } assert.equal(active(m), 0); assert.equal(state(m).issued, 25); });
 
 process.stdout.write(`1..${checks}\n`);
 emit_hson_live_test_completion("livemap.issued-quid-ledger", checks, checks, 0);

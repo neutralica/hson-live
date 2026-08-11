@@ -26,7 +26,7 @@ function deferred_gates() {
   };
 }
 
-function element(source = `<main @0000000000000001/>`) {
+function element(source = `<main @000000001/>`) {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error("expected element map");
   return map;
@@ -130,13 +130,13 @@ await check("exclusive document mutations preserve typed state and identity", as
     (cause) => cause instanceof LiveMapTransitionError && cause.code === "LIVEMAP_MANAGED_MUTATION_REJECTED",
   );
   const commit = await host.mutate((draft) => draft.document.attrs.setMany(
-    { kind: "quid", quid: "0000000000000001" },
+    { kind: "quid", quid: "000000001" },
     { hidden: false, nullable: null, style: { width: { value: 2, unit: "px" } } },
   ));
   assert.equal(commit.rev, 1);
   assert.equal(map.document.attrs.get({ kind: "path", path: [] }, "hidden"), false);
   assert.deepEqual(map.document.attrs.get({ kind: "path", path: [] }, "style"), { width: { value: 2, unit: "px" } });
-  assert.equal(map.document.byQuid("0000000000000001")?.$_tag, "main");
+  assert.equal(map.document.byQuid("000000001")?.$_tag, "main");
   assert.equal(host.stream.headRev, 1);
   host.dispose();
 });

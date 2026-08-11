@@ -15,8 +15,8 @@ import {
 import type { ElementLiveMap } from "../src/types/livemap.types.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
-const Q1 = "0000000000000701";
-const Q2 = "0000000000000702";
+const Q1 = "000000701";
+const Q2 = "000000702";
 
 let checks = 0;
 function check(name: string, run: () => void): void {

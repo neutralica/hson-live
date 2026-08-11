@@ -40,7 +40,7 @@ const invalidCanonicalWireOperation: LiveHostEncodedGraphOp = {
   domain: "graph",
   op: "remove-attr",
   // @ts-expect-error current canonical LiveHost operations cannot retain QUID-only targets
-  target: { kind: "quid", quid: "0000000000000001" },
+  target: { kind: "quid", quid: "000000001" },
   name: "title",
 };
 void invalidCanonicalWireOperation;
@@ -258,7 +258,7 @@ typedProjectedClient.action("custom", 1);
 declare const typedDocumentClient: LiveHostClientForMap<ElementLiveMap, CustomActions>;
 typedDocumentClient.action("custom", 1);
 typedDocumentClient.action("document.attrs.set", {
-  target: { kind: "quid", quid: "0000000000000001" },
+  target: { kind: "quid", quid: "000000001" },
   name: "title",
   value: "typed",
 });

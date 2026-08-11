@@ -13,7 +13,7 @@ import { decode_livehost_canonical_commit } from "../src/api/livehost/livehost.p
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
-const Q1 = "0000000000003c01";
+const Q1 = "000003c01";
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);

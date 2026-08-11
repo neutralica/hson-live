@@ -17,7 +17,7 @@ import {
 import { set_livemap_document_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.document.registration.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
 
-const Q1 = "0000000000002c01";
+const Q1 = "000002c01";
 let checks = 0;
 
 function check(name: string, run: () => void): void {
@@ -40,7 +40,7 @@ Reflect.set(FakeElement.prototype, "querySelector", () => undefined);
 check("document.byQuid remains an active-map compatibility lookup", () => {
   const map = element(`<main @${Q1}/>`);
   assert.equal(map.document.byQuid(Q1)?.$_tag, "main");
-  assert.equal(map.document.byQuid("0000000000002c02"), undefined);
+  assert.equal(map.document.byQuid("000002c02"), undefined);
 });
 
 check("document.byQuid still returns detached diagnostic material", () => {

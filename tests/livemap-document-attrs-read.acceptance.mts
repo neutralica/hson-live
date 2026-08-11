@@ -54,7 +54,7 @@ function assertNoReadEffects(map: DocumentLiveMap, fn: () => void): void {
 }
 
 check("get preserves every canonical value distinction and detaches structured style", () => {
-  const map = element(`<main @0000000000000101/>`);
+  const map = element(`<main @000000101/>`);
   map.document.attrs.replace(path(), {
     empty: "",
     enabled: true,
@@ -72,7 +72,7 @@ check("get preserves every canonical value distinction and detaches structured s
     assert.equal(map.document.attrs.get(path(), "zero"), 0);
     assert.equal(map.document.attrs.get(path(), "nullable"), null);
     assert.equal(map.document.attrs.get(path(), "absent"), undefined);
-    assert.equal(map.document.attrs.get(quid("0000000000000101"), "positive"), 7);
+    assert.equal(map.document.attrs.get(quid("000000101"), "positive"), 7);
 
     const style = map.document.attrs.get(path(), "style");
     const styleAgain = map.document.attrs.get(path(), "style");
@@ -100,7 +100,7 @@ check("has tests own-key presence without truthiness", () => {
 });
 
 check("keys is lexical, public-only, fresh, and does not create absent storage", () => {
-  const map = element(`<main @0000000000000102/>`);
+  const map = element(`<main @000000102/>`);
   assert.equal(map.element.node().$_attrs, undefined);
   const first = map.document.attrs.keys(path());
   assert.deepEqual(first, []);
@@ -113,7 +113,7 @@ check("keys is lexical, public-only, fresh, and does not create absent storage",
     alpha: 2,
     "data-_quid": "application",
   });
-  const keys = map.document.attrs.keys(quid("0000000000000102"));
+  const keys = map.document.attrs.keys(quid("000000102"));
   const again = map.document.attrs.keys(path());
   assert.deepEqual(keys, ["alpha", "data-_quid", "style", "zeta"]);
   assert.notEqual(keys, again);
@@ -159,7 +159,7 @@ check("all reads share target and name validation", () => {
     () => map.document.attrs.has(path(), "hson:unknown"),
   ]) errorCode(read, "PROTECTED_DOCUMENT_METADATA");
   errorCode(() => map.document.attrs.keys(path(99)), "DOCUMENT_PATH_OUT_OF_RANGE", "list-attrs");
-  errorCode(() => map.document.attrs.get(quid("0000000000000199"), "id"), "DOCUMENT_TARGET_NOT_FOUND", "get-attr");
+  errorCode(() => map.document.attrs.get(quid("000000199"), "id"), "DOCUMENT_TARGET_NOT_FOUND", "get-attr");
   errorCode(() => map.document.attrs.get(path(0, 0), "id"), "DOCUMENT_TARGET_KIND", "get-attr");
   errorCode(
     () => Reflect.apply(map.document.attrs.get, map.document.attrs, [{ path: [] }, "id"]),
@@ -169,31 +169,31 @@ check("all reads share target and name validation", () => {
 });
 
 check("fragment and element modes support root, nested, path, and QUID targets", () => {
-  const elementMap = element(`<main id="root" <p title="nested" @0000000000000103/>/>`);
+  const elementMap = element(`<main id="root" <p title="nested" @000000103/>/>`);
   assert.equal(elementMap.document.attrs.get(path(), "id"), "root");
   assert.equal(elementMap.document.attrs.get(path(0, 0), "title"), "nested");
-  assert.equal(elementMap.document.attrs.has(quid("0000000000000103"), "title"), true);
+  assert.equal(elementMap.document.attrs.has(quid("000000103"), "title"), true);
 
-  const fragmentMap = fragment(`<section id="first" @0000000000000104/> <aside title="second"/>`);
+  const fragmentMap = fragment(`<section id="first" @000000104/> <aside title="second"/>`);
   assert.equal(fragmentMap.document.attrs.get(path(0), "id"), "first");
   assert.deepEqual(fragmentMap.document.attrs.keys(path(1)), ["title"]);
-  assert.equal(fragmentMap.document.attrs.must.get(quid("0000000000000104"), "id"), "first");
+  assert.equal(fragmentMap.document.attrs.must.get(quid("000000104"), "id"), "first");
 });
 
 check("reads over absent attrs remain complete no-ops", () => {
-  const map = element(`<main @0000000000000105/>`);
-  const beforeLookup = map.document.byQuid("0000000000000105");
+  const map = element(`<main @000000105/>`);
+  const beforeLookup = map.document.byQuid("000000105");
   assertNoReadEffects(map, () => {
     assert.equal(map.document.attrs.get(path(), "id"), undefined);
     assert.equal(map.document.attrs.has(path(), "id"), false);
     assert.deepEqual(map.document.attrs.keys(path()), []);
   });
-  assert.deepEqual(map.document.byQuid("0000000000000105"), beforeLookup);
+  assert.deepEqual(map.document.byQuid("000000105"), beforeLookup);
 });
 
 check("local reads through a hosted authority create no history or publication", () => {
   const host = hson.liveHost.create({
-    map: element(`<main id="local" @0000000000000106/>`),
+    map: element(`<main id="local" @000000106/>`),
   });
   let publications = 0;
   host.stream.on_commit(() => { publications += 1; });

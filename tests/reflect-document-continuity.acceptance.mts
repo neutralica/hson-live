@@ -40,10 +40,10 @@ function reflected(
   return Object.freeze({ runtime, binding: _reflect_document_for_runtime_test(runtime, map) });
 }
 
-const Q1 = "0000000000000711";
-const Q2 = "0000000000000712";
-const Q3 = "0000000000000713";
-const Q4 = "0000000000000714";
+const Q1 = "000000711";
+const Q2 = "000000712";
+const Q3 = "000000713";
+const Q4 = "000000714";
 
 check("move preserves the exact projected element node", () => {
   const map = element(`<main <a @${Q1}/> <b @${Q2}/>/` + `>`);

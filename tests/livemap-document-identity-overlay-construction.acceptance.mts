@@ -18,9 +18,9 @@ function check(name: string, run: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Q1 = "0000000000000001";
-const Q2 = "0000000000000002";
-const Q3 = "0000000000000003";
+const Q1 = "000000001";
+const Q2 = "000000002";
+const Q3 = "000000003";
 
 function element(source: string) {
   const map = hson.liveMap.fromHson(source);

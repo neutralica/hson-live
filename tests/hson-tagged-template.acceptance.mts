@@ -72,8 +72,8 @@ check("comments disappear through the ordinary canonical serializer", () => {
 
 check("tagged templates retain default QUID behavior", () => {
   assert.equal(
-    hsonString`<panel class="x" @4k7m2v9d1r6x8qwc hidden "Content"/>`,
-    `<panel @4k7m2v9d1r6x8qwc class="x" hidden "Content"/>`,
+    hsonString`<panel class="x" @d1r6x8qwc hidden "Content"/>`,
+    `<panel @d1r6x8qwc class="x" hidden "Content"/>`,
   );
 });
 

@@ -9,8 +9,8 @@ import { livemap_identity_epoch_accounting } from "../src/api/livemap/livemap.id
 import { element } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
-const Q1 = "0000000000004b01";
-const Q2 = "0000000000004b02";
+const Q1 = "000004b01";
+const Q2 = "000004b02";
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); };
 const map = (value: unknown) => hson.liveMap.fromJson(value as never);

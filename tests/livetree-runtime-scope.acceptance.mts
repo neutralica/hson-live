@@ -30,7 +30,7 @@ function check(name: string, fn: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const SAME_QUID = "0000000000000rt1";
+const SAME_QUID = "000000rt1";
 type RuntimeHandle = ReturnType<typeof _create_livetree_runtime_test_handle>;
 
 function node(tag = "main", quid?: string): HsonNode {
@@ -219,8 +219,8 @@ check("duplicate supplied QUID admission is atomic within one runtime", () => {
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
   const duplicateGraph = node("section");
   duplicateGraph.$_content.push(
-    node("span", "0000000000000rt3"),
-    node("em", "0000000000000rt3"),
+    node("span", "000000rt3"),
+    node("em", "000000rt3"),
   );
   assert.throws(() => runtimeTree(runtime, duplicateGraph), /Duplicate QUID/);
   assert.equal(_livetree_runtime_test_claim_count(runtime), before);
@@ -328,7 +328,7 @@ check("one runtime supports many LiveTrees and ordinary QUID selectors in one Do
   const document = new StyleDocument();
   const runtime = _create_livetree_runtime_test_handle();
   const leftTree = runtimeTree(runtime, node("main", SAME_QUID));
-  const rightTree = runtimeTree(runtime, node("aside", "0000000000000rt3"));
+  const rightTree = runtimeTree(runtime, node("aside", "000000rt3"));
   const leftElement = projectInto(runtime, leftTree, document);
   const rightElement = projectInto(runtime, rightTree, document);
   leftTree.css.set.color("red");
@@ -396,7 +396,7 @@ check("shared-Document projection rejects atomically and same-runtime registrati
   const left = _create_livetree_runtime_test_handle();
   const right = _create_livetree_runtime_test_handle();
   const leftTree = runtimeTree(left, node("main", SAME_QUID));
-  const rightTree = runtimeTree(right, node("aside", "0000000000000rt4"));
+  const rightTree = runtimeTree(right, node("aside", "000000rt4"));
   projectInto(left, leftTree, document);
   leftTree.css.set.color("green");
   _own_livetree_runtime_test_disposable(left, leftTree.quid, () => undefined, "listener");
@@ -534,7 +534,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
     ["span", "strong", "small", "em", "em"],
   );
 
-  const restoredQuid = "0000000000000rt5";
+  const restoredQuid = "000000rt5";
   const original = runtimeTree(runtime, node("section", restoredQuid));
   const originalElement = projectInto(runtime, original, document);
   original.remove();
@@ -544,7 +544,7 @@ check("creation, handles, append, batch, detach, reinsert, clone, restoration, a
       && error !== null
       && Reflect.get(error, "code") === "LIVETREE_QUID_REUSE",
   );
-  const restored = runtimeTree(runtime, node("section", "0000000000000rt6"));
+  const restored = runtimeTree(runtime, node("section", "000000rt6"));
   const restoredElement = projectInto(runtime, restored, document);
   assertCleanProjection(restoredElement);
   assert.equal(originalElement.getAttribute("hson:quid"), null);
@@ -649,9 +649,9 @@ check("borrowed tree destruction stops its bridge and later binding disposal is 
 });
 
 check("ordinary public LiveTree calls retain one compatibility runtime", () => {
-  const first = hson.liveTree.fromHson(`<main @0000000000000rt2/>`);
+  const first = hson.liveTree.fromHson(`<main @000000rt2/>`);
   assert.throws(
-    () => hson.liveTree.fromHson(`<aside @0000000000000rt2/>`),
+    () => hson.liveTree.fromHson(`<aside @000000rt2/>`),
     /Duplicate QUID/,
   );
   first.remove();

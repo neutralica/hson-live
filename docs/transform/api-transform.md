@@ -477,13 +477,14 @@ graph. Presence flags are the distinct exact-equality form
 
 HSON has one identity-specific header declaration: `@quid`. It maps only to
 canonical `$_meta["quid"]`; it is neither HTML `id`, a selector, nor a
-request to generate identity. Persisted QUIDs are random 80-bit identifiers:
-exactly 16 lowercase Base32 characters from
-`0123456789abcdefghjkmnpqrstvwxyz`. They are generated from 10 secure random
-bytes; there is no normalization, fallback format, quoted form, or `@@` form.
+request to generate identity. Persisted QUIDs are random 45-bit identifiers:
+exactly 9 lowercase Base32 characters from
+`0123456789abcdefghjkmnpqrstvwxyz`. They are generated from the first 45 bits
+of 6 secure random bytes; there is no normalization, legacy-width admission,
+fallback format, quoted form, or `@@` form.
 
 ```hson
-<panel @4k7m2v9d1r6x8qwc class="settings" "Content"/>
+<panel @d1r6x8qwc class="settings" "Content"/>
 ```
 
 Parsing accepts one declaration anywhere in an opening header before inline

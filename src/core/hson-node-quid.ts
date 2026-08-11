@@ -3,11 +3,13 @@ import { is_Node, is_ordinary_element_node } from "./node-guards.js";
 import { ensure_node_meta, prune_empty_node_meta } from "./node-storage.js";
 import type { HsonNode } from "./types.js";
 
-/** Canonical 80-bit persisted node identity. */
+/** Canonical 45-bit persisted node identity. */
 export type PersistedQuid = string;
 
-export const PERSISTED_QUID_LENGTH = 16;
+export const PERSISTED_QUID_LENGTH = 9;
 export const PERSISTED_QUID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
+
+const PERSISTED_QUID_RANDOM_BYTE_LENGTH = 6;
 
 const PERSISTED_QUID_CHARS = new Set(PERSISTED_QUID_ALPHABET);
 
@@ -18,16 +20,18 @@ export function is_persisted_quid(value: unknown): value is PersistedQuid {
   return true;
 }
 
-/** Direct, padding-free encoding of exactly ten bytes into sixteen Base32 digits. */
+/** Encode the first 45 bits of exactly six random bytes as nine Base32 digits. */
 export function encode_persisted_quid(bytes: Uint8Array): PersistedQuid {
-  if (bytes.length !== 10) throw new Error("persisted QUID encoding requires exactly 10 bytes");
+  if (bytes.length !== PERSISTED_QUID_RANDOM_BYTE_LENGTH) {
+    throw new Error(`persisted QUID encoding requires exactly ${PERSISTED_QUID_RANDOM_BYTE_LENGTH} bytes`);
+  }
   let output = "";
   let buffer = 0;
   let bits = 0;
   for (const byte of bytes) {
     buffer = (buffer << 8) | byte;
     bits += 8;
-    while (bits >= 5) {
+    while (bits >= 5 && output.length < PERSISTED_QUID_LENGTH) {
       bits -= 5;
       output += PERSISTED_QUID_ALPHABET[(buffer >>> bits) & 31];
     }
@@ -70,12 +74,12 @@ export class HsonNodeQuidValidationError extends Error {
   }
 }
 
-/** Generate one canonical 80-bit persisted QUID from secure random bytes. */
+/** Generate one canonical 45-bit persisted QUID from secure random bytes. */
 export function mint_hson_node_quid(): PersistedQuid {
   if (!globalThis.crypto?.getRandomValues) {
     throw new Error("secure QUID generation is unavailable");
   }
-  const bytes = new Uint8Array(10);
+  const bytes = new Uint8Array(PERSISTED_QUID_RANDOM_BYTE_LENGTH);
   globalThis.crypto.getRandomValues(bytes);
   return encode_persisted_quid(bytes);
 }

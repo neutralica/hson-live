@@ -132,7 +132,7 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
 
 check("LiveMap exposes detached root copies and debug-only live node access", () => {
   const node = hson.fromHson(
-    `<button id="primary" data-user="kept" @0000000000000001 "hello"/>`,
+    `<button id="primary" data-user="kept" @000000001 "hello"/>`,
   ).toNode();
   const map = hson.liveMap.fromNode(node);
 
@@ -158,9 +158,9 @@ check("LiveMap exposes detached root copies and debug-only live node access", ()
     copiedButton.$_attrs?.style?.[":hover"],
     ownedButton.$_attrs.style?.[":hover"],
   );
-  assert.equal(copiedButton.$_meta?.["quid"], "0000000000000001");
+  assert.equal(copiedButton.$_meta?.["quid"], "000000001");
   copiedButton.$_attrs = { ...copiedButton.$_attrs, id: "mutated" };
-  copiedButton.$_meta = { ...copiedButton.$_meta, quid: "0000000000000002" };
+  copiedButton.$_meta = { ...copiedButton.$_meta, quid: "000000002" };
   assert.equal(replace_first_primitive(copiedButton, "changed"), true);
   copy.$_content.push({ $_tag: "detached", $_content: [] });
 
@@ -192,7 +192,7 @@ check("debug.node preserves unsafe live mutation and bypass behavior", () => {
 });
 
 check("document install is present only on document runtime façades", () => {
-  const document = hson.liveMap.fromHson(`<main @0000000000000003/>`);
+  const document = hson.liveMap.fromHson(`<main @000000003/>`);
   if (document.mode !== "element") throw new Error(`expected element, observed ${document.mode}`);
   assert.equal("install" in document, true);
   assert.equal(typeof document.install, "function");

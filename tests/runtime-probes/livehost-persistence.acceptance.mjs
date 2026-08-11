@@ -25,7 +25,7 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-function element(source = `<main @0000000000001001/>`) {
+function element(source = `<main @000001001/>`) {
   const map = hson.liveMap.fromHson(source);
   if (map.mode !== "element") throw new Error("expected element map");
   return map;
@@ -265,7 +265,7 @@ await check("checkpoint failure preserves the prior durable chain and host healt
 await check("persistent store unload and checkpoint-plus-tail reload preserve exact authority", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
-  const map = element(`<main @0000000000001010/>`);
+  const map = element(`<main @000001010/>`);
   const created = await store.create("persistent-reload", { map, authority: "exclusive" });
   assert.equal(created.ok, true);
   const host = created.value;
@@ -279,7 +279,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   await host.checkpoint();
   const inserted = {
     $_tag: "_hson_elem",
-    $_content: [element(`<section @0000000000001011 style="display:block"/>`).element.node()],
+    $_content: [element(`<section @000001011 style="display:block"/>`).element.node()],
   };
   await host.mutate((draft) => draft.document.content.insert(root, 0, inserted));
   const persistedTail = adapter.state("persistent-reload").commits[0];
@@ -295,7 +295,7 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   assert.equal(restored.stream.incarnationId, incarnation);
   assert.equal(restored.map.rev, expected.rev);
   assert.equal(canonical_hson_graph_equal(restored.map.capture().root, expected.root), true);
-  assert.equal(restored.map.document.byQuid("0000000000001011")?.$_tag, "section");
+  assert.equal(restored.map.document.byQuid("000001011")?.$_tag, "section");
   assert.deepEqual(restored.stream.history.replay_after(1)?.map((commit) => commit.rev), [2]);
   assert.throws(() => restored.map.document.attrs.set(root, "direct", true));
   assert.equal((await restored.mutate((draft) => draft.document.attrs.set(root, "continued", true))).rev, 3);
