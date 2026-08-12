@@ -66,8 +66,8 @@ type LiveMapOmitsTopLevelNode = Expect<
 type DocumentLiveMapOmitsDataSet = Expect<
   Equal<"set" extends keyof DocumentLiveMapSurface ? true : false, false>
 >;
-type DocumentLiveMapOmitsDataProxy = Expect<
-  Equal<"proxy" extends keyof DocumentLiveMapSurface ? true : false, false>
+type DocumentLiveMapExposesProxy = Expect<
+  Equal<"proxy" extends keyof DocumentLiveMapSurface ? true : false, true>
 >;
 type DocumentLiveMapExposesInstall = Expect<
   Equal<"install" extends keyof DocumentLiveMapSurface ? true : false, true>
@@ -168,8 +168,7 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
 
   // @ts-expect-error Document maps do not expose projected JSON mutation.
   documentMap.set([], {});
-  // @ts-expect-error Document maps do not expose the JSON Proxy.
-  documentMap.proxy();
+  documentMap.proxy()[0].$_.snap();
   // @ts-expect-error Canonical nodes establish identity through construction, not install.
   documentMap.install(documentMap.root());
   // @ts-expect-error Graph replay is not part of the document façade.

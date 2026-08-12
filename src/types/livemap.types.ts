@@ -568,6 +568,8 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   root: () => HsonNode;
   /** Create a passive location at one logical ordered-content coordinate. */
   at: (path: readonly number[]) => LiveMapDocumentLocation;
+  /** Create a passive numeric proxy over logical ordered document content. */
+  proxy: (path?: readonly number[]) => LiveMapDocumentProxy;
   capture: DocumentLiveMapCaptureApi<TMode>;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
@@ -597,6 +599,12 @@ type LiveMapDocumentLocation = Readonly<{
   snap: () => HsonNode | Primitive | undefined;
   /** Create a child location relative to this logical coordinate. */
   at: (path: readonly number[]) => LiveMapDocumentLocation;
+}>;
+
+/** Structural document proxy return type; intentionally not exported. */
+type LiveMapDocumentProxy = Readonly<{
+  readonly $_: LiveMapDocumentLocation;
+  readonly [index: number]: LiveMapDocumentProxy;
 }>;
 
 export type ElementLiveMap = DocumentLiveMapShared<"element"> & Readonly<{

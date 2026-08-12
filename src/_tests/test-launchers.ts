@@ -749,6 +749,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["document", "path", "traversal", "public-api", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.document-proxy",
+      subject: "LiveMap",
+      displayName: "Public logical document proxy",
+      packageScript: "test:livemap-document-proxy",
+      repositoryModule: "tests/livemap-document-proxy.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["document", "path", "proxy", "traversal", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.document-staging",
       subject: "LiveMap",
       displayName: "Staged canonical document operations",

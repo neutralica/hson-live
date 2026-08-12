@@ -185,6 +185,20 @@ the internal `_hson_elem` carrier. Specialized attribute and content mutations
 remain under `map.document.attrs` and `map.document.content`. Physical document
 paths remain the low-level coordinates used by those canonical operations.
 
+The existing proxy surface follows the same document coordinates:
+
+```ts
+if (document.mode === "element") {
+  const paragraph = document.proxy()[0][0].$_;
+  console.log(paragraph.snap());
+}
+```
+
+Numeric proxy properties traverse logical document content, and `$_` exits to
+the passive location at that coordinate. Internal carriers remain hidden.
+Document facets and mutation operators are not exposed through the proxy;
+specialized mutations remain under the existing document APIs.
+
 LiveMap provides:
 
 - object and array state;

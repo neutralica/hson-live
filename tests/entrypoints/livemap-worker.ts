@@ -8,6 +8,7 @@ import {
   type LiveMapDocumentIdentityProvenanceErrorCode,
   type LiveMapDocumentInstallFailureCode,
   type LiveMapMoveOp,
+  type LiveMap,
   type LiveMapCanonicalCapture,
   type LiveMapProjectedIdentityErrorCode,
   type LiveMapProjectedIdentityHandle,
@@ -27,6 +28,10 @@ void hsonLiveMap.fromHson(`<worker <ready true>>`);
 void hsonLiveMap.fromNode(map.root());
 void hsonLiveMap.schema.define((shape) => ({ ready: shape.boolean }));
 
+declare const optionalProjectedMap: LiveMap<Readonly<{ user?: Readonly<{ name: string }> }>>;
+const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().user.name.$_.snap();
+void optionalProjectedName;
+
 const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
 if (documentMap.mode === "element") {
   const documentLocation = documentMap.at([0]);
@@ -35,6 +40,15 @@ if (documentMap.mode === "element") {
   void documentEndpoint;
   void logicalPath;
   void documentLocation.rev;
+  const documentProxy = documentMap.proxy();
+  const documentProxyLocation = documentProxy[0][1].$_;
+  const rootedDocumentProxyLocation = documentMap.proxy([0])[1].$_;
+  void documentProxyLocation.snap();
+  void rootedDocumentProxyLocation.path();
+  // @ts-expect-error document proxies expose numeric structural traversal only
+  documentProxy.attrs;
+  // @ts-expect-error document proxy escapes omit projected mutation capabilities
+  documentProxyLocation.set(documentMap.element.node());
   // @ts-expect-error logical document paths do not accept projected string keys
   documentMap.at(["content"]);
   // @ts-expect-error document locations intentionally omit projected mutation helpers

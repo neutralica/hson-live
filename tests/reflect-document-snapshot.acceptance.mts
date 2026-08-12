@@ -60,6 +60,7 @@ function with_capture(
     get rev() { return map.rev; },
     root: map.root,
     at: map.at,
+    proxy: map.proxy,
     capture,
     install: map.install,
     restore: map.restore,
