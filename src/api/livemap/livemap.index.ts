@@ -1,5 +1,4 @@
 // livemap.index.ts — supported public module surface
-export { define_livemap_schema, make_livemap_schema, LIVEMAP_SCHEMA } from "./livemap.schema.js";
 
 export {
   append_live_path,
@@ -24,8 +23,6 @@ export type {
 export type {
   InferLiveMapSchema,
   LiveMapSchema,
-  LiveMapSchemaBuilder,
-  LiveMapSchemaInput,
   LiveMapSchemaIssue,
   LiveMapSchemaValidation,
 } from "./livemap.schema.js";

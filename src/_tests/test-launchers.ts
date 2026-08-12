@@ -825,7 +825,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-schema-construction",
       repositoryModule: "tests/livemap-document-schema-construction.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 32,
       collections: ["document", "schema", "validation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -835,7 +835,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-schema-enforcement",
       repositoryModule: "tests/livemap-document-schema-enforcement.acceptance.mts",
       runtime: "node",
-      executableChecks: 26,
+      executableChecks: 25,
       collections: ["document", "schema", "mutation", "authority", "debug", "externally-discoverable"],
     }),
     launcher({
@@ -967,6 +967,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       runtime: "node",
       executableChecks: 25,
       collections: ["projected-value", "schema", "admission", "externally-discoverable"],
+    }),
+    launcher({
+      id: "livemap.schema-composition",
+      subject: "LiveMap",
+      displayName: "Universal compositional schema definitions",
+      packageScript: "test:livemap-schema-composition",
+      repositoryModule: "tests/livemap-schema-composition.acceptance.mts",
+      runtime: "node",
+      executableChecks: 25,
+      collections: ["projected-value", "document", "schema", "composition", "public-api", "externally-discoverable"],
     }),
     launcher({
       id: "livemap.transform-accepted-closure",

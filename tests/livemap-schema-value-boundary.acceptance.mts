@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { admit_projected_value } from "../src/core/projected-value-admission.ts";
 import { projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
 import { make_livemap_core } from "../src/api/livemap/livemap.core.ts";
-import { define_livemap_schema, make_livemap_schema, LIVEMAP_SCHEMA } from "../src/api/livemap/livemap.schema.ts";
+import { hson } from "../src/hson.ts";
 import type { JsonValue } from "../src/core/types.ts";
 import { decode_public_attrs } from "../src/core/public-attrs.ts";
 
@@ -26,17 +26,17 @@ const own_data = (entries: readonly (readonly [string, unknown])[], prototype: o
 };
 
 check("direct validation admits plain objects", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
   assert.equal(schema.validateRoot({ value: 1 }).ok, true);
 });
 
 check("direct validation admits null-prototype objects", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.string }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.string }));
   assert.equal(schema.validateRoot(own_data([["value", "ok"]], null) as JsonValue).ok, true);
 });
 
 check("direct and attached validation accept the same finite value", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
   const valueMap = map({ value: 1 });
   assert.equal(schema.validateRoot({ value: 2 }).ok, true);
   valueMap.schema.use(schema);
@@ -44,7 +44,7 @@ check("direct and attached validation accept the same finite value", () => {
 });
 
 check("direct and attached validation reject NaN", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
   assert.equal(schema.validateRoot({ value: Number.NaN } as JsonValue).ok, false);
   const valueMap = map({ value: 1 });
   valueMap.schema.use(schema);
@@ -54,42 +54,42 @@ check("direct and attached validation reject NaN", () => {
 });
 
 check("direct validation rejects both infinities", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.number);
+  const schema = hson.liveMap.schema.define((s) => s.number);
   assert.equal(schema.validateRoot(Infinity).ok, false);
   assert.equal(schema.validateRoot(-Infinity).ok, false);
 });
 
 check("negative-zero literal accepts only negative zero", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.literal(-0));
+  const schema = hson.liveMap.schema.define((s) => s.literal(-0));
   assert.equal(schema.validateRoot(-0).ok, true);
   assert.equal(schema.validateRoot(0).ok, false);
 });
 
 check("positive-zero literal rejects negative zero", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.literal(0));
+  const schema = hson.liveMap.schema.define((s) => s.literal(0));
   assert.equal(schema.validateRoot(0).ok, true);
   assert.equal(schema.validateRoot(-0).ok, false);
 });
 
 check("optional means an object property may be missing", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
   assert.equal(schema.validateRoot({}).ok, true);
 });
 
 check("present undefined is invalid even for an optional property", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
   const result = schema.validateRoot(own_data([["value", undefined]]) as JsonValue);
   assert.equal(result.ok, false);
   assert.equal(result.issues[0]?.received, "undefined");
 });
 
 check("direct optional value validation rejects explicit undefined", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
   assert.equal(schema.validateValue(["value"], undefined).ok, false);
 });
 
 check("sparse arrays reject before schema traversal", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.array(LIVEMAP_SCHEMA.number));
+  const schema = hson.liveMap.schema.define((s) => s.array(s.number));
   const sparse = new Array(2);
   sparse[1] = 1;
   assert.equal(schema.validateRoot(sparse as JsonValue).ok, false);
@@ -99,13 +99,13 @@ check("ordinary accessors reject without executing", () => {
   let calls = 0;
   const value = {};
   Object.defineProperty(value, "field", { enumerable: true, get: () => { calls += 1; return 1; } });
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.unknown);
+  const schema = hson.liveMap.schema.define((s) => s.unknown);
   assert.equal(schema.validateRoot(value as JsonValue).ok, false);
   assert.equal(calls, 0);
 });
 
 check("custom prototypes and exotic values reject", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.unknown);
+  const schema = hson.liveMap.schema.define((s) => s.unknown);
   assert.equal(schema.validateRoot(Object.create({ inherited: true }) as JsonValue).ok, false);
   assert.equal(schema.validateRoot(new Date() as unknown as JsonValue).ok, false);
 });
@@ -113,31 +113,30 @@ check("custom prototypes and exotic values reject", () => {
 check("symbol-keyed properties reject", () => {
   const value = { field: 1 } as Record<PropertyKey, unknown>;
   value[Symbol("extra")] = 2;
-  assert.equal(make_livemap_schema(LIVEMAP_SCHEMA.unknown).validateRoot(value as JsonValue).ok, false);
+  assert.equal(hson.liveMap.schema.define((s) => s.unknown).validateRoot(value as JsonValue).ok, false);
 });
 
 check("nonenumerable properties reject", () => {
   const value = { field: 1 };
   Object.defineProperty(value, "hidden", { value: 2, enumerable: false });
-  assert.equal(make_livemap_schema(LIVEMAP_SCHEMA.unknown).validateRoot(value as JsonValue).ok, false);
+  assert.equal(hson.liveMap.schema.define((s) => s.unknown).validateRoot(value as JsonValue).ok, false);
 });
 
 check("cycles reject but repeated acyclic references admit", () => {
   const cycle: Record<string, unknown> = {};
   cycle.self = cycle;
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.unknown);
+  const schema = hson.liveMap.schema.define((s) => s.unknown);
   assert.equal(schema.validateRoot(cycle as JsonValue).ok, false);
   const shared = { value: 1 };
   assert.equal(schema.validateRoot({ left: shared, right: shared }).ok, true);
 });
 
 check("exact dangerous schema keys use own membership", () => {
-  const shape = own_data([
-    ["__proto__", LIVEMAP_SCHEMA.string],
-    ["constructor", LIVEMAP_SCHEMA.number],
-    ["prototype", LIVEMAP_SCHEMA.boolean],
-  ], null);
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.exact(shape as never));
+  const schema = hson.liveMap.schema.define((s) => s.exact(own_data([
+    ["__proto__", s.string],
+    ["constructor", s.number],
+    ["prototype", s.boolean],
+  ], null) as never));
   const value = own_data([["__proto__", "data"], ["constructor", 1], ["prototype", true]]);
   assert.equal(schema.validateRoot(value as JsonValue).ok, true);
   const attrs = decode_public_attrs(own_data([["__proto__", "data"], ["constructor", "ctor"]]));
@@ -148,36 +147,37 @@ check("exact dangerous schema keys use own membership", () => {
 });
 
 check("inherited constructor cannot satisfy a required own key", () => {
-  const shape = own_data([["constructor", LIVEMAP_SCHEMA.number]], null);
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.exact(shape as never));
+  const schema = hson.liveMap.schema.define((s) => s.exact(
+    own_data([["constructor", s.number]], null) as never,
+  ));
   const result = schema.validateRoot({});
   assert.equal(result.ok, false);
   assert.equal(result.issues[0]?.code, "MISSING_REQUIRED");
 });
 
 check("exact shape rejects an unknown dangerous own key", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.exact({ value: LIVEMAP_SCHEMA.number }));
+  const schema = hson.liveMap.schema.define((s) => s.exact({ value: s.number }));
   const result = schema.validateRoot(own_data([["value", 1], ["__proto__", 2]]) as JsonValue);
   assert.equal(result.ok, false);
   assert.equal(result.issues.some((issue) => issue.code === "UNKNOWN_KEY" && issue.path[0] === "__proto__"), true);
 });
 
 check("ordered object literals distinguish entry order", () => {
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.literal({ a: 1, b: 2 }));
+  const schema = hson.liveMap.schema.define((s) => s.literal({ a: 1, b: 2 }));
   assert.equal(schema.validateRoot({ a: 1, b: 2 }).ok, true);
   assert.equal(schema.validateRoot({ b: 2, a: 1 }).ok, false);
 });
 
 check("dangerous literal keys remain ordinary data", () => {
   const literal = own_data([["__proto__", "data"], ["constructor", -0]]);
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.literal(literal as JsonValue));
+  const schema = hson.liveMap.schema.define((s) => s.literal(literal as JsonValue));
   assert.equal(schema.validateRoot(own_data([["__proto__", "data"], ["constructor", -0]]) as JsonValue).ok, true);
   assert.equal(schema.validateRoot(own_data([["__proto__", "data"], ["constructor", 0]]) as JsonValue).ok, false);
 });
 
 check("schema literals detach from later caller mutation", () => {
   const literal = { nested: { value: 1 } };
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.literal(literal));
+  const schema = hson.liveMap.schema.define((s) => s.literal(literal));
   literal.nested.value = 9;
   assert.equal(schema.validateRoot({ nested: { value: 1 } }).ok, true);
   assert.equal(schema.validateRoot({ nested: { value: 9 } }).ok, false);
@@ -185,8 +185,8 @@ check("schema literals detach from later caller mutation", () => {
 
 check("nested refinements receive independent detached values", () => {
   let outerValue: unknown;
-  const schema = make_livemap_schema(LIVEMAP_SCHEMA.refine(
-    LIVEMAP_SCHEMA.refine(LIVEMAP_SCHEMA.unknown, "inner", (value) => {
+  const schema = hson.liveMap.schema.define((s) => s.refine(
+    s.refine(s.unknown, "inner", (value) => {
       (value as Record<string, JsonValue>).field = 99;
       return true;
     }),
@@ -201,7 +201,7 @@ check("nested refinements receive independent detached values", () => {
 });
 
 check("attached refinement mutation cannot affect the candidate", () => {
-  const schema = define_livemap_schema((s) => ({
+  const schema = hson.liveMap.schema.define((s) => ({
     value: s.refine(s.unknown, "detached", (input) => {
       (input as Record<string, JsonValue>).field = 99;
       return true;
@@ -214,7 +214,7 @@ check("attached refinement mutation cannot affect the candidate", () => {
 });
 
 check("schema rejection is atomic across state revision and publication", () => {
-  const schema = define_livemap_schema((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
   const valueMap = map({ value: 1 });
   valueMap.schema.use(schema);
   let feeds = 0;

@@ -83,10 +83,8 @@ check("nested and rooted proxy traversal match relative location traversal", () 
 
 check("schema evidence does not change proxy locations or interning", () => {
   const map = element(`<main <section "label"/>/>`);
-  const d = hson.liveMap.schema.document;
-  const typed = map.schema.use(d.element({
-    content: d.sequence(d.element({ content: d.sequence(d.text) })),
-  }));
+  const schema = hson.liveMap.schema.define((s) => s.tag(s.tag(s.string)));
+  const typed = map.schema.use(schema);
   assert.equal(typed.proxy()[0][0].$_, typed.at([0, 0]));
   assert.equal(typed.proxy()[0].$_.at([0]), typed.proxy([0])[0].$_);
   assert.equal(typed.proxy()[0][0].$_.snap(), "label");

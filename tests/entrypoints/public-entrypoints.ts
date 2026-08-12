@@ -73,10 +73,8 @@ import {
   LiveMapReplayError,
   LiveMapReplayInputError,
   LiveMapRevError,
-  define_livemap_schema,
   hsonLiveMap as mapSubpath,
   make_livemap_core,
-  make_livemap_schema,
   type InferLiveMapSchema,
   type LiveMap,
   type LiveMapCommit,
@@ -89,6 +87,24 @@ import {
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
+// @ts-expect-error Named schema definition aliases were hard-removed.
+import { define_livemap_schema } from "hson-live/livemap";
+// @ts-expect-error Raw schema construction was hard-removed.
+import { make_livemap_schema } from "hson-live/livemap";
+// @ts-expect-error The persistent raw schema toolkit was hard-removed.
+import { LIVEMAP_SCHEMA } from "hson-live/livemap";
+// @ts-expect-error Raw callback toolkit types are internal implementation details.
+import type { LiveMapSchemaBuilder as RemovedLiveMapSchemaBuilder } from "hson-live/livemap";
+// @ts-expect-error Raw schema-expression input types are not a public authoring boundary.
+import type { LiveMapSchemaInput as RemovedLiveMapSchemaInput } from "hson-live/livemap";
+// @ts-expect-error Token-specific inference was replaced by general defined-schema inference.
+import type { InferLiveMapSchemaToken as RemovedInferLiveMapSchemaToken } from "hson-live/livemap";
+// @ts-expect-error The types subpath also hides raw schema toolkit types.
+import type { LiveMapSchemaBuilder as RemovedTypesSchemaBuilder } from "hson-live/types";
+// @ts-expect-error The types subpath also hides raw schema input types.
+import type { LiveMapSchemaInput as RemovedTypesSchemaInput } from "hson-live/types";
+// @ts-expect-error The types subpath exposes only general defined-schema inference.
+import type { InferLiveMapSchemaToken as RemovedTypesSchemaTokenInference } from "hson-live/types";
 // @ts-expect-error BindingSource is intentionally not a public export.
 import type { BindingSource } from "hson-live/livetree";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
@@ -151,19 +167,21 @@ void construct_tree;
 void bareHsonString;
 void (0 as unknown as LiveMapDocumentSchema);
 
-const documentSchemaNamespace = hson.liveMap.schema.document;
-const publicElementSchema = documentSchemaNamespace.element({
-  tag: "button",
-  content: documentSchemaNamespace.sequence(documentSchemaNamespace.text),
-});
-const publicFragmentSchema = documentSchemaNamespace.fragment(
-  documentSchemaNamespace.repeat(
-    documentSchemaNamespace.pick(
-      documentSchemaNamespace.text,
-      documentSchemaNamespace.element(),
-    ),
-  ),
-);
+// @ts-expect-error The separate document authoring namespace was hard-removed.
+hson.liveMap.schema.document;
+const publicElementSchema = hson.liveMap.schema.define((s) => s.button(s.string));
+const publicCustomElementSchema = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
+declare const publicDynamicTagName: string;
+const publicDynamicElementSchema = hson.liveMap.schema.define((s) => s.tag[publicDynamicTagName](s.string));
+const publicFragmentSchema = hson.liveMap.schema.define((s) => s.repeat(
+  s.pick(s.string, s.tag()),
+));
+// @ts-expect-error Exact arbitrary tags use the tag-family property grammar.
+hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
+// @ts-expect-error Callable tag(...) already covers any-element schemas.
+hson.liveMap.schema.define((s) => s.element());
+void publicCustomElementSchema;
+void publicDynamicElementSchema;
 const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
 if (publicElementCandidate.mode === "element") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
@@ -231,12 +249,9 @@ declare const bindingTree: LiveTree;
 
 const typedRelativeDocumentCandidate = mapSubpath.fromHson(`<main <label "Save"/>/>`);
 if (typedRelativeDocumentCandidate.mode === "element") {
+  const typedRelativeSchema = mapSubpath.schema.define((s) => s.tag(s.label(s.string)));
   const typedRelativeDocument = typedRelativeDocumentCandidate.schema.use(
-    documentSchemaNamespace.element({
-      content: documentSchemaNamespace.sequence(documentSchemaNamespace.element({
-        content: documentSchemaNamespace.sequence(documentSchemaNamespace.text),
-      })),
-    }),
+    typedRelativeSchema,
   );
   const relativeLabel = typedRelativeDocument.at([]).at([0]).at([0]);
   const proxiedLabel = typedRelativeDocument.proxy()[0][0].$_;
@@ -480,7 +495,7 @@ declare const publicDeclarationClosure:
   | PublicLiveHostClosure;
 void publicDeclarationClosure;
 
-const declarationTruthSchema = define_livemap_schema((schema) => ({
+const declarationTruthSchema = mapSubpath.schema.define((schema) => ({
   optionalObject: schema.number.optional,
   optionalBranch: schema.object({ name: schema.string }).optional,
   nullableBranch: schema.object({ name: schema.string }).nullable,
@@ -574,12 +589,6 @@ const invalidArrayItem: DeclarationTruth["array"] = [1, undefined];
 const invalidTupleItem: DeclarationTruth["tupleTrailing"] = ["ready", undefined];
 // @ts-expect-error Nullability does not imply optionality or admit undefined.
 const invalidNullable: DeclarationTruth["nullable"] = undefined;
-// @ts-expect-error A schema root must be an existing LiveMap schema input.
-make_livemap_schema(42);
-// @ts-expect-error A schema shape cannot contain explicit undefined.
-make_livemap_schema({ value: undefined });
-// @ts-expect-error A schema factory must return an existing LiveMap schema input.
-define_livemap_schema(() => undefined);
 // @ts-expect-error The public schema facade rejects a non-schema input.
 mapSubpath.schema.make(42);
 // @ts-expect-error The public schema facade requires its factory to return a schema input.

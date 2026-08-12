@@ -893,7 +893,7 @@ export type LiveHostActionContextForMap<
 
 type LiveHostDataMutationDraft<TMap extends LiveMapAuthority> = Omit<
   TMap,
-  "commits" | "debug" | "feed" | "replay" | "restore" | "schema" | "sub" | "withSchema"
+  "commits" | "debug" | "feed" | "replay" | "restore" | "schema" | "sub"
 >;
 
 type LiveHostDocumentMutationDraft<TMap extends DocumentLiveMap> = Omit<

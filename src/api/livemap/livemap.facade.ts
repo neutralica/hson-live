@@ -5,36 +5,22 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import {
   define_livemap_schema,
-  LIVEMAP_SCHEMA,
-  make_livemap_schema,
 } from "./livemap.schema.js";
-import { LIVEMAP_DOCUMENT_SCHEMA } from "./livemap.document.schema.js";
 import type {
-  InferLiveMapSchemaInput,
-  LiveMapSchema,
   LiveMapSchemaBuilder,
-  LiveMapSchemaInput,
+  InternalDefinedLiveMapSchema,
+  InternalLiveMapSchemaDefinition,
 } from "./livemap.schema.js";
 
-type LiveMapSchemaNamespace = LiveMapSchemaBuilder & Readonly<{
-  document: typeof LIVEMAP_DOCUMENT_SCHEMA;
-  define: <const TInput extends LiveMapSchemaInput>(
-    makeShape: (schema: LiveMapSchemaBuilder) => TInput,
-  ) => LiveMapSchema<Exclude<InferLiveMapSchemaInput<TInput>, undefined>>;
-  make: <const TInput extends LiveMapSchemaInput>(
-    input: TInput,
-  ) => LiveMapSchema<Exclude<InferLiveMapSchemaInput<TInput>, undefined>>;
+type LiveMapSchemaNamespace = Readonly<{
+  define: <const TExpression extends InternalLiveMapSchemaDefinition>(
+    define: (schema: LiveMapSchemaBuilder) => TExpression,
+  ) => InternalDefinedLiveMapSchema<TExpression>;
 }>;
 
-const schema: LiveMapSchemaNamespace = Object.assign(
-  {},
-  LIVEMAP_SCHEMA,
-  {
-    document: LIVEMAP_DOCUMENT_SCHEMA,
-    define: define_livemap_schema,
-    make: make_livemap_schema,
-  },
-);
+const schema: LiveMapSchemaNamespace = Object.freeze({
+  define: define_livemap_schema,
+});
 
 function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
   if (map.mode === "data-object" || map.mode === "data-array") return map;

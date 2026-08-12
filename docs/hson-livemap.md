@@ -288,112 +288,82 @@ The Proxy does not make paths into object references or add transparent reactivi
 
 ## Schemas
 
-LiveMap schemas combine runtime validation with inferred TypeScript state types. A schema is attached only after the current projected root validates. Each later projected commit validates the complete candidate root before live mutation.
+`hson.liveMap.schema.define(s => expression)` is the only schema authoring
+boundary. The callback receives one frozen toolkit; the reusable result is a
+distinct immutable schema value that can compose inside later definitions.
 
 ```ts
-const UserState = hson.liveMap.schema.define((s) => ({
-  user: s.exact({
-    name: s.string,
-    role: s.literal("author", "editor"),
-  }),
-  tags: s.string.array,
+const Seat = hson.liveMap.schema.define((s) => s.exact({
+  connected: s.boolean,
 }));
 
-const typed = map.schema.use(UserState);
+const State = hson.liveMap.schema.define((s) => s.exact({
+  left: Seat,
+  right: Seat,
+}));
+
+const typedState = projectedMap.schema.use(State);
 ```
 
-The builder currently supports primitives, literals, choices, tagged choices, lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact objects, partial objects, and deep-partial objects. Tokens can be optional or nullable.
+Projected constructors include `unknown`, `string`, `number`, `boolean`,
+`null`, `literal`, `pick`, `tagged`, `lazy`, `refine`, `array`, `tuple`,
+`record`, `object`, `exact`, `partial`, and `deepPartial`. Existing postfix
+`optional`, `nullable`, `readonly`, and `array` modifiers also work on compatible
+defined projected schemas. `readonly` remains descriptive rule metadata rather
+than mutation access control.
 
-Schema validation governs projected JSON state. It does not validate direct raw HSON node edits. The current `readonly` schema modifier is recorded in schema rules but is not enforced as a mutation prohibition; treating it as access control is roadmap behavior.
-
-Document maps use the separate `hson.liveMap.schema.document` vocabulary:
-
-```ts
-const d = hson.liveMap.schema.document;
-const schema = d.element({
-  tag: "button",
-  content: d.sequence(d.text),
-});
-
-const candidate = hson.liveMap.fromHson(`<button "Save"/>`);
-if (candidate.mode === "element") candidate.schema.use(schema);
-```
-
-Its six v1 values are `text`, `element`, `fragment`, `sequence`, `repeat`, and
-`pick`. Text means strings only. Supplied content is closed; omitted element
-content leaves that element's descendants broad. Attributes remain open.
-Repetition is whole-content zero-or-more, and alternate dense layouts use
-`pick` over complete sequences rather than optional positions.
-
-Attachment validates synchronously and permanently governs the same owner
-through every alias and later candidate transition. The identical schema object
-may be reused idempotently; another object cannot replace it. Successful
-attachment severs prior unsafe debug references and disables future
-`debug.node(...)` access. It does not advance the revision or publish an event.
-
-The schema-bound return uses that permanent evidence for top-level logical
-paths:
+The same toolkit defines document contracts with direct known-tag builders:
 
 ```ts
+const Label = hson.liveMap.schema.define((s) => s.span(s.string));
+const Button = hson.liveMap.schema.define((s) => s.button(Label));
+const Toolbar = hson.liveMap.schema.define((s) => s.div(Button, Button));
+
+const candidate = hson.liveMap.fromHson(`<div><button><span>Save</span></button><button><span>Open</span></button></div>`);
 if (candidate.mode === "element") {
-  const typed = candidate.schema.use(schema);
-
-  typed.at([0]).snap();       // string
-  tree.bind.text(typed.at([0]));
-  // typed.at([1]);           // compile-time error
+  const typed = candidate.schema.use(Toolbar);
+  typed.at([0, 0, 0]).snap(); // string
 }
 ```
 
-Exact fixed paths narrow to `string` or `HsonNode`. Repeated and dynamic
-coordinates include `undefined`, while descendants of a deliberately broad
-`element()` widen to `string | HsonNode | undefined`. Schema-less document maps
-keep the historical `HsonNode | Primitive | undefined` location domain.
+`string`, `unknown`, `tuple`, and `pick` retain every truthful projected and
+document capability until an enclosing expression selects one. Invalid mixes,
+such as `s.exact({ child: s.div() })` or `s.div(s.number)`, are rejected.
+`repeat(item)` is a document layout for zero or more siblings. A top-level
+`tuple(...)` is one multi-root fragment layout.
 
-Relative locations preserve and consume the local descriptor carried by their
-base location:
+Tag calls with no children leave descendants broad. Explicit items form one
+closed ordered layout, while one layout argument supplies the complete content.
+Use `s.div(s.tuple())` for an exact-empty `div`; use `s.tuple()` for an empty
+fragment layout. Known HTML and SVG names come from the same canonical catalog
+as `LiveTree.create`.
 
-```ts
-const root = nestedTyped.at([]);
-const container = root.at([0]);
-const label = container.at([0]);
-
-label.snap();              // string
-label.replace("Save");
-tree.bind.text(label);
-
-root.at([0, 0]).snap();    // the same endpoint type
-// container.at([1]);      // compile-time error when locally impossible
-```
-
-Absent repeated or union ancestors propagate `undefined` to relative
-descendants. Dynamic indexes resolve against local sequence/repeat evidence;
-fully broad paths and deliberately broad element subtrees widen locally to
-`string | HsonNode | undefined`.
-
-Mutation values are narrowed from the same retained item evidence:
+The same child grammar covers any element and arbitrary tags:
 
 ```ts
-const text = typed.at([0]);
-text.replace("Save");       // accepted
-// text.replace(node);      // type error
+const AnyTextElement = hson.liveMap.schema.define((s) => s.tag(s.string));
+const Widget = hson.liveMap.schema.define((s) => s.tag.widget(s.string));
+const Hyphenated = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
 
-const list = fragmentMap.schema.use(d.fragment(d.repeat(d.text)));
-list.at([]).insert(0, "item");
+const name: string = getRuntimeTagName();
+const Dynamic = hson.liveMap.schema.define((s) => s.tag[name](s.string));
 ```
 
-Text accepts `string`, elements accept the coarse `HsonNode` type, and unions
-combine those domains. Broad schema-aware content accepts
-`string | HsonNode`; schema-less mutation inputs remain historically broad.
-`undefined` in a repeated or layout read means the location may be absent and
-does not become writable `undefined`.
+`s.tag(...)` means an ordinary element whose tag is unconstrained;
+`s.tag.foo(...)` and `s.tag["my-widget"](...)` record an exact runtime tag.
+Dynamic names are captured when `define` evaluates. TypeScript conservatively
+represents an arbitrary/unregistered custom tag name as `string`, while keeping
+its child/layout evidence exact. Direct known-tag builders such as `s.div(...)`
+retain literal tag evidence.
 
-Runtime schema enforcement remains the exact write authority for element
-tags/content, fixed-sequence and index legality, delete, and move. Relative
-typing does not change absolute coordinates, interning, watch behavior, or
-mutation planning; direct and relative calls reuse the same runtime location.
-
-Document proxy indexing and attrs remain broad. Schema-frontend refinement is
-deferred.
+Document attachment validates synchronously and permanently governs the same
+owner through aliases, mutation, restore, replay, and staged authority. Reusing
+the identical schema is idempotent; replacement is unsupported. Successful
+attachment severs unsafe debug references without changing revision or
+publishing an event. Exact fixed paths, relative paths, proxies, mutation
+inputs, watches, and LiveTree bindings all consume the retained schema evidence;
+repeated or otherwise dynamic reads include `undefined`, but `undefined` never
+becomes a writable document value.
 
 ---
 

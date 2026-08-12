@@ -253,7 +253,7 @@ export type {
   LiveHostValidator,
   LiveHostWireValue,
 } from "./livehost.types.js";
-export type { LiveMapSchema, LiveMapSchemaBuilder, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaInput, LiveMapSchemaKind, InferLiveMapSchemaToken, LiveMapSchemaValue, LiveMapSchemaRule, LiveMapSchemaShape, LiveMapSchemaToken, InferLiveMapSchema } from "../api/livemap/livemap.schema.js";
+export type { LiveMapSchema, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaValue, LiveMapSchemaRule, InferLiveMapSchema } from "../api/livemap/livemap.schema.js";
 export type {
   LiveInspector,
   LiveInspectorArrayIdentity,

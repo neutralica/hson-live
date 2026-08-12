@@ -3,6 +3,7 @@
 import type { CanonicalPublicAttrs, CanonicalPublicAttrValue, HsonNode, JsonValue, NodeContent, Primitive } from "../core/types.js";
 import type {
   LiveMapSchema,
+  LiveMapProjectedSchema,
   LiveMapSchemaResolution,
   LiveMapSchemaRule,
   LiveMapSchemaValue,
@@ -286,8 +287,8 @@ export type LiveMapCoreSchemaMustApi = Readonly<{
 }>;
 
 export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
-  get: () => LiveMapSchema | undefined;
-  use: <TSchema extends LiveMapSchema>(
+  get: () => LiveMapProjectedSchema | undefined;
+  use: <TSchema extends LiveMapProjectedSchema>(
     schema: TSchema,
   ) => LiveMap<LiveMapSchemaValue<TSchema>>;
   /** Return the public schema rule matching one concrete path, if attached. */
@@ -315,7 +316,6 @@ export type LiveMapCore<
   root: () => HsonNode;
   snap: LiveMapCoreSnap<TValue>;
   schema: LiveMapCoreSchemaApi<TValue>;
-  withSchema: <TSchema extends LiveMapSchema>(schema: TSchema) => LiveMap<LiveMapSchemaValue<TSchema>>;
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
@@ -356,7 +356,7 @@ export type LiveMapCore<
  *
  * `TValue` is the current projected root value type. A map created without a
  * schema starts as `LiveMap<JsonValue | undefined>`. After attaching an inferred
- * schema with `map.schema.use(schema)` or `map.withSchema(schema)`, the returned
+ * schema with `map.schema.use(schema)`, the returned
  * map view becomes `LiveMap<LiveMapSchemaValue<typeof schema>>`.
  */
 export type LiveMap<TValue = JsonValue | undefined> = Readonly<

@@ -118,8 +118,8 @@ exposes mutable records or source values.
 ## Example
 
 ```ts
-const schema = hson.liveMap.schema.define((s) => ({
-  items: s.array({ id: s.string, label: s.string }),
+const schema = hson.liveMap.schema.define((s) => s.exact({
+  items: s.array(s.exact({ id: s.string, label: s.string })),
 }));
 
 const state = hson.liveMap

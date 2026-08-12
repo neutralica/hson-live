@@ -43,12 +43,6 @@ export {
   stop_all,
   subscribe_paths,
 } from "./livemap-helpers.js";
-export {
-  define_livemap_schema,
-  LIVEMAP_SCHEMA,
-  make_livemap_schema,
-} from "./livemap.schema.js";
-
 export type {
   LiveMapDocumentIdentityProvenanceErrorCode,
   LiveMapDocumentIdentityRegistrationErrorCode,
@@ -61,25 +55,14 @@ export type { LiveMapDocumentPathFailureCode } from "./livemap.document.path.js"
 export type * from "../../types/livemap.types.js";
 export type {
   InferLiveMapSchema,
-  InferLiveMapSchemaChoice,
-  InferLiveMapSchemaInput,
-  InferLiveMapSchemaShape,
-  InferLiveMapSchemaToken,
   LiveMapSchema,
-  LiveMapSchemaBuilder,
-  LiveMapSchemaChoice,
-  LiveMapSchemaInput,
   LiveMapSchemaIssue,
-  LiveMapSchemaKind,
   LiveMapSchemaMustApi,
   LiveMapSchemaRefinement,
   LiveMapSchemaResolution,
   LiveMapSchemaRule,
-  LiveMapSchemaShape,
-  LiveMapSchemaToken,
   LiveMapSchemaValidation,
   LiveMapSchemaValue,
-  LiveMapSchemaVariants,
 } from "./livemap.schema.js";
 export type {
   ProjectedValueAdmissionCode,

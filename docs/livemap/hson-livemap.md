@@ -357,7 +357,7 @@ Each later projected commit validates the complete candidate root before live
 mutation.
 
 ```ts
-const UserState = hson.liveMap.schema.define((s) => ({
+const UserState = hson.liveMap.schema.define((s) => s.exact({
   user: s.exact({
     name: s.string,
     role: s.literal("author", "editor"),
@@ -368,7 +368,7 @@ const UserState = hson.liveMap.schema.define((s) => ({
 const typed = map.schema.use(UserState);
 ```
 
-The builder currently supports primitives, literals, choices, tagged choices,
+The direct `s` toolkit supports primitives, literals, choices, tagged choices,
 lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact
 objects, partial objects, and deep-partial objects. Tokens can be optional or
 nullable.
@@ -378,13 +378,35 @@ HSON node edits. The current `readonly` schema modifier is recorded in schema
 rules but is not enforced as a mutation prohibition; treating it as access
 control is roadmap behavior.
 
-Document maps instead use `hson.liveMap.schema.document`, whose v1 vocabulary
-is exactly `text`, `element`, `fragment`, `sequence`, `repeat`, and `pick`.
-Text is string-only logical content. Sequences are closed and dense; repetition
-is an entire zero-or-more content region; alternate layouts are picks of
-complete sequences. Supplied element content is closed, omitted content leaves
-that element's descendants broad, exact tags are optional, and attrs remain
-open.
+The same `schema.define(s => ...)` boundary defines document contracts. Known
+HTML and SVG tags are direct calls such as `s.div(...)` and `s.button(...)`,
+derived from the canonical `LiveTree.create` tag source. `s.string` is logical
+text, `s.unknown` is an arbitrary legal item, `s.tuple(...)` is a closed ordered
+layout, `s.repeat(item)` is zero-or-more siblings, and `s.pick(...)` combines
+compatible items or layouts. Shared expressions retain every truthful
+projected/document capability until an enclosing expression selects one.
+
+Zero tag arguments leave descendants broad. Explicit items close the complete
+direct content, and one layout argument supplies it. `s.div(s.tuple())` is an
+exact-empty element; top-level `s.tuple(...)` is a multi-root layout.
+
+The callable tag family covers any element and arbitrary names without changing
+that grammar:
+
+```ts
+const AnyTextElement = hson.liveMap.schema.define((s) => s.tag(s.string));
+const Widget = hson.liveMap.schema.define((s) => s.tag.widget(s.string));
+const Hyphenated = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
+
+const name: string = getRuntimeTagName();
+const Dynamic = hson.liveMap.schema.define((s) => s.tag[name](s.string));
+```
+
+Custom property and bracket names are exact runtime constraints and dynamic
+names are captured when `define` evaluates. TypeScript conservatively exposes
+arbitrary/unregistered custom tag-name evidence as `string`, while preserving
+the exact child/layout evidence used by paths, writes, proxies, and bindings.
+Known direct builders retain literal tag evidence.
 
 `documentMap.schema.use(schema)` validates the current graph and permanently
 installs the contract on the same owner. Every alias and future candidate is
@@ -395,10 +417,8 @@ schema object can be reused idempotently; replacement is unsupported.
 The returned map uses the evidence for top-level logical paths:
 
 ```ts
-const d = hson.liveMap.schema.document;
-const typed = documentMap.schema.use(d.element({
-  content: d.sequence(d.text),
-}));
+const TextButton = hson.liveMap.schema.define((s) => s.button(s.string));
+const typed = documentMap.schema.use(TextButton);
 
 typed.at([0]).snap();       // string
 tree.bind.text(typed.at([0]));
@@ -438,7 +458,8 @@ const text = typed.at([0]);
 text.replace("Save");       // accepted
 // text.replace(node);      // type error
 
-const list = fragmentMap.schema.use(d.fragment(d.repeat(d.text)));
+const TextList = hson.liveMap.schema.define((s) => s.repeat(s.string));
+const list = fragmentMap.schema.use(TextList);
 list.at([]).insert(0, "item");
 ```
 

@@ -10,10 +10,14 @@ import type {
   LiveMapSchemaValidation,
 } from "./livemap.schema.js";
 
-declare const DOCUMENT_SCHEMA_EVIDENCE: unique symbol;
+declare const DOCUMENT_ITEM_EVIDENCE: unique symbol;
+declare const DOCUMENT_CONTENT_EVIDENCE: unique symbol;
+declare const DOCUMENT_ROOT_EVIDENCE: unique symbol;
+declare const DOCUMENT_ROOT_MODE: unique symbol;
 
-type DocumentTextEvidence = Readonly<{ kind: "text" }>;
-type DocumentElementEvidence<
+export type DocumentTextEvidence = Readonly<{ kind: "text" }>;
+export type DocumentUnknownEvidence = Readonly<{ kind: "unknown" }>;
+export type DocumentElementEvidence<
   TTag extends string | undefined,
   TContent,
 > = Readonly<{
@@ -21,53 +25,43 @@ type DocumentElementEvidence<
   tag: TTag;
   content: TContent;
 }>;
-type DocumentSequenceEvidence<TItems extends readonly unknown[]> = Readonly<{
+export type DocumentSequenceEvidence<TItems extends readonly unknown[]> = Readonly<{
   kind: "sequence";
   items: TItems;
 }>;
-type DocumentRepeatEvidence<TItem> = Readonly<{
+export type DocumentRepeatEvidence<TItem> = Readonly<{
   kind: "repeat";
   item: TItem;
 }>;
-type DocumentPickEvidence<TChoices extends readonly unknown[]> = Readonly<{
+export type DocumentPickEvidence<TChoices extends readonly unknown[]> = Readonly<{
   kind: "pick";
   choices: TChoices;
 }>;
-type DocumentFragmentEvidence<TContent> = Readonly<{
+export type DocumentFragmentEvidence<TContent> = Readonly<{
   kind: "fragment";
   content: TContent;
 }>;
 
 export type InternalDocumentItemSchema<TEvidence = unknown> = Readonly<{
-  readonly [DOCUMENT_SCHEMA_EVIDENCE]: Readonly<{
-    category: "item";
-    evidence: TEvidence;
-  }>;
+  readonly [DOCUMENT_ITEM_EVIDENCE]: TEvidence;
 }>;
 
 export type InternalDocumentContentSchema<TEvidence = unknown> = Readonly<{
-  readonly [DOCUMENT_SCHEMA_EVIDENCE]: Readonly<{
-    category: "content";
-    evidence: TEvidence;
-  }>;
+  readonly [DOCUMENT_CONTENT_EVIDENCE]: TEvidence;
 }>;
 
 export type InternalDocumentElementSchema<TEvidence = unknown> =
   InternalDocumentItemSchema<TEvidence> & Readonly<{
-    readonly [DOCUMENT_SCHEMA_EVIDENCE]: Readonly<{
-      category: "item";
-      evidence: TEvidence;
-      rootMode: "element";
-    }>;
+    readonly [DOCUMENT_ROOT_EVIDENCE]: TEvidence;
+    readonly [DOCUMENT_ROOT_MODE]: "element";
   }>;
 
 export type InternalDocumentFragmentSchema<TEvidence = unknown> = Readonly<{
-  readonly [DOCUMENT_SCHEMA_EVIDENCE]: Readonly<{
-    category: "root";
-    evidence: TEvidence;
-    rootMode: "fragment";
-  }>;
-}>;
+  readonly [DOCUMENT_ROOT_EVIDENCE]: TEvidence;
+  readonly [DOCUMENT_ROOT_MODE]: "fragment";
+}> & (TEvidence extends DocumentFragmentEvidence<infer TContent>
+  ? InternalDocumentContentSchema<TContent>
+  : unknown);
 
 export type InternalDocumentRootSchema =
   | InternalDocumentElementSchema
@@ -84,66 +78,20 @@ export type InternalDocumentSchemaController = Readonly<{
 }>;
 
 export type InternalDocumentSchemaEvidence<TSchema> =
-  TSchema extends Readonly<{
-    readonly [DOCUMENT_SCHEMA_EVIDENCE]: Readonly<{ evidence: infer TEvidence }>;
-  }>
+  TSchema extends Readonly<{ readonly [DOCUMENT_ROOT_EVIDENCE]: infer TEvidence }>
     ? TEvidence
-    : never;
+    : TSchema extends Readonly<{ readonly [DOCUMENT_ITEM_EVIDENCE]: infer TEvidence }>
+      ? TEvidence
+      : TSchema extends Readonly<{ readonly [DOCUMENT_CONTENT_EVIDENCE]: infer TEvidence }>
+        ? TEvidence
+        : never;
 
 type ItemEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 type ContentEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 
-type DocumentElementOptions<
-  TTag extends string | undefined,
-  TContent extends InternalDocumentContentSchema | undefined,
-> = Readonly<{
-  tag?: TTag;
-  content?: TContent;
-}>;
-
-type DocumentSchemaNamespace = Readonly<{
-  text: InternalDocumentItemSchema<DocumentTextEvidence>;
-  element: {
-    (): InternalDocumentElementSchema<DocumentElementEvidence<undefined, "broad">>;
-    <
-      const TTag extends string | undefined = undefined,
-      const TContent extends InternalDocumentContentSchema | undefined = undefined,
-    >(
-      options: DocumentElementOptions<TTag, TContent>,
-    ): InternalDocumentElementSchema<DocumentElementEvidence<
-      TTag,
-      TContent extends InternalDocumentContentSchema
-        ? ContentEvidence<TContent>
-        : "broad"
-    >>;
-  };
-  fragment: <const TContent extends InternalDocumentContentSchema>(
-    content: TContent,
-  ) => InternalDocumentFragmentSchema<DocumentFragmentEvidence<ContentEvidence<TContent>>>;
-  sequence: <const TItems extends readonly InternalDocumentItemSchema[]>(
-    ...items: TItems
-  ) => InternalDocumentContentSchema<DocumentSequenceEvidence<{
-    readonly [TIndex in keyof TItems]: ItemEvidence<TItems[TIndex]>;
-  }>>;
-  repeat: <const TItem extends InternalDocumentItemSchema>(
-    item: TItem,
-  ) => InternalDocumentContentSchema<DocumentRepeatEvidence<ItemEvidence<TItem>>>;
-  pick: {
-    <const TChoices extends readonly [InternalDocumentItemSchema, ...InternalDocumentItemSchema[]]>(
-      ...choices: TChoices
-    ): InternalDocumentItemSchema<DocumentPickEvidence<{
-      readonly [TIndex in keyof TChoices]: ItemEvidence<TChoices[TIndex]>;
-    }>>;
-    <const TChoices extends readonly [InternalDocumentContentSchema, ...InternalDocumentContentSchema[]]>(
-      ...choices: TChoices
-    ): InternalDocumentContentSchema<DocumentPickEvidence<{
-      readonly [TIndex in keyof TChoices]: ContentEvidence<TChoices[TIndex]>;
-    }>>;
-  };
-}>;
-
 type DocumentItemNode =
   | Readonly<{ kind: "text"; category: "item" }>
+  | Readonly<{ kind: "unknown"; category: "item" }>
   | DocumentElementNode
   | Readonly<{
     kind: "pick";
@@ -184,12 +132,16 @@ type DocumentFragmentNode = Readonly<{
 type DocumentRootNode = DocumentElementNode | DocumentFragmentNode;
 type DocumentSchemaNode = DocumentItemNode | DocumentContentNode | DocumentFragmentNode;
 
-const DOCUMENT_SCHEMA_NODES = new WeakMap<object, DocumentSchemaNode>();
+const DOCUMENT_ITEM_NODES = new WeakMap<object, DocumentItemNode>();
+const DOCUMENT_CONTENT_NODES = new WeakMap<object, DocumentContentNode>();
+const DOCUMENT_ROOT_NODES = new WeakMap<object, DocumentRootNode>();
 
-function token<TSchema extends object>(node: DocumentSchemaNode): TSchema {
-  const value = Object.freeze({});
-  DOCUMENT_SCHEMA_NODES.set(value, node);
-  return value as TSchema;
+function document_token<TSchema extends object>(
+  register: (value: object) => void,
+): TSchema {
+  const value = {};
+  register(value);
+  return Object.freeze(value) as TSchema;
 }
 
 function frozen_item_pick(choices: readonly DocumentItemNode[]): DocumentItemNode {
@@ -208,138 +160,160 @@ function frozen_content_pick(choices: readonly DocumentContentNode[]): DocumentC
   });
 }
 
-const text = token<InternalDocumentItemSchema<DocumentTextEvidence>>(
-  Object.freeze({ kind: "text", category: "item" }),
-);
+function register_item(value: object, node: DocumentItemNode): void {
+  DOCUMENT_ITEM_NODES.set(value, node);
+  if (node.kind === "element") DOCUMENT_ROOT_NODES.set(value, node);
+}
 
-function element(): InternalDocumentElementSchema<DocumentElementEvidence<undefined, "broad">>;
-function element<
-  const TTag extends string | undefined = undefined,
-  const TContent extends InternalDocumentContentSchema | undefined = undefined,
+function register_content(value: object, node: DocumentContentNode): void {
+  DOCUMENT_CONTENT_NODES.set(value, node);
+}
+
+export function add_document_text_capability<TValue extends object>(value: TValue): TValue & InternalDocumentItemSchema<DocumentTextEvidence> {
+  register_item(value, Object.freeze({ kind: "text", category: "item" }));
+  return value as TValue & InternalDocumentItemSchema<DocumentTextEvidence>;
+}
+
+export function add_document_unknown_capability<TValue extends object>(value: TValue): TValue & InternalDocumentItemSchema<DocumentUnknownEvidence> {
+  register_item(value, Object.freeze({ kind: "unknown", category: "item" }));
+  return value as TValue & InternalDocumentItemSchema<DocumentUnknownEvidence>;
+}
+
+export function make_document_element_schema<
+  const TTag extends string | undefined,
+  const TContent,
 >(
-  options: DocumentElementOptions<TTag, TContent>,
-): InternalDocumentElementSchema<DocumentElementEvidence<
-  TTag,
-  TContent extends InternalDocumentContentSchema
-    ? ContentEvidence<TContent>
-    : "broad"
->>;
-function element(
-  options?: DocumentElementOptions<string | undefined, InternalDocumentContentSchema | undefined>,
-): InternalDocumentElementSchema {
-  if (options !== undefined) {
-    if (typeof options !== "object" || options === null || Array.isArray(options)) {
-      throw new TypeError("Document element schema options must be an object.");
-    }
-    for (const key of Object.keys(options)) {
-      if (key !== "tag" && key !== "content") {
-        throw new TypeError(`Document element schema has unknown option ${JSON.stringify(key)}.`);
-      }
-    }
-  }
-
-  const tag = options?.tag;
+  tag: TTag,
+  children: readonly object[],
+): InternalDocumentElementSchema<DocumentElementEvidence<TTag, TContent>> {
   if (tag !== undefined && (typeof tag !== "string" || tag.length === 0 || tag.startsWith("_hson_"))) {
     throw new TypeError("Document element schema tag must be a non-empty ordinary element tag.");
   }
-  const content = options?.content === undefined
-    ? undefined
-    : require_schema_node(options.content, "content");
+  const content = document_content_from_children(children);
   const node: DocumentElementNode = Object.freeze({
     kind: "element",
     category: "item",
     ...(tag === undefined ? {} : { tag }),
-    ...(content === undefined ? {} : { content: content as DocumentContentNode }),
+    ...(content === undefined ? {} : { content }),
   });
-  return token(node);
+  return document_token((value) => register_item(value, node));
 }
 
-function fragment<const TContent extends InternalDocumentContentSchema>(
-  content: TContent,
-): InternalDocumentFragmentSchema<DocumentFragmentEvidence<ContentEvidence<TContent>>> {
-  const contentNode = require_schema_node(content, "content");
-  return token(Object.freeze({
+function fragment_node(content: DocumentContentNode): DocumentFragmentNode {
+  return Object.freeze({
     kind: "fragment",
     category: "root",
-    content: contentNode as DocumentContentNode,
-  }));
+    content,
+  });
 }
 
-function sequence<const TItems extends readonly InternalDocumentItemSchema[]>(
+export function make_document_tuple_schema<const TItems extends readonly InternalDocumentItemSchema[]>(
   ...items: TItems
 ): InternalDocumentContentSchema<DocumentSequenceEvidence<{
   readonly [TIndex in keyof TItems]: ItemEvidence<TItems[TIndex]>;
 }>> {
-  const itemNodes = items.map((item) => require_schema_node(item, "item") as DocumentItemNode);
-  return token(Object.freeze({
+  const itemNodes = items.map((item) => require_item_node(item));
+  const node: DocumentContentNode = Object.freeze({
     kind: "sequence",
     category: "content",
     items: Object.freeze(itemNodes),
-  }));
+  });
+  return document_token((value) => register_content(value, node));
 }
 
-function repeat<const TItem extends InternalDocumentItemSchema>(
+export function make_document_repeat_schema<const TItem extends InternalDocumentItemSchema>(
   item: TItem,
 ): InternalDocumentContentSchema<DocumentRepeatEvidence<ItemEvidence<TItem>>> {
-  const itemNode = require_schema_node(item, "item");
-  return token(Object.freeze({
+  const itemNode = require_item_node(item);
+  const node: DocumentContentNode = Object.freeze({
     kind: "repeat",
     category: "content",
-    item: itemNode as DocumentItemNode,
-  }));
+    item: itemNode,
+  });
+  return document_token((value) => register_content(value, node));
 }
 
-function pick<const TChoices extends readonly [InternalDocumentItemSchema, ...InternalDocumentItemSchema[]]>(
-  ...choices: TChoices
-): InternalDocumentItemSchema<DocumentPickEvidence<{
-  readonly [TIndex in keyof TChoices]: ItemEvidence<TChoices[TIndex]>;
-}>>;
-function pick<const TChoices extends readonly [InternalDocumentContentSchema, ...InternalDocumentContentSchema[]]>(
-  ...choices: TChoices
-): InternalDocumentContentSchema<DocumentPickEvidence<{
-  readonly [TIndex in keyof TChoices]: ContentEvidence<TChoices[TIndex]>;
-}>>;
-function pick(...choices: readonly object[]): InternalDocumentItemSchema | InternalDocumentContentSchema {
+export function add_document_pick_capabilities<TValue extends object>(
+  value: TValue,
+  choices: readonly unknown[],
+): TValue {
   if (choices.length === 0) {
-    throw new TypeError("Document schema pick requires at least one choice.");
+    return value;
   }
-  const nodes = choices.map((choice) => require_schema_node(choice));
-  const category = nodes[0]?.category;
-  if (category !== "item" && category !== "content") {
-    throw new TypeError("Document schema pick choices must be item schemas or content schemas.");
+  const itemNodes = choices.map(document_item_node);
+  if (itemNodes.every((node): node is DocumentItemNode => node !== undefined)) {
+    register_item(value, frozen_item_pick(itemNodes));
   }
-  if (nodes.some((node) => node.category !== category)) {
-    throw new TypeError("Document schema pick cannot mix item and content choices.");
+  const contentNodes = choices.map(document_content_node);
+  if (contentNodes.every((node): node is DocumentContentNode => node !== undefined)) {
+    register_content(value, frozen_content_pick(contentNodes));
   }
-  return category === "item"
-    ? token(frozen_item_pick(nodes as readonly DocumentItemNode[]))
-    : token(frozen_content_pick(nodes as readonly DocumentContentNode[]));
+  return value;
 }
 
-export const LIVEMAP_DOCUMENT_SCHEMA: DocumentSchemaNamespace = Object.freeze({
-  text,
-  element,
-  fragment,
-  sequence,
-  repeat,
-  pick,
-});
+export function add_document_tuple_capability<TValue extends object>(
+  value: TValue,
+  items: readonly unknown[],
+): TValue {
+  const itemNodes = items.map(document_item_node);
+  if (itemNodes.every((node): node is DocumentItemNode => node !== undefined)) {
+    register_content(value, Object.freeze({
+      kind: "sequence",
+      category: "content",
+      items: Object.freeze(itemNodes),
+    }));
+  }
+  return value;
+}
 
-function require_schema_node(
-  value: unknown,
-  category?: "item" | "content",
-): DocumentSchemaNode {
+export function document_item_node(value: unknown): DocumentItemNode | undefined {
   if ((typeof value !== "object" && typeof value !== "function") || value === null) {
-    throw new TypeError("Document schema composition requires document schema values.");
+    return undefined;
   }
-  const node = DOCUMENT_SCHEMA_NODES.get(value);
-  if (node === undefined) {
-    throw new TypeError("Document schema composition received an unrecognized schema value.");
+  return DOCUMENT_ITEM_NODES.get(value);
+}
+
+export function document_content_node(value: unknown): DocumentContentNode | undefined {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+    return undefined;
   }
-  if (category !== undefined && node.category !== category) {
-    throw new TypeError(`Document schema composition expected a ${category} schema; received ${node.category}.`);
+  return DOCUMENT_CONTENT_NODES.get(value);
+}
+
+function require_item_node(value: unknown): DocumentItemNode {
+  const node = document_item_node(value);
+  if (node !== undefined) return node;
+  throw new TypeError("Document schema composition requires a document item schema.");
+}
+
+function document_content_from_children(children: readonly object[]): DocumentContentNode | undefined {
+  if (children.length === 0) return undefined;
+  if (children.length === 1) {
+    const content = document_content_node(children[0]);
+    if (content !== undefined) return content;
   }
-  return node;
+  const items = children.map((child) => require_item_node(child));
+  return Object.freeze({
+    kind: "sequence",
+    category: "content",
+    items: Object.freeze(items),
+  });
+}
+
+export function register_defined_document_schema(target: object, expression: unknown): boolean {
+  const item = document_item_node(expression);
+  const content = document_content_node(expression);
+  const root = (typeof expression === "object" && expression !== null)
+    ? DOCUMENT_ROOT_NODES.get(expression)
+    : undefined;
+  if (item !== undefined) register_item(target, item);
+  if (content !== undefined) {
+    register_content(target, content);
+    DOCUMENT_ROOT_NODES.set(target, root ?? fragment_node(content));
+  } else if (root !== undefined) {
+    DOCUMENT_ROOT_NODES.set(target, root);
+  }
+  return item !== undefined || content !== undefined || root !== undefined;
 }
 
 export function require_document_root_schema<TMode extends DocumentLiveMapMode>(
@@ -356,15 +330,12 @@ export function require_document_root_schema(
   value: unknown,
   mode?: DocumentLiveMapMode,
 ): Readonly<{ value: InternalDocumentRootSchema; node: DocumentRootNode }> {
-  const node = require_schema_node(value);
-  const rootMode = node.kind === "fragment"
-    ? "fragment"
-    : node.kind === "element"
-      ? "element"
-      : undefined;
-  if (rootMode === undefined) {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
     throw new TypeError("Document map schema.use(...) requires an element or fragment root schema.");
   }
+  const node = DOCUMENT_ROOT_NODES.get(value);
+  if (node === undefined) throw new TypeError("Document map schema.use(...) requires an element or fragment root schema.");
+  const rootMode = node.kind === "fragment" ? "fragment" : "element";
   if (mode !== undefined && mode !== rootMode) {
     throw new TypeError(`Document schema root mode mismatch: expected ${mode}; received ${rootMode}.`);
   }
@@ -441,6 +412,7 @@ function validate_item(
       ),
     ]);
   }
+  if (schema.kind === "unknown") return valid();
 
   if (!is_ordinary_element_node(value)) {
     return invalid([

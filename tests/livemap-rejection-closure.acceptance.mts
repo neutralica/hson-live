@@ -5,7 +5,6 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
-import { define_livemap_schema, LIVEMAP_SCHEMA, make_livemap_schema } from "../src/api/livemap/livemap.schema.ts";
 import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
 import { ProjectedValueAdmissionError, admit_projected_value, type ProjectedValueAdmissionCode } from "../src/core/projected-value-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -52,12 +51,12 @@ function assert_rejection_closure(
   ));
   assert.throws(() => hson.fromJson(witness as JsonValue));
   assert.throws(() => hson.liveMap.fromJson(witness as JsonValue));
-  assert.equal(make_livemap_schema(LIVEMAP_SCHEMA.unknown).validateRoot(witness as JsonValue).ok, false);
+  assert.equal(hson.liveMap.schema.define((s) => s.unknown).validateRoot(witness as JsonValue).ok, false);
 
   const initial = { value: route_initial(route), guard: 1 };
   const source = hson.liveMap.fromJson(initial);
   const target = hson.liveMap.fromJson(initial);
-  source.schema.use(define_livemap_schema((s) => ({ value: s.unknown, guard: s.number })));
+  source.schema.use(hson.liveMap.schema.define((s) => ({ value: s.unknown, guard: s.number })));
   link_livemap(source, target, { path: ["value"] });
   const sourceBefore = source.root();
   const sourceCapture = source.capture();
