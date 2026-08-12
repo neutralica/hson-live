@@ -167,11 +167,8 @@ tree.bind.text(typedText);
 tree.bind.text(repeatedItemUnion.at([0]));
 tree.bind.text(repeatedItemUnion.at([0]), (value) => String(value ?? ""));
 
-// Relative traversal deliberately stays on the historical broad endpoint in Phase 20B.
-type _RelativeStillBroad = Expect<Equal<
-  Snap<ReturnType<typeof typedText.at<[0]>>>,
-  HsonNode | Primitive | undefined
->>;
+// @ts-expect-error Schema-proven text has no relative logical children.
+typedText.at([0]);
 
 // Evidence-bearing maps remain ordinary broad document-map inputs.
 const broadElementAnnotation: ElementLiveMap = fixedElement;

@@ -760,18 +760,22 @@ type InternalDocumentDescriptorEndpoint<TDescriptor> =
     ? never
     : TDescriptor extends InternalDocumentMissingCoordinate
       ? undefined
-      : TDescriptor extends InternalDocumentBroadSubtree
-        ? InternalDocumentSchemaEndpoint
-        : TDescriptor extends Readonly<{ kind: "text" }>
-          ? string
-          : TDescriptor extends Readonly<{ kind: "element" }>
-            ? HsonNode
-            : TDescriptor extends Readonly<{
-              kind: "pick";
-              choices: infer TChoices extends readonly unknown[];
-            }>
-              ? InternalDocumentDescriptorEndpoint<TChoices[number]>
-              : never;
+      : TDescriptor extends InternalDocumentUnschematized
+        ? InternalDocumentLegacyEndpoint
+        : TDescriptor extends InternalDocumentRootDescriptor<unknown>
+          ? HsonNode
+          : TDescriptor extends InternalDocumentBroadSubtree
+            ? InternalDocumentSchemaEndpoint
+            : TDescriptor extends Readonly<{ kind: "text" }>
+              ? string
+              : TDescriptor extends Readonly<{ kind: "element" }>
+                ? HsonNode
+                : TDescriptor extends Readonly<{
+                  kind: "pick";
+                  choices: infer TChoices extends readonly unknown[];
+                }>
+                  ? InternalDocumentDescriptorEndpoint<TChoices[number]>
+                  : never;
 
 type InternalDocumentLogicalPathEndpoint<
   TEvidence,
@@ -786,13 +790,22 @@ type InternalDocumentLogicalPathEndpoint<
         InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
       >;
 
-type InternalDocumentRelativeDescriptor<
+type InternalDocumentResolveDescriptorPath<
   TDescriptor,
   TPath extends readonly number[],
-> = Readonly<{
-  base: TDescriptor;
-  path: TPath;
-}>;
+> = unknown extends TDescriptor
+  ? InternalDocumentUnschematized
+  : [TDescriptor] extends [InternalDocumentUnschematized]
+    ? InternalDocumentUnschematized
+    : number extends TPath["length"]
+      ? InternalDocumentBroadSubtree
+      : TPath extends readonly []
+        ? TDescriptor
+        : [TDescriptor] extends [InternalDocumentRootDescriptor<infer TEvidence>]
+          ? InternalDocumentNormalizeBranches<
+            InternalDocumentResolveRootBranches<TEvidence, TPath>
+          >
+          : InternalDocumentDescendItem<TDescriptor, TPath>;
 
 type InternalDocumentWritableItemBranch<TDescriptor> =
   TDescriptor extends InternalDocumentMissingCoordinate
@@ -824,9 +837,7 @@ type InternalDocumentWritableItem<TDescriptor> =
       ? LiveMapDocumentContent
       : TDescriptor extends InternalDocumentRootDescriptor<unknown>
         ? LiveMapDocumentContent
-        : TDescriptor extends InternalDocumentRelativeDescriptor<unknown, readonly number[]>
-          ? LiveMapDocumentContent
-          : InternalDocumentWritableItemBranches<TDescriptor>;
+        : InternalDocumentWritableItemBranches<TDescriptor>;
 
 type InternalDocumentContentWritableItems<TContent> =
   TContent extends Readonly<{
@@ -909,13 +920,11 @@ type InternalDocumentInsertItem<TDescriptor> =
     ? LiveMapDocumentContent
     : TDescriptor extends InternalDocumentUnschematized
       ? LiveMapDocumentContent
-      : TDescriptor extends InternalDocumentRelativeDescriptor<unknown, readonly number[]>
-        ? LiveMapDocumentContent
-        : InternalDocumentInsertOwnerBranches<TDescriptor> extends infer TOwners
-          ? [Extract<TOwners, InternalDocumentContentOwner<unknown>>] extends [never]
-            ? LiveMapDocumentContent
-            : InternalDocumentInsertOwnerDomain<TOwners>
-          : LiveMapDocumentContent;
+      : InternalDocumentInsertOwnerBranches<TDescriptor> extends infer TOwners
+        ? [Extract<TOwners, InternalDocumentContentOwner<unknown>>] extends [never]
+          ? LiveMapDocumentContent
+          : InternalDocumentInsertOwnerDomain<TOwners>
+        : LiveMapDocumentContent;
 
 type DocumentLiveMapShared<
   TMode extends DocumentLiveMapMode,
@@ -972,11 +981,17 @@ type LiveMapDocumentLocation<
     listener: (next: TValue) => void,
   ) => LiveMapDisposer;
   /** Create a child location relative to this logical coordinate. */
-  at: <const TPath extends readonly number[]>(
-    path: TPath,
-  ) => LiveMapDocumentLocation<
-    InternalDocumentLegacyEndpoint,
-    InternalDocumentRelativeDescriptor<TDescriptor, TPath>
+  at<const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentDescriptorEndpoint<
+      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+    >] extends [never]
+      ? never
+      : unknown),
+  ): LiveMapDocumentLocation<
+    InternalDocumentDescriptorEndpoint<
+      InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
+    >,
+    InternalDocumentResolveDescriptorPath<TDescriptor, TPath>
   >;
   /** Discover the first exact canonical ID match in this logical subtree. */
   id: (value: string) => LiveMapDocumentLocation | undefined;

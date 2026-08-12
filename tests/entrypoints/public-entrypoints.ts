@@ -229,6 +229,26 @@ type ProjectedPathTruth = Readonly<{
 declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
 declare const bindingTree: LiveTree;
 
+const typedRelativeDocumentCandidate = mapSubpath.fromHson(`<main <label "Save"/>/>`);
+if (typedRelativeDocumentCandidate.mode === "element") {
+  const typedRelativeDocument = typedRelativeDocumentCandidate.schema.use(
+    documentSchemaNamespace.element({
+      content: documentSchemaNamespace.sequence(documentSchemaNamespace.element({
+        content: documentSchemaNamespace.sequence(documentSchemaNamespace.text),
+      })),
+    }),
+  );
+  const relativeLabel = typedRelativeDocument.at([]).at([0]).at([0]);
+  const relativeLabelValue = relativeLabel.snap();
+  type PublicRelativeDocumentText = Expect<Equal<typeof relativeLabelValue, string>>;
+  relativeLabel.replace("Open");
+  bindingTree.bind.text(relativeLabel);
+  // @ts-expect-error Relative schema-proven text rejects structured authoring.
+  relativeLabel.replace(typedRelativeDocumentCandidate.element.node());
+  // @ts-expect-error The nested label element has no coordinate 1.
+  typedRelativeDocument.at([0]).at([1]);
+}
+
 const typedBindingDocumentCandidate = mapSubpath.fromHson(`<button "Save"/>`);
 if (typedBindingDocumentCandidate.mode === "element") {
   const typedBindingDocument = typedBindingDocumentCandidate.schema.use(publicElementSchema);

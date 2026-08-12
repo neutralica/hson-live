@@ -410,8 +410,28 @@ structured endpoints remain `HsonNode`, and deliberately broad element
 descendants widen to `string | HsonNode | undefined`. Schema-less document maps
 retain their historical `HsonNode | Primitive | undefined` endpoint type.
 
-Schema-aware top-level mutation values follow the same item evidence without
-turning read absence into an authoring value:
+Relative locations preserve and consume their local schema descriptor:
+
+```ts
+const root = nestedTyped.at([]);
+const container = root.at([0]);
+const label = container.at([0]);
+
+label.snap();              // string
+label.replace("Save");
+tree.bind.text(label);
+
+root.at([0, 0]).snap();    // the same endpoint type
+// container.at([1]);      // compile-time error when locally impossible
+```
+
+Absent repeated or union ancestors propagate `undefined` through relative
+descendants. Dynamic indexes resolve from local fixed/repeated evidence; fully
+broad paths and deliberately broad element subtrees widen locally to
+`string | HsonNode | undefined`.
+
+Mutation values follow the same retained item evidence without turning read
+absence into an authoring value:
 
 ```ts
 const text = typed.at([0]);
@@ -429,8 +449,11 @@ combine those domains. Broad schema-aware content accepts
 
 The permanent runtime schema remains the exact write authority. It checks
 element tags/content, fixed-sequence and index legality, delete, and move against
-the complete candidate. Relative location paths, proxy indexes, and attrs
-remain broad.
+the complete candidate. Relative typing does not change absolute coordinates,
+interning, watch behavior, or mutation planning; direct and relative calls at
+the same coordinate return the existing interned location.
+
+Proxy indexes and attrs remain broad. Schema-frontend refinement is deferred.
 
 ---
 

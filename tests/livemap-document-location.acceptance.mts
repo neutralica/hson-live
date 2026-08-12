@@ -151,8 +151,16 @@ check("restore re-resolves an existing logical location", () => {
 
 check("relative at composes logical coordinates", () => {
   const map = element(`<main <section <b/>/>/>`);
-  assert.equal(map.at([0]).at([0]), map.at([0, 0]));
-  assert.equal(tag(map.at([0]).at([0]).snap()), "b");
+  const section = map.at([]).at([0]);
+  const relative = section.at([0]);
+  assert.equal(section, map.at([0]));
+  assert.equal(relative, map.at([0, 0]));
+  assert.deepEqual(relative.path(), [0, 0]);
+  assert.equal(tag(relative.snap()), "b");
+  relative.replace(element(`<x/>`).element.node());
+  assert.equal(tag(map.at([0, 0]).snap()), "x");
+  section.insert(1, "tail");
+  assert.equal(map.at([0, 1]).snap(), "tail");
 });
 
 check("coordinate inspection returns a detached logical path", () => {

@@ -349,8 +349,28 @@ coordinates include `undefined`, while descendants of a deliberately broad
 `element()` widen to `string | HsonNode | undefined`. Schema-less document maps
 keep the historical `HsonNode | Primitive | undefined` location domain.
 
-Schema-aware top-level mutation values are narrowed from the same item
-evidence:
+Relative locations preserve and consume the local descriptor carried by their
+base location:
+
+```ts
+const root = nestedTyped.at([]);
+const container = root.at([0]);
+const label = container.at([0]);
+
+label.snap();              // string
+label.replace("Save");
+tree.bind.text(label);
+
+root.at([0, 0]).snap();    // the same endpoint type
+// container.at([1]);      // compile-time error when locally impossible
+```
+
+Absent repeated or union ancestors propagate `undefined` to relative
+descendants. Dynamic indexes resolve against local sequence/repeat evidence;
+fully broad paths and deliberately broad element subtrees widen locally to
+`string | HsonNode | undefined`.
+
+Mutation values are narrowed from the same retained item evidence:
 
 ```ts
 const text = typed.at([0]);
@@ -369,7 +389,11 @@ does not become writable `undefined`.
 
 Runtime schema enforcement remains the exact write authority for element
 tags/content, fixed-sequence and index legality, delete, and move. Relative
-location `.at(...)`, document proxy indexing, and attrs remain broad.
+typing does not change absolute coordinates, interning, watch behavior, or
+mutation planning; direct and relative calls reuse the same runtime location.
+
+Document proxy indexing and attrs remain broad. Schema-frontend refinement is
+deferred.
 
 ---
 

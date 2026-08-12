@@ -446,8 +446,29 @@ A completely dynamic schema-aware path also has that schema-derived broad
 domain. A map without a document schema retains the historical
 `HsonNode | Primitive | undefined` location domain for compatibility.
 
-Schema-aware top-level locations also reject obviously incompatible authoring
-values:
+Relative `location.at(...)` consumes the descriptor retained by its base
+location. Direct and relative paths therefore infer the same endpoint:
+
+```ts
+const root = nestedTyped.at([]);
+const container = root.at([0]);
+const label = container.at([0]);
+
+label.snap();              // string
+label.replace("Save");
+tree.bind.text(label);     // no formatter needed
+
+root.at([0, 0]).snap();    // also string
+// container.at([1]);      // compile-time error when locally impossible
+```
+
+An absent repeated or union ancestor propagates `undefined` to its relative
+descendants. A dynamic relative index resolves against the local sequence or
+repeat evidence; a fully broad relative path stops at the same
+`string | HsonNode | undefined` performance boundary. Entering a deliberately
+broad element subtree widens locally and cannot recover precision later.
+
+The same retained descriptor rejects obviously incompatible authoring values:
 
 ```ts
 const text = typed.at([0]);
@@ -467,8 +488,12 @@ their historical broad mutation inputs.
 
 These types only constrain the source value. Exact element tags and content,
 fixed-sequence insertion, index validity, delete, and move remain validated by
-the permanent runtime schema against the complete candidate. Relative location
-`.at(...)`, document proxy indexing, and attrs retain their broad types.
+the permanent runtime schema against the complete candidate. Relative typing
+does not change coordinates or allocate wrappers:
+`map.at([0, 0]) === map.at([0]).at([0])` under the existing interner.
+
+Document proxy indexing and attrs retain their broad types. Refinement of the
+document schema authoring frontend is also deferred.
 
 ## Subscriptions
 

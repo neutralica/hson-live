@@ -202,17 +202,33 @@ emptyOwner.insert(0, "text");
 // @ts-expect-error Permanently empty content has no structured item kind either.
 emptyOwner.insert(0, node);
 
-// Relative locations intentionally retain historical mutation inputs until Phase 20D.
+// Relative locations consume their locally resolved descriptor evidence.
 const relativeLocation = textMap.at([]).at([0]);
-type _RelativeReplaceBroad = Expect<Equal<
+type _RelativeReplace = Expect<Equal<
   Parameters<typeof relativeLocation.replace>[0],
-  LiveMapDocumentContent
+  string
 >>;
-type _RelativeInsertBroad = Expect<Equal<
-  Parameters<typeof relativeLocation.insert>[1],
-  LiveMapDocumentContent
->>;
+relativeLocation.replace("relative");
+// @ts-expect-error Relative text replacement rejects legacy numeric content.
 relativeLocation.replace(1);
+// @ts-expect-error Relative missing-read reachability does not admit undefined writes.
+relativeLocation.replace(undefined);
+
+const relativeListMap = elementMap.schema.use(d.element({
+  content: d.sequence(d.element({ content: d.repeat(d.text) })),
+}));
+const relativeListOwner = relativeListMap.at([]).at([0]);
+type _RelativeInsert = Expect<Equal<
+  Parameters<typeof relativeListOwner.insert>[1],
+  string
+>>;
+relativeListOwner.insert(0, "relative");
+// @ts-expect-error Relative repeated-text owners reject structured insertion.
+relativeListOwner.insert(0, node);
+// @ts-expect-error Relative repeated-text owners reject undefined insertion.
+relativeListOwner.insert(0, undefined);
+
+// Non-owner capability shape remains present and runtime-authoritative.
 relativeLocation.insert(0, false);
 
 export {};
