@@ -341,8 +341,7 @@ const button = body
   .button();
 
 const stopBinding = button.bind.text(
-  state,
-  ["count"],
+  state.at(["count"]),
   value => `count: ${String(value)}`,
 );
 
@@ -353,7 +352,8 @@ button.listen.onClick(() => {
 });
 ```
 
-A binding reads the current value immediately and subscribes to later changes.
+`map.at(path)` is the source endpoint. A binding reads the location's current
+value immediately and subscribes to later changes.
 
 The state graph and document graph retain distinct responsibilities, but their relationship is explicit. LiveMap remains authoritative, and the reflector updates the view from observed commits.
 

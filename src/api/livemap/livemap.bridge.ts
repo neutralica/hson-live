@@ -304,19 +304,19 @@ function render_schema_control_primitive(
 
   if (kind === "boolean" && control.form.setChecked !== undefined && control.form.getChecked !== undefined) {
     control.attrs.set("type", "checkbox");
-    bindings.push(bind_livetree_input_checked(control, map, path_to_live_path(path)));
+    bindings.push(bind_livetree_input_checked(control, map.at(path_to_live_path(path))));
     return;
   }
 
   if (kind === "number") {
     control.attrs.set("type", "number");
     apply_schema_number_attrs(control, schema);
-    bindings.push(bind_livetree_schema_number_input(control, map, path_to_live_path(path), schema));
+    bindings.push(bind_livetree_schema_number_input(control, map.at(path_to_live_path(path)), schema));
     return;
   }
 
   control.attrs.set("type", "text");
-  bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
+  bindings.push(bind_livetree_input_value(control, map.at(path_to_live_path(path))));
 }
 
 function render_schema_enum_control(
@@ -340,7 +340,7 @@ function render_schema_enum_control(
   }
 
   select.form.setValue(value_to_text(value), { silent: true });
-  bindings.push(bind_livetree_schema_enum_input(select, map, path_to_live_path(path), schema));
+  bindings.push(bind_livetree_schema_enum_input(select, map.at(path_to_live_path(path)), schema));
 }
 
 function render_schema_control_meta(tree: LiveControlViewBridgeTarget, schema: LiveMapSchemaControlNode | undefined): void {
@@ -398,14 +398,14 @@ function render_control_primitive(
 
   if (typeof value === "boolean" && control.form.setChecked !== undefined && control.form.getChecked !== undefined) {
     control.attrs.set("type", "checkbox");
-    bindings.push(bind_livetree_input_checked(control, map, path_to_live_path(path)));
+    bindings.push(bind_livetree_input_checked(control, map.at(path_to_live_path(path))));
     return;
   }
 
   if (typeof value === "number") control.attrs.set("type", "number");
   else control.attrs.set("type", "text");
 
-  bindings.push(bind_livetree_input_value(control, map, path_to_live_path(path)));
+  bindings.push(bind_livetree_input_value(control, map.at(path_to_live_path(path))));
 }
 
 

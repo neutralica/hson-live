@@ -3,7 +3,8 @@
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapSchemaControlNode } from "../../types/bridge.types.js";
-import type { LiveMap, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapPathHandle } from "../../types/livemap.types.js";
+import { subscribe_livemap_path_handle_value } from "./livemap.handle.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
@@ -29,20 +30,19 @@ export function coerce_input_value(value: JsonValue | undefined, current: JsonVa
   return value ?? "";
 }
 
-export function bind_livetree_text(map: LiveMap, path: LivePath, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
+export function bind_livetree_text(location: LiveMapPathHandle, tree: LiveTextBridgeTarget): LiveMapBridgeBinding {
   const sync = (value: JsonValue | undefined) => {
     tree.text.set(value_to_text(value));
   };
 
-  sync(map.snap(path));
-  const dispose = map.sub.path(path, sync);
+  sync(location.snap());
+  const dispose = subscribe_location(location, sync);
 
   return owned_bridge_binding(tree, dispose);
 }
 
 export function bind_livetree_attr(
-  map: LiveMap,
-  path: LivePath,
+  location: LiveMapPathHandle,
   tree: LiveAttrBridgeTarget,
   name: string
 ): LiveMapBridgeBinding {
@@ -55,16 +55,15 @@ export function bind_livetree_attr(
     tree.attrs.set(name, value_to_text(value));
   };
 
-  sync(map.snap(path));
-  const dispose = map.sub.path(path, sync);
+  sync(location.snap());
+  const dispose = subscribe_location(location, sync);
 
   return owned_bridge_binding(tree, dispose);
 }
 
 export function bind_livetree_input_value(
   tree: LiveInputBridgeTarget,
-  map: LiveMap,
-  path: LivePath
+  location: LiveMapPathHandle,
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
 
@@ -76,11 +75,11 @@ export function bind_livetree_input_value(
 
   const syncToMap = () => {
     if (isSyncingFromMap) return;
-    map.set(path, coerce_input_value(tree.form.getValue(), map.snap(path)));
+    location.set(coerce_input_value(tree.form.getValue(), location.snap()));
   };
 
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
+  syncFromMap(location.snap());
+  const disposePath = subscribe_location(location, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
   return owned_bridge_binding(tree, () => {
@@ -91,11 +90,10 @@ export function bind_livetree_input_value(
 
 export function bind_livetree_input_checked(
   tree: LiveInputBridgeTarget,
-  map: LiveMap,
-  path: LivePath
+  location: LiveMapPathHandle,
 ): LiveMapBridgeBinding {
   if (tree.form.getChecked === undefined || tree.form.setChecked === undefined) {
-    return bind_livetree_input_value(tree, map, path);
+    return bind_livetree_input_value(tree, location);
   }
 
   let isSyncingFromMap = false;
@@ -108,11 +106,11 @@ export function bind_livetree_input_checked(
 
   const syncToMap = () => {
     if (isSyncingFromMap) return;
-    map.set(path, tree.form.getChecked?.() === true);
+    location.set(tree.form.getChecked?.() === true);
   };
 
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
+  syncFromMap(location.snap());
+  const disposePath = subscribe_location(location, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
   return owned_bridge_binding(tree, () => {
@@ -123,8 +121,7 @@ export function bind_livetree_input_checked(
 
 export function bind_livetree_schema_number_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
-  map: LiveMap,
-  path: LivePath,
+  location: LiveMapPathHandle,
   schema: LiveMapSchemaControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
@@ -165,11 +162,11 @@ export function bind_livetree_schema_number_input(
     }
 
     markValid();
-    map.set(path, next);
+    location.set(next);
   };
 
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
+  syncFromMap(location.snap());
+  const disposePath = subscribe_location(location, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
   return owned_bridge_binding(tree, () => {
@@ -180,8 +177,7 @@ export function bind_livetree_schema_number_input(
 
 export function bind_livetree_schema_enum_input(
   tree: LiveInputBridgeTarget & LiveAttrBridgeTarget,
-  map: LiveMap,
-  path: LivePath,
+  location: LiveMapPathHandle,
   schema: LiveMapSchemaControlNode | undefined
 ): LiveMapBridgeBinding {
   let isSyncingFromMap = false;
@@ -215,11 +211,11 @@ export function bind_livetree_schema_enum_input(
     }
 
     markValid();
-    map.set(path, next);
+    location.set(next);
   };
 
-  syncFromMap(map.snap(path));
-  const disposePath = map.sub.path(path, syncFromMap);
+  syncFromMap(location.snap());
+  const disposePath = subscribe_location(location, syncFromMap);
   const inputListener = tree.listen.onInput(syncToMap);
 
   return owned_bridge_binding(tree, () => {
@@ -238,6 +234,13 @@ function owned_bridge_binding(target: object, dispose: () => void): LiveMapBridg
       runtime_for_tree(target),
     ),
   };
+}
+
+function subscribe_location(
+  location: LiveMapPathHandle,
+  sync: (value: JsonValue | undefined) => void,
+): () => void {
+  return subscribe_livemap_path_handle_value(location, () => sync(location.snap()));
 }
 
 export function value_to_text(value: JsonValue | undefined): string {

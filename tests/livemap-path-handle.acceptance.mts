@@ -112,7 +112,7 @@ check("arbitrary string quid targets receive explicit bridge disposal only", () 
     },
   };
 
-  const binding = bind_livetree_text(map, ["value"], target);
+  const binding = bind_livetree_text(map.at(["value"]), target);
   assert.equal(text, "initial");
   assert.equal(disposables_count_for_owner(target.quid), 0);
   map.set(["value"], "updated");
@@ -127,7 +127,7 @@ check("actual LiveTree bridge targets retain canonical lifecycle ownership", () 
   const tree = hson.liveTree.fromHson("<span/>");
   const before = disposables_count_for_owner(tree.quid);
 
-  const binding = bind_livetree_text(map, ["value"], tree);
+  const binding = bind_livetree_text(map.at(["value"]), tree);
   assert.equal(tree.text.get(), "initial");
   assert.equal(disposables_count_for_owner(tree.quid), before + 1);
   map.set(["value"], "updated");

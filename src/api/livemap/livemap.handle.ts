@@ -1,7 +1,7 @@
 // handle-api.ts
 
 import type { JsonValue } from "../../core/types.js";
-import type { LiveMapCommit, LiveMapCore, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
+import type { LiveMapCommit, LiveMapCore, LiveMapDisposer, LiveMapPathHandle, LivePath } from "../../types/livemap.types.js";
 import { must_json_value, must_live_path, must_set_many_values } from "./livemap.guard.js";
 import { make_livemap_array_api } from "./livemap.handle-array.js";
 import { make_livemap_object_api } from "./livemap.handle-object.js";
@@ -11,7 +11,12 @@ import {
   livemap_projected_propagation,
   type LiveMapProjectedPropagationWrite,
 } from "./livemap.projected-propagation.js";
-import { is_ordered_projected_object, ordered_projected_value_equal, type OrderedProjectedValue } from "../../core/ordered-projected-value.js";
+import {
+  is_ordered_projected_object,
+  optional_ordered_projected_value_equal,
+  ordered_projected_value_equal,
+  type OrderedProjectedValue,
+} from "../../core/ordered-projected-value.js";
 
 
 type LiveMapPathHandleCore = Pick<LiveMapCore<JsonValue | undefined>, "snap" | "at" | "set" | "replace" | "setMany" | "delete" | "feed" | "batch" | "splice" | "rev">;
@@ -21,7 +26,7 @@ type LiveMapPathHandleInternals = Readonly<{
   path: LivePath;
 }>;
 
-const pathHandleInternals = new WeakMap<LiveMapPathHandle, LiveMapPathHandleInternals>();
+const pathHandleInternals = new WeakMap<object, LiveMapPathHandleInternals>();
 
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
@@ -140,8 +145,38 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     },
   };
 
-  pathHandleInternals.set(handle as unknown as LiveMapPathHandle, { core, path: handlePath });
+  pathHandleInternals.set(handle, { core, path: handlePath });
   return handle;
+}
+
+/**
+ * Subscribe one canonical projected location using the same exact value-change
+ * filter as `map.sub.path(...)`.
+ *
+ * LiveTree binding is location-authored, but ordered projected equality still
+ * requires the owning carrier and path retained by the interned location. This
+ * helper is internal to the source tree and is not a package entrypoint.
+ */
+export function subscribe_livemap_path_handle_value<TValue>(
+  location: Pick<LiveMapPathHandle<TValue>, "snap" | "feed">,
+  listener: () => void,
+): LiveMapDisposer {
+  const internals = pathHandleInternals.get(location);
+  if (internals === undefined) {
+    throw new Error("LiveTree.bind source must be an interned projected LiveMap location.");
+  }
+  const projected = livemap_projected_propagation(internals.core);
+  if (projected === undefined) {
+    throw new Error("LiveTree.bind source has no projected propagation capability.");
+  }
+
+  let previous = projected.read(internals.path);
+  return location.feed(() => {
+    const next = projected.read(internals.path);
+    if (optional_ordered_projected_value_equal(next, previous)) return;
+    previous = next;
+    listener();
+  });
 }
 
 function write_projected_handle_link(

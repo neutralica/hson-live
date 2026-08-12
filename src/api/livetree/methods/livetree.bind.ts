@@ -1,6 +1,7 @@
 // livetree.bind.ts
 
-import type { JsonValue, LivePath } from "../../../types/index.js";
+import type { LiveMapPathHandle } from "../../../types/index.js";
+import { subscribe_livemap_path_handle_value } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";
 import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
@@ -8,130 +9,111 @@ import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
 
 export type LiveTreeBindApi<TTree extends LiveTreeBindable> = Readonly<{
-  path: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-    map: LiveMapBindable,
-    path: LivePath,
-    apply: PathApply<TTree, TValue>,
+  path: <TValue>(
+    source: ProjectedBindingSource<TValue>,
+    apply: PathApply<TTree, NoInfer<TValue>>,
   ) => LiveMapDisposer;
 
-  paths: (
-    map: LiveMapBindable,
-    paths: readonly LivePath[],
-    apply: PathsApply<TTree>,
+  paths: <const TSources extends ProjectedBindingSources>(
+    sources: TSources,
+    apply: PathsApply<TTree, ProjectedBindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  textPaths: (
-    map: LiveMapBindable,
-    paths: readonly LivePath[],
-    toText: PathsTextMapper,
+  textPaths: <const TSources extends ProjectedBindingSources>(
+    sources: TSources,
+    toText: PathsTextMapper<ProjectedBindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  text: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-    map: LiveMapBindable,
-    path: LivePath,
-    toText?: TextMapper<TValue>,
+  text: <TValue>(
+    source: ProjectedBindingSource<TValue>,
+    toText?: TextMapper<NoInfer<TValue>>,
   ) => LiveMapDisposer;
 
-  attr: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-    map: LiveMapBindable,
-    path: LivePath,
+  attr: <TValue>(
+    source: ProjectedBindingSource<TValue>,
     name: string,
-    toValue?: TextMapper<TValue>,
+    toValue?: TextMapper<NoInfer<TValue>>,
   ) => LiveMapDisposer;
 
-  attrs: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-    map: LiveMapBindable,
-    path: LivePath,
-    toAttrs: AttrMapper<TValue>,
+  attrs: <TValue>(
+    source: ProjectedBindingSource<TValue>,
+    toAttrs: AttrMapper<NoInfer<TValue>>,
   ) => LiveMapDisposer;
 
-  attrsPaths: (
-    map: LiveMapBindable,
-    paths: readonly LivePath[],
-    toAttrs: PathsAttrMapper,
+  attrsPaths: <const TSources extends ProjectedBindingSources>(
+    sources: TSources,
+    toAttrs: PathsAttrMapper<ProjectedBindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  css: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-    map: LiveMapBindable,
-    path: LivePath,
-    toCss: CssMapper<TValue>,
+  css: <TValue>(
+    source: ProjectedBindingSource<TValue>,
+    toCss: CssMapper<NoInfer<TValue>>,
   ) => LiveMapDisposer;
 
-  cssPaths: (
-    map: LiveMapBindable,
-    paths: readonly LivePath[],
-    toCss: PathsCssMapper,
+  cssPaths: <const TSources extends ProjectedBindingSources>(
+    sources: TSources,
+    toCss: PathsCssMapper<ProjectedBindingValues<TSources>>,
   ) => LiveMapDisposer;
 }>;
 
 export function make_livetree_bind_api<TTree extends LiveTreeBindable>(tree: TTree): LiveTreeBindApi<TTree> {
   return Object.freeze({
-    path: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-      map: LiveMapBindable,
-      path: LivePath,
-      apply: PathApply<TTree, TValue>,
-    ) => bind_path_for(tree, map, path, apply),
+    path: <TValue>(
+      source: ProjectedBindingSource<TValue>,
+      apply: PathApply<TTree, NoInfer<TValue>>,
+    ) => bind_path_for(tree, source, apply),
 
-    paths: (
-      map: LiveMapBindable,
-      paths: readonly LivePath[],
-      apply: PathsApply<TTree>,
-    ) => bind_paths_for(tree, map, paths, apply),
+    paths: <const TSources extends ProjectedBindingSources>(
+      sources: TSources,
+      apply: PathsApply<TTree, ProjectedBindingValues<TSources>>,
+    ) => bind_paths_for(tree, sources, apply),
 
-    textPaths: (
-      map: LiveMapBindable,
-      paths: readonly LivePath[],
-      toText: PathsTextMapper,
-    ) => bind_text_paths_for(tree, map, paths, toText),
+    textPaths: <const TSources extends ProjectedBindingSources>(
+      sources: TSources,
+      toText: PathsTextMapper<ProjectedBindingValues<TSources>>,
+    ) => bind_text_paths_for(tree, sources, toText),
 
-    text: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-      map: LiveMapBindable,
-      path: LivePath,
-      toText?: TextMapper<TValue>,
-    ) => bind_text_for(tree, map, path, toText),
+    text: <TValue>(
+      source: ProjectedBindingSource<TValue>,
+      toText?: TextMapper<NoInfer<TValue>>,
+    ) => bind_text_for(tree, source, toText),
 
-    attr: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-      map: LiveMapBindable,
-      path: LivePath,
+    attr: <TValue>(
+      source: ProjectedBindingSource<TValue>,
       name: string,
-      toValue?: TextMapper<TValue>,
-    ) => bind_attr_for(tree, map, path, name, toValue),
+      toValue?: TextMapper<NoInfer<TValue>>,
+    ) => bind_attr_for(tree, source, name, toValue),
 
-    attrs: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-      map: LiveMapBindable,
-      path: LivePath,
-      toAttrs: AttrMapper<TValue>,
-    ) => bind_attrs_for(tree, map, path, toAttrs),
+    attrs: <TValue>(
+      source: ProjectedBindingSource<TValue>,
+      toAttrs: AttrMapper<NoInfer<TValue>>,
+    ) => bind_attrs_for(tree, source, toAttrs),
 
-    attrsPaths: (
-      map: LiveMapBindable,
-      paths: readonly LivePath[],
-      toAttrs: PathsAttrMapper,
-    ) => bind_attrs_paths_for(tree, map, paths, toAttrs),
+    attrsPaths: <const TSources extends ProjectedBindingSources>(
+      sources: TSources,
+      toAttrs: PathsAttrMapper<ProjectedBindingValues<TSources>>,
+    ) => bind_attrs_paths_for(tree, sources, toAttrs),
 
-    css: <TValue extends JsonValue | undefined = JsonValue | undefined>(
-      map: LiveMapBindable,
-      path: LivePath,
-      toCss: CssMapper<TValue>,
-    ) => bind_css_for(tree, map, path, toCss),
+    css: <TValue>(
+      source: ProjectedBindingSource<TValue>,
+      toCss: CssMapper<NoInfer<TValue>>,
+    ) => bind_css_for(tree, source, toCss),
 
-    cssPaths: (
-      map: LiveMapBindable,
-      paths: readonly LivePath[],
-      toCss: PathsCssMapper,
-    ) => bind_css_paths_for(tree, map, paths, toCss),
+    cssPaths: <const TSources extends ProjectedBindingSources>(
+      sources: TSources,
+      toCss: PathsCssMapper<ProjectedBindingValues<TSources>>,
+    ) => bind_css_paths_for(tree, sources, toCss),
   });
 }
-function bind_path_for<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+function bind_path_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   apply: PathApply<TTree, TValue>,
 ): LiveMapDisposer {
   let previous: TValue | undefined;
 
   const sync = (): void => {
-    const value = path_value<TValue>(map, path);
+    const value = source.snap();
     apply(tree, value, previous);
     previous = value;
   };
@@ -139,28 +121,27 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue extends JsonValue 
   sync();
   return own_disposable_for_owner(
     tree.quid,
-    normalize_disposer(map.sub.path(path, sync)),
+    subscribe_livemap_path_handle_value(source, sync),
     "binding",
     runtime_for_tree(tree),
   );
 }
 
-function bind_paths_for<TTree extends LiveTreeBindable>(
+function bind_paths_for<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   tree: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  apply: PathsApply<TTree>,
+  sources: TSources,
+  apply: PathsApply<TTree, ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  let previous: readonly (JsonValue | undefined)[] | undefined;
+  let previous: ProjectedBindingValues<TSources> | undefined;
 
   const sync = (): void => {
-    const values = paths.map((path) => path_value(map, path));
+    const values = sources.map((source) => source.snap()) as ProjectedBindingValues<TSources>;
     apply(tree, values, previous);
     previous = values;
   };
 
   sync();
-  const disposers = paths.map((path) => normalize_disposer(map.sub.path(path, sync)));
+  const disposers = sources.map((source) => subscribe_livemap_path_handle_value(source, sync));
   return own_disposable_for_owner(
     tree.quid,
     () => dispose_all(disposers),
@@ -169,135 +150,119 @@ function bind_paths_for<TTree extends LiveTreeBindable>(
   );
 }
 
-function bind_text_paths_for<TTree extends LiveTreeBindable>(
+function bind_text_paths_for<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   tree: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toText: PathsTextMapper,
+  sources: TSources,
+  toText: PathsTextMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for(tree, map, paths, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     target.text.set(toText(values, previous));
   });
 }
 
-function bind_attrs_paths_for<TTree extends LiveTreeBindable>(
+function bind_attrs_paths_for<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   tree: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toAttrs: PathsAttrMapper,
+  sources: TSources,
+  toAttrs: PathsAttrMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for(tree, map, paths, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     apply_attrs(target, toAttrs(values, previous));
   });
 }
 
-function bind_css_paths_for<TTree extends LiveTreeBindable>(
+function bind_css_paths_for<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   tree: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toCss: PathsCssMapper,
+  sources: TSources,
+  toCss: PathsCssMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for(tree, map, paths, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     apply_css(target, toCss(values, previous));
   });
 }
 
-function bind_text_for<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+function bind_text_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   toText?: TextMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for<TTree, TValue>(tree, map, path, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous) => {
     const text = toText ? toText(value, previous) : String(value ?? "");
     target.text.set(text);
   });
 }
 
-function bind_attr_for<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+function bind_attr_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   name: string,
   toValue?: TextMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for<TTree, TValue>(tree, map, path, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous) => {
     const attrValue = toValue ? toValue(value, previous) : value;
     apply_attrs(target, { [name]: attrValue as string | number | boolean | null | undefined });
   });
 }
 
-function bind_attrs_for<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+function bind_attrs_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   toAttrs: AttrMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for<TTree, TValue>(tree, map, path, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous) => {
     apply_attrs(target, toAttrs(value, previous));
   });
 }
 
-function bind_css_for<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+function bind_css_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   toCss: CssMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for<TTree, TValue>(tree, map, path, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous) => {
     apply_css(target, toCss(value, previous));
   });
 }
 
 type LiveMapDisposer = () => void;
 
-type LiveMapPathSubscriber = Readonly<{
-  path: (path: LivePath, listener: () => void) => LiveMapDisposer | void;
-}>;
+type ProjectedBindingSource<TValue = unknown> = Pick<
+  LiveMapPathHandle<TValue>,
+  "snap" | "feed"
+>;
 
-type LiveMapReadablePath = Readonly<{
-  snap: () => JsonValue | undefined;
-}>;
+type ProjectedBindingSources = readonly ProjectedBindingSource<unknown>[];
 
-type LiveMapBindable = Readonly<{
-  at: (path: LivePath) => LiveMapReadablePath;
-  sub: LiveMapPathSubscriber;
-}>;
+type ProjectedBindingValue<TSource extends ProjectedBindingSource> =
+  TSource extends ProjectedBindingSource<infer TValue> ? TValue : never;
 
-type PathApply<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined> = (
+type ProjectedBindingValues<TSources extends ProjectedBindingSources> = {
+  readonly [TIndex in keyof TSources]: ProjectedBindingValue<TSources[TIndex]>;
+};
+
+type PathApply<TTree extends LiveTreeBindable, TValue> = (
   tree: TTree,
   value: TValue,
   previous: TValue | undefined,
 ) => void;
 
-type PathsApply<TTree extends LiveTreeBindable> = (
+type PathsApply<TTree extends LiveTreeBindable, TValues extends readonly unknown[]> = (
   tree: TTree,
-  values: readonly (JsonValue | undefined)[],
-  previous: readonly (JsonValue | undefined)[] | undefined,
+  values: TValues,
+  previous: TValues | undefined,
 ) => void;
-
-type PathsMapperInput = readonly (JsonValue | undefined)[];
 
 type CssValueMap = Readonly<Record<string, string | number | null | undefined>>;
 type AttrValueMap = Readonly<Record<string, string | number | boolean | null | undefined>>;
 
-type CssMapper<TValue extends JsonValue | undefined> = (value: TValue, previous: TValue | undefined) => CssValueMap;
-type AttrMapper<TValue extends JsonValue | undefined> = (value: TValue, previous: TValue | undefined) => AttrValueMap;
-type TextMapper<TValue extends JsonValue | undefined> = (value: TValue, previous: TValue | undefined) => string;
-type PathsCssMapper = (values: PathsMapperInput, previous: PathsMapperInput | undefined) => CssValueMap;
-type PathsAttrMapper = (values: PathsMapperInput, previous: PathsMapperInput | undefined) => AttrValueMap;
-type PathsTextMapper = (values: PathsMapperInput, previous: PathsMapperInput | undefined) => string;
+type CssMapper<TValue> = (value: TValue, previous: TValue | undefined) => CssValueMap;
+type AttrMapper<TValue> = (value: TValue, previous: TValue | undefined) => AttrValueMap;
+type TextMapper<TValue> = (value: TValue, previous: TValue | undefined) => string;
+type PathsCssMapper<TValues extends readonly unknown[]> = (values: TValues, previous: TValues | undefined) => CssValueMap;
+type PathsAttrMapper<TValues extends readonly unknown[]> = (values: TValues, previous: TValues | undefined) => AttrValueMap;
+type PathsTextMapper<TValues extends readonly unknown[]> = (values: TValues, previous: TValues | undefined) => string;
 
 function dispose_all(disposers: readonly LiveMapDisposer[]): void {
   disposers.forEach((dispose) => dispose());
-}
-
-function normalize_disposer(disposer: LiveMapDisposer | void): LiveMapDisposer {
-  return typeof disposer === "function" ? disposer : () => undefined;
-}
-
-function path_value<TValue extends JsonValue | undefined>(map: LiveMapBindable, path: LivePath): TValue {
-  return map.at(path).snap() as TValue;
 }
 
 function apply_css(tree: LiveTreeBindable, values: CssValueMap): void {
@@ -322,84 +287,75 @@ function apply_attrs(tree: LiveTreeBindable, values: AttrValueMap): void {
   });
 }
 
-export function bind_path<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+export function bind_path<TTree extends LiveTreeBindable, TValue>(
   this: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
-  apply: PathApply<TTree, TValue>,
+  source: ProjectedBindingSource<TValue>,
+  apply: PathApply<TTree, NoInfer<TValue>>,
 ): LiveMapDisposer {
-  return bind_path_for(this, map, path, apply);
+  return bind_path_for(this, source, apply);
 }
 
-export function bind_paths<TTree extends LiveTreeBindable>(
+export function bind_paths<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   this: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  apply: PathsApply<TTree>,
+  sources: TSources,
+  apply: PathsApply<TTree, ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for(this, map, paths, apply);
+  return bind_paths_for(this, sources, apply);
 }
 
-export function bind_text_paths<TTree extends LiveTreeBindable>(
+export function bind_text_paths<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   this: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toText: PathsTextMapper,
+  sources: TSources,
+  toText: PathsTextMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_text_paths_for(this, map, paths, toText);
+  return bind_text_paths_for(this, sources, toText);
 }
 
-export function bind_text<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+export function bind_text<TTree extends LiveTreeBindable, TValue>(
   this: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
-  toText?: TextMapper<TValue>,
+  source: ProjectedBindingSource<TValue>,
+  toText?: TextMapper<NoInfer<TValue>>,
 ): LiveMapDisposer {
-  return bind_text_for(this, map, path, toText);
+  return bind_text_for(this, source, toText);
 }
 
-export function bind_attr<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+export function bind_attr<TTree extends LiveTreeBindable, TValue>(
   this: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
+  source: ProjectedBindingSource<TValue>,
   name: string,
-  toValue?: TextMapper<TValue>,
+  toValue?: TextMapper<NoInfer<TValue>>,
 ): LiveMapDisposer {
-  return bind_attr_for(this, map, path, name, toValue);
+  return bind_attr_for(this, source, name, toValue);
 }
 
-export function bind_attrs_paths<TTree extends LiveTreeBindable>(
+export function bind_attrs_paths<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   this: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toAttrs: PathsAttrMapper,
+  sources: TSources,
+  toAttrs: PathsAttrMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_attrs_paths_for(this, map, paths, toAttrs);
+  return bind_attrs_paths_for(this, sources, toAttrs);
 }
 
-export function bind_attrs<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+export function bind_attrs<TTree extends LiveTreeBindable, TValue>(
   this: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
-  toAttrs: AttrMapper<TValue>,
+  source: ProjectedBindingSource<TValue>,
+  toAttrs: AttrMapper<NoInfer<TValue>>,
 ): LiveMapDisposer {
-  return bind_attrs_for(this, map, path, toAttrs);
+  return bind_attrs_for(this, source, toAttrs);
 }
 
-export function bind_css_paths<TTree extends LiveTreeBindable>(
+export function bind_css_paths<TTree extends LiveTreeBindable, const TSources extends ProjectedBindingSources>(
   this: TTree,
-  map: LiveMapBindable,
-  paths: readonly LivePath[],
-  toCss: PathsCssMapper,
+  sources: TSources,
+  toCss: PathsCssMapper<ProjectedBindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_css_paths_for(this, map, paths, toCss);
+  return bind_css_paths_for(this, sources, toCss);
 }
 
-export function bind_css<TTree extends LiveTreeBindable, TValue extends JsonValue | undefined = JsonValue | undefined>(
+export function bind_css<TTree extends LiveTreeBindable, TValue>(
   this: TTree,
-  map: LiveMapBindable,
-  path: LivePath,
-  toCss: CssMapper<TValue>,
+  source: ProjectedBindingSource<TValue>,
+  toCss: CssMapper<NoInfer<TValue>>,
 ): LiveMapDisposer {
-  return bind_css_for(this, map, path, toCss);
+  return bind_css_for(this, source, toCss);
 }

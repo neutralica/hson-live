@@ -92,6 +92,7 @@ import {
   LiveHostAuthorityError,
   hsonLiveHost as hostSubpath,
   type LiveHostAuthorityErrorCode,
+  type LiveHostReadonlyMap,
   type LiveHostSyncManager,
   type LiveHostSyncSend,
   type LiveHostSyncSession,
@@ -175,6 +176,9 @@ type ProjectedPathTruth = Readonly<{
 }>;
 
 declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
+declare const bindingTree: LiveTree;
+declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
+declare const readonlyBindingMap: LiveHostReadonlyMap<LiveMap<ProjectedPathTruth>>;
 declare const dynamicPath: LivePath;
 declare const dynamicObjectKey: string;
 declare const dynamicTupleIndex: number;
@@ -260,6 +264,60 @@ type PreservedReadonlyTuple = Expect<Equal<
 >>;
 type DeepRepresentativePath = Expect<Equal<typeof deepRepresentativePath, "tuple" | "array" | undefined>>;
 type RelativeRequiredLeaf = Expect<Equal<typeof relativeRequiredLeaf, string>>;
+
+bindingTree.bind.path(projectedPathMap.at(["required", "leaf"]), (_tree, value, previous) => {
+  type RequiredBindingValue = Expect<Equal<typeof value, string>>;
+  type RequiredBindingPrevious = Expect<Equal<typeof previous, string | undefined>>;
+  return undefined;
+});
+bindingTree.bind.text(projectedPathMap.at(["optional", "name"]), (value, previous) => {
+  type OptionalBindingValue = Expect<Equal<typeof value, string | undefined>>;
+  type OptionalBindingPrevious = Expect<Equal<typeof previous, string | undefined>>;
+  return String(value ?? previous ?? "");
+});
+bindingTree.bind.attrs(projectedPathMap.at(["nullable"]), (value) => {
+  type NullableBindingValue = Expect<Equal<typeof value, Readonly<{ name: string }> | null>>;
+  return { "data-null": value === null };
+});
+bindingTree.bind.attr(projectedPathMap.at(["literal"]), "data-state", (value) => {
+  type LiteralBindingValue = Expect<Equal<typeof value, "ready">>;
+  return value;
+});
+bindingTree.bind.path(projectedPathMap.at(["array", 0]), (_tree, value) => {
+  type ArrayBindingValue = Expect<Equal<typeof value, Readonly<{ name?: string }> | undefined>>;
+  return undefined;
+});
+bindingTree.bind.path(projectedPathMap.at(["tuple", 1]), (_tree, value) => {
+  type TupleBindingValue = Expect<Equal<typeof value, number | undefined>>;
+  return undefined;
+});
+bindingTree.bind.paths([
+  projectedPathMap.at(["required", "leaf"]),
+  projectedPathMap.at(["optional", "name"]),
+  projectedPathMap.at(["nullable"]),
+  mixedBindingMap.at(["count"]),
+], (_tree, values, previous) => {
+  type MultiBindingValues = Expect<Equal<
+    typeof values,
+    readonly [string, string | undefined, Readonly<{ name: string }> | null, number]
+  >>;
+  type MultiBindingPrevious = Expect<Equal<
+    typeof previous,
+    readonly [string, string | undefined, Readonly<{ name: string }> | null, number] | undefined
+  >>;
+  return undefined;
+});
+bindingTree.bind.text(readonlyBindingMap.at(["required", "leaf"]), (value) => {
+  type ReadonlyBindingValue = Expect<Equal<typeof value, string>>;
+  return value;
+});
+const readonlyBindingLocation = readonlyBindingMap.at(["required", "leaf"]);
+// @ts-expect-error Forward binding does not add mutation to a readonly Host location.
+readonlyBindingLocation.set("changed");
+// @ts-expect-error LiveTree.bind hard-replaced the old map-plus-path source form.
+bindingTree.bind.text(projectedPathMap, ["required", "leaf"]);
+// @ts-expect-error Multi-source binding no longer accepts one map plus path arrays.
+bindingTree.bind.paths(projectedPathMap, [["required", "leaf"]], () => undefined);
 
 // @ts-expect-error Exact object keys outside every branch are statically impossible.
 projectedPathMap.at(["required", "missing"]);
@@ -381,6 +439,10 @@ const typedOptionalBranch = schemaBoundMap.at(["optionalBranch", "name"]).snap()
 const typedNullableBranch = schemaBoundMap.at(["nullableBranch", "name"]).snap();
 const typedOptionalNullableBranch = schemaBoundMap.at(["optionalNullableBranch", "name"]).snap();
 const typedSchemaLiteral = schemaBoundMap.at(["literal"]).snap();
+bindingTree.bind.text(schemaBoundMap.at(["literal"]), (value) => {
+  type SchemaLiteralBinding = Expect<Equal<typeof value, "draft" | "ready">>;
+  return value;
+});
 schemaBoundMap.at(["readonlyValue"]).set(1);
 type LiteralTuplePathRemainsExact = Expect<Equal<typeof typedTupleItem, string>>;
 type OptionalTuplePathRemainsExact = Expect<Equal<typeof typedOptionalTupleItem, number | undefined>>;
@@ -588,5 +650,7 @@ void pathHandle.quid;
 const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
 if (publicDocumentMap.mode === "element") {
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
+  // @ts-expect-error Document locations have no approved projected binding observation capability.
+  bindingTree.bind.text(publicDocumentMap.at([]));
   void documentAcquisitionIsPublic;
 }

@@ -313,14 +313,17 @@ Schema validation governs projected JSON state. It does not validate direct raw 
 LiveMap owns state; LiveTree owns a mutable presentation graph and optional DOM projection. The current public bridge is explicit on LiveTree:
 
 ```ts
-tree.bind.text(map, ["user", "name"]);
-tree.bind.attr(map, ["user", "role"], "data-role");
-tree.bind.css(map, ["theme", "color"], (color) => ({
+tree.bind.text(map.at(["user", "name"]));
+tree.bind.attr(map.at(["user", "role"]), "data-role");
+tree.bind.css(map.at(["theme", "color"]), (color) => ({
   color: String(color ?? ""),
 }));
 ```
 
-Bindings apply the current value and subscribe to later changes until disposed. They do not make LiveTree and LiveMap the same graph, and they do not currently provide automatic keyed list reconciliation.
+`map.at(path)` is the source endpoint. Bindings apply the current location value
+and subscribe to later changes until disposed. They do not make LiveTree and
+LiveMap the same graph, and they do not currently provide automatic keyed list
+reconciliation.
 
 The completed design can build on the same boundary with:
 

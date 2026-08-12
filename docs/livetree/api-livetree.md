@@ -610,33 +610,36 @@ tree.css.anim.resume()
 
 ## LiveMap Binding
 
-Bindings read the current LiveMap path immediately, subscribe to later path
-changes, and return a disposer function:
+Bindings read the current projected LiveMap location immediately, subscribe to
+later changes, and return a disposer function. `map.at(path)` is the source
+endpoint:
 
 ```ts
-const dispose = tree.bind.text(map, ["profile", "name"]);
+const dispose = tree.bind.text(map.at(["profile", "name"]));
 dispose();
 ```
 
 Complete surface:
 
 ```ts
-tree.bind.path(map, path, (tree, value, previous) => {})
-tree.bind.paths(map, paths, (tree, values, previous) => {})
+tree.bind.path(location, (tree, value, previous) => {})
+tree.bind.paths(locations, (tree, values, previous) => {})
 
-tree.bind.text(map, path, (value, previous) => text)
-tree.bind.textPaths(map, paths, (values, previous) => text)
+tree.bind.text(location, (value, previous) => text)
+tree.bind.textPaths(locations, (values, previous) => text)
 
-tree.bind.attr(map, path, name, (value, previous) => attrValue)
-tree.bind.attrs(map, path, (value, previous) => attrs)
-tree.bind.attrsPaths(map, paths, (values, previous) => attrs)
+tree.bind.attr(location, name, (value, previous) => attrValue)
+tree.bind.attrs(location, (value, previous) => attrs)
+tree.bind.attrsPaths(locations, (values, previous) => attrs)
 
-tree.bind.css(map, path, (value, previous) => cssMap)
-tree.bind.cssPaths(map, paths, (values, previous) => cssMap)
+tree.bind.css(location, (value, previous) => cssMap)
+tree.bind.cssPaths(locations, (values, previous) => cssMap)
 ```
 
-`path` is a `LivePath`, represented as an array of string/number path parts.
-The mapper is optional for `text` and `attr`. Default text conversion is
+Each source is an existing projected passive location returned by
+`map.at(path)`. Multi-source methods accept a collection of locations and may
+combine locations from different projected maps. The mapper is optional for
+`text` and `attr`. Default text conversion is
 `String(value ?? "")`; default attribute conversion passes the LiveMap value
 to the binding adapter. Attribute bindings explicitly route mapper values of
 `false`, `null`, or `undefined` through `attrs.drop()` before canonical
@@ -644,7 +647,7 @@ to the binding adapter. Attribute bindings explicitly route mapper values of
 the corresponding QUID-scoped declaration.
 
 Each callback receives the previous value(s), initially `undefined`. A
-multi-path binding subscribes to every listed path; its disposer removes all
+multi-source binding subscribes to every listed location; its disposer removes all
 subscriptions.
 
 ---
