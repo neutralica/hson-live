@@ -256,9 +256,11 @@ check("document runtime façade omits projected data APIs", () => {
   const fragment = hson.liveMap.fromHson(`<button/> <button/>`);
   for (const map of [element, fragment]) {
     if (!("document" in map)) throw new Error("expected document map");
-    for (const key of ["snap", "set", "setMany", "splice", "replace", "delete", "batch", "apply", "feed", "sub", "schema"]) {
+    for (const key of ["snap", "set", "setMany", "splice", "replace", "delete", "batch", "apply", "feed", "sub"]) {
       assert.equal(key in map, false, `${key} should not be exposed by a document façade`);
     }
+    assert.deepEqual(Object.keys(map.schema), ["get", "use"]);
+    assert.equal(map.schema.get(), undefined);
     assert.equal(typeof map.at, "function");
     assert.equal(typeof map.proxy, "function");
     assert.equal(typeof map.replay, "function");

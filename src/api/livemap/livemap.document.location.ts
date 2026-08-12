@@ -23,7 +23,7 @@ import {
   type InternalDocumentLogicalEdge,
 } from "./livemap.document.logical.js";
 import { find_internal_document_id } from "./livemap.document.id-discovery.js";
-import { LiveMapDocumentMutationError } from "./livemap.error.js";
+import { LiveMapDocumentMutationError, LiveMapSchemaError } from "./livemap.error.js";
 
 type DocumentLocationOwner = Readonly<{
   readonly rev: number;
@@ -174,7 +174,7 @@ function insert_document_location(
     }
     throw location_mutation_error("insert-content", path);
   } catch (cause) {
-    if (cause instanceof LiveMapDocumentMutationError) throw cause;
+    if (cause instanceof LiveMapDocumentMutationError || cause instanceof LiveMapSchemaError) throw cause;
     throw location_mutation_error("insert-content", path, cause);
   }
 }
@@ -193,7 +193,7 @@ function move_document_location(
     );
     return mutations.move(target, from, to);
   } catch (cause) {
-    if (cause instanceof LiveMapDocumentMutationError) throw cause;
+    if (cause instanceof LiveMapDocumentMutationError || cause instanceof LiveMapSchemaError) throw cause;
     throw location_mutation_error("move-content", path, cause);
   }
 }
@@ -277,7 +277,7 @@ function delete_document_location(
     if (lowering.kind !== "content-remove") throw location_mutation_error("remove-content", path);
     return mutations.remove(lowering.target, lowering.index);
   } catch (cause) {
-    if (cause instanceof LiveMapDocumentMutationError) throw cause;
+    if (cause instanceof LiveMapDocumentMutationError || cause instanceof LiveMapSchemaError) throw cause;
     throw location_mutation_error("remove-content", path, cause);
   }
 }

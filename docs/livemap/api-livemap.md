@@ -374,6 +374,53 @@ Validation returns structured issues with codes including `TYPE_MISMATCH`,
 Issue paths are projected paths. Multi-operation validation reports the relevant
 operation/headline path while retaining detailed issue paths.
 
+### Document schemas
+
+Mutable element and fragment maps can install a document-specific legal-state
+contract. Authored HSON still describes only initial state; it never becomes a
+schema implicitly.
+
+```ts
+const d = hson.liveMap.schema.document;
+
+const ButtonDocument = d.element({
+  tag: "button",
+  content: d.sequence(d.text),
+});
+
+const map = hson.liveMap.fromHson(`<button "Save"/>`);
+if (map.mode === "element") map.schema.use(ButtonDocument);
+```
+
+The v1 vocabulary is exactly `text`, `element`, `fragment`, `sequence`,
+`repeat`, and `pick`. `text` is logical string content only. `sequence` is a
+closed dense direct-child layout, including `sequence()` for empty content.
+`repeat(item)` describes an entire zero-or-more content region. `pick` combines
+items or combines complete content layouts; it does not mix those categories.
+There is no optional document item—alternate dense layouts use a `pick` of
+complete sequences.
+
+`element()` matches any ordinary element and leaves descendants broad. A
+supplied `tag` is exact. A supplied `content` closes that element's direct
+content recursively, while an element child with omitted `content` is a local
+broad-subtree escape. Attributes stay canonically valid but otherwise open.
+`fragment(content)` describes fragment-root children without a fake element.
+
+`map.schema.use(schema)` validates the current canonical document synchronously
+and returns the same map object. A successful first attachment is permanent for
+the owner: reusing the identical schema object is idempotent, while replacing or
+removing it is unsupported. All aliases, local mutations, installs, restores,
+replays, and staged authoritative candidates are governed by the same owner
+contract. Attachment itself changes neither graph, revision, nor observations.
+
+Unsafe live graph references are severed on successful attachment, and later
+`debug.node(...)` calls reject for that owner. This prevents an unsafe alias from
+invalidating the schema contract.
+
+Document schema evidence is installed in this release, but document `at()` and
+`proxy()` values intentionally retain their existing broad types. Schema-driven
+path, watch, binding, and mutation-input narrowing are not current API yet.
+
 ## Subscriptions
 
 ```ts

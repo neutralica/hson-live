@@ -55,6 +55,12 @@ import { classify_live_root_mode, facade_for_livemap_root, prepare_livemap_root 
 import { canonical_graph_equal, type LiveMapDocumentInstallController, type PreparedDocumentInstall } from "./livemap.document.install.js";
 import type { LiveMapDocumentMutationController, PreparedDocumentMutation } from "./livemap.document.mutation.js";
 import type { LiveMapDocumentReplayController, PreparedDocumentReplay } from "./livemap.document.replay.js";
+import {
+  require_document_root_schema,
+  validate_livemap_document_schema_root,
+  type InternalDocumentRootSchema,
+  type InternalDocumentSchemaController,
+} from "./livemap.document.schema.js";
 import { register_livemap_document_identity_candidate_commit } from "./livemap.document.registration.js";
 import {
   LiveMapTransitionError,
@@ -141,10 +147,11 @@ type LiveMapCommitPublisher = (
 type BuiltLiveMapCore = Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
   projected: LiveMapProjectedPropagation;
-  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController;
+  document?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController;
   transitionController: LiveMapTransitionController;
   currentRoot: () => HsonNode;
   currentSchema: () => LiveMapSchema | undefined;
+  currentDocumentSchema: () => InternalDocumentRootSchema | undefined;
   watchDocument: LiveMapDocumentWatchRegistration;
   detachUnsafeReferences: () => void;
   prepareDetachedCommit: (
@@ -205,7 +212,11 @@ export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
 /** Build the shared Core around a root already cloned, validated, and indexed. */
 function make_livemap_core_from_owned_root(
   prepared: ReturnType<typeof prepare_livemap_root>,
-  initial: Readonly<{ revision?: number; schema?: LiveMapSchema }> = {},
+  initial: Readonly<{
+    revision?: number;
+    schema?: LiveMapSchema;
+    documentSchema?: InternalDocumentRootSchema;
+  }> = {},
 ): BuiltLiveMapCore {
   const initialMode = prepared.mode;
   let owned = {
@@ -248,6 +259,7 @@ function make_livemap_core_from_owned_root(
   // once the Core facade grows: schema attachment may want an immutable facade
   // wrapper or shared Core state object instead of mutating closure-local state.
   let currentSchema: LiveMapSchema | undefined = initial.schema;
+  let currentDocumentSchema: InternalDocumentRootSchema | undefined = initial.documentSchema;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(initialMode, () => owned.revision);
 
@@ -278,6 +290,18 @@ function make_livemap_core_from_owned_root(
     const preparedNext = prepare_livemap_root(detachedRoot);
     if (preparedNext.mode !== initialMode) {
       throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
+    }
+    if ((initialMode === "element" || initialMode === "fragment")
+      && currentDocumentSchema !== undefined) {
+      must_schema_validation(
+        validate_livemap_document_schema_root(
+          currentDocumentSchema,
+          preparedNext.root,
+          initialMode,
+        ),
+        [],
+        "issue",
+      );
     }
     const baseRoot = clone_live_root(owned.root);
     return transitionController.prepare({
@@ -357,6 +381,26 @@ function make_livemap_core_from_owned_root(
       revision: owned.revision,
     };
     transitionController.invalidate();
+  }
+
+  function useDocumentSchema(schema: InternalDocumentRootSchema): void {
+    const attached = currentDocumentSchema;
+    if (attached === schema) return;
+    if (attached !== undefined) {
+      throw new Error("LiveMap document schema contract is already attached and cannot be replaced.");
+    }
+    transitionController.assertPublicMutationAllowed();
+    if (initialMode !== "element" && initialMode !== "fragment") {
+      throw new TypeError("Document schema attachment is unavailable in projected mode.");
+    }
+    const recognized = require_document_root_schema(schema);
+    must_schema_validation(
+      validate_livemap_document_schema_root(recognized.value, owned.root, initialMode),
+      [],
+      "issue",
+    );
+    detachUnsafeReferences();
+    currentDocumentSchema = recognized.value;
   }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
   const commitOps = (
@@ -472,6 +516,9 @@ function make_livemap_core_from_owned_root(
   const debugApi = Object.freeze({
     node: (path: LivePath) => {
       transitionController.assertPublicMutationAllowed();
+      if (currentDocumentSchema !== undefined) {
+        throw new Error("LiveMap debug.node(...) is unavailable after document schema attachment.");
+      }
       return make_livemap_node_handle(
         owned.root,
         must_live_path(path),
@@ -828,13 +875,14 @@ function make_livemap_core_from_owned_root(
       transitionController,
       currentRoot: () => owned.root,
       currentSchema: () => currentSchema,
+      currentDocumentSchema: () => currentDocumentSchema,
       watchDocument: documentWatchHub.add,
       detachUnsafeReferences,
       prepareDetachedCommit,
     };
   }
 
-  const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController = {
+  const document: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController = {
     mode: initialMode,
     rev: () => owned.revision,
     root: () => owned.root,
@@ -847,11 +895,20 @@ function make_livemap_core_from_owned_root(
     },
     commits: Object.freeze({ observe: commitObserverHub.observe }),
     identityEpoch: documentIdentityEpoch,
+    getDocumentSchema: () => currentDocumentSchema,
+    useDocumentSchema,
     apply: (
       candidate: PreparedDocumentInstall,
       continuity: "same-epoch" | "new-epoch",
     ): LiveMapGraphCommit<LiveMapGraphReplaceRootOp> => {
       transitionController.assertPublicMutationAllowed();
+      if (currentDocumentSchema !== undefined) {
+        must_schema_validation(
+          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
+          [],
+          "issue",
+        );
+      }
       const prevRev = owned.revision;
       const unchanged = canonical_graph_equal(owned.root, candidate.root);
       const commit: LiveMapGraphCommit<LiveMapGraphReplaceRootOp> = unchanged
@@ -907,6 +964,13 @@ function make_livemap_core_from_owned_root(
       continuity: "same-epoch" | "new-epoch",
     ): void => {
       transitionController.assertPublicMutationAllowed();
+      if (currentDocumentSchema !== undefined) {
+        must_schema_validation(
+          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
+          [],
+          "issue",
+        );
+      }
       const candidateQuids = livemap_document_identity_quids(candidate.overlay);
       if (continuity === "new-epoch") {
         documentIdentityEpoch.replace(candidateQuids);
@@ -927,6 +991,13 @@ function make_livemap_core_from_owned_root(
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();
+      if (currentDocumentSchema !== undefined) {
+        must_schema_validation(
+          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
+          [],
+          "issue",
+        );
+      }
       let nextLedger;
       try {
         nextLedger = stage_livemap_identity_epoch(
@@ -980,6 +1051,13 @@ function make_livemap_core_from_owned_root(
     },
     applyReplay: (candidate: PreparedDocumentReplay): LiveMapGraphCommit => {
       transitionController.assertPublicMutationAllowed();
+      if (currentDocumentSchema !== undefined) {
+        must_schema_validation(
+          validate_livemap_document_schema_root(currentDocumentSchema, candidate.root, initialMode),
+          [],
+          "issue",
+        );
+      }
       register_livemap_document_identity_effects(candidate.commit, candidate.identityEffects);
       if (candidate.commit.ops[0]?.op === "replace-root") {
         documentIdentityEpoch.replace(livemap_document_identity_quids(candidate.overlay));
@@ -1008,6 +1086,7 @@ function make_livemap_core_from_owned_root(
     transitionController,
     currentRoot: () => owned.root,
     currentSchema: () => currentSchema,
+    currentDocumentSchema: () => currentDocumentSchema,
     watchDocument: documentWatchHub.add,
     detachUnsafeReferences,
     prepareDetachedCommit,
@@ -1022,6 +1101,9 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
       const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
         revision: built.core.rev,
         ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
+        ...(built.currentDocumentSchema() !== undefined
+          ? { documentSchema: built.currentDocumentSchema() }
+          : {}),
       });
       const draft = facade_for_livemap_root(
         draftBuilt.core,

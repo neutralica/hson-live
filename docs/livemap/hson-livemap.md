@@ -378,6 +378,21 @@ HSON node edits. The current `readonly` schema modifier is recorded in schema
 rules but is not enforced as a mutation prohibition; treating it as access
 control is roadmap behavior.
 
+Document maps instead use `hson.liveMap.schema.document`, whose v1 vocabulary
+is exactly `text`, `element`, `fragment`, `sequence`, `repeat`, and `pick`.
+Text is string-only logical content. Sequences are closed and dense; repetition
+is an entire zero-or-more content region; alternate layouts are picks of
+complete sequences. Supplied element content is closed, omitted content leaves
+that element's descendants broad, exact tags are optional, and attrs remain
+open.
+
+`documentMap.schema.use(schema)` validates the current graph and permanently
+installs the contract on the same owner. Every alias and future candidate is
+governed. Attachment has no revision/publication effect, detaches prior unsafe
+debug references, and disables later `debug.node(...)` access. The identical
+schema object can be reused idempotently; replacement is unsupported. Document
+path and proxy types remain broad until the later typed-path phase.
+
 ---
 
 ## LiveTree projection

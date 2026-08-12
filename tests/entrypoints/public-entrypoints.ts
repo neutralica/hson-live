@@ -112,6 +112,8 @@ import {
 import { get_livemap_quid } from "hson-live";
 // @ts-expect-error LiveMap path-handle pseudo-QUID helpers were removed.
 import { ensure_livemap_quid } from "hson-live/livemap";
+// @ts-expect-error Document schema values are inferred; no named annotation type is exported.
+import type { LiveMapDocumentSchema } from "hson-live/livemap";
 
 void hson;
 void transformSubpath;
@@ -141,6 +143,31 @@ void get_livemap_quid;
 void ensure_livemap_quid;
 void construct_tree;
 void bareHsonString;
+void (0 as unknown as LiveMapDocumentSchema);
+
+const documentSchemaNamespace = hson.liveMap.schema.document;
+const publicElementSchema = documentSchemaNamespace.element({
+  tag: "button",
+  content: documentSchemaNamespace.sequence(documentSchemaNamespace.text),
+});
+const publicFragmentSchema = documentSchemaNamespace.fragment(
+  documentSchemaNamespace.repeat(
+    documentSchemaNamespace.pick(
+      documentSchemaNamespace.text,
+      documentSchemaNamespace.element(),
+    ),
+  ),
+);
+const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
+if (publicElementCandidate.mode === "element") {
+  const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
+  const sameSchema = schemaBound.schema.get();
+  void sameSchema;
+}
+const publicFragmentCandidate = mapSubpath.fromHson(`"before" <em/>`);
+if (publicFragmentCandidate.mode === "fragment") {
+  publicFragmentCandidate.schema.use(publicFragmentSchema);
+}
 
 const reflectFacade: ReflectFacade = reflectSubpath;
 const umbrellaReflect: ReflectFacade = hson.reflect;

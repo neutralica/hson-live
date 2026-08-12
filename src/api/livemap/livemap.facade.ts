@@ -8,6 +8,7 @@ import {
   LIVEMAP_SCHEMA,
   make_livemap_schema,
 } from "./livemap.schema.js";
+import { LIVEMAP_DOCUMENT_SCHEMA } from "./livemap.document.schema.js";
 import type {
   InferLiveMapSchemaInput,
   LiveMapSchema,
@@ -16,6 +17,7 @@ import type {
 } from "./livemap.schema.js";
 
 type LiveMapSchemaNamespace = LiveMapSchemaBuilder & Readonly<{
+  document: typeof LIVEMAP_DOCUMENT_SCHEMA;
   define: <const TInput extends LiveMapSchemaInput>(
     makeShape: (schema: LiveMapSchemaBuilder) => TInput,
   ) => LiveMapSchema<Exclude<InferLiveMapSchemaInput<TInput>, undefined>>;
@@ -28,6 +30,7 @@ const schema: LiveMapSchemaNamespace = Object.assign(
   {},
   LIVEMAP_SCHEMA,
   {
+    document: LIVEMAP_DOCUMENT_SCHEMA,
     define: define_livemap_schema,
     make: make_livemap_schema,
   },

@@ -53,6 +53,10 @@ import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.
 import { make_livemap_document_location_factory } from "./livemap.document.location.js";
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
+import type {
+  InternalDocumentSchemaController,
+} from "./livemap.document.schema.js";
+import { require_document_root_schema } from "./livemap.document.schema.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -159,7 +163,7 @@ export function assert_live_root_mode(
 export function facade_for_livemap_root(
   core: LiveMapCore,
   prepared: PreparedLiveMapRoot,
-  controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
+  controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController,
   watchDocument?: LiveMapDocumentWatchRegistration,
 ): ClassifiedLiveMap {
   if (prepared.mode === "data-object" || prepared.mode === "data-array") {
@@ -178,7 +182,7 @@ export function facade_for_livemap_root(
 function make_document_livemap(
   core: LiveMapCore,
   mode: DocumentLiveMapMode,
-  controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
+  controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController & InternalDocumentSchemaController,
   watchDocument: LiveMapDocumentWatchRegistration,
 ): DocumentLiveMap {
   const mutationApi = make_livemap_document_mutation_api(controller);
@@ -243,8 +247,22 @@ function make_document_livemap(
       core.root(),
       options,
     );
-    const elementMap: ElementLiveMap = Object.freeze({
+    let elementMap: ElementLiveMap;
+    const schema: ElementLiveMap["schema"] = Object.freeze({
+      get: () => {
+        const attached = controller.getDocumentSchema();
+        return attached === undefined
+          ? undefined
+          : require_document_root_schema(attached, "element").value;
+      },
+      use: (documentSchema) => {
+        controller.useDocumentSchema(documentSchema);
+        return elementMap;
+      },
+    });
+    elementMap = Object.freeze({
       ...shared,
+      schema,
       mode,
       get rev() {
         return core.rev;
@@ -269,8 +287,22 @@ function make_document_livemap(
     core.root(),
     options,
   );
-  const fragmentMap: FragmentLiveMap = Object.freeze({
+  let fragmentMap: FragmentLiveMap;
+  const schema: FragmentLiveMap["schema"] = Object.freeze({
+    get: () => {
+      const attached = controller.getDocumentSchema();
+      return attached === undefined
+        ? undefined
+        : require_document_root_schema(attached, "fragment").value;
+    },
+    use: (documentSchema) => {
+      controller.useDocumentSchema(documentSchema);
+      return fragmentMap;
+    },
+  });
+  fragmentMap = Object.freeze({
     ...shared,
+    schema,
     mode,
     get rev() {
       return core.rev;

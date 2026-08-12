@@ -306,6 +306,33 @@ The builder currently supports primitives, literals, choices, tagged choices, la
 
 Schema validation governs projected JSON state. It does not validate direct raw HSON node edits. The current `readonly` schema modifier is recorded in schema rules but is not enforced as a mutation prohibition; treating it as access control is roadmap behavior.
 
+Document maps use the separate `hson.liveMap.schema.document` vocabulary:
+
+```ts
+const d = hson.liveMap.schema.document;
+const schema = d.element({
+  tag: "button",
+  content: d.sequence(d.text),
+});
+
+const candidate = hson.liveMap.fromHson(`<button "Save"/>`);
+if (candidate.mode === "element") candidate.schema.use(schema);
+```
+
+Its six v1 values are `text`, `element`, `fragment`, `sequence`, `repeat`, and
+`pick`. Text means strings only. Supplied content is closed; omitted element
+content leaves that element's descendants broad. Attributes remain open.
+Repetition is whole-content zero-or-more, and alternate dense layouts use
+`pick` over complete sequences rather than optional positions.
+
+Attachment validates synchronously and permanently governs the same owner
+through every alias and later candidate transition. The identical schema object
+may be reused idempotently; another object cannot replace it. Successful
+attachment severs prior unsafe debug references and disables future
+`debug.node(...)` access. It does not advance the revision or publish an event.
+
+This schema kernel does not yet narrow document `at()` or `proxy()` types.
+
 ---
 
 ## LiveTree projection

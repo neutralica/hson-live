@@ -7,6 +7,10 @@ import type {
   LiveMapSchemaRule,
   LiveMapSchemaValue,
 } from "../api/livemap/livemap.schema.js";
+import type {
+  InternalDocumentRootSchemaForMode,
+  InternalDocumentSchemaEvidence,
+} from "../api/livemap/livemap.document.schema.js";
 
 
 /**
@@ -562,7 +566,26 @@ export type LiveMapDocumentApi = Readonly<{
   attrs: DocumentLiveMapAttrsApi;
 }>;
 
-type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
+type DocumentLiveMapForEvidence<
+  TMode extends DocumentLiveMapMode,
+  TEvidence,
+> = TMode extends "element"
+  ? ElementLiveMap<TEvidence>
+  : FragmentLiveMap<TEvidence>;
+
+type DocumentLiveMapSchemaApi<
+  TMode extends DocumentLiveMapMode,
+> = Readonly<{
+  get: () => InternalDocumentRootSchemaForMode<TMode> | undefined;
+  use: <TSchema extends InternalDocumentRootSchemaForMode<TMode>>(
+    schema: TSchema,
+  ) => DocumentLiveMapForEvidence<TMode, InternalDocumentSchemaEvidence<TSchema>>;
+}>;
+
+type DocumentLiveMapShared<
+  TMode extends DocumentLiveMapMode,
+  _TEvidence = unknown,
+> = Readonly<{
   readonly mode: TMode;
   readonly rev: number;
   root: () => HsonNode;
@@ -585,6 +608,8 @@ type DocumentLiveMapShared<TMode extends DocumentLiveMapMode> = Readonly<{
   replay: (commit: LiveMapGraphCommit) => LiveMapGraphCommit;
   /** Observe successful canonical graph commits without projected path coercion. */
   commits: LiveMapCommitObserverApi;
+  /** Permanent owner-level document schema attachment. */
+  schema: DocumentLiveMapSchemaApi<TMode>;
   /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
   debug: LiveMapDebugApi;
 }>;
@@ -640,13 +665,13 @@ type LiveMapDocumentProxy = Readonly<{
   readonly [index: number]: LiveMapDocumentProxy;
 }>;
 
-export type ElementLiveMap = DocumentLiveMapShared<"element"> & Readonly<{
+export type ElementLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"element", TEvidence> & Readonly<{
   readonly document: LiveMapDocumentApi;
   /** Return a detached clone of the single top-level ordinary element. */
   element: Readonly<{ node: () => HsonNode }>;
 }>;
 
-export type FragmentLiveMap = DocumentLiveMapShared<"fragment"> & Readonly<{
+export type FragmentLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"fragment", TEvidence> & Readonly<{
   readonly document: LiveMapDocumentApi;
 }>;
 
