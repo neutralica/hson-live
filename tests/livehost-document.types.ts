@@ -91,11 +91,19 @@ tree.flag;
 const projectedHost: LiveHost<{ count: number }> = create_livehost({ state: { count: 0 } });
 const projectedMap: LiveHostReadonlyMap<LiveMap<{ count: number }>> = projectedHost.map;
 type ProjectedMapIsNarrow = Assert<typeof projectedHost.map extends LiveHostReadonlyMap<LiveMap<{ count: number }>> ? true : false>;
+projectedMap.at(["count"]).watch((next) => {
+  const exact: number = next;
+  void exact;
+});
 const authoritativeProjectedHost = create_livehost<{ count: number }, { increment: number }>({
   state: { count: 0 },
     actions: {
     async increment(context, amount) {
       context.map.snap(["count"]);
+      context.map.at(["count"]).watch((next) => {
+        const exact: number = next;
+        void exact;
+      });
       // @ts-expect-error hosted action contexts expose a read-only map
       context.map.set(["count"], amount);
       await context.mutate((draft) => draft.set(["count"], amount));

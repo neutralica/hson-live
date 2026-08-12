@@ -202,6 +202,22 @@ If the matched element later moves, call `id(...)` again to discover its current
 location—the previously returned location continues to represent its old
 logical coordinate.
 
+Projected and document passive locations can watch their current detached
+value without changing their fixed-coordinate behavior:
+
+```ts
+const dispose = document.at([0, 0]).watch(next => {
+  console.log(next);
+});
+
+dispose();
+```
+
+`watch` has no initial callback. Ordinary equal results are suppressed, while a
+successful `restore(...)` invokes every active watcher once even when the value
+is equal or missing. `feed` remains the lower-level stream of overlapping
+accepted operation evidence and does not report restore.
+
 Document locations expose mutations for the content they own, item mutations
 for the coordinate they represent, and ordinary attrs for element endpoints:
 

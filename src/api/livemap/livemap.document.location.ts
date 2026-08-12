@@ -5,6 +5,7 @@ import type {
   DocumentLiveMapMode,
   LiveMapDocumentContent,
   LiveMapDocumentRequestTarget,
+  LiveMapDisposer,
   LiveMapGraphCommit,
   LiveMapGraphInsertContentOp,
   LiveMapGraphMoveContentOp,
@@ -52,6 +53,11 @@ type DocumentLocationMutations = Readonly<{
   ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
 }>;
 
+type DocumentLocationWatch = (
+  path: readonly number[],
+  listener: (next: HsonNode | Primitive | undefined) => void,
+) => LiveMapDisposer;
+
 type LocationAttrs = Readonly<{
   get: (name: string) => ReturnType<DocumentLiveMapAttrsApi["get"]>;
   has: (name: string) => boolean;
@@ -69,6 +75,7 @@ type DocumentLocation = Readonly<{
   readonly rev: number;
   path: () => readonly number[];
   snap: () => HsonNode | Primitive | undefined;
+  watch: (listener: (next: HsonNode | Primitive | undefined) => void) => LiveMapDisposer;
   at: (path: readonly number[]) => DocumentLocation;
   id: (value: string) => DocumentLocation | undefined;
   replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
@@ -84,6 +91,7 @@ export function make_livemap_document_location_factory(
   owner: DocumentLocationOwner,
   mode: DocumentLiveMapMode,
   mutations: DocumentLocationMutations,
+  watch: DocumentLocationWatch,
 ): (path: readonly number[]) => DocumentLocation {
   const locations = new Map<string, DocumentLocation>();
   let discoveryMap: Readonly<{
@@ -105,7 +113,8 @@ export function make_livemap_document_location_factory(
         return owner.rev;
       },
       path: () => Object.freeze([...logicalPath]),
-      snap: () => read_document_logical_location(owner.root(), mode, logicalPath),
+      snap: () => read_livemap_document_logical_location(owner.root(), mode, logicalPath),
+      watch: (listener) => watch(logicalPath, listener),
       at: (relativePath) => at([...logicalPath, ...must_document_logical_path(relativePath)]),
       id: (value) => find_internal_document_id(discoveryMap, location, must_document_id(value)),
       replace: (value) => replace_document_location(owner, mode, mutations, logicalPath, value),
@@ -325,7 +334,7 @@ function must_document_logical_path(path: unknown): readonly number[] {
   }));
 }
 
-function read_document_logical_location(
+export function read_livemap_document_logical_location(
   root: HsonNode,
   mode: DocumentLiveMapMode,
   path: readonly number[],

@@ -138,7 +138,7 @@ check("proxy acquisition and reads do not mint QUIDs or advance revision", () =>
 
 check("document $_ exposes the established location capability surface", () => {
   const location = element(`<main/>`).proxy().$_;
-  assert.deepEqual(Reflect.ownKeys(location).sort(), ["at", "attrs", "delete", "id", "insert", "move", "path", "replace", "rev", "snap"]);
+  assert.deepEqual(Reflect.ownKeys(location).sort(), ["at", "attrs", "delete", "id", "insert", "move", "path", "replace", "rev", "snap", "watch"]);
   for (const projected of ["set", "update", "array", "object", "feed", "linkTo"]) {
     assert.equal(projected in location, false);
   }

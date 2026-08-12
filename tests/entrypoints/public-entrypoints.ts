@@ -208,6 +208,14 @@ const preservedLiteral = projectedPathMap.at(["literal"]).snap();
 const preservedReadonlyTuple = projectedPathMap.at(["readonlyTuple"]).snap();
 const deepRepresentativePath = projectedPathMap.at(["deep", "branch", "rows", 0, "value"]).snap();
 const relativeRequiredLeaf = projectedPathMap.at(["required"]).at(["leaf"]).snap();
+projectedPathMap.at(["required", "leaf"]).watch((next) => {
+  type ProjectedWatchValue = Expect<Equal<typeof next, string>>;
+  return undefined;
+});
+projectedPathMap.proxy().required.leaf.$_.watch((next) => {
+  type ProjectedProxyWatchValue = Expect<Equal<typeof next, string>>;
+  return undefined;
+});
 projectedPathMap.sub.path(["required"], (next, prev) => {
   type RequiredPathSubscriberNext = Expect<Equal<typeof next, Readonly<{ leaf: string }>>>;
   type RequiredPathSubscriberPrev = Expect<Equal<typeof prev, Readonly<{ leaf: string }>>>;
@@ -312,6 +320,10 @@ bindingTree.bind.text(readonlyBindingMap.at(["required", "leaf"]), (value) => {
   return value;
 });
 const readonlyBindingLocation = readonlyBindingMap.at(["required", "leaf"]);
+readonlyBindingLocation.watch((next) => {
+  type ReadonlyWatchValue = Expect<Equal<typeof next, string>>;
+  return undefined;
+});
 // @ts-expect-error Forward binding does not add mutation to a readonly Host location.
 readonlyBindingLocation.set("changed");
 // @ts-expect-error LiveTree.bind hard-replaced the old map-plus-path source form.

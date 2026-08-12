@@ -17,7 +17,7 @@ import { make_livemap_path_handle } from "./livemap.handle.js";
 import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
 import { must_feed_listener, must_live_path, must_ordered_projected_object, must_ordered_projected_value, path_kind_error } from "./livemap.guard.js";
-import { append_live_path, clone_live_path, format_live_path, live_path_key } from "./livemap.path.js";
+import { append_live_path, clone_live_path, format_live_path, live_path_key, paths_overlap } from "./livemap.path.js";
 import { LiveMapDocumentMutationError, LiveMapProjectedIdentityError, LiveMapProjectedMutationError, LiveMapProjectedTransportError, LiveMapReplayError, LiveMapRevError, LiveMapSchemaError, } from "./livemap.error.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import {
@@ -94,6 +94,14 @@ import {
 import { make_livemap_projected_identity_api, register_livemap_projected_identity_api } from "./livemap.projected.identity-handle.js";
 import { capture_livemap_projected, projected_capture_continuity } from "./livemap.projected.capture.js";
 import { clone_hson_graph_without_quids } from "./livemap.document.capture.js";
+import { read_livemap_document_logical_location } from "./livemap.document.location.js";
+import {
+  detach_livemap_document_endpoint,
+  make_livemap_watch_hub,
+  optional_livemap_document_endpoint_equal,
+  publish_livemap_after_watch,
+  type LiveMapDocumentWatchRegistration,
+} from "./livemap.watch.js";
 import {
   type LiveMapIdentityEpochController,
   LiveMapIdentityEpochError,
@@ -125,6 +133,11 @@ type LiveMapCoreWriteOp =
   | LiveMapProjectedMoveWriteOp
   | LiveMapConstructiveSetWriteOp;
 
+type LiveMapCommitPublisher = (
+  commit: LiveMapCommit<LiveMapAnyOp>,
+  publishExisting: () => void,
+) => void;
+
 type BuiltLiveMapCore = Readonly<{
   core: LiveMapCore<JsonValue | undefined>;
   projected: LiveMapProjectedPropagation;
@@ -132,6 +145,7 @@ type BuiltLiveMapCore = Readonly<{
   transitionController: LiveMapTransitionController;
   currentRoot: () => HsonNode;
   currentSchema: () => LiveMapSchema | undefined;
+  watchDocument: LiveMapDocumentWatchRegistration;
   detachUnsafeReferences: () => void;
   prepareDetachedCommit: (
     commit: LiveMapCommit<LiveMapAnyOp>,
@@ -176,7 +190,12 @@ export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | unde
 export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
   const prepared = prepare_livemap_root(input);
   const built = make_livemap_core_from_owned_root(prepared);
-  const facade = facade_for_livemap_root(built.core, prepared, built.document);
+  const facade = facade_for_livemap_root(
+    built.core,
+    prepared,
+    built.document,
+    built.watchDocument,
+  );
   register_staged_facade(facade, built);
   register_livemap_projected_propagation(built.core, built.projected);
   register_livemap_projected_propagation(facade, built.projected);
@@ -197,6 +216,29 @@ function make_livemap_core_from_owned_root(
   };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
+  const projectedWatchHub = make_livemap_watch_hub({
+    clonePath: clone_live_path,
+    read: (path: LivePath) => project_live_path(owned.root, path),
+    equal: optional_ordered_projected_value_equal,
+    detach: (value: OrderedProjectedValue | undefined): JsonValue | undefined => (
+      value === undefined ? undefined : materialize_projected_value(value)
+    ),
+    relevant: (commit, path) => commit.ops.some((operation) => (
+      !("domain" in operation) && paths_overlap(path, operation.path)
+    )),
+  });
+  const documentWatchHub = make_livemap_watch_hub({
+    clonePath: (path: readonly number[]): readonly number[] => Object.freeze([...path]),
+    read: (path: readonly number[]) => {
+      if (initialMode !== "element" && initialMode !== "fragment") {
+        throw new Error("Document location watch is unavailable in projected mode.");
+      }
+      return read_livemap_document_logical_location(owned.root, initialMode, path);
+    },
+    equal: optional_livemap_document_endpoint_equal,
+    detach: detach_livemap_document_endpoint,
+    relevant: () => true,
+  });
   const documentIdentityEpoch = make_livemap_identity_epoch(
     prepared.documentOverlay === undefined
       ? livemap_projected_identity_quids(require_projected_overlay(prepared.projectedOverlay))
@@ -208,6 +250,26 @@ function make_livemap_core_from_owned_root(
   let currentSchema: LiveMapSchema | undefined = initial.schema;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(initialMode, () => owned.revision);
+
+  const publishCommitWithWatch = (
+    commit: LiveMapCommit<LiveMapAnyOp>,
+    publishExisting: () => void,
+  ): void => {
+    const watchFailure = initialMode === "element" || initialMode === "fragment"
+      ? documentWatchHub.emitCommit(commit)
+      : projectedWatchHub.emitCommit(commit);
+    publish_livemap_after_watch(watchFailure, publishExisting);
+  };
+
+  const publishSnapshotWithWatch = (revision: number): void => {
+    const watchFailure = initialMode === "element" || initialMode === "fragment"
+      ? documentWatchHub.emitSnapshot()
+      : projectedWatchHub.emitSnapshot();
+    publish_livemap_after_watch(
+      watchFailure,
+      () => commitObserverHub.emitSnapshot(revision),
+    );
+  };
 
   function prepareDetachedCommit(
     commit: LiveMapCommit<LiveMapAnyOp>,
@@ -267,12 +329,14 @@ function make_livemap_core_from_owned_root(
         }
       },
       notify: (acceptedCommit) => {
-        if (initialMode === "element" || initialMode === "fragment") {
-          commitObserverHub.emitCommit(acceptedCommit, "authoritative");
-        } else {
-          feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => project_live_path(owned.root, path));
-          commitObserverHub.emitCommit(acceptedCommit, "authoritative");
-        }
+        publishCommitWithWatch(acceptedCommit, () => {
+          if (initialMode === "element" || initialMode === "fragment") {
+            commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+          } else {
+            feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (path) => project_live_path(owned.root, path));
+            commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+          }
+        });
       },
     });
   }
@@ -310,6 +374,7 @@ function make_livemap_core_from_owned_root(
         (revision) => { owned = { ...owned, revision }; },
         writeOps,
         commitObserverHub,
+        publishCommitWithWatch,
         require_projected_overlay(owned.projectedOverlay),
         (overlay) => { owned = { ...owned, projectedOverlay: overlay }; },
         documentIdentityEpoch,
@@ -323,6 +388,7 @@ function make_livemap_core_from_owned_root(
       (revision) => { owned = { ...owned, revision }; },
       writeOps,
       commitObserverHub,
+      publishCommitWithWatch,
       transitionController,
       require_projected_overlay(owned.projectedOverlay),
       (overlay) => { owned = { ...owned, projectedOverlay: overlay }; },
@@ -446,7 +512,10 @@ function make_livemap_core_from_owned_root(
         overwrite_hson_node(owned.root, nextRoot);
         owned = { ...owned, projectedOverlay: nextOverlay, revision: commit.rev };
       },
-      notify: (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, origin),
+      notify: (acceptedCommit) => publishCommitWithWatch(
+        acceptedCommit,
+        () => commitObserverHub.emitCommit(acceptedCommit, origin),
+      ),
     });
     return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
   };
@@ -702,7 +771,7 @@ function make_livemap_core_from_owned_root(
         revision: normalized.rev,
       };
       transitionController.invalidate();
-      commitObserverHub.emitSnapshot(normalized.rev);
+      publishSnapshotWithWatch(normalized.rev);
     },
     /** Replace the root only when the caller's base revision is still current. */
     apply: (input: LiveMapApply<JsonValue | undefined>) => {
@@ -742,7 +811,11 @@ function make_livemap_core_from_owned_root(
     const existing = pathHandleCache.get(key);
     if (existing) return existing;
 
-    const handle = make_livemap_path_handle(core, handlePath);
+    const handle = make_livemap_path_handle(
+      core,
+      handlePath,
+      (listener) => projectedWatchHub.add(handlePath, listener),
+    );
     pathHandleCache.set(key, handle);
     return handle;
   }
@@ -755,6 +828,7 @@ function make_livemap_core_from_owned_root(
       transitionController,
       currentRoot: () => owned.root,
       currentSchema: () => currentSchema,
+      watchDocument: documentWatchHub.add,
       detachUnsafeReferences,
       prepareDetachedCommit,
     };
@@ -820,7 +894,10 @@ function make_livemap_core_from_owned_root(
             revision: commit.rev,
           };
         },
-        (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+        (acceptedCommit) => publishCommitWithWatch(
+          acceptedCommit,
+          () => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+        ),
       );
       return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<LiveMapGraphReplaceRootOp>;
     },
@@ -846,7 +923,7 @@ function make_livemap_core_from_owned_root(
         revision,
       };
       transitionController.invalidate();
-      commitObserverHub.emitSnapshot(revision);
+      publishSnapshotWithWatch(revision);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();
@@ -894,7 +971,10 @@ function make_livemap_core_from_owned_root(
             revision: rev,
           };
         },
-        (acceptedCommit) => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+        (acceptedCommit) => publishCommitWithWatch(
+          acceptedCommit,
+          () => commitObserverHub.emitCommit(acceptedCommit, "authoritative"),
+        ),
       );
       return transitionController.accept(transition, "legacy").commit as LiveMapGraphCommit<TOp>;
     },
@@ -913,7 +993,10 @@ function make_livemap_core_from_owned_root(
         revision: candidate.commit.rev,
       };
       transitionController.invalidate();
-      commitObserverHub.emitCommit(candidate.commit, "replay");
+      publishCommitWithWatch(
+        candidate.commit,
+        () => commitObserverHub.emitCommit(candidate.commit, "replay"),
+      );
       return candidate.commit;
     },
   };
@@ -925,6 +1008,7 @@ function make_livemap_core_from_owned_root(
     transitionController,
     currentRoot: () => owned.root,
     currentSchema: () => currentSchema,
+    watchDocument: documentWatchHub.add,
     detachUnsafeReferences,
     prepareDetachedCommit,
   };
@@ -939,7 +1023,12 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         revision: built.core.rev,
         ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
       });
-      const draft = facade_for_livemap_root(draftBuilt.core, preparedDraft, draftBuilt.document);
+      const draft = facade_for_livemap_root(
+        draftBuilt.core,
+        preparedDraft,
+        draftBuilt.document,
+        draftBuilt.watchDocument,
+      );
       register_livemap_projected_propagation(draftBuilt.core, draftBuilt.projected);
       register_livemap_projected_propagation(draft, draftBuilt.projected);
       const observations: Array<Readonly<{
@@ -1016,6 +1105,7 @@ const STAGED_DRAFT_UNAVAILABLE_PROPERTIES = new Set<PropertyKey>([
   "restore",
   "schema",
   "sub",
+  "watch",
   "withSchema",
 ]);
 
@@ -1493,6 +1583,7 @@ function prepare_projected_transition(
   setRev: (rev: number) => void,
   writeOps: readonly LiveMapCoreWriteOp[],
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
+  publishCommit: LiveMapCommitPublisher,
   transitionController: LiveMapTransitionController,
   currentOverlay: LiveMapProjectedIdentityOverlay,
   setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
@@ -1539,8 +1630,10 @@ function prepare_projected_transition(
       else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
     },
     notify: (acceptedCommit) => {
-      feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => project_live_path(root, feedPath));
-      commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+      publishCommit(acceptedCommit, () => {
+        feedHub.emitProjected(acceptedCommit as LiveMapCommit<LiveMapDataOp>, (feedPath) => project_live_path(root, feedPath));
+        commitObserverHub.emitCommit(acceptedCommit, "authoritative");
+      });
     },
   });
 }
@@ -1554,6 +1647,7 @@ function apply_replay_ops(
   setRev: (rev: number) => void,
   writeOps: readonly LiveMapCoreWriteOp[],
   commitObserverHub: ReturnType<typeof make_livemap_commit_observer_hub<LiveMapAnyOp>>,
+  publishCommit: LiveMapCommitPublisher,
   currentOverlay: LiveMapProjectedIdentityOverlay,
   setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
   identityEpoch: LiveMapIdentityEpochController,
@@ -1591,8 +1685,10 @@ function apply_replay_ops(
     ops: planned.ops,
     ...encode_livemap_replay_transport(planned.transportOps),
   });
-  feedHub.emitProjected(commit, (feedPath) => project_live_path(root, feedPath));
-  commitObserverHub.emitCommit(commit, "replay");
+  publishCommit(commit, () => {
+    feedHub.emitProjected(commit, (feedPath) => project_live_path(root, feedPath));
+    commitObserverHub.emitCommit(commit, "replay");
+  });
   return commit;
 }
 

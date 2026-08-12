@@ -745,8 +745,8 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-location",
       repositoryModule: "tests/livemap-document-location.acceptance.mts",
       runtime: "node",
-      executableChecks: 26,
-      collections: ["document", "path", "traversal", "public-api", "externally-discoverable"],
+      executableChecks: 33,
+      collections: ["document", "path", "traversal", "watch", "public-api", "externally-discoverable"],
     }),
     launcher({
       id: "livemap.document-location-mutation",
@@ -875,8 +875,8 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-path-handle",
       repositoryModule: "tests/livemap-path-handle.acceptance.mts",
       runtime: "node",
-      executableChecks: 10,
-      collections: ["path-handle", "proxy", "bridge", "externally-discoverable"],
+      executableChecks: 19,
+      collections: ["path-handle", "proxy", "bridge", "watch", "externally-discoverable"],
     }),
     launcher({
       id: "livemap.staged-authority",

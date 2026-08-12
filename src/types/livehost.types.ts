@@ -925,7 +925,7 @@ type LiveHostReadonlyPathArrayApi<TValue> = Pick<
 
 type LiveHostReadonlyPathHandle<TValue> = Pick<
   LiveMapPathHandle<TValue>,
-  "rev" | "path" | "snap" | "feed"
+  "rev" | "path" | "snap" | "feed" | "watch"
 > & Readonly<{
   at: <const TPath extends LivePath>(
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),

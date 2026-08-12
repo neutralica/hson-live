@@ -597,6 +597,10 @@ type LiveMapDocumentLocation = Readonly<{
   path: () => readonly number[];
   /** Read the detached current occupant, or `undefined` when absent. */
   snap: () => HsonNode | Primitive | undefined;
+  /** Observe future canonical value changes and explicit snapshot replacement. */
+  watch: (
+    listener: (next: HsonNode | Primitive | undefined) => void,
+  ) => LiveMapDisposer;
   /** Create a child location relative to this logical coordinate. */
   at: (path: readonly number[]) => LiveMapDocumentLocation;
   /** Discover the first exact canonical ID match in this logical subtree. */
@@ -1070,6 +1074,8 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
   array: LiveMapPathArrayApi<TValue>;
   object: LiveMapPathObjectApi<TValue>;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
+  /** Observe future canonical value changes and explicit snapshot replacement. */
+  watch: (listener: (next: TValue) => void) => LiveMapDisposer;
   linkTo: (target: LiveMapPathHandle) => LiveMapDisposer;
 }>;
 

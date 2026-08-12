@@ -210,6 +210,8 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   await host.mutate((draft) => draft.set(["value"], 8));
   const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 0 });
+  const watched = [];
+  mirror.at(["value"]).watch((next) => watched.push(next));
   mirror.schema.use(schema);
   const pair = socket_pair();
   let queuedTail = false;
@@ -237,6 +239,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
     { kind: "snapshot", value: { value: 8 }, active: true },
     { kind: "commit", value: { value: 9 }, active: true },
   ]);
+  assert.deepEqual(watched, [8, 9]);
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
   assert.equal(typeof snapshotMessage.snapshot.hson, "string");
   assert.equal(snapshotMessage.snapshot.hson.includes("\n"), false);
@@ -262,6 +265,18 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const identityRev = identityClient.map.rev;
   assert.equal(acquire_projected_identity(identityClient.map, ["container"]).active, true);
   assert.equal(identityClient.map.rev, identityRev);
+
+  const equalHost = hson.liveHost.create({ state: { value: 5 }, logicalMapId: "map-equal-snapshot" });
+  const equalMirror = hson.liveMap.fromJson({ value: 5 });
+  const equalWatched = [];
+  equalMirror.at(["value"]).watch((next) => equalWatched.push(next));
+  const equalPair = socket_pair();
+  const equalClient = attach(equalHost, equalPair, {
+    map: equalMirror,
+    recovery: { logicalMapId: equalHost.stream.logicalMapId },
+  });
+  assert.equal((await equalClient.recovery.recover()).strategy, "snapshot");
+  assert.deepEqual(equalWatched, [5]);
 });
 
 await check("replay applies exact commits once and current emits no body", async () => {
@@ -270,6 +285,8 @@ await check("replay applies exact commits once and current emits no body", async
   const host = hson.liveHost.create({ state: { value: 0 }, logicalMapId: "map-replay", trace });
   const base = host.stream.headRev;
   const mirror = hson.liveMap.fromJson(host.map.snap());
+  const watched = [];
+  mirror.at(["value"]).watch((next) => watched.push(next));
   await host.mutate((draft) => draft.set(["value"], 1));
   await host.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
@@ -279,6 +296,7 @@ await check("replay applies exact commits once and current emits no body", async
   const replay = await client.recovery.recover();
   assert.equal(replay.strategy, "replay");
   assert.deepEqual(revs, [base + 1, base + 2]);
+  assert.deepEqual(watched, [1, 2]);
   assert.deepEqual(client.map.snap(), host.map.snap());
   const notifications = client.recovery.debug().consumerNotifications;
   const current = await client.recovery.recover();

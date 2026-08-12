@@ -68,6 +68,7 @@ await check("exclusive projected mutation waits at the gate then ingests once", 
   const host = create_livehost_internal({ map }, { authorityGate: gates.gate });
   const events = [];
   const publications = [];
+  host.map.at(["value"]).watch(() => events.push("watch"));
   map.feed([], () => events.push("feed"));
   map.commits.observe((event) => events.push(event.kind));
   host.stream.on_commit((commit) => publications.push(commit.rev));
@@ -82,7 +83,7 @@ await check("exclusive projected mutation waits at the gate then ingests once", 
   const commit = await mutation;
   assert.deepEqual([commit.prevRev, commit.rev, map.rev, host.stream.headRev], [0, 1, 1, 1]);
   assert.deepEqual(map.snap(), { value: 1 });
-  assert.deepEqual(events, ["feed", "commit"]);
+  assert.deepEqual(events, ["watch", "feed", "commit"]);
   assert.deepEqual(publications, [1]);
   assert.equal(host.stream.history.debug().retainedCommitCount, 1);
   host.dispose();
@@ -305,14 +306,22 @@ await check("same-host and cross-host managed links queue separate commits witho
   rightHost.dispose();
 });
 
-await check("observer failures do not block exclusive history ingestion", async () => {
+await check("watcher and observer failures do not weaken exclusive authority", async () => {
   const map = hson.liveMap.fromJson({ value: 0 });
+  const watched = [];
+  map.at(["value"]).watch(() => { throw new Error("watch failure"); });
+  map.at(["value"]).watch((next) => watched.push(next));
   map.commits.observe(() => { throw new Error("observer failure"); });
   const host = hson.liveHost.create({ map });
   const commit = await host.mutate((draft) => draft.set(["value"], 1));
   assert.equal(commit.rev, 1);
   assert.equal(map.rev, 1);
   assert.equal(host.stream.headRev, 1);
+  assert.deepEqual(watched, [1]);
+  const next = await host.mutate((draft) => draft.set(["value"], 2));
+  assert.equal(next.rev, 2);
+  assert.equal(host.stream.headRev, 2);
+  assert.deepEqual(watched, [1, 2]);
   host.dispose();
 });
 

@@ -57,7 +57,11 @@ const pathHandleInternals = new WeakMap<object, LiveMapPathHandleInternals>();
  * deletes the target handle, while deleting below the handle path writes the
  * updated source handle value.
  */
-export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: LiveMapPathHandleCore, path: LivePath): LiveMapPathHandle<TValue> {
+export function make_livemap_path_handle<TValue = JsonValue | undefined>(
+  core: LiveMapPathHandleCore,
+  path: LivePath,
+  watch: (listener: (next: TValue) => void) => LiveMapDisposer,
+): LiveMapPathHandle<TValue> {
   const handlePath = must_live_path(path);
 
   const handle: LiveMapPathHandle<TValue> = {
@@ -73,6 +77,7 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(core: L
     array: make_livemap_array_api(core, handlePath),
     object: make_livemap_object_api<TValue>(core, handlePath),
     feed: (listener) => core.feed(handlePath, listener),
+    watch,
     linkTo: (target) => {
       const targetInternals = pathHandleInternals.get(target);
       if (targetInternals !== undefined) {

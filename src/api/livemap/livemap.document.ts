@@ -52,6 +52,7 @@ import {
 import { register_livemap_identity_epoch_owner } from "./livemap.identity-epoch.js";
 import { make_livemap_document_location_factory } from "./livemap.document.location.js";
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
+import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
 
 export type PreparedLiveMapRoot = Readonly<{
   root: HsonNode;
@@ -159,6 +160,7 @@ export function facade_for_livemap_root(
   core: LiveMapCore,
   prepared: PreparedLiveMapRoot,
   controller?: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
+  watchDocument?: LiveMapDocumentWatchRegistration,
 ): ClassifiedLiveMap {
   if (prepared.mode === "data-object" || prepared.mode === "data-array") {
     return core as LiveMap;
@@ -167,13 +169,17 @@ export function facade_for_livemap_root(
   if (prepared.documentOverlay === undefined || controller === undefined) {
     throw new Error(`LiveMap document mode ${prepared.mode} was constructed without an identity overlay.`);
   }
-  return make_document_livemap(core, prepared.mode, controller);
+  if (watchDocument === undefined) {
+    throw new Error(`LiveMap document mode ${prepared.mode} was constructed without location watch authority.`);
+  }
+  return make_document_livemap(core, prepared.mode, controller, watchDocument);
 }
 
 function make_document_livemap(
   core: LiveMapCore,
   mode: DocumentLiveMapMode,
   controller: LiveMapDocumentInstallController & LiveMapDocumentMutationController & LiveMapDocumentReplayController,
+  watchDocument: LiveMapDocumentWatchRegistration,
 ): DocumentLiveMap {
   const mutationApi = make_livemap_document_mutation_api(controller);
   const attrReads = make_livemap_document_attrs_read_api(controller);
@@ -195,7 +201,7 @@ function make_document_livemap(
     remove: mutationApi.removeContent,
     insert: mutationApi.insertContent,
     move: mutationApi.moveContent,
-  });
+  }, watchDocument);
   const proxy = (path: readonly number[] = []) => make_livemap_document_proxy(at(path));
   document = Object.freeze({
     root: () => core.root(),

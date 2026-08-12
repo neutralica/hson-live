@@ -36,6 +36,8 @@ const documentMap = hsonLiveMap.fromHson(`<main @000000v01/>`);
 if (documentMap.mode === "element") {
   const documentLocation = documentMap.at([0]);
   const documentEndpoint = documentLocation.at([1]).snap();
+  documentLocation.watch((next) => { void next; });
+  documentMap.proxy()[0].$_.watch((next) => { void next; });
   const logicalPath: readonly number[] = documentLocation.path();
   void documentEndpoint;
   void logicalPath;

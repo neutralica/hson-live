@@ -37,6 +37,9 @@ settings.object.setKey("density", "compact");
 const stop = settings.feed((event) => {
   console.log(event.value);
 });
+const dispose = settings.watch((next) => {
+  console.log(next);
+});
 ```
 
 A path handle exposes:
@@ -44,7 +47,7 @@ A path handle exposes:
 - `rev`, `path()`, `snap()`, and relative `at(path)`;
 - `set`, `setMany`, `replace`, `delete`, and `update`;
 - `object` and `array` helper namespaces;
-- `feed(listener)`; and
+- `feed(listener)` and `watch(listener)`; and
 - one-way `linkTo(target)`.
 
 The handle follows its stored location. It is not a document-node identity
@@ -53,6 +56,41 @@ replacement changes what subsequent reads at that location observe.
 
 Document maps use their separate `document`, `element`, or `fragment`
 capabilities. They do not expose the projected path-handle surface.
+
+## Watching current values
+
+Projected path handles and passive logical document locations expose
+`watch(listener)`. Registration captures the current coordinate as its internal
+comparison baseline but does not call the listener immediately:
+
+```ts
+const location = map.at(["profile", "name"]);
+const dispose = location.watch((next) => {
+  // next is the current detached value at this fixed coordinate
+  console.log(next);
+});
+
+dispose();
+```
+
+For ordinary changed commits, `watch` re-resolves the fixed coordinate and
+invokes once only when its exact canonical value changed. A complete
+`restore(...)` is explicit snapshot synchronization, so it invokes every active
+watcher once even when the restored value compares equal or both states are
+missing. The returned disposer is synchronous and idempotent.
+
+`feed` and `watch` serve different purposes:
+
+- `feed` reports overlapping accepted operation evidence and does not report
+  restore;
+- `watch` reports meaningful current-value changes and explicit snapshot
+  synchronization.
+
+A watcher stays attached to its coordinate. Array or document-content
+insertion, removal, and movement may change the occupant, but the watcher does
+not follow the previous value or acquire QUID identity. A location returned by
+document `id(...)` follows the same rule; call `id(...)` again to rediscover a
+moved element.
 
 ## Proxies
 
