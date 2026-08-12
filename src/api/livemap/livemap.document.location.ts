@@ -1,17 +1,23 @@
 import type { HsonNode, Primitive } from "../../core/types.js";
 import { STR_TAG } from "../../core/constants.js";
 import type {
+  DocumentLiveMapAttrsApi,
   DocumentLiveMapMode,
   LiveMapDocumentContent,
   LiveMapDocumentRequestTarget,
   LiveMapGraphCommit,
+  LiveMapGraphInsertContentOp,
+  LiveMapGraphMoveContentOp,
   LiveMapGraphRemoveContentOp,
   LiveMapGraphReplaceContentOp,
 } from "../../types/livemap.types.js";
 import {
   InternalDocumentTraversalError,
+  lower_internal_document_content_insert,
   lower_internal_document_content_remove,
   lower_internal_document_content_slot,
+  lower_internal_document_content_target,
+  lower_internal_document_element_target,
   resolve_internal_document_location,
   type InternalDocumentLogicalEdge,
 } from "./livemap.document.logical.js";
@@ -24,6 +30,7 @@ type DocumentLocationOwner = Readonly<{
 }>;
 
 type DocumentLocationMutations = Readonly<{
+  attrs: DocumentLiveMapAttrsApi;
   replace: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -33,6 +40,29 @@ type DocumentLocationMutations = Readonly<{
     target: LiveMapDocumentRequestTarget,
     index: number,
   ) => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
+  insert: (
+    target: LiveMapDocumentRequestTarget,
+    index: number,
+    value: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+  move: (
+    target: LiveMapDocumentRequestTarget,
+    from: number,
+    to: number,
+  ) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
+}>;
+
+type LocationAttrs = Readonly<{
+  get: (name: string) => ReturnType<DocumentLiveMapAttrsApi["get"]>;
+  has: (name: string) => boolean;
+  keys: () => readonly string[];
+  must: Readonly<{ get: (name: string) => ReturnType<DocumentLiveMapAttrsApi["must"]["get"]> }>;
+  set: (name: string, value: Parameters<DocumentLiveMapAttrsApi["set"]>[2]) => ReturnType<DocumentLiveMapAttrsApi["set"]>;
+  drop: (name: string) => ReturnType<DocumentLiveMapAttrsApi["drop"]>;
+  setMany: (values: Parameters<DocumentLiveMapAttrsApi["setMany"]>[1]) => ReturnType<DocumentLiveMapAttrsApi["setMany"]>;
+  dropMany: (names: readonly string[]) => ReturnType<DocumentLiveMapAttrsApi["dropMany"]>;
+  clear: () => ReturnType<DocumentLiveMapAttrsApi["clear"]>;
+  replace: (values: Parameters<DocumentLiveMapAttrsApi["replace"]>[1]) => ReturnType<DocumentLiveMapAttrsApi["replace"]>;
 }>;
 
 type DocumentLocation = Readonly<{
@@ -43,6 +73,10 @@ type DocumentLocation = Readonly<{
   id: (value: string) => DocumentLocation | undefined;
   replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
+  insert: (index: number, value: LiveMapDocumentContent) =>
+    LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+  move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
+  attrs: LocationAttrs;
 }>;
 
 /** Build passive, fixed-coordinate locations over logical document content. */
@@ -64,7 +98,9 @@ export function make_livemap_document_location_factory(
     const existing = locations.get(key);
     if (existing !== undefined) return existing;
 
-    const location: DocumentLocation = Object.freeze({
+    let location: DocumentLocation;
+    const attrs = make_location_attrs(owner, mode, mutations, logicalPath);
+    location = Object.freeze({
       get rev() {
         return owner.rev;
       },
@@ -74,6 +110,9 @@ export function make_livemap_document_location_factory(
       id: (value) => find_internal_document_id(discoveryMap, location, must_document_id(value)),
       replace: (value) => replace_document_location(owner, mode, mutations, logicalPath, value),
       delete: () => delete_document_location(owner, mode, mutations, logicalPath),
+      insert: (index, value) => insert_document_location(owner, mode, mutations, logicalPath, index, value),
+      move: (from, to) => move_document_location(owner, mode, mutations, logicalPath, from, to),
+      attrs,
     });
     locations.set(key, location);
     return location;
@@ -81,6 +120,96 @@ export function make_livemap_document_location_factory(
 
   discoveryMap = Object.freeze({ mode, root: owner.root, at });
   return at;
+}
+
+function resolve_document_content_owner(
+  owner: DocumentLocationOwner,
+  mode: DocumentLiveMapMode,
+  path: readonly number[],
+) {
+  const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
+  const root = owner.root();
+  const endpoint = resolve_internal_document_location(root, mode, edges);
+  return endpoint.kind === "content"
+    ? endpoint
+    : resolve_internal_document_location(root, mode, [...edges, { kind: "facet", facet: "content" }]);
+}
+
+function insert_document_location(
+  owner: DocumentLocationOwner,
+  mode: DocumentLiveMapMode,
+  mutations: DocumentLocationMutations,
+  path: readonly number[],
+  index: number,
+  value: LiveMapDocumentContent,
+): LiveMapGraphCommit<LiveMapGraphInsertContentOp> {
+  try {
+    const lowering = lower_internal_document_content_insert(
+      resolve_document_content_owner(owner, mode, path),
+      index,
+      value,
+    );
+    if (lowering.kind === "content-insert") {
+      return mutations.insert(lowering.target, lowering.index, lowering.content);
+    }
+    if (lowering.kind === "replace-root") {
+      return mutations.insert(Object.freeze({ kind: "path", path: Object.freeze([]) }), index, value);
+    }
+    throw location_mutation_error("insert-content", path);
+  } catch (cause) {
+    if (cause instanceof LiveMapDocumentMutationError) throw cause;
+    throw location_mutation_error("insert-content", path, cause);
+  }
+}
+
+function move_document_location(
+  owner: DocumentLocationOwner,
+  mode: DocumentLiveMapMode,
+  mutations: DocumentLocationMutations,
+  path: readonly number[],
+  from: number,
+  to: number,
+): LiveMapGraphCommit<LiveMapGraphMoveContentOp> {
+  try {
+    const target = lower_internal_document_content_target(
+      resolve_document_content_owner(owner, mode, path),
+    );
+    return mutations.move(target, from, to);
+  } catch (cause) {
+    if (cause instanceof LiveMapDocumentMutationError) throw cause;
+    throw location_mutation_error("move-content", path, cause);
+  }
+}
+
+function make_location_attrs(
+  owner: DocumentLocationOwner,
+  mode: DocumentLiveMapMode,
+  mutations: DocumentLocationMutations,
+  path: readonly number[],
+): LocationAttrs {
+  const target = (operation: LiveMapDocumentMutationError["operation"]): LiveMapDocumentRequestTarget => {
+    const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
+    try {
+      return lower_internal_document_element_target(
+        resolve_internal_document_location(owner.root(), mode, edges),
+      );
+    } catch (cause) {
+      throw location_mutation_error(operation, path, cause);
+    }
+  };
+  const must = Object.freeze({ get: (name: string) => mutations.attrs.must.get(target("must-get-attr"), name) });
+  return Object.freeze({
+    get: (name) => mutations.attrs.get(target("get-attr"), name),
+    has: (name) => mutations.attrs.has(target("has-attr"), name),
+    keys: () => mutations.attrs.keys(target("list-attrs")),
+    must,
+    set: (name, value) => mutations.attrs.set(target("set-attr"), name, value),
+    drop: (name) => mutations.attrs.drop(target("remove-attr"), name),
+    setMany: (values) => mutations.attrs.setMany(target("replace-attrs"), values),
+    dropMany: (names) => mutations.attrs.dropMany(target("replace-attrs"), names),
+    clear: () => mutations.attrs.clear(target("replace-attrs")),
+    replace: (values) => mutations.attrs.replace(target("replace-attrs"), values),
+  });
 }
 
 function replace_document_location(
@@ -164,15 +293,17 @@ function require_non_root_document_location(
 }
 
 function location_mutation_error(
-  operation: "replace-content" | "remove-content",
+  operation: LiveMapDocumentMutationError["operation"],
   path: readonly number[],
   cause?: unknown,
 ): LiveMapDocumentMutationError {
   const renderedPath = JSON.stringify(path);
-  const code = cause instanceof InternalDocumentTraversalError
-    && cause.code === "INVALID_EDGE_INDEX"
+  const code = cause instanceof InternalDocumentTraversalError && cause.code === "INVALID_EDGE_INDEX"
     ? "INVALID_DOCUMENT_PATH_INDEX"
-    : "INVALID_DOCUMENT_CONTENT_INDEX";
+    : cause instanceof InternalDocumentTraversalError
+        && (cause.code === "PHYSICAL_TARGET_UNAVAILABLE" || cause.code === "FACET_UNAVAILABLE")
+      ? "DOCUMENT_TARGET_KIND"
+      : "INVALID_DOCUMENT_CONTENT_INDEX";
   return new LiveMapDocumentMutationError(
     code,
     operation,

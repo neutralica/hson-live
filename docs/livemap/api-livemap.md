@@ -494,6 +494,22 @@ Document modes deliberately do not expose projected `snap`/`set` APIs.
 Common reads are `root()`, `capture()`, `document.content()`,
 `document.byQuid(quid)`, and document attribute reads.
 
+Mutable logical document locations converge on the existing canonical document
+operations. An element location or the fragment root owns ordered content, so
+`location.insert(index, value)` and `location.move(from, to)` lower to the same
+content planners and final-index semantics as `document.content.insert` and
+`document.content.move`. Existing items remain
+`location.at([index]).replace(value)` / `.delete()`; there is no duplicate
+container `replace(index, value)` or `remove(index)`.
+
+Ordinary element locations also expose `location.attrs` with `get`, `has`,
+`keys`, `must.get`, `set`, `setMany`, `drop`, `dropMany`, `replace`, and
+`clear`. This is the established `document.attrs` vocabulary with the location
+supplying the target. It is an operation capability, not structural traversal,
+and does not add a segment to `location.path()`. The document proxy's existing
+`$_` escape returns the same location, so `proxy.$_.insert(...)` and
+`proxy.$_.attrs.set(...)` delegate without proxy-specific mutation logic.
+
 Document maps expose no public identity-acquisition method. Existing QUIDs may
 still be inspected through the active-epoch `document.byQuid` compatibility
 surface, and internal linked continuity facilities may request a canonical

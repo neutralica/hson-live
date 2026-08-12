@@ -202,24 +202,36 @@ If the matched element later moves, call `id(...)` again to discover its current
 location—the previously returned location continues to represent its old
 logical coordinate.
 
-Existing logical content items can also be replaced or deleted through their
-locations:
+Document locations expose mutations for the content they own, item mutations
+for the coordinate they represent, and ordinary attrs for element endpoints:
 
 ```ts
 if (document.mode === "element" || document.mode === "fragment") {
+  const root = document.at([]);
+  root.insert(0, child);
+  root.move(0, 1);
+
+  const button = root.id("submit");
+  button?.attrs.set("disabled", true);
+  button?.attrs.setMany({ class: "primary", title: "Submit" });
+
   document.at([0]).replace(replacementContent);
   document.at([1]).delete();
 
+  document.proxy().$_.insert(0, child);
+  document.proxy().$_.attrs.set("title", "Document root");
   document.proxy()[0].$_.replace(replacementContent);
   document.proxy()[1].$_.delete();
 }
 ```
 
-These operations mutate the current occupant of a fixed logical coordinate.
-After deletion, later content shifts into that coordinate; the location does not
-follow the removed subject. The document root location `at([])` cannot be
-replaced or deleted this way. Ordered insertion and movement remain under
-`map.document.content`.
+`insert(index, value)` and `move(from, to)` act on the ordered authored content
+owned by the current element or fragment root. Item replacement and removal
+remain `location.at([index]).replace(value)` and `.delete()`. All locations stay
+fixed logical coordinates: after deletion or movement they do not follow the
+previous subject. The document root location `at([])` cannot itself be replaced
+or deleted. `attrs` is an operation capability for the current element, not a
+structural path segment, so attrs operations never extend `location.path()`.
 
 The existing proxy surface follows the same document coordinates:
 
@@ -233,9 +245,8 @@ if (document.mode === "element") {
 ```
 
 Numeric proxy properties traverse logical document content, and `$_` exits to
-the passive location at that coordinate. Internal carriers remain hidden.
-Document facets and mutation operators are not exposed through the proxy;
-specialized mutations remain under the existing document APIs.
+the identical passive location and its capabilities at that coordinate.
+Internal carriers remain hidden; attrs are not structural proxy traversal.
 
 LiveMap provides:
 

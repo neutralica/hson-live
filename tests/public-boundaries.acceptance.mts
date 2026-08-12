@@ -210,6 +210,15 @@ check("document install is present only on document runtime façades", () => {
   for (const name of ["getMany", "values", "entries", "all"]) {
     assert.equal(name in document.document.attrs, false);
   }
+  const location = document.at([]);
+  assert.equal(typeof location.insert, "function");
+  assert.equal(typeof location.move, "function");
+  assert.equal(document.proxy().$_, location);
+  for (const name of ["get", "has", "keys", "set", "setMany", "drop", "dropMany", "replace", "clear"]) {
+    assert.equal(typeof Reflect.get(location.attrs, name), "function");
+  }
+  for (const name of ["remove", "set", "update"]) assert.equal(name in location, false);
+  assert.equal("attrs" in hson.liveMap.fromJson({}).at([]), false);
 });
 
 process.stdout.write(`# ${checks} public boundary checks passed\n`);

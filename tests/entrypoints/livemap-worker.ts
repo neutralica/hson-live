@@ -47,6 +47,10 @@ if (documentMap.mode === "element") {
   const proxyDiscoveredDocumentLocation = documentMap.proxy().$_.id("target");
   const replacementCommit = documentLocation.replace(documentMap.element.node());
   const deletionCommit = documentProxyLocation.delete();
+  const insertionCommit = documentMap.at([]).insert(0, documentMap.element.node());
+  const movementCommit = documentMap.proxy().$_.move(0, 1);
+  const attrValue = documentLocation.attrs.get("id");
+  const attrCommit = documentProxyLocation.attrs.set("title", "worker");
   // @ts-expect-error a missing read does not make undefined valid replacement content
   documentLocation.replace(undefined);
   void documentProxyLocation.snap();
@@ -55,6 +59,10 @@ if (documentMap.mode === "element") {
   void proxyDiscoveredDocumentLocation?.path();
   void replacementCommit.ops;
   void deletionCommit.ops;
+  void insertionCommit.ops;
+  void movementCommit.ops;
+  void attrValue;
+  void attrCommit.ops;
   // @ts-expect-error document proxies expose numeric structural traversal only
   documentProxy.attrs;
   // @ts-expect-error document proxy escapes omit projected mutation capabilities
@@ -81,6 +89,10 @@ if (documentMap.mode === "element") {
 map.at([]).id("target");
 // @ts-expect-error projected proxy escapes remain projected path handles
 map.proxy().$_.id("target");
+// @ts-expect-error projected locations do not expose document content ownership
+map.at([]).insert(0, true);
+// @ts-expect-error projected proxy escapes do not expose document attrs
+map.proxy().$_.attrs.get("id");
 
 const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDENTITY_EPOCH";
 const installCode: LiveMapDocumentInstallFailureCode = "DUPLICATE_PRESERVED_CLAIMS";

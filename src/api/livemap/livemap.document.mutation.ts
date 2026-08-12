@@ -42,6 +42,7 @@ import {
 import {
   append_document_path,
   document_path_effect_for_graph_operation,
+  validate_document_path,
 } from "./livemap.document.path.js";
 import { classify_live_root_mode } from "./livemap.document.js";
 import {
@@ -51,6 +52,8 @@ import {
 } from "./livemap.document.attrs.js";
 import {
   canonicalize_document_request_target,
+  normalize_document_commit_target,
+  normalize_document_request_target,
   normalize_document_target,
   require_document_attr_element,
   resolve_document_commit_target,
@@ -390,7 +393,11 @@ function prepare_insert_document_content(
   const index = normalize_content_index(indexInput, operationName);
   const content = clone_content(contentInput, operationName);
   const root = clone_live_root(inputRoot);
-  const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
+  const preparedTarget = mode === "fragment"
+    && root.$_tag === ROOT_TAG
+    && root.$_content.length === 0
+    ? prepare_empty_fragment_insert_target(root, targetInput, operationName, targetAuthority)
+    : prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   if (index > endpoint.$_content.length) {
     throw mutation_error(
@@ -409,6 +416,39 @@ function prepare_insert_document_content(
     content: clone_content(content, operationName),
   });
   return prepare_finished_mutation(mode, root, overlay, operation, operationName);
+}
+
+function prepare_empty_fragment_insert_target(
+  root: HsonNode,
+  targetInput: unknown,
+  operation: "insert-content",
+  authority: PreparedTargetAuthority,
+): Readonly<{ target: LiveMapDocumentCommitTarget; endpoint: HsonNode }> {
+  const requestTarget = authority === "request"
+    ? normalize_document_request_target(targetInput, operation)
+    : undefined;
+  const commitTarget = authority === "commit"
+    ? normalize_document_commit_target(targetInput, operation)
+    : undefined;
+  const path = requestTarget?.kind === "path" ? requestTarget.path : commitTarget?.path;
+  if (path === undefined || path.length !== 0) {
+    throw mutation_error(
+      requestTarget?.kind === "quid" ? "DOCUMENT_TARGET_NOT_FOUND" : "DOCUMENT_PATH_OUT_OF_RANGE",
+      operation,
+      "empty fragment content is owned only by the canonical root path",
+    );
+  }
+  const endpoint: HsonNode = { $_tag: ELEM_TAG, $_content: [] };
+  root.$_content.push(endpoint);
+  const witness = commitTarget?.witness;
+  return Object.freeze({
+    target: Object.freeze({
+      kind: "path",
+      path: validate_document_path(path),
+      ...(witness === undefined ? {} : { witness }),
+    }),
+    endpoint,
+  });
 }
 
 function remove_document_content(

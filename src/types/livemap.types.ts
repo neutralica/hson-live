@@ -605,6 +605,29 @@ type LiveMapDocumentLocation = Readonly<{
   replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   /** Remove the current logical content item through canonical document mutation. */
   delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
+  /** Insert authored content into the ordered content owned by this location. */
+  insert: (
+    index: number,
+    value: LiveMapDocumentContent,
+  ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+  /** Move one owned content item to its final index. */
+  move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
+  /** Ordinary-attribute operations for the element currently at this location. */
+  attrs: Readonly<{
+    get: (name: string) => LiveMapDocumentAttributeValue | undefined;
+    has: (name: string) => boolean;
+    keys: () => readonly string[];
+    must: Readonly<{ get: (name: string) => LiveMapDocumentAttributeValue }>;
+    set: (
+      name: string,
+      value: LiveMapDocumentAttributeValue,
+    ) => LiveMapGraphCommit<LiveMapGraphSetAttrOp>;
+    drop: (name: string) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
+    setMany: (values: LiveMapDocumentAttrs) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+    dropMany: (names: readonly string[]) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+    clear: () => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+    replace: (values: LiveMapDocumentAttrs) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+  }>;
 }>;
 
 /** Structural document proxy return type; intentionally not exported. */
