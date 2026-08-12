@@ -831,7 +831,6 @@ Schemas can express constraints such as:
 - exact or open object behavior;
 - required and optional properties;
 - nullable values;
-- descriptive readonly metadata;
 - primitive types;
 - literal values;
 - finite choices;
@@ -841,21 +840,18 @@ Schemas can express constraints such as:
 - lazy schemas;
 - custom validation.
 
-Conceptually:
+For example:
 
 ```ts
-const schema = {
-  props: {
-    name: "string",
-    active: "boolean",
-    role: {
-      choices: ["reader", "editor"]
-    }
-  }
-};
+const User = hson.liveMap.schema.define((s) => s.object({
+  name: s.string,
+  active: s.boolean,
+  role: s.literal("reader", "editor"),
+}));
 ```
 
-The exact schema builder and type syntax are documented separately.
+`object` is open to extra projected keys; `exact` is closed. Callbacks return an
+explicit expression rather than a raw object shape.
 
 Schema validation occurs before authoritative acceptance.
 
@@ -873,7 +869,6 @@ Resolution determines:
 - whether a missing property may be created;
 - whether a property is optional;
 - whether a value may be null;
-- whether a path carries readonly metadata;
 - which item schema governs an array index;
 - whether exact-object restrictions permit a key;
 - which custom validator applies.
@@ -926,15 +921,6 @@ For example, a batch may:
 Validating each operation only against the original state could reject a valid atomic transition. Validating only after mutating the live graph could expose invalid intermediate state.
 
 LiveMap instead validates a detached combined candidate before acceptance.
-
----
-
-## Readonly schema metadata
-
-The current `readonly` modifier is descriptive schema metadata. It appears in
-resolved rules but does not reject or fence writes through setters, helpers,
-batches, handles, or proxies. It is not JavaScript object freezing or an access
-control boundary.
 
 ---
 
@@ -2022,7 +2008,7 @@ Detailed documentation should be divided into focused chapters:
 - `projected-data.md` — paths, reads, writes, objects, arrays, and batches;
 - `document-maps.md` — canonical documents, attributes, children, identity, and structure;
 - `mutations-and-commits.md` — staged transitions, revisions, operations, no-ops, and notifications;
-- `schemas.md` — schema forms, resolution, validation, readonly paths, and issues;
+- `schemas.md` — schema forms, resolution, validation, and issues;
 - `feeds-subscriptions-and-links.md` — observers, subscription forms, links, and lifecycle;
 - `handles-and-proxies.md` — ergonomic and advanced access surfaces;
 - `capture-install-replay.md` — snapshots, view-state, privileged installation, restoration, and replay;

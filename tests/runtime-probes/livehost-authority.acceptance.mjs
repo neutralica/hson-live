@@ -179,7 +179,7 @@ await check("retained references and every privileged bypass are fenced dynamica
   rejected(() => array.push(2));
   rejected(() => debug.setAttr("x", "y"));
   rejected(() => map.debug.node([]));
-  rejected(() => map.schema.use(hson.liveMap.schema.define((shape) => ({ value: shape.number, items: shape.array(shape.number) }))));
+  rejected(() => map.schema.use(hson.liveMap.schema.define((shape) => shape.object({ value: shape.number, items: shape.array(shape.number) }))));
   rejected(() => map.restore(capture));
   rejected(() => map.replay(replayCommit));
   raw.$_content.length = 0;

@@ -344,10 +344,11 @@ typed.at(["user", "name"]).set("Grace");
 The direct `s` toolkit includes:
 
 - primitives: `unknown`, `string`, `number`, `boolean`, `null`;
-- modifiers: `.optional`, `.nullable`, `.readonly`, `.array`;
+- modifiers: `.optional`, `.nullable`;
 - choices: `literal(...values)`, `pick(...choices)`, and tagged variants;
 - structure: `array(item)`, `tuple(...items)`, `object(shape)`,
-  `exact(shape)`, `partial(shape)`, `deepPartial(shape)`, and `record(value)`;
+  `exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and
+  `record(value)`;
 - recursion/validation: `lazy(factory)` and
   `refine(base, label, predicate)`.
 
@@ -360,10 +361,24 @@ const Seat = hson.liveMap.schema.define((s) => s.exact({ connected: s.boolean })
 const State = hson.liveMap.schema.define((s) => s.exact({ left: Seat, right: Seat }));
 ```
 
-`object` validates declared properties but allows extra keys; `exact` rejects
-them. `readonly` is descriptive metadata in the resolved rule and does not
-reject writes. Tuple indexes are bounded. `refine` runs custom validation after
-its base succeeds.
+`define` callbacks return one explicit schema expression; a raw callback object
+is not an implicit object schema. `object` validates declared properties but
+allows extra string keys. Declared properties retain their precise types, while
+undeclared keys are typed as recursively projected primitive/readonly
+array/readonly object values plus `undefined` for absence. `exact` rejects extra
+keys and has no open index signature. Arrays use only `array(item)`. Tuple
+indexes are bounded. `refine` runs custom validation after its base succeeds.
+
+`partial` and `deepPartial` accept an explicit object expression or compatible
+defined object schema and preserve whether the operand is open or exact. Tagged
+variant tables likewise contain explicit object schema expressions:
+
+```ts
+const Event = hson.liveMap.schema.define((s) => s.tagged("kind", {
+  changed: s.exact({ value: s.string }),
+  cleared: s.object({}),
+}));
+```
 
 Schema values use the same admission domain as mutations. `optional` means the
 property may be missing; a present property whose value is `undefined` is

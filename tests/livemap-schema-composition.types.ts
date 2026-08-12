@@ -7,6 +7,13 @@ type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends
   (<T>() => T extends TRight ? 1 : 2) ? true : false;
 type Expect<TValue extends true> = TValue;
+type ProjectedSchemaValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ProjectedSchemaValue[]
+  | Readonly<{ [key: string]: ProjectedSchemaValue }>;
 
 const Seat = hson.liveMap.schema.define((s) => s.exact({ connected: s.boolean }));
 const State = hson.liveMap.schema.define((s) => s.exact({ left: Seat, right: Seat }));
@@ -25,6 +32,51 @@ type _Tuple0 = Expect<Equal<InferLiveMapSchema<typeof Pair>[0], { connected: boo
 type _Tuple1 = Expect<Equal<InferLiveMapSchema<typeof Pair>[1], { connected: boolean }>>;
 type _Pick = Expect<Equal<InferLiveMapSchema<typeof Choice>, { connected: boolean } | string>>;
 type _Record = Expect<Equal<InferLiveMapSchema<typeof Dictionary>[string], { connected: boolean }>>;
+
+const OpenUser = hson.liveMap.schema.define((s) => s.object({
+  name: s.string,
+  settings: s.exact({ enabled: s.boolean }),
+}));
+const ExactUser = hson.liveMap.schema.define((s) => s.exact({
+  name: s.string,
+  settings: s.object({ enabled: s.boolean }),
+}));
+type OpenUserValue = InferLiveMapSchema<typeof OpenUser>;
+type ExactUserValue = InferLiveMapSchema<typeof ExactUser>;
+type _OpenKnown = Expect<Equal<OpenUserValue["name"], string>>;
+type _OpenExtra = Expect<Equal<OpenUserValue["undeclared"], ProjectedSchemaValue | undefined>>;
+type _OpenHasStringIndex = Expect<Equal<string extends keyof OpenUserValue ? true : false, true>>;
+type _ExactHasNoStringIndex = Expect<Equal<string extends keyof ExactUserValue ? true : false, false>>;
+// @ts-expect-error Exact schemas expose no undeclared property.
+type _ExactExtra = ExactUserValue["undeclared"];
+
+const MixedObject = hson.liveMap.schema.define((s) => s.exact({ open: OpenUser, exact: ExactUser }));
+const MixedArray = hson.liveMap.schema.define((s) => s.array(MixedObject));
+const MixedTuple = hson.liveMap.schema.define((s) => s.tuple(OpenUser, ExactUser));
+const MixedPick = hson.liveMap.schema.define((s) => s.pick(OpenUser, ExactUser));
+type _NestedOpenExtra = Expect<Equal<InferLiveMapSchema<typeof MixedObject>["open"]["extra"], ProjectedSchemaValue | undefined>>;
+type _NestedExactClosed = Expect<Equal<string extends keyof InferLiveMapSchema<typeof MixedObject>["exact"] ? true : false, false>>;
+type _ArrayOpenExtra = Expect<Equal<InferLiveMapSchema<typeof MixedArray>[number]["open"]["extra"], ProjectedSchemaValue | undefined>>;
+type _TupleOpenExtra = Expect<Equal<InferLiveMapSchema<typeof MixedTuple>[0]["extra"], ProjectedSchemaValue | undefined>>;
+type _PickRetainsOpenBranch = Expect<Equal<Extract<InferLiveMapSchema<typeof MixedPick>, OpenUserValue>["name"], string>>;
+
+const PartialOpen = hson.liveMap.schema.define((s) => s.partial(OpenUser));
+const DeepPartialExact = hson.liveMap.schema.define((s) => s.deepPartial(ExactUser));
+type _PartialDefined = Expect<Equal<InferLiveMapSchema<typeof PartialOpen>["name"], string | undefined>>;
+type _DeepPartialDefined = Expect<Equal<InferLiveMapSchema<typeof DeepPartialExact>["settings"] extends object | undefined ? true : false, true>>;
+
+const OptionalSeat = hson.liveMap.schema.define((s) => s.exact({ seat: Seat.optional }));
+const NullableSeat = hson.liveMap.schema.define(() => Seat.nullable);
+type _DefinedOptionalValue = Expect<Equal<InferLiveMapSchema<typeof OptionalSeat>["seat"], { connected: boolean } | undefined>>;
+type _DefinedOptionalKey = Expect<Equal<{} extends Pick<InferLiveMapSchema<typeof OptionalSeat>, "seat"> ? true : false, true>>;
+type _DefinedNullable = Expect<Equal<InferLiveMapSchema<typeof NullableSeat>, { connected: boolean } | null>>;
+
+const Tagged = hson.liveMap.schema.define((s) => s.tagged("kind", {
+  open: s.object({ value: s.string }),
+  exact: ExactUser,
+}));
+type TaggedValue = InferLiveMapSchema<typeof Tagged>;
+type _TaggedDiscriminator = Expect<Equal<TaggedValue["kind"], "open" | "exact">>;
 
 const Label = hson.liveMap.schema.define((s) => s.span(s.string));
 const Button = hson.liveMap.schema.define((s) => s.button(Label));
@@ -65,6 +117,37 @@ hson.liveMap.schema.define((s) => {
 });
 // @ts-expect-error Incompatible pick branches produce no schema expression.
 hson.liveMap.schema.define((s) => s.pick(s.number, s.button()));
+
+// @ts-expect-error Raw callback objects are not schema expressions.
+hson.liveMap.schema.define((s) => {
+  return { value: s.string };
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Generic array operands must be explicit schema expressions.
+  return s.array({ value: s.string });
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Nested object fields must be explicit schema expressions.
+  return s.object({ nested: { value: s.string } });
+});
+// @ts-expect-error Empty projected picks are impossible schemas.
+hson.liveMap.schema.define((s) => s.pick());
+// @ts-expect-error Empty literal sets are impossible schemas.
+hson.liveMap.schema.define((s) => s.literal());
+// @ts-expect-error Empty tagged variant tables are impossible schemas.
+hson.liveMap.schema.define((s) => s.tagged("kind", {}));
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Tagged variants are explicit object schema expressions.
+  return s.tagged("kind", { changed: { value: s.string } });
+});
+// @ts-expect-error Arrays use only the toolkit combinator.
+hson.liveMap.schema.define((s) => s.string.array);
+// @ts-expect-error Defined schemas have no postfix array alias.
+hson.liveMap.schema.define(() => Seat.array);
+// @ts-expect-error Readonly was descriptive metadata, not enforced schema semantics.
+hson.liveMap.schema.define((s) => s.string.readonly);
+// @ts-expect-error Defined schemas expose no false readonly modifier.
+hson.liveMap.schema.define(() => Seat.readonly);
 
 function passThrough<TSchema extends LiveMapSchema>(schema: TSchema): TSchema { return schema; }
 const passed = passThrough(Seat);

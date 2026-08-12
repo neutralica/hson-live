@@ -26,17 +26,17 @@ const own_data = (entries: readonly (readonly [string, unknown])[], prototype: o
 };
 
 check("direct validation admits plain objects", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number }));
   assert.equal(schema.validateRoot({ value: 1 }).ok, true);
 });
 
 check("direct validation admits null-prototype objects", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.string }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.string }));
   assert.equal(schema.validateRoot(own_data([["value", "ok"]], null) as JsonValue).ok, true);
 });
 
 check("direct and attached validation accept the same finite value", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number }));
   const valueMap = map({ value: 1 });
   assert.equal(schema.validateRoot({ value: 2 }).ok, true);
   valueMap.schema.use(schema);
@@ -44,7 +44,7 @@ check("direct and attached validation accept the same finite value", () => {
 });
 
 check("direct and attached validation reject NaN", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number }));
   assert.equal(schema.validateRoot({ value: Number.NaN } as JsonValue).ok, false);
   const valueMap = map({ value: 1 });
   valueMap.schema.use(schema);
@@ -72,19 +72,19 @@ check("positive-zero literal rejects negative zero", () => {
 });
 
 check("optional means an object property may be missing", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number.optional }));
   assert.equal(schema.validateRoot({}).ok, true);
 });
 
 check("present undefined is invalid even for an optional property", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number.optional }));
   const result = schema.validateRoot(own_data([["value", undefined]]) as JsonValue);
   assert.equal(result.ok, false);
   assert.equal(result.issues[0]?.received, "undefined");
 });
 
 check("direct optional value validation rejects explicit undefined", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number.optional }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number.optional }));
   assert.equal(schema.validateValue(["value"], undefined).ok, false);
 });
 
@@ -201,7 +201,7 @@ check("nested refinements receive independent detached values", () => {
 });
 
 check("attached refinement mutation cannot affect the candidate", () => {
-  const schema = hson.liveMap.schema.define((s) => ({
+  const schema = hson.liveMap.schema.define((s) => s.object({
     value: s.refine(s.unknown, "detached", (input) => {
       (input as Record<string, JsonValue>).field = 99;
       return true;
@@ -214,7 +214,7 @@ check("attached refinement mutation cannot affect the candidate", () => {
 });
 
 check("schema rejection is atomic across state revision and publication", () => {
-  const schema = hson.liveMap.schema.define((s) => ({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object({ value: s.number }));
   const valueMap = map({ value: 1 });
   valueMap.schema.use(schema);
   let feeds = 0;

@@ -253,7 +253,7 @@ check("failed late batch operation leaves authority unchanged", () => {
 
 check("schema preview validates only the completed detached carrier candidate", () => {
   const map = make_map(object([["value", 1], ["label", "ok"]]));
-  map.schema.use(hson.liveMap.schema.define((shape) => ({ value: shape.number, label: shape.string })));
+  map.schema.use(hson.liveMap.schema.define((shape) => shape.object({ value: shape.number, label: shape.string })));
   const accepted = map.batch((tx) => {
     tx.set(["value"], -0);
     tx.set(["label"], "next");

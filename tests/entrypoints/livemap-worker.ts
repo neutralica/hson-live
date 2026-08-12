@@ -26,7 +26,7 @@ void projectedAcquisitionIsPublic;
 void projectedCapture.root;
 void hsonLiveMap.fromHson(`<worker <ready true>>`);
 void hsonLiveMap.fromNode(map.root());
-void hsonLiveMap.schema.define((shape) => ({ ready: shape.boolean }));
+void hsonLiveMap.schema.define((shape) => shape.object({ ready: shape.boolean }));
 
 declare const optionalProjectedMap: LiveMap<Readonly<{ user?: Readonly<{ name: string }> }>>;
 const optionalProjectedName: string | undefined = optionalProjectedMap.proxy().user.name.$_.snap();

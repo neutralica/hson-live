@@ -495,28 +495,28 @@ declare const publicDeclarationClosure:
   | PublicLiveHostClosure;
 void publicDeclarationClosure;
 
-const declarationTruthSchema = mapSubpath.schema.define((schema) => ({
+const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.exact({
   optionalObject: schema.number.optional,
   optionalBranch: schema.object({ name: schema.string }).optional,
   nullableBranch: schema.object({ name: schema.string }).nullable,
   optionalNullableBranch: schema.object({ name: schema.string }).nullable.optional,
   array: schema.array(schema.number.optional),
-  arrayToken: schema.number.optional.array,
+  arrayToken: schema.array(schema.number.optional),
   tupleTrailing: schema.tuple(schema.string, schema.number.optional),
   tupleNonTrailing: schema.tuple(schema.number.optional, schema.string),
   nested: schema.array(schema.tuple(schema.number, schema.string.optional)),
   nullable: schema.string.nullable,
   literal: schema.literal("draft", "ready"),
-  readonlyValue: schema.number.readonly,
+  mutableValue: schema.number,
   record: schema.record(schema.number.optional),
   picked: schema.pick(schema.number.optional, "auto"),
   lazy: schema.lazy(() => schema.number.optional),
   refined: schema.refine(schema.number.optional, "finite", Number.isFinite),
-  deep: schema.deepPartial({
-    child: { count: schema.number },
+  deep: schema.deepPartial(schema.exact({
+    child: schema.exact({ count: schema.number }),
     tuple: schema.tuple(schema.string, schema.number),
-    list: schema.array(schema.object({ id: schema.number })),
-  }),
+    list: schema.array(schema.exact({ id: schema.number })),
+  })),
 }));
 
 type DeclarationTruth = InferLiveMapSchema<typeof declarationTruthSchema>;
@@ -539,7 +539,7 @@ type NestedArrayTuple = Expect<
 >;
 type NullableRemainsDistinct = Expect<Equal<DeclarationTruth["nullable"], string | null>>;
 type LiteralUnionPreserved = Expect<Equal<DeclarationTruth["literal"], "draft" | "ready">>;
-type ReadonlyMetadataDoesNotChangeValue = Expect<Equal<DeclarationTruth["readonlyValue"], number>>;
+type MutableValue = Expect<Equal<DeclarationTruth["mutableValue"], number>>;
 type RecordPresentValue = Expect<Equal<DeclarationTruth["record"][string], number>>;
 type PickPresentValue = Expect<Equal<DeclarationTruth["picked"], number | "auto">>;
 type LazyPresentValue = Expect<Equal<DeclarationTruth["lazy"], number>>;
@@ -567,7 +567,7 @@ bindingTree.bind.text(schemaBoundMap.at(["literal"]), (value) => {
   type SchemaLiteralBinding = Expect<Equal<typeof value, "draft" | "ready">>;
   return value;
 });
-schemaBoundMap.at(["readonlyValue"]).set(1);
+schemaBoundMap.at(["mutableValue"]).set(1);
 type LiteralTuplePathRemainsExact = Expect<Equal<typeof typedTupleItem, string>>;
 type OptionalTuplePathRemainsExact = Expect<Equal<typeof typedOptionalTupleItem, number | undefined>>;
 type ArrayPathIncludesRuntimeAbsence = Expect<Equal<typeof typedArrayItem, number | undefined>>;

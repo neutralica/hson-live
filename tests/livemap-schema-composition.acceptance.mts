@@ -25,19 +25,21 @@ check("one child schema can appear twice in one parent", () => {
   assert.equal(map.at(["left", "connected"]).snap(), true);
   assert.equal(map.at(["right", "connected"]).snap(), false);
 });
-check("one child schema can appear in independent parents", () => {
-  const Left = hson.liveMap.schema.define((s) => s.exact({ left: Seat }));
-  const Right = hson.liveMap.schema.define((s) => s.exact({ right: Seat }));
-  assert.equal(Left.validateRoot({ left: { connected: true } }).ok, true);
-  assert.equal(Right.validateRoot({ right: { connected: false } }).ok, true);
+check("open objects admit projected extras while preserving declared validation", () => {
+  const OpenSeat = hson.liveMap.schema.define((s) => s.object({ connected: s.boolean }));
+  assert.equal(OpenSeat.validateRoot({ connected: true, label: "A", nested: [1, null] }).ok, true);
+  assert.equal(OpenSeat.validateRoot({ connected: "wrong", label: "A" }).ok, false);
 });
 check("defined schema composes as an array item", () => {
   const Seats = hson.liveMap.schema.define((s) => s.array(Seat));
   assert.equal(Seats.validateRoot([{ connected: true }, { connected: false }]).ok, true);
 });
-check("defined schema composes through postfix array", () => {
-  const Seats = hson.liveMap.schema.define(() => Seat.array);
-  assert.equal(Seats.validateRoot([{ connected: true }]).ok, true);
+check("postfix array is absent from defined schemas", () => {
+  assert.equal("array" in Seat, false);
+  hson.liveMap.schema.define((s) => {
+    assert.equal("array" in s.string, false);
+    return s.string;
+  });
 });
 check("defined schema composes as a tuple member", () => {
   const Pair = hson.liveMap.schema.define((s) => s.tuple(Seat, Seat));
@@ -62,21 +64,28 @@ check("defined schema composes through lazy", () => {
   assert.equal(LazySeat.validateRoot({ connected: true }).ok, true);
 });
 check("defined schema composes through partial", () => {
-  const MaybeSeat = hson.liveMap.schema.define((s) => s.partial({ seat: Seat }));
-  const RawNested = hson.liveMap.schema.define((s) => s.partial({ profile: { name: s.string } }));
+  const MaybeSeat = hson.liveMap.schema.define((s) => s.partial(s.object({ seat: Seat })));
+  const MaybeExactSeat = hson.liveMap.schema.define((s) => s.partial(s.exact({ seat: Seat })));
+  const RawNested = hson.liveMap.schema.define((s) => s.partial(s.object({ profile: s.object({ name: s.string }) })));
   assert.equal(MaybeSeat.validateRoot({}).ok, true);
   assert.equal(MaybeSeat.validateRoot({ seat: { connected: true } }).ok, true);
+  assert.equal(MaybeSeat.validateRoot({ extra: true }).ok, true);
+  assert.equal(MaybeExactSeat.validateRoot({ extra: true }).ok, false);
   assert.equal(RawNested.validateRoot({ profile: { name: "Ada" } }).ok, true);
 });
 check("defined schema composes through deepPartial", () => {
-  const MaybeSeat = hson.liveMap.schema.define((s) => s.deepPartial({ seat: Seat }));
-  const RawNested = hson.liveMap.schema.define((s) => s.deepPartial({ profile: { name: s.string } }));
+  const MaybeSeat = hson.liveMap.schema.define((s) => s.deepPartial(s.object({ seat: Seat })));
+  const RawNested = hson.liveMap.schema.define((s) => s.deepPartial(s.object({ profile: s.object({ name: s.string }) })));
   assert.equal(MaybeSeat.validateRoot({ seat: {} }).ok, true);
   assert.equal(RawNested.validateRoot({ profile: {} }).ok, true);
 });
 check("defined schema composes through tagged variants", () => {
-  const Event = hson.liveMap.schema.define((s) => s.tagged("kind", { changed: { seat: Seat }, cleared: {} }));
-  assert.equal(Event.validateRoot({ kind: "changed", seat: { connected: true } }).ok, true);
+  const Event = hson.liveMap.schema.define((s) => s.tagged("kind", {
+    changed: Seat,
+    cleared: s.object({}),
+  }));
+  assert.equal(Event.validateRoot({ kind: "changed", connected: true }).ok, true);
+  assert.equal(Event.validateRoot({ kind: "changed", connected: true, extra: 1 }).ok, false);
   assert.equal(Event.validateRoot({ kind: "cleared" }).ok, true);
 });
 check("defined optional modifier retains projected semantics", () => {
@@ -87,10 +96,13 @@ check("defined nullable modifier retains projected semantics", () => {
   const NullableSeat = hson.liveMap.schema.define(() => Seat.nullable);
   assert.equal(NullableSeat.validateRoot(null).ok, true);
 });
-check("defined readonly modifier retains projected semantics", () => {
-  const ReadonlySeat = hson.liveMap.schema.define(() => Seat.readonly);
-  assert.equal(ReadonlySeat.validateRoot({ connected: true }).ok, true);
-  assert.equal(ReadonlySeat.rules[0]?.readonly, true);
+check("descriptive readonly modifier is absent", () => {
+  assert.equal("readonly" in Seat, false);
+  assert.equal("readonly" in Seat.rules[0]!, false);
+  hson.liveMap.schema.define((s) => {
+    assert.equal("readonly" in s.string, false);
+    return s.string;
+  });
 });
 check("same defined root attaches to independent maps", () => {
   const first = hson.liveMap.fromJson({ left: { connected: true }, right: { connected: false } });
@@ -123,16 +135,36 @@ check("caller-owned shapes are snapshotted at define", () => {
   assert.equal(Stable.validateRoot({ connected: true }).ok, true);
   assert.equal(Stable.validateRoot({ connected: "changed" }).ok, false);
 });
-check("schema.get preserves exact object identity", () => {
-  const map = hson.liveMap.fromJson({ connected: true });
-  map.schema.use(Seat);
-  assert.equal(map.schema.get(), Seat);
+check("literal and tagged caller values are snapshotted at define", () => {
+  const literal = { code: 1 };
+  const variants: Record<string, object> = { changed: undefined as never };
+  const StableLiteral = hson.liveMap.schema.define((s) => s.literal(literal));
+  const StableTagged = hson.liveMap.schema.define((s) => {
+    variants.changed = s.exact({ value: s.number });
+    return s.tagged("kind", variants as never);
+  });
+  literal.code = 2;
+  variants.changed = hson.liveMap.schema.define((s) => s.exact({ value: s.string }));
+  assert.equal(StableLiteral.validateRoot({ code: 1 }).ok, true);
+  assert.equal(StableLiteral.validateRoot({ code: 2 }).ok, false);
+  assert.equal(StableTagged.validateRoot({ kind: "changed", value: 1 }).ok, true);
+  assert.equal(StableTagged.validateRoot({ kind: "changed", value: "changed" }).ok, false);
 });
 check("invalid define results reject at runtime", () => {
   assert.throws(
     () => Reflect.apply(hson.liveMap.schema.define, hson.liveMap.schema, [() => undefined]),
     /recognized schema expression/,
   );
+  assert.throws(
+    () => Reflect.apply(hson.liveMap.schema.define, hson.liveMap.schema, [(s: { string: object }) => ({ value: s.string })]),
+    /recognized schema expression/,
+  );
+  hson.liveMap.schema.define((s) => {
+    assert.throws(() => Reflect.apply(s.pick, s, []), /at least one choice/);
+    assert.throws(() => Reflect.apply(s.literal, s, []), /at least one value/);
+    assert.throws(() => Reflect.apply(s.tagged, s, ["kind", {}]), /at least one branch/);
+    return s.string;
+  });
 });
 
 process.stdout.write(`# ${checks} compositional schema.define checks passed\n`);

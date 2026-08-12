@@ -362,7 +362,7 @@ const UserState = hson.liveMap.schema.define((s) => s.exact({
     name: s.string,
     role: s.literal("author", "editor"),
   }),
-  tags: s.string.array,
+  tags: s.array(s.string),
 }));
 
 const typed = map.schema.use(UserState);
@@ -373,10 +373,15 @@ lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact
 objects, partial objects, and deep-partial objects. Tokens can be optional or
 nullable.
 
+Projected callbacks return one explicit expression: `s.object({...})` is open,
+while `s.exact({...})` rejects unknown keys. Raw callback objects are not schema
+syntax. Declared properties of an open object keep their precise inferred types;
+undeclared keys are represented as recursively projected values plus `undefined`
+for absence. Arrays use `s.array(item)`. `partial` and `deepPartial` take an
+explicit object expression or compatible defined object schema.
+
 Schema validation governs projected JSON state. It does not validate direct raw
-HSON node edits. The current `readonly` schema modifier is recorded in schema
-rules but is not enforced as a mutation prohibition; treating it as access
-control is roadmap behavior.
+HSON node edits.
 
 The same `schema.define(s => ...)` boundary defines document contracts. Known
 HTML and SVG tags are direct calls such as `s.div(...)` and `s.button(...)`,
@@ -614,7 +619,6 @@ guarantees:
 - The lower-level `link_livemap` implementation does not currently propagate a
   standalone semantic `splice` operation; handle-level `linkTo` forwards the
   resulting scoped value.
-- Schema `readonly` is descriptive today, not enforced write protection.
 - QUID metadata may persist through controlled exact snapshots and processes,
   but serialized QUID bytes alone do not prove membership in the current live
   epoch.

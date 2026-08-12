@@ -175,7 +175,7 @@ check("restore, replay, schema changes and unsafe graph divergence invalidate ca
   const schemaMap = data();
   const schemaAuthority = get_livemap_staged_authority(schemaMap);
   const beforeSchema = schemaAuthority.prepare((draft) => draft.set(["value"], 1));
-  schemaMap.schema.use(hson.liveMap.schema.define((shape) => ({ value: shape.number, sibling: shape.string })));
+  schemaMap.schema.use(hson.liveMap.schema.define((shape) => shape.object({ value: shape.number, sibling: shape.string })));
   transitionCode(() => schemaAuthority.accept(beforeSchema), "LIVEMAP_TRANSITION_STALE");
 
   const debugMap = data();

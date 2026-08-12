@@ -76,7 +76,6 @@ export type LiveMapSchemaRule = Readonly<{
   path: LivePath;
   optional: boolean;
   nullable: boolean;
-  readonly: boolean;
   exact: boolean;
   literals?: readonly JsonValue[];
 }>;
@@ -127,8 +126,6 @@ export type LiveMapProjectedSchema<TValue = unknown> = LiveMapSchema<TValue> & R
   validateValue: (path: LivePath, value: JsonValue | undefined) => LiveMapSchemaValidation;
   optional: LiveMapSchemaToken<TValue | undefined>;
   nullable: LiveMapSchemaToken<TValue | null>;
-  readonly: LiveMapSchemaToken<TValue>;
-  array: LiveMapSchemaToken<readonly Exclude<TValue, undefined>[]>;
 }>;
 
 export interface LiveMapSchemaShape {
@@ -136,13 +133,12 @@ export interface LiveMapSchemaShape {
 }
 
 export interface LiveMapSchemaVariants {
-  readonly [variant: string]: LiveMapSchemaShape;
+  readonly [variant: string]: LiveMapSchemaInput;
 }
 
 export type LiveMapSchemaInput<TValue = unknown> =
   | LiveMapSchemaToken<TValue>
-  | LiveMapProjectedSchema<TValue>
-  | LiveMapSchemaShape;
+  | LiveMapProjectedSchema<TValue>;
 
 export type LiveMapSchemaChoice =
   | JsonValue
@@ -157,7 +153,6 @@ export type InferLiveMapSchemaToken<TToken> = TToken extends LiveMapSchemaToken<
 export type InferLiveMapSchemaInput<TInput> =
   TInput extends LiveMapSchemaToken<infer TValue> ? TValue :
   TInput extends LiveMapProjectedSchema<infer TValue> ? TValue :
-  TInput extends LiveMapSchemaShape ? InferLiveMapSchemaShape<TInput> :
   never;
 
 export type InferLiveMapSchemaChoice<TChoice> =
@@ -170,6 +165,19 @@ export type InferLiveMapSchemaShape<TShape extends LiveMapSchemaShape> = Simplif
 } & {
   [Key in OptionalSchemaShapeKeys<TShape>]?: Exclude<InferLiveMapSchemaInput<TShape[Key]>, undefined>;
 }>;
+
+type ProjectedSchemaValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ProjectedSchemaValue[]
+  | Readonly<{ [key: string]: ProjectedSchemaValue }>;
+
+type InferOpenLiveMapSchemaShape<TShape extends LiveMapSchemaShape> = Simplify<
+  InferLiveMapSchemaShape<TShape>
+  & Readonly<Record<string, ProjectedSchemaValue | undefined>>
+>;
 
 type OptionalSchemaShapeKeys<TShape extends LiveMapSchemaShape> = {
   [Key in keyof TShape]: undefined extends InferLiveMapSchemaInput<TShape[Key]> ? Key : never;
@@ -213,7 +221,7 @@ type InferLiveMapSchemaTuple<TItems extends readonly LiveMapSchemaInput[]> =
     : readonly [];
 
 type InferLiveMapTaggedSchema<TDiscriminator extends string, TVariants extends LiveMapSchemaVariants> = {
-  [Tag in keyof TVariants & string]: Simplify<InferLiveMapSchemaShape<TVariants[Tag]> & { [Key in TDiscriminator]: Tag }>;
+  [Tag in keyof TVariants & string]: Simplify<InferLiveMapSchemaPresent<TVariants[Tag]> & { [Key in TDiscriminator]: Tag }>;
 }[keyof TVariants & string];
 
 type DeepPartialSchemaValue<TValue> =
@@ -222,10 +230,30 @@ type DeepPartialSchemaValue<TValue> =
       ? readonly DeepPartialSchemaValue<Exclude<TValue[number], undefined>>[]
       : { readonly [Index in keyof TValue]?: DeepPartialSchemaValue<Exclude<TValue[Index], undefined>> }
     : TValue extends object
-      ? string extends keyof TValue
-        ? Readonly<Record<string, DeepPartialSchemaValue<Exclude<TValue[string], undefined>>>>
-        : { [Key in keyof TValue]?: DeepPartialSchemaValue<Exclude<TValue[Key], undefined>> }
+      ? DeepPartialSchemaObjectValue<TValue>
       : TValue;
+
+type DeepPartialSchemaObjectValue<TValue extends object> = Simplify<
+  {
+    [Key in keyof TValue]?: string extends keyof TValue
+      ? undefined extends TValue[string & keyof TValue]
+        ? string extends Key
+          ? TValue[Key]
+          : number extends Key
+            ? TValue[Key]
+            : DeepPartialSchemaValue<Exclude<TValue[Key], undefined>>
+        : DeepPartialSchemaValue<Exclude<TValue[Key], undefined>>
+      : DeepPartialSchemaValue<Exclude<TValue[Key], undefined>>
+  }
+  & (string extends keyof TValue
+    ? Readonly<Record<
+      string,
+      undefined extends TValue[string & keyof TValue]
+        ? TValue[string & keyof TValue]
+        : DeepPartialSchemaValue<TValue[string & keyof TValue]>
+    >>
+    : unknown)
+>;
 
 type Simplify<TValue> = { [Key in keyof TValue]: TValue[Key] } & {};
 
@@ -233,9 +261,7 @@ export type LiveMapSchemaToken<TValue = unknown> = Readonly<{
   kind: LiveMapSchemaKind;
   optional: LiveMapSchemaToken<TValue | undefined>;
   nullable: LiveMapSchemaToken<TValue | null>;
-  readonly: LiveMapSchemaToken<TValue>;
-  array: LiveMapSchemaToken<readonly Exclude<TValue, undefined>[]>;
-  readonly __value?: TValue;
+  readonly __value?: readonly [TValue];
 }>;
 
 type DocumentItemEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
@@ -260,17 +286,33 @@ type ProjectedInputGuard<TInput> =
     ? TInput
     : TInput extends InternalDocumentItemSchema | InternalDocumentContentSchema
       ? never
-      : TInput extends LiveMapSchemaShape
-        ? { readonly [TKey in keyof TInput]: ProjectedInputGuard<TInput[TKey]> }
-        : never;
+      : never;
 type ProjectedChoiceGuard<TChoice> =
   TChoice extends LiveMapSchemaToken | LiveMapProjectedSchema
     ? TChoice
     : TChoice extends InternalDocumentItemSchema | InternalDocumentContentSchema
     ? never
-    : TChoice extends JsonValue
-      ? TChoice
-      : ProjectedInputGuard<TChoice>;
+      : TChoice extends JsonValue
+        ? TChoice
+        : ProjectedInputGuard<TChoice>;
+
+type ProjectedObjectInputGuard<TInput extends LiveMapSchemaInput> =
+  InferLiveMapSchemaPresent<TInput> extends readonly unknown[]
+    ? never
+    : InferLiveMapSchemaPresent<TInput> extends object
+      ? TInput
+      : never;
+
+type ProjectedShapeGuard<TShape extends LiveMapSchemaShape> = {
+  readonly [TKey in keyof TShape]: ProjectedInputGuard<TShape[TKey]>;
+};
+
+type ProjectedVariantGuard<TVariants extends LiveMapSchemaVariants> = {
+  readonly [TVariant in keyof TVariants]: TVariants[TVariant] & ProjectedObjectInputGuard<TVariants[TVariant]>;
+};
+
+type NonEmptyVariantGuard<TVariants extends LiveMapSchemaVariants> =
+  keyof TVariants extends never ? never : unknown;
 
 type DocumentTagBuilder<TTag extends string> = <const TChildren extends DocumentChildArguments>(
   ...children: TChildren
@@ -334,14 +376,12 @@ type UnifiedTupleResult<TItems extends readonly unknown[]> =
 type SchemaPickOperand = LiveMapSchemaChoice | InternalDocumentItemSchema | InternalDocumentContentSchema;
 type SchemaTupleOperand = LiveMapSchemaInput | InternalDocumentItemSchema;
 export type InternalLiveMapSchemaExpression = LiveMapSchemaInput | InternalDocumentItemSchema | InternalDocumentContentSchema;
-export type InternalLiveMapSchemaDefinition = InternalLiveMapSchemaExpression | LiveMapSchemaShape;
+export type InternalLiveMapSchemaDefinition = InternalLiveMapSchemaExpression;
 
 type DefinedProjectedCapability<TExpression> =
   TExpression extends LiveMapSchemaInput
     ? LiveMapProjectedSchema<Exclude<InferLiveMapSchemaInput<TExpression>, undefined>>
-    : TExpression extends LiveMapSchemaShape
-      ? LiveMapProjectedSchema<InferLiveMapSchemaShape<TExpression>>
-      : LiveMapSchema;
+    : LiveMapSchema;
 type DefinedDocumentItemCapability<TExpression> =
   TExpression extends InternalDocumentElementSchema<infer TEvidence>
     ? InternalDocumentElementSchema<TEvidence>
@@ -377,18 +417,18 @@ type LiveMapSchemaOperators = Readonly<{
   number: LiveMapSchemaToken<number>;
   boolean: LiveMapSchemaToken<boolean>;
   null: LiveMapSchemaToken<null>;
-  literal: <const TValues extends readonly JsonValue[]>(...values: TValues) => LiveMapSchemaToken<TValues[number]>;
+  literal: <const TValues extends readonly [JsonValue, ...JsonValue[]]>(...values: TValues) => LiveMapSchemaToken<TValues[number]>;
   pick: <const TChoices extends readonly [SchemaPickOperand, ...SchemaPickOperand[]]>(...choices: TChoices & CompatiblePickArguments<NoInfer<TChoices>>) => UnifiedPickResult<TChoices>;
-  tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
+  tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants & ProjectedVariantGuard<TVariants> & NonEmptyVariantGuard<TVariants>) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
   lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
   refine: <TInput extends LiveMapSchemaInput>(base: TInput & ProjectedInputGuard<TInput>, label: string, validate: LiveMapSchemaRefinement<InferLiveMapSchemaPresent<TInput>>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
   array: <TInput extends LiveMapSchemaInput>(item: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<readonly InferLiveMapSchemaPresent<TInput>[]>;
   tuple: <const TItems extends readonly SchemaTupleOperand[]>(...items: TItems & CompatibleTupleArguments<NoInfer<TItems>>) => UnifiedTupleResult<TItems>;
   record: <TInput extends LiveMapSchemaInput>(value: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaPresent<TInput>>>>;
-  object: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedInputGuard<TShape>) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
-  partial: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedInputGuard<TShape>) => LiveMapSchemaToken<Partial<InferLiveMapSchemaShape<TShape>>>;
-  deepPartial: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedInputGuard<TShape>) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaShape<TShape>>>;
-  exact: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedInputGuard<TShape>) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
+  object: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedShapeGuard<TShape>) => LiveMapSchemaToken<InferOpenLiveMapSchemaShape<TShape>>;
+  partial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<Partial<InferLiveMapSchemaPresent<TInput>>>;
+  deepPartial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaPresent<TInput>>>;
+  exact: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedShapeGuard<TShape>) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
   repeat: <const TItem extends InternalDocumentItemSchema>(item: TItem) => InternalDocumentContentSchema<DocumentRepeatEvidence<DocumentItemEvidence<TItem>>>;
   tag: SchemaTag;
 }>;
@@ -404,7 +444,6 @@ type LiveMapSchemaNode = Readonly<{
   kind: LiveMapSchemaKind;
   optional: boolean;
   nullable: boolean;
-  readonly: boolean;
   exact: boolean;
   literals: readonly OrderedProjectedValue[];
   choices?: readonly LiveMapSchemaNode[];
@@ -422,7 +461,6 @@ type LiveMapSchemaDraft = Readonly<{
   kind: LiveMapSchemaKind;
   optional?: boolean;
   nullable?: boolean;
-  readonly?: boolean;
   exact?: boolean;
   literals?: readonly JsonValue[];
   choices?: readonly LiveMapSchemaChoice[];
@@ -543,17 +581,20 @@ const LIVEMAP_SCHEMA_RUNTIME_BASE: LiveMapSchemaOperators = {
   number: make_schema_token<number>({ kind: "number" }),
   boolean: make_schema_token<boolean>({ kind: "boolean" }),
   null: make_schema_token<null>({ kind: "null" }),
-  literal: (...values: readonly JsonValue[]) => make_schema_token({ kind: "literal", literals: values }),
+  literal: ((...values: readonly JsonValue[]) => {
+    if (values.length === 0) throw new TypeError("Schema literal requires at least one value.");
+    return make_schema_token({ kind: "literal", literals: values });
+  }) as LiveMapSchemaOperators["literal"],
   pick: ((...choices: readonly SchemaPickOperand[]) => make_unified_pick(choices)) as LiveMapSchemaOperators["pick"],
-  tagged: (discriminator: string, variants: LiveMapSchemaVariants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) }),
+  tagged: ((discriminator: string, variants: LiveMapSchemaVariants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) })) as LiveMapSchemaOperators["tagged"],
   lazy: (makeInput: () => LiveMapSchemaInput) => make_schema_token({ kind: "lazy", lazy: makeInput }),
   refine: ((base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaRefinement) => make_schema_token({ kind: "refine", base, label, validate })) as LiveMapSchemaOperators["refine"],
   array: (item: LiveMapSchemaInput) => make_schema_token({ kind: "array", item }),
   tuple: ((...items: readonly SchemaTupleOperand[]) => make_unified_tuple(items)) as LiveMapSchemaOperators["tuple"],
   record: (value: LiveMapSchemaInput) => make_schema_token({ kind: "record", record: value }),
   object: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape }),
-  partial: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: make_partial_schema_shape(shape) }),
-  deepPartial: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: make_deep_partial_schema_shape(shape) }),
+  partial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, false)) as LiveMapSchemaOperators["partial"],
+  deepPartial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, true)) as LiveMapSchemaOperators["deepPartial"],
   exact: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape, exact: true }),
   repeat: (item) => make_document_repeat_schema(item),
   tag: make_schema_tag_family(),
@@ -631,20 +672,6 @@ function projected_schema_surface(root: LiveMapSchemaNode): LiveMapProjectedSche
     get nullable() {
       return make_compiled_schema_token(Object.freeze({ ...root, nullable: true }));
     },
-    get readonly() {
-      return make_compiled_schema_token(Object.freeze({ ...root, readonly: true }));
-    },
-    get array() {
-      return make_compiled_schema_token(Object.freeze({
-        kind: "array",
-        optional: false,
-        nullable: false,
-        readonly: false,
-        exact: false,
-        literals: Object.freeze([]),
-        item: root,
-      }));
-    },
   } as LiveMapProjectedSchema;
 }
 
@@ -665,12 +692,6 @@ function make_schema_token<TValue = unknown>(draft: LiveMapSchemaDraft): LiveMap
     get nullable() {
       return make_schema_token({ ...draft, nullable: true });
     },
-    get readonly() {
-      return make_schema_token({ ...draft, readonly: true });
-    },
-    get array() {
-      return make_schema_token({ kind: "array", item: token });
-    },
     [SCHEMA_DRAFT]: draft,
   }) as LiveMapSchemaToken<TValue> & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
 
@@ -685,20 +706,6 @@ function make_compiled_schema_token<TValue = unknown>(root: LiveMapSchemaNode): 
     },
     get nullable() {
       return make_compiled_schema_token(Object.freeze({ ...root, nullable: true }));
-    },
-    get readonly() {
-      return make_compiled_schema_token(Object.freeze({ ...root, readonly: true }));
-    },
-    get array() {
-      return make_compiled_schema_token(Object.freeze({
-        kind: "array",
-        optional: false,
-        nullable: false,
-        readonly: false,
-        exact: false,
-        literals: Object.freeze([]),
-        item: root,
-      }));
     },
   } as LiveMapSchemaToken<TValue>;
   COMPILED_PROJECTED_TOKENS.set(token, root);
@@ -752,49 +759,23 @@ function projected_schema_node(value: unknown): LiveMapSchemaNode | undefined {
 }
 
 function definition_projected_schema_node(value: unknown): LiveMapSchemaNode | undefined {
-  const node = projected_schema_node(value);
-  if (node !== undefined) return node;
-  if (document_item_node(value) !== undefined || document_content_node(value) !== undefined) return undefined;
-  return is_schema_shape(value)
-    ? normalize_schema_draft({ kind: "object", props: value })
-    : undefined;
+  return projected_schema_node(value);
 }
 
-function is_schema_shape(value: unknown): value is LiveMapSchemaShape {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) return false;
-  return Reflect.ownKeys(value).every((key) => {
-    if (typeof key !== "string") return false;
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    return descriptor !== undefined
-      && descriptor.enumerable
-      && "value" in descriptor
-      && is_schema_input(descriptor.value);
-  });
-}
-
-
-function make_partial_schema_shape(shape: LiveMapSchemaShape): LiveMapSchemaShape {
-  return schema_shape_from_entries(schema_shape_entries(shape).map(([key, value]) => (
-    [key, make_optional_schema_input(value)] as const
-  )));
-}
-
-function make_deep_partial_schema_shape(shape: LiveMapSchemaShape): LiveMapSchemaShape {
-  return schema_shape_from_entries(schema_shape_entries(shape).map(([key, value]) => (
-    [key, make_deep_optional_schema_input(value)] as const
-  )));
-}
-
-function make_deep_optional_schema_input(input: LiveMapSchemaInput): LiveMapSchemaInput {
-  if (is_schema_token(input)) return make_deep_optional_schema_token(input);
-  const node = projected_schema_node(input)
-    ?? (is_schema_shape(input)
-      ? normalize_schema_draft({ kind: "object", props: input })
-      : undefined);
-  if (node === undefined) throw new TypeError("deepPartial requires projected schema expressions.");
-  return make_compiled_schema_token(make_deep_optional_schema_node(node));
+function make_partial_schema_input(input: LiveMapSchemaInput, deep: boolean): LiveMapSchemaToken {
+  const node = normalize_schema_input(input);
+  if (node.kind !== "object" || node.props === undefined) {
+    throw new TypeError(`${deep ? "deepPartial" : "partial"} requires an object schema expression.`);
+  }
+  return make_compiled_schema_token(Object.freeze({
+    ...node,
+    props: Object.freeze(node.props.map(([key, child]) => Object.freeze([
+      key,
+      deep
+        ? make_deep_optional_schema_node(child)
+        : Object.freeze({ ...child, optional: true }),
+    ] as const))),
+  }));
 }
 
 function make_deep_optional_schema_node(node: LiveMapSchemaNode): LiveMapSchemaNode {
@@ -816,54 +797,25 @@ function make_deep_optional_schema_node(node: LiveMapSchemaNode): LiveMapSchemaN
   });
 }
 
-function make_deep_optional_schema_token(input: LiveMapSchemaToken): LiveMapSchemaToken {
-  const token = input as LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }>;
-  const draft = token[SCHEMA_DRAFT];
-
-  if (draft.kind === "object" && draft.props !== undefined) {
-    return make_schema_token({ ...draft, props: make_deep_partial_schema_shape(draft.props), optional: true });
-  }
-
-  if (draft.kind === "array" && draft.item !== undefined) {
-    return make_schema_token({ ...draft, item: make_deep_optional_schema_input(draft.item), optional: true });
-  }
-
-  if (draft.kind === "tuple" && draft.items !== undefined) {
-    return make_schema_token({ ...draft, items: draft.items.map((item) => make_deep_optional_schema_input(item)), optional: true });
-  }
-
-  if (draft.kind === "record" && draft.record !== undefined) {
-    return make_schema_token({ ...draft, record: make_deep_optional_schema_input(draft.record), optional: true });
-  }
-
-  return input.optional;
-}
-
-
-function make_optional_schema_input(input: LiveMapSchemaInput): LiveMapSchemaInput {
-  if (is_schema_token(input)) return input.optional;
-  const node = projected_schema_node(input)
-    ?? (is_schema_shape(input)
-      ? normalize_schema_draft({ kind: "object", props: input })
-      : undefined);
-  if (node === undefined) throw new TypeError("partial requires projected schema expressions.");
-  return make_compiled_schema_token(Object.freeze({ ...node, optional: true }));
-}
-
-
 function make_tagged_schema_choices(discriminator: string, variants: LiveMapSchemaVariants): readonly LiveMapSchemaChoice[] {
   const choices: LiveMapSchemaChoice[] = [];
 
-  for (const [tag, shape] of schema_variant_entries(variants)) {
-    choices.push(make_schema_token({
-      kind: "object",
-      props: schema_shape_from_entries([
-        ...schema_shape_entries(shape),
-        [discriminator, make_schema_token({ kind: "literal", literals: [tag] })],
+  for (const [tag, variant] of schema_variant_entries(variants)) {
+    const node = normalize_schema_input(variant);
+    if (node.kind !== "object" || node.props === undefined || node.optional || node.nullable) {
+      throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(tag)} must be an unmodified object schema expression.`);
+    }
+    const discriminatorNode = normalize_schema_draft({ kind: "literal", literals: [tag] });
+    choices.push(make_compiled_schema_token(Object.freeze({
+      ...node,
+      props: Object.freeze([
+        ...node.props.filter(([key]) => key !== discriminator),
+        Object.freeze([discriminator, discriminatorNode] as const),
       ]),
-    }));
+    })));
   }
 
+  if (choices.length === 0) throw new TypeError("Schema tagged variants require at least one branch.");
   return Object.freeze(choices);
 }
 
@@ -875,7 +827,6 @@ function normalize_schema_input(input: LiveMapSchemaInput): LiveMapSchemaNode {
   if (document_item_node(input) !== undefined || document_content_node(input) !== undefined) {
     throw new TypeError("Projected schema composition received a document-only schema expression.");
   }
-  if (is_schema_shape(input)) return normalize_schema_draft({ kind: "object", props: input });
   throw new TypeError("Projected schema composition received an unrecognized schema expression.");
 }
 
@@ -884,7 +835,6 @@ function normalize_schema_draft(draft: LiveMapSchemaDraft): LiveMapSchemaNode {
     kind: draft.kind,
     optional: draft.optional === true,
     nullable: draft.nullable === true,
-    readonly: draft.readonly === true,
     exact: draft.exact === true,
     literals: Object.freeze((draft.literals ?? []).map((literal) => admit_projected_value(literal))),
     ...(draft.choices !== undefined ? { choices: Object.freeze(draft.choices.map((choice) => normalize_schema_choice(choice))) } : {}),
@@ -921,8 +871,7 @@ function normalize_schema_props(shape: LiveMapSchemaShape): readonly (readonly [
 
 function is_schema_input(value: unknown): value is LiveMapSchemaInput {
   if (projected_schema_node(value) !== undefined) return true;
-  if (document_item_node(value) !== undefined || document_content_node(value) !== undefined) return false;
-  return is_schema_shape(value);
+  return false;
 }
 
 function is_schema_token(value: unknown): value is LiveMapSchemaToken & Readonly<{ [SCHEMA_DRAFT]: LiveMapSchemaDraft }> {
@@ -948,36 +897,24 @@ function schema_shape_entries(shape: LiveMapSchemaShape): readonly (readonly [st
   return Object.freeze(entries);
 }
 
-function schema_variant_entries(variants: LiveMapSchemaVariants): readonly (readonly [string, LiveMapSchemaShape])[] {
+function schema_variant_entries(variants: LiveMapSchemaVariants): readonly (readonly [string, LiveMapSchemaInput])[] {
   const prototype = Object.getPrototypeOf(variants);
   if (prototype !== Object.prototype && prototype !== null) {
     throw new TypeError("LiveMap tagged schema variants must use Object.prototype or null.");
   }
-  const entries: Array<readonly [string, LiveMapSchemaShape]> = [];
+  const entries: Array<readonly [string, LiveMapSchemaInput]> = [];
   for (const key of Reflect.ownKeys(variants)) {
     if (typeof key !== "string") throw new TypeError("LiveMap tagged schema variants cannot contain symbol keys.");
     const descriptor = Object.getOwnPropertyDescriptor(variants, key);
     if (descriptor === undefined || !descriptor.enumerable || !("value" in descriptor)) {
       throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(key)} must be an enumerable data property.`);
     }
+    if (!is_schema_input(descriptor.value)) {
+      throw new TypeError(`LiveMap tagged schema variant ${JSON.stringify(key)} must be a projected schema expression.`);
+    }
     entries.push(Object.freeze([key, descriptor.value] as const));
   }
   return Object.freeze(entries);
-}
-
-function schema_shape_from_entries(
-  entries: readonly (readonly [string, LiveMapSchemaInput])[],
-): LiveMapSchemaShape {
-  const shape = Object.create(null) as Record<string, LiveMapSchemaInput>;
-  for (const [key, value] of entries) {
-    Object.defineProperty(shape, key, {
-      value,
-      enumerable: true,
-      writable: false,
-      configurable: false,
-    });
-  }
-  return Object.freeze(shape);
 }
 
 function collect_schema_rules(
@@ -1034,7 +971,6 @@ function schema_rule_from_node(node: LiveMapSchemaNode, path: LivePath): LiveMap
     path,
     optional: node.optional,
     nullable: node.nullable,
-    readonly: node.readonly,
     exact: node.exact,
     ...(node.literals.length > 0 ? {
       literals: Object.freeze(node.literals.map(materialize_projected_value)),

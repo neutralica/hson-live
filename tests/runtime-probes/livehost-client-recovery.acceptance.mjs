@@ -208,7 +208,7 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const trace = trace_sink(events);
   const host = hson.liveHost.create({ state: { value: 7 }, logicalMapId: "map-snapshot", trace });
   await host.mutate((draft) => draft.set(["value"], 8));
-  const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
+  const schema = hson.liveMap.schema.define((shape) => shape.object({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 0 });
   const watched = [];
   mirror.at(["value"]).watch((next) => watched.push(next));
@@ -768,7 +768,7 @@ await check("malformed snapshot HSON fails installation without advancing state"
 
 await check("valid HSON rejected by the active schema does not replace the mirror", async () => {
   const pair = socket_pair();
-  const schema = hson.liveMap.schema.define((shape) => ({ value: shape.number }));
+  const schema = hson.liveMap.schema.define((shape) => shape.object({ value: shape.number }));
   const mirror = hson.liveMap.fromJson({ value: 1 });
   restore_projected_revision(mirror, 4);
   mirror.schema.use(schema);

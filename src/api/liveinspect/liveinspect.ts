@@ -526,7 +526,6 @@ class InspectorController {
       rule.kind,
       rule.optional ? "optional" : "required",
       rule.nullable ? "nullable" : undefined,
-      rule.readonly ? "read-only" : undefined,
       rule.exact ? "exact" : undefined,
       rule.literals?.length ? `choices: ${rule.literals.map((value) => JSON.stringify(value)).join(" | ")}` : undefined,
     ].filter((value): value is string => value !== undefined);

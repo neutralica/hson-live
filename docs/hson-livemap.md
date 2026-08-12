@@ -307,10 +307,17 @@ const typedState = projectedMap.schema.use(State);
 
 Projected constructors include `unknown`, `string`, `number`, `boolean`,
 `null`, `literal`, `pick`, `tagged`, `lazy`, `refine`, `array`, `tuple`,
-`record`, `object`, `exact`, `partial`, and `deepPartial`. Existing postfix
-`optional`, `nullable`, `readonly`, and `array` modifiers also work on compatible
-defined projected schemas. `readonly` remains descriptive rule metadata rather
-than mutation access control.
+`record`, `object`, `exact`, `partial`, and `deepPartial`. The retained postfix
+modifiers are `optional` and `nullable`; both also work on compatible defined
+projected schemas. Arrays use the single `s.array(item)` spelling.
+
+Projected callbacks return an explicit expression. Use `s.object({...})` for an
+open object and `s.exact({...})` for a closed object; returning a raw object from
+the callback is not schema syntax. Declared open-object properties keep their
+precise inferred types. An undeclared string key is typed as a recursively
+projected string, number, boolean, null, readonly array, or readonly object,
+plus `undefined` when the key is absent. `partial` and `deepPartial` take an
+explicit object expression or a compatible defined object schema.
 
 The same toolkit defines document contracts with direct known-tag builders:
 
@@ -445,7 +452,6 @@ These identifiers must never be silently substituted for one another. A future i
 - `debug.node(path)` exposes live physical graph mutation outside schema, commit, revision, feed, and subscription accounting. `root()` is detached.
 - Feed listener exceptions are not isolated. State and revision have already committed when listeners run, and a thrown listener can escape the mutation call and interrupt delivery to later listeners.
 - The lower-level `link_livemap` implementation does not currently propagate a standalone semantic `splice` operation; handle-level `linkTo` forwards the resulting scoped value.
-- Schema `readonly` is descriptive today, not enforced write protection.
 - QUID metadata may persist through controlled exact snapshots and processes, but serialized QUID bytes alone do not prove membership in the current live epoch.
 
 

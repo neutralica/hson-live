@@ -56,7 +56,7 @@ function assert_rejection_closure(
   const initial = { value: route_initial(route), guard: 1 };
   const source = hson.liveMap.fromJson(initial);
   const target = hson.liveMap.fromJson(initial);
-  source.schema.use(hson.liveMap.schema.define((s) => ({ value: s.unknown, guard: s.number })));
+  source.schema.use(hson.liveMap.schema.define((s) => s.object({ value: s.unknown, guard: s.number })));
   link_livemap(source, target, { path: ["value"] });
   const sourceBefore = source.root();
   const sourceCapture = source.capture();

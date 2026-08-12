@@ -176,7 +176,7 @@ export function error_code(error: unknown): string {
 
 export function schema_number_map(): Map {
   const map = hson.liveMap.fromJson({ value: 1 });
-  map.schema.use(define_livemap_schema((s) => ({ value: s.number })));
+  map.schema.use(define_livemap_schema((s) => s.object({ value: s.number })));
   return map;
 }
 
