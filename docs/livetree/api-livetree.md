@@ -610,9 +610,9 @@ tree.css.anim.resume()
 
 ## LiveMap Binding
 
-Bindings read the current projected LiveMap location immediately, subscribe to
-later changes, and return a disposer function. `map.at(path)` is the source
-endpoint:
+Bindings read the current projected or document LiveMap passive location
+immediately, subscribe to later changes, and return a disposer function.
+`map.at(path)` is the source endpoint:
 
 ```ts
 const dispose = tree.bind.text(map.at(["profile", "name"]));
@@ -641,15 +641,29 @@ tree.bind.css(location, (value, previous) => cssMap)
 tree.bind.cssPaths(locations, (values, previous) => cssMap)
 ```
 
-Each source is an existing projected passive location returned by
-`map.at(path)`. Multi-source methods accept a collection of locations and may
-combine locations from different projected maps. The mapper is optional for
-`text` and `attr`. Default text conversion is
-`String(value ?? "")`; default attribute conversion passes the LiveMap value
-to the binding adapter. Attribute bindings explicitly route mapper values of
-`false`, `null`, or `undefined` through `attrs.drop()` before canonical
-`attrs.set()` is called. CSS mapper entries with `null` or `undefined` remove
-the corresponding QUID-scoped declaration.
+Each source is a genuine passive location returned by projected or document
+`map.at(path)` (including the identical location returned through a proxy
+`$_` escape). Multi-source methods preserve heterogeneous tuple positions and
+may combine locations from different maps. Raw callbacks receive the source's
+exact detached value domain. Document locations therefore yield
+`HsonNode | Primitive | undefined`; they retain their existing fixed-coordinate
+semantics and restore convergence supplied by `watch(...)`.
+
+The mapper is optional for projected `text` and `attr`, preserving their
+historical conversion behavior. A broad document location can contain an HSON
+node, so document `text` and `attr` require an explicit formatter. No HSON or
+JSON serialization is implicit. Explicit mappers on `text`, `textPaths`,
+`attr`, `attrs`, `attrsPaths`, `css`, and `cssPaths` may inspect, extract, or
+deliberately serialize document values. When a document source is truthfully
+primitive-only, default text conversion is `String(value ?? "")`; default
+attribute conversion uses the existing boolean/drop policy. A structured
+document value that reaches either primitive destination without a formatter
+throws before destination mutation.
+
+Attribute bindings route mapped values of `false`, `null`, or `undefined`
+through `attrs.drop()` before canonical `attrs.set()` is called. CSS mapper
+entries with `null` or `undefined` remove the corresponding QUID-scoped
+declaration.
 
 Each callback receives the previous value(s), initially `undefined`. A
 multi-source binding subscribes to every listed location; its disposer removes all

@@ -1,6 +1,9 @@
 // livetree.bind.ts
 
-import type { HsonNode, LiveMapPathHandle } from "../../../types/index.js";
+import { is_Node } from "../../../core/node-guards.js";
+import type { DocumentLiveMap, HsonNode, LiveMapPathHandle } from "../../../types/index.js";
+import { is_livemap_document_location } from "../../livemap/livemap.document.location.js";
+import { is_livemap_projected_location } from "../../livemap/livemap.handle.js";
 import type { LiveTree } from "../livetree.js";
 import { own_disposable_for_owner } from "../managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
@@ -8,111 +11,114 @@ import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 type LiveTreeBindable = Pick<LiveTree, "quid" | "text" | "attrs" | "css">;
 
 export type LiveTreeBindApi<TTree extends LiveTreeBindable> = Readonly<{
-  path: <TValue>(
-    source: ProjectedBindingSource<TValue>,
-    apply: PathApply<TTree, NoInfer<TValue>>,
+  path: <TSource extends BindingSource>(
+    source: TSource,
+    apply: PathApply<TTree, NoInfer<BindingValue<TSource>>>,
   ) => LiveMapDisposer;
 
-  paths: <const TValues extends readonly unknown[]>(
-    sources: ProjectedBindingSourceTuple<TValues>,
-    apply: PathsApply<TTree, TValues>,
+  paths: <const TSources extends readonly BindingSource[]>(
+    sources: TSources,
+    apply: PathsApply<TTree, BindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  textPaths: <const TValues extends readonly unknown[]>(
-    sources: ProjectedBindingSourceTuple<TValues>,
-    toText: PathsTextMapper<TValues>,
+  textPaths: <const TSources extends readonly BindingSource[]>(
+    sources: TSources,
+    toText: PathsTextMapper<BindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  text: <TValue>(
-    source: ProjectedBindingSource<TValue>,
-    toText?: TextMapper<NoInfer<TValue>>,
+  text: <TSource extends BindingSource>(
+    source: TSource,
+    ...formatter: TextFormatterArgument<TSource>
   ) => LiveMapDisposer;
 
-  attr: <TValue>(
-    source: ProjectedBindingSource<TValue>,
+  attr: <TSource extends BindingSource>(
+    source: TSource,
     name: string,
-    toValue?: TextMapper<NoInfer<TValue>>,
+    ...formatter: TextFormatterArgument<TSource>
   ) => LiveMapDisposer;
 
-  attrs: <TValue>(
-    source: ProjectedBindingSource<TValue>,
-    toAttrs: AttrMapper<NoInfer<TValue>>,
+  attrs: <TSource extends BindingSource>(
+    source: TSource,
+    toAttrs: AttrMapper<NoInfer<BindingValue<TSource>>>,
   ) => LiveMapDisposer;
 
-  attrsPaths: <const TValues extends readonly unknown[]>(
-    sources: ProjectedBindingSourceTuple<TValues>,
-    toAttrs: PathsAttrMapper<TValues>,
+  attrsPaths: <const TSources extends readonly BindingSource[]>(
+    sources: TSources,
+    toAttrs: PathsAttrMapper<BindingValues<TSources>>,
   ) => LiveMapDisposer;
 
-  css: <TValue>(
-    source: ProjectedBindingSource<TValue>,
-    toCss: CssMapper<NoInfer<TValue>>,
+  css: <TSource extends BindingSource>(
+    source: TSource,
+    toCss: CssMapper<NoInfer<BindingValue<TSource>>>,
   ) => LiveMapDisposer;
 
-  cssPaths: <const TValues extends readonly unknown[]>(
-    sources: ProjectedBindingSourceTuple<TValues>,
-    toCss: PathsCssMapper<TValues>,
+  cssPaths: <const TSources extends readonly BindingSource[]>(
+    sources: TSources,
+    toCss: PathsCssMapper<BindingValues<TSources>>,
   ) => LiveMapDisposer;
 }>;
 
 export function make_livetree_bind_api<TTree extends LiveTreeBindable>(tree: TTree): LiveTreeBindApi<TTree> {
   return Object.freeze({
-    path: <TValue>(
-      source: ProjectedBindingSource<TValue>,
-      apply: PathApply<TTree, NoInfer<TValue>>,
-    ) => bind_path_for(tree, source, apply),
+    path: <TSource extends BindingSource>(
+      source: TSource,
+      apply: PathApply<TTree, NoInfer<BindingValue<TSource>>>,
+    ) => bind_path_for(tree, binding_capability(source), (target, value, previous) => {
+      apply(target, value, previous);
+    }),
 
-    paths: <const TValues extends readonly unknown[]>(
-      sources: ProjectedBindingSourceTuple<TValues>,
-      apply: PathsApply<TTree, TValues>,
+    paths: <const TSources extends readonly BindingSource[]>(
+      sources: TSources,
+      apply: PathsApply<TTree, BindingValues<TSources>>,
     ) => bind_paths_for(tree, sources, apply),
 
-    textPaths: <const TValues extends readonly unknown[]>(
-      sources: ProjectedBindingSourceTuple<TValues>,
-      toText: PathsTextMapper<TValues>,
+    textPaths: <const TSources extends readonly BindingSource[]>(
+      sources: TSources,
+      toText: PathsTextMapper<BindingValues<TSources>>,
     ) => bind_text_paths_for(tree, sources, toText),
 
-    text: <TValue>(
-      source: ProjectedBindingSource<TValue>,
-      toText?: TextMapper<NoInfer<TValue>>,
-    ) => bind_text_for(tree, source, toText),
+    text: <TSource extends BindingSource>(
+      source: TSource,
+      ...formatter: TextFormatterArgument<TSource>
+    ) => bind_text_for(tree, binding_capability(source), text_formatter(formatter)),
 
-    attr: <TValue>(
-      source: ProjectedBindingSource<TValue>,
+    attr: <TSource extends BindingSource>(
+      source: TSource,
       name: string,
-      toValue?: TextMapper<NoInfer<TValue>>,
-    ) => bind_attr_for(tree, source, name, toValue),
+      ...formatter: TextFormatterArgument<TSource>
+    ) => bind_attr_for(tree, binding_capability(source), name, text_formatter(formatter)),
 
-    attrs: <TValue>(
-      source: ProjectedBindingSource<TValue>,
-      toAttrs: AttrMapper<NoInfer<TValue>>,
-    ) => bind_attrs_for(tree, source, toAttrs),
+    attrs: <TSource extends BindingSource>(
+      source: TSource,
+      toAttrs: AttrMapper<NoInfer<BindingValue<TSource>>>,
+    ) => bind_attrs_for(tree, binding_capability(source), toAttrs),
 
-    attrsPaths: <const TValues extends readonly unknown[]>(
-      sources: ProjectedBindingSourceTuple<TValues>,
-      toAttrs: PathsAttrMapper<TValues>,
+    attrsPaths: <const TSources extends readonly BindingSource[]>(
+      sources: TSources,
+      toAttrs: PathsAttrMapper<BindingValues<TSources>>,
     ) => bind_attrs_paths_for(tree, sources, toAttrs),
 
-    css: <TValue>(
-      source: ProjectedBindingSource<TValue>,
-      toCss: CssMapper<NoInfer<TValue>>,
-    ) => bind_css_for(tree, source, toCss),
+    css: <TSource extends BindingSource>(
+      source: TSource,
+      toCss: CssMapper<NoInfer<BindingValue<TSource>>>,
+    ) => bind_css_for(tree, binding_capability(source), toCss),
 
-    cssPaths: <const TValues extends readonly unknown[]>(
-      sources: ProjectedBindingSourceTuple<TValues>,
-      toCss: PathsCssMapper<TValues>,
+    cssPaths: <const TSources extends readonly BindingSource[]>(
+      sources: TSources,
+      toCss: PathsCssMapper<BindingValues<TSources>>,
     ) => bind_css_paths_for(tree, sources, toCss),
   });
 }
 function bind_path_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  source: ProjectedBindingSource<TValue>,
-  apply: PathApply<TTree, TValue>,
+  source: BindingCapability<TValue>,
+  apply: InternalPathApply<TTree, TValue>,
 ): LiveMapDisposer {
   let previous: TValue | undefined;
+  const mode = classify_binding_source(source);
 
   const sync = (value: TValue): void => {
-    apply(tree, value, previous);
+    apply(tree, value, previous, mode);
     previous = value;
   };
 
@@ -125,15 +131,16 @@ function bind_path_for<TTree extends LiveTreeBindable, TValue>(
   );
 }
 
-function bind_paths_for<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+function bind_paths_for<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   tree: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  apply: PathsApply<TTree, TValues>,
+  sources: TSources,
+  apply: PathsApply<TTree, BindingValues<TSources>>,
 ): LiveMapDisposer {
-  let previous: TValues | undefined;
+  let previous: BindingValues<TSources> | undefined;
+  sources.forEach(classify_binding_source);
 
   const sync = (): void => {
-    const values = sources.map((source) => source.snap()) as unknown as TValues;
+    const values = sources.map((source) => source.snap()) as unknown as BindingValues<TSources>;
     apply(tree, values, previous);
     previous = values;
   };
@@ -148,42 +155,43 @@ function bind_paths_for<TTree extends LiveTreeBindable, const TValues extends re
   );
 }
 
-function bind_text_paths_for<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+function bind_text_paths_for<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   tree: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toText: PathsTextMapper<TValues>,
+  sources: TSources,
+  toText: PathsTextMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for<TTree, TValues>(tree, sources, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     target.text.set(toText(values, previous));
   });
 }
 
-function bind_attrs_paths_for<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+function bind_attrs_paths_for<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   tree: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toAttrs: PathsAttrMapper<TValues>,
+  sources: TSources,
+  toAttrs: PathsAttrMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for<TTree, TValues>(tree, sources, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     apply_attrs(target, toAttrs(values, previous));
   });
 }
 
-function bind_css_paths_for<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+function bind_css_paths_for<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   tree: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toCss: PathsCssMapper<TValues>,
+  sources: TSources,
+  toCss: PathsCssMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
-  return bind_paths_for<TTree, TValues>(tree, sources, (target, values, previous) => {
+  return bind_paths_for(tree, sources, (target, values, previous) => {
     apply_css(target, toCss(values, previous));
   });
 }
 
 function bind_text_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  source: ProjectedBindingSource<TValue>,
+  source: BindingCapability<TValue>,
   toText?: TextMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for(tree, source, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous, mode) => {
+    if (toText === undefined) reject_unmapped_document_node(mode, value);
     const text = toText ? toText(value, previous) : String(value ?? "");
     target.text.set(text);
   });
@@ -191,11 +199,12 @@ function bind_text_for<TTree extends LiveTreeBindable, TValue>(
 
 function bind_attr_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  source: ProjectedBindingSource<TValue>,
+  source: BindingCapability<TValue>,
   name: string,
   toValue?: TextMapper<TValue>,
 ): LiveMapDisposer {
-  return bind_path_for(tree, source, (target, value, previous) => {
+  return bind_path_for(tree, source, (target, value, previous, mode) => {
+    if (toValue === undefined) reject_unmapped_document_node(mode, value);
     const attrValue = toValue ? toValue(value, previous) : value;
     apply_attrs(target, { [name]: attrValue as string | number | boolean | null | undefined });
   });
@@ -203,7 +212,7 @@ function bind_attr_for<TTree extends LiveTreeBindable, TValue>(
 
 function bind_attrs_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  source: ProjectedBindingSource<TValue>,
+  source: BindingCapability<TValue>,
   toAttrs: AttrMapper<TValue>,
 ): LiveMapDisposer {
   return bind_path_for(tree, source, (target, value, previous) => {
@@ -213,7 +222,7 @@ function bind_attrs_for<TTree extends LiveTreeBindable, TValue>(
 
 function bind_css_for<TTree extends LiveTreeBindable, TValue>(
   tree: TTree,
-  source: ProjectedBindingSource<TValue>,
+  source: BindingCapability<TValue>,
   toCss: CssMapper<TValue>,
 ): LiveMapDisposer {
   return bind_path_for(tree, source, (target, value, previous) => {
@@ -223,19 +232,37 @@ function bind_css_for<TTree extends LiveTreeBindable, TValue>(
 
 type LiveMapDisposer = () => void;
 
-type ProjectedBindingCapability<TValue = unknown> = Pick<LiveMapPathHandle<TValue>, "snap" | "watch">;
-type ProjectedBindingSource<TValue = unknown> = [Extract<TValue, HsonNode>] extends [never]
-  ? ProjectedBindingCapability<TValue>
-  : never;
-
-type ProjectedBindingSourceTuple<TValues extends readonly unknown[]> = {
-  readonly [TIndex in keyof TValues]: ProjectedBindingSource<TValues[TIndex]>;
+type BindingCapability<TValue = unknown> = Readonly<{
+  snap(): TValue;
+  watch(listener: (next: TValue) => void): LiveMapDisposer;
+}>;
+type ProjectedBindingSource<TValue = unknown> = Pick<LiveMapPathHandle<TValue>, "snap" | "watch" | "feed">;
+type DocumentBindingSource = ReturnType<DocumentLiveMap["at"]>;
+type BindingSource = ProjectedBindingSource | DocumentBindingSource;
+type BindingValue<TSource extends BindingSource> = ReturnType<TSource["snap"]>;
+type BindingValues<TSources extends readonly BindingSource[]> = {
+  readonly [TIndex in keyof TSources]: BindingValue<TSources[TIndex]>;
 };
+type BindingSourceMode = "projected" | "document";
+
+type TextFormatterArgument<TSource extends BindingSource> =
+  TSource extends ProjectedBindingSource
+    ? readonly [toText?: TextMapper<NoInfer<BindingValue<TSource>>>]
+    : [Extract<BindingValue<TSource>, HsonNode>] extends [never]
+      ? readonly [toText?: TextMapper<NoInfer<BindingValue<TSource>>>]
+      : readonly [toText: TextMapper<NoInfer<BindingValue<TSource>>>];
 
 type PathApply<TTree extends LiveTreeBindable, TValue> = (
   tree: TTree,
   value: TValue,
   previous: TValue | undefined,
+) => void;
+
+type InternalPathApply<TTree extends LiveTreeBindable, TValue> = (
+  tree: TTree,
+  value: TValue,
+  previous: TValue | undefined,
+  mode: BindingSourceMode,
 ) => void;
 
 type PathsApply<TTree extends LiveTreeBindable, TValues extends readonly unknown[]> = (
@@ -256,6 +283,30 @@ type PathsTextMapper<TValues extends readonly unknown[]> = (values: TValues, pre
 
 function dispose_all(disposers: readonly LiveMapDisposer[]): void {
   disposers.forEach((dispose) => dispose());
+}
+
+function classify_binding_source(source: unknown): BindingSourceMode {
+  if (is_livemap_projected_location(source)) return "projected";
+  if (is_livemap_document_location(source)) return "document";
+  throw new TypeError("LiveTree.bind source must be an authentic passive LiveMap or LiveHost location.");
+}
+
+function binding_capability<TSource extends BindingSource>(
+  source: TSource,
+): BindingCapability<BindingValue<TSource>> {
+  return source as BindingCapability<BindingValue<TSource>>;
+}
+
+function text_formatter<TSource extends BindingSource>(
+  formatter: TextFormatterArgument<TSource>,
+): TextMapper<BindingValue<TSource>> | undefined {
+  return formatter[0] as TextMapper<BindingValue<TSource>> | undefined;
+}
+
+function reject_unmapped_document_node(mode: BindingSourceMode, value: unknown): void {
+  if (mode === "document" && is_Node(value)) {
+    throw new TypeError("LiveTree.bind document HSON values require an explicit mapper for primitive destinations.");
+  }
 }
 
 function apply_css(tree: LiveTreeBindable, values: CssValueMap): void {
@@ -280,75 +331,77 @@ function apply_attrs(tree: LiveTreeBindable, values: AttrValueMap): void {
   });
 }
 
-export function bind_path<TTree extends LiveTreeBindable, TValue>(
+export function bind_path<TTree extends LiveTreeBindable, TSource extends BindingSource>(
   this: TTree,
-  source: ProjectedBindingSource<TValue>,
-  apply: PathApply<TTree, NoInfer<TValue>>,
+  source: TSource,
+  apply: PathApply<TTree, NoInfer<BindingValue<TSource>>>,
 ): LiveMapDisposer {
-  return bind_path_for(this, source, apply);
+  return bind_path_for(this, binding_capability(source), (target, value, previous) => {
+    apply(target, value, previous);
+  });
 }
 
-export function bind_paths<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+export function bind_paths<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   this: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  apply: PathsApply<TTree, TValues>,
+  sources: TSources,
+  apply: PathsApply<TTree, BindingValues<TSources>>,
 ): LiveMapDisposer {
   return bind_paths_for(this, sources, apply);
 }
 
-export function bind_text_paths<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+export function bind_text_paths<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   this: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toText: PathsTextMapper<TValues>,
+  sources: TSources,
+  toText: PathsTextMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
   return bind_text_paths_for(this, sources, toText);
 }
 
-export function bind_text<TTree extends LiveTreeBindable, TValue>(
+export function bind_text<TTree extends LiveTreeBindable, TSource extends BindingSource>(
   this: TTree,
-  source: ProjectedBindingSource<TValue>,
-  toText?: TextMapper<NoInfer<TValue>>,
+  source: TSource,
+  ...formatter: TextFormatterArgument<TSource>
 ): LiveMapDisposer {
-  return bind_text_for(this, source, toText);
+  return bind_text_for(this, binding_capability(source), text_formatter(formatter));
 }
 
-export function bind_attr<TTree extends LiveTreeBindable, TValue>(
+export function bind_attr<TTree extends LiveTreeBindable, TSource extends BindingSource>(
   this: TTree,
-  source: ProjectedBindingSource<TValue>,
+  source: TSource,
   name: string,
-  toValue?: TextMapper<NoInfer<TValue>>,
+  ...formatter: TextFormatterArgument<TSource>
 ): LiveMapDisposer {
-  return bind_attr_for(this, source, name, toValue);
+  return bind_attr_for(this, binding_capability(source), name, text_formatter(formatter));
 }
 
-export function bind_attrs_paths<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+export function bind_attrs_paths<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   this: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toAttrs: PathsAttrMapper<TValues>,
+  sources: TSources,
+  toAttrs: PathsAttrMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
   return bind_attrs_paths_for(this, sources, toAttrs);
 }
 
-export function bind_attrs<TTree extends LiveTreeBindable, TValue>(
+export function bind_attrs<TTree extends LiveTreeBindable, TSource extends BindingSource>(
   this: TTree,
-  source: ProjectedBindingSource<TValue>,
-  toAttrs: AttrMapper<NoInfer<TValue>>,
+  source: TSource,
+  toAttrs: AttrMapper<NoInfer<BindingValue<TSource>>>,
 ): LiveMapDisposer {
-  return bind_attrs_for(this, source, toAttrs);
+  return bind_attrs_for(this, binding_capability(source), toAttrs);
 }
 
-export function bind_css_paths<TTree extends LiveTreeBindable, const TValues extends readonly unknown[]>(
+export function bind_css_paths<TTree extends LiveTreeBindable, const TSources extends readonly BindingSource[]>(
   this: TTree,
-  sources: ProjectedBindingSourceTuple<TValues>,
-  toCss: PathsCssMapper<TValues>,
+  sources: TSources,
+  toCss: PathsCssMapper<BindingValues<TSources>>,
 ): LiveMapDisposer {
   return bind_css_paths_for(this, sources, toCss);
 }
 
-export function bind_css<TTree extends LiveTreeBindable, TValue>(
+export function bind_css<TTree extends LiveTreeBindable, TSource extends BindingSource>(
   this: TTree,
-  source: ProjectedBindingSource<TValue>,
-  toCss: CssMapper<NoInfer<TValue>>,
+  source: TSource,
+  toCss: CssMapper<NoInfer<BindingValue<TSource>>>,
 ): LiveMapDisposer {
-  return bind_css_for(this, source, toCss);
+  return bind_css_for(this, binding_capability(source), toCss);
 }

@@ -27,6 +27,11 @@ type LiveMapPathHandleInternals = Readonly<{
 
 const pathHandleInternals = new WeakMap<object, LiveMapPathHandleInternals>();
 
+/** Exact-object evidence for a projected location created by LiveMap. @internal */
+export function is_livemap_projected_location(value: unknown): boolean {
+  return typeof value === "object" && value !== null && pathHandleInternals.has(value);
+}
+
 /**
  * Create a small ergonomic handle for one projected LiveMap path.
  *

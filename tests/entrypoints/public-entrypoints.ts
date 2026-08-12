@@ -26,7 +26,7 @@ import {
   hsonString as hsonSubpathString,
   hsonTransform as hsonSubpathTransform,
 } from "hson-live/hson";
-import type { HsonNode, HsonSemanticPrimitive, JsonValue } from "hson-live/types";
+import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
 import {
   hsonCalc as narrowHsonCalc,
   hsonNumber as narrowHsonNumber,
@@ -81,6 +81,7 @@ import {
   type LiveMap,
   type LiveMapCommit,
   type LiveMapDocumentIdentityHandle,
+  type ElementLiveMap,
   type LiveMapPathHandle,
   type LiveMapSchemaResolution,
   type LiveMapSchemaValue,
@@ -88,6 +89,10 @@ import {
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
+// @ts-expect-error BindingSource is intentionally not a public export.
+import type { BindingSource } from "hson-live/livetree";
+// @ts-expect-error DocumentBindingSource is intentionally not a public export.
+import type { DocumentBindingSource } from "hson-live/livetree";
 import {
   LiveHostAuthorityError,
   hsonLiveHost as hostSubpath,
@@ -669,9 +674,56 @@ void pathHandle.quid;
 const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
 if (publicDocumentMap.mode === "element") {
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
-  // @ts-expect-error Document locations have no approved projected binding observation capability.
+  bindingTree.bind.path(publicDocumentMap.at([]), (_tree, value, previous) => {
+    type DocumentBindingValue = Expect<Equal<typeof value, HsonNode | Primitive | undefined>>;
+    type DocumentBindingPrevious = Expect<typeof previous extends HsonNode | Primitive | undefined ? true : false>;
+    return undefined;
+  });
+  bindingTree.bind.paths([publicDocumentMap.at([]), projectedPathMap.at(["required", "leaf"])], (_tree, values) => {
+    type DocumentProjectedTuple = Expect<Equal<
+      typeof values,
+      readonly [HsonNode | Primitive | undefined, string]
+    >>;
+    return undefined;
+  });
+  bindingTree.bind.paths([projectedPathMap.at(["literal"]), publicDocumentMap.at([])], (_tree, values) => {
+    type ProjectedDocumentTuple = Expect<Equal<
+      typeof values,
+      readonly ["ready", HsonNode | Primitive | undefined]
+    >>;
+    return undefined;
+  });
+  bindingTree.bind.text(publicDocumentMap.at([]), (value) => String(value ?? ""));
+  bindingTree.bind.textPaths([publicDocumentMap.at([])], (values) => String(values[0] ?? ""));
+  bindingTree.bind.attr(publicDocumentMap.at([]), "data-document", (value) => String(value ?? ""));
+  bindingTree.bind.attrs(publicDocumentMap.at([]), (value) => ({ "data-document": value !== undefined }));
+  bindingTree.bind.attrsPaths([publicDocumentMap.at([])], (values) => ({ "data-document": values[0] !== undefined }));
+  bindingTree.bind.css(publicDocumentMap.at([]), (value) => ({ opacity: value === undefined ? 0 : 1 }));
+  bindingTree.bind.cssPaths([publicDocumentMap.at([])], (values) => ({ opacity: values[0] === undefined ? 0 : 1 }));
+  // @ts-expect-error Broad document locations can contain HSON and require a text formatter.
   bindingTree.bind.text(publicDocumentMap.at([]));
-  // @ts-expect-error Multi-source forward bindings remain projected-only.
-  bindingTree.bind.paths([publicDocumentMap.at([])], () => undefined);
+  // @ts-expect-error Broad document locations can contain HSON and require an attribute formatter.
+  bindingTree.bind.attr(publicDocumentMap.at([]), "data-document");
   void documentAcquisitionIsPublic;
 }
+
+const projectedHsonLookalike = mapSubpath.fromJson({ value: { $_tag: "projected", $_content: [] } });
+bindingTree.bind.text(projectedHsonLookalike.at(["value"]));
+bindingTree.bind.attr(projectedHsonLookalike.at(["value"]), "data-projected");
+
+type PublicDocumentLocation = ReturnType<ElementLiveMap["at"]>;
+type PrimitiveDocumentLocation = Omit<PublicDocumentLocation, "snap" | "watch"> & Readonly<{
+  snap: () => string | undefined;
+  watch: (listener: (next: string | undefined) => void) => () => void;
+}>;
+declare const futurePrimitiveDocumentLocation: PrimitiveDocumentLocation;
+bindingTree.bind.text(futurePrimitiveDocumentLocation);
+bindingTree.bind.attr(futurePrimitiveDocumentLocation, "data-future");
+
+declare const readonlyDocumentMap: LiveHostReadonlyMap<ElementLiveMap>;
+// @ts-expect-error Readonly Host document locations are not part of the Host surface.
+readonlyDocumentMap.at([]);
+
+declare const structurallyFabricatedProjectedLocation: Pick<LiveMapPathHandle<string>, "snap" | "watch" | "feed">;
+// TypeScript remains structural here; runtime authenticity rejects this unsupported fabrication.
+bindingTree.bind.path(structurallyFabricatedProjectedLocation, () => undefined);

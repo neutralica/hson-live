@@ -86,6 +86,13 @@ type DocumentLocation = Readonly<{
   attrs: LocationAttrs;
 }>;
 
+const documentLocations = new WeakSet<object>();
+
+/** Exact-object evidence for a document location created by LiveMap. @internal */
+export function is_livemap_document_location(value: unknown): boolean {
+  return typeof value === "object" && value !== null && documentLocations.has(value);
+}
+
 /** Build passive, fixed-coordinate locations over logical document content. */
 export function make_livemap_document_location_factory(
   owner: DocumentLocationOwner,
@@ -123,6 +130,7 @@ export function make_livemap_document_location_factory(
       move: (from, to) => move_document_location(owner, mode, mutations, logicalPath, from, to),
       attrs,
     });
+    documentLocations.add(location);
     locations.set(key, location);
     return location;
   };

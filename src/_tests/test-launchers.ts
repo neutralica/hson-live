@@ -871,12 +871,12 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livemap.path-handle",
       subject: "LiveMap",
-      displayName: "LiveMap path handles",
+      displayName: "LiveMap passive locations and bindings",
       packageScript: "test:livemap-path-handle",
       repositoryModule: "tests/livemap-path-handle.acceptance.mts",
       runtime: "node",
-      executableChecks: 21,
-      collections: ["path-handle", "proxy", "bridge", "watch", "externally-discoverable"],
+      executableChecks: 29,
+      collections: ["path-handle", "document", "binding", "proxy", "bridge", "watch", "externally-discoverable"],
     }),
     launcher({
       id: "livemap.staged-authority",

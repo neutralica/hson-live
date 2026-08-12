@@ -8,6 +8,8 @@ import * as liveMapExports from "../src/api/livemap/index.ts";
 import { bind_livetree_text } from "../src/api/livemap/livemap.bridge-bindings.ts";
 import { disposables_count_for_owner } from "../src/api/livetree/managers/lifecycle-registry.ts";
 import { acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
+import type { JsonValue } from "../src/core/types.ts";
+import type { ElementLiveMap } from "../src/types/livemap.types.ts";
 
 let checks = 0;
 
@@ -16,6 +18,15 @@ function check(name: string, fn: () => void): void {
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
+
+function element(source: string): ElementLiveMap {
+  const map = hson.liveMap.fromHson(source);
+  if (map.mode !== "element") throw new Error(`Expected element map; observed ${map.mode}`);
+  return map;
+}
+
+const nodeTag = (value: unknown): string | undefined =>
+  typeof value === "object" && value !== null && "$_tag" in value ? String(value.$_tag) : undefined;
 
 check("path handles expose no pseudo-QUID surface or public helpers", () => {
   const map = hson.liveMap.fromJson({ value: 1 });
@@ -253,6 +264,209 @@ check("multi-source bindings resnapshot complete mixed-map tuples", () => {
   });
   assert.deepEqual(sameMapTuples, [[1, 2], [3, 4], [3, 4]]);
   disposeSameMap();
+});
+
+check("document locations bind raw detached values and heterogeneous tuples", () => {
+  const documentMap = element(`<main <a/> "tail"/>`);
+  const projectedMap = hson.liveMap.fromJson({ theme: "dark" });
+  const tree = hson.liveTree.fromHson("<span/>");
+  const raw: Array<readonly [string | undefined, string | undefined]> = [];
+  const tuples: unknown[] = [];
+
+  const disposeRaw = tree.bind.path(documentMap.at([0]), (_target, value, previous) => {
+    raw.push([nodeTag(value), nodeTag(previous)]);
+    if (typeof value === "object" && value !== null) value.$_tag = "detached";
+  });
+  const disposeTuple = tree.bind.paths(
+    [projectedMap.at(["theme"]), documentMap.at([1])],
+    (_target, values, previous) => tuples.push([values, previous]),
+  );
+
+  assert.equal(nodeTag(documentMap.at([0]).snap()), "a");
+  assert.deepEqual(raw, [["a", undefined]]);
+  assert.deepEqual(tuples, [[["dark", "tail"], undefined]]);
+  documentMap.at([0]).replace(element(`<b/>`).element.node());
+  projectedMap.set(["theme"], "light");
+  assert.deepEqual(raw, [["a", undefined], ["b", "detached"]]);
+  assert.deepEqual(tuples.at(-1), [["light", "tail"], ["dark", "tail"]]);
+  disposeRaw();
+  disposeTuple();
+
+  const sameDocumentMap = element(`<main <a/> <b/>/>`);
+  const sameDocumentTuples: unknown[] = [];
+  const disposeSameDocument = tree.bind.paths(
+    [sameDocumentMap.at([0]), sameDocumentMap.at([1])],
+    (_target, values) => sameDocumentTuples.push(values.map(nodeTag)),
+  );
+  sameDocumentMap.at([]).move(0, 1);
+  assert.deepEqual(sameDocumentTuples, [["a", "b"], ["b", "a"], ["b", "a"]]);
+  disposeSameDocument();
+});
+
+check("document locations flow unchanged through every explicit mapper binding", () => {
+  const documentMap = element(`<main "ready"/>`);
+  const projectedMap = hson.liveMap.fromJson({ suffix: "!" });
+  const location = documentMap.at([0]);
+  const tree = hson.liveTree.fromHson("<span/>");
+  const asText = (value: unknown): string => String(value ?? "");
+
+  const disposers = [
+    tree.bind.text(location, asText),
+    tree.bind.textPaths([location, projectedMap.at(["suffix"])], (values) => `${asText(values[0])}${values[1]}`),
+    tree.bind.attr(location, "data-one", asText),
+    tree.bind.attrs(location, (value) => ({ "data-many": asText(value) })),
+    tree.bind.attrsPaths([projectedMap.at(["suffix"]), location], (values) => ({ "data-pair": `${values[0]}${asText(values[1])}` })),
+    tree.bind.css(location, (value) => ({ opacity: value === "ready" ? 1 : 0 })),
+    tree.bind.cssPaths([location, projectedMap.at(["suffix"])], (values) => ({ "--pair": `${asText(values[0])}${values[1]}` })),
+  ];
+
+  assert.equal(tree.text.get(), "ready!");
+  assert.equal(tree.attrs.get("data-one"), "ready");
+  assert.equal(tree.attrs.get("data-many"), "ready");
+  assert.equal(tree.attrs.get("data-pair"), "!ready");
+  assert.equal(tree.css.get.property("opacity"), "1");
+  assert.equal(tree.css.get.property("--pair"), "ready!");
+  disposers.forEach((dispose) => dispose());
+});
+
+check("binding source authenticity is exact-object based and value-shape independent", () => {
+  const tree = hson.liveTree.fromHson("<span/>");
+  const projected = hson.liveMap.fromJson({ value: { $_tag: "looks-real", $_content: [] } });
+  const projectedDispose = tree.bind.text(projected.at(["value"]));
+  assert.equal(tree.text.get(), "[object Object]");
+
+  let snaps = 0;
+  const fabricated = {
+    snap: () => { snaps += 1; return "fabricated"; },
+    watch: () => () => undefined,
+  };
+  assert.throws(
+    () => (tree.bind.path as (source: unknown, apply: () => void) => () => void)(fabricated, () => undefined),
+    /authentic passive LiveMap or LiveHost location/,
+  );
+  assert.equal(snaps, 0);
+
+  const documentMap = element(`<main "proxy"/>`);
+  const proxyDispose = tree.bind.text(documentMap.proxy()[0].$_, (value) => String(value ?? ""));
+  assert.equal(tree.text.get(), "proxy");
+  projectedDispose();
+  proxyDispose();
+});
+
+check("projected default text and attribute conversion remains unchanged", () => {
+  const input: { value: JsonValue } = { value: { nested: true } };
+  const map = hson.liveMap.fromJson(input);
+  const tree = hson.liveTree.fromHson("<span/>");
+  const textDispose = tree.bind.text(map.at(["value"]));
+  const attrDispose = tree.bind.attr(map.at(["value"]), "data-value");
+
+  assert.equal(tree.text.get(), "[object Object]");
+  assert.equal(tree.attrs.get("data-value"), "[object Object]");
+  map.set(["value"], ["a", "b"]);
+  assert.equal(tree.text.get(), "a,b");
+  assert.equal(tree.attrs.get("data-value"), "a,b");
+  map.set(["value"], null);
+  assert.equal(tree.text.get(), "");
+  assert.equal(tree.attrs.has("data-value"), false);
+  textDispose();
+  attrDispose();
+});
+
+check("unmapped document primitive defaults preserve text and attribute policy", () => {
+  const cases = [
+    ["ready", "ready", "ready"],
+    [undefined, "", undefined],
+  ] as const;
+
+  cases.forEach(([value, expectedText, expectedAttr]) => {
+    const documentMap = value === undefined ? element(`<main/>`) : element(`<main "ready"/>`);
+    const tree = hson.liveTree.fromHson("<span/>");
+    const textDispose = (tree.bind.text as (source: unknown) => () => void)(documentMap.at([0]));
+    const attrDispose = (tree.bind.attr as (source: unknown, name: string) => () => void)(documentMap.at([0]), "data-state");
+    assert.equal(tree.text.get(), expectedText);
+    assert.equal(tree.attrs.get("data-state"), expectedAttr);
+    textDispose();
+    attrDispose();
+  });
+});
+
+check("unmapped structured document values reject before initial mutation or subscription", () => {
+  const documentMap = element(`<main <strong/>/>`);
+  const tree = hson.liveTree.fromHson(`<span title="stable" "stable"/>`);
+  const beforeResources = disposables_count_for_owner(tree.quid);
+
+  assert.throws(
+    () => (tree.bind.text as (source: unknown) => () => void)(documentMap.at([0])),
+    /document HSON values require an explicit mapper/,
+  );
+  assert.equal(tree.text.get(), "stable");
+  assert.equal(disposables_count_for_owner(tree.quid), beforeResources);
+  documentMap.at([0]).replace("later");
+  assert.equal(tree.text.get(), "stable");
+
+  documentMap.at([0]).replace(element(`<em/>`).element.node());
+  assert.throws(
+    () => (tree.bind.attr as (source: unknown, name: string) => () => void)(documentMap.at([0]), "title"),
+    /document HSON values require an explicit mapper/,
+  );
+  assert.equal(tree.attrs.get("title"), "stable");
+  assert.equal(disposables_count_for_owner(tree.quid), beforeResources);
+});
+
+check("unmapped document primitive bindings survive structured failures and recover", () => {
+  const documentMap = element(`<main "ready"/>`);
+  const tree = hson.liveTree.fromHson("<span/>");
+  let isolatedCalls = 0;
+  documentMap.at([0]).watch(() => { isolatedCalls += 1; });
+  const dispose = (tree.bind.text as (source: unknown) => () => void)(documentMap.at([0]));
+  assert.equal(tree.text.get(), "ready");
+
+  assert.throws(
+    () => documentMap.at([0]).replace(element(`<strong/>`).element.node()),
+    /document HSON values require an explicit mapper/,
+  );
+  assert.equal(tree.text.get(), "ready");
+  assert.equal(isolatedCalls, 1);
+  documentMap.at([0]).replace("recovered");
+  assert.equal(tree.text.get(), "recovered");
+  assert.equal(isolatedCalls, 2);
+  dispose();
+});
+
+check("document bindings inherit fixed coordinates, attrs observation, and restore convergence", () => {
+  const documentMap = element(`<main <a id="subject"/> <b/>/>`);
+  const tree = hson.liveTree.fromHson("<span/>");
+  const seen: string[] = [];
+  const location = documentMap.at([0]);
+  const discovered = documentMap.at([]).id("subject");
+  assert.equal(discovered, location);
+  const initial = documentMap.capture();
+  const dispose = tree.bind.path(location, (_target, value) => seen.push(nodeTag(value) ?? String(value)));
+
+  documentMap.at([]).insert(0, element(`<x/>`).element.node());
+  assert.equal(nodeTag(discovered.snap()), "x");
+  assert.deepEqual(documentMap.at([]).id("subject")?.path(), [1]);
+  documentMap.at([]).move(0, 2);
+  documentMap.at([0]).attrs.set("title", "changed");
+  documentMap.restore(initial);
+  documentMap.restore(documentMap.capture());
+  const beforeRejectedRestore = seen.length;
+  const incompatible = hson.liveMap.fromHson(`<a/> <b/>`);
+  if (incompatible.mode !== "fragment") throw new Error("Expected fragment map");
+  assert.throws(() => documentMap.restore(incompatible.capture()));
+  assert.equal(seen.length, beforeRejectedRestore);
+
+  assert.deepEqual(seen, ["a", "x", "a", "a", "a", "a"]);
+  assert.equal(discovered, location);
+  assert.equal(documentMap.at([]).id("subject"), location);
+  dispose();
+
+  const missingMap = element(`<main/>`);
+  const missingSeen: unknown[] = [];
+  const missingDispose = tree.bind.path(missingMap.at([9]), (_target, value) => missingSeen.push(value));
+  missingMap.restore(missingMap.capture());
+  assert.deepEqual(missingSeen, [undefined, undefined]);
+  missingDispose();
 });
 
 check("watch is future-only, value-filtered, detached, and disposable", () => {
