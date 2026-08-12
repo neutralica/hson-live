@@ -54,6 +54,9 @@ import { make_livemap_document_location_factory } from "./livemap.document.locat
 import { make_livemap_document_proxy } from "./livemap.proxy.js";
 import type { LiveMapDocumentWatchRegistration } from "./livemap.watch.js";
 import type {
+  InternalDocumentElementSchema,
+  InternalDocumentFragmentSchema,
+  InternalDocumentSchemaEvidence,
   InternalDocumentSchemaController,
 } from "./livemap.document.schema.js";
 import { require_document_root_schema } from "./livemap.document.schema.js";
@@ -255,9 +258,11 @@ function make_document_livemap(
           ? undefined
           : require_document_root_schema(attached, "element").value;
       },
-      use: (documentSchema) => {
+      use: <TSchema extends InternalDocumentElementSchema>(documentSchema: TSchema) => {
         controller.useDocumentSchema(documentSchema);
-        return elementMap;
+        // Schema admission permanently establishes the evidence represented by
+        // this same runtime map object; the generic is a read-only typed view.
+        return elementMap as ElementLiveMap<InternalDocumentSchemaEvidence<TSchema>>;
       },
     });
     elementMap = Object.freeze({
@@ -295,9 +300,11 @@ function make_document_livemap(
         ? undefined
         : require_document_root_schema(attached, "fragment").value;
     },
-    use: (documentSchema) => {
+    use: <TSchema extends InternalDocumentFragmentSchema>(documentSchema: TSchema) => {
       controller.useDocumentSchema(documentSchema);
-      return fragmentMap;
+      // Schema admission permanently establishes the evidence represented by
+      // this same runtime map object; the generic is a read-only typed view.
+      return fragmentMap as FragmentLiveMap<InternalDocumentSchemaEvidence<TSchema>>;
     },
   });
   fragmentMap = Object.freeze({

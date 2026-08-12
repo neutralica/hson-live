@@ -582,15 +582,222 @@ type DocumentLiveMapSchemaApi<
   ) => DocumentLiveMapForEvidence<TMode, InternalDocumentSchemaEvidence<TSchema>>;
 }>;
 
+declare const LIVEMAP_DOCUMENT_INVALID_STATIC_PATH: unique symbol;
+type InternalDocumentInvalidStaticPath = Readonly<{
+  [LIVEMAP_DOCUMENT_INVALID_STATIC_PATH]: true;
+}>;
+
+declare const LIVEMAP_DOCUMENT_MISSING_COORDINATE: unique symbol;
+type InternalDocumentMissingCoordinate = Readonly<{
+  [LIVEMAP_DOCUMENT_MISSING_COORDINATE]: true;
+}>;
+
+declare const LIVEMAP_DOCUMENT_BROAD_SUBTREE: unique symbol;
+type InternalDocumentBroadSubtree = Readonly<{
+  [LIVEMAP_DOCUMENT_BROAD_SUBTREE]: true;
+}>;
+
+type InternalDocumentSchemaEndpoint = string | HsonNode | undefined;
+type InternalDocumentLegacyEndpoint = HsonNode | Primitive | undefined;
+
+type InternalDocumentNormalizeBranches<TResult> = [Exclude<
+  TResult,
+  InternalDocumentInvalidStaticPath
+>] extends [never]
+  ? InternalDocumentInvalidStaticPath
+  : Exclude<TResult, InternalDocumentInvalidStaticPath>
+    | ([Extract<TResult, InternalDocumentInvalidStaticPath>] extends [never]
+      ? never
+      : InternalDocumentMissingCoordinate);
+
+type InternalDocumentSequenceCoordinate<
+  TItems extends readonly unknown[],
+  TIndex extends number,
+> = number extends TIndex
+  ? TItems[number] | InternalDocumentMissingCoordinate
+  : `${TIndex}` extends keyof TItems
+    ? TItems[TIndex & keyof TItems]
+    : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentContentCoordinateBranch<
+  TContent,
+  TIndex extends number,
+> = TContent extends Readonly<{
+  kind: "sequence";
+  items: infer TItems extends readonly unknown[];
+}>
+  ? InternalDocumentSequenceCoordinate<TItems, TIndex>
+  : TContent extends Readonly<{
+    kind: "repeat";
+    item: infer TItem;
+  }>
+    ? TItem | InternalDocumentMissingCoordinate
+    : TContent extends Readonly<{
+      kind: "pick";
+      choices: infer TChoices extends readonly unknown[];
+    }>
+      ? InternalDocumentNormalizeBranches<
+        InternalDocumentContentCoordinateBranches<TChoices[number], TIndex>
+      >
+      : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentContentCoordinateBranches<
+  TContent,
+  TIndex extends number,
+> = TContent extends unknown
+  ? InternalDocumentContentCoordinateBranch<TContent, TIndex>
+  : never;
+
+type InternalDocumentContentCoordinate<
+  TContent,
+  TIndex extends number,
+> = InternalDocumentNormalizeBranches<
+  InternalDocumentContentCoordinateBranches<TContent, TIndex>
+>;
+
+type InternalDocumentDescendItemBranch<
+  TItem,
+  TPath extends readonly number[],
+> = TItem extends InternalDocumentBroadSubtree
+  ? InternalDocumentBroadSubtree
+  : TItem extends InternalDocumentMissingCoordinate
+    ? InternalDocumentInvalidStaticPath
+    : TItem extends Readonly<{ kind: "text" }>
+      ? InternalDocumentInvalidStaticPath
+      : TItem extends Readonly<{
+        kind: "element";
+        content: infer TContent;
+      }>
+        ? TContent extends "broad"
+          ? InternalDocumentBroadSubtree
+          : InternalDocumentResolveContentPath<TContent, TPath>
+        : TItem extends Readonly<{
+          kind: "pick";
+          choices: infer TChoices extends readonly unknown[];
+        }>
+          ? InternalDocumentNormalizeBranches<
+            InternalDocumentDescendItemBranches<TChoices[number], TPath>
+          >
+          : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentDescendItemBranches<
+  TItem,
+  TPath extends readonly number[],
+> = TItem extends unknown
+  ? InternalDocumentDescendItemBranch<TItem, TPath>
+  : never;
+
+type InternalDocumentDescendItem<
+  TItem,
+  TPath extends readonly number[],
+> = InternalDocumentNormalizeBranches<
+  InternalDocumentDescendItemBranches<TItem, TPath>
+>;
+
+type InternalDocumentResolveContentPath<
+  TContent,
+  TPath extends readonly number[],
+> = TPath extends readonly [
+  infer THead extends number,
+  ...infer TRest extends readonly number[],
+]
+  ? InternalDocumentContentCoordinate<TContent, THead> extends infer TCoordinate
+    ? TRest extends readonly []
+      ? TCoordinate
+      : InternalDocumentDescendItem<TCoordinate, TRest>
+    : never
+  : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentResolveRootBranch<
+  TEvidence,
+  TPath extends readonly number[],
+> = TEvidence extends Readonly<{
+  kind: "element";
+  content: infer TContent;
+}>
+  ? TContent extends "broad"
+    ? InternalDocumentBroadSubtree
+    : InternalDocumentResolveContentPath<TContent, TPath>
+  : TEvidence extends Readonly<{
+    kind: "fragment";
+    content: infer TContent;
+  }>
+    ? InternalDocumentResolveContentPath<TContent, TPath>
+    : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentResolveRootBranches<
+  TEvidence,
+  TPath extends readonly number[],
+> = TEvidence extends unknown
+  ? InternalDocumentResolveRootBranch<TEvidence, TPath>
+  : never;
+
+type InternalDocumentLogicalPathDescriptor<
+  TEvidence,
+  TPath extends readonly number[],
+> = number extends TPath["length"]
+  ? InternalDocumentBroadSubtree
+  : TPath extends readonly []
+    ? TEvidence
+    : InternalDocumentNormalizeBranches<
+      InternalDocumentResolveRootBranches<TEvidence, TPath>
+    >;
+
+type InternalDocumentDescriptorEndpoint<TDescriptor> =
+  TDescriptor extends InternalDocumentInvalidStaticPath
+    ? never
+    : TDescriptor extends InternalDocumentMissingCoordinate
+      ? undefined
+      : TDescriptor extends InternalDocumentBroadSubtree
+        ? InternalDocumentSchemaEndpoint
+        : TDescriptor extends Readonly<{ kind: "text" }>
+          ? string
+          : TDescriptor extends Readonly<{ kind: "element" }>
+            ? HsonNode
+            : TDescriptor extends Readonly<{
+              kind: "pick";
+              choices: infer TChoices extends readonly unknown[];
+            }>
+              ? InternalDocumentDescriptorEndpoint<TChoices[number]>
+              : never;
+
+type InternalDocumentLogicalPathEndpoint<
+  TEvidence,
+  TPath extends readonly number[],
+> = unknown extends TEvidence
+  ? InternalDocumentLegacyEndpoint
+  : number extends TPath["length"]
+    ? InternalDocumentSchemaEndpoint
+    : TPath extends readonly []
+      ? HsonNode
+      : InternalDocumentDescriptorEndpoint<
+        InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+      >;
+
+type InternalDocumentRelativeDescriptor<
+  TDescriptor,
+  TPath extends readonly number[],
+> = Readonly<{
+  base: TDescriptor;
+  path: TPath;
+}>;
+
 type DocumentLiveMapShared<
   TMode extends DocumentLiveMapMode,
-  _TEvidence = unknown,
+  TEvidence = unknown,
 > = Readonly<{
   readonly mode: TMode;
   readonly rev: number;
   root: () => HsonNode;
   /** Create a passive location at one logical ordered-content coordinate. */
-  at: (path: readonly number[]) => LiveMapDocumentLocation;
+  at<const TPath extends readonly number[]>(
+    path: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
+      ? never
+      : unknown),
+  ): LiveMapDocumentLocation<
+    InternalDocumentLogicalPathEndpoint<TEvidence, TPath>,
+    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+  >;
   /** Create a passive numeric proxy over logical ordered document content. */
   proxy: (path?: readonly number[]) => LiveMapDocumentProxy;
   capture: DocumentLiveMapCaptureApi<TMode>;
@@ -615,19 +822,27 @@ type DocumentLiveMapShared<
 }>;
 
 /** Structural return type for document `at(...)`; intentionally not exported. */
-type LiveMapDocumentLocation = Readonly<{
+type LiveMapDocumentLocation<
+  TValue = InternalDocumentLegacyEndpoint,
+  TDescriptor = unknown,
+> = Readonly<{
   /** Current revision of the owning document map. */
   readonly rev: number;
   /** Return a detached copy of this logical authoring coordinate. */
   path: () => readonly number[];
   /** Read the detached current occupant, or `undefined` when absent. */
-  snap: () => HsonNode | Primitive | undefined;
+  snap: () => TValue;
   /** Observe future canonical value changes and explicit snapshot replacement. */
   watch: (
-    listener: (next: HsonNode | Primitive | undefined) => void,
+    listener: (next: TValue) => void,
   ) => LiveMapDisposer;
   /** Create a child location relative to this logical coordinate. */
-  at: (path: readonly number[]) => LiveMapDocumentLocation;
+  at: <const TPath extends readonly number[]>(
+    path: TPath,
+  ) => LiveMapDocumentLocation<
+    InternalDocumentLegacyEndpoint,
+    InternalDocumentRelativeDescriptor<TDescriptor, TPath>
+  >;
   /** Discover the first exact canonical ID match in this logical subtree. */
   id: (value: string) => LiveMapDocumentLocation | undefined;
   /** Replace the current logical content item through canonical document mutation. */

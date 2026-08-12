@@ -127,9 +127,13 @@ check("a broad pre-attachment alias remains governed after attachment", () => {
 
 check("a conforming location replacement remains legal", () => {
   const map = element(`<main "x"/>`);
-  map.schema.use(d.element({ content: d.sequence(d.text) }));
-  map.at([0]).replace("y");
-  assert.equal(map.at([0]).snap(), "y");
+  const typed = map.schema.use(d.element({ content: d.sequence(d.text) }));
+  const location = typed.at([0]);
+  const before: string = location.snap();
+  location.replace("y");
+  const after: string = location.snap();
+  assert.equal(before, "x");
+  assert.equal(after, "y");
 });
 
 check("closed sequence rejects insertion before publication", () => {
@@ -178,9 +182,11 @@ check("invalid install is inert and publishes nothing", () => {
 check("conforming install preserves the schema contract", () => {
   const map = element(`<main "x"/>`);
   const schema = d.element({ tag: "main", content: d.sequence(d.text) });
-  map.schema.use(schema);
+  const typed = map.schema.use(schema);
+  const location = typed.at([0]);
   map.install(element(`<main "y"/>`).capture());
-  assert.equal(map.at([0]).snap(), "y");
+  const installed: string = location.snap();
+  assert.equal(installed, "y");
   assert.equal(map.schema.get(), schema);
 });
 
@@ -200,10 +206,12 @@ check("conforming restore preserves the permanent schema", () => {
   source.at([0]).replace("revision-one");
   const map = element(`<main "x"/>`);
   const schema = d.element({ content: d.sequence(d.text) });
-  map.schema.use(schema);
+  const typed = map.schema.use(schema);
+  const location = typed.at([0]);
   map.restore(source.capture());
+  const restored: string = location.snap();
   assert.equal(map.rev, 1);
-  assert.equal(map.at([0]).snap(), "revision-one");
+  assert.equal(restored, "revision-one");
   assert.equal(map.schema.get(), schema);
 });
 
@@ -219,13 +227,16 @@ check("schema-invalid replay is inert", () => {
 
 check("replay validates the completed atomic candidate", () => {
   const map = fragment(`"x" <a/> <b/>`);
-  map.schema.use(d.fragment(d.sequence(d.text, d.element(), d.element())));
+  const typed = map.schema.use(d.fragment(d.sequence(d.text, d.element(), d.element())));
+  const elementLocation = typed.at([1]);
   const commit = replay(map, [
     { domain: "graph", op: "move-content", target: target(), from: 0, to: 2 },
     { domain: "graph", op: "move-content", target: target(), from: 2, to: 0 },
     { domain: "graph", op: "set-attr", target: target(1), name: "id", value: "changed" },
   ]);
+  const endpoint: ReturnType<typeof elementLocation.snap> = elementLocation.snap();
   assert.equal(commit.changed, true);
+  assert.equal(endpoint.$_tag, "a");
   assert.equal(map.at([1]).attrs.get("id"), "changed");
 });
 
@@ -240,12 +251,15 @@ check("staged authority rejects a schema-invalid detached candidate", () => {
 
 check("staged authority accepts a conforming candidate under the owner schema", () => {
   const map = element(`<main "x"/>`);
-  map.schema.use(d.element({ content: d.sequence(d.text) }));
+  const typed = map.schema.use(d.element({ content: d.sequence(d.text) }));
+  const location = typed.at([0]);
   const authority = get_livemap_staged_authority(map);
   const transition = authority.prepare((draft) => draft.at([0]).replace("y"));
-  assert.equal(map.at([0]).snap(), "x");
+  const before: string = location.snap();
+  assert.equal(before, "x");
   authority.accept(transition);
-  assert.equal(map.at([0]).snap(), "y");
+  const after: string = location.snap();
+  assert.equal(after, "y");
 });
 
 check("successful attachment invalidates an already prepared transition", () => {

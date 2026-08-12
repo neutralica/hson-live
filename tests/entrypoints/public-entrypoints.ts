@@ -114,6 +114,12 @@ import { get_livemap_quid } from "hson-live";
 import { ensure_livemap_quid } from "hson-live/livemap";
 // @ts-expect-error Document schema values are inferred; no named annotation type is exported.
 import type { LiveMapDocumentSchema } from "hson-live/livemap";
+// @ts-expect-error Document logical path resolution remains an internal declaration detail.
+import type { LiveMapDocumentPathValue } from "hson-live/livemap";
+// @ts-expect-error Document locations remain structural return types, not named exports.
+import type { DocumentLocation } from "hson-live/livemap";
+// @ts-expect-error Document evidence remains internal to schema-bound map declarations.
+import type { DocumentEvidence } from "hson-live/livemap";
 
 void hson;
 void transformSubpath;
@@ -162,6 +168,10 @@ const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
 if (publicElementCandidate.mode === "element") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
   const sameSchema = schemaBound.schema.get();
+  const typedDocumentText = schemaBound.at([0]).snap();
+  type PublicTypedDocumentText = Expect<Equal<typeof typedDocumentText, string>>;
+  // @ts-expect-error The one-item closed document schema has no coordinate 1.
+  schemaBound.at([1]);
   void sameSchema;
 }
 const publicFragmentCandidate = mapSubpath.fromHson(`"before" <em/>`);
@@ -209,6 +219,14 @@ type ProjectedPathTruth = Readonly<{
 
 declare const projectedPathMap: LiveMap<ProjectedPathTruth>;
 declare const bindingTree: LiveTree;
+
+const typedBindingDocumentCandidate = mapSubpath.fromHson(`<button "Save"/>`);
+if (typedBindingDocumentCandidate.mode === "element") {
+  const typedBindingDocument = typedBindingDocumentCandidate.schema.use(publicElementSchema);
+  bindingTree.bind.text(typedBindingDocument.at([0]));
+  // @ts-expect-error The structured document root still requires explicit conversion.
+  bindingTree.bind.text(typedBindingDocument.at([]));
+}
 declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
 declare const readonlyBindingMap: LiveHostReadonlyMap<LiveMap<ProjectedPathTruth>>;
 declare const dynamicPath: LivePath;

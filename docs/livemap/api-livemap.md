@@ -417,9 +417,39 @@ Unsafe live graph references are severed on successful attachment, and later
 `debug.node(...)` calls reject for that owner. This prevents an unsafe alias from
 invalidating the schema contract.
 
-Document schema evidence is installed in this release, but document `at()` and
-`proxy()` values intentionally retain their existing broad types. Schema-driven
-path, watch, binding, and mutation-input narrowing are not current API yet.
+The returned schema-bound map uses that permanent evidence for top-level logical
+`at(...)` reads:
+
+```ts
+if (map.mode === "element") {
+  const typed = map.schema.use(ButtonDocument);
+
+  typed.at([0]).snap();       // string
+  typed.at([0]).watch((next) => {
+    next.toUpperCase();       // next is string
+  });
+
+  tree.bind.text(typed.at([0])); // no formatter needed
+  // typed.at([1]);             // compile-time error: impossible exact path
+}
+```
+
+Exact fixed coordinates resolve from the schema. Text endpoints are `string`;
+structured endpoints remain `HsonNode`. Repeated positions and dynamic numeric
+indexes include `undefined` because the requested coordinate may be absent.
+Layout picks combine the endpoints of branches that contain a coordinate and
+add `undefined` for legal branches that do not. Descendants of an `element()`
+whose content was deliberately omitted widen to
+`string | HsonNode | undefined`.
+
+A completely dynamic schema-aware path also has that schema-derived broad
+domain. A map without a document schema retains the historical
+`HsonNode | Primitive | undefined` location domain for compatibility.
+
+This phase narrows passive `snap()` and `watch(...)` results only. Document
+mutation parameters remain broad and the runtime owner schema remains the
+authority that rejects invalid writes. Relative location `.at(...)`, document
+proxy indexing, and attrs also retain their broad types for now.
 
 ## Subscriptions
 

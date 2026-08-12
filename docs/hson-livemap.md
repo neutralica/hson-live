@@ -331,7 +331,27 @@ may be reused idempotently; another object cannot replace it. Successful
 attachment severs prior unsafe debug references and disables future
 `debug.node(...)` access. It does not advance the revision or publish an event.
 
-This schema kernel does not yet narrow document `at()` or `proxy()` types.
+The schema-bound return uses that permanent evidence for top-level logical
+paths:
+
+```ts
+if (candidate.mode === "element") {
+  const typed = candidate.schema.use(schema);
+
+  typed.at([0]).snap();       // string
+  tree.bind.text(typed.at([0]));
+  // typed.at([1]);           // compile-time error
+}
+```
+
+Exact fixed paths narrow to `string` or `HsonNode`. Repeated and dynamic
+coordinates include `undefined`, while descendants of a deliberately broad
+`element()` widen to `string | HsonNode | undefined`. Schema-less document maps
+keep the historical `HsonNode | Primitive | undefined` location domain.
+
+Only passive top-level `snap()` and `watch(...)` results narrow here. Mutation
+inputs, relative location `.at(...)`, document proxy indexing, and attrs remain
+broad; runtime schema enforcement remains the authority for writes.
 
 ---
 

@@ -390,8 +390,27 @@ open.
 installs the contract on the same owner. Every alias and future candidate is
 governed. Attachment has no revision/publication effect, detaches prior unsafe
 debug references, and disables later `debug.node(...)` access. The identical
-schema object can be reused idempotently; replacement is unsupported. Document
-path and proxy types remain broad until the later typed-path phase.
+schema object can be reused idempotently; replacement is unsupported.
+
+The returned map uses the evidence for top-level logical paths:
+
+```ts
+const d = hson.liveMap.schema.document;
+const typed = documentMap.schema.use(d.element({
+  content: d.sequence(d.text),
+}));
+
+typed.at([0]).snap();       // string
+tree.bind.text(typed.at([0]));
+// typed.at([1]);           // compile-time error
+```
+
+Fixed paths are exact. Repeated or dynamic coordinates include `undefined`,
+structured endpoints remain `HsonNode`, and deliberately broad element
+descendants widen to `string | HsonNode | undefined`. Schema-less document maps
+retain their historical `HsonNode | Primitive | undefined` endpoint type.
+Mutation inputs, relative location paths, proxy indexes, and attrs remain broad;
+the permanent runtime schema is still the write authority.
 
 ---
 
