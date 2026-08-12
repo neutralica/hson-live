@@ -835,7 +835,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-schema-enforcement",
       repositoryModule: "tests/livemap-document-schema-enforcement.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 26,
       collections: ["document", "schema", "mutation", "authority", "debug", "externally-discoverable"],
     }),
     launcher({

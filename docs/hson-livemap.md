@@ -349,9 +349,27 @@ coordinates include `undefined`, while descendants of a deliberately broad
 `element()` widen to `string | HsonNode | undefined`. Schema-less document maps
 keep the historical `HsonNode | Primitive | undefined` location domain.
 
-Only passive top-level `snap()` and `watch(...)` results narrow here. Mutation
-inputs, relative location `.at(...)`, document proxy indexing, and attrs remain
-broad; runtime schema enforcement remains the authority for writes.
+Schema-aware top-level mutation values are narrowed from the same item
+evidence:
+
+```ts
+const text = typed.at([0]);
+text.replace("Save");       // accepted
+// text.replace(node);      // type error
+
+const list = fragmentMap.schema.use(d.fragment(d.repeat(d.text)));
+list.at([]).insert(0, "item");
+```
+
+Text accepts `string`, elements accept the coarse `HsonNode` type, and unions
+combine those domains. Broad schema-aware content accepts
+`string | HsonNode`; schema-less mutation inputs remain historically broad.
+`undefined` in a repeated or layout read means the location may be absent and
+does not become writable `undefined`.
+
+Runtime schema enforcement remains the exact write authority for element
+tags/content, fixed-sequence and index legality, delete, and move. Relative
+location `.at(...)`, document proxy indexing, and attrs remain broad.
 
 ---
 

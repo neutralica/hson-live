@@ -125,7 +125,7 @@ check("a broad pre-attachment alias remains governed after attachment", () => {
   assert.deepEqual(broad.capture(), before);
 });
 
-check("a conforming location replacement remains legal", () => {
+check("straightforward schema-aware replacement domains remain runtime-authoritative", () => {
   const map = element(`<main "x"/>`);
   const typed = map.schema.use(d.element({ content: d.sequence(d.text) }));
   const location = typed.at([0]);
@@ -134,6 +134,30 @@ check("a conforming location replacement remains legal", () => {
   const after: string = location.snap();
   assert.equal(before, "x");
   assert.equal(after, "y");
+
+  const structured = element(`<main <button "before"/>/>`);
+  const structuredTyped = structured.schema.use(d.element({
+    content: d.sequence(d.element({
+      tag: "button",
+      content: d.sequence(d.text),
+    })),
+  }));
+  const structuredLocation = structuredTyped.at([0]);
+  structuredLocation.replace(ordinary(`<button "after"/>`));
+  assert.equal(structuredLocation.snap().$_tag, "button");
+  assertSchemaError(() => structuredLocation.replace(ordinary(`<a "wrong"/>`)));
+  assert.equal(structuredLocation.snap().$_tag, "button");
+});
+
+check("repeated text insertion accepts text and rejects structured aliases", () => {
+  const map = fragment(`"first"`);
+  const typed = map.schema.use(d.fragment(d.repeat(d.text)));
+  typed.at([]).insert(1, "second");
+  assert.equal(typed.at([1]).snap(), "second");
+
+  const before = map.capture();
+  assertSchemaError(() => map.at([]).insert(2, ordinary(`<em/>`)));
+  assert.deepEqual(map.capture(), before);
 });
 
 check("closed sequence rejects insertion before publication", () => {

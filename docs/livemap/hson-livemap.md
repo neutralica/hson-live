@@ -409,8 +409,28 @@ Fixed paths are exact. Repeated or dynamic coordinates include `undefined`,
 structured endpoints remain `HsonNode`, and deliberately broad element
 descendants widen to `string | HsonNode | undefined`. Schema-less document maps
 retain their historical `HsonNode | Primitive | undefined` endpoint type.
-Mutation inputs, relative location paths, proxy indexes, and attrs remain broad;
-the permanent runtime schema is still the write authority.
+
+Schema-aware top-level mutation values follow the same item evidence without
+turning read absence into an authoring value:
+
+```ts
+const text = typed.at([0]);
+text.replace("Save");       // accepted
+// text.replace(node);      // type error
+
+const list = fragmentMap.schema.use(d.fragment(d.repeat(d.text)));
+list.at([]).insert(0, "item");
+```
+
+Text accepts `string`, elements accept the coarse `HsonNode` type, and unions
+combine those domains. Broad schema-aware content accepts
+`string | HsonNode`; schema-less mutation inputs remain historically broad.
+`undefined` in repeated or layout reads never becomes writable `undefined`.
+
+The permanent runtime schema remains the exact write authority. It checks
+element tags/content, fixed-sequence and index legality, delete, and move against
+the complete candidate. Relative location paths, proxy indexes, and attrs
+remain broad.
 
 ---
 

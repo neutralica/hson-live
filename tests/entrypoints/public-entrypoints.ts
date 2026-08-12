@@ -170,13 +170,22 @@ if (publicElementCandidate.mode === "element") {
   const sameSchema = schemaBound.schema.get();
   const typedDocumentText = schemaBound.at([0]).snap();
   type PublicTypedDocumentText = Expect<Equal<typeof typedDocumentText, string>>;
+  schemaBound.at([0]).replace("Open");
+  // @ts-expect-error Schema-proven document text rejects structured authoring.
+  schemaBound.at([0]).replace(publicElementCandidate.element.node());
+  // @ts-expect-error Missing-read undefined is not a document authoring value.
+  schemaBound.at([0]).replace(undefined);
   // @ts-expect-error The one-item closed document schema has no coordinate 1.
   schemaBound.at([1]);
   void sameSchema;
 }
 const publicFragmentCandidate = mapSubpath.fromHson(`"before" <em/>`);
 if (publicFragmentCandidate.mode === "fragment") {
-  publicFragmentCandidate.schema.use(publicFragmentSchema);
+  const schemaBound = publicFragmentCandidate.schema.use(publicFragmentSchema);
+  schemaBound.at([]).insert(0, "text");
+  schemaBound.at([]).insert(0, hson.liveMap.fromHson(`<strong/>`).root());
+  // @ts-expect-error Schema-aware document insertion excludes legacy numeric content.
+  schemaBound.at([]).insert(0, 1);
 }
 
 const reflectFacade: ReflectFacade = reflectSubpath;

@@ -446,10 +446,29 @@ A completely dynamic schema-aware path also has that schema-derived broad
 domain. A map without a document schema retains the historical
 `HsonNode | Primitive | undefined` location domain for compatibility.
 
-This phase narrows passive `snap()` and `watch(...)` results only. Document
-mutation parameters remain broad and the runtime owner schema remains the
-authority that rejects invalid writes. Relative location `.at(...)`, document
-proxy indexing, and attrs also retain their broad types for now.
+Schema-aware top-level locations also reject obviously incompatible authoring
+values:
+
+```ts
+const text = typed.at([0]);
+text.replace("Save");       // accepted
+// text.replace(node);      // type error: this slot is text
+
+const list = fragmentMap.schema.use(d.fragment(d.repeat(d.text)));
+list.at([]).insert(0, "item");
+// list.at([]).insert(0, node); // type error: repeated text accepts strings
+```
+
+Text positions accept `string`, element positions accept `HsonNode`, and item
+unions accept their corresponding union. `undefined` in a repeated or layout
+read describes absence; it is not a writable document value. Broad
+schema-aware content accepts `string | HsonNode`, while schema-less maps keep
+their historical broad mutation inputs.
+
+These types only constrain the source value. Exact element tags and content,
+fixed-sequence insertion, index validity, delete, and move remain validated by
+the permanent runtime schema against the complete candidate. Relative location
+`.at(...)`, document proxy indexing, and attrs retain their broad types.
 
 ## Subscriptions
 

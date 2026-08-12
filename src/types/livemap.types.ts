@@ -597,6 +597,16 @@ type InternalDocumentBroadSubtree = Readonly<{
   [LIVEMAP_DOCUMENT_BROAD_SUBTREE]: true;
 }>;
 
+declare const LIVEMAP_DOCUMENT_UNSCHEMATIZED: unique symbol;
+type InternalDocumentUnschematized = Readonly<{
+  [LIVEMAP_DOCUMENT_UNSCHEMATIZED]: true;
+}>;
+
+declare const LIVEMAP_DOCUMENT_ROOT_DESCRIPTOR: unique symbol;
+type InternalDocumentRootDescriptor<TEvidence> = Readonly<{
+  [LIVEMAP_DOCUMENT_ROOT_DESCRIPTOR]: TEvidence;
+}>;
+
 type InternalDocumentSchemaEndpoint = string | HsonNode | undefined;
 type InternalDocumentLegacyEndpoint = HsonNode | Primitive | undefined;
 
@@ -735,13 +745,15 @@ type InternalDocumentResolveRootBranches<
 type InternalDocumentLogicalPathDescriptor<
   TEvidence,
   TPath extends readonly number[],
-> = number extends TPath["length"]
-  ? InternalDocumentBroadSubtree
-  : TPath extends readonly []
-    ? TEvidence
-    : InternalDocumentNormalizeBranches<
-      InternalDocumentResolveRootBranches<TEvidence, TPath>
-    >;
+> = unknown extends TEvidence
+  ? InternalDocumentUnschematized
+  : number extends TPath["length"]
+    ? InternalDocumentBroadSubtree
+    : TPath extends readonly []
+      ? InternalDocumentRootDescriptor<TEvidence>
+      : InternalDocumentNormalizeBranches<
+        InternalDocumentResolveRootBranches<TEvidence, TPath>
+      >;
 
 type InternalDocumentDescriptorEndpoint<TDescriptor> =
   TDescriptor extends InternalDocumentInvalidStaticPath
@@ -781,6 +793,129 @@ type InternalDocumentRelativeDescriptor<
   base: TDescriptor;
   path: TPath;
 }>;
+
+type InternalDocumentWritableItemBranch<TDescriptor> =
+  TDescriptor extends InternalDocumentMissingCoordinate
+    ? never
+    : TDescriptor extends InternalDocumentInvalidStaticPath
+      ? never
+      : TDescriptor extends InternalDocumentBroadSubtree
+        ? string | HsonNode
+        : TDescriptor extends Readonly<{ kind: "text" }>
+          ? string
+          : TDescriptor extends Readonly<{ kind: "element" }>
+            ? HsonNode
+            : TDescriptor extends Readonly<{
+              kind: "pick";
+              choices: infer TChoices extends readonly unknown[];
+            }>
+              ? InternalDocumentWritableItemBranches<TChoices[number]>
+              : never;
+
+type InternalDocumentWritableItemBranches<TDescriptor> =
+  TDescriptor extends unknown
+    ? InternalDocumentWritableItemBranch<TDescriptor>
+    : never;
+
+type InternalDocumentWritableItem<TDescriptor> =
+  unknown extends TDescriptor
+    ? LiveMapDocumentContent
+    : TDescriptor extends InternalDocumentUnschematized
+      ? LiveMapDocumentContent
+      : TDescriptor extends InternalDocumentRootDescriptor<unknown>
+        ? LiveMapDocumentContent
+        : TDescriptor extends InternalDocumentRelativeDescriptor<unknown, readonly number[]>
+          ? LiveMapDocumentContent
+          : InternalDocumentWritableItemBranches<TDescriptor>;
+
+type InternalDocumentContentWritableItems<TContent> =
+  TContent extends Readonly<{
+    kind: "sequence";
+    items: infer TItems extends readonly unknown[];
+  }>
+    ? InternalDocumentWritableItemBranches<TItems[number]>
+    : TContent extends Readonly<{
+      kind: "repeat";
+      item: infer TItem;
+    }>
+      ? InternalDocumentWritableItemBranches<TItem>
+      : TContent extends Readonly<{
+        kind: "pick";
+        choices: infer TChoices extends readonly unknown[];
+      }>
+        ? InternalDocumentContentWritableItems<TChoices[number]>
+        : never;
+
+declare const LIVEMAP_DOCUMENT_CONTENT_OWNER: unique symbol;
+type InternalDocumentContentOwner<TItem> = Readonly<{
+  [LIVEMAP_DOCUMENT_CONTENT_OWNER]: TItem;
+}>;
+
+declare const LIVEMAP_DOCUMENT_NOT_CONTENT_OWNER: unique symbol;
+type InternalDocumentNotContentOwner = Readonly<{
+  [LIVEMAP_DOCUMENT_NOT_CONTENT_OWNER]: true;
+}>;
+
+type InternalDocumentRootInsertOwner<TEvidence> =
+  TEvidence extends Readonly<{
+    kind: "element";
+    content: infer TContent;
+  }>
+    ? InternalDocumentContentOwner<
+      TContent extends "broad"
+        ? string | HsonNode
+        : InternalDocumentContentWritableItems<TContent>
+    >
+    : TEvidence extends Readonly<{
+      kind: "fragment";
+      content: infer TContent;
+    }>
+      ? InternalDocumentContentOwner<InternalDocumentContentWritableItems<TContent>>
+      : InternalDocumentNotContentOwner;
+
+type InternalDocumentInsertOwnerBranch<TDescriptor> =
+  TDescriptor extends InternalDocumentBroadSubtree
+    ? InternalDocumentContentOwner<string | HsonNode>
+    : TDescriptor extends InternalDocumentRootDescriptor<infer TEvidence>
+      ? InternalDocumentRootInsertOwner<TEvidence>
+      : TDescriptor extends Readonly<{
+        kind: "element";
+        content: infer TContent;
+      }>
+        ? InternalDocumentContentOwner<
+          TContent extends "broad"
+            ? string | HsonNode
+            : InternalDocumentContentWritableItems<TContent>
+        >
+        : TDescriptor extends Readonly<{
+          kind: "pick";
+          choices: infer TChoices extends readonly unknown[];
+        }>
+          ? InternalDocumentInsertOwnerBranches<TChoices[number]>
+          : InternalDocumentNotContentOwner;
+
+type InternalDocumentInsertOwnerBranches<TDescriptor> =
+  TDescriptor extends unknown
+    ? InternalDocumentInsertOwnerBranch<TDescriptor>
+    : never;
+
+type InternalDocumentInsertOwnerDomain<TOwners> =
+  TOwners extends InternalDocumentContentOwner<infer TItem>
+    ? TItem
+    : never;
+
+type InternalDocumentInsertItem<TDescriptor> =
+  unknown extends TDescriptor
+    ? LiveMapDocumentContent
+    : TDescriptor extends InternalDocumentUnschematized
+      ? LiveMapDocumentContent
+      : TDescriptor extends InternalDocumentRelativeDescriptor<unknown, readonly number[]>
+        ? LiveMapDocumentContent
+        : InternalDocumentInsertOwnerBranches<TDescriptor> extends infer TOwners
+          ? [Extract<TOwners, InternalDocumentContentOwner<unknown>>] extends [never]
+            ? LiveMapDocumentContent
+            : InternalDocumentInsertOwnerDomain<TOwners>
+          : LiveMapDocumentContent;
 
 type DocumentLiveMapShared<
   TMode extends DocumentLiveMapMode,
@@ -846,14 +981,16 @@ type LiveMapDocumentLocation<
   /** Discover the first exact canonical ID match in this logical subtree. */
   id: (value: string) => LiveMapDocumentLocation | undefined;
   /** Replace the current logical content item through canonical document mutation. */
-  replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  replace(
+    value: InternalDocumentWritableItem<TDescriptor>,
+  ): LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
   /** Remove the current logical content item through canonical document mutation. */
   delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
   /** Insert authored content into the ordered content owned by this location. */
-  insert: (
+  insert(
     index: number,
-    value: LiveMapDocumentContent,
-  ) => LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
+    value: InternalDocumentInsertItem<TDescriptor>,
+  ): LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
   /** Move one owned content item to its final index. */
   move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
   /** Ordinary-attribute operations for the element currently at this location. */
