@@ -943,7 +943,13 @@ type DocumentLiveMapShared<
     InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
   >;
   /** Create a passive numeric proxy over logical ordered document content. */
-  proxy: (path?: readonly number[]) => LiveMapDocumentProxy;
+  proxy: <const TPath extends readonly number[] = []>(
+    path?: TPath & ([InternalDocumentLogicalPathEndpoint<TEvidence, TPath>] extends [never]
+      ? never
+      : unknown),
+  ) => LiveMapDocumentProxy<
+    InternalDocumentLogicalPathDescriptor<TEvidence, TPath>
+  >;
   capture: DocumentLiveMapCaptureApi<TMode>;
   /** Atomically replace this document with a canonical same-mode capture. */
   install: (
@@ -1026,11 +1032,75 @@ type LiveMapDocumentLocation<
   }>;
 }>;
 
-/** Structural document proxy return type; intentionally not exported. */
-type LiveMapDocumentProxy = Readonly<{
-  readonly $_: LiveMapDocumentLocation;
-  readonly [index: number]: LiveMapDocumentProxy;
+type InternalDocumentTupleNumericKey<TKey> =
+  TKey extends `${infer TIndex extends number}` ? TIndex : never;
+
+type InternalDocumentProxyContentStaticKeys<TContent> =
+  TContent extends Readonly<{
+    kind: "sequence";
+    items: infer TItems extends readonly unknown[];
+  }>
+    ? InternalDocumentTupleNumericKey<keyof TItems>
+    : TContent extends Readonly<{
+      kind: "pick";
+      choices: infer TChoices extends readonly unknown[];
+    }>
+      ? InternalDocumentProxyContentStaticKeys<TChoices[number]>
+      : never;
+
+type InternalDocumentProxyRootStaticKeys<TEvidence> =
+  TEvidence extends Readonly<{
+    kind: "element" | "fragment";
+    content: infer TContent;
+  }>
+    ? InternalDocumentProxyContentStaticKeys<TContent>
+    : never;
+
+type InternalDocumentProxyStaticKeys<TDescriptor> =
+  TDescriptor extends InternalDocumentRootDescriptor<infer TEvidence>
+    ? InternalDocumentProxyRootStaticKeys<TEvidence>
+    : TDescriptor extends Readonly<{
+      kind: "element";
+      content: infer TContent;
+    }>
+      ? TContent extends "broad"
+        ? never
+        : InternalDocumentProxyContentStaticKeys<TContent>
+      : TDescriptor extends Readonly<{
+        kind: "pick";
+        choices: infer TChoices extends readonly unknown[];
+      }>
+        ? InternalDocumentProxyStaticKeys<TChoices[number]>
+        : never;
+
+type InternalDocumentProxyExactChildren<TDescriptor> = Readonly<{
+  [TIndex in InternalDocumentProxyStaticKeys<TDescriptor>]:
+    LiveMapDocumentProxy<
+      InternalDocumentResolveDescriptorPath<TDescriptor, readonly [TIndex]>
+    >;
 }>;
+
+type InternalDocumentProxyDynamicChildren<TDescriptor> =
+  [InternalDocumentDescriptorEndpoint<
+    InternalDocumentResolveDescriptorPath<TDescriptor, readonly [number]>
+  >] extends [never]
+    ? Readonly<Record<never, never>>
+    : Readonly<{
+      readonly [index: number]: LiveMapDocumentProxy<
+        InternalDocumentResolveDescriptorPath<TDescriptor, readonly [number]>
+      >;
+    }>;
+
+/** Structural document proxy return type; intentionally not exported. */
+type LiveMapDocumentProxy<
+  TDescriptor = InternalDocumentUnschematized,
+> = Readonly<{
+  readonly $_: LiveMapDocumentLocation<
+    InternalDocumentDescriptorEndpoint<TDescriptor>,
+    TDescriptor
+  >;
+}> & InternalDocumentProxyExactChildren<TDescriptor>
+  & InternalDocumentProxyDynamicChildren<TDescriptor>;
 
 export type ElementLiveMap<TEvidence = unknown> = DocumentLiveMapShared<"element", TEvidence> & Readonly<{
   readonly document: LiveMapDocumentApi;

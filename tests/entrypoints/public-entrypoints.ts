@@ -239,12 +239,23 @@ if (typedRelativeDocumentCandidate.mode === "element") {
     }),
   );
   const relativeLabel = typedRelativeDocument.at([]).at([0]).at([0]);
+  const proxiedLabel = typedRelativeDocument.proxy()[0][0].$_;
   const relativeLabelValue = relativeLabel.snap();
+  const proxiedLabelValue = proxiedLabel.snap();
   type PublicRelativeDocumentText = Expect<Equal<typeof relativeLabelValue, string>>;
+  type PublicProxyDocumentText = Expect<Equal<typeof proxiedLabelValue, string>>;
+  type PublicDirectRelativeProxyText = Expect<Equal<
+    typeof proxiedLabelValue,
+    ReturnType<ReturnType<typeof typedRelativeDocument.at<[0, 0]>>["snap"]>
+  >>;
   relativeLabel.replace("Open");
+  proxiedLabel.replace("Save");
   bindingTree.bind.text(relativeLabel);
+  bindingTree.bind.text(proxiedLabel);
   // @ts-expect-error Relative schema-proven text rejects structured authoring.
   relativeLabel.replace(typedRelativeDocumentCandidate.element.node());
+  // @ts-expect-error Proxied schema-proven text rejects structured authoring.
+  proxiedLabel.replace(typedRelativeDocumentCandidate.element.node());
   // @ts-expect-error The nested label element has no coordinate 1.
   typedRelativeDocument.at([0]).at([1]);
 }

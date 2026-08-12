@@ -81,6 +81,17 @@ check("nested and rooted proxy traversal match relative location traversal", () 
   assert.equal(map.proxy([0])[1].$_, map.at([0, 1]));
 });
 
+check("schema evidence does not change proxy locations or interning", () => {
+  const map = element(`<main <section "label"/>/>`);
+  const d = hson.liveMap.schema.document;
+  const typed = map.schema.use(d.element({
+    content: d.sequence(d.element({ content: d.sequence(d.text) })),
+  }));
+  assert.equal(typed.proxy()[0][0].$_, typed.at([0, 0]));
+  assert.equal(typed.proxy()[0].$_.at([0]), typed.proxy([0])[0].$_);
+  assert.equal(typed.proxy()[0][0].$_.snap(), "label");
+});
+
 check("fixed proxy coordinates re-resolve after insertion", () => {
   const map = element(`<main <a/> <b/>/>`);
   const proxy = map.proxy();

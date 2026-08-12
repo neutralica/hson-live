@@ -453,7 +453,30 @@ the complete candidate. Relative typing does not change absolute coordinates,
 interning, watch behavior, or mutation planning; direct and relative calls at
 the same coordinate return the existing interned location.
 
-Proxy indexes and attrs remain broad. Schema-frontend refinement is deferred.
+Schema-aware numeric proxy traversal uses that same local descriptor:
+
+```ts
+const direct = nestedTyped.at([0, 1]);
+const relative = nestedTyped.at([0]).at([1]);
+const proxied = nestedTyped.proxy()[0][1].$_;
+
+tree.bind.text(nestedTyped.proxy()[0][0].$_);
+```
+
+Those three locations expose the same endpoint evidence. Fixed positions are
+precise; repeated and dynamic coordinates carry absence in `$_`'s value while
+the proxy coordinate itself remains present. Broad element subtrees widen only
+locally, and a structured `HsonNode` endpoint keeps its child evidence for later
+proxy or relative descent. `$_` remains the existing interned location with its
+normal read, watch, mutation, attrs, and binding capabilities; proxy runtime
+grammar and behavior are unchanged. Schema-less proxies remain historically
+broad. Attrs and schema-frontend refinement remain deferred.
+
+On the existing bracket surface, TypeScript cannot simultaneously reject every
+out-of-range numeric literal and provide a truthful dynamic-number index. Known
+in-range literals remain precise; all other numeric keys receive the local
+missing-aware dynamic type. Exact `at(...)` and `proxy([path])` calls retain
+impossible-path rejection.
 
 ---
 

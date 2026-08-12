@@ -805,7 +805,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-proxy",
       repositoryModule: "tests/livemap-document-proxy.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 26,
       collections: ["document", "path", "proxy", "traversal", "public-api", "externally-discoverable"],
     }),
     launcher({

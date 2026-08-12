@@ -492,8 +492,37 @@ the permanent runtime schema against the complete candidate. Relative typing
 does not change coordinates or allocate wrappers:
 `map.at([0, 0]) === map.at([0]).at([0])` under the existing interner.
 
-Document proxy indexing and attrs retain their broad types. Refinement of the
-document schema authoring frontend is also deferred.
+Schema-aware numeric proxies consume the same retained descriptor:
+
+```ts
+const direct = nestedTyped.at([0, 1]);
+const relative = nestedTyped.at([0]).at([1]);
+const proxied = nestedTyped.proxy()[0][1].$_;
+
+// direct, relative, and proxied expose the same endpoint type
+tree.bind.text(nestedTyped.proxy()[0][0].$_);
+```
+
+Numeric properties are logical document coordinates. Fixed known positions are
+precise; repeated and dynamic positions put possible absence in the escaped
+location value, not in the proxy object. That keeps a missing coordinate usable
+as a fixed authoring handle. Structured endpoints retain their child descriptor,
+so traversal can remain precise beneath a public `HsonNode`. Entering an
+`element()` broad subtree widens only that subtree to
+`string | HsonNode | undefined`.
+
+TypeScript bracket indexing cannot both reject every out-of-range numeric
+literal and retain a truthful dynamic-number signature on this existing proxy
+shape. Known in-range literals stay precise; other numeric keys use the local
+missing-aware dynamic type. Exact `at(...)` and explicit `proxy([path])` calls
+continue to reject impossible fixed paths.
+
+The `$_` escape is the existing interned location, so its `snap`, `watch`,
+`replace`, content-owner `insert`, relative `at`, attrs, and binding behavior all
+use the same evidence. Runtime proxy grammar and behavior are unchanged.
+Schema-less proxies keep their historical broad domain. Attributes remain
+schema-open, and refinement of the document schema authoring frontend is still
+deferred.
 
 ## Subscriptions
 
