@@ -178,7 +178,7 @@ check("restore searches restored state without changing fixed-coordinate semanti
   assert.deepEqual(find(map, "x")?.path(), [0]);
 });
 
-check("discovery is non-minting, revision-neutral, and absent from public surfaces", () => {
+check("internal discovery remains non-minting and unexported beneath the public location method", () => {
   const map = element(`<main <button id="x"/>/>`);
   const before = map.root();
   const rev = map.rev;
@@ -189,7 +189,7 @@ check("discovery is non-minting, revision-neutral, and absent from public surfac
   assert.equal("find_internal_document_id" in publicApi, false);
   assert.equal("find_internal_document_id_path" in publicApi, false);
   assert.equal("id" in map.document, false);
-  assert.equal("id" in map.proxy().$_, false);
+  assert.equal(typeof map.proxy().$_.id, "function");
 });
 
 process.stdout.write(`# ${checks} internal canonical ID-discovery checks passed\n`);

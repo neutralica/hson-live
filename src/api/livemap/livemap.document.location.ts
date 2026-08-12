@@ -6,6 +6,7 @@ import {
   resolve_internal_document_location,
   type InternalDocumentLogicalEdge,
 } from "./livemap.document.logical.js";
+import { find_internal_document_id } from "./livemap.document.id-discovery.js";
 
 type DocumentLocationOwner = Readonly<{
   readonly rev: number;
@@ -17,6 +18,7 @@ type DocumentLocation = Readonly<{
   path: () => readonly number[];
   snap: () => HsonNode | Primitive | undefined;
   at: (path: readonly number[]) => DocumentLocation;
+  id: (value: string) => DocumentLocation | undefined;
 }>;
 
 /** Build passive, fixed-coordinate locations over logical document content. */
@@ -25,6 +27,11 @@ export function make_livemap_document_location_factory(
   mode: DocumentLiveMapMode,
 ): (path: readonly number[]) => DocumentLocation {
   const locations = new Map<string, DocumentLocation>();
+  let discoveryMap: Readonly<{
+    mode: DocumentLiveMapMode;
+    root: () => HsonNode;
+    at: (path: readonly number[]) => DocumentLocation;
+  }>;
 
   const at = (path: readonly number[]): DocumentLocation => {
     const logicalPath = must_document_logical_path(path);
@@ -39,12 +46,19 @@ export function make_livemap_document_location_factory(
       path: () => Object.freeze([...logicalPath]),
       snap: () => read_document_logical_location(owner.root(), mode, logicalPath),
       at: (relativePath) => at([...logicalPath, ...must_document_logical_path(relativePath)]),
+      id: (value) => find_internal_document_id(discoveryMap, location, must_document_id(value)),
     });
     locations.set(key, location);
     return location;
   };
 
+  discoveryMap = Object.freeze({ mode, root: owner.root, at });
   return at;
+}
+
+function must_document_id(value: unknown): string {
+  if (typeof value === "string") return value;
+  throw new TypeError("LiveMap document ID is not a string");
 }
 
 function must_document_logical_path(path: unknown): readonly number[] {

@@ -599,6 +599,8 @@ type LiveMapDocumentLocation = Readonly<{
   snap: () => HsonNode | Primitive | undefined;
   /** Create a child location relative to this logical coordinate. */
   at: (path: readonly number[]) => LiveMapDocumentLocation;
+  /** Discover the first exact canonical ID match in this logical subtree. */
+  id: (value: string) => LiveMapDocumentLocation | undefined;
 }>;
 
 /** Structural document proxy return type; intentionally not exported. */

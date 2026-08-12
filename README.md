@@ -185,12 +185,31 @@ the internal `_hson_elem` carrier. Specialized attribute and content mutations
 remain under `map.document.attrs` and `map.document.content`. Physical document
 paths remain the low-level coordinates used by those canonical operations.
 
+Document locations can discover the first exact canonical `id` match in their
+current logical subtree:
+
+```ts
+if (document.mode === "element" || document.mode === "fragment") {
+  const button = document.at([]).id("submit");
+  console.log(button?.snap());
+}
+```
+
+This searches canonical HSON rather than the DOM. The scoped element itself may
+match; otherwise descendants are visited in canonical preorder, with the first
+match winning. The result is an ordinary passive, fixed-coordinate location.
+If the matched element later moves, call `id(...)` again to discover its current
+location—the previously returned location continues to represent its old
+logical coordinate.
+
 The existing proxy surface follows the same document coordinates:
 
 ```ts
 if (document.mode === "element") {
   const paragraph = document.proxy()[0][0].$_;
+  const submit = document.proxy().$_.id("submit");
   console.log(paragraph.snap());
+  console.log(submit?.snap());
 }
 ```
 

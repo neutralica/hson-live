@@ -43,8 +43,12 @@ if (documentMap.mode === "element") {
   const documentProxy = documentMap.proxy();
   const documentProxyLocation = documentProxy[0][1].$_;
   const rootedDocumentProxyLocation = documentMap.proxy([0])[1].$_;
+  const discoveredDocumentLocation = documentMap.at([]).id("target");
+  const proxyDiscoveredDocumentLocation = documentMap.proxy().$_.id("target");
   void documentProxyLocation.snap();
   void rootedDocumentProxyLocation.path();
+  void discoveredDocumentLocation?.snap();
+  void proxyDiscoveredDocumentLocation?.path();
   // @ts-expect-error document proxies expose numeric structural traversal only
   documentProxy.attrs;
   // @ts-expect-error document proxy escapes omit projected mutation capabilities
@@ -55,6 +59,8 @@ if (documentMap.mode === "element") {
   documentLocation.set(documentMap.element.node());
   // @ts-expect-error document-specific namespaces do not duplicate passive traversal
   documentMap.document.at([0]);
+  // @ts-expect-error canonical ID discovery belongs to locations, not the document façade
+  documentMap.document.id("target");
   const captureIdentity: DocumentLiveMapCaptureIdentity = "same-epoch";
   const installIdentity: DocumentLiveMapInstallIdentity = "preserve-metadata";
   const capture = documentMap.capture({ identity: captureIdentity });
@@ -62,6 +68,11 @@ if (documentMap.mode === "element") {
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof documentMap.document ? true : false = false;
   void documentAcquisitionIsPublic;
 }
+
+// @ts-expect-error projected locations do not expose HTML ID discovery
+map.at([]).id("target");
+// @ts-expect-error projected proxy escapes remain projected path handles
+map.proxy().$_.id("target");
 
 const provenanceCode: LiveMapDocumentIdentityProvenanceErrorCode = "FOREIGN_IDENTITY_EPOCH";
 const installCode: LiveMapDocumentInstallFailureCode = "DUPLICATE_PRESERVED_CLAIMS";
