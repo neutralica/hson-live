@@ -299,6 +299,13 @@ bindingTree.bind.path(projectedPathMap.at(["tuple", 1]), (_tree, value) => {
   type TupleBindingValue = Expect<Equal<typeof value, number | undefined>>;
   return undefined;
 });
+bindingTree.bind.path(projectedPathMap.at(["readonlyTuple"]), (_tree, value) => {
+  type ReadonlyTupleBindingValue = Expect<Equal<
+    typeof value,
+    readonly [Readonly<{ code: "fixed" }>, 2]
+  >>;
+  return undefined;
+});
 bindingTree.bind.paths([
   projectedPathMap.at(["required", "leaf"]),
   projectedPathMap.at(["optional", "name"]),
@@ -664,5 +671,7 @@ if (publicDocumentMap.mode === "element") {
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
   // @ts-expect-error Document locations have no approved projected binding observation capability.
   bindingTree.bind.text(publicDocumentMap.at([]));
+  // @ts-expect-error Multi-source forward bindings remain projected-only.
+  bindingTree.bind.paths([publicDocumentMap.at([])], () => undefined);
   void documentAcquisitionIsPublic;
 }

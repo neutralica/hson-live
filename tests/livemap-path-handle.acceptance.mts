@@ -108,11 +108,12 @@ check("path-handle creation never mints canonical node identity", () => {
 check("arbitrary string quid targets receive explicit bridge disposal only", () => {
   const map = hson.liveMap.fromJson({ value: "initial" });
   let text = "";
+  let setterCalls = 0;
   const target = {
     quid: "not-an-owner",
     text: {
       get: () => text,
-      set: (value: string) => { text = value; },
+      set: (value: string) => { setterCalls += 1; text = value; },
       overwrite: (value: string) => { text = value; },
     },
   };
@@ -122,9 +123,13 @@ check("arbitrary string quid targets receive explicit bridge disposal only", () 
   assert.equal(disposables_count_for_owner(target.quid), 0);
   map.set(["value"], "updated");
   assert.equal(text, "updated");
+  map.restore(hson.liveMap.fromJson({ value: "restored" }).capture());
+  assert.equal(text, "restored");
+  map.restore(map.capture());
+  assert.equal(setterCalls, 4);
   binding.dispose();
   map.set(["value"], "after-dispose");
-  assert.equal(text, "updated");
+  assert.equal(text, "restored");
 });
 
 check("actual LiveTree bridge targets retain canonical lifecycle ownership", () => {
@@ -141,6 +146,113 @@ check("actual LiveTree bridge targets retain canonical lifecycle ownership", () 
   assert.equal(disposables_count_for_owner(tree.quid), before);
   map.set(["value"], "after-dispose");
   assert.equal(tree.text.get(), "updated");
+});
+
+check("projected LiveTree bindings converge across ordinary commits and snapshots", () => {
+  const map = hson.liveMap.fromJson({ value: "ready", sibling: 0 });
+  const tree = hson.liveTree.fromHson("<span/>");
+  const seen: unknown[] = [];
+  const dispose = tree.bind.path(map.at(["value"]), (target, value) => {
+    seen.push(value);
+    if (value === "fail") throw new Error("binding mapper failure");
+    target.text.set(String(value ?? "missing"));
+  });
+
+  assert.deepEqual(seen, ["ready"]);
+  assert.equal(tree.text.get(), "ready");
+
+  map.replace([], { value: "ready", sibling: 1 });
+  assert.deepEqual(seen, ["ready"]);
+
+  map.set(["value"], "changed");
+  assert.equal(tree.text.get(), "changed");
+  map.restore(map.capture());
+  assert.deepEqual(seen, ["ready", "changed", "changed"]);
+
+  map.restore(hson.liveMap.fromJson({ value: "restored", sibling: 2 }).capture());
+  assert.equal(tree.text.get(), "restored");
+
+  let isolatedCalls = 0;
+  map.at(["value"]).watch(() => { isolatedCalls += 1; });
+  assert.throws(() => map.set(["value"], "fail"), /binding mapper failure/);
+  assert.equal(map.at(["value"]).snap(), "fail");
+  assert.equal(isolatedCalls, 1);
+  assert.equal(tree.text.get(), "restored");
+  map.set(["value"], "recovered");
+  assert.equal(tree.text.get(), "recovered");
+
+  const callsBeforeRejectedRestore = seen.length;
+  assert.throws(() => map.restore({ rev: 2, format: "structural-json", value: { value: "rejected" } } as never));
+  assert.equal(seen.length, callsBeforeRejectedRestore);
+
+  dispose();
+  dispose();
+  map.set(["value"], "after dispose");
+  assert.equal(tree.text.get(), "recovered");
+
+  const missingMap = hson.liveMap.fromJson({ present: true });
+  const missingTree = hson.liveTree.fromHson("<span/>");
+  const missingSeen: unknown[] = [];
+  const disposeMissing = missingTree.bind.path(missingMap.at(["missing"]), (target, value) => {
+    missingSeen.push(value);
+    target.text.set(String(value ?? "missing"));
+  });
+  missingMap.restore(missingMap.capture());
+  assert.deepEqual(missingSeen, [undefined, undefined]);
+  disposeMissing();
+
+  const failedInitialMap = hson.liveMap.fromJson({ value: 0 });
+  let failedInitialCalls = 0;
+  assert.throws(() => tree.bind.path(failedInitialMap.at(["value"]), () => {
+    failedInitialCalls += 1;
+    throw new Error("initial binding failure");
+  }), /initial binding failure/);
+  failedInitialMap.set(["value"], 1);
+  assert.equal(failedInitialCalls, 1);
+});
+
+check("multi-source bindings resnapshot complete mixed-map tuples", () => {
+  const left = hson.liveMap.fromJson({ a: 1, sibling: 0 });
+  const right = hson.liveMap.fromJson({ b: 2 });
+  const tree = hson.liveTree.fromHson("<span/>");
+  const seen: unknown[] = [];
+  const dispose = tree.bind.paths(
+    [left.at(["a"]), right.at(["b"])],
+    (target, values) => {
+      seen.push(values);
+      target.text.set(`${String(values[0])}/${String(values[1])}`);
+    },
+  );
+
+  assert.deepEqual(seen, [[1, 2]]);
+  left.replace([], { a: 1, sibling: 1 });
+  assert.equal(seen.length, 1);
+  left.set(["a"], 3);
+  right.set(["b"], 4);
+  assert.deepEqual(seen, [[1, 2], [3, 2], [3, 4]]);
+
+  right.restore(right.capture());
+  assert.deepEqual(seen.at(-1), [3, 4]);
+  left.restore(hson.liveMap.fromJson({ a: 5, sibling: 2 }).capture());
+  assert.deepEqual(seen.at(-1), [5, 4]);
+
+  dispose();
+  dispose();
+  left.set(["a"], 6);
+  right.set(["b"], 7);
+  assert.deepEqual(seen.at(-1), [5, 4]);
+
+  const sameMap = hson.liveMap.fromJson({ x: 1, y: 2 });
+  const sameMapTuples: unknown[] = [];
+  const disposeSameMap = tree.bind.paths([sameMap.at(["x"]), sameMap.at(["y"])], (_target, values) => {
+    sameMapTuples.push(values);
+  });
+  sameMap.batch((draft) => {
+    draft.set(["x"], 3);
+    draft.set(["y"], 4);
+  });
+  assert.deepEqual(sameMapTuples, [[1, 2], [3, 4], [3, 4]]);
+  disposeSameMap();
 });
 
 check("watch is future-only, value-filtered, detached, and disposable", () => {

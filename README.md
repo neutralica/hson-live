@@ -369,7 +369,11 @@ button.listen.onClick(() => {
 ```
 
 `map.at(path)` is the source endpoint. A binding reads the location's current
-value immediately and subscribes to later changes.
+value synchronously with `snap()`, then uses the location's snapshot-aware
+`watch(...)` subscription for later changes. `watch` itself has no initial
+callback; the binding owns that initial synchronization. Projected bindings
+therefore converge after `restore()`, and even an equal-value restore reapplies
+the destination once.
 
 The state graph and document graph retain distinct responsibilities, but their relationship is explicit. LiveMap remains authoritative, and the reflector updates the view from observed commits.
 

@@ -619,6 +619,11 @@ const dispose = tree.bind.text(map.at(["profile", "name"]));
 dispose();
 ```
 
+Initial synchronization is a synchronous location `snap()`. The binding then
+registers `watch(...)`, which has no initial callback of its own. Because watch
+is snapshot-aware, projected bindings converge after `restore()`; a successful
+equal-value restore also reapplies the destination once.
+
 Complete surface:
 
 ```ts
@@ -648,7 +653,10 @@ the corresponding QUID-scoped declaration.
 
 Each callback receives the previous value(s), initially `undefined`. A
 multi-source binding subscribes to every listed location; its disposer removes all
-subscriptions.
+subscriptions. When one location publishes, the binding snapshots every source
+again and applies one current complete tuple for that watcher callback. Multiple
+affected locations can therefore produce multiple complete-tuple applications
+for one same-map commit.
 
 ---
 

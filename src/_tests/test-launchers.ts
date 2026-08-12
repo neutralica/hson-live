@@ -875,7 +875,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-path-handle",
       repositoryModule: "tests/livemap-path-handle.acceptance.mts",
       runtime: "node",
-      executableChecks: 19,
+      executableChecks: 21,
       collections: ["path-handle", "proxy", "bridge", "watch", "externally-discoverable"],
     }),
     launcher({

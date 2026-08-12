@@ -212,6 +212,12 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const mirror = hson.liveMap.fromJson({ value: 0 });
   const watched = [];
   mirror.at(["value"]).watch((next) => watched.push(next));
+  const boundTree = hson.liveTree.fromHson("<span/>");
+  let bindingCalls = 0;
+  const disposeBinding = boundTree.bind.path(mirror.at(["value"]), (tree, value) => {
+    bindingCalls += 1;
+    tree.text.set(String(value));
+  });
   mirror.schema.use(schema);
   const pair = socket_pair();
   let queuedTail = false;
@@ -240,6 +246,8 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
     { kind: "commit", value: { value: 9 }, active: true },
   ]);
   assert.deepEqual(watched, [8, 9]);
+  assert.equal(boundTree.text.get(), "9");
+  assert.equal(bindingCalls, 3);
   const snapshotMessage = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot");
   assert.equal(typeof snapshotMessage.snapshot.hson, "string");
   assert.equal(snapshotMessage.snapshot.hson.includes("\n"), false);
@@ -270,6 +278,12 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   const equalMirror = hson.liveMap.fromJson({ value: 5 });
   const equalWatched = [];
   equalMirror.at(["value"]).watch((next) => equalWatched.push(next));
+  const equalBoundTree = hson.liveTree.fromHson("<span/>");
+  let equalBindingCalls = 0;
+  const disposeEqualBinding = equalBoundTree.bind.path(equalMirror.at(["value"]), (tree, value) => {
+    equalBindingCalls += 1;
+    tree.text.set(String(value));
+  });
   const equalPair = socket_pair();
   const equalClient = attach(equalHost, equalPair, {
     map: equalMirror,
@@ -277,6 +291,10 @@ await check("snapshot recovery installs one atomic in-place restoration", async 
   });
   assert.equal((await equalClient.recovery.recover()).strategy, "snapshot");
   assert.deepEqual(equalWatched, [5]);
+  assert.equal(equalBoundTree.text.get(), "5");
+  assert.equal(equalBindingCalls, 2);
+  disposeBinding();
+  disposeEqualBinding();
 });
 
 await check("replay applies exact commits once and current emits no body", async () => {
@@ -287,6 +305,12 @@ await check("replay applies exact commits once and current emits no body", async
   const mirror = hson.liveMap.fromJson(host.map.snap());
   const watched = [];
   mirror.at(["value"]).watch((next) => watched.push(next));
+  const boundTree = hson.liveTree.fromHson("<span/>");
+  let bindingCalls = 0;
+  const disposeBinding = boundTree.bind.path(mirror.at(["value"]), (tree, value) => {
+    bindingCalls += 1;
+    tree.text.set(String(value));
+  });
   await host.mutate((draft) => draft.set(["value"], 1));
   await host.mutate((draft) => draft.set(["value"], 2));
   const pair = socket_pair();
@@ -297,6 +321,8 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(replay.strategy, "replay");
   assert.deepEqual(revs, [base + 1, base + 2]);
   assert.deepEqual(watched, [1, 2]);
+  assert.equal(boundTree.text.get(), "2");
+  assert.equal(bindingCalls, 3);
   assert.deepEqual(client.map.snap(), host.map.snap());
   const notifications = client.recovery.debug().consumerNotifications;
   const current = await client.recovery.recover();
@@ -304,6 +330,7 @@ await check("replay applies exact commits once and current emits no body", async
   assert.equal(client.map.rev, client.recovery.lastAppliedRev);
   assert.equal(client.recovery.lastAppliedRev, current.headRev);
   assert.equal(client.recovery.debug().consumerNotifications, notifications);
+  disposeBinding();
   const requestIds = pair.clientSent.map(JSON.parse).filter((message) => message.type === "recover").map((message) => message.id);
   const emitted = pair.serverSent.map(JSON.parse);
   assert.deepEqual(emitted.filter((message) => message.id === requestIds[0]).map((message) => message.type), [

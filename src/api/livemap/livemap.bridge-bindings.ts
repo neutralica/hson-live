@@ -4,7 +4,6 @@
 import type { JsonValue } from "../../core/types.js";
 import type { LiveTextBridgeTarget, LiveMapBridgeBinding, LiveAttrBridgeTarget, LiveInputBridgeTarget, LiveMapSchemaControlNode } from "../../types/bridge.types.js";
 import type { LiveMapPathHandle } from "../../types/livemap.types.js";
-import { subscribe_livemap_path_handle_value } from "./livemap.handle.js";
 import { LiveTree } from "../livetree/livetree.js";
 import { own_disposable_for_owner } from "../livetree/managers/lifecycle-registry.js";
 import { runtime_for_tree } from "../livetree/runtime/livetree-runtime.js";
@@ -240,7 +239,7 @@ function subscribe_location(
   location: LiveMapPathHandle,
   sync: (value: JsonValue | undefined) => void,
 ): () => void {
-  return subscribe_livemap_path_handle_value(location, () => sync(location.snap()));
+  return location.watch(sync);
 }
 
 export function value_to_text(value: JsonValue | undefined): string {

@@ -13,7 +13,6 @@ import {
 } from "./livemap.projected-propagation.js";
 import {
   is_ordered_projected_object,
-  optional_ordered_projected_value_equal,
   ordered_projected_value_equal,
   type OrderedProjectedValue,
 } from "../../core/ordered-projected-value.js";
@@ -152,36 +151,6 @@ export function make_livemap_path_handle<TValue = JsonValue | undefined>(
 
   pathHandleInternals.set(handle, { core, path: handlePath });
   return handle;
-}
-
-/**
- * Subscribe one canonical projected location using the same exact value-change
- * filter as `map.sub.path(...)`.
- *
- * LiveTree binding is location-authored, but ordered projected equality still
- * requires the owning carrier and path retained by the interned location. This
- * helper is internal to the source tree and is not a package entrypoint.
- */
-export function subscribe_livemap_path_handle_value<TValue>(
-  location: Pick<LiveMapPathHandle<TValue>, "snap" | "feed">,
-  listener: () => void,
-): LiveMapDisposer {
-  const internals = pathHandleInternals.get(location);
-  if (internals === undefined) {
-    throw new Error("LiveTree.bind source must be an interned projected LiveMap location.");
-  }
-  const projected = livemap_projected_propagation(internals.core);
-  if (projected === undefined) {
-    throw new Error("LiveTree.bind source has no projected propagation capability.");
-  }
-
-  let previous = projected.read(internals.path);
-  return location.feed(() => {
-    const next = projected.read(internals.path);
-    if (optional_ordered_projected_value_equal(next, previous)) return;
-    previous = next;
-    listener();
-  });
 }
 
 function write_projected_handle_link(
