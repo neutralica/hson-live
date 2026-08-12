@@ -164,6 +164,7 @@
     "test:livemap-document-path-contract": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-path-contract.acceptance.mts",
     "test:livemap-document-logical-traversal": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-logical-traversal.acceptance.mts",
     "test:livemap-document-location": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-location.acceptance.mts",
+    "test:livemap-document-id-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-id-discovery.acceptance.mts",
     "test:livemap-document-proxy": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-proxy.acceptance.mts",
     "test:livemap-document-staging": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-staging.acceptance.mts",
     "test:livemap-document-target-boundary": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-document-target-boundary.acceptance.mts",

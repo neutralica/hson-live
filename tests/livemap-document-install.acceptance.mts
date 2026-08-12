@@ -279,9 +279,10 @@ check("data façades do not expose document install at runtime", () => {
   assert.equal("install" in hson.liveMap.fromJson({}), false);
   assert.equal("install" in hson.liveMap.fromJson([]), false);
   const document = element(`<main @000000001/>`);
-  for (const key of ["set", "replace", "proxy", "apply", "applyGraph", "replayGraph", "installGraph"]) {
+  for (const key of ["set", "replace", "apply", "applyGraph", "replayGraph", "installGraph"]) {
     assert.equal(key in document, false);
   }
+  assert.equal(typeof document.proxy, "function");
   assert.equal(typeof document.install, "function");
   assert.equal(typeof document.replay, "function");
   assert.equal(typeof document.restore, "function");

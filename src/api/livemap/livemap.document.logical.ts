@@ -176,6 +176,14 @@ export function resolve_internal_document_location(
   mode: DocumentLiveMapMode,
   edges: readonly InternalDocumentLogicalEdge[],
 ): InternalDocumentLogicalResolution {
+  return materialize_resolution(resolve_internal_document_cursor(root, mode, edges));
+}
+
+function resolve_internal_document_cursor(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  edges: readonly InternalDocumentLogicalEdge[],
+): TraversalCursor {
   let cursor = document_root_cursor(root, mode);
 
   for (const [edgeIndex, edge] of edges.entries()) {
@@ -203,7 +211,48 @@ export function resolve_internal_document_location(
     cursor = raw_content_child_cursor(cursor, index, edgeIndex);
   }
 
-  return materialize_resolution(cursor);
+  return cursor;
+}
+
+/** Internal one-shot canonical preorder search specialized to exact string IDs. */
+export function find_internal_document_id_path(
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+  scopeEdges: readonly InternalDocumentLogicalEdge[],
+  scopePath: readonly number[],
+  id: string,
+): readonly number[] | undefined {
+  const scope = resolve_internal_document_cursor(root, mode, scopeEdges);
+
+  const visit = (
+    cursor: TraversalCursor,
+    logicalPath: readonly number[],
+  ): readonly number[] | undefined => {
+    if (cursor.kind === "node" && is_ordinary_element_node(cursor.node)) {
+      const attrs = decode_public_attrs(cursor.node.$_attrs ?? {});
+      if (attrs?.id === id) return Object.freeze([...logicalPath]);
+
+      const content = logical_element_content_cursor(cursor, scopeEdges.length);
+      return visit_content(content, logicalPath);
+    }
+    if (cursor.kind === "content") return visit_content(cursor, logicalPath);
+    return undefined;
+  };
+
+  const visit_content = (
+    cursor: ContentCursor,
+    logicalPath: readonly number[],
+  ): readonly number[] | undefined => {
+    const length = cursor.node?.$_content.length ?? 0;
+    for (let index = 0; index < length; index += 1) {
+      const child = content_child_cursor(cursor, index, scopeEdges.length);
+      const found = visit(child, Object.freeze([...logicalPath, index]));
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+
+  return visit(scope, scopePath);
 }
 
 /** Lower a resolved logical content container to the existing mutation target. */
