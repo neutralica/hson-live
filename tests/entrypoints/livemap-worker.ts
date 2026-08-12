@@ -45,10 +45,16 @@ if (documentMap.mode === "element") {
   const rootedDocumentProxyLocation = documentMap.proxy([0])[1].$_;
   const discoveredDocumentLocation = documentMap.at([]).id("target");
   const proxyDiscoveredDocumentLocation = documentMap.proxy().$_.id("target");
+  const replacementCommit = documentLocation.replace(documentMap.element.node());
+  const deletionCommit = documentProxyLocation.delete();
+  // @ts-expect-error a missing read does not make undefined valid replacement content
+  documentLocation.replace(undefined);
   void documentProxyLocation.snap();
   void rootedDocumentProxyLocation.path();
   void discoveredDocumentLocation?.snap();
   void proxyDiscoveredDocumentLocation?.path();
+  void replacementCommit.ops;
+  void deletionCommit.ops;
   // @ts-expect-error document proxies expose numeric structural traversal only
   documentProxy.attrs;
   // @ts-expect-error document proxy escapes omit projected mutation capabilities
@@ -57,6 +63,8 @@ if (documentMap.mode === "element") {
   documentMap.at(["content"]);
   // @ts-expect-error document locations intentionally omit projected mutation helpers
   documentLocation.set(documentMap.element.node());
+  // @ts-expect-error document locations do not gain projected update semantics
+  documentLocation.update(() => documentMap.element.node());
   // @ts-expect-error document-specific namespaces do not duplicate passive traversal
   documentMap.document.at([0]);
   // @ts-expect-error canonical ID discovery belongs to locations, not the document façade

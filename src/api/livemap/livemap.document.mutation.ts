@@ -1,5 +1,5 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
-import { ELEM_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
+import { ELEM_TAG, ROOT_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import {
@@ -352,14 +352,15 @@ function prepare_replace_document_content(
       `content index ${index} is outside the existing ${endpoint.$_content.length} slot(s)`,
     );
   }
-  endpoint.$_content[index] = replacement;
+  const canonicalReplacement = insertion_content(endpoint, replacement);
+  endpoint.$_content[index] = canonicalReplacement;
 
   const operation: LiveMapGraphReplaceContentOp = Object.freeze({
     domain: "graph",
     op: operationName,
     target: preparedTarget.target,
     index,
-    replacement: clone_content(replacement, operationName),
+    replacement: clone_content(canonicalReplacement, operationName),
   });
   return prepare_finished_mutation(mode, root, overlay, operation, operationName);
 }
@@ -434,6 +435,14 @@ function prepare_remove_document_content(
   const endpoint = require_content_endpoint(preparedTarget.endpoint, operationName);
   require_existing_content_index(endpoint, index, operationName);
   endpoint.$_content.splice(index, 1);
+  if (mode === "fragment"
+    && endpoint.$_tag === ELEM_TAG
+    && endpoint.$_content.length === 0
+    && preparedTarget.target.path.length === 0
+    && root.$_tag === ROOT_TAG
+    && root.$_content[0] === endpoint) {
+    root.$_content.length = 0;
+  }
 
   const operation: LiveMapGraphRemoveContentOp = Object.freeze({
     domain: "graph",

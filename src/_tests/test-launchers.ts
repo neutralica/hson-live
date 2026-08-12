@@ -749,6 +749,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["document", "path", "traversal", "public-api", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.document-location-mutation",
+      subject: "LiveMap",
+      displayName: "Document location replace and delete convergence",
+      packageScript: "test:livemap-document-location-mutation",
+      repositoryModule: "tests/livemap-document-location-mutation.acceptance.mts",
+      runtime: "node-synthetic-dom",
+      executableChecks: 25,
+      collections: ["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.document-id-discovery",
       subject: "LiveMap",
       displayName: "Internal canonical document ID discovery",

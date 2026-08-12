@@ -601,6 +601,10 @@ type LiveMapDocumentLocation = Readonly<{
   at: (path: readonly number[]) => LiveMapDocumentLocation;
   /** Discover the first exact canonical ID match in this logical subtree. */
   id: (value: string) => LiveMapDocumentLocation | undefined;
+  /** Replace the current logical content item through canonical document mutation. */
+  replace: (value: LiveMapDocumentContent) => LiveMapGraphCommit<LiveMapGraphReplaceContentOp>;
+  /** Remove the current logical content item through canonical document mutation. */
+  delete: () => LiveMapGraphCommit<LiveMapGraphRemoveContentOp>;
 }>;
 
 /** Structural document proxy return type; intentionally not exported. */

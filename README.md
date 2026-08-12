@@ -202,6 +202,25 @@ If the matched element later moves, call `id(...)` again to discover its current
 location—the previously returned location continues to represent its old
 logical coordinate.
 
+Existing logical content items can also be replaced or deleted through their
+locations:
+
+```ts
+if (document.mode === "element" || document.mode === "fragment") {
+  document.at([0]).replace(replacementContent);
+  document.at([1]).delete();
+
+  document.proxy()[0].$_.replace(replacementContent);
+  document.proxy()[1].$_.delete();
+}
+```
+
+These operations mutate the current occupant of a fixed logical coordinate.
+After deletion, later content shifts into that coordinate; the location does not
+follow the removed subject. The document root location `at([])` cannot be
+replaced or deleted this way. Ordered insertion and movement remain under
+`map.document.content`.
+
 The existing proxy surface follows the same document coordinates:
 
 ```ts

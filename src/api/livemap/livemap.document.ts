@@ -189,7 +189,10 @@ function make_document_livemap(
   ));
   let document: LiveMapDocumentApi;
   const identityApi = make_livemap_document_identity_api(() => document, controller);
-  const at = make_livemap_document_location_factory(core, mode);
+  const at = make_livemap_document_location_factory(core, mode, {
+    replace: mutationApi.replaceContent,
+    remove: mutationApi.removeContent,
+  });
   const proxy = (path: readonly number[] = []) => make_livemap_document_proxy(at(path));
   document = Object.freeze({
     root: () => core.root(),

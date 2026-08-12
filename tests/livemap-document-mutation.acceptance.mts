@@ -502,16 +502,16 @@ check("content.remove supports every existing slot, QUID targets and mode-safe o
   assert.equal(map.element.node().$_content.length, 0);
 
   const fragmentOnly = fragment(`"only"`);
-  const fragmentBefore = fragmentOnly.capture();
-  errorCode(() => fragmentOnly.document.content.remove(path(), 0), "INVALID_DOCUMENT_REPLACEMENT");
+  const fragmentRemoval = fragmentOnly.document.content.remove(path(), 0);
+  assert.equal(fragmentRemoval.ops[0]?.op, "remove-content");
   assert.equal(fragmentOnly.mode, "fragment");
-  assert.deepEqual(fragmentOnly.capture(), fragmentBefore);
+  assert.deepEqual(fragmentOnly.root(), { $_tag: "_hson_root", $_content: [] });
 
   const byQuid = element(`<main @000000017/>`);
   byQuid.document.content.insert(quid("000000017"), 0, contentCluster(`<aside "x"/>`));
   assert.equal(byQuid.document.content.remove(quid("000000017"), 0).changed, true);
   for (const index of [-1, 0.5, 1, 9]) {
-    errorCode(() => fragmentOnly.document.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
+    errorCode(() => fragment(`"only"`).document.content.remove(path(), index), "INVALID_DOCUMENT_CONTENT_INDEX");
   }
 });
 

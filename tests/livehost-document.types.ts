@@ -141,6 +141,8 @@ if (elementCandidate.mode !== "element") throw new Error("Expected element map")
 const elementHost = create_livehost({ map: elementCandidate });
 type ElementMapIsExact = Assert<typeof elementHost.map extends LiveHostReadonlyMap<ElementLiveMap> ? true : false>;
 elementHost.map.document.attrs.get({ kind: "path", path: [] }, "id");
+// @ts-expect-error hosted readonly document maps expose no mutable location acquisition
+elementHost.map.at([0]).replace(elementCandidate.element.node());
 elementHost.mutate((draft) => draft.document.attrs.set(
   { kind: "path", path: [] },
   "id",
