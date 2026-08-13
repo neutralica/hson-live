@@ -115,6 +115,22 @@ hson.liveMap.schema.define((s) => {
   // @ts-expect-error Document-only elements cannot enter projected arrays.
   return s.array(s.button());
 });
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Empty is document content, not a projected object property schema.
+  return s.object({ child: s.empty });
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Empty is document content, not a projected array item schema.
+  return s.array(s.empty);
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Negative literal repeat counts are rejected statically.
+  return s.repeat(-1, s.string);
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Fractional literal repeat counts are rejected statically.
+  return s.repeat(1.5, s.string);
+});
 // @ts-expect-error Incompatible pick branches produce no schema expression.
 hson.liveMap.schema.define((s) => s.pick(s.number, s.button()));
 
@@ -148,6 +164,14 @@ hson.liveMap.schema.define(() => Seat.array);
 hson.liveMap.schema.define((s) => s.string.readonly);
 // @ts-expect-error Defined schemas expose no false readonly modifier.
 hson.liveMap.schema.define(() => Seat.readonly);
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error The former refinement spelling is hard-removed.
+  return s.refine(s.number, "positive", (value: number) => value > 0);
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error The former delayed-reference spelling is hard-removed.
+  return s.lazy(() => s.string);
+});
 
 function passThrough<TSchema extends LiveMapSchema>(schema: TSchema): TSchema { return schema; }
 const passed = passThrough(Seat);

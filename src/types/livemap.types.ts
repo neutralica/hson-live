@@ -626,6 +626,44 @@ type InternalDocumentSequenceCoordinate<
     ? TItems[TIndex & keyof TItems]
     : InternalDocumentInvalidStaticPath;
 
+type InternalDocumentIndexWithinCount<
+  TIndex extends number,
+  TCount extends number,
+  TCursor extends readonly unknown[] = readonly [],
+> = TCursor["length"] extends TIndex
+  ? TCursor["length"] extends TCount ? false : true
+  : TCursor["length"] extends TCount
+    ? false
+    : InternalDocumentIndexWithinCount<TIndex, TCount, readonly [...TCursor, unknown]>;
+
+type InternalDocumentCountedCoordinateBranch<
+  TCount extends number,
+  TItem,
+  TIndex extends number,
+> = InternalDocumentIndexWithinCount<TIndex, TCount> extends true
+  ? TItem
+  : InternalDocumentInvalidStaticPath;
+
+type InternalDocumentCountedCoordinateBranches<
+  TCount extends number,
+  TItem,
+  TIndex extends number,
+> = TCount extends unknown
+  ? InternalDocumentCountedCoordinateBranch<TCount, TItem, TIndex>
+  : never;
+
+type InternalDocumentCountedCoordinate<
+  TCount extends number,
+  TItem,
+  TIndex extends number,
+> = number extends TCount
+  ? TItem | InternalDocumentMissingCoordinate
+  : number extends TIndex
+    ? TItem | InternalDocumentMissingCoordinate
+    : InternalDocumentNormalizeBranches<
+      InternalDocumentCountedCoordinateBranches<TCount, TItem, TIndex>
+    >;
+
 type InternalDocumentContentCoordinateBranch<
   TContent,
   TIndex extends number,
@@ -639,6 +677,12 @@ type InternalDocumentContentCoordinateBranch<
     item: infer TItem;
   }>
     ? TItem | InternalDocumentMissingCoordinate
+    : TContent extends Readonly<{
+      kind: "counted-repeat";
+      count: infer TCount extends number;
+      item: infer TItem;
+    }>
+      ? InternalDocumentCountedCoordinate<TCount, TItem, TIndex>
     : TContent extends Readonly<{
       kind: "pick";
       choices: infer TChoices extends readonly unknown[];
@@ -848,6 +892,11 @@ type InternalDocumentContentWritableItems<TContent> =
     }>
       ? InternalDocumentWritableItemBranches<TItem>
       : TContent extends Readonly<{
+        kind: "counted-repeat";
+        item: infer TItem;
+      }>
+        ? InternalDocumentWritableItemBranches<TItem>
+      : TContent extends Readonly<{
         kind: "pick";
         choices: infer TChoices extends readonly unknown[];
       }>
@@ -1030,12 +1079,34 @@ type LiveMapDocumentLocation<
 type InternalDocumentTupleNumericKey<TKey> =
   TKey extends `${infer TIndex extends number}` ? TIndex : never;
 
+type InternalDocumentCountedStaticKeys<
+  TCount extends number,
+  TCursor extends readonly unknown[] = readonly [],
+  TKeys extends number = never,
+> = number extends TCount
+  ? never
+  : TCursor["length"] extends TCount
+    ? TKeys
+    : InternalDocumentCountedStaticKeys<
+      TCount,
+      readonly [...TCursor, unknown],
+      TKeys | TCursor["length"]
+    >;
+
+type InternalDocumentCountedStaticKeyBranches<TCount extends number> =
+  TCount extends unknown ? InternalDocumentCountedStaticKeys<TCount> : never;
+
 type InternalDocumentProxyContentStaticKeys<TContent> =
   TContent extends Readonly<{
     kind: "sequence";
     items: infer TItems extends readonly unknown[];
   }>
     ? InternalDocumentTupleNumericKey<keyof TItems>
+    : TContent extends Readonly<{
+      kind: "counted-repeat";
+      count: infer TCount extends number;
+    }>
+      ? InternalDocumentCountedStaticKeyBranches<TCount>
     : TContent extends Readonly<{
       kind: "pick";
       choices: infer TChoices extends readonly unknown[];
@@ -1548,7 +1619,7 @@ export type LiveMapSchemaIssueCode =
   | "UNKNOWN_PATH"
   | "UNKNOWN_KEY"
   | "INVALID_LITERAL"
-  | "INVALID_REFINEMENT"
+  | "INVALID_CONSTRAINT"
   | "INVALID_SCHEMA"
   | "TUPLE_INDEX_OUT_OF_RANGE";
 

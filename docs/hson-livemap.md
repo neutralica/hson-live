@@ -307,7 +307,7 @@ const typedState = projectedMap.schema.use(State);
 ```
 
 Projected constructors include `unknown`, `string`, `number`, `boolean`,
-`null`, `literal`, `pick`, `tagged`, `lazy`, `refine`, `array`, `tuple`,
+`null`, `literal`, `pick`, `tagged`, `recurse`, `constrain`, `array`, `tuple`,
 `record`, `object`, `exact`, `partial`, and `deepPartial`. The retained postfix
 modifiers are `optional` and `nullable`; both also work on compatible defined
 projected schemas. Arrays use the single `s.array(item)` spelling.
@@ -337,14 +337,25 @@ if (candidate.mode === "element") {
 `string`, `unknown`, `tuple`, and `pick` retain every truthful projected and
 document capability until an enclosing expression selects one. Invalid mixes,
 such as `s.exact({ child: s.div() })` or `s.div(s.number)`, are rejected.
-`repeat(item)` is a document layout for zero or more siblings. A top-level
-`tuple(...)` is one multi-root fragment layout.
+`repeat(item)` is a document layout for zero or more siblings;
+`repeat(count, item)` requires exactly that many siblings. Counts are captured
+when `define` evaluates and must be primitive nonnegative safe integers. Literal
+counts retain fixed-coordinate evidence; a dynamic `number` retains the child
+type but makes reads conservatively optional. A top-level `tuple(...)` is one
+multi-root fragment layout.
 
 Tag calls with no children leave descendants broad. Explicit items form one
 closed ordered layout, while one layout argument supplies the complete content.
-Use `s.div(s.tuple())` for an exact-empty `div`; use `s.tuple()` for an empty
-fragment layout. Known HTML and SVG names come from the same canonical catalog
-as `LiveTree.create`.
+Use `s.div(s.empty)` for an exact-empty `div`, and return `s.empty` for an exact
+empty fragment. `s.empty` is document-only and means exactly zero items.
+`s.tuple()` remains valid: it is both the zero-position document layout and the
+exact empty projected tuple `[]`. `s.repeat(0, Item)` has the same document
+emptiness semantics. Known HTML and SVG names come from the same canonical
+catalog as `LiveTree.create`.
+
+`s.constrain(Base, label, predicate)` narrows admitted values after `Base`
+validates; it never transforms them. `s.recurse(() => Schema)` resolves a
+self-, mutual-, or forward-recursive projected schema reference.
 
 The same child grammar covers any element and arbitrary tags:
 

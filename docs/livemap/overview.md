@@ -816,8 +816,8 @@ Schemas can express constraints such as:
 - arrays and item schemas;
 - fixed item positions;
 - records;
-- lazy schemas;
-- custom validation.
+- recursive schemas;
+- predicate constraints that narrow admitted values without transforming them.
 
 For example:
 
@@ -833,6 +833,12 @@ const User = hson.liveMap.schema.define((s) => s.object({
 explicit expression rather than a raw object shape.
 
 Schema validation occurs before authoritative acceptance.
+
+Recursive and forward schema references use `s.recurse(() => Schema)`.
+Document schemas use `s.empty` for exact empty content, `s.repeat(Item)` for
+zero-or-more homogeneous siblings, and `s.repeat(count, Item)` for an exact
+homogeneous cardinality. `s.tuple(...)` remains the fixed ordered product in
+both projected and document domains.
 
 A failing mutation leaves the current graph and revision unchanged.
 
@@ -1908,7 +1914,7 @@ item schemas
 fixed items
 literals
 choices
-lazy schemas
+recursive schemas
 custom validation
 structured issues
 ```

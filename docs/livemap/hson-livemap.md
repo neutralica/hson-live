@@ -370,7 +370,7 @@ const typed = map.schema.use(UserState);
 ```
 
 The direct `s` toolkit supports primitives, literals, choices, tagged choices,
-lazy recursion, refinements, arrays, tuples, records, ordinary objects, exact
+recursive references, constraints, arrays, tuples, records, ordinary objects, exact
 objects, partial objects, and deep-partial objects. Tokens can be optional or
 nullable.
 
@@ -388,13 +388,22 @@ The same `schema.define(s => ...)` boundary defines document contracts. Known
 HTML and SVG tags are direct calls such as `s.div(...)` and `s.button(...)`,
 derived from the canonical `LiveTree.create` tag source. `s.string` is logical
 text, `s.unknown` is an arbitrary legal item, `s.tuple(...)` is a closed ordered
-layout, `s.repeat(item)` is zero-or-more siblings, and `s.pick(...)` combines
-compatible items or layouts. Shared expressions retain every truthful
+layout, `s.empty` is exactly zero document items, `s.repeat(item)` is
+zero-or-more siblings, `s.repeat(count, item)` is exactly `count` homogeneous
+siblings, and `s.pick(...)` combines compatible items or layouts. Shared expressions retain every truthful
 projected/document capability until an enclosing expression selects one.
 
 Zero tag arguments leave descendants broad. Explicit items close the complete
-direct content, and one layout argument supplies it. `s.div(s.tuple())` is an
-exact-empty element; top-level `s.tuple(...)` is a multi-root layout.
+direct content, and one layout argument supplies it. Prefer `s.div(s.empty)`
+for an exact-empty element and return `s.empty` for an empty fragment.
+`s.tuple()` remains both the zero-position document layout and the projected
+empty tuple `[]`; `s.repeat(0, item)` has the same document emptiness semantics.
+Top-level nonempty `s.tuple(...)` is a multi-root layout.
+
+Counted-repeat counts are captured at definition time and must be primitive
+nonnegative safe integers. Literal counts retain fixed coordinates. Dynamic
+numbers are supported with exact runtime cardinality and conservative optional
+static coordinates while preserving precise item evidence.
 
 The callable tag family covers any element and arbitrary names without changing
 that grammar:
@@ -498,7 +507,7 @@ locally, and a structured `HsonNode` endpoint keeps its child evidence for later
 proxy or relative descent. `$_` remains the existing interned location with its
 normal read, watch, mutation, attrs, and binding capabilities; proxy runtime
 grammar and behavior are unchanged. Schema-less proxies remain historically
-broad. Attrs and schema-frontend refinement remain deferred.
+broad. Attrs and further schema-frontend constraints remain deferred.
 
 On the existing bracket surface, TypeScript cannot simultaneously reject every
 out-of-range numeric literal and provide a truthful dynamic-number index. Known

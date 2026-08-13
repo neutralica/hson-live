@@ -98,6 +98,30 @@ type _RepeatEvidence = Expect<Equal<
   }>
 >>;
 
+const emptyAtom = hson.liveMap.schema.define((s) => s.empty);
+type _EmptyAtomEvidence = Expect<Equal<
+  InternalDocumentSchemaEvidence<typeof emptyAtom>,
+  Readonly<{
+    kind: "fragment";
+    content: Readonly<{ kind: "sequence"; items: readonly [] }>;
+  }>
+>>;
+
+const counted = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
+type _CountedEvidence = Expect<Equal<
+  InternalDocumentSchemaEvidence<typeof counted>,
+  Readonly<{
+    kind: "fragment";
+    content: Readonly<{ kind: "counted-repeat"; count: 3; item: Readonly<{ kind: "text" }> }>;
+  }>
+>>;
+
+const zeroCounted = hson.liveMap.schema.define((s) => s.repeat(0, s.string));
+type _ZeroCountedEvidence = Expect<Equal<
+  InternalDocumentSchemaEvidence<typeof zeroCounted>,
+  InternalDocumentSchemaEvidence<typeof emptyAtom>
+>>;
+
 const itemPick = hson.liveMap.schema.define((s) => s.pick(s.string, s.tag()));
 type _ItemPickEvidence = Expect<Equal<
   InternalDocumentSchemaEvidence<typeof itemPick>["kind"],

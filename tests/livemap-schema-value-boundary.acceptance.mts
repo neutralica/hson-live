@@ -183,10 +183,10 @@ check("schema literals detach from later caller mutation", () => {
   assert.equal(schema.validateRoot({ nested: { value: 9 } }).ok, false);
 });
 
-check("nested refinements receive independent detached values", () => {
+check("nested constraints receive independent detached values", () => {
   let outerValue: unknown;
-  const schema = hson.liveMap.schema.define((s) => s.refine(
-    s.refine(s.unknown, "inner", (value) => {
+  const schema = hson.liveMap.schema.define((s) => s.constrain(
+    s.constrain(s.unknown, "inner", (value) => {
       (value as Record<string, JsonValue>).field = 99;
       return true;
     }),
@@ -200,9 +200,9 @@ check("nested refinements receive independent detached values", () => {
   assert.equal(outerValue, 1);
 });
 
-check("attached refinement mutation cannot affect the candidate", () => {
+check("attached constraint mutation cannot affect the candidate", () => {
   const schema = hson.liveMap.schema.define((s) => s.object({
-    value: s.refine(s.unknown, "detached", (input) => {
+    value: s.constrain(s.unknown, "detached", (input) => {
       (input as Record<string, JsonValue>).field = 99;
       return true;
     }),

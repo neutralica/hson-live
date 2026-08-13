@@ -51,6 +51,33 @@ type _RepeatedText = Expect<Equal<Snap<ReturnType<typeof repeatedText.at<[123]>>
 type _RepeatedTextDynamic = Expect<Equal<Snap<ReturnType<typeof repeatedText.at<[number]>>>, string | undefined>>;
 repeatedText.at([index]);
 
+const CountedTextSchema = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
+const countedText = fragmentMap.schema.use(CountedTextSchema);
+type _CountedText0 = Expect<Equal<Snap<ReturnType<typeof countedText.at<[0]>>>, string>>;
+type _CountedText2 = Expect<Equal<Snap<ReturnType<typeof countedText.at<[2]>>>, string>>;
+type _CountedTextDynamic = Expect<Equal<Snap<ReturnType<typeof countedText.at<[number]>>>, string | undefined>>;
+// @ts-expect-error Exact counted repeat has no coordinate 3.
+countedText.at([3]);
+
+declare const dynamicCount: number;
+const DynamicCountedTextSchema = hson.liveMap.schema.define((s) => s.repeat(dynamicCount, s.string));
+const dynamicCountedText = fragmentMap.schema.use(DynamicCountedTextSchema);
+type _DynamicCountedChild = Expect<Equal<Snap<ReturnType<typeof dynamicCountedText.at<[0]>>>, string | undefined>>;
+
+const LargeCountedTextSchema = hson.liveMap.schema.define((s) => s.repeat(1_000_000, s.string));
+const largeCountedText = fragmentMap.schema.use(LargeCountedTextSchema);
+type _LargeCountedEarlyCoordinate = Expect<Equal<Snap<ReturnType<typeof largeCountedText.at<[2]>>>, string>>;
+
+const EmptyAtomSchema = hson.liveMap.schema.define((s) => s.empty);
+const emptyAtom = fragmentMap.schema.use(EmptyAtomSchema);
+// @ts-expect-error The exact-empty atom has no child coordinate.
+emptyAtom.at([0]);
+
+const ZeroCountedTextSchema = hson.liveMap.schema.define((s) => s.repeat(0, s.string));
+const zeroCountedText = fragmentMap.schema.use(ZeroCountedTextSchema);
+// @ts-expect-error Count zero has the same static coordinate closure as empty.
+zeroCountedText.at([0]);
+
 const RepeatedUnionSchema = hson.liveMap.schema.define((s) => s.repeat(s.pick(s.string, s.tag())));
 const repeatedItemUnion = fragmentMap.schema.use(RepeatedUnionSchema);
 type _RepeatedUnion = Expect<Equal<Snap<ReturnType<typeof repeatedItemUnion.at<[0]>>>, string | HsonNode | undefined>>;

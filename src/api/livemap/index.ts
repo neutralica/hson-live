@@ -58,7 +58,7 @@ export type {
   LiveMapSchema,
   LiveMapSchemaIssue,
   LiveMapSchemaMustApi,
-  LiveMapSchemaRefinement,
+  LiveMapSchemaConstraint,
   LiveMapSchemaResolution,
   LiveMapSchemaRule,
   LiveMapSchemaValidation,

@@ -350,8 +350,8 @@ The direct `s` toolkit includes:
 - structure: `array(item)`, `tuple(...items)`, `object(shape)`,
   `exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and
   `record(value)`;
-- recursion/validation: `lazy(factory)` and
-  `refine(base, label, predicate)`.
+- recursion/validation: `recurse(factory)` and
+  `constrain(base, label, predicate)`.
 
 Every `define` call returns a distinct immutable schema. Defined schemas retain
 their exact evidence and can be used anywhere a compatible inline expression
@@ -368,7 +368,9 @@ allows extra string keys. Declared properties retain their precise types, while
 undeclared keys are typed as recursively projected primitive/readonly
 array/readonly object values plus `undefined` for absence. `exact` rejects extra
 keys and has no open index signature. Arrays use only `array(item)`. Tuple
-indexes are bounded. `refine` runs custom validation after its base succeeds.
+indexes are bounded. `constrain` runs custom validation after its base succeeds
+and only narrows validity; it does not transform or coerce values. `recurse`
+exists for self-recursion, mutual recursion, and forward schema references.
 
 `partial` and `deepPartial` accept an explicit object expression or compatible
 defined object schema and preserve whether the operand is open or exact. Tagged
@@ -384,9 +386,9 @@ const Event = hson.liveMap.schema.define((s) => s.tagged("kind", {
 Schema values use the same admission domain as mutations. `optional` means the
 property may be missing; a present property whose value is `undefined` is
 invalid. Literal values are admitted and detached when the schema is defined,
-then compared using ordered SameValue semantics. Refinement callbacks receive
+then compared using ordered SameValue semantics. Constraint callbacks receive
 fresh detached JavaScript materializations, so mutating one callback's input
-cannot alter the candidate or another refinement.
+cannot alter the candidate or another constraint.
 
 Schema objects expose `validateRoot(value)`, `validateValue(path, value)`,
 `rules`, `match(path)`, `resolve(path)`, `has(path)`, and throwing `must.resolve`
@@ -404,7 +406,7 @@ number of independent map owners.
 
 Validation returns structured issues with codes including `TYPE_MISMATCH`,
 `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`,
-`INVALID_REFINEMENT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`.
+`INVALID_CONSTRAINT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`.
 Issue paths are projected paths. Multi-operation validation reports the relevant
 operation/headline path while retaining detailed issue paths.
 
@@ -424,17 +426,29 @@ if (map.mode === "element") map.schema.use(ButtonDocument);
 
 Known HTML and SVG tags are direct builders on the same `s` toolkit and derive
 from the canonical `LiveTree.create` tag catalog. `s.string` is logical text;
-`s.unknown` is one arbitrary legal document item; `s.tuple(...)` is a closed
-ordered layout; `s.repeat(item)` is a whole zero-or-more sibling layout; and
+`s.unknown` is one arbitrary legal document item; `s.empty` is exactly zero
+document items; `s.tuple(...)` is a closed ordered layout;
+`s.repeat(item)` is a whole zero-or-more sibling layout;
+`s.repeat(count, item)` is a homogeneous exact-count layout; and
 `s.pick(...)` combines compatible items or compatible layouts. Shared
 `string`, `unknown`, `tuple`, and `pick` expressions retain projected and
 document capabilities until their enclosing expression selects one.
 
 A known-tag call with no children, such as `s.div()`, leaves descendants broad.
 Explicit child items close the complete direct content. One layout argument
-supplies the complete layout. `s.div(s.tuple())` is an exact-empty element, and
-a top-level `s.tuple(...)` is a fragment/multi-root contract. Attributes remain
-open.
+supplies the complete layout. Prefer `s.div(s.empty)` for an exact-empty element
+and return `s.empty` for an exact-empty fragment. `s.tuple()` remains the valid
+zero-position document layout and, in projected composition, the exact empty
+tuple `[]`. `s.repeat(0, item)` is document-semantically equivalent to
+`s.empty`. A top-level nonempty `s.tuple(...)` is a fragment/multi-root
+contract. Attributes remain open.
+
+Counted repeat accepts primitive finite nonnegative safe integers only. Negative,
+fractional, nonfinite, unsafe, boxed, bigint, boolean, and string counts reject.
+A dynamic `number` is supported: its exact value is captured when `define`
+evaluates, while TypeScript conservatively treats its coordinates as possibly
+absent and preserves the item evidence. Literal counts expose exact positions,
+so `repeat(3, Item)` has positions 0–2 and statically rejects direct path 3.
 
 Arbitrary tags use the callable tag family with the same child grammar:
 
@@ -483,7 +497,8 @@ if (map.mode === "element") {
 }
 ```
 
-Exact fixed coordinates resolve from the schema. Text endpoints are `string`;
+Exact fixed coordinates, including literal counted-repeat coordinates, resolve
+from the schema. Text endpoints are `string`;
 structured endpoints remain `HsonNode`. Repeated positions and dynamic numeric
 indexes include `undefined` because the requested coordinate may be absent.
 Layout picks combine the endpoints of branches that contain a coordinate and

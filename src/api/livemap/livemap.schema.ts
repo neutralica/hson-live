@@ -26,9 +26,12 @@ import {
   add_document_unknown_capability,
   document_content_node,
   document_item_node,
+  make_document_counted_repeat_schema,
   make_document_element_schema,
   make_document_repeat_schema,
+  make_document_tuple_schema,
   register_defined_document_schema,
+  type DocumentCountedRepeatEvidence,
   type DocumentElementEvidence,
   type DocumentFragmentEvidence,
   type DocumentPickEvidence,
@@ -51,8 +54,8 @@ export type LiveMapSchemaKind =
   | "null"
   | "literal"
   | "pick"
-  | "lazy"
-  | "refine"
+  | "recurse"
+  | "constrain"
   | "array"
   | "tuple"
   | "object"
@@ -144,7 +147,7 @@ export type LiveMapSchemaChoice =
   | JsonValue
   | LiveMapSchemaInput;
 
-export type LiveMapSchemaRefinement<TValue = JsonValue> = (value: TValue) => boolean;
+export type LiveMapSchemaConstraint<TValue = JsonValue> = (value: TValue) => boolean;
 
 export type InferLiveMapSchema<TSchema> = TSchema extends LiveMapSchema<infer TValue> ? TValue : never;
 export type LiveMapSchemaValue<TSchema> = InferLiveMapSchema<TSchema>;
@@ -375,6 +378,29 @@ type UnifiedTupleResult<TItems extends readonly unknown[]> =
 
 type SchemaPickOperand = LiveMapSchemaChoice | InternalDocumentItemSchema | InternalDocumentContentSchema;
 type SchemaTupleOperand = LiveMapSchemaInput | InternalDocumentItemSchema;
+type InvalidDocumentRepeatLiteral<TCount extends number> = TCount extends unknown
+  ? `${TCount}` extends `-${string}` | `${string}.${string}` ? TCount : never
+  : never;
+type DocumentRepeatCountGuard<TCount extends number> = number extends TCount
+  ? unknown
+  : [InvalidDocumentRepeatLiteral<TCount>] extends [never] ? unknown : never;
+type DocumentCountedRepeatResult<
+  TCount extends number,
+  TItem extends InternalDocumentItemSchema,
+> = InternalDocumentContentSchema<
+  TCount extends 0
+    ? DocumentSequenceEvidence<readonly []>
+    : DocumentCountedRepeatEvidence<TCount, DocumentItemEvidence<TItem>>
+>;
+type DocumentRepeatOperator = {
+  <const TItem extends InternalDocumentItemSchema>(
+    item: TItem,
+  ): InternalDocumentContentSchema<DocumentRepeatEvidence<DocumentItemEvidence<TItem>>>;
+  <const TCount extends number, const TItem extends InternalDocumentItemSchema>(
+    count: TCount & DocumentRepeatCountGuard<TCount>,
+    item: TItem,
+  ): DocumentCountedRepeatResult<TCount, TItem>;
+};
 export type InternalLiveMapSchemaExpression = LiveMapSchemaInput | InternalDocumentItemSchema | InternalDocumentContentSchema;
 export type InternalLiveMapSchemaDefinition = InternalLiveMapSchemaExpression;
 
@@ -420,8 +446,8 @@ type LiveMapSchemaOperators = Readonly<{
   literal: <const TValues extends readonly [JsonValue, ...JsonValue[]]>(...values: TValues) => LiveMapSchemaToken<TValues[number]>;
   pick: <const TChoices extends readonly [SchemaPickOperand, ...SchemaPickOperand[]]>(...choices: TChoices & CompatiblePickArguments<NoInfer<TChoices>>) => UnifiedPickResult<TChoices>;
   tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants & ProjectedVariantGuard<TVariants> & NonEmptyVariantGuard<TVariants>) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
-  lazy: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
-  refine: <TInput extends LiveMapSchemaInput>(base: TInput & ProjectedInputGuard<TInput>, label: string, validate: LiveMapSchemaRefinement<InferLiveMapSchemaPresent<TInput>>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
+  recurse: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
+  constrain: <TInput extends LiveMapSchemaInput>(base: TInput & ProjectedInputGuard<TInput>, label: string, validate: LiveMapSchemaConstraint<InferLiveMapSchemaPresent<TInput>>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
   array: <TInput extends LiveMapSchemaInput>(item: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<readonly InferLiveMapSchemaPresent<TInput>[]>;
   tuple: <const TItems extends readonly SchemaTupleOperand[]>(...items: TItems & CompatibleTupleArguments<NoInfer<TItems>>) => UnifiedTupleResult<TItems>;
   record: <TInput extends LiveMapSchemaInput>(value: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaPresent<TInput>>>>;
@@ -429,7 +455,8 @@ type LiveMapSchemaOperators = Readonly<{
   partial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<Partial<InferLiveMapSchemaPresent<TInput>>>;
   deepPartial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaPresent<TInput>>>;
   exact: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedShapeGuard<TShape>) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
-  repeat: <const TItem extends InternalDocumentItemSchema>(item: TItem) => InternalDocumentContentSchema<DocumentRepeatEvidence<DocumentItemEvidence<TItem>>>;
+  empty: InternalDocumentContentSchema<DocumentSequenceEvidence<readonly []>>;
+  repeat: DocumentRepeatOperator;
   tag: SchemaTag;
 }>;
 
@@ -447,10 +474,10 @@ type LiveMapSchemaNode = Readonly<{
   exact: boolean;
   literals: readonly OrderedProjectedValue[];
   choices?: readonly LiveMapSchemaNode[];
-  lazy?: () => LiveMapSchemaNode;
+  recurse?: () => LiveMapSchemaNode;
   base?: LiveMapSchemaNode;
   label?: string;
-  validate?: LiveMapSchemaRefinement;
+  validate?: LiveMapSchemaConstraint;
   item?: LiveMapSchemaNode;
   items?: readonly LiveMapSchemaNode[];
   props?: readonly (readonly [string, LiveMapSchemaNode])[];
@@ -464,10 +491,10 @@ type LiveMapSchemaDraft = Readonly<{
   exact?: boolean;
   literals?: readonly JsonValue[];
   choices?: readonly LiveMapSchemaChoice[];
-  lazy?: () => LiveMapSchemaInput;
+  recurse?: () => LiveMapSchemaInput;
   base?: LiveMapSchemaInput;
   label?: string;
-  validate?: LiveMapSchemaRefinement;
+  validate?: LiveMapSchemaConstraint;
   item?: LiveMapSchemaInput;
   items?: readonly LiveMapSchemaInput[];
   props?: LiveMapSchemaShape;
@@ -495,6 +522,7 @@ type CompiledLiveMapSchemaRule = Readonly<{
 
 const sharedUnknown = add_document_unknown_capability(make_schema_token<JsonValue>({ kind: "unknown" }));
 const sharedString = add_document_text_capability(make_schema_token<string>({ kind: "string" }));
+const sharedEmpty = make_document_tuple_schema();
 
 const TAG_FAMILY_PRIMITIVE_LABEL = "hson.liveMap.schema.tag";
 
@@ -587,8 +615,8 @@ const LIVEMAP_SCHEMA_RUNTIME_BASE: LiveMapSchemaOperators = {
   }) as LiveMapSchemaOperators["literal"],
   pick: ((...choices: readonly SchemaPickOperand[]) => make_unified_pick(choices)) as LiveMapSchemaOperators["pick"],
   tagged: ((discriminator: string, variants: LiveMapSchemaVariants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) })) as LiveMapSchemaOperators["tagged"],
-  lazy: (makeInput: () => LiveMapSchemaInput) => make_schema_token({ kind: "lazy", lazy: makeInput }),
-  refine: ((base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaRefinement) => make_schema_token({ kind: "refine", base, label, validate })) as LiveMapSchemaOperators["refine"],
+  recurse: (makeInput: () => LiveMapSchemaInput) => make_schema_token({ kind: "recurse", recurse: makeInput }),
+  constrain: ((base: LiveMapSchemaInput, label: string, validate: LiveMapSchemaConstraint) => make_schema_token({ kind: "constrain", base, label, validate })) as LiveMapSchemaOperators["constrain"],
   array: (item: LiveMapSchemaInput) => make_schema_token({ kind: "array", item }),
   tuple: ((...items: readonly SchemaTupleOperand[]) => make_unified_tuple(items)) as LiveMapSchemaOperators["tuple"],
   record: (value: LiveMapSchemaInput) => make_schema_token({ kind: "record", record: value }),
@@ -596,7 +624,12 @@ const LIVEMAP_SCHEMA_RUNTIME_BASE: LiveMapSchemaOperators = {
   partial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, false)) as LiveMapSchemaOperators["partial"],
   deepPartial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, true)) as LiveMapSchemaOperators["deepPartial"],
   exact: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape, exact: true }),
-  repeat: (item) => make_document_repeat_schema(item),
+  empty: sharedEmpty,
+  repeat: ((countOrItem: number | InternalDocumentItemSchema, maybeItem?: InternalDocumentItemSchema) => (
+    maybeItem === undefined
+      ? make_document_repeat_schema(countOrItem as InternalDocumentItemSchema)
+      : make_document_counted_repeat_schema(countOrItem as number, maybeItem)
+  )) as DocumentRepeatOperator,
   tag: make_schema_tag_family(),
 };
 
@@ -838,7 +871,7 @@ function normalize_schema_draft(draft: LiveMapSchemaDraft): LiveMapSchemaNode {
     exact: draft.exact === true,
     literals: Object.freeze((draft.literals ?? []).map((literal) => admit_projected_value(literal))),
     ...(draft.choices !== undefined ? { choices: Object.freeze(draft.choices.map((choice) => normalize_schema_choice(choice))) } : {}),
-    ...(draft.lazy !== undefined ? { lazy: memoize_schema_lazy(draft.lazy) } : {}),
+    ...(draft.recurse !== undefined ? { recurse: memoize_schema_recursion(draft.recurse) } : {}),
     ...(draft.base !== undefined ? { base: normalize_schema_input(draft.base) } : {}),
     ...(draft.label !== undefined ? { label: draft.label } : {}),
     ...(draft.validate !== undefined ? { validate: draft.validate } : {}),
@@ -854,7 +887,7 @@ function normalize_schema_choice(choice: LiveMapSchemaChoice): LiveMapSchemaNode
   return normalize_schema_draft({ kind: "literal", literals: [choice] });
 }
 
-function memoize_schema_lazy(makeInput: () => LiveMapSchemaInput): () => LiveMapSchemaNode {
+function memoize_schema_recursion(makeInput: () => LiveMapSchemaInput): () => LiveMapSchemaNode {
   let node: LiveMapSchemaNode | undefined;
 
   return () => {
@@ -928,8 +961,8 @@ function collect_schema_rules(
       matchPath,
     }),
   ];
-  if (node.kind === "lazy") return rules;
-  if (node.kind === "refine") return rules;
+  if (node.kind === "recurse") return rules;
+  if (node.kind === "constrain") return rules;
   if (node.kind === "object" && node.props !== undefined) {
     for (const [key, child] of node.props) {
       rules.push(...collect_schema_rules(
@@ -1082,8 +1115,8 @@ function admit_public_schema_value(
 
 function schema_node_at_path(node: LiveMapSchemaNode, path: LivePath): LiveMapSchemaNode | undefined {
   if (path.length === 0) return node;
-  if (node.kind === "lazy") return node.lazy === undefined ? undefined : schema_node_at_path(node.lazy(), path);
-  if (node.kind === "refine") return node.base === undefined ? undefined : schema_node_at_path(node.base, path);
+  if (node.kind === "recurse") return node.recurse === undefined ? undefined : schema_node_at_path(node.recurse(), path);
+  if (node.kind === "constrain") return node.base === undefined ? undefined : schema_node_at_path(node.base, path);
 
   const [part, ...rest] = path;
 
@@ -1134,8 +1167,8 @@ function validate_schema_node(node: LiveMapSchemaNode, path: LivePath, value: Sc
 
   if (node.kind === "literal") return validate_literal_node(node, path, value);
   if (node.kind === "pick") return validate_pick_node(node, path, value);
-  if (node.kind === "lazy") return validate_lazy_node(node, path, value);
-  if (node.kind === "refine") return validate_refine_node(node, path, value);
+  if (node.kind === "recurse") return validate_recurse_node(node, path, value);
+  if (node.kind === "constrain") return validate_constrain_node(node, path, value);
   if (node.kind === "array") return validate_array_node(node, path, value);
   if (node.kind === "tuple") return validate_tuple_node(node, path, value);
   if (node.kind === "object") return validate_object_node(node, path, value);
@@ -1185,23 +1218,23 @@ function validate_pick_node(node: LiveMapSchemaNode, path: LivePath, value: Orde
   return expected_schema_value_issue(node, path, json_value_type_label(value));
 }
 
-function validate_lazy_node(node: LiveMapSchemaNode, path: LivePath, value: OrderedProjectedValue): LiveMapSchemaValidation {
-  if (node.lazy === undefined) {
+function validate_recurse_node(node: LiveMapSchemaNode, path: LivePath, value: OrderedProjectedValue): LiveMapSchemaValidation {
+  if (node.recurse === undefined) {
     return validation_issue(
       "INVALID_SCHEMA",
       path,
-      `LiveMap schema lazy rule is not defined at ${format_schema_path(path)}`,
+      `LiveMap schema recursion rule is not defined at ${format_schema_path(path)}`,
     );
   }
-  return validate_schema_node(node.lazy(), path, value);
+  return validate_schema_node(node.recurse(), path, value);
 }
 
-function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: OrderedProjectedValue): LiveMapSchemaValidation {
+function validate_constrain_node(node: LiveMapSchemaNode, path: LivePath, value: OrderedProjectedValue): LiveMapSchemaValidation {
   if (node.base === undefined || node.validate === undefined) {
     return validation_issue(
       "INVALID_SCHEMA",
       path,
-      `LiveMap schema refinement is not defined at ${format_schema_path(path)}`,
+      `LiveMap schema constraint is not defined at ${format_schema_path(path)}`,
     );
   }
 
@@ -1214,7 +1247,7 @@ function validate_refine_node(node: LiveMapSchemaNode, path: LivePath, value: Or
     node,
     path,
     emit_ordered_json(value),
-    "INVALID_REFINEMENT",
+    "INVALID_CONSTRAINT",
   );
 }
 
@@ -1362,8 +1395,8 @@ function merge_validations(validations: readonly LiveMapSchemaValidation[]): Liv
 function schema_kind_label(node: LiveMapSchemaNode): string {
   if (node.kind === "literal") return node.literals.map(emit_ordered_json).join(" | ");
   if (node.kind === "pick") return (node.choices ?? []).map(schema_kind_label).join(" | ") || "pick";
-  if (node.kind === "lazy") return node.lazy === undefined ? "lazy" : schema_kind_label(node.lazy());
-  if (node.kind === "refine") return node.label ?? "refinement";
+  if (node.kind === "recurse") return node.recurse === undefined ? "recurse" : schema_kind_label(node.recurse());
+  if (node.kind === "constrain") return node.label ?? "constraint";
   if (node.nullable && node.kind !== "null") return `${node.kind} | null`;
 
   return node.kind;

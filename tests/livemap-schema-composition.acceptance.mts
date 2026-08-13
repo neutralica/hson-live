@@ -54,14 +54,14 @@ check("defined schema composes as a record value", () => {
   const Seats = hson.liveMap.schema.define((s) => s.record(Seat));
   assert.equal(Seats.validateRoot({ a: { connected: true }, b: { connected: false } }).ok, true);
 });
-check("defined schema composes as a refine base", () => {
-  const Connected = hson.liveMap.schema.define((s) => s.refine(Seat, "connected", (value) => value.connected));
+check("defined schema composes as a constrain base", () => {
+  const Connected = hson.liveMap.schema.define((s) => s.constrain(Seat, "connected", (value) => value.connected));
   assert.equal(Connected.validateRoot({ connected: true }).ok, true);
   assert.equal(Connected.validateRoot({ connected: false }).ok, false);
 });
-check("defined schema composes through lazy", () => {
-  const LazySeat = hson.liveMap.schema.define((s) => s.lazy(() => Seat));
-  assert.equal(LazySeat.validateRoot({ connected: true }).ok, true);
+check("defined schema composes through recurse", () => {
+  const RecursiveSeat = hson.liveMap.schema.define((s) => s.recurse(() => Seat));
+  assert.equal(RecursiveSeat.validateRoot({ connected: true }).ok, true);
 });
 check("defined schema composes through partial", () => {
   const MaybeSeat = hson.liveMap.schema.define((s) => s.partial(s.object({ seat: Seat })));

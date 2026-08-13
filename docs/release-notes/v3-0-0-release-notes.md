@@ -84,7 +84,7 @@ LiveMap includes a composable schema system supporting:
 - literal and choice constraints
 - arrays and tuple-like item definitions
 - property and record schemas
-- lazy schema resolution
+- recursive schema resolution
 - custom validation
 - structured issue paths
 

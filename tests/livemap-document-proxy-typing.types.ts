@@ -62,6 +62,16 @@ type _RepeatedText = Expect<Equal<ProxySnap<ProxyAt<typeof repeatedTextProxy, nu
 // @ts-expect-error Repeated text has no structured descendant.
 repeatedTextProxy[index][0];
 
+const CountedTextSchema = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
+const countedText = fragmentMap.schema.use(CountedTextSchema);
+const countedTextProxy = countedText.proxy();
+type _CountedText0 = Expect<Equal<ProxySnap<ProxyAt<typeof countedTextProxy, 0>>, string>>;
+type _CountedText2 = Expect<Equal<ProxySnap<ProxyAt<typeof countedTextProxy, 2>>, string>>;
+type _CountedTextDynamic = Expect<Equal<ProxySnap<ProxyAt<typeof countedTextProxy, number>>, string | undefined>>;
+countedText.proxy([2]);
+// @ts-expect-error Rooted proxy paths reject the first impossible counted coordinate.
+countedText.proxy([3]);
+
 const RepeatElementSchema = hson.liveMap.schema.define((s) => s.repeat(s.tag(s.string)));
 const repeatedElement = fragmentMap.schema.use(RepeatElementSchema);
 const repeatedElementProxy = repeatedElement.proxy();

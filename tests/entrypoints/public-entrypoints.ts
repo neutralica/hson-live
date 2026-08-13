@@ -87,12 +87,15 @@ import {
   type LiveMapDocumentIdentityHandle,
   type ElementLiveMap,
   type LiveMapPathHandle,
+  type LiveMapSchemaConstraint,
   type LiveMapSchemaResolution,
   type LiveMapSchemaValue,
   type LivePath,
   type ProjectedValueAdmissionCode,
   type ProjectedValuePath,
 } from "hson-live/livemap";
+// @ts-expect-error Refinement vocabulary was hard-replaced by constraint vocabulary.
+import type { LiveMapSchemaRefinement } from "hson-live/livemap";
 // @ts-expect-error Named schema definition aliases were hard-removed.
 import { define_livemap_schema } from "hson-live/livemap";
 // @ts-expect-error Raw schema construction was hard-removed.
@@ -182,12 +185,23 @@ const publicDynamicElementSchema = hson.liveMap.schema.define((s) => s.tag[publi
 const publicFragmentSchema = hson.liveMap.schema.define((s) => s.repeat(
   s.pick(s.string, s.tag()),
 ));
+const publicEmptySchema = hson.liveMap.schema.define((s) => s.empty);
+const publicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
+declare const publicDynamicRepeatCount: number;
+const publicDynamicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(publicDynamicRepeatCount, s.string));
+// @ts-expect-error The old predicate-narrowing operator is hard-removed.
+hson.liveMap.schema.define((s) => s.refine(s.number, "positive", (value: number) => value > 0));
+// @ts-expect-error The old recursive-reference operator is hard-removed.
+hson.liveMap.schema.define((s) => s.lazy(() => s.string));
 // @ts-expect-error Exact arbitrary tags use the tag-family property grammar.
 hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
 // @ts-expect-error Callable tag(...) already covers any-element schemas.
 hson.liveMap.schema.define((s) => s.element());
 void publicCustomElementSchema;
 void publicDynamicElementSchema;
+void publicEmptySchema;
+void publicCountedSchema;
+void publicDynamicCountedSchema;
 const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
 if (publicElementCandidate.mode === "element") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
@@ -487,6 +501,7 @@ type PublicLiveTreeClosure =
   | TreeEvents;
 type PublicLiveMapClosure =
   | LiveMapSchemaResolution
+  | LiveMapSchemaConstraint
   | ProjectedValueAdmissionCode
   | ProjectedValuePath;
 type PublicLiveHostClosure =
@@ -516,8 +531,8 @@ const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.exact
   mutableValue: schema.number,
   record: schema.record(schema.number.optional),
   picked: schema.pick(schema.number.optional, "auto"),
-  lazy: schema.lazy(() => schema.number.optional),
-  refined: schema.refine(schema.number.optional, "finite", Number.isFinite),
+  recursive: schema.recurse(() => schema.number.optional),
+  constrained: schema.constrain(schema.number.optional, "finite", Number.isFinite),
   deep: schema.deepPartial(schema.exact({
     child: schema.exact({ count: schema.number }),
     tuple: schema.tuple(schema.string, schema.number),
@@ -548,8 +563,8 @@ type LiteralUnionPreserved = Expect<Equal<DeclarationTruth["literal"], "draft" |
 type MutableValue = Expect<Equal<DeclarationTruth["mutableValue"], number>>;
 type RecordPresentValue = Expect<Equal<DeclarationTruth["record"][string], number>>;
 type PickPresentValue = Expect<Equal<DeclarationTruth["picked"], number | "auto">>;
-type LazyPresentValue = Expect<Equal<DeclarationTruth["lazy"], number>>;
-type RefinedPresentValue = Expect<Equal<DeclarationTruth["refined"], number>>;
+type RecursivePresentValue = Expect<Equal<DeclarationTruth["recursive"], number>>;
+type ConstrainedPresentValue = Expect<Equal<DeclarationTruth["constrained"], number>>;
 type DeepPartialTuple = Expect<
   Equal<NonNullable<DeclarationTruth["deep"]["tuple"]>, readonly [string?, number?]>
 >;

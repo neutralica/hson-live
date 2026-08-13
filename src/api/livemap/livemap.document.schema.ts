@@ -33,6 +33,11 @@ export type DocumentRepeatEvidence<TItem> = Readonly<{
   kind: "repeat";
   item: TItem;
 }>;
+export type DocumentCountedRepeatEvidence<TCount extends number, TItem> = Readonly<{
+  kind: "counted-repeat";
+  count: TCount;
+  item: TItem;
+}>;
 export type DocumentPickEvidence<TChoices extends readonly unknown[]> = Readonly<{
   kind: "pick";
   choices: TChoices;
@@ -116,6 +121,7 @@ type DocumentContentNode =
     kind: "repeat";
     category: "content";
     item: DocumentItemNode;
+    count?: number;
   }>
   | Readonly<{
     kind: "pick";
@@ -229,6 +235,39 @@ export function make_document_repeat_schema<const TItem extends InternalDocument
     kind: "repeat",
     category: "content",
     item: itemNode,
+  });
+  return document_token((value) => register_content(value, node));
+}
+
+export function make_document_counted_repeat_schema<
+  const TCount extends number,
+  const TItem extends InternalDocumentItemSchema,
+>(
+  count: TCount,
+  item: TItem,
+): InternalDocumentContentSchema<
+  TCount extends 0
+    ? DocumentSequenceEvidence<readonly []>
+    : DocumentCountedRepeatEvidence<TCount, ItemEvidence<TItem>>
+>;
+export function make_document_counted_repeat_schema(
+  count: number,
+  item: InternalDocumentItemSchema,
+): InternalDocumentContentSchema;
+export function make_document_counted_repeat_schema(
+  count: number,
+  item: InternalDocumentItemSchema,
+): InternalDocumentContentSchema {
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new TypeError("Document repeat count must be a nonnegative safe integer.");
+  }
+  if (count === 0) return make_document_tuple_schema();
+  const itemNode = require_item_node(item);
+  const node: DocumentContentNode = Object.freeze({
+    kind: "repeat",
+    category: "content",
+    item: itemNode,
+    count,
   });
   return document_token((value) => register_content(value, node));
 }
@@ -464,6 +503,23 @@ function validate_content(
     );
   }
   if (schema.kind === "repeat") {
+    if (schema.count !== undefined && children.length !== schema.count) {
+      const mismatchPath = children.length < schema.count
+        ? append_path(path, children.length)
+        : path;
+      const code: LiveMapSchemaIssueCode = children.length < schema.count
+        ? "MISSING_REQUIRED"
+        : "TUPLE_INDEX_OUT_OF_RANGE";
+      return invalid([
+        issue(
+          code,
+          mismatchPath,
+          `Expected counted repeat length ${schema.count} at ${JSON.stringify(path)}; received length ${children.length}.`,
+          `length ${schema.count}`,
+          `length ${children.length}`,
+        ),
+      ]);
+    }
     const issues: LiveMapSchemaIssue[] = [];
     children.forEach((child, index) => {
       const result = validate_item(schema.item, child, append_path(path, index));
