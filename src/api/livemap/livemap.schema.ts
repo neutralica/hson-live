@@ -338,6 +338,15 @@ type AttrsSchemaBuilder = {
   ) => InternalDocumentAttrsSchema<DocumentAttrsEvidence<AttrShapeEvidence<TShape>, true>>;
 };
 
+type ObjectSchemaBuilder = {
+  <TShape extends LiveMapSchemaShape>(
+    shape: TShape & ProjectedShapeGuard<TShape>,
+  ): LiveMapSchemaToken<InferOpenLiveMapSchemaShape<TShape>>;
+  exact: <TShape extends LiveMapSchemaShape>(
+    shape: TShape & ProjectedShapeGuard<TShape>,
+  ) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
+};
+
 type DocumentItemEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 type DocumentContentEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 type DocumentChildArguments =
@@ -546,13 +555,15 @@ type LiveMapSchemaOperators = Readonly<{
   pick: <const TChoices extends readonly [SchemaPickOperand, ...SchemaPickOperand[]]>(...choices: TChoices & CompatiblePickArguments<NoInfer<TChoices>>) => UnifiedPickResult<TChoices>;
   tagged: <TDiscriminator extends string, TVariants extends LiveMapSchemaVariants>(discriminator: TDiscriminator, variants: TVariants & ProjectedVariantGuard<TVariants> & NonEmptyVariantGuard<TVariants>) => LiveMapSchemaToken<InferLiveMapTaggedSchema<TDiscriminator, TVariants>>;
   recurse: <TInput extends LiveMapSchemaInput>(makeInput: () => TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<InferLiveMapSchemaPresent<TInput>>;
-  array: <TInput extends LiveMapSchemaInput>(item: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<readonly InferLiveMapSchemaPresent<TInput>[]>;
+  array: {
+    (): LiveMapSchemaToken<readonly JsonValue[]>;
+    <TInput extends LiveMapSchemaInput>(item: TInput & ProjectedInputGuard<TInput>): LiveMapSchemaToken<readonly InferLiveMapSchemaPresent<TInput>[]>;
+  };
   tuple: <const TItems extends readonly SchemaTupleOperand[]>(...items: TItems & CompatibleTupleArguments<NoInfer<TItems>>) => UnifiedTupleResult<TItems>;
   record: <TInput extends LiveMapSchemaInput>(value: TInput & ProjectedInputGuard<TInput>) => LiveMapSchemaToken<Readonly<Record<string, InferLiveMapSchemaPresent<TInput>>>>;
-  object: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedShapeGuard<TShape>) => LiveMapSchemaToken<InferOpenLiveMapSchemaShape<TShape>>;
+  object: ObjectSchemaBuilder;
   partial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<Partial<InferLiveMapSchemaPresent<TInput>>>;
   deepPartial: <TInput extends LiveMapSchemaInput>(input: TInput & ProjectedObjectInputGuard<TInput>) => LiveMapSchemaToken<DeepPartialSchemaValue<InferLiveMapSchemaPresent<TInput>>>;
-  exact: <TShape extends LiveMapSchemaShape>(shape: TShape & ProjectedShapeGuard<TShape>) => LiveMapSchemaToken<InferLiveMapSchemaShape<TShape>>;
   empty: InternalDocumentContentSchema<DocumentSequenceEvidence<readonly []>>;
   repeat: DocumentRepeatOperator;
   tag: SchemaTag;
@@ -818,6 +829,11 @@ const ATTRS_SCHEMA_BUILDER = Object.freeze(Object.assign(
   { exact: (shape: InternalLiveMapAttrsShape) => make_attrs_schema(shape, true) },
 )) as AttrsSchemaBuilder;
 
+const OBJECT_SCHEMA_BUILDER = Object.freeze(Object.assign(
+  (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape }),
+  { exact: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape, exact: true }) },
+)) as ObjectSchemaBuilder;
+
 const LIVEMAP_SCHEMA_RUNTIME_BASE: LiveMapSchemaOperators = {
   unknown: sharedUnknown,
   string: sharedString,
@@ -833,13 +849,12 @@ const LIVEMAP_SCHEMA_RUNTIME_BASE: LiveMapSchemaOperators = {
   pick: ((...choices: readonly SchemaPickOperand[]) => make_unified_pick(choices)) as LiveMapSchemaOperators["pick"],
   tagged: ((discriminator: string, variants: LiveMapSchemaVariants) => make_schema_token({ kind: "pick", choices: make_tagged_schema_choices(discriminator, variants) })) as LiveMapSchemaOperators["tagged"],
   recurse: (makeInput: () => LiveMapSchemaInput) => make_schema_token({ kind: "recurse", recurse: makeInput }),
-  array: (item: LiveMapSchemaInput) => make_schema_token({ kind: "array", item }),
+  array: ((item?: LiveMapSchemaInput) => make_schema_token({ kind: "array", item })) as LiveMapSchemaOperators["array"],
   tuple: ((...items: readonly SchemaTupleOperand[]) => make_unified_tuple(items)) as LiveMapSchemaOperators["tuple"],
   record: (value: LiveMapSchemaInput) => make_schema_token({ kind: "record", record: value }),
-  object: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape }),
+  object: OBJECT_SCHEMA_BUILDER,
   partial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, false)) as LiveMapSchemaOperators["partial"],
   deepPartial: ((input: LiveMapSchemaInput) => make_partial_schema_input(input, true)) as LiveMapSchemaOperators["deepPartial"],
-  exact: (shape: LiveMapSchemaShape) => make_schema_token({ kind: "object", props: shape, exact: true }),
   empty: sharedEmpty,
   repeat: ((countOrItem: number | InternalDocumentItemSchema, maybeItem?: InternalDocumentItemSchema) => (
     maybeItem === undefined

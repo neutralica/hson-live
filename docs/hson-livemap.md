@@ -294,11 +294,11 @@ boundary. The callback receives one frozen toolkit; the reusable result is a
 distinct immutable schema value that can compose inside later definitions.
 
 ```ts
-const Seat = hson.liveMap.schema.define((s) => s.exact({
+const Seat = hson.liveMap.schema.define((s) => s.object.exact({
   connected: s.boolean,
 }));
 
-const State = hson.liveMap.schema.define((s) => s.exact({
+const State = hson.liveMap.schema.define((s) => s.object.exact({
   left: Seat,
   right: Seat,
 }));
@@ -308,19 +308,32 @@ const typedState = projectedMap.schema.use(State);
 
 Projected constructors include `unknown`, `string`, `number`, `boolean`,
 `null`, `literal`, `pick`, `tagged`, `recurse`, `array`, `tuple`,
-`record`, `object`, `exact`, `partial`, and `deepPartial`. The retained postfix
+`record`, `object`, `partial`, and `deepPartial`. The retained postfix
 modifiers are `optional`, `nullable`, and `constrain`; all work on compatible
 defined projected schemas. Constraint spelling is
-`Schema.constrain(predicate)` or `Schema.constrain(label, predicate)`. Arrays
-use the single `s.array(item)` spelling.
+`Schema.constrain(predicate)` or `Schema.constrain(label, predicate)`.
 
 Projected callbacks return an explicit expression. Use `s.object({...})` for an
-open object and `s.exact({...})` for a closed object; returning a raw object from
+open object and `s.object.exact({...})` for a closed object; returning a raw object from
 the callback is not schema syntax. Declared open-object properties keep their
 precise inferred types. An undeclared string key is typed as a recursively
 projected string, number, boolean, null, readonly array, or readonly object,
 plus `undefined` when the key is absent. `partial` and `deepPartial` take an
 explicit object expression or a compatible defined object schema.
+
+Exactness is family-local to otherwise-open named keyspaces:
+`s.object.exact({...})` closes a projected object and
+`s.attrs.exact({...})` closes an attrs bag. It is not a generic modifier and
+does not appear on arrays, tuples, records, tags, repeats, or defined schemas.
+`s.object({})` is an open object with no declared keys; `s.object.exact({})`
+accepts only the empty projected object.
+
+`s.array()` accepts zero or more legal projected values of any projected type;
+`s.array(Item)` restricts every member to `Item`. Broad members still pass the
+projected admission boundary, so values such as `undefined`, sparse holes,
+non-finite numbers, bigint, functions, symbols, boxed primitives, cycles, and
+document-only values remain invalid. By contrast, `s.tuple()` is the exact
+zero-position tuple and `s.tuple(A, B)` is fixed positional structure.
 
 The same toolkit defines document contracts with direct known-tag builders:
 
@@ -342,7 +355,8 @@ if (candidate.mode === "element") {
 ```
 
 `s.attrs({...})` declares open attrs; `s.attrs.exact({...})` closes the key set,
-and `s.attrs.exact({})` requires no attrs. The attrs operand is optional but,
+`s.attrs({})` allows arbitrary canonical attrs, and `s.attrs.exact({})` requires
+no attrs. The attrs operand is optional but,
 when present, must occur once and first. `s.flag` is contextual same-name
 evidence, so a declared `selected: s.flag.optional` accepts absence or the raw
 canonical value `"selected"`. Attrs remain one complete bag observed and
@@ -352,7 +366,7 @@ attr value through `attrs` with no separate LiveMap style convenience.
 
 `string`, `unknown`, `tuple`, and `pick` retain every truthful projected and
 document capability until an enclosing expression selects one. Invalid mixes,
-such as `s.exact({ child: s.div() })` or `s.div(s.number)`, are rejected.
+such as `s.object.exact({ child: s.div() })` or `s.div(s.number)`, are rejected.
 `repeat(item)` is a document layout for zero or more siblings;
 `repeat(count, item)` requires exactly that many siblings. Counts are captured
 when `define` evaluates and must be primitive nonnegative safe integers. Literal

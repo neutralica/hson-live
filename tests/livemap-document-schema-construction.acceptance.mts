@@ -232,7 +232,7 @@ check("one child schema can be reused by independent parents", () => {
 
 check("shared string schema retains projected and document capabilities", () => {
   const StringSchema = hson.liveMap.schema.define((s) => s.string);
-  const State = hson.liveMap.schema.define((s) => s.exact({ value: StringSchema }));
+  const State = hson.liveMap.schema.define((s) => s.object.exact({ value: StringSchema }));
   assert.deepEqual(hson.liveMap.fromJson({ value: "value" }).schema.use(State).snap(), { value: "value" });
   const Parent = hson.liveMap.schema.define((s) => s.div(StringSchema));
   element(`<div "value"/>`).schema.use(Parent);
@@ -240,14 +240,14 @@ check("shared string schema retains projected and document capabilities", () => 
 
 check("shared tuple retains projected and document layout capabilities", () => {
   const Pair = hson.liveMap.schema.define((s) => s.tuple(s.string, s.string));
-  const State = hson.liveMap.schema.define((s) => s.exact({ pair: Pair }));
+  const State = hson.liveMap.schema.define((s) => s.object.exact({ pair: Pair }));
   hson.liveMap.fromJson({ pair: ["a", "b"] }).schema.use(State);
   const Parent = hson.liveMap.schema.define((s) => s.div(Pair));
   element(`<div "a" "b"/>`).schema.use(Parent);
 });
 
 check("cross-domain element-in-object composition rejects at runtime", () => {
-  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.exact, s, [{ child: s.div() }])), /Projected schema composition/);
+  assert.throws(() => hson.liveMap.schema.define((s) => Reflect.apply(s.object.exact, s.object, [{ child: s.div() }])), /Projected schema composition/);
 });
 
 check("cross-domain number-in-element composition rejects at runtime", () => {

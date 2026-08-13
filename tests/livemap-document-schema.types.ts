@@ -196,7 +196,7 @@ hson.liveMap.schema.define((s) => {
 });
 hson.liveMap.schema.define((s) => {
   // @ts-expect-error Projected object schemas cannot contain document elements.
-  return s.exact({ child: s.div() });
+  return s.object.exact({ child: s.div() });
 });
 hson.liveMap.schema.define((s) => {
   // @ts-expect-error Document elements cannot contain projected-only numbers.

@@ -11,9 +11,9 @@ async function check(name: string, run: () => void | Promise<void>): Promise<voi
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const State = hson.liveMap.schema.define((s) => s.exact({ count: s.number }));
-const Equivalent = hson.liveMap.schema.define((s) => s.exact({ count: s.number }));
-const Different = hson.liveMap.schema.define((s) => s.exact({ count: s.string }));
+const State = hson.liveMap.schema.define((s) => s.object.exact({ count: s.number }));
+const Equivalent = hson.liveMap.schema.define((s) => s.object.exact({ count: s.number }));
+const Different = hson.liveMap.schema.define((s) => s.object.exact({ count: s.string }));
 const Wrapped = hson.liveMap.schema.define(() => State);
 
 await check("valid first attachment records the exact schema object", () => {

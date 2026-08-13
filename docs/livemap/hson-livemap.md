@@ -358,8 +358,8 @@ Each later projected commit validates the complete candidate root before live
 mutation.
 
 ```ts
-const UserState = hson.liveMap.schema.define((s) => s.exact({
-  user: s.exact({
+const UserState = hson.liveMap.schema.define((s) => s.object.exact({
+  user: s.object.exact({
     name: s.string,
     role: s.literal("author", "editor"),
   }),
@@ -370,16 +370,29 @@ const typed = map.schema.use(UserState);
 ```
 
 The direct `s` toolkit supports primitives, literals, choices, tagged choices,
-recursive references, constraints, arrays, tuples, records, ordinary objects, exact
-objects, partial objects, and deep-partial objects. Tokens can be optional or
+recursive references, constraints, arrays, tuples, records, open/exact object
+families, partial objects, and deep-partial objects. Tokens can be optional or
 nullable.
 
 Projected callbacks return one explicit expression: `s.object({...})` is open,
-while `s.exact({...})` rejects unknown keys. Raw callback objects are not schema
+while `s.object.exact({...})` rejects unknown keys. Raw callback objects are not schema
 syntax. Declared properties of an open object keep their precise inferred types;
 undeclared keys are represented as recursively projected values plus `undefined`
-for absence. Arrays use `s.array(item)`. `partial` and `deepPartial` take an
+for absence. `partial` and `deepPartial` take an
 explicit object expression or compatible defined object schema.
+
+`.exact` closes an otherwise-open named keyspace. It exists on exactly the
+projected object and attrs families: `s.object.exact({...})` and
+`s.attrs.exact({...})`. Thus `s.object({})` remains open while
+`s.object.exact({})` accepts only an empty projected object. Arrays, tuples,
+records, tags, and repeats do not expose generic exactness.
+
+`s.array()` accepts zero or more legal projected values of any projected type,
+including nested legal arrays and plain objects. `s.array(Item)` retains its
+homogeneous item constraint. Broad arrays still reject projected-invalid values
+such as `undefined`, holes, non-finite numbers, bigint, functions, symbols,
+boxed primitives, cycles, and document-only values. `s.tuple()` instead means
+an exact zero-position tuple; nonempty tuples remain fixed positional schemas.
 
 Schema validation governs projected JSON state. It does not validate direct raw
 HSON node edits.
@@ -404,8 +417,9 @@ const Attrs = hson.liveMap.schema.define((s) => s.attrs({
 const Button = hson.liveMap.schema.define((s) => s.button(Attrs, s.string));
 ```
 
-`s.attrs` is open, `s.attrs.exact` rejects undeclared attrs, and
-`s.attrs.exact({})` requires no attrs. `s.flag` requires its containing value to
+`s.attrs` is open, `s.attrs({})` permits arbitrary canonical attrs,
+`s.attrs.exact` rejects undeclared attrs, and `s.attrs.exact({})` requires no
+attrs. `s.flag` requires its containing value to
 equal the canonical attr name. Omitted attrs evidence remains broad. Style is a
 whole canonical attr value described with `style: s.unknown.optional` and
 mutated through attrs, not a separate LiveMap style API.

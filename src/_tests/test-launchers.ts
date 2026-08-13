@@ -1035,7 +1035,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-composition",
       repositoryModule: "tests/livemap-schema-composition.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
+      executableChecks: 30,
       collections: ["projected-value", "document", "schema", "composition", "public-api", "externally-discoverable"],
     }),
     launcher({

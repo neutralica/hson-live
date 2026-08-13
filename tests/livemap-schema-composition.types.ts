@@ -1,5 +1,5 @@
 import { hson } from "../src/index.js";
-import type { HsonNode } from "../src/core/types.js";
+import type { HsonNode, JsonValue } from "../src/core/types.js";
 import type { LiveMapSchema, InferLiveMapSchema } from "../src/api/livemap/livemap.schema.js";
 import type { ElementLiveMap, FragmentLiveMap } from "../src/types/livemap.types.js";
 
@@ -15,19 +15,23 @@ type ProjectedSchemaValue =
   | readonly ProjectedSchemaValue[]
   | Readonly<{ [key: string]: ProjectedSchemaValue }>;
 
-const Seat = hson.liveMap.schema.define((s) => s.exact({ connected: s.boolean }));
-const State = hson.liveMap.schema.define((s) => s.exact({ left: Seat, right: Seat }));
-const InlineState = hson.liveMap.schema.define((s) => s.exact({
-  left: s.exact({ connected: s.boolean }),
-  right: s.exact({ connected: s.boolean }),
+const Seat = hson.liveMap.schema.define((s) => s.object.exact({ connected: s.boolean }));
+const State = hson.liveMap.schema.define((s) => s.object.exact({ left: Seat, right: Seat }));
+const InlineState = hson.liveMap.schema.define((s) => s.object.exact({
+  left: s.object.exact({ connected: s.boolean }),
+  right: s.object.exact({ connected: s.boolean }),
 }));
 type _ExactAliasEvidence = Expect<Equal<InferLiveMapSchema<typeof State>, InferLiveMapSchema<typeof InlineState>>>;
 
 const Seats = hson.liveMap.schema.define((s) => s.array(Seat));
+const BroadArray = hson.liveMap.schema.define((s) => s.array());
+const StringArray = hson.liveMap.schema.define((s) => s.array(s.string));
 const Pair = hson.liveMap.schema.define((s) => s.tuple(Seat, Seat));
 const Choice = hson.liveMap.schema.define((s) => s.pick(Seat, s.string));
 const Dictionary = hson.liveMap.schema.define((s) => s.record(Seat));
 type _ArrayItem = Expect<Equal<InferLiveMapSchema<typeof Seats>[number], { connected: boolean }>>;
+type _BroadArray = Expect<Equal<InferLiveMapSchema<typeof BroadArray>, readonly JsonValue[]>>;
+type _StringArray = Expect<Equal<InferLiveMapSchema<typeof StringArray>, readonly string[]>>;
 type _Tuple0 = Expect<Equal<InferLiveMapSchema<typeof Pair>[0], { connected: boolean }>>;
 type _Tuple1 = Expect<Equal<InferLiveMapSchema<typeof Pair>[1], { connected: boolean }>>;
 type _Pick = Expect<Equal<InferLiveMapSchema<typeof Choice>, { connected: boolean } | string>>;
@@ -35,9 +39,9 @@ type _Record = Expect<Equal<InferLiveMapSchema<typeof Dictionary>[string], { con
 
 const OpenUser = hson.liveMap.schema.define((s) => s.object({
   name: s.string,
-  settings: s.exact({ enabled: s.boolean }),
+  settings: s.object.exact({ enabled: s.boolean }),
 }));
-const ExactUser = hson.liveMap.schema.define((s) => s.exact({
+const ExactUser = hson.liveMap.schema.define((s) => s.object.exact({
   name: s.string,
   settings: s.object({ enabled: s.boolean }),
 }));
@@ -50,7 +54,7 @@ type _ExactHasNoStringIndex = Expect<Equal<string extends keyof ExactUserValue ?
 // @ts-expect-error Exact schemas expose no undeclared property.
 type _ExactExtra = ExactUserValue["undeclared"];
 
-const MixedObject = hson.liveMap.schema.define((s) => s.exact({ open: OpenUser, exact: ExactUser }));
+const MixedObject = hson.liveMap.schema.define((s) => s.object.exact({ open: OpenUser, exact: ExactUser }));
 const MixedArray = hson.liveMap.schema.define((s) => s.array(MixedObject));
 const MixedTuple = hson.liveMap.schema.define((s) => s.tuple(OpenUser, ExactUser));
 const MixedPick = hson.liveMap.schema.define((s) => s.pick(OpenUser, ExactUser));
@@ -65,7 +69,7 @@ const DeepPartialExact = hson.liveMap.schema.define((s) => s.deepPartial(ExactUs
 type _PartialDefined = Expect<Equal<InferLiveMapSchema<typeof PartialOpen>["name"], string | undefined>>;
 type _DeepPartialDefined = Expect<Equal<InferLiveMapSchema<typeof DeepPartialExact>["settings"] extends object | undefined ? true : false, true>>;
 
-const OptionalSeat = hson.liveMap.schema.define((s) => s.exact({ seat: Seat.optional }));
+const OptionalSeat = hson.liveMap.schema.define((s) => s.object.exact({ seat: Seat.optional }));
 const NullableSeat = hson.liveMap.schema.define(() => Seat.nullable);
 type _DefinedOptionalValue = Expect<Equal<InferLiveMapSchema<typeof OptionalSeat>["seat"], { connected: boolean } | undefined>>;
 type _DefinedOptionalKey = Expect<Equal<{} extends Pick<InferLiveMapSchema<typeof OptionalSeat>, "seat"> ? true : false, true>>;
@@ -88,7 +92,7 @@ type _NestedDocumentElement = Expect<Equal<ReturnType<ReturnType<typeof toolbar.
 
 const StringSchema = hson.liveMap.schema.define((s) => s.string);
 const SharedPair = hson.liveMap.schema.define((s) => s.tuple(s.string, s.string));
-const ProjectedPair = hson.liveMap.schema.define((s) => s.exact({ pair: SharedPair }));
+const ProjectedPair = hson.liveMap.schema.define((s) => s.object.exact({ pair: SharedPair }));
 const DocumentPair = hson.liveMap.schema.define((s) => s.div(SharedPair));
 type _SharedStringProjected = Expect<Equal<InferLiveMapSchema<typeof StringSchema>, string>>;
 type _SharedPairProjected = Expect<Equal<InferLiveMapSchema<typeof ProjectedPair>, { pair: readonly [string, string] }>>;
@@ -105,7 +109,23 @@ fragmentMap.schema.use(Toolbar);
 
 hson.liveMap.schema.define((s) => {
   // @ts-expect-error Document-only elements cannot enter projected objects.
-  return s.exact({ child: s.div() });
+  return s.object.exact({ child: s.div() });
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error The former top-level keyed-bag spelling is hard-removed.
+  return s.exact({ value: s.string });
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Exactness does not apply to homogeneous array families.
+  return s.array.exact(s.string);
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Exactness does not apply to fixed-position tuples.
+  return s.tuple.exact(s.string);
+});
+hson.liveMap.schema.define((s) => {
+  // @ts-expect-error Exactness does not apply to homogeneous-key records.
+  return s.record.exact(s.string);
 });
 hson.liveMap.schema.define((s) => {
   // @ts-expect-error Projected-only numbers cannot enter document elements.

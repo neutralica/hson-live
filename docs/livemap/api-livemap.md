@@ -325,7 +325,7 @@ the provided `tx` inside the callback.
 
 ```ts
 const userSchema = hson.liveMap.schema.define((s) =>
-  s.exact({
+  s.object.exact({
     user: s.object({
       name: s.string,
       age: s.number.optional,
@@ -349,8 +349,8 @@ The direct `s` toolkit includes:
   `.constrain(predicate)` / `.constrain(label, predicate)` on compatible
   projected schema values;
 - choices: `literal(...values)`, `pick(...choices)`, and tagged variants;
-- structure: `array(item)`, `tuple(...items)`, `object(shape)`,
-  `exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and
+- structure: `array()`, `array(item)`, `tuple(...items)`, `object(shape)`,
+  `object.exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and
   `record(value)`;
 - recursion: `recurse(factory)`.
 
@@ -359,16 +359,22 @@ their exact evidence and can be used anywhere a compatible inline expression
 can be used:
 
 ```ts
-const Seat = hson.liveMap.schema.define((s) => s.exact({ connected: s.boolean }));
-const State = hson.liveMap.schema.define((s) => s.exact({ left: Seat, right: Seat }));
+const Seat = hson.liveMap.schema.define((s) => s.object.exact({ connected: s.boolean }));
+const State = hson.liveMap.schema.define((s) => s.object.exact({ left: Seat, right: Seat }));
 ```
 
 `define` callbacks return one explicit schema expression; a raw callback object
 is not an implicit object schema. `object` validates declared properties but
 allows extra string keys. Declared properties retain their precise types, while
 undeclared keys are typed as recursively projected primitive/readonly
-array/readonly object values plus `undefined` for absence. `exact` rejects extra
-keys and has no open index signature. Arrays use only `array(item)`. Tuple
+array/readonly object values plus `undefined` for absence. `object.exact`
+rejects extra keys and has no open index signature. `.exact` is family-local to
+the open named-keyspace families `object` and `attrs`; it is not a universal
+modifier. `array()` admits zero or more legal projected values of any projected
+type, while `array(item)` remains homogeneous. Broad arrays still reject
+projected-invalid values such as `undefined`, sparse holes, non-finite numbers,
+bigint, executable/symbol values, exotic or cyclic objects, and document-only
+values. `tuple()` is the exact zero-position tuple, and other tuple
 indexes are bounded. `Schema.constrain(...)` runs custom validation after its
 base succeeds and only narrows validity; it does not transform or coerce values.
 The diagnostic label is optional. Defined projected schemas retain this
@@ -383,7 +389,7 @@ variant tables likewise contain explicit object schema expressions:
 
 ```ts
 const Event = hson.liveMap.schema.define((s) => s.tagged("kind", {
-  changed: s.exact({ value: s.string }),
+  changed: s.object.exact({ value: s.string }),
   cleared: s.object({}),
 }));
 ```
@@ -449,7 +455,8 @@ document capabilities until their enclosing expression selects one.
 
 A first `s.attrs({...})` operand declares required and optional attrs while
 leaving undeclared canonical attrs open; `s.attrs.exact({...})` rejects
-undeclared attrs, and `s.attrs.exact({})` permits no attrs. Attr schemas are
+undeclared attrs, `s.attrs({})` permits arbitrary canonical attrs, and
+`s.attrs.exact({})` permits no attrs. Attr schemas are
 immutable reusable values, valid only as the first tag operand. `s.flag` is
 contextual: the containing attr must equal its canonical name, while
 `s.flag.optional` permits absence. `s.unknown` in attr context admits any

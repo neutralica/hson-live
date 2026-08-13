@@ -152,7 +152,7 @@ check("attrs schemas cannot be children, tuple items, projected values, or root 
 
 check("structural projected schemas reject in attr-value positions", () => {
   hson.liveMap.schema.define((s) => {
-    for (const value of [s.object({}), s.exact({}), s.array(s.string), s.tuple(s.string), s.record(s.string), s.tagged("kind", { a: s.object({}) })]) {
+    for (const value of [s.object({}), s.object.exact({}), s.array(s.string), s.tuple(s.string), s.record(s.string), s.tagged("kind", { a: s.object({}) })]) {
       assert.throws(() => Reflect.apply(s.attrs, s, [{ bad: value }]), /primitive\/unknown attr-value schema/);
     }
     return s.div();

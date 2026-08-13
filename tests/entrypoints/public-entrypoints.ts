@@ -200,6 +200,16 @@ const publicDynamicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(pu
 const publicConstrainedSchema = hson.liveMap.schema.define((s) =>
   s.number.constrain((value) => Number.isFinite(value)),
 );
+const publicBroadArraySchema = hson.liveMap.schema.define((s) => s.array());
+const publicExactObjectSchema = hson.liveMap.schema.define((s) => s.object.exact({ id: s.string }));
+// @ts-expect-error Exact projected objects are exposed only through the object family.
+hson.liveMap.schema.define((s) => s.exact({ id: s.string }));
+// @ts-expect-error Array exactness is not a public family member.
+hson.liveMap.schema.define((s) => s.array.exact(s.string));
+// @ts-expect-error Tuple exactness is not a public family member.
+hson.liveMap.schema.define((s) => s.tuple.exact(s.string));
+// @ts-expect-error Record exactness is not a public family member.
+hson.liveMap.schema.define((s) => s.record.exact(s.string));
 const publicDefinedConstraint = hson.liveMap.schema.define(() =>
   publicConstrainedSchema.constrain("positive", (value) => value > 0),
 );
@@ -214,6 +224,8 @@ hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
 // @ts-expect-error Callable tag(...) already covers any-element schemas.
 hson.liveMap.schema.define((s) => s.element());
 void publicCustomElementSchema;
+void publicBroadArraySchema;
+void publicExactObjectSchema;
 void publicAttributedElementSchema;
 void publicDynamicElementSchema;
 void publicEmptySchema;
@@ -549,7 +561,7 @@ declare const publicDeclarationClosure:
   | PublicLiveHostClosure;
 void publicDeclarationClosure;
 
-const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.exact({
+const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.object.exact({
   optionalObject: schema.number.optional,
   optionalBranch: schema.object({ name: schema.string }).optional,
   nullableBranch: schema.object({ name: schema.string }).nullable,
@@ -566,10 +578,10 @@ const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.exact
   picked: schema.pick(schema.number.optional, "auto"),
   recursive: schema.recurse(() => schema.number.optional),
   constrained: schema.number.optional.constrain("finite", Number.isFinite),
-  deep: schema.deepPartial(schema.exact({
-    child: schema.exact({ count: schema.number }),
+  deep: schema.deepPartial(schema.object.exact({
+    child: schema.object.exact({ count: schema.number }),
     tuple: schema.tuple(schema.string, schema.number),
-    list: schema.array(schema.exact({ id: schema.number })),
+    list: schema.array(schema.object.exact({ id: schema.number })),
   })),
 }));
 

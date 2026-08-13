@@ -132,7 +132,7 @@ check("cycles reject but repeated acyclic references admit", () => {
 });
 
 check("exact dangerous schema keys use own membership", () => {
-  const schema = hson.liveMap.schema.define((s) => s.exact(own_data([
+  const schema = hson.liveMap.schema.define((s) => s.object.exact(own_data([
     ["__proto__", s.string],
     ["constructor", s.number],
     ["prototype", s.boolean],
@@ -147,7 +147,7 @@ check("exact dangerous schema keys use own membership", () => {
 });
 
 check("inherited constructor cannot satisfy a required own key", () => {
-  const schema = hson.liveMap.schema.define((s) => s.exact(
+  const schema = hson.liveMap.schema.define((s) => s.object.exact(
     own_data([["constructor", s.number]], null) as never,
   ));
   const result = schema.validateRoot({});
@@ -156,7 +156,7 @@ check("inherited constructor cannot satisfy a required own key", () => {
 });
 
 check("exact shape rejects an unknown dangerous own key", () => {
-  const schema = hson.liveMap.schema.define((s) => s.exact({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object.exact({ value: s.number }));
   const result = schema.validateRoot(own_data([["value", 1], ["__proto__", 2]]) as JsonValue);
   assert.equal(result.ok, false);
   assert.equal(result.issues.some((issue) => issue.code === "UNKNOWN_KEY" && issue.path[0] === "__proto__"), true);

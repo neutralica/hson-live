@@ -98,7 +98,7 @@ check("proxies expose mediated locations rather than raw nodes", () => {
 });
 
 check("schema queries expose immutable owner-independent evidence", () => {
-  const schema = hson.liveMap.schema.define((s) => s.exact({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object.exact({ value: s.number }));
   const map = hson.liveMap.fromJson({ value: 1 }).schema.use(schema);
   const rule = map.schema.match(["value"]);
   assert.equal(map.schema.get(), schema);
@@ -117,7 +117,7 @@ check("capture values are detached from canonical ownership", () => {
 
 check("schema attachment validates and records without swapping canonical ownership", () => {
   const map = hson.liveMap.fromJson({ value: 1 });
-  const schema = hson.liveMap.schema.define((s) => s.exact({ value: s.number }));
+  const schema = hson.liveMap.schema.define((s) => s.object.exact({ value: s.number }));
   const before = internal_livemap_root(map);
   map.schema.use(schema);
   assert.equal(internal_livemap_root(map), before);

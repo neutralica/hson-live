@@ -8,8 +8,8 @@ function check(name: string, run: () => void): void {
   run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
-const Seat = hson.liveMap.schema.define((s) => s.exact({ connected: s.boolean }));
-const State = hson.liveMap.schema.define((s) => s.exact({ left: Seat, right: Seat }));
+const Seat = hson.liveMap.schema.define((s) => s.object.exact({ connected: s.boolean }));
+const State = hson.liveMap.schema.define((s) => s.object.exact({ left: Seat, right: Seat }));
 
 check("defined exact schemas nest in later exact schemas", () => {
   assert.equal(State.validateRoot({ left: { connected: true }, right: { connected: false } }).ok, true);
@@ -29,6 +29,49 @@ check("open objects admit projected extras while preserving declared validation"
   const OpenSeat = hson.liveMap.schema.define((s) => s.object({ connected: s.boolean }));
   assert.equal(OpenSeat.validateRoot({ connected: true, label: "A", nested: [1, null] }).ok, true);
   assert.equal(OpenSeat.validateRoot({ connected: "wrong", label: "A" }).ok, false);
+});
+check("exactness is family-local to open keyed bags", () => {
+  hson.liveMap.schema.define((s) => {
+    assert.equal(typeof s.object, "function");
+    assert.equal(typeof s.object.exact, "function");
+    assert.equal(typeof s.attrs.exact, "function");
+    assert.equal("exact" in s, false);
+    for (const family of [s.array, s.tuple, s.record, s.repeat, s.tag, s.div]) {
+      assert.equal("exact" in family, false);
+    }
+    return s.object({});
+  });
+});
+check("empty object shapes distinguish open from exact named keyspaces", () => {
+  const Open = hson.liveMap.schema.define((s) => s.object({}));
+  const Exact = hson.liveMap.schema.define((s) => s.object.exact({}));
+  assert.equal(Open.validateRoot({ nested: [1, "two", null] }).ok, true);
+  assert.equal(Exact.validateRoot({}).ok, true);
+  assert.equal(Exact.validateRoot({ extra: true }).ok, false);
+});
+check("zero-argument array admits mixed recursively legal projected values", () => {
+  const Broad = hson.liveMap.schema.define((s) => s.array());
+  assert.equal(Broad.validateRoot([]).ok, true);
+  assert.equal(Broad.validateRoot(["text", 1, true, null, [2], { nested: [false] }]).ok, true);
+});
+check("zero-argument array retains projected-value admission guardrails", () => {
+  const Broad = hson.liveMap.schema.define((s) => s.array());
+  const sparse = Array(1);
+  for (const invalid of [[undefined], [NaN], [Infinity], [1n], [() => true], [Symbol("x")], sparse]) {
+    assert.equal(Broad.validateRoot(invalid as never).ok, false);
+  }
+  hson.liveMap.schema.define((s) => {
+    assert.throws(() => hson.liveMap.schema.define(() => Reflect.apply(s.array, s, [s.div()])), /document-only/);
+    return s.array();
+  });
+});
+check("constrained arrays and tuples retain their distinct item and position semantics", () => {
+  const Strings = hson.liveMap.schema.define((s) => s.array(s.string));
+  const EmptyTuple = hson.liveMap.schema.define((s) => s.tuple());
+  assert.equal(Strings.validateRoot(["a", "b"]).ok, true);
+  assert.equal(Strings.validateRoot(["a", 1]).ok, false);
+  assert.equal(EmptyTuple.validateRoot([]).ok, true);
+  assert.equal(EmptyTuple.validateRoot([null]).ok, false);
 });
 check("defined schema composes as an array item", () => {
   const Seats = hson.liveMap.schema.define((s) => s.array(Seat));
@@ -66,7 +109,7 @@ check("defined schema composes through recurse", () => {
 });
 check("defined schema composes through partial", () => {
   const MaybeSeat = hson.liveMap.schema.define((s) => s.partial(s.object({ seat: Seat })));
-  const MaybeExactSeat = hson.liveMap.schema.define((s) => s.partial(s.exact({ seat: Seat })));
+  const MaybeExactSeat = hson.liveMap.schema.define((s) => s.partial(s.object.exact({ seat: Seat })));
   const RawNested = hson.liveMap.schema.define((s) => s.partial(s.object({ profile: s.object({ name: s.string }) })));
   assert.equal(MaybeSeat.validateRoot({}).ok, true);
   assert.equal(MaybeSeat.validateRoot({ seat: { connected: true } }).ok, true);
@@ -90,7 +133,7 @@ check("defined schema composes through tagged variants", () => {
   assert.equal(Event.validateRoot({ kind: "cleared" }).ok, true);
 });
 check("defined optional modifier retains projected semantics", () => {
-  const Wrapper = hson.liveMap.schema.define((s) => s.exact({ seat: Seat.optional }));
+  const Wrapper = hson.liveMap.schema.define((s) => s.object.exact({ seat: Seat.optional }));
   assert.equal(Wrapper.validateRoot({}).ok, true);
 });
 check("defined nullable modifier retains projected semantics", () => {
@@ -130,7 +173,7 @@ check("caller-owned shapes are snapshotted at define", () => {
   const shape: Record<string, unknown> = { connected: undefined };
   const Stable = hson.liveMap.schema.define((s) => {
     shape.connected = s.boolean;
-    return s.exact(shape as never);
+    return s.object.exact(shape as never);
   });
   shape.connected = hson.liveMap.schema.define((s) => s.string);
   assert.equal(Stable.validateRoot({ connected: true }).ok, true);
@@ -141,11 +184,11 @@ check("literal and tagged caller values are snapshotted at define", () => {
   const variants: Record<string, object> = { changed: undefined as never };
   const StableLiteral = hson.liveMap.schema.define((s) => s.literal(literal));
   const StableTagged = hson.liveMap.schema.define((s) => {
-    variants.changed = s.exact({ value: s.number });
+    variants.changed = s.object.exact({ value: s.number });
     return s.tagged("kind", variants as never);
   });
   literal.code = 2;
-  variants.changed = hson.liveMap.schema.define((s) => s.exact({ value: s.string }));
+  variants.changed = hson.liveMap.schema.define((s) => s.object.exact({ value: s.string }));
   assert.equal(StableLiteral.validateRoot({ code: 1 }).ok, true);
   assert.equal(StableLiteral.validateRoot({ code: 2 }).ok, false);
   assert.equal(StableTagged.validateRoot({ kind: "changed", value: 1 }).ok, true);
