@@ -185,7 +185,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 27,
+      executableChecks: 20,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({
@@ -305,7 +305,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-issued-quid-lifecycle",
       repositoryModule: "tests/livetree-issued-quid-lifecycle.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
+      executableChecks: 27,
       collections: ["quid", "runtime", "lifecycle", "identity", "externally-discoverable"],
     }),
     launcher({
@@ -855,7 +855,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-attrs-schema",
       repositoryModule: "tests/livemap-document-attrs-schema.acceptance.mts",
       runtime: "node",
-      executableChecks: 16,
+      executableChecks: 17,
       collections: ["document", "schema", "validation", "attrs", "flags", "mutation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -895,7 +895,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-vocabulary",
       repositoryModule: "tests/livemap-schema-vocabulary.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
+      executableChecks: 27,
       collections: ["projected-value", "schema", "constraint", "recursion", "public-api", "externally-discoverable"],
     }),
     launcher({

@@ -15,6 +15,7 @@ const ExactAttrs = hson.liveMap.schema.define((s) => s.attrs.exact({
   title: s.string.optional,
   active: s.flag.optional,
   count: s.number.optional,
+  code: s.string.constrain((value) => /^[A-Z]{3}-\d{4}$/.test(value)),
   tabindex: s.number.constrain((value) => Number.isInteger(value) && value >= -1).optional,
   style: s.unknown.optional,
 }));
@@ -27,22 +28,24 @@ const exactProxy = exactMap.proxy()[0].$_;
 type _RequiredGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"id">>, string>>;
 type _OptionalGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"title">>, string | undefined>>;
 type _FlagRawGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"active">>, "active" | undefined>>;
+type _ConstrainedStringAttrGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"code">>, string>>;
 type _ConstrainedAttrGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"tabindex">>, number | undefined>>;
 type _StyleGet = Expect<Equal<ReturnType<typeof exact.attrs.get<"style">>, CanonicalPublicAttrValue | undefined>>;
 type _MustOptional = Expect<Equal<ReturnType<typeof exact.attrs.must.get<"title">>, string>>;
-type _ExactKeys = Expect<Equal<ReturnType<typeof exact.attrs.keys>, readonly ("id" | "title" | "active" | "count" | "tabindex" | "style")[]>>;
+type _ExactKeys = Expect<Equal<ReturnType<typeof exact.attrs.keys>, readonly ("id" | "title" | "active" | "count" | "code" | "tabindex" | "style")[]>>;
 
 exact.attrs.has("active");
 exact.attrs.set("id", "next");
 exact.attrs.set("count", 2);
+exact.attrs.set("code", "ABC-1234");
 exact.attrs.set("tabindex", 0);
 exact.attrs.set("active", "active");
 exact.attrs.setMany({ id: "next", count: 3, active: "active" });
 exact.attrs.drop("id");
 exact.attrs.dropMany(["id", "title"]);
 exact.attrs.clear();
-exact.attrs.replace({ id: "next" });
-exact.attrs.replace({ id: "next", title: "label", active: "active" });
+exact.attrs.replace({ id: "next", code: "ABC-1234" });
+exact.attrs.replace({ id: "next", code: "ABC-1234", title: "label", active: "active" });
 exact.flags.has("active");
 exact.flags.set("active", "id", "title");
 exact.flags.clear("active");
@@ -55,6 +58,8 @@ exact.attrs.set(dynamicName, "x");
 exact.attrs.set("other", "x");
 // @ts-expect-error Declared values retain their schema type.
 exact.attrs.set("count", "wrong");
+// @ts-expect-error String-constrained attrs retain the base string type.
+exact.attrs.set("code", 123);
 // @ts-expect-error setMany rejects undeclared exact properties.
 exact.attrs.setMany({ other: "x" });
 // @ts-expect-error replace requires required attrs.

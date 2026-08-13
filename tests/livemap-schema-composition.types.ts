@@ -91,10 +91,16 @@ type _NestedDocumentString = Expect<Equal<ReturnType<ReturnType<typeof toolbar.a
 type _NestedDocumentElement = Expect<Equal<ReturnType<ReturnType<typeof toolbar.at<[0]>>["snap"]>, HsonNode>>;
 
 const StringSchema = hson.liveMap.schema.define((s) => s.string);
+const SystemId = hson.liveMap.schema.define((s) => s.string.constrain((value) => value.startsWith("sys_id_no_")));
+const DefinedStringConstraint = hson.liveMap.schema.define(() => StringSchema.constrain((value) => value.length >= 3));
+const OptionalStringConstraint = hson.liveMap.schema.define((s) => s.object.exact({ value: s.string.constrain((value) => value.length <= 32).optional }));
 const SharedPair = hson.liveMap.schema.define((s) => s.tuple(s.string, s.string));
 const ProjectedPair = hson.liveMap.schema.define((s) => s.object.exact({ pair: SharedPair }));
 const DocumentPair = hson.liveMap.schema.define((s) => s.div(SharedPair));
 type _SharedStringProjected = Expect<Equal<InferLiveMapSchema<typeof StringSchema>, string>>;
+type _ConstrainedStringProjected = Expect<Equal<InferLiveMapSchema<typeof SystemId>, string>>;
+type _DefinedConstrainedStringProjected = Expect<Equal<InferLiveMapSchema<typeof DefinedStringConstraint>, string>>;
+type _OptionalConstrainedStringProjected = Expect<Equal<InferLiveMapSchema<typeof OptionalStringConstraint>, { value?: string }>>;
 type _SharedPairProjected = Expect<Equal<InferLiveMapSchema<typeof ProjectedPair>, { pair: readonly [string, string] }>>;
 const documentPairMap = elementMap.schema.use(DocumentPair);
 type _SharedPairDocument = Expect<Equal<ReturnType<ReturnType<typeof documentPairMap.at<[1]>>["snap"]>, string>>;

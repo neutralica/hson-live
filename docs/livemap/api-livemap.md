@@ -383,6 +383,36 @@ without mutating `Range`. Document-only elements/layouts, attrs-schema values,
 and contextual `s.flag` do not expose it. `recurse` exists for self-recursion,
 mutual recursion, and forward schema references.
 
+Constraints are admission predicates for strings, numbers, structured projected
+schemas, and legal attr-value schemas:
+
+```ts
+const RoomName = hson.liveMap.schema.define((s) =>
+  s.string.constrain((value) => value.startsWith("room:")),
+);
+
+const Count = hson.liveMap.schema.define((s) =>
+  s.number.constrain((value) => Number.isInteger(value) && value >= 0),
+);
+
+const Range = hson.liveMap.schema.define((s) =>
+  s.object.exact({
+    min: s.number,
+    max: s.number,
+  }).constrain((value) => value.min <= value.max),
+);
+
+const CodedAttrs = hson.liveMap.schema.define((s) => s.attrs({
+  code: s.string.constrain((value) => /^[A-Z]{3}-\d{4}$/.test(value)),
+}));
+```
+
+`constrain` narrows admission without changing the value. For example, a
+predicate may admit only strings that are numerically parseable, but the
+retained value is still the exact original string; `constrain` does not parse,
+trim, normalize, coerce, or replace it. An ordinary boolean string predicate
+therefore still infers `string` rather than a transformed or refined type.
+
 `partial` and `deepPartial` accept an explicit object expression or compatible
 defined object schema and preserve whether the operand is open or exact. Tagged
 variant tables likewise contain explicit object schema expressions:

@@ -200,6 +200,9 @@ const publicDynamicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(pu
 const publicConstrainedSchema = hson.liveMap.schema.define((s) =>
   s.number.constrain((value) => Number.isFinite(value)),
 );
+const publicStringConstrainedSchema = hson.liveMap.schema.define((s) =>
+  s.string.constrain((value) => value.startsWith("sys_id_no_")),
+);
 const publicBroadArraySchema = hson.liveMap.schema.define((s) => s.array());
 const publicExactObjectSchema = hson.liveMap.schema.define((s) => s.object.exact({ id: s.string }));
 // @ts-expect-error Exact projected objects are exposed only through the object family.
@@ -224,6 +227,7 @@ hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
 // @ts-expect-error Callable tag(...) already covers any-element schemas.
 hson.liveMap.schema.define((s) => s.element());
 void publicCustomElementSchema;
+void publicStringConstrainedSchema;
 void publicBroadArraySchema;
 void publicExactObjectSchema;
 void publicAttributedElementSchema;
@@ -578,6 +582,7 @@ const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.objec
   picked: schema.pick(schema.number.optional, "auto"),
   recursive: schema.recurse(() => schema.number.optional),
   constrained: schema.number.optional.constrain("finite", Number.isFinite),
+  constrainedString: schema.string.constrain((value) => value.length >= 3),
   deep: schema.deepPartial(schema.object.exact({
     child: schema.object.exact({ count: schema.number }),
     tuple: schema.tuple(schema.string, schema.number),
@@ -610,6 +615,7 @@ type RecordPresentValue = Expect<Equal<DeclarationTruth["record"][string], numbe
 type PickPresentValue = Expect<Equal<DeclarationTruth["picked"], number | "auto">>;
 type RecursivePresentValue = Expect<Equal<DeclarationTruth["recursive"], number>>;
 type ConstrainedPresentValue = Expect<Equal<DeclarationTruth["constrained"], number>>;
+type ConstrainedStringValue = Expect<Equal<DeclarationTruth["constrainedString"], string>>;
 type DeepPartialTuple = Expect<
   Equal<NonNullable<DeclarationTruth["deep"]["tuple"]>, readonly [string?, number?]>
 >;

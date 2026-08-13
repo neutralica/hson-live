@@ -97,6 +97,21 @@ check("primitive, nullable, literal, pick, constrain, recurse, and unknown attr 
   assert.equal(labeled.issues[0]?.expected, "tab index");
 });
 
+check("string constraints govern typed attrs with attribute and logical-path diagnostics", () => {
+  const Coded = hson.liveMap.schema.define((s) => s.main(
+    s.div(s.attrs.exact({
+      code: s.string.constrain((value) => /^[A-Z]{3}-\d{4}$/.test(value)),
+    })),
+  ));
+  const map = element(`<main <div code="ABC-1234"/>/>`).schema.use(Coded);
+  map.at([0]).attrs.set("code", "XYZ-9876");
+  assert.equal(map.at([0]).attrs.get("code"), "XYZ-9876");
+  const error = schemaError(() => map.at([0]).attrs.set("code", "banana"));
+  assert.equal(error.issues[0]?.code, "INVALID_CONSTRAINT");
+  assert.equal(error.issues[0]?.attributeName, "code");
+  assert.deepEqual(error.issues[0]?.path, [0]);
+});
+
 check("flag evidence is contextual and distinct from boolean and strings", () => {
   const Flagged = hson.liveMap.schema.define((s) => s.button(s.attrs.exact({
     disabled: s.flag,
