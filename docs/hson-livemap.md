@@ -307,10 +307,12 @@ const typedState = projectedMap.schema.use(State);
 ```
 
 Projected constructors include `unknown`, `string`, `number`, `boolean`,
-`null`, `literal`, `pick`, `tagged`, `recurse`, `constrain`, `array`, `tuple`,
+`null`, `literal`, `pick`, `tagged`, `recurse`, `array`, `tuple`,
 `record`, `object`, `exact`, `partial`, and `deepPartial`. The retained postfix
-modifiers are `optional` and `nullable`; both also work on compatible defined
-projected schemas. Arrays use the single `s.array(item)` spelling.
+modifiers are `optional`, `nullable`, and `constrain`; all work on compatible
+defined projected schemas. Constraint spelling is
+`Schema.constrain(predicate)` or `Schema.constrain(label, predicate)`. Arrays
+use the single `s.array(item)` spelling.
 
 Projected callbacks return an explicit expression. Use `s.object({...})` for an
 open object and `s.exact({...})` for a closed object; returning a raw object from
@@ -324,7 +326,12 @@ The same toolkit defines document contracts with direct known-tag builders:
 
 ```ts
 const Label = hson.liveMap.schema.define((s) => s.span(s.string));
-const Button = hson.liveMap.schema.define((s) => s.button(Label));
+const ButtonAttrs = hson.liveMap.schema.define((s) => s.attrs({
+  id: s.string,
+  tabindex: s.number.constrain((value) => Number.isInteger(value) && value >= -1),
+  selected: s.flag.optional,
+}));
+const Button = hson.liveMap.schema.define((s) => s.button(ButtonAttrs, Label));
 const Toolbar = hson.liveMap.schema.define((s) => s.div(Button, Button));
 
 const candidate = hson.liveMap.fromHson(`<div><button><span>Save</span></button><button><span>Open</span></button></div>`);
@@ -333,6 +340,15 @@ if (candidate.mode === "element") {
   typed.at([0, 0, 0]).snap(); // string
 }
 ```
+
+`s.attrs({...})` declares open attrs; `s.attrs.exact({...})` closes the key set,
+and `s.attrs.exact({})` requires no attrs. The attrs operand is optional but,
+when present, must occur once and first. `s.flag` is contextual same-name
+evidence, so a declared `selected: s.flag.optional` accepts absence or the raw
+canonical value `"selected"`. Attrs remain one complete bag observed and
+mutated through `attrs`; location and explicit-target `flags.has/set/clear`
+provide atomic semantic flag operations over that bag. Style remains a whole
+attr value through `attrs` with no separate LiveMap style convenience.
 
 `string`, `unknown`, `tuple`, and `pick` retain every truthful projected and
 document capability until an enclosing expression selects one. Invalid mixes,
@@ -353,9 +369,11 @@ exact empty projected tuple `[]`. `s.repeat(0, Item)` has the same document
 emptiness semantics. Known HTML and SVG names come from the same canonical
 catalog as `LiveTree.create`.
 
-`s.constrain(Base, label, predicate)` narrows admitted values after `Base`
-validates; it never transforms them. `s.recurse(() => Schema)` resolves a
-self-, mutual-, or forward-recursive projected schema reference.
+`Base.constrain(predicate)` and `Base.constrain(label, predicate)` narrow
+admitted values after `Base` validates; they never transform values. Constraints
+are projected-value modifiers, not document element/layout, attrs-schema, or
+contextual-flag modifiers. `s.recurse(() => Schema)` resolves a self-, mutual-,
+or forward-recursive projected schema reference.
 
 The same child grammar covers any element and arbitrary tags:
 

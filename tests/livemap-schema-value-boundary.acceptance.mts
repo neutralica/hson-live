@@ -185,24 +185,20 @@ check("schema literals detach from later caller mutation", () => {
 
 check("nested constraints receive independent detached values", () => {
   let outerValue: unknown;
-  const schema = hson.liveMap.schema.define((s) => s.constrain(
-    s.constrain(s.unknown, "inner", (value) => {
+  const schema = hson.liveMap.schema.define((s) => s.unknown.constrain("inner", (value) => {
       (value as Record<string, JsonValue>).field = 99;
       return true;
-    }),
-    "outer",
-    (value) => {
+    }).constrain("outer", (value) => {
       outerValue = (value as Record<string, JsonValue>).field;
       return true;
-    },
-  ));
+    }));
   assert.equal(schema.validateRoot({ field: 1 }).ok, true);
   assert.equal(outerValue, 1);
 });
 
 check("attached constraint mutation cannot affect the candidate", () => {
   const schema = hson.liveMap.schema.define((s) => s.object({
-    value: s.constrain(s.unknown, "detached", (input) => {
+    value: s.unknown.constrain("detached", (input) => {
       (input as Record<string, JsonValue>).field = 99;
       return true;
     }),

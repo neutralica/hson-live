@@ -1,6 +1,6 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { hson, validate_document_path } from "../src/index.ts";
+import { hson, LiveMapSchemaError, validate_document_path } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
@@ -188,6 +188,40 @@ check("replayed path changes are used by later text delegation", () => {
   assert.equal(raw_node(map.element.node(), [0, 0, 0, 0]).$_content[0], "moved");
   assert.equal(binding.sourceRevision, 2);
   assert.equal(binding.diagnostics().updatesApplied, 2);
+  binding.dispose();
+});
+
+check("bound flags delegate canonically, validate schema, and do not mint QUIDs", () => {
+  const Schema = hson.liveMap.schema.define((s) => s.main(s.attrs.exact({
+    selected: s.flag.optional,
+    required: s.flag,
+    text: s.string.optional,
+  })));
+  const map = element(`<main required/>`).schema.use(Schema);
+  const binding = hsonReflect(map);
+  const rootDom = mount(binding.tree.node);
+  assert.equal(binding.tree.node.$_meta, undefined);
+  assert.equal(binding.tree.flags.has("selected"), false);
+
+  const before = map.rev;
+  assert.equal(binding.tree.flags.set("selected"), binding.tree);
+  assert.equal(map.rev, before + 1);
+  assert.equal(map.at([]).flags.has("selected"), true);
+  assert.equal(binding.tree.attrs.get("selected"), "selected");
+  assert.equal(rootDom.getAttribute("selected"), "selected");
+  assert.equal(binding.tree.node.$_meta, undefined);
+
+  assert.throws(() => binding.tree.flags.clear("required"), LiveMapSchemaError);
+  assert.equal(map.at([]).flags.has("required"), true);
+  assert.equal(rootDom.getAttribute("required"), "required");
+  assert.equal(binding.tree.node.$_meta, undefined);
+
+  binding.tree.attrs.set("text", "value");
+  binding.tree.flags.clear("text");
+  assert.equal(map.at([]).attrs.get("text"), "value");
+  binding.tree.flags.clear("selected");
+  assert.equal(map.at([]).flags.has("selected"), false);
+  assert.equal(rootDom.getAttribute("selected"), null);
   binding.dispose();
 });
 

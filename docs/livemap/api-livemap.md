@@ -345,13 +345,14 @@ typed.at(["user", "name"]).set("Grace");
 The direct `s` toolkit includes:
 
 - primitives: `unknown`, `string`, `number`, `boolean`, `null`;
-- modifiers: `.optional`, `.nullable`;
+- modifiers: `.optional`, `.nullable`, and
+  `.constrain(predicate)` / `.constrain(label, predicate)` on compatible
+  projected schema values;
 - choices: `literal(...values)`, `pick(...choices)`, and tagged variants;
 - structure: `array(item)`, `tuple(...items)`, `object(shape)`,
   `exact(shape)`, `partial(objectSchema)`, `deepPartial(objectSchema)`, and
   `record(value)`;
-- recursion/validation: `recurse(factory)` and
-  `constrain(base, label, predicate)`.
+- recursion: `recurse(factory)`.
 
 Every `define` call returns a distinct immutable schema. Defined schemas retain
 their exact evidence and can be used anywhere a compatible inline expression
@@ -368,9 +369,13 @@ allows extra string keys. Declared properties retain their precise types, while
 undeclared keys are typed as recursively projected primitive/readonly
 array/readonly object values plus `undefined` for absence. `exact` rejects extra
 keys and has no open index signature. Arrays use only `array(item)`. Tuple
-indexes are bounded. `constrain` runs custom validation after its base succeeds
-and only narrows validity; it does not transform or coerce values. `recurse`
-exists for self-recursion, mutual recursion, and forward schema references.
+indexes are bounded. `Schema.constrain(...)` runs custom validation after its
+base succeeds and only narrows validity; it does not transform or coerce values.
+The diagnostic label is optional. Defined projected schemas retain this
+modifier, so a durable `Range` may be narrowed with `Range.constrain(...)`
+without mutating `Range`. Document-only elements/layouts, attrs-schema values,
+and contextual `s.flag` do not expose it. `recurse` exists for self-recursion,
+mutual recursion, and forward schema references.
 
 `partial` and `deepPartial` accept an explicit object expression or compatible
 defined object schema and preserve whether the operand is open or exact. Tagged
@@ -418,7 +423,15 @@ schema implicitly.
 
 ```ts
 const Label = hson.liveMap.schema.define((s) => s.span(s.string));
-const ButtonDocument = hson.liveMap.schema.define((s) => s.button(Label));
+const ButtonAttrs = hson.liveMap.schema.define((s) => s.attrs({
+  id: s.string,
+  tabindex: s.number.constrain((value) => Number.isInteger(value) && value >= -1),
+  selected: s.flag.optional,
+  style: s.unknown.optional,
+}));
+const ButtonDocument = hson.liveMap.schema.define((s) =>
+  s.button(ButtonAttrs, Label),
+);
 
 const map = hson.liveMap.fromHson(`<button "Save"/>`);
 if (map.mode === "element") map.schema.use(ButtonDocument);
@@ -434,6 +447,15 @@ document items; `s.tuple(...)` is a closed ordered layout;
 `string`, `unknown`, `tuple`, and `pick` expressions retain projected and
 document capabilities until their enclosing expression selects one.
 
+A first `s.attrs({...})` operand declares required and optional attrs while
+leaving undeclared canonical attrs open; `s.attrs.exact({...})` rejects
+undeclared attrs, and `s.attrs.exact({})` permits no attrs. Attr schemas are
+immutable reusable values, valid only as the first tag operand. `s.flag` is
+contextual: the containing attr must equal its canonical name, while
+`s.flag.optional` permits absence. `s.unknown` in attr context admits any
+canonical value legal for that particular name, including structured canonical
+style for the exact `style` key.
+
 A known-tag call with no children, such as `s.div()`, leaves descendants broad.
 Explicit child items close the complete direct content. One layout argument
 supplies the complete layout. Prefer `s.div(s.empty)` for an exact-empty element
@@ -441,7 +463,7 @@ and return `s.empty` for an exact-empty fragment. `s.tuple()` remains the valid
 zero-position document layout and, in projected composition, the exact empty
 tuple `[]`. `s.repeat(0, item)` is document-semantically equivalent to
 `s.empty`. A top-level nonempty `s.tuple(...)` is a fragment/multi-root
-contract. Attributes remain open.
+contract. Omitting an attrs operand leaves attributes broad.
 
 Counted repeat accepts primitive finite nonnegative safe integers only. Negative,
 fractional, nonfinite, unsafe, boxed, bigint, boolean, and string counts reject.
@@ -724,6 +746,14 @@ and does not add a segment to `location.path()`. The document proxy's existing
 `$_` escape returns the same location, so `proxy.$_.insert(...)` and
 `proxy.$_.attrs.set(...)` delegate without proxy-specific mutation logic.
 
+Element locations also expose `location.flags.has(name)`,
+`location.flags.set(...names)`, and `location.flags.clear(...names)`. The
+explicit-target equivalents are `map.document.flags.has(target, name)`,
+`.set(target, ...names)`, and `.clear(target, ...names)`. A flag exists exactly
+when the complete canonical attr bag owns the key and its value equals the
+canonical name. Multi-name writes are atomic, and clear preserves a same-key
+ordinary value. These operations address by path and do not mint QUIDs.
+
 Document maps expose no public identity-acquisition method. Existing QUIDs may
 still be inspected through the active-epoch `document.byQuid` compatibility
 surface, and internal linked continuity facilities may request a canonical
@@ -761,6 +791,10 @@ public replacement/retirement operation, or user-selected QUID API.
 `setMany`, `dropMany`, `clear`, and `replace`. `document.content` is callable for
 top-level detached content and has `replace`, `insert`, `remove`, and `move`.
 Mutations accept a path/quid document target and return graph-domain commits.
+Attrs are one complete canonical bag: `setMany` is an atomic overlay,
+`replace` is complete replacement, and `clear` removes flag-form members too.
+Style remains whole canonical attr state manipulated through `attrs`; there is
+no LiveMap style convenience in this phase.
 
 `capture()` remains the durable exact-metadata compatibility form. Explicit
 capture categories are additive:

@@ -40,7 +40,10 @@ import {
   make_livemap_document_mutation_api,
   type LiveMapDocumentMutationController,
 } from "./livemap.document.mutation.js";
-import { make_livemap_document_attrs_read_api } from "./livemap.document.attrs.js";
+import {
+  make_livemap_document_attrs_read_api,
+  make_livemap_document_flags_read_api,
+} from "./livemap.document.attrs.js";
 import { normalize_hson_array_index_order } from "../../core/hson-array-indexes.js";
 import { capture_livemap_document } from "./livemap.document.capture.js";
 import { register_livemap_document_identity_authority } from "./livemap.document.registration.js";
@@ -191,6 +194,8 @@ function make_document_livemap(
   const mutationApi = make_livemap_document_mutation_api(controller);
   const attrReads = make_livemap_document_attrs_read_api(controller);
   const attrs = Object.freeze({ ...attrReads, ...mutationApi.attrs });
+  const flagReads = make_livemap_document_flags_read_api(controller);
+  const flags = Object.freeze({ ...flagReads, ...mutationApi.flags });
   const content = Object.freeze(Object.assign(
     () => detached_document_content(core.root()),
     {
@@ -204,6 +209,7 @@ function make_document_livemap(
   const identityApi = make_livemap_document_identity_api(() => document, controller);
   const at = make_livemap_document_location_factory(core, mode, {
     attrs,
+    flags,
     replace: mutationApi.replaceContent,
     remove: mutationApi.removeContent,
     insert: mutationApi.insertContent,
@@ -221,6 +227,7 @@ function make_document_livemap(
       return is_Node(node) ? clone_live_root(node) : undefined;
     },
     attrs,
+    flags,
   });
   register_livemap_document_identity_api(document, identityApi);
   register_livemap_document_identity_overlay(document, controller.overlay);

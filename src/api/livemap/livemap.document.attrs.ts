@@ -1,11 +1,15 @@
 import { HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import {
+  canonical_attr_is_flag,
+} from "../../core/public-attr-transitions.js";
+import {
   decode_public_attrs,
   decode_public_attr_value,
   is_public_attr_name,
 } from "../../core/public-attrs.js";
 import type {
   DocumentLiveMapAttrsReadApi,
+  DocumentLiveMapFlagsReadApi,
   DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -89,6 +93,28 @@ export function make_livemap_document_attrs_read_api(
       );
     },
     must,
+  });
+}
+
+/** Build semantic flag reads over the same canonical attribute bag. */
+export function make_livemap_document_flags_read_api(
+  controller: LiveMapDocumentAttrsReadController,
+): DocumentLiveMapFlagsReadApi {
+  return Object.freeze({
+    has: (targetInput, nameInput) => {
+      const operation = "has-attr";
+      const { element } = resolve_attr_query(controller, targetInput, operation);
+      const name = normalize_read_attr_name(nameInput, operation);
+      const attrs = decode_document_attrs(element.$_attrs ?? {});
+      if (attrs === undefined) {
+        throw new LiveMapDocumentMutationError(
+          "INVALID_DOCUMENT_ATTRIBUTE_VALUE",
+          operation,
+          "stored attributes are not canonical",
+        );
+      }
+      return canonical_attr_is_flag(attrs, name);
+    },
   });
 }
 

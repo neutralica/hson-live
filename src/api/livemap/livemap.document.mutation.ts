@@ -1,6 +1,16 @@
 import { assert_invariants } from "../../core/assert-invariants.js";
 import { ELEM_TAG, ROOT_TAG, STR_TAG, HSON_META_MARKUP_PREFIX } from "../../core/constants.js";
 import { clone_node } from "../../core/clone-node.js";
+import {
+  plan_public_attr_drop,
+  plan_public_attr_set,
+  plan_public_attrs_clear,
+  plan_public_attrs_drop_many,
+  plan_public_attrs_replace,
+  plan_public_attrs_set_many,
+  plan_public_flags_clear,
+  plan_public_flags_set,
+} from "../../core/public-attr-transitions.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import {
   assign_hson_node_quid,
@@ -10,6 +20,7 @@ import {
 import type { HsonAttrs, HsonNode, Primitive } from "../../core/types.js";
 import type {
   DocumentLiveMapAttrsMutationApi,
+  DocumentLiveMapFlagsMutationApi,
   DocumentLiveMapMode,
   LiveMapDocumentAttributeValue,
   LiveMapDocumentAttrs,
@@ -86,6 +97,7 @@ export function make_livemap_document_mutation_api(
   controller: LiveMapDocumentMutationController,
 ): Readonly<{
   attrs: DocumentLiveMapAttrsMutationApi;
+  flags: DocumentLiveMapFlagsMutationApi;
   /** Internal atomic substrate shared by every public bulk attrs method. */
   replaceAttrs: (
     target: LiveMapDocumentRequestTarget,
@@ -116,11 +128,16 @@ export function make_livemap_document_mutation_api(
     drop: (target, name) => remove_document_attr(controller, target, name),
     setMany: (target, values) => set_many_document_attrs(controller, target, values),
     dropMany: (target, names) => drop_many_document_attrs(controller, target, names),
-    clear: (target) => replace_document_attrs(controller, target, {}),
+    clear: (target) => replace_document_attrs(controller, target, plan_public_attrs_clear()),
     replace: (target, values) => replace_document_attrs(controller, target, values),
+  });
+  const flags: DocumentLiveMapFlagsMutationApi = Object.freeze({
+    set: (target, ...names) => set_document_flags(controller, target, names),
+    clear: (target, ...names) => clear_document_flags(controller, target, names),
   });
   return Object.freeze({
     attrs,
+    flags,
     replaceAttrs: (target, values) => replace_document_attrs(controller, target, values),
     replaceContent: (target, index, replacement) =>
       replace_document_content(controller, target, index, replacement),
@@ -140,7 +157,7 @@ function set_many_document_attrs(
 ): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
   const { target, attrs: current } = read_document_attrs(controller, targetInput);
   const values = normalize_attrs_bag(valuesInput);
-  return replace_document_attrs(controller, target, { ...current, ...values });
+  return replace_document_attrs(controller, target, plan_public_attrs_set_many(current, values));
 }
 
 function drop_many_document_attrs(
@@ -150,9 +167,27 @@ function drop_many_document_attrs(
 ): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
   const { target, attrs: current } = read_document_attrs(controller, targetInput);
   const names = normalize_attr_names(namesInput);
-  const next: Record<string, LiveMapDocumentAttributeValue> = { ...current };
-  for (const name of names) delete next[name];
-  return replace_document_attrs(controller, target, next);
+  return replace_document_attrs(controller, target, plan_public_attrs_drop_many(current, names));
+}
+
+function set_document_flags(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  namesInput: readonly unknown[],
+): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
+  const names = normalize_flag_names(namesInput, true);
+  const { target, attrs: current } = read_document_attrs(controller, targetInput);
+  return replace_document_attrs(controller, target, plan_public_flags_set(current, names));
+}
+
+function clear_document_flags(
+  controller: LiveMapDocumentMutationController,
+  targetInput: unknown,
+  namesInput: readonly unknown[],
+): LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp> {
+  const names = normalize_flag_names(namesInput, true);
+  const { target, attrs: current } = read_document_attrs(controller, targetInput);
+  return replace_document_attrs(controller, target, plan_public_flags_clear(current, names));
 }
 
 function read_document_attrs(
@@ -197,6 +232,18 @@ function normalize_attr_names(input: unknown): readonly string[] {
   return Object.freeze(input.map((name) => normalize_attr_name(name, "replace-attrs")));
 }
 
+function normalize_flag_names(input: readonly unknown[], rejectStyle: boolean): readonly string[] {
+  const names = input.map((name) => normalize_attr_name(name, "replace-attrs"));
+  if (rejectStyle && names.includes("style")) {
+    throw mutation_error(
+      "INVALID_DOCUMENT_ATTRIBUTE_NAME",
+      "replace-attrs",
+      "style is not a semantic flag",
+    );
+  }
+  return Object.freeze(names);
+}
+
 function replace_document_attrs(
   controller: LiveMapDocumentMutationController,
   targetInput: unknown,
@@ -238,9 +285,9 @@ function prepare_set_document_attr(
   const { target, endpoint } = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
   const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
-  if (name === "style" && typeof value === "object" && value !== null) attrs.style = value;
-  else attrs[name] = value;
-  element.$_attrs = attrs;
+  const current = decode_document_attrs(attrs);
+  if (current === undefined) throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_VALUE", operationName, "current attrs are not canonical");
+  element.$_attrs = clone_node(plan_public_attr_set(current, name, value));
 
   const operation: LiveMapGraphSetAttrOp = Object.freeze({
     domain: "graph",
@@ -274,10 +321,11 @@ function prepare_remove_document_attr(
   const root = clone_live_root(inputRoot);
   const { target, endpoint } = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(endpoint, operationName);
-  const attrs: HsonAttrs = { ...(element.$_attrs ?? {}) };
-  delete attrs[name];
-  if (Object.keys(attrs).length === 0) delete element.$_attrs;
-  else element.$_attrs = attrs;
+  const attrs = decode_document_attrs(element.$_attrs ?? {});
+  if (attrs === undefined) throw mutation_error("INVALID_DOCUMENT_ATTRIBUTE_VALUE", operationName, "current attrs are not canonical");
+  const next = plan_public_attr_drop(attrs, name);
+  if (Object.keys(next).length === 0) delete element.$_attrs;
+  else element.$_attrs = clone_node(next);
 
   const operation: LiveMapGraphRemoveAttrOp = Object.freeze({
     domain: "graph",
@@ -297,14 +345,15 @@ function prepare_replace_document_attrs(
   targetAuthority: PreparedTargetAuthority = "request",
 ): PreparedDocumentMutation<LiveMapGraphReplaceAttrsOp> {
   const operationName = "replace-attrs";
-  const attrs = decode_document_attrs(attrsInput);
-  if (attrs === undefined) {
+  const decodedAttrs = decode_document_attrs(attrsInput);
+  if (decodedAttrs === undefined) {
     throw mutation_error(
       "INVALID_DOCUMENT_ATTRIBUTE_VALUE",
       operationName,
       "attrs must be a canonical ordinary-attribute bag with valid, unprotected names",
     );
   }
+  const attrs = plan_public_attrs_replace(decodedAttrs);
   const root = clone_live_root(inputRoot);
   const preparedTarget = prepare_target(root, mode, overlay, targetInput, operationName, targetAuthority);
   const element = require_document_attr_element(

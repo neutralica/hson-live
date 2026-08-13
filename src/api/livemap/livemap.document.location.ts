@@ -2,6 +2,7 @@ import type { HsonNode, Primitive } from "../../core/types.js";
 import { STR_TAG } from "../../core/constants.js";
 import type {
   DocumentLiveMapAttrsApi,
+  DocumentLiveMapFlagsApi,
   DocumentLiveMapMode,
   LiveMapDocumentContent,
   LiveMapDocumentRequestTarget,
@@ -32,6 +33,7 @@ type DocumentLocationOwner = Readonly<{
 
 type DocumentLocationMutations = Readonly<{
   attrs: DocumentLiveMapAttrsApi;
+  flags: DocumentLiveMapFlagsApi;
   replace: (
     target: LiveMapDocumentRequestTarget,
     index: number,
@@ -71,6 +73,12 @@ type LocationAttrs = Readonly<{
   replace: (values: Parameters<DocumentLiveMapAttrsApi["replace"]>[1]) => ReturnType<DocumentLiveMapAttrsApi["replace"]>;
 }>;
 
+type LocationFlags = Readonly<{
+  has: (name: string) => boolean;
+  set: (...names: string[]) => ReturnType<DocumentLiveMapFlagsApi["set"]>;
+  clear: (...names: string[]) => ReturnType<DocumentLiveMapFlagsApi["clear"]>;
+}>;
+
 type DocumentLocation = Readonly<{
   readonly rev: number;
   path: () => readonly number[];
@@ -84,6 +92,7 @@ type DocumentLocation = Readonly<{
     LiveMapGraphCommit<LiveMapGraphInsertContentOp>;
   move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
   attrs: LocationAttrs;
+  flags: LocationFlags;
 }>;
 
 const documentLocations = new WeakSet<object>();
@@ -115,6 +124,7 @@ export function make_livemap_document_location_factory(
 
     let location: DocumentLocation;
     const attrs = make_location_attrs(owner, mode, mutations, logicalPath);
+    const flags = make_location_flags(owner, mode, mutations, logicalPath);
     location = Object.freeze({
       get rev() {
         return owner.rev;
@@ -129,6 +139,7 @@ export function make_livemap_document_location_factory(
       insert: (index, value) => insert_document_location(owner, mode, mutations, logicalPath, index, value),
       move: (from, to) => move_document_location(owner, mode, mutations, logicalPath, from, to),
       attrs,
+      flags,
     });
     documentLocations.add(location);
     locations.set(key, location);
@@ -137,6 +148,29 @@ export function make_livemap_document_location_factory(
 
   discoveryMap = Object.freeze({ mode, root: owner.root, at });
   return at;
+}
+
+function make_location_flags(
+  owner: DocumentLocationOwner,
+  mode: DocumentLiveMapMode,
+  mutations: DocumentLocationMutations,
+  path: readonly number[],
+): LocationFlags {
+  const target = (): LiveMapDocumentRequestTarget => {
+    const edges: InternalDocumentLogicalEdge[] = path.map((index) => ({ kind: "content", index }));
+    try {
+      return lower_internal_document_element_target(
+        resolve_internal_document_location(owner.root(), mode, edges),
+      );
+    } catch (cause) {
+      throw location_mutation_error("replace-attrs", path, cause);
+    }
+  };
+  return Object.freeze({
+    has: (name) => mutations.flags.has(target(), name),
+    set: (...names) => mutations.flags.set(target(), ...names),
+    clear: (...names) => mutations.flags.clear(target(), ...names),
+  });
 }
 
 function resolve_document_content_owner(

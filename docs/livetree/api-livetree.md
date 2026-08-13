@@ -458,7 +458,7 @@ tree.attrs.clear()
 tree.attrs.replace(values)
 ```
 
-LiveTree ordinary attributes use the same canonical graph value domain as
+LiveTree attributes use the same canonical graph value domain as
 Document LiveMap: finite HSON primitives (`string`, `boolean`, `number`, and
 `null`) plus canonical structured `CssMap` for `style`. `attrs.get()` returns
 `undefined` only for absence. The values `false`, `0`, `null`, and `""` remain
@@ -467,16 +467,17 @@ the structured `LiveTreeAttributeError` code `LIVETREE_ATTRIBUTE_NOT_FOUND`
 when a valid public name is absent.
 
 Structured reads are recursively detached and frozen. `attrs.keys()` returns a
-fresh frozen list in lexical order and excludes flags, `$_meta`, and persisted
-QUID identity. Ordinary attrs reject malformed and protected `hson:*` names;
+fresh frozen list in lexical order over the complete public attr bag, including
+flag-form members, while excluding `$_meta` and persisted QUID identity. Attrs
+reject malformed and protected `hson:*` names;
 every `data-*` name remains application-owned.
 
 `attrs.set()` never deletes: `false` and `null` are canonical stored values,
 while `undefined` is rejected. Use `attrs.drop()` for explicit single-name
 deletion. `setMany()` overlays a complete validated input onto existing
 ordinary attrs; `dropMany()` ignores valid absent and duplicate names;
-`clear()` removes all ordinary attrs; and `replace()` installs the exact
-supplied ordinary bag. Bulk calls validate and derive one canonical final bag
+`clear()` removes all attrs; and `replace()` installs the exact supplied bag.
+Bulk calls validate and derive one canonical final bag
 before changing graph or DOM state, and canonical equality is a no-op.
 
 The HSON graph owns value distinctions. DOM attributes are only a projection:
@@ -493,8 +494,14 @@ tree.flags.set(...names)
 tree.flags.clear(...names)
 ```
 
-Flags retain their separate presence semantics. Ordinary bulk replacement
-preserves flags, persisted QUID identity, protected metadata, tag, and content.
+Flags are a semantic view over the same complete attr bag. `flags.has(name)` is
+true exactly when the own attr value equals its canonical name;
+`flags.set(...names)` atomically writes that form; and `flags.clear(...names)`
+removes only members currently in that exact form. Thus
+`attrs.set("selected", "selected")` is observable as a flag, while replacing
+the value with another string makes it non-flag-form. `style` is not a semantic
+flag. Complete attr replacement still preserves persisted QUID identity,
+protected metadata, tag, and content.
 
 Dataset:
 

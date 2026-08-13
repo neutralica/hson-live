@@ -11,6 +11,8 @@ import type {
 import type {
   InternalDocumentRootSchemaForMode,
   InternalDocumentSchemaEvidence,
+  DocumentAttrsEvidence,
+  DocumentAttrValueEvidence,
 } from "../api/livemap/livemap.document.schema.js";
 
 
@@ -528,6 +530,28 @@ export type DocumentLiveMapAttrsMutationApi = Readonly<{
 /** Canonical ordinary-attribute read and mutation namespace. */
 export type DocumentLiveMapAttrsApi = DocumentLiveMapAttrsReadApi & DocumentLiveMapAttrsMutationApi;
 
+/** Presence-oriented reads over same-name canonical flag-form attributes. */
+export type DocumentLiveMapFlagsReadApi = Readonly<{
+  has: (
+    target: LiveMapDocumentRequestTarget,
+    name: string,
+  ) => boolean;
+}>;
+
+/** Atomic semantic flag transitions over the complete canonical attrs bag. */
+export type DocumentLiveMapFlagsMutationApi = Readonly<{
+  set: (
+    target: LiveMapDocumentRequestTarget,
+    ...names: string[]
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+  clear: (
+    target: LiveMapDocumentRequestTarget,
+    ...names: string[]
+  ) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+}>;
+
+export type DocumentLiveMapFlagsApi = DocumentLiveMapFlagsReadApi & DocumentLiveMapFlagsMutationApi;
+
 /** Detached content reader plus atomic single-slot structural mutations. */
 export type DocumentLiveMapContentApi = (() => readonly NodeContent[number][]) & Readonly<{
   replace: (
@@ -561,6 +585,8 @@ export type LiveMapDocumentApi = Readonly<{
   byQuid: (quid: string) => HsonNode | undefined;
   /** Canonical ordinary-attribute mutation namespace. */
   attrs: DocumentLiveMapAttrsApi;
+  /** Semantic same-name flag operations over canonical attrs. */
+  flags: DocumentLiveMapFlagsApi;
 }>;
 
 type DocumentLiveMapForEvidence<
@@ -972,6 +998,179 @@ type InternalDocumentInsertItem<TDescriptor> =
           : InternalDocumentInsertOwnerDomain<TOwners>
         : LiveMapDocumentContent;
 
+type InternalDocumentAttrsEvidenceBranch<TDescriptor> =
+  TDescriptor extends InternalDocumentUnschematized | InternalDocumentBroadSubtree
+    ? "broad"
+    : TDescriptor extends InternalDocumentRootDescriptor<infer TEvidence>
+      ? InternalDocumentAttrsEvidenceBranch<TEvidence>
+      : TDescriptor extends Readonly<{
+          kind: "element";
+          attrs: infer TAttrs;
+        }>
+        ? TAttrs
+        : TDescriptor extends Readonly<{
+            kind: "pick";
+            choices: infer TChoices extends readonly unknown[];
+          }>
+          ? InternalDocumentAttrsEvidenceBranches<TChoices[number]>
+          : "broad";
+
+type InternalDocumentAttrsEvidenceBranches<TDescriptor> =
+  TDescriptor extends unknown ? InternalDocumentAttrsEvidenceBranch<TDescriptor> : never;
+
+type InternalDocumentLocationAttrsEvidence<TDescriptor> =
+  unknown extends TDescriptor ? "broad" : InternalDocumentAttrsEvidenceBranches<TDescriptor>;
+
+type InternalAttrsDeclaredKeys<TAttrs> =
+  TAttrs extends DocumentAttrsEvidence<infer TShape, boolean> ? keyof TShape & string : never;
+
+type InternalAttrsHasOpenBranch<TAttrs> =
+  TAttrs extends unknown
+    ? TAttrs extends "broad"
+      ? true
+      : TAttrs extends DocumentAttrsEvidence<unknown, infer TExact>
+        ? TExact extends false ? true : false
+        : true
+    : never;
+
+type InternalAttrsName<TAttrs> =
+  true extends InternalAttrsHasOpenBranch<TAttrs>
+    ? string
+    : InternalAttrsDeclaredKeys<TAttrs>;
+
+type InternalAttrRuleAt<TAttrs, TName extends string> =
+  TAttrs extends DocumentAttrsEvidence<infer TShape, infer TExact>
+    ? TName extends keyof TShape
+      ? TShape[TName]
+      : TExact extends false
+        ? DocumentAttrValueEvidence<LiveMapDocumentAttributeValue, true, false>
+        : DocumentAttrValueEvidence<never, true, false>
+    : TAttrs extends "broad"
+      ? DocumentAttrValueEvidence<LiveMapDocumentAttributeValue, true, false>
+      : never;
+
+type InternalAttrReadBranch<TRule> =
+  TRule extends DocumentAttrValueEvidence<infer TValue, infer TOptional, boolean>
+    ? TValue | (TOptional extends true ? undefined : never)
+    : undefined;
+
+type InternalAttrRead<TAttrs, TName extends string> =
+  TAttrs extends unknown ? InternalAttrReadBranch<InternalAttrRuleAt<TAttrs, TName>> : never;
+
+type InternalAttrWriteValue<TAttrs, TName extends string> =
+  TAttrs extends unknown
+    ? InternalAttrRuleAt<TAttrs, TName> extends DocumentAttrValueEvidence<infer TValue, boolean, boolean>
+      ? TValue
+      : never
+    : never;
+
+type InternalAttrsRequiredKeys<TShape> = {
+  [TKey in keyof TShape]: TShape[TKey] extends DocumentAttrValueEvidence<unknown, false, boolean> ? TKey : never;
+}[keyof TShape];
+
+type InternalAttrsOptionalKeys<TShape> = Exclude<keyof TShape, InternalAttrsRequiredKeys<TShape>>;
+
+type InternalAttrsCompleteShape<TShape> = Readonly<
+  { [TKey in InternalAttrsRequiredKeys<TShape>]:
+      TShape[TKey] extends DocumentAttrValueEvidence<infer TValue, boolean, boolean> ? TValue : never }
+  & { [TKey in InternalAttrsOptionalKeys<TShape>]?:
+      TShape[TKey] extends DocumentAttrValueEvidence<infer TValue, boolean, boolean> ? TValue : never }
+>;
+
+type InternalAttrsPatchShape<TShape> = Readonly<{
+  [TKey in keyof TShape]?: TShape[TKey] extends DocumentAttrValueEvidence<infer TValue, boolean, boolean>
+    ? TValue
+    : never;
+}>;
+
+type InternalAttrsSetManyInput<TAttrs> =
+  TAttrs extends "broad"
+    ? LiveMapDocumentAttrs
+    : TAttrs extends DocumentAttrsEvidence<infer TShape, infer TExact>
+      ? TExact extends true
+        ? InternalAttrsPatchShape<TShape>
+        : InternalAttrsPatchShape<TShape> & Readonly<Record<string, LiveMapDocumentAttributeValue>>
+      : LiveMapDocumentAttrs;
+
+type InternalAttrsReplaceInput<TAttrs> =
+  TAttrs extends "broad"
+    ? LiveMapDocumentAttrs
+    : TAttrs extends DocumentAttrsEvidence<infer TShape, infer TExact>
+      ? TExact extends true
+        ? InternalAttrsCompleteShape<TShape>
+        : InternalAttrsCompleteShape<TShape> & Readonly<Record<string, LiveMapDocumentAttributeValue>>
+      : LiveMapDocumentAttrs;
+
+type InternalAttrsKeys<TAttrs> =
+  true extends InternalAttrsHasOpenBranch<TAttrs>
+    ? string
+    : InternalAttrsDeclaredKeys<TAttrs>;
+
+type InternalFlagNameBranch<TAttrs> =
+  TAttrs extends "broad"
+    ? string
+    : TAttrs extends DocumentAttrsEvidence<infer TShape, infer TExact>
+      ? {
+          [TKey in keyof TShape & string]: TShape[TKey] extends DocumentAttrValueEvidence<infer TValue, boolean, boolean>
+            ? TKey extends TValue ? TKey : never
+            : never;
+        }[keyof TShape & string] | (TExact extends false ? string : never)
+      : string;
+
+type InternalFlagName<TAttrs> = TAttrs extends unknown ? InternalFlagNameBranch<TAttrs> : never;
+
+type InternalFlagNameAllowedBranch<TAttrs, TName extends string> =
+  TAttrs extends "broad"
+    ? TName
+    : TAttrs extends DocumentAttrsEvidence<infer TShape, infer TExact>
+      ? TName extends keyof TShape
+        ? TShape[TName] extends DocumentAttrValueEvidence<infer TValue, boolean, boolean>
+          ? TName extends TValue ? TName : never
+          : never
+        : TExact extends false ? TName : never
+      : TName;
+
+type InternalFlagNameAllowed<TAttrs, TName extends string> =
+  TAttrs extends unknown ? InternalFlagNameAllowedBranch<TAttrs, TName> : never;
+
+type InternalLocationAttrsApi<TDescriptor> =
+  InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
+    ? Readonly<{
+        get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => InternalAttrRead<TAttrs, TName>;
+        has: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => boolean;
+        keys: () => readonly InternalAttrsKeys<TAttrs>[];
+        must: Readonly<{
+          get: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => Exclude<InternalAttrRead<TAttrs, TName>, undefined>;
+        }>;
+        set: <const TName extends InternalAttrsName<TAttrs>>(
+          name: TName,
+          value: NoInfer<InternalAttrWriteValue<TAttrs, TName>>,
+        ) => LiveMapGraphCommit<LiveMapGraphSetAttrOp>;
+        drop: <const TName extends InternalAttrsName<TAttrs>>(name: TName) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
+        setMany: (values: InternalAttrsSetManyInput<TAttrs>) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+        dropMany: (names: readonly InternalAttrsName<TAttrs>[]) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+        clear: () => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+        replace: (values: InternalAttrsReplaceInput<TAttrs>) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+      }>
+    : never;
+
+type InternalLocationFlagsApi<TDescriptor> =
+  InternalDocumentLocationAttrsEvidence<TDescriptor> extends infer TAttrs
+    ? Readonly<{
+        has: <const TName extends string>(name: TName & InternalFlagNameAllowed<TAttrs, TName>) => boolean;
+        set: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string
+            ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
+            : never;
+        }) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+        clear: <const TNames extends string[]>(...names: TNames & {
+          [TIndex in keyof TNames]: TNames[TIndex] extends string
+            ? InternalFlagNameAllowed<TAttrs, TNames[TIndex]>
+            : never;
+        }) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
+      }>
+    : never;
+
 type DocumentLiveMapShared<
   TMode extends DocumentLiveMapMode,
   TEvidence = unknown,
@@ -1059,21 +1258,9 @@ type LiveMapDocumentLocation<
   /** Move one owned content item to its final index. */
   move: (from: number, to: number) => LiveMapGraphCommit<LiveMapGraphMoveContentOp>;
   /** Ordinary-attribute operations for the element currently at this location. */
-  attrs: Readonly<{
-    get: (name: string) => LiveMapDocumentAttributeValue | undefined;
-    has: (name: string) => boolean;
-    keys: () => readonly string[];
-    must: Readonly<{ get: (name: string) => LiveMapDocumentAttributeValue }>;
-    set: (
-      name: string,
-      value: LiveMapDocumentAttributeValue,
-    ) => LiveMapGraphCommit<LiveMapGraphSetAttrOp>;
-    drop: (name: string) => LiveMapGraphCommit<LiveMapGraphRemoveAttrOp>;
-    setMany: (values: LiveMapDocumentAttrs) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
-    dropMany: (names: readonly string[]) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
-    clear: () => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
-    replace: (values: LiveMapDocumentAttrs) => LiveMapGraphCommit<LiveMapGraphReplaceAttrsOp>;
-  }>;
+  attrs: InternalLocationAttrsApi<TDescriptor>;
+  /** Semantic same-name flag operations for this element location. */
+  flags: InternalLocationFlagsApi<TDescriptor>;
 }>;
 
 type InternalDocumentTupleNumericKey<TKey> =

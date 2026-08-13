@@ -55,9 +55,10 @@ check("defined schema composes as a record value", () => {
   assert.equal(Seats.validateRoot({ a: { connected: true }, b: { connected: false } }).ok, true);
 });
 check("defined schema composes as a constrain base", () => {
-  const Connected = hson.liveMap.schema.define((s) => s.constrain(Seat, "connected", (value) => value.connected));
+  const Connected = hson.liveMap.schema.define(() => Seat.constrain("connected", (value) => value.connected));
   assert.equal(Connected.validateRoot({ connected: true }).ok, true);
   assert.equal(Connected.validateRoot({ connected: false }).ok, false);
+  assert.equal(Seat.validateRoot({ connected: false }).ok, true);
 });
 check("defined schema composes through recurse", () => {
   const RecursiveSeat = hson.liveMap.schema.define((s) => s.recurse(() => Seat));

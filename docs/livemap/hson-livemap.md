@@ -393,6 +393,32 @@ zero-or-more siblings, `s.repeat(count, item)` is exactly `count` homogeneous
 siblings, and `s.pick(...)` combines compatible items or layouts. Shared expressions retain every truthful
 projected/document capability until an enclosing expression selects one.
 
+Element schemas may take one attrs schema as their first operand:
+
+```ts
+const Attrs = hson.liveMap.schema.define((s) => s.attrs({
+  id: s.string,
+  tabindex: s.number.constrain((value) => Number.isInteger(value) && value >= -1),
+  selected: s.flag.optional,
+}));
+const Button = hson.liveMap.schema.define((s) => s.button(Attrs, s.string));
+```
+
+`s.attrs` is open, `s.attrs.exact` rejects undeclared attrs, and
+`s.attrs.exact({})` requires no attrs. `s.flag` requires its containing value to
+equal the canonical attr name. Omitted attrs evidence remains broad. Style is a
+whole canonical attr value described with `style: s.unknown.optional` and
+mutated through attrs, not a separate LiveMap style API.
+
+Constraints are fluent projected-schema modifiers:
+`Base.constrain(predicate)` or `Base.constrain(label, predicate)`. They preserve
+the base evidence, run after base validation, and are available on compatible
+defined projected schemas. A following `.optional` or `.nullable` bypasses the
+predicate for absence or null. In the established modifier order,
+`OptionalBase.constrain(...)` produces a required present schema and constraining
+an already-nullable base supplies null to the predicate. Document-only schemas,
+attrs-schema values, and `s.flag` are not constraint bases.
+
 Zero tag arguments leave descendants broad. Explicit items close the complete
 direct content, and one layout argument supplies it. Prefer `s.div(s.empty)`
 for an exact-empty element and return `s.empty` for an empty fragment.
@@ -507,7 +533,8 @@ locally, and a structured `HsonNode` endpoint keeps its child evidence for later
 proxy or relative descent. `$_` remains the existing interned location with its
 normal read, watch, mutation, attrs, and binding capabilities; proxy runtime
 grammar and behavior are unchanged. Schema-less proxies remain historically
-broad. Attrs and further schema-frontend constraints remain deferred.
+broad. Attr and flag evidence follows the same direct/relative/proxy descriptor;
+dynamic `id()` discovery intentionally remains broad.
 
 On the existing bracket surface, TypeScript cannot simultaneously reject every
 out-of-range numeric literal and provide a truthful dynamic-number index. Known

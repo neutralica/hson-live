@@ -179,6 +179,14 @@ void (0 as unknown as LiveMapDocumentSchema);
 // @ts-expect-error The separate document authoring namespace was hard-removed.
 hson.liveMap.schema.document;
 const publicElementSchema = hson.liveMap.schema.define((s) => s.button(s.string));
+const publicButtonAttrs = hson.liveMap.schema.define((s) => s.attrs.exact({
+  id: s.string,
+  selected: s.flag.optional,
+  style: s.unknown.optional,
+}));
+const publicAttributedElementSchema = hson.liveMap.schema.define((s) =>
+  s.button(publicButtonAttrs, s.string),
+);
 const publicCustomElementSchema = hson.liveMap.schema.define((s) => s.tag["my-widget"](s.string));
 declare const publicDynamicTagName: string;
 const publicDynamicElementSchema = hson.liveMap.schema.define((s) => s.tag[publicDynamicTagName](s.string));
@@ -189,6 +197,14 @@ const publicEmptySchema = hson.liveMap.schema.define((s) => s.empty);
 const publicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(3, s.string));
 declare const publicDynamicRepeatCount: number;
 const publicDynamicCountedSchema = hson.liveMap.schema.define((s) => s.repeat(publicDynamicRepeatCount, s.string));
+const publicConstrainedSchema = hson.liveMap.schema.define((s) =>
+  s.number.constrain((value) => Number.isFinite(value)),
+);
+const publicDefinedConstraint = hson.liveMap.schema.define(() =>
+  publicConstrainedSchema.constrain("positive", (value) => value > 0),
+);
+// @ts-expect-error constrain is a schema-value modifier, not a toolkit constructor.
+hson.liveMap.schema.define((s) => s.constrain(s.number, "positive", (value: number) => value > 0));
 // @ts-expect-error The old predicate-narrowing operator is hard-removed.
 hson.liveMap.schema.define((s) => s.refine(s.number, "positive", (value: number) => value > 0));
 // @ts-expect-error The old recursive-reference operator is hard-removed.
@@ -198,10 +214,12 @@ hson.liveMap.schema.define((s) => s.tag("legacy-widget"));
 // @ts-expect-error Callable tag(...) already covers any-element schemas.
 hson.liveMap.schema.define((s) => s.element());
 void publicCustomElementSchema;
+void publicAttributedElementSchema;
 void publicDynamicElementSchema;
 void publicEmptySchema;
 void publicCountedSchema;
 void publicDynamicCountedSchema;
+void publicDefinedConstraint;
 const publicElementCandidate = hson.liveMap.fromHson(`<button "Save"/>`);
 if (publicElementCandidate.mode === "element") {
   const schemaBound = publicElementCandidate.schema.use(publicElementSchema);
@@ -216,6 +234,21 @@ if (publicElementCandidate.mode === "element") {
   // @ts-expect-error The one-item closed document schema has no coordinate 1.
   schemaBound.at([1]);
   void sameSchema;
+}
+const publicAttributedCandidate = hson.liveMap.fromHson(`<button id="save" selected "Save"/>`);
+if (publicAttributedCandidate.mode === "element") {
+  const schemaBound = publicAttributedCandidate.schema.use(publicAttributedElementSchema);
+  const root = schemaBound.at([]);
+  const id = root.attrs.get("id");
+  const selected = root.attrs.get("selected");
+  type PublicRequiredAttr = Expect<Equal<typeof id, string>>;
+  type PublicOptionalFlagAttr = Expect<Equal<typeof selected, "selected" | undefined>>;
+  root.flags.has("selected");
+  root.flags.set("selected");
+  root.flags.clear("selected");
+  schemaBound.document.flags.has({ kind: "path", path: [] }, "selected");
+  schemaBound.document.flags.set({ kind: "path", path: [] }, "selected");
+  schemaBound.document.flags.clear({ kind: "path", path: [] }, "selected");
 }
 const publicFragmentCandidate = mapSubpath.fromHson(`"before" <em/>`);
 if (publicFragmentCandidate.mode === "fragment") {
@@ -532,7 +565,7 @@ const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.exact
   record: schema.record(schema.number.optional),
   picked: schema.pick(schema.number.optional, "auto"),
   recursive: schema.recurse(() => schema.number.optional),
-  constrained: schema.constrain(schema.number.optional, "finite", Number.isFinite),
+  constrained: schema.number.optional.constrain("finite", Number.isFinite),
   deep: schema.deepPartial(schema.exact({
     child: schema.exact({ count: schema.number }),
     tuple: schema.tuple(schema.string, schema.number),

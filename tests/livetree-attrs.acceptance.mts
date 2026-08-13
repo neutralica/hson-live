@@ -96,18 +96,18 @@ check("canonical reads preserve primitives and detach structured style", () => {
   assert.deepEqual(value.attrs.get("style"), { color: "red", width: { value: 2, unit: "px" } });
 });
 
-check("keys is lexical, fresh, frozen, and excludes flags and metadata", () => {
+check("keys is lexical, fresh, frozen, and includes flag-form attrs while excluding metadata", () => {
   const value = tree(`<button disabled @000000201/>`);
   value.attrs.setMany({ zeta: 1, alpha: 2, style: { color: "red" } });
   const first = value.attrs.keys();
   const second = value.attrs.keys();
-  assert.deepEqual(first, ["alpha", "style", "zeta"]);
+  assert.deepEqual(first, ["alpha", "disabled", "style", "zeta"]);
   assert.notEqual(first, second);
   assert.equal(Object.isFrozen(first), true);
-  assert.equal(first.includes("disabled"), false);
+  assert.equal(first.includes("disabled"), true);
   assert.equal(first.includes(QUID_ATTR), false);
   assert.equal(Reflect.set(first as string[], 0, "changed"), false);
-  assert.deepEqual(value.attrs.keys(), ["alpha", "style", "zeta"]);
+  assert.deepEqual(value.attrs.keys(), ["alpha", "disabled", "style", "zeta"]);
 });
 
 check("must.get has stable frozen identity and one structured absence error", () => {
@@ -247,7 +247,7 @@ check("setMany overlays atomically and canonical equality is order-insensitive",
   assert.deepEqual(snapshot(value, element), before);
 });
 
-check("drop and dropMany remove only explicit ordinary names atomically", () => {
+check("drop and dropMany remove explicit complete-bag names atomically", () => {
   const value = tree(`<main id="one" title="two" class="three" @000000202/>`);
   const element = mount(value);
   for (const [name, attrValue] of Object.entries(value.node.$_attrs ?? {})) {
@@ -274,7 +274,7 @@ check("drop and dropMany remove only explicit ordinary names atomically", () => 
   errorCode(() => value.attrs.drop("hson:index"), LIVETREE_PROTECTED_ATTRIBUTE_ERROR_CODE, "drop");
 });
 
-check("clear preserves flags, identity, metadata, tag, and content", () => {
+check("clear removes the complete attrs bag while preserving identity, metadata, tag, and content", () => {
   const value = tree(`<button disabled id="ordinary" @000000203 "content"/>`);
   const element = mount(value);
   element.setAttribute("disabled", "disabled");
@@ -284,9 +284,9 @@ check("clear preserves flags, identity, metadata, tag, and content", () => {
   const beforeMeta = structuredClone(value.node.$_meta);
   value.attrs.clear();
   assert.deepEqual(value.attrs.keys(), []);
-  assert.equal(value.flags.has("disabled"), true);
-  assert.equal(value.node.$_attrs?.disabled, "disabled");
-  assert.equal(element.getAttribute("disabled"), "disabled");
+  assert.equal(value.flags.has("disabled"), false);
+  assert.equal(value.node.$_attrs, undefined);
+  assert.equal(element.getAttribute("disabled"), null);
   assert.equal(element.getAttribute("id"), null);
   assert.equal(element.getAttribute(QUID_ATTR), value.quid);
   assert.equal(value.node.$_tag, beforeTag);
@@ -298,7 +298,7 @@ check("clear preserves flags, identity, metadata, tag, and content", () => {
   assert.equal(empty.node.$_attrs, undefined);
 });
 
-check("replace applies one exact ordinary bag while retaining flags and canonical distinctions", () => {
+check("replace applies one exact complete bag with canonical distinctions", () => {
   const value = tree(`<button disabled id="old" title="remove"/>`);
   const element = mount(value);
   element.setAttribute("disabled", "disabled");
@@ -318,10 +318,10 @@ check("replace applies one exact ordinary bag while retaining flags and canonica
   assert.equal(value.attrs.get("nullable"), null);
   assert.equal(value.attrs.get("hidden"), false);
   assert.deepEqual(value.attrs.get("style"), { color: "blue" });
-  assert.equal(value.flags.has("disabled"), true);
+  assert.equal(value.flags.has("disabled"), false);
   assert.equal(element.getAttribute("id"), null);
   assert.equal(element.getAttribute("title"), null);
-  assert.equal(element.getAttribute("disabled"), "disabled");
+  assert.equal(element.getAttribute("disabled"), null);
   assert.equal(element.getAttribute("style"), "color: blue");
 
   const attrsIdentity = value.node.$_attrs;
@@ -338,14 +338,15 @@ check("replace applies one exact ordinary bag while retaining flags and canonica
 
   value.attrs.replace({});
   assert.deepEqual(value.attrs.keys(), []);
-  assert.equal(value.node.$_attrs?.disabled, "disabled");
+  assert.equal(value.node.$_attrs, undefined);
 });
 
-check("attrs and flags remain separate when one name changes ownership", () => {
+check("attrs and flags are converged views over one canonical bag", () => {
   const value = tree();
   value.flags.set("hidden");
   assert.equal(value.flags.has("hidden"), true);
-  assert.equal(value.attrs.has("hidden"), false);
+  assert.equal(value.attrs.has("hidden"), true);
+  assert.equal(value.attrs.get("hidden"), "hidden");
   value.attrs.set("hidden", false);
   assert.equal(value.attrs.has("hidden"), true);
   assert.equal(value.attrs.get("hidden"), false);
@@ -357,6 +358,18 @@ check("attrs and flags remain separate when one name changes ownership", () => {
   value.flags.clear("hidden");
   assert.equal(value.attrs.has("hidden"), true);
   assert.equal(value.attrs.get("hidden"), false);
+  value.attrs.set("selected", "selected");
+  assert.equal(value.flags.has("selected"), true);
+  value.attrs.drop("selected");
+  assert.equal(value.flags.has("selected"), false);
+  assert.throws(() => value.flags.set("style"), (cause) => (
+    cause instanceof LiveTreeAttributeError
+    && cause.code === LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE
+    && cause.operation === "flags.set"
+  ));
+  const before = structuredClone(value.node);
+  assert.throws(() => value.flags.set("safe", "bad name"), LiveTreeAttributeError);
+  assert.deepEqual(value.node, before);
 });
 
 process.stdout.write(`# ${checks} LiveTree canonical attrs checks passed\n`);

@@ -269,6 +269,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["attributes", "style", "dom-projection"],
     }),
     launcher({
+      id: "livetree-livemap.attrs-convergence",
+      subject: "LiveTree",
+      displayName: "LiveTree and LiveMap attrs/flags convergence",
+      packageScript: "test:livetree-livemap-attrs-convergence",
+      repositoryModule: "tests/livetree-livemap-attrs-convergence.acceptance.mts",
+      runtime: "node",
+      executableChecks: 9,
+      collections: ["attributes", "flags", "document", "canonical-graph", "externally-discoverable"],
+    }),
+    launcher({
       id: "livetree.quid-eligibility",
       subject: "LiveTree",
       displayName: "LiveTree QUID eligibility",
@@ -345,7 +355,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-delegation",
       repositoryModule: "tests/reflect-document-delegation.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 8,
+      executableChecks: 9,
       collections: ["document", "binding", "delegation"],
     }),
     launcher({
@@ -779,6 +789,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["document", "path", "mutation", "attrs", "proxy", "reflection", "public-api", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.document-flags",
+      subject: "LiveMap",
+      displayName: "Canonical document flag semantics",
+      packageScript: "test:livemap-document-flags",
+      repositoryModule: "tests/livemap-document-flags.acceptance.mts",
+      runtime: "node",
+      executableChecks: 13,
+      collections: ["document", "path", "mutation", "attrs", "flags", "schema", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.document-id-discovery",
       subject: "LiveMap",
       displayName: "Internal canonical document ID discovery",
@@ -829,6 +849,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["document", "schema", "validation", "public-api", "externally-discoverable"],
     }),
     launcher({
+      id: "livemap.document-attrs-schema",
+      subject: "LiveMap",
+      displayName: "Typed document attrs schema and enforcement",
+      packageScript: "test:livemap-document-attrs-schema",
+      repositoryModule: "tests/livemap-document-attrs-schema.acceptance.mts",
+      runtime: "node",
+      executableChecks: 16,
+      collections: ["document", "schema", "validation", "attrs", "flags", "mutation", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "livemap.document-schema-enforcement",
       subject: "LiveMap",
       displayName: "Document schema owner-level enforcement",
@@ -865,7 +895,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-vocabulary",
       repositoryModule: "tests/livemap-schema-vocabulary.acceptance.mts",
       runtime: "node",
-      executableChecks: 15,
+      executableChecks: 20,
       collections: ["projected-value", "schema", "constraint", "recursion", "public-api", "externally-discoverable"],
     }),
     launcher({

@@ -7,6 +7,17 @@ import {
   decode_public_attr_value,
   is_public_attr_name,
 } from "../../../core/public-attrs.js";
+import {
+  canonical_attr_is_flag,
+  plan_public_attr_drop,
+  plan_public_attr_set,
+  plan_public_attrs_clear,
+  plan_public_attrs_drop_many,
+  plan_public_attrs_replace,
+  plan_public_attrs_set_many,
+  plan_public_flags_clear,
+  plan_public_flags_set,
+} from "../../../core/public-attr-transitions.js";
 import type {
   CanonicalPublicAttrs,
   CanonicalPublicAttrValue,
@@ -32,8 +43,6 @@ import { get_quid } from "../quid/data-quid.js";
 import { runtime_for_tree } from "../runtime/livetree-runtime.js";
 
 const UNASSIGNED_QUID_DIAGNOSTIC = "<unassigned>";
-
-const FLAG_NAMES = new WeakMap<HsonNode, Set<string>>();
 
 function canonical_attr_key<TTree extends LiveTree>(tree: TTree, name: string): string {
   const lower = name.toLowerCase();
@@ -71,9 +80,9 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
     must,
     has: (name) => {
       const key = normalize_attr_name(tree, name, "has");
-      return has_ordinary_attr(tree.node, key);
+      return has_attr(tree.node, key);
     },
-    keys: () => Object.freeze(read_ordinary_attr_keys(tree.node)),
+    keys: () => Object.freeze(read_attr_keys(tree.node)),
     set: (name, value) => {
       const key = normalize_attr_name(tree, name, "set");
       const decoded = normalize_attr_value(tree, key, value, "set");
@@ -82,8 +91,8 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "set", name: key, value: decoded });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "set");
-      return apply_attrs_replacement(tree, current, normalize_attrs_result({ ...current, [key]: decoded }), [key]);
+      const current = read_attrs(tree, "set");
+      return apply_attrs_replacement(tree, current, plan_public_attr_set(current, key, decoded));
     },
     setMany: (values) => {
       const additions = normalize_attrs_input(tree, values, "setMany");
@@ -92,12 +101,11 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "setMany", values: additions });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "setMany");
+      const current = read_attrs(tree, "setMany");
       return apply_attrs_replacement(
         tree,
         current,
-        normalize_attrs_result({ ...current, ...additions }),
-        Object.keys(additions),
+        plan_public_attrs_set_many(current, additions),
       );
     },
     drop: (name) => {
@@ -107,10 +115,8 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "drop", name: key });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "drop");
-      const next: Record<string, CanonicalPublicAttrValue> = { ...current };
-      delete next[key];
-      return apply_attrs_replacement(tree, current, normalize_attrs_result(next), []);
+      const current = read_attrs(tree, "drop");
+      return apply_attrs_replacement(tree, current, plan_public_attr_drop(current, key));
     },
     dropMany: (names) => {
       const normalized = normalize_drop_names(tree, names, "dropMany");
@@ -119,10 +125,8 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "dropMany", names: normalized });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "dropMany");
-      const next: Record<string, CanonicalPublicAttrValue> = { ...current };
-      for (const name of normalized) delete next[name];
-      return apply_attrs_replacement(tree, current, normalize_attrs_result(next), []);
+      const current = read_attrs(tree, "dropMany");
+      return apply_attrs_replacement(tree, current, plan_public_attrs_drop_many(current, normalized));
     },
     clear: () => {
       const binding = document_binding_for_node(tree.node);
@@ -130,8 +134,8 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "clear" });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "clear");
-      return apply_attrs_replacement(tree, current, Object.freeze({}), []);
+      const current = read_attrs(tree, "clear");
+      return apply_attrs_replacement(tree, current, plan_public_attrs_clear());
     },
     replace: (values) => {
       const next = normalize_attrs_input(tree, values, "replace");
@@ -140,8 +144,8 @@ export function attr_handle<TTree extends LiveTree>(tree: TTree): AttrHandle<TTr
         binding.delegateAttrs({ kind: "replace", values: next });
         return tree;
       }
-      const current = read_ordinary_attrs(tree, "replace");
-      return apply_attrs_replacement(tree, current, next, Object.keys(next));
+      const current = read_attrs(tree, "replace");
+      return apply_attrs_replacement(tree, current, plan_public_attrs_replace(next));
     },
   });
 }
@@ -154,25 +158,42 @@ export function apply_projected_attrs_replacement(
   const next = decode_public_attrs(values);
   const current = decode_public_attrs(node.$_attrs ?? {});
   if (next === undefined || current === undefined) {
-    throw new Error("LiveTree projected attrs replacement requires canonical ordinary attrs.");
+    throw new Error("LiveTree projected attrs replacement requires canonical attrs.");
   }
   if (canonical_public_attrs_equal(current, next)) return;
   if (Object.keys(next).length === 0) delete node.$_attrs;
   else node.$_attrs = clone_node(next);
-  FLAG_NAMES.set(node, new Set());
   project_attrs_replacement(node, current, next);
 }
 
 export function flag_handle<TTree extends LiveTree>(tree: TTree): FlagHandle<TTree> {
   return Object.freeze({
-    has: (name) => flag_names_for_node(tree.node).has(canonical_attr_key(tree, name)),
+    has: (name) => {
+      const key = normalize_attr_name(tree, name, "flags.has");
+      const current = read_attrs(tree, "flags.has");
+      return canonical_attr_is_flag(current, key);
+    },
     set: (...names): TTree => {
-      for (const name of names) set_flag(tree, canonical_attr_key(tree, name));
-      return tree;
+      const normalized = normalize_flag_names(tree, names, "flags.set", true);
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        binding.delegateAttrs({ kind: "setMany", values: flag_values(normalized) });
+        return tree;
+      }
+      const current = read_attrs(tree, "flags.set");
+      return apply_attrs_replacement(tree, current, plan_public_flags_set(current, normalized));
     },
     clear: (...names): TTree => {
-      for (const name of names) clear_flag(tree, canonical_attr_key(tree, name));
-      return tree;
+      const normalized = normalize_flag_names(tree, names, "flags.clear", true);
+      const current = read_attrs(tree, "flags.clear");
+      const next = plan_public_flags_clear(current, normalized);
+      const binding = document_binding_for_node(tree.node);
+      if (binding !== undefined) {
+        const dropped = normalized.filter((name) => canonical_attr_is_flag(current, name));
+        binding.delegateAttrs({ kind: "dropMany", names: dropped });
+        return tree;
+      }
+      return apply_attrs_replacement(tree, current, next);
     },
   });
 }
@@ -208,7 +229,7 @@ export function readAttrFromNode(
   name: string,
 ): CanonicalPublicAttrValue | undefined {
   const key = svg_attr_key_from_node_tag(node, name);
-  if (!has_ordinary_attr(node, key)) return undefined;
+  if (!has_attr(node, key)) return undefined;
   return decode_public_attr_value(key, node.$_attrs?.[key]);
 }
 
@@ -221,32 +242,30 @@ function read_canonical_attr(
   key: string,
   operation: string,
 ): CanonicalPublicAttrValue | undefined {
-  if (!has_ordinary_attr(tree.node, key)) return undefined;
+  if (!has_attr(tree.node, key)) return undefined;
   const decoded = decode_public_attr_value(key, tree.node.$_attrs?.[key]);
   if (decoded !== undefined) return decoded;
   throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, key, "stored value is not canonical");
 }
 
-function has_ordinary_attr(node: HsonNode, key: string): boolean {
+function has_attr(node: HsonNode, key: string): boolean {
   const attrs = node.$_attrs;
   return attrs !== undefined
-    && !flag_names_for_node(node).has(key)
     && Object.prototype.hasOwnProperty.call(attrs, key);
 }
 
-function read_ordinary_attr_keys(node: HsonNode): string[] {
-  const flags = flag_names_for_node(node);
+function read_attr_keys(node: HsonNode): string[] {
   return Object.keys(node.$_attrs ?? {})
-    .filter((name) => is_public_attr_name(name) && !flags.has(name))
+    .filter(is_public_attr_name)
     .sort();
 }
 
-function read_ordinary_attrs(tree: LiveTree, operation: string): CanonicalPublicAttrs {
+function read_attrs(tree: LiveTree, operation: string): CanonicalPublicAttrs {
   const input: Record<string, unknown> = {};
-  for (const name of read_ordinary_attr_keys(tree.node)) input[name] = tree.node.$_attrs?.[name];
+  for (const name of read_attr_keys(tree.node)) input[name] = tree.node.$_attrs?.[name];
   const attrs = decode_public_attrs(input);
   if (attrs !== undefined) return attrs;
-  throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, undefined, "stored ordinary attrs are not canonical");
+  throw attr_error(tree, LIVETREE_INVALID_ATTRIBUTE_VALUE_ERROR_CODE, operation, undefined, "stored attrs are not canonical");
 }
 
 function normalize_attr_name(tree: LiveTree, input: unknown, operation: string): string {
@@ -329,24 +348,12 @@ function apply_attrs_replacement<TTree extends LiveTree>(
   tree: TTree,
   current: CanonicalPublicAttrs,
   next: CanonicalPublicAttrs,
-  overriddenFlags: readonly string[],
 ): TTree {
-  if (canonical_public_attrs_equal(current, next) && overriddenFlags.every((name) => !flag_names_for_node(tree.node).has(name))) {
-    return tree;
-  }
+  if (canonical_public_attrs_equal(current, next)) return tree;
 
   const node = tree.node;
-  const flags = new Set(flag_names_for_node(node));
-  for (const name of overriddenFlags) flags.delete(name);
-  const combined: Record<string, CanonicalPublicAttrValue> = { ...next };
-  for (const name of [...flags].sort()) {
-    const value = node.$_attrs?.[name];
-    if (value !== undefined) combined[name] = value;
-  }
-  const ordered = normalize_attrs_result(combined);
-  if (Object.keys(ordered).length === 0) delete node.$_attrs;
-  else node.$_attrs = clone_node(ordered);
-  FLAG_NAMES.set(node, flags);
+  if (Object.keys(next).length === 0) delete node.$_attrs;
+  else node.$_attrs = clone_node(next);
   project_attrs_replacement(node, current, next);
   return tree;
 }
@@ -374,40 +381,42 @@ function project_attr_value(element: Element, name: string, value: CanonicalPubl
   element.setAttribute(name, String(value));
 }
 
-function flag_names_for_node(node: HsonNode): Set<string> {
-  const existing = FLAG_NAMES.get(node);
-  if (existing !== undefined) return existing;
-  const inferred = new Set<string>();
-  for (const [name, value] of Object.entries(node.$_attrs ?? {})) {
-    if (value === name) inferred.add(name);
-  }
-  FLAG_NAMES.set(node, inferred);
-  return inferred;
+function normalize_flag_names(
+  tree: LiveTree,
+  names: readonly string[],
+  operation: string,
+  rejectStyle: boolean,
+): readonly string[] {
+  const normalized = names.map((name, index) => {
+    try {
+      const key = normalize_attr_name(tree, name, operation);
+      if (rejectStyle && key === "style") {
+        throw attr_error(
+          tree,
+          LIVETREE_INVALID_ATTRIBUTE_NAME_ERROR_CODE,
+          operation,
+          key,
+          "style is not a semantic flag",
+        );
+      }
+      return key;
+    } catch (cause) {
+      if (cause instanceof LiveTreeAttributeError) {
+        throw new LiveTreeAttributeError(cause.code, operation, cause.quid, cause.reason, {
+          attributeName: cause.attributeName,
+          inputIndex: index,
+        });
+      }
+      throw cause;
+    }
+  });
+  return Object.freeze(normalized);
 }
 
-function set_flag(tree: LiveTree, name: string): void {
-  if (name === "style") {
-    const attrs = tree.node.$_attrs;
-    if (attrs !== undefined) delete attrs.style;
-    get_el_for_node(tree.node)?.removeAttribute("style");
-    return;
-  }
-  const node = tree.node;
-  const attrs = node.$_attrs ??= {};
-  attrs[name] = name;
-  flag_names_for_node(node).add(name);
-  get_el_for_node(node)?.setAttribute(name, name);
-}
-
-function clear_flag(tree: LiveTree, name: string): void {
-  const node = tree.node;
-  if (!flag_names_for_node(node).has(name)) return;
-  if (node.$_attrs !== undefined) {
-    delete node.$_attrs[name];
-    if (Object.keys(node.$_attrs).length === 0) delete node.$_attrs;
-  }
-  flag_names_for_node(node).delete(name);
-  get_el_for_node(node)?.removeAttribute(name);
+function flag_values(names: readonly string[]): CanonicalPublicAttrs {
+  const values: Record<string, string> = {};
+  for (const name of names) values[name] = name;
+  return normalize_attrs_result(values);
 }
 
 function attr_error(

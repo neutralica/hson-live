@@ -128,8 +128,11 @@ source attribute order and exact spelling are not graph invariants.
 
 HSON element presence flags use the canonical string-equals-key representation,
 for example `{ disabled: "disabled" }`, and serialize as bare `disabled`.
-LiveTree keeps those flags in its separate `flags` namespace. Ordinary `attrs.set`
-stores canonical boolean and null values; deletion is explicit through
+LiveTree and LiveMap expose `flags` as semantic operations over the same complete
+canonical attr bag, without separate provenance metadata. Attr reads observe the
+same-name string, `attrs.set("disabled", "disabled")` naturally creates
+flag-form state, and replacing that value changes the flag predicate. Attrs also
+store canonical boolean and null values; deletion is explicit through
 `attrs.drop`, and `undefined` is rejected.
 
 The graph type continues to permit ordinary string, number, boolean, and null

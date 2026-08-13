@@ -138,7 +138,7 @@ Manager namespaces specialize common mutations:
 - `style` edits serializable inline style; and
 - `css` edits QUID-scoped managed stylesheet state.
 
-LiveTree `attrs` retains canonical graph values: `false`, `null`, zero, and the empty string are stored and remain present. `undefined` is rejected by `attrs.set`; explicit removal uses `attrs.drop`, `attrs.dropMany`, or `attrs.clear`. The separate `flags` helper continues to express HTML presence semantics without entering the ordinary attrs read/key surface.
+LiveTree `attrs` retains the complete canonical attr bag: `false`, `null`, zero, the empty string, and flag-form same-name strings are stored and remain present. `undefined` is rejected by `attrs.set`; explicit removal uses `attrs.drop`, `attrs.dropMany`, or `attrs.clear`. The `flags` helper is a semantic view over that same bag: a member is a flag exactly when its value equals its canonical name. Consequently, `attrs.set("selected", "selected")` makes `flags.has("selected")` true.
 
 ---
 

@@ -1,6 +1,7 @@
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
+import { decode_public_attrs } from "../../core/public-attrs.js";
 import type {
   DocumentLiveMapMode,
   LiveMapSchemaIssueCode,
@@ -20,10 +21,28 @@ export type DocumentUnknownEvidence = Readonly<{ kind: "unknown" }>;
 export type DocumentElementEvidence<
   TTag extends string | undefined,
   TContent,
+  TAttrs = "broad",
 > = Readonly<{
   kind: "element";
   tag: TTag;
   content: TContent;
+} & (TAttrs extends "broad" ? unknown : { attrs: TAttrs })>;
+export type DocumentAttrValueEvidence<
+  TValue,
+  TOptional extends boolean,
+  TFlag extends boolean,
+> = Readonly<{
+  value: TValue;
+  optional: TOptional;
+  flag: TFlag;
+}>;
+export type DocumentAttrsEvidence<
+  TShape,
+  TExact extends boolean,
+> = Readonly<{
+  kind: "attrs";
+  shape: TShape;
+  exact: TExact;
 }>;
 export type DocumentSequenceEvidence<TItems extends readonly unknown[]> = Readonly<{
   kind: "sequence";
@@ -55,6 +74,11 @@ export type InternalDocumentContentSchema<TEvidence = unknown> = Readonly<{
   readonly [DOCUMENT_CONTENT_EVIDENCE]: TEvidence;
 }>;
 
+declare const DOCUMENT_ATTRS_EVIDENCE: unique symbol;
+export type InternalDocumentAttrsSchema<TEvidence = unknown> = Readonly<{
+  readonly [DOCUMENT_ATTRS_EVIDENCE]: TEvidence;
+}>;
+
 export type InternalDocumentElementSchema<TEvidence = unknown> =
   InternalDocumentItemSchema<TEvidence> & Readonly<{
     readonly [DOCUMENT_ROOT_EVIDENCE]: TEvidence;
@@ -83,7 +107,9 @@ export type InternalDocumentSchemaController = Readonly<{
 }>;
 
 export type InternalDocumentSchemaEvidence<TSchema> =
-  TSchema extends Readonly<{ readonly [DOCUMENT_ROOT_EVIDENCE]: infer TEvidence }>
+  TSchema extends Readonly<{ readonly [DOCUMENT_ATTRS_EVIDENCE]: infer TEvidence }>
+    ? TEvidence
+    : TSchema extends Readonly<{ readonly [DOCUMENT_ROOT_EVIDENCE]: infer TEvidence }>
     ? TEvidence
     : TSchema extends Readonly<{ readonly [DOCUMENT_ITEM_EVIDENCE]: infer TEvidence }>
       ? TEvidence
@@ -108,8 +134,21 @@ type DocumentElementNode = Readonly<{
   kind: "element";
   category: "item";
   tag?: string;
+  attrs?: DocumentAttrsNode;
   content?: DocumentContentNode;
 }>;
+
+export type InternalDocumentAttrRule = Readonly<{
+  optional: boolean;
+  flag: boolean;
+  validate: (value: unknown) => LiveMapSchemaValidation;
+}>;
+
+export type InternalDocumentAttrsNode = Readonly<{
+  exact: boolean;
+  props: readonly (readonly [string, InternalDocumentAttrRule])[];
+}>;
+type DocumentAttrsNode = InternalDocumentAttrsNode;
 
 type DocumentContentNode =
   | Readonly<{
@@ -141,6 +180,7 @@ type DocumentSchemaNode = DocumentItemNode | DocumentContentNode | DocumentFragm
 const DOCUMENT_ITEM_NODES = new WeakMap<object, DocumentItemNode>();
 const DOCUMENT_CONTENT_NODES = new WeakMap<object, DocumentContentNode>();
 const DOCUMENT_ROOT_NODES = new WeakMap<object, DocumentRootNode>();
+const DOCUMENT_ATTRS_NODES = new WeakMap<object, DocumentAttrsNode>();
 
 function document_token<TSchema extends object>(
   register: (value: object) => void,
@@ -188,21 +228,50 @@ export function add_document_unknown_capability<TValue extends object>(value: TV
 export function make_document_element_schema<
   const TTag extends string | undefined,
   const TContent,
+  const TAttrs = "broad",
 >(
   tag: TTag,
-  children: readonly object[],
-): InternalDocumentElementSchema<DocumentElementEvidence<TTag, TContent>> {
+  operands: readonly object[],
+): InternalDocumentElementSchema<DocumentElementEvidence<TTag, TContent, TAttrs>> {
   if (tag !== undefined && (typeof tag !== "string" || tag.length === 0 || tag.startsWith("_hson_"))) {
     throw new TypeError("Document element schema tag must be a non-empty ordinary element tag.");
+  }
+  const firstAttrs = operands[0] === undefined ? undefined : document_attrs_node(operands[0]);
+  const children = firstAttrs === undefined ? operands : operands.slice(1);
+  if (children.some((child) => document_attrs_node(child) !== undefined)) {
+    throw new TypeError("Document attrs schema must appear at most once and as the first tag operand.");
   }
   const content = document_content_from_children(children);
   const node: DocumentElementNode = Object.freeze({
     kind: "element",
     category: "item",
     ...(tag === undefined ? {} : { tag }),
+    ...(firstAttrs === undefined ? {} : { attrs: firstAttrs }),
     ...(content === undefined ? {} : { content }),
   });
   return document_token((value) => register_item(value, node));
+}
+
+export function make_document_attrs_schema<TEvidence>(
+  node: InternalDocumentAttrsNode,
+): InternalDocumentAttrsSchema<TEvidence> {
+  const frozenNode: DocumentAttrsNode = Object.freeze({
+    exact: node.exact,
+    props: Object.freeze(node.props.map(([name, rule]) => Object.freeze([name, rule] as const))),
+  });
+  return document_token((value) => DOCUMENT_ATTRS_NODES.set(value, frozenNode));
+}
+
+export function document_attrs_node(value: unknown): InternalDocumentAttrsNode | undefined {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) return undefined;
+  return DOCUMENT_ATTRS_NODES.get(value);
+}
+
+export function register_defined_document_attrs_schema(target: object, expression: unknown): boolean {
+  const node = document_attrs_node(expression);
+  if (node === undefined) return false;
+  DOCUMENT_ATTRS_NODES.set(target, node);
+  return true;
 }
 
 function fragment_node(content: DocumentContentNode): DocumentFragmentNode {
@@ -475,7 +544,10 @@ function validate_item(
       ),
     ]);
   }
-  if (schema.content === undefined) return valid();
+  const attrsValidation = schema.attrs === undefined
+    ? valid()
+    : validate_attrs(schema.attrs, value.$_attrs ?? {}, path);
+  if (schema.content === undefined) return attrsValidation;
   const children = logical_element_children(value);
   if (children === undefined) {
     return invalid([
@@ -486,7 +558,71 @@ function validate_item(
       ),
     ]);
   }
-  return validate_content(schema.content, children, path);
+  const contentValidation = validate_content(schema.content, children, path);
+  if (attrsValidation.ok) return contentValidation;
+  if (contentValidation.ok) return attrsValidation;
+  return invalid([...attrsValidation.issues, ...contentValidation.issues]);
+}
+
+function validate_attrs(
+  schema: DocumentAttrsNode,
+  input: unknown,
+  path: readonly number[],
+): LiveMapSchemaValidation {
+  const attrs = decode_public_attrs(input);
+  if (attrs === undefined) {
+    return invalid([issue(
+      "TYPE_MISMATCH",
+      path,
+      `Element at ${JSON.stringify(path)} does not expose canonical attributes.`,
+      "canonical attrs",
+      "invalid attrs",
+    )]);
+  }
+  const rules = new Map(schema.props);
+  const issues: LiveMapSchemaIssue[] = [];
+  for (const [name, rule] of schema.props) {
+    if (!Object.prototype.hasOwnProperty.call(attrs, name)) {
+      if (!rule.optional) {
+        issues.push(issue(
+          "MISSING_REQUIRED",
+          path,
+          `Required attribute ${JSON.stringify(name)} is missing at ${JSON.stringify(path)}.`,
+          rule.flag ? `flag ${JSON.stringify(name)}` : "required attribute",
+          "missing",
+          name,
+        ));
+      }
+      continue;
+    }
+    const validation = rule.validate(attrs[name]);
+    if (!validation.ok) {
+      for (const problem of validation.issues) {
+        issues.push(issue(
+          problem.code,
+          path,
+          `Attribute ${JSON.stringify(name)} at ${JSON.stringify(path)} is invalid: ${problem.message}`,
+          problem.expected,
+          problem.received,
+          name,
+        ));
+      }
+    }
+  }
+  if (schema.exact) {
+    for (const name of Object.keys(attrs)) {
+      if (rules.has(name)) continue;
+      issues.push(issue(
+        "UNKNOWN_KEY",
+        path,
+        `Attribute ${JSON.stringify(name)} is not declared by the exact attrs schema at ${JSON.stringify(path)}.`,
+        "declared attribute",
+        JSON.stringify(name),
+        name,
+      ));
+    }
+  }
+  return issues.length === 0 ? valid() : invalid(issues);
 }
 
 function validate_content(
@@ -620,6 +756,7 @@ function issue(
   message: string,
   expected?: string,
   received?: string,
+  attributeName?: string,
 ): LiveMapSchemaIssue {
   return Object.freeze({
     code,
@@ -627,6 +764,7 @@ function issue(
     message,
     ...(expected === undefined ? {} : { expected }),
     ...(received === undefined ? {} : { received }),
+    ...(attributeName === undefined ? {} : { attributeName }),
   });
 }
 
