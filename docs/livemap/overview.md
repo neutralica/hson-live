@@ -363,38 +363,17 @@ Repeated whole-root reads should not replace path-specific reads or subscription
 
 ---
 
-## Physical node access
+## Canonical ownership
 
-Projected-data maps may expose physical HSON nodes through an explicit node-oriented surface:
+LiveMap owns its canonical HSON graph for its entire lifetime. `snap(path)`
+returns detached application data, while `root()` returns a detached canonical
+graph. Captures and observer values are likewise detached. Locations and proxies
+are owner/path capabilities whose writes pass through LiveMap admission. No
+supported public API returns a live mutable canonical node.
 
-```ts
-map.debug.node(path)
-```
-
-This is different from `snap(path)` and is explicitly unsafe live graph access.
-
-Conceptually:
-
-```text
-get(path)
-→ projected application value
-
-node(path)
-→ physical canonical HSON node
-```
-
-Node access is useful for:
-
-- inspecting canonical structure;
-- reading metadata;
-- working with attributes or children;
-- structural tooling;
-- integration with LiveTree;
-- advanced graph operations.
-
-It should not be used merely to bypass projected mutation semantics.
-
-Physical node operations may intentionally have different schema, feed, subscription, or commit behavior from projected mutations. The node API is therefore a separate advanced surface rather than an alternative spelling of `set`.
+Structural tooling that genuinely needs canonical object identity lives behind
+private implementation/test seams and is not an alternative public spelling of
+projected mutation.
 
 ---
 
@@ -1607,25 +1586,17 @@ These invariants make LiveMap suitable as the local state engine beneath persist
 
 ---
 
-## Debug access
+## Inspection and diagnostics
 
-LiveMap provides debug-oriented inspection surfaces for development and testing.
+LiveMap inspection remains observational. `snap()`, `root()`, captures, document
+reads, watch payloads, and feed values are detached from canonical ownership.
+Schema resolution returns immutable evidence, commit observation returns
+detached commit material, and locations or proxies retain only mediated
+owner/path capabilities.
 
-Debug APIs may expose:
-
-- canonical nodes;
-- indexes;
-- revision state;
-- schema resolution;
-- commit information;
-- capture structures;
-- identity maps.
-
-Debug access is not a stable replacement for public application APIs.
-
-A debug mutation route, where present, may bypass ordinary guarantees and should be treated as privileged internal tooling.
-
-When a map is hosted, debug mutation is fenced to prevent authority bypass.
+LiveMap does not expose canonical nodes, indexes, identity maps, or a debug
+mutation route through supported entrypoints. The narrow canonical reader used
+by LiveInspector and low-level tests is private implementation infrastructure.
 
 ---
 

@@ -266,8 +266,7 @@ check("document runtime façade omits projected data APIs", () => {
     assert.equal(typeof map.replay, "function");
     assert.equal(typeof map.restore, "function");
     assert.equal(typeof map.commits.observe, "function");
-    assert.equal("debug" in map, true);
-    assert.equal(typeof map.debug.node, "function");
+    assert.equal("debug" in map, false);
     assert.equal(typeof map.document.attrs.set, "function");
     assert.equal(typeof map.document.content, "function");
   }
@@ -326,12 +325,15 @@ check("first changed operations advance from zero to one exactly once", () => {
   assert.deepEqual([documentCommit.prevRev, documentCommit.rev, target.rev], [0, 1, 1]);
 });
 
-check("unsafe debug node mutation remains live and revision-bypassing", () => {
+check("document root observation is detached from canonical ownership", () => {
   const map = hson.liveMap.fromHson(`<main @000000001 "x"/>`);
   assert.equal(map.mode, "element");
   const beforeRev = map.rev;
-  map.debug.node(["main"]).setAttr("class", "unsafe");
-  assert.equal(find_nodes(map.root(), "main")[0]?.$_attrs?.class, "unsafe");
+  const detached = map.root();
+  const main = find_nodes(detached, "main")[0];
+  if (main === undefined) throw new Error("expected detached main node");
+  main.$_attrs = { ...main.$_attrs, class: "detached" };
+  assert.equal(find_nodes(map.root(), "main")[0]?.$_attrs?.class, undefined);
   assert.equal(map.rev, beforeRev);
 });
 

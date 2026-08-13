@@ -58,7 +58,6 @@ const map = hson.liveMap.fromJson({
 map.snap();                    // complete projected JSON value
 map.snap(["user", "name"]);  // "Ada"
 map.root();                    // detached canonical HsonNode clone
-map.debug.node(["user"]);     // unsafe live graph handle
 ```
 
 The projected path `["user", "name"]` crosses whatever `_hson_obj`, property, and primitive VSN wrappers are required by the HSON graph. Callers do not need to encode those wrappers in a `LivePath`.
@@ -67,9 +66,11 @@ This separation is fundamental for data maps:
 
 - projected operations express state meaning;
 - HSON wrappers preserve structural representation; and
-- raw node operations remain available for deliberately physical graph work.
+- canonical graph ownership remains private to the LiveMap.
 
-The projected reader converts the current node payload into detached JSON values. `root()` likewise returns a detached structural clone of the canonical graph. Only `debug.node(path)` exposes intentionally live graph access.
+The projected reader converts the current node payload into detached JSON values. `root()` likewise returns a detached structural clone of the canonical graph. Public callers never receive a live mutable alias to the canonical graph.
+The former `debug.node(...)` escape hatch is removed and has no public raw-node
+replacement.
 
 For projected-data maps, the HSON graph remains the sole authoritative state.
 LiveMap uses a private immutable ordered carrier only while admitting values,
@@ -148,7 +149,7 @@ Schema or editor failure occurs before the live graph is changed. Explicit
 `batch()` groups multiple synchronous writes into one preflight and one commit,
 so a failing write prevents the entire batch from being applied.
 
-Raw operations through `debug.node(path)` do not use this pipeline. They do not validate schemas, advance revisions, create commits, or notify feeds. Mutating the detached graph returned by `root()` has no effect on the map.
+Mutating a detached value from `snap()`, `root()`, capture, watch, or feed observation has no effect on the map. Canonical mutation always passes through the LiveMap admission pipeline.
 
 ---
 
@@ -363,11 +364,11 @@ represents an arbitrary/unregistered custom tag name as `string`, while keeping
 its child/layout evidence exact. Direct known-tag builders such as `s.div(...)`
 retain literal tag evidence.
 
-Document attachment validates synchronously and permanently governs the same
+Schema attachment validates synchronously and permanently governs the same
 owner through aliases, mutation, restore, replay, and staged authority. Reusing
 the identical schema is idempotent; replacement is unsupported. Successful
-attachment severs unsafe debug references without changing revision or
-publishing an event. Exact fixed paths, relative paths, proxies, mutation
+attachment records governance without replacing the canonical graph, changing
+revision, or publishing an event. Exact fixed paths, relative paths, proxies, mutation
 inputs, watches, and LiveTree bindings all consume the retained schema evidence;
 repeated or otherwise dynamic reads include `undefined`, but `undefined` never
 becomes a writable document value.
@@ -449,7 +450,7 @@ These identifiers must never be silently substituted for one another. A future i
 ## Current limitations that affect the model
 
 - Normal construction establishes initial state directly at revision 0 and emits no commit. The first changed atomic transition advances 0 to 1; unchanged operations consume no revision.
-- `debug.node(path)` exposes live physical graph mutation outside schema, commit, revision, feed, and subscription accounting. `root()` is detached.
+- LiveMap owns its canonical graph from construction onward. Public value, graph, capture, watch, and feed observations are detached; locations and proxies are mediated owner/path capabilities.
 - Feed listener exceptions are not isolated. State and revision have already committed when listeners run, and a thrown listener can escape the mutation call and interrupt delivery to later listeners.
 - The lower-level `link_livemap` implementation does not currently propagate a standalone semantic `splice` operation; handle-level `linkTo` forwards the resulting scoped value.
 - QUID metadata may persist through controlled exact snapshots and processes, but serialized QUID bytes alone do not prove membership in the current live epoch.

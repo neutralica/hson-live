@@ -167,7 +167,6 @@ import type {
   LiveMapFeedListener,
   LiveMapDisposer,
   LiveMapCore,
-  LiveMapNodeHandle,
   LiveMap,
   LiveMapRootMode,
   DataLiveMapMode,

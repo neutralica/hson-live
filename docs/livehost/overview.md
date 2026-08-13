@@ -60,7 +60,9 @@ FIFO authority queue
 → explicit Host history ingestion
 → Host publication
 
-The original map, retained handles, proxies, document helpers, schema mutation, restore/replay routes, and debug mutation surfaces are dynamically fenced while host management is active.
+The original map, retained handles, proxies, document helpers, schema mutation,
+and restore/replay routes are dynamically fenced while host management is
+active. LiveMap exposes no public raw canonical mutation surface.
 
 Application code mutates through:
 
@@ -375,11 +377,12 @@ While a map is hosted, LiveMap dynamically fences public mutation routes, includ
 * handles and proxies;
 * document attributes and content;
 * structural installation;
-* schema attachment or replacement;
+* first schema attachment;
 * restore and replay;
-* debug access and debug mutation.
 
-Management activation installs a detached owned graph. A raw graph reference obtained before hosting therefore no longer points at the authoritative graph.
+LiveMap already owns a detached canonical graph before management begins, so
+management activation does not clone merely to sever public aliases. Public raw
+graph references do not exist.
 
 Two Hosts cannot manage the same map. Ownership is released only after active authority work settles during host destruction or persistent-store unload.
 

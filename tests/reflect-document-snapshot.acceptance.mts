@@ -67,7 +67,6 @@ function with_capture(
     replay: map.replay,
     commits: map.commits,
     schema: map.schema,
-    debug: map.debug,
     document: map.document,
     element: map.element,
   };

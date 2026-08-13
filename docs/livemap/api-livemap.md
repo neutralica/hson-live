@@ -2,8 +2,8 @@
 
 LiveMap owns a canonical HSON graph and exposes either projected JSON-path state
 (`data-object`, `data-array`) or canonical document operations (`element`,
-`fragment`). This reference separates those public modes from unsafe graph
-access.
+`fragment`). LiveMap owns canonical state; public observations are detached or
+mediated and public mutation passes through LiveMap admission.
 
 ```ts
 import { hson } from "hson-live";
@@ -22,9 +22,9 @@ LiveMap vocabulary.
   proxy helpers exported by the package root, and exported LiveMap types.
 - **Experimental:** document-mode LiveMaps, capture/install/replay, graph commit
   observation, links, and schema-derived typing.
-- **Diagnostic/unsafe:** `map.debug.node(path)` and quid diagnostics.
 - **Internal:** editor functions, path guards, transition controllers, identity
-  indexes, and direct graph preparation functions not package-exported.
+  indexes, canonical inspection, and direct graph preparation functions not
+  package-exported.
 - **Deferred:** primitive projected roots and transparent parity between proxy,
   projected paths, document paths, and physical HSON paths.
 
@@ -132,9 +132,10 @@ indexes for strict writes. Invalid segment types, unresolved paths, wrong
 container kinds, and out-of-range indexes produce path-aware errors. Paths are
 not auto-normalized from dotted strings or numeric strings.
 
-`map.debug.node(path)` resolves the projected endpoint to a live physical-node
-handle. Its result and guarantees differ from projected reads and writes; see
-[Unsafe node handles](#unsafe-node-handles).
+There is no public raw-node or graph-owner getter. Use `snap(path)` for detached
+projected values, `root()` for a detached canonical graph, and document APIs for
+document attributes/content. The former `map.debug.node(...)` escape hatch has
+been removed and has no public raw-node replacement.
 
 Document structural targets use a separate type:
 `{ kind: "path"; path: readonly number[] } | { kind: "quid"; quid: string }`.
@@ -392,6 +393,15 @@ Schema objects expose `validateRoot(value)`, `validateValue(path, value)`,
 inspection. Attached maps mirror lookup through `map.schema`; `get()` returns
 the attached schema.
 
+The first successful `map.schema.use(A)` validates current canonical state and
+permanently records exact schema object `A` as that owner's contract. Calling
+`use(A)` again, including through an ordinary alias to the same object, is an
+idempotent no-op. Calling `use(B)` with `B !== A` rejects even when B is
+structurally equivalent or accepts the current state. There is no detach, reset,
+or replacement operation. Attachment changes no value or revision and emits no
+commit, feed, or watch notification. One immutable schema object may govern any
+number of independent map owners.
+
 Validation returns structured issues with codes including `TYPE_MISMATCH`,
 `MISSING_REQUIRED`, `UNKNOWN_PATH`, `UNKNOWN_KEY`, `INVALID_LITERAL`,
 `INVALID_REFINEMENT`, `INVALID_SCHEMA`, and `TUPLE_INDEX_OUT_OF_RANGE`.
@@ -452,9 +462,9 @@ removing it is unsupported. All aliases, local mutations, installs, restores,
 replays, and staged authoritative candidates are governed by the same owner
 contract. Attachment itself changes neither graph, revision, nor observations.
 
-Unsafe live graph references are severed on successful attachment, and later
-`debug.node(...)` calls reject for that owner. This prevents an unsafe alias from
-invalidating the schema contract.
+Canonical graph ownership is private before and after attachment, so attachment
+only validates current state and records governance; it does not clone or
+reconcile the graph.
 
 The returned schema-bound map uses that permanent evidence for top-level logical
 `at(...)` reads:
@@ -760,26 +770,15 @@ identity, not proof of the source map's epoch. `replay(commit)` validates
 identity witnesses, operation domain, and exact revision continuity.
 `commits.observe` is the supported graph publication surface.
 
-## Unsafe node handles
+## Canonical ownership
 
-**Diagnostic/unsafe.**
-
-```ts
-const node = map.debug.node(["user"]);
-node.setAttr("data-debug", "yes");
-```
-
-Handles expose `path`, `get`, `must`, `tag`, attribute/meta/content reads,
-children queries, `append`, and physical child `remove`, `replace`, `insert`,
-and `move`.
-
-These mutate the owned HSON graph directly and bypass projected schema,
-normalization, commits, revisions, feeds, subscriptions, links, and host
-authority. Physical child indexes count HSON-node children, not raw `$_content`
-slots. They also bypass sparse-overlay reconciliation, identity handles,
-Reflection, history, and persistence. Do not use `meta()` as identity
-registration; no public identity-registration method exists. Do not use node
-handles for ordinary state changes or hosted canonical mutations.
+LiveMap never exposes a live mutable canonical node or graph through supported
+entrypoints. `snap()`, `root()`, captures, document reads, watch payloads, and
+feed values are detached observations. Locations and proxies retain only an
+owner/path capability and perform writes through governed LiveMap operations.
+Schema query results are immutable, owner-independent evidence. Low-level
+canonical inspection used by the implementation and tests is private and is not
+part of the package surface.
 
 ## LiveMap and SSR
 

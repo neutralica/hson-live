@@ -14,7 +14,7 @@ remains a distinct present field and strict equality observes that presence.
   ownership behavior.
 - Attribute, form, style, and metadata writers create a container immediately
   before the first real write.
-- Attribute, style, LiveMap-node, and QUID deletion paths delete the container
+- Attribute, style, document mutation, and QUID deletion paths delete the container
   property after removing its final entry.
 - Reads use optional access and never call the write-side materialization
   helpers.
@@ -24,10 +24,8 @@ remains a distinct present field and strict equality observes that presence.
   semantic attribute entry for wire round trips; deleting the style through a
   mutation API removes that entry and then prunes `$_attrs` when otherwise empty.
 
-The unsafe handle exposed through `map.debug.node(path)` retains the existing
-`LiveMapNodeHandle.attrs()` behavior: it returns one shared frozen empty
-read-only view when the resolved node has no stored attrs; a missing node still
-returns `undefined`. The view is not installed on the node.
+LiveMap does not expose live canonical nodes publicly. Detached `root()` and
+document observations never install optional containers on the owned graph.
 
 The internal parser staging helpers `split_attrs_meta()` and
 `parse_html_attrs()` still use mutable empty accumulators while parsing. Those

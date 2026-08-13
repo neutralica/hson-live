@@ -8,6 +8,7 @@ import type {
   FragmentLiveMap,
 } from "../src/index.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -262,9 +263,9 @@ check("canonical identical install follows data replace no-op policy", () => {
   assert.deepEqual(target.capture(), before);
 });
 
-check("valid install replaces a target damaged through unsafe debug access", () => {
+check("valid install replaces a target damaged through internal malformed-state setup", () => {
   const target = element(`<main @00000000f/>`);
-  const liveMeta = target.debug.node(["main"]).meta();
+  const liveMeta = internal_livemap_node(target, ["main"])?.$_meta;
   if (liveMeta === undefined) throw new Error("Expected live metadata");
   liveMeta["quid"] = "damaged";
   assert.equal(target.document.byQuid("00000000f")?.$_meta?.["quid"], "damaged");

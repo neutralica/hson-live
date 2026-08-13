@@ -280,6 +280,9 @@ export type LiveMapBatchTx<TValue = JsonValue | undefined> = Readonly<{
  * Avoid widening schemas to bare `LiveMapSchema` before passing them to `use`.
  * A bare `LiveMapSchema` means `LiveMapSchema<unknown>`, so the resulting map is
  * correctly typed as `LiveMap<unknown>`.
+ *
+ * The first successful attachment permanently governs that owner. Reusing the
+ * same schema object is idempotent; any distinct schema object rejects.
  */
 /** Throwing inspection surface for the schema attached to a LiveMap Core. */
 export type LiveMapCoreSchemaMustApi = Readonly<{
@@ -299,11 +302,6 @@ export type LiveMapCoreSchemaApi<TValue = JsonValue | undefined> = Readonly<{
   has: (path: LivePath) => boolean;
   /** Throwing attached-schema inspection surface. */
   must: LiveMapCoreSchemaMustApi;
-}>;
-
-/** Explicitly unsafe access to the live HSON graph owned by a LiveMap. */
-export type LiveMapDebugApi = Readonly<{
-  node: (path: LivePath) => LiveMapNodeHandle;
 }>;
 
 export type LiveMapCore<
@@ -336,7 +334,6 @@ export type LiveMapCore<
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   commits: LiveMapCommitObserverApi;
   sub: LiveMapSubApi<TValue>;
-  debug: LiveMapDebugApi;
   readonly rev: number;
   /** Emit exact structural JSON plus a detached JavaScript compatibility view. */
   capture: {
@@ -967,8 +964,6 @@ type DocumentLiveMapShared<
   commits: LiveMapCommitObserverApi;
   /** Permanent owner-level document schema attachment. */
   schema: DocumentLiveMapSchemaApi<TMode>;
-  /** Explicitly unsafe live graph access; mutations bypass all normal guarantees. */
-  debug: LiveMapDebugApi;
 }>;
 
 /** Structural return type for document `at(...)`; intentionally not exported. */
@@ -1423,62 +1418,6 @@ export type LiveMapMappedLinkOptions = Readonly<{
 }>;
 
 
-export type LiveMapNodeAttrs = NonNullable<HsonNode["$_attrs"]>;
-export type LiveMapNodeAttrValue = LiveMapNodeAttrs[string];
-
-/**
- * Unsafe live canonical-node handle, exposed only through `map.debug.node(...)`.
- *
- * Mutations through this handle edit the owned HSON graph directly. They bypass
- * projected writes, schema validation, commits, revisions, feeds,
- * subscriptions, and ordinary LiveMap state guarantees. Avoid this surface in
- * normal application state code.
- */
-export type LiveMapNodeHandle = Readonly<{
-  /** Return a defensive copy of the projected path this node handle points at. */
-  path: () => LivePath;
-  /** Resolve the projected path to the current underlying HSON node, if present. */
-  get: () => HsonNode | undefined;
-  /** Resolve the projected path to a current HSON node, or throw with path context. */
-  must: () => HsonNode;
-  /** Read the current underlying HSON node tag, if present. */
-  tag: () => string | undefined;
-  /** Read a defensive copy of the current underlying HSON node attrs, if present. */
-  attrs: () => LiveMapNodeAttrs | undefined;
-  /** Read one current underlying HSON node attr, if present. */
-  attr: (name: string) => LiveMapNodeAttrValue | undefined;
-  /** Set one attr on the current underlying HSON node. */
-  setAttr: (name: string, value: LiveMapNodeAttrValue) => LiveMapNodeHandle;
-  /** Set many attrs on the current underlying HSON node. */
-  setAttrs: (attrs: Readonly<Record<string, LiveMapNodeAttrValue>>) => LiveMapNodeHandle;
-  /** Remove one attr from the current underlying HSON node. */
-  removeAttr: (name: string) => LiveMapNodeHandle;
-  /** Remove all attrs from the current underlying HSON node. */
-  clearAttrs: () => LiveMapNodeHandle;
-  /** Read the current underlying HSON node meta object, if present. System-owned. */
-  meta: () => HsonNode["$_meta"] | undefined;
-  /** Read the current underlying HSON node content array, if present. */
-  content: () => HsonNode["$_content"] | undefined;
-  /** Return all children as HsonNodes. */
-  children: () => readonly HsonNode[];
-  childrenByTag: (tag: string) => readonly HsonNode[];
-  child: (tag: string) => HsonNode | undefined;
-  mustChild: (tag: string) => HsonNode;
-  /** Append a direct HSON child node to the current underlying node. */
-  append: (child: HsonNode) => LiveMapNodeHandle;
-
-  /** Low-level direct HSON child removal helpers. */
-  remove: LiveMapNodeRemoveApi;
-
-  /** Low-level direct HSON child replacement helpers. */
-  replace: LiveMapNodeReplaceApi;
-
-  /** Low-level direct HSON child insertion helpers. */
-  insert: LiveMapNodeInsertApi;
-
-  /** Low-level direct HSON child movement helpers. */
-  move: LiveMapNodeMoveApi;
-}>;
 export type LiveMapObjectShape<TValue> = NonNullable<TValue> extends readonly unknown[]
   ? Readonly<Record<string, JsonValue>>
   : NonNullable<TValue> extends object
@@ -1601,34 +1540,6 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   unique: () => LiveMapCommit;
   removeValue: (value: JsonValue) => LiveMapCommit;
   removeAll: (value: JsonValue) => LiveMapCommit;
-}>;
-
-/** Low-level physical child removal. Indexes count direct HsonNode children, not raw $_content slots. */
-export type LiveMapNodeRemoveApi = Readonly<{
-  children: () => LiveMapNodeHandle;
-  child: (index: number) => LiveMapNodeHandle;
-}>;
-
-/** Low-level physical child replacement. Indexes count direct HsonNode children, not raw $_content slots. */
-export type LiveMapNodeReplaceApi = Readonly<{
-  children: (children: readonly HsonNode[]) => LiveMapNodeHandle;
-  child: (index: number, child: HsonNode) => LiveMapNodeHandle;
-}>;
-
-/** Low-level physical child insertion. Indexes count direct HsonNode children, not raw $_content slots. */
-export type LiveMapNodeInsertApi = Readonly<{
-  child: (index: number, child: HsonNode) => LiveMapNodeHandle;
-}>;
-
-/**
- * Low-level physical child movement.
- *
- * Indexes count direct HsonNode children, not raw $_content slots. `toIndex` is
- * resolved after the source child is removed, so moving child 0 to index 2 in a
- * three-child list moves it to the end.
- */
-export type LiveMapNodeMoveApi = Readonly<{
-  child: (fromIndex: number, toIndex: number) => LiveMapNodeHandle;
 }>;
 
 export type LiveMapSchemaIssueCode =

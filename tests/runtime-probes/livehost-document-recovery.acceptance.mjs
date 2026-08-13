@@ -7,6 +7,7 @@ import { decode_livehost_graph_content } from "../../src/api/livehost/livehost.g
 import { encode_view_state_snapshot } from "../../src/api/livemap/livemap.document.view-state-codec.ts";
 import { ViewStateSnapshotCodecError } from "../../src/api/livemap/livemap.document.view-state-codec.error.ts";
 import { LiveHostDocumentSnapshotEncodeError } from "../../src/api/livehost/livehost.document-snapshot.ts";
+import { internal_livemap_root } from "../../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 
@@ -717,7 +718,7 @@ await check("view-state codec failures are translated without payload disclosure
 await check("strict authority rejects malformed canonical state before recovery service", async () => {
   const privateStyle = "private-invalid-inline-style";
   const authority = element(`<main/>`);
-  const ownedRoot = authority.debug.node([]).must();
+  const ownedRoot = internal_livemap_root(authority);
   const ownedMain = find_node(ownedRoot, "main");
   ownedMain.$_attrs = { style: { _hover: { color: privateStyle } } };
   let message = "";

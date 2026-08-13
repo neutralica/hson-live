@@ -27,6 +27,12 @@ import {
   hsonTransform as hsonSubpathTransform,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
+// @ts-expect-error Canonical-node debug handles are no longer public types.
+type RemovedLiveMapDebugApi = import("hson-live/types").LiveMapDebugApi;
+// @ts-expect-error Canonical-node handles are no longer public types.
+type RemovedLiveMapNodeHandle = import("hson-live/livemap").LiveMapNodeHandle;
+// @ts-expect-error The canonical-owner reader is an in-package implementation seam only.
+type PrivateInternalLiveMapRoot = typeof import("hson-live/livemap").internal_livemap_root;
 import {
   hsonCalc as narrowHsonCalc,
   hsonNumber as narrowHsonNumber,
@@ -556,6 +562,12 @@ type SchemaValueAliasAgrees = Expect<
 >;
 
 const schemaBoundMap = mapSubpath.fromJson({}).schema.use(declarationTruthSchema);
+// @ts-expect-error LiveMap exposes no public live canonical-node debug escape.
+schemaBoundMap.debug.node([]);
+// @ts-expect-error Schema detachment through undefined is not part of the owner contract.
+schemaBoundMap.schema.use(undefined);
+// @ts-expect-error Schema owner contracts expose no reset operation.
+schemaBoundMap.schema.reset();
 const typedTupleItem = schemaBoundMap.at(["tupleTrailing", 0]).snap();
 const typedOptionalTupleItem = schemaBoundMap.at(["tupleTrailing", 1]).snap();
 const typedArrayItem = schemaBoundMap.at(["array", 0]).snap();
@@ -767,6 +779,8 @@ void pathHandle.quid;
 
 const publicDocumentMap = mapSubpath.fromHson(`<main/>`);
 if (publicDocumentMap.mode === "element") {
+  // @ts-expect-error Document LiveMaps expose no public live canonical-node debug escape.
+  publicDocumentMap.debug.node([]);
   const documentAcquisitionIsPublic: "ensureIdentity" extends keyof typeof publicDocumentMap.document ? true : false = false;
   bindingTree.bind.path(publicDocumentMap.at([]), (_tree, value, previous) => {
     type DocumentBindingValue = Expect<Equal<typeof value, HsonNode | Primitive | undefined>>;

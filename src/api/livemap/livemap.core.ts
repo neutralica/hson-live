@@ -12,7 +12,6 @@ import {
 import { clone_live_root, overwrite_hson_node, project_live_path, resolve_value_node, snap_live_path } from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
-import { make_livemap_node_handle } from "./livemap.node.js";
 import { make_livemap_path_handle } from "./livemap.handle.js";
 import { make_livemap_proxy } from "./livemap.proxy.js";
 import { make_livemap_store_api } from "./livemap.store.js";
@@ -108,6 +107,7 @@ import {
   publish_livemap_after_watch,
   type LiveMapDocumentWatchRegistration,
 } from "./livemap.watch.js";
+import { register_internal_livemap_owner } from "./livemap.internal.js";
 import {
   type LiveMapIdentityEpochController,
   LiveMapIdentityEpochError,
@@ -153,7 +153,6 @@ type BuiltLiveMapCore = Readonly<{
   currentSchema: () => LiveMapProjectedSchema | undefined;
   currentDocumentSchema: () => InternalDocumentRootSchema | undefined;
   watchDocument: LiveMapDocumentWatchRegistration;
-  detachUnsafeReferences: () => void;
   prepareDetachedCommit: (
     commit: LiveMapCommit<LiveMapAnyOp>,
     nextRoot: HsonNode,
@@ -170,8 +169,7 @@ type BuiltLiveMapCore = Readonly<{
  * generation, feeds, links, batching, and later transport-compatible behavior.
  *
  * `at(path)` is the projected data handle. `root()` returns a detached canonical
- * clone. `debug.node(path)` is the explicitly unsafe live HSON graph handle for
- * physical node inspection and mutation.
+ * clone. The owned canonical graph is never exposed through the public facade.
  *
  * Mutation contract:
  * - `set(path, value)` requires the addressed path to resolve. Plain object
@@ -188,6 +186,7 @@ type BuiltLiveMapCore = Readonly<{
 export function make_livemap_core(input: HsonNode): LiveMapCore<JsonValue | undefined> {
   const prepared = prepare_livemap_root(input);
   const built = make_livemap_core_from_owned_root(prepared);
+  register_internal_livemap_owner(built.core, built.currentRoot);
   register_staged_facade(built.core, built);
   register_livemap_projected_propagation(built.core, built.projected);
   return built.core;
@@ -203,6 +202,8 @@ export function make_classified_livemap(input: HsonNode): ClassifiedLiveMap {
     built.document,
     built.watchDocument,
   );
+  register_internal_livemap_owner(built.core, built.currentRoot);
+  register_internal_livemap_owner(facade, built.currentRoot);
   register_staged_facade(facade, built);
   register_livemap_projected_propagation(built.core, built.projected);
   register_livemap_projected_propagation(facade, built.projected);
@@ -365,24 +366,6 @@ function make_livemap_core_from_owned_root(
     });
   }
 
-  function detachUnsafeReferences(): void {
-    const detached = prepare_livemap_root(owned.root);
-    const detachedActive = detached.documentOverlay === undefined
-      ? livemap_projected_identity_quids(require_projected_overlay(detached.projectedOverlay))
-      : livemap_document_identity_quids(detached.documentOverlay);
-    documentIdentityEpoch.install(retain_livemap_identity_epoch(
-      documentIdentityEpoch.issued(),
-      detachedActive,
-    ));
-    owned = {
-      root: detached.root,
-      documentOverlay: detached.documentOverlay,
-      projectedOverlay: detached.projectedOverlay,
-      revision: owned.revision,
-    };
-    transitionController.invalidate();
-  }
-
   function useDocumentSchema(schema: InternalDocumentRootSchema): void {
     const attached = currentDocumentSchema;
     if (attached === schema) return;
@@ -399,8 +382,8 @@ function make_livemap_core_from_owned_root(
       [],
       "issue",
     );
-    detachUnsafeReferences();
     currentDocumentSchema = recognized.value;
+    transitionController.invalidate();
   }
   let storeApi: LiveMapStoreApi<JsonValue | undefined> | undefined;
   const commitOps = (
@@ -478,6 +461,11 @@ function make_livemap_core_from_owned_root(
     get: () => currentSchema,
 
     use: <TSchema extends LiveMapProjectedSchema>(schema: TSchema) => {
+      const attached = currentSchema;
+      if (attached === schema) return core as unknown as LiveMap<LiveMapSchemaValue<TSchema>>;
+      if (attached !== undefined) {
+        throw new Error("LiveMap projected schema contract is already attached and cannot be replaced.");
+      }
       transitionController.assertPublicMutationAllowed();
       must_core_schema_root(schema, owned.root, initialMode);
       currentSchema = schema;
@@ -511,21 +499,6 @@ function make_livemap_core_from_owned_root(
         return schema.must.resolve(must_live_path(path));
       },
     }),
-  });
-
-  const debugApi = Object.freeze({
-    node: (path: LivePath) => {
-      transitionController.assertPublicMutationAllowed();
-      if (currentDocumentSchema !== undefined) {
-        throw new Error("LiveMap debug.node(...) is unavailable after document schema attachment.");
-      }
-      return make_livemap_node_handle(
-        owned.root,
-        must_live_path(path),
-        transitionController.invalidate,
-        transitionController.assertPublicMutationAllowed,
-      );
-    },
   });
 
   const applyProjectedIdentityTransition = (
@@ -667,9 +640,6 @@ function make_livemap_core_from_owned_root(
         core,
         path ?? ([] as unknown as TPath),
       ),
-
-    /** Explicitly unsafe access to live HSON-node-facing handles. */
-    debug: debugApi,
 
     /** Set a resolved projected path; plain objects expand into shallow child sets. */
     set: (path, value) => {
@@ -871,7 +841,6 @@ function make_livemap_core_from_owned_root(
       currentSchema: () => currentSchema,
       currentDocumentSchema: () => currentDocumentSchema,
       watchDocument: documentWatchHub.add,
-      detachUnsafeReferences,
       prepareDetachedCommit,
     };
   }
@@ -1082,7 +1051,6 @@ function make_livemap_core_from_owned_root(
     currentSchema: () => currentSchema,
     currentDocumentSchema: () => currentDocumentSchema,
     watchDocument: documentWatchHub.add,
-    detachUnsafeReferences,
     prepareDetachedCommit,
   };
 }
@@ -1159,7 +1127,12 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
         schedule as unknown as (mutation: (draft: object) => LiveMapCommit<LiveMapAnyOp>) => Promise<LiveMapCommit<LiveMapAnyOp>>,
       );
       try {
-        built.detachUnsafeReferences();
+        const currentMode = classify_live_root_mode(built.currentRoot());
+        if (currentMode !== built.core.mode) {
+          throw new Error(
+            `LiveMap canonical root mode changed outside governed mutation: expected ${built.core.mode}, observed ${currentMode}.`,
+          );
+        }
       } catch (cause) {
         built.transitionController.releaseManagement(owner);
         throw cause;

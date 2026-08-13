@@ -11,6 +11,7 @@ import type {
   FragmentLiveMap,
   LiveMapDocumentTarget,
 } from "../src/types/livemap.types.ts";
+import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -43,13 +44,13 @@ function errorCode(fn: () => unknown, code: string, operation?: string): void {
 
 function assertNoReadEffects(map: DocumentLiveMap, fn: () => void): void {
   const before = map.capture();
-  const beforeRoot = map.debug.node([]).get();
+  const beforeRoot = internal_livemap_root(map);
   const observations: unknown[] = [];
   map.commits.observe((event) => observations.push(event));
   fn();
   assert.equal(map.rev, before.rev);
   assert.deepEqual(map.capture(), before);
-  assert.equal(map.debug.node([]).get(), beforeRoot);
+  assert.equal(internal_livemap_root(map), beforeRoot);
   assert.deepEqual(observations, []);
 }
 

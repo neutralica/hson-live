@@ -173,7 +173,7 @@ Every newly produced `LiveMapGraphOp`, `LiveHostEncodedGraphOp`, history entry, 
 
 Legacy QUID-only canonical input is bounded compatibility data, not a second canonical model. Translation requires the exact checkpoint/base graph and matching map mode, resolves operations in ordinal order through the staged overlay, rejects missing, malformed, duplicate, or conflicting identity, and publishes only the normalized path commit. The persistence reader performs this normalization in memory without rewriting stored records. An isolated legacy operation without its exact base cannot be translated and must not be guessed, discarded, or resolved against a final graph.
 
-Reflection registrations retain path-authoritative commit targets; their QUID correspondence remains live continuity evidence only. `document.byQuid` is a read-only current-epoch lookup and never creates a commit. `map.debug.node(...)` remains an explicitly unsafe bypass and is not part of the lowering guarantee.
+Reflection registrations retain path-authoritative commit targets; their QUID correspondence remains live continuity evidence only. `document.byQuid` is a detached read-only current-epoch lookup and never creates a commit. No supported public API exposes a live canonical-node bypass.
 
 ## Path-first document reflection
 
@@ -350,7 +350,7 @@ facilities may add `$_meta.quid` through the canonical `ensure-quid` transition;
 no supported public API adds, replaces, or removes it, accepts a caller-selected
 QUID, or treats handle disposal as metadata retirement.
 
-`map.debug.node(...)` is explicitly unsafe graph access. References returned through that surface can mutate owned graph objects without commits, revisions, identity-overlay reconciliation, feeds, handles, Reflection, history, or persistence. Such mutation is not a supported QUID registration mechanism and does not weaken the ordinary revision contract. There is no public identity-registration method.
+LiveMap owns canonical graph objects and does not return mutable canonical aliases. Detached roots, captures, document reads, and observer values cannot mutate owner state. There is no public identity-registration method.
 
 ## Required invariants
 
@@ -380,7 +380,7 @@ Automated acceptance coverage must continue to establish:
 22. Current canonical protocol decoding rejects QUID-only targets, while named compatibility readers remain isolated from public current-format output.
 23. Legacy translation requires the exact base and lowers each ordinal against its current staged overlay; it never guesses or resolves against the final graph.
 24. Reflection QUIDs are correspondence evidence rather than canonical routing authority.
-25. Read-only QUID lookup and unsafe debug access do not redefine canonical mutation guarantees.
+25. Read-only QUID lookup and private low-level test access do not redefine canonical mutation guarantees; no public LiveMap debug route exposes canonical nodes.
 26. Ordinary local Reflection operations transform correspondence through the shared canonical path effect and never rebuild the whole correspondence domain.
 27. Reflection consumes derived identity evidence from the accepted commit without adding a public field or mutating the LiveMap overlay.
 28. Move preserves exact projected subtree identity; replacement reuse requires compatible same-QUID evidence.

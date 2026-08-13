@@ -10,6 +10,7 @@ import type {
   LiveMap,
   LiveMapCommitObservation,
 } from "../src/types/livemap.types.ts";
+import { internal_livemap_node, internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -72,13 +73,13 @@ check("projected acceptance installs before feeds and observers and emits the pr
   map.commits.observe((event) => {
     if (event.kind === "commit") seen.push(["observer", map.rev, event.commit.rev]);
   });
-  const rootIdentity = map.debug.node([]).must();
+  const rootIdentity = internal_livemap_root(map);
   const transition = authority.prepare((draft) => draft.set(["value"], 2));
   const accepted = authority.accept(transition);
 
   assert.deepEqual(map.snap(), { value: 2, sibling: "kept" });
   assert.equal(map.rev, 1);
-  assert.equal(map.debug.node([]).must(), rootIdentity);
+  assert.equal(internal_livemap_root(map), rootIdentity);
   assert.deepEqual(seen, [["feed", 1, 1], ["observer", 1, 1]]);
   assert.deepEqual(accepted.commit, transition.commit);
 });
@@ -157,7 +158,7 @@ check("transition lifecycle rejects duplicate, discarded, foreign and stale acce
   transitionCode(() => firstAuthority.accept(stale), "LIVEMAP_TRANSITION_STALE");
 });
 
-check("restore, replay, schema changes and unsafe graph divergence invalidate candidates", () => {
+check("restore, replay, schema changes and internal graph divergence invalidate candidates", () => {
   const restored = data();
   const restoredAuthority = get_livemap_staged_authority(restored);
   const beforeRestore = restoredAuthority.prepare((draft) => draft.set(["value"], 1));
@@ -181,7 +182,8 @@ check("restore, replay, schema changes and unsafe graph divergence invalidate ca
   const debugMap = data();
   const debugAuthority = get_livemap_staged_authority(debugMap);
   const beforeDebug = debugAuthority.prepare((draft) => draft.set(["value"], 1));
-  const live = debugMap.debug.node(["value"]).must();
+  const live = internal_livemap_node(debugMap, ["value"]);
+  if (live === undefined) throw new Error("expected internal value node");
   const scalarCluster = live.$_content[0];
   if (typeof scalarCluster !== "object" || scalarCluster === null) throw new Error("expected scalar object cluster");
   const scalar = scalarCluster.$_content[0];

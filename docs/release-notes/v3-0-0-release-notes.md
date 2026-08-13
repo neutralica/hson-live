@@ -43,7 +43,7 @@ Core operations include:
 - `get`, `has`, `set`, `update`, `delete`, and `replace`
 - path handles through `at(path)`
 - immutable snapshots through `snap()`
-- explicitly unsafe physical HSON node access through `debug.node(path)`
+- detached canonical graph observation through `root()`
 - root and nested handles with consistent path semantics
 
 `set` performs strict endpoint updates, while `replace` performs

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { element, mount } from "./helpers/reflect-unit6.mts";
 import { acquire_document_identity } from "./helpers/livemap-identity-internal.mts";
+import { internal_livemap_node } from "../src/api/livemap/livemap.internal.ts";
 import { hson } from "../src/hson.ts";
 import {
   _create_livetree_runtime_test_handle,
@@ -134,10 +135,10 @@ check("one acquisition adds only one sparse overlay entry", () => {
   assert.equal(map.document.byQuid(Q1)?.$_attrs?.data, "500");
 });
 
-check("unsafe debug metadata edits bypass overlay and revision reconciliation", () => {
+check("internal malformed metadata remains outside overlay and revision reconciliation", () => {
   const map = element(`<main @${Q1}/>`);
   const handle = acquire_document_identity(map.document, target());
-  const meta = map.debug.node(["main"]).meta();
+  const meta = internal_livemap_node(map, ["main"])?.$_meta;
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   delete meta.quid;
   assert.equal(map.rev, 0);
@@ -145,9 +146,9 @@ check("unsafe debug metadata edits bypass overlay and revision reconciliation", 
   assert.equal(handle.active, false);
 });
 
-check("supported acquisition rejects a debug-created graph-overlay disagreement", () => {
+check("supported acquisition rejects an internally-created graph-overlay disagreement", () => {
   const map = element(`<main @${Q1}/>`);
-  const meta = map.debug.node(["main"]).meta();
+  const meta = internal_livemap_node(map, ["main"])?.$_meta;
   if (meta === undefined) throw new Error("missing unsafe metadata fixture");
   delete meta.quid;
   assert.throws(() => acquire_document_identity(map.document, target()), errorCode("INVALID_DOCUMENT_IDENTITY"));

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { hson, LiveMapSchemaError, validate_document_path } from "../src/index.ts";
 import { get_livemap_staged_authority } from "../src/api/livemap/livemap.authority.ts";
+import { internal_livemap_root } from "../src/api/livemap/livemap.internal.ts";
 import type {
   DocumentLiveMap,
   ElementLiveMap,
@@ -164,13 +165,13 @@ check("schema attachment invalidates prepared transitions", () => {
   const transition = authority.prepare((draft) => draft.at([0]).replace("y")); map.schema.use(TextElement);
   assert.throws(() => authority.accept(transition), /stale|invalid/i); assert.equal(map.at([0]).snap(), "x");
 });
-check("attachment detaches leaked debug references", () => {
-  const map = element(`<main "x"/>`); const leaked = map.debug.node(["main"]).must(); const before = map.root();
-  map.schema.use(MainText); leaked.$_tag = "detached"; assert.deepEqual(map.root(), before);
+check("attachment records governance without replacing canonical ownership", () => {
+  const map = element(`<main "x"/>`); const before = internal_livemap_root(map);
+  map.schema.use(MainText); assert.equal(internal_livemap_root(map), before);
 });
-check("future debug access rejects after document schema attachment", () => {
-  const map = element(`<main/>`); map.schema.use(EmptyElement);
-  assert.throws(() => map.debug.node([]), /unavailable after document schema attachment/);
+check("public canonical debug access is absent before and after document schema attachment", () => {
+  const map = element(`<main/>`); assert.equal("debug" in map, false); map.schema.use(EmptyElement);
+  assert.equal("debug" in map, false);
 });
 
 process.stdout.write(`# ${checks} unified LiveMap document enforcement checks passed\n`);

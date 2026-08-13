@@ -104,6 +104,7 @@ function assert_terminal_and_debug_surface(
   map: LiveMapSurface,
 ): JsonValue {
   map.root();
+  // @ts-expect-error LiveMap exposes no public canonical-node debug escape.
   map.debug.node(["a"]);
 
   // @ts-expect-error JSON finalizers expose value(), never parse().
@@ -164,6 +165,7 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
   const capture = documentMap.capture();
   documentMap.install(capture);
   documentMap.install(capture, { expectedRev: documentMap.rev });
+  // @ts-expect-error Document LiveMaps expose no public canonical-node debug escape.
   documentMap.debug.node([]);
 
   // @ts-expect-error Document maps do not expose projected JSON mutation.

@@ -231,7 +231,6 @@ function make_document_livemap(
     root: () => core.root(),
     at,
     proxy,
-    debug: core.debug,
     install: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>
       install_livemap_document_capture(controller, capture, options),
     restore: (capture: DocumentLiveMapCapture, options?: DocumentLiveMapInstallOptions) =>

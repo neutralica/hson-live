@@ -23,7 +23,7 @@ import {
   type OrderedProjectedValue,
 } from "../src/core/ordered-projected-value.ts";
 import { projected_value_from_hson_node, projected_value_to_hson_root } from "../src/core/projected-value-graph.ts";
-import type { HsonNode, JsonValue, LiveMapCore, Primitive } from "../src/types/index.ts";
+import type { JsonValue, LiveMapCore } from "../src/types/index.ts";
 
 let checks = 0;
 function check(name: string, run: () => void): void { run(); checks += 1; process.stdout.write(`ok ${checks} - ${name}\n`); }
@@ -48,19 +48,6 @@ function assert_same_graph(left: ReturnType<typeof map>, right: ReturnType<typeo
   assert.equal(canonical_hson_graph_equal(left.root(), right.root()), true);
   assert_invariants(left.root(), "Unit F exact route closure");
 }
-function replace_first_primitive(root: HsonNode, value: Primitive): boolean {
-  for (let index = 0; index < root.$_content.length; index += 1) {
-    const child = root.$_content[index];
-    if (typeof child === "object" && child !== null) {
-      if (replace_first_primitive(child, value)) return true;
-      continue;
-    }
-    root.$_content[index] = value;
-    return true;
-  }
-  return false;
-}
-
 const ordered = object([["10", 10], ["2", 2], ["1", 1], ["tail", -0]]);
 const dangerous = object([["__proto__", "data"], ["constructor", -0], ["prototype", "\ud800"]]);
 const nested = object([["value", object([["ordered", ordered], ["dangerous", dangerous], ["items", ordered_projected_array([ordered, dangerous, -0])]])]]);
@@ -155,14 +142,13 @@ check("document attribute equality remains unordered by name and value", () => {
   const left = decode_public_attrs({ a: 1, b: "two" }); const right = decode_public_attrs({ b: "two", a: 1 });
   if (left === undefined || right === undefined) throw new Error("Expected attrs."); assert.equal(canonical_public_attrs_equal(left, right), true);
 });
-check("debug node access remains an explicit commit-stream bypass", () => {
+check("detached root mutation cannot bypass the commit stream", () => {
   const valueMap = hson.liveMap.fromNode(hson.fromJson({ a: { b: 1 } }).toNode());
   if (valueMap.mode !== "data-object") throw new Error(`Expected data-object, observed ${valueMap.mode}.`);
   const beforeRev = valueMap.rev; let commits = 0; let feeds = 0;
   valueMap.commits.observe(() => { commits += 1; }); valueMap.feed([], () => { feeds += 1; });
-  const liveNode = valueMap.debug.node(["a", "b"]).must();
-  assert.equal(replace_first_primitive(liveNode, 2), true);
-  assert.equal(valueMap.snap(["a", "b"]), 2); assert.equal(valueMap.rev, beforeRev); assert.equal(commits, 0); assert.equal(feeds, 0);
+  const detached = valueMap.root(); detached.$_content.length = 0;
+  assert.equal(valueMap.snap(["a", "b"]), 1); assert.equal(valueMap.rev, beforeRev); assert.equal(commits, 0); assert.equal(feeds, 0);
 });
 check("ordinary public snapshots can re-enter without semantic loss", () => {
   const source = hson.liveMap.fromJson({ a: 1, nested: { b: -0 }, items: [true, null] }); const target = hson.liveMap.fromJson(source.snap() as JsonValue);

@@ -72,7 +72,6 @@ const map = hson.liveMap.fromJson({
 map.snap();                    // complete projected JSON value
 map.snap(["user", "name"]);  // "Ada"
 map.root();                    // detached canonical HsonNode clone
-map.debug.node(["user"]);     // unsafe live graph handle
 ```
 
 The projected path `["user", "name"]` crosses whatever `_hson_obj`, property,
@@ -87,7 +86,9 @@ This separation is fundamental for data maps:
 
 The projected reader converts the current node payload into detached JSON
 values. `root()` likewise returns a detached structural clone of the canonical
-graph. Only `debug.node(path)` exposes intentionally live graph access.
+graph. Public callers never receive a live mutable alias to the canonical graph.
+The former `debug.node(...)` escape hatch is removed and has no public raw-node
+replacement.
 
 Document roots are classified separately as `element` or `fragment` and do not
 expose the projected data surface. `element.node()`, `document.root()`, and
@@ -157,9 +158,9 @@ Schema or editor failure occurs before the live graph is changed. Explicit
 `batch()` groups multiple synchronous writes into one preflight and one commit,
 so a failing write prevents the entire batch from being applied.
 
-Raw operations through `debug.node(path)` do not use this pipeline. They do not
-validate schemas, advance revisions, create commits, or notify feeds. Mutating
-the detached graph returned by `root()` has no effect on the map.
+Mutating a detached value from `snap()`, `root()`, capture, watch, or feed
+observation has no effect on the map. Canonical mutation always passes through
+the LiveMap admission pipeline.
 
 ---
 
@@ -415,9 +416,10 @@ Known direct builders retain literal tag evidence.
 
 `documentMap.schema.use(schema)` validates the current graph and permanently
 installs the contract on the same owner. Every alias and future candidate is
-governed. Attachment has no revision/publication effect, detaches prior unsafe
-debug references, and disables later `debug.node(...)` access. The identical
-schema object can be reused idempotently; replacement is unsupported.
+governed. Attachment has no revision/publication effect. Canonical ownership is
+private, so there are no prior public unsafe references to sever. The identical
+schema object can be reused idempotently; replacement is unsupported. Attachment
+validates and records governance without replacing the canonical graph.
 
 The returned map uses the evidence for top-level logical paths:
 
@@ -611,8 +613,9 @@ guarantees:
 - Normal construction establishes initial state directly at revision 0 and
   emits no commit. The first changed atomic transition advances 0 to 1;
   unchanged operations consume no revision.
-- `debug.node(path)` exposes live physical graph mutation outside schema,
-  commit, revision, feed, and subscription accounting. `root()` is detached.
+- LiveMap owns its canonical graph from construction onward. Public value,
+  graph, capture, watch, and feed observations are detached; locations and
+  proxies are mediated owner/path capabilities.
 - Feed listener exceptions are not isolated. State and revision have already
   committed when listeners run, and a thrown listener can escape the mutation
   call and interrupt delivery to later listeners.

@@ -8,6 +8,7 @@ import {
   get_livemap_staged_authority,
   LiveMapTransitionError,
 } from "../../src/api/livemap/livemap.authority.ts";
+import { internal_livemap_root } from "../../src/api/livemap/livemap.internal.ts";
 
 let checks = 0;
 async function check(name, fn) {
@@ -53,7 +54,9 @@ function test_socket() {
 
 await check("every host strictly fences its map and records accepted mutation", async () => {
   const map = hson.liveMap.fromJson({ value: 0 });
+  const ownedRoot = internal_livemap_root(map);
   const host = hson.liveHost.create({ map });
+  assert.equal(internal_livemap_root(map), ownedRoot);
   assert.throws(() => map.set(["value"], 1), (cause) => cause instanceof LiveMapTransitionError);
   const commit = await host.mutate((draft) => draft.set(["value"], 2));
   assert.deepEqual([commit.rev, map.rev, host.stream.headRev], [1, 1, 1]);
@@ -161,13 +164,11 @@ await check("exclusive document mutations preserve typed state and identity", as
   host.dispose();
 });
 
-await check("retained references and every privileged bypass are fenced dynamically", async () => {
+await check("retained mediated references and privileged mutation APIs are fenced dynamically", async () => {
   const map = hson.liveMap.fromJson({ value: 0, items: [1] });
   const handle = map.at(["value"]);
   const proxy = map.proxy(["value"]);
   const array = map.at(["items"]).array;
-  const debug = map.debug.node([]);
-  const raw = debug.must();
   const capture = map.capture();
   const replayCommit = hson.liveMap.fromJson({ value: 0, items: [1] }).set(["value"], 1);
   const host = hson.liveHost.create({ map });
@@ -177,12 +178,10 @@ await check("retained references and every privileged bypass are fenced dynamica
   rejected(() => handle.set(1));
   rejected(() => proxy.$_.set(1));
   rejected(() => array.push(2));
-  rejected(() => debug.setAttr("x", "y"));
-  rejected(() => map.debug.node([]));
+  assert.equal("debug" in map, false);
   rejected(() => map.schema.use(hson.liveMap.schema.define((shape) => shape.object({ value: shape.number, items: shape.array(shape.number) }))));
   rejected(() => map.restore(capture));
   rejected(() => map.replay(replayCommit));
-  raw.$_content.length = 0;
   assert.deepEqual(map.snap(), { value: 0, items: [1] });
   host.dispose();
   assert.equal(map.set(["value"], 2).rev, 1);

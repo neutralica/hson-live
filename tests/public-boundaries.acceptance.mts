@@ -130,22 +130,16 @@ check("LiveTree exposes attrs and flags without obsolete aliases", () => {
   assert.equal("has" in tree.attrs.must, false);
 });
 
-check("LiveMap exposes detached root copies and debug-only live node access", () => {
+check("LiveMap exposes only detached canonical root copies", () => {
   const node = hson.fromHson(
     `<button id="primary" data-user="kept" @000000001 "hello"/>`,
   ).toNode();
   const map = hson.liveMap.fromNode(node);
 
   assert.equal("node" in map, false);
-  assert.equal("debug" in map, true);
-  assert.equal(typeof map.debug.node, "function");
+  assert.equal("debug" in map, false);
 
-  const owned = map.debug.node([]).must();
-  const ownedButton = find_node(owned, "button");
-  assert.ok(ownedButton?.$_attrs);
-  Object.assign(ownedButton.$_attrs, {
-    style: { color: "red", ":hover": { color: "blue" } },
-  });
+  const owned = map.root();
   const copy = map.root();
   const before = map.capture();
   const beforeRev = map.rev;
@@ -153,11 +147,6 @@ check("LiveMap exposes detached root copies and debug-only live node access", ()
 
   const copiedButton = find_node(copy, "button");
   assert.ok(copiedButton);
-  assert.notEqual(copiedButton.$_attrs?.style, ownedButton.$_attrs.style);
-  assert.notEqual(
-    copiedButton.$_attrs?.style?.[":hover"],
-    ownedButton.$_attrs.style?.[":hover"],
-  );
   assert.equal(copiedButton.$_meta?.["quid"], "000000001");
   copiedButton.$_attrs = { ...copiedButton.$_attrs, id: "mutated" };
   copiedButton.$_meta = { ...copiedButton.$_meta, quid: "000000002" };
@@ -169,26 +158,19 @@ check("LiveMap exposes detached root copies and debug-only live node access", ()
   assert.deepEqual(map.root(), owned);
 });
 
-check("debug.node preserves unsafe live mutation and bypass behavior", () => {
+check("detached public observations cannot mutate canonical ownership", () => {
   const map = hson.liveMap.fromNode(hson.fromJson({ a: { b: 1 } }).toNode());
   if (map.mode !== "data-object") throw new Error(`expected data-object, observed ${map.mode}`);
-  const feedEvents: unknown[] = [];
-  const subEvents: unknown[] = [];
-  const stopFeed = map.feed([], (event) => feedEvents.push(event));
-  const stopSub = map.sub((value) => subEvents.push(value));
+  const baseline = map.snap();
   const beforeRev = map.rev;
-  const handle = map.debug.node(["a", "b"]);
-  const liveNode = handle.must();
+  const root = map.root();
+  assert.equal(replace_first_primitive(root, 2), true);
+  const snapshot = map.snap() as { a: { b: number } };
+  snapshot.a.b = 3;
 
-  assert.equal(map.debug.node(["a", "b"]).get(), liveNode);
-  assert.equal(replace_first_primitive(liveNode, 2), true);
-  assert.deepEqual(map.snap(), { a: { b: 2 } });
+  assert.deepEqual(map.snap(), baseline);
   assert.equal(map.rev, beforeRev);
-  assert.deepEqual(feedEvents, []);
-  assert.deepEqual(subEvents, []);
-
-  stopFeed();
-  stopSub();
+  assert.equal("debug" in map, false);
 });
 
 check("document install is present only on document runtime façades", () => {
