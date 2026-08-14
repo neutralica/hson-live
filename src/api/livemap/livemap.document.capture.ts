@@ -8,6 +8,7 @@ import type {
   DocumentLiveMapCaptureOptions,
   DocumentLiveMapInstallIdentity,
   DocumentLiveMapMode,
+  LiveMapCommitObservation,
 } from "../../types/livemap.types.js";
 import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
@@ -28,6 +29,14 @@ export type LiveMapDocumentIdentityEpochController = LiveMapIdentityEpochControl
 
 const captureProvenance = new WeakMap<DocumentLiveMapCapture, CaptureProvenance>();
 const commitContinuity = new WeakMap<object, "same-epoch" | "new-epoch">();
+const observationEvidence = new WeakMap<object, LiveMapDocumentObservationEvidence>();
+
+export type LiveMapDocumentObservationEvidence = Readonly<{
+  mode: DocumentLiveMapMode;
+  revision: number;
+  root: HsonNode;
+  continuity: "same-epoch" | "new-epoch";
+}>;
 
 /** Capture exact metadata, explicit same-epoch provenance, or an identity-free graph. */
 export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
@@ -120,6 +129,21 @@ export function livemap_document_commit_continuity(
   commit: object,
 ): "same-epoch" | "new-epoch" | undefined {
   return commitContinuity.get(commit);
+}
+
+/** Privately attach the exact accepted document state to one publication wave. */
+export function register_livemap_document_observation_evidence(
+  observation: LiveMapCommitObservation,
+  evidence: LiveMapDocumentObservationEvidence,
+): void {
+  observationEvidence.set(observation, evidence);
+}
+
+/** Read exact accepted document state without adding fields to public observations. */
+export function livemap_document_observation_evidence(
+  observation: LiveMapCommitObservation,
+): LiveMapDocumentObservationEvidence | undefined {
+  return observationEvidence.get(observation);
 }
 
 /** Remove QUID metadata from one detached graph without mutating its source. */

@@ -405,7 +405,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-reflection-publication-order",
       repositoryModule: "tests/livemap-reflection-publication-order.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 25,
+      executableChecks: 27,
       collections: ["document", "binding", "publication", "observer", "reentrancy", "failure", "externally-discoverable"],
     }),
     launcher({
@@ -415,7 +415,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:document-same-quid-replacement-continuity",
       repositoryModule: "tests/document-same-quid-replacement-continuity.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 25,
+      executableChecks: 27,
       collections: ["document", "binding", "quid", "continuity", "replay", "lifecycle", "externally-discoverable"],
     }),
     launcher({

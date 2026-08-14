@@ -277,7 +277,7 @@ check("legacy and isolated notification policies preserve accepted state", () =>
   transitionCode(() => authority.accept(transition), "LIVEMAP_TRANSITION_ALREADY_ACCEPTED");
 });
 
-check("notification reentrancy accepts a second ordered transition once", () => {
+check("notification reentrancy accepts immediately and publishes both transitions FIFO", () => {
   const map = data();
   const commits: number[] = [];
   let nested = false;
@@ -293,7 +293,7 @@ check("notification reentrancy accepts a second ordered transition once", () => 
   assert.equal(first.rev, 1);
   assert.equal(map.rev, 2);
   assert.equal(map.snap(["value"]), 2);
-  assert.deepEqual(commits, [2, 1]);
+  assert.deepEqual(commits, [1, 2]);
 });
 
 check("existing projected mutation facades retain synchronous commit behavior", () => {

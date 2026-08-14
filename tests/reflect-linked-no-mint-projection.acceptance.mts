@@ -195,12 +195,13 @@ check("QUID-less removal disposes the removed exact node", () => {
   close(binding);
 });
 
-check("compatible QUID-less root install retains absence", () => {
+check("new-epoch QUID-less root install is fresh and retains absence", () => {
   const { map, binding } = reflected(`<main class="old"/>`);
   const root = binding.tree.node;
   map.install(element(`<main class="new"/>`).capture());
-  assert.equal(binding.tree.node, root);
-  assert.equal(root.$_meta?.quid, undefined);
+  assert.notEqual(binding.tree.node, root);
+  assert.equal(_is_livetree_node_disposed(root), true);
+  assert.equal(binding.tree.node.$_meta?.quid, undefined);
   assert_no_claims();
   close(binding);
 });

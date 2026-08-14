@@ -15,7 +15,6 @@ import {
   DOCUMENT_REFLECT_DISPOSED_ERROR_CODE,
   DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
-  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   DocumentReflectError,
@@ -184,24 +183,22 @@ check("multi-operation attrs replay is one projection transaction", () => {
   binding.dispose();
 });
 
-check("unsupported root replacement fails closed without escaping canonical mutation", () => {
+check("new-epoch root replacement reconstructs and remains canonically delegated", () => {
   const map = element(`<main @000000307 "before"/>`);
   const binding = hsonReflect(map);
-  const before = structuredClone(binding.tree.node);
+  const before = binding.tree;
   const replacement = element(`<article @000000316/>`);
   const commit = map.install(replacement.capture());
   assert.equal(commit.changed, true);
   assert.equal(map.element.node().$_tag, "article");
-  assert.deepEqual(binding.tree.node, before);
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
-  assert.throws(
-    () => binding.tree.attrs.set("id", "blocked"),
-    (cause) => cause instanceof DocumentReflectError
-      && cause.code === DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
-  );
+  assert.notEqual(binding.tree, before);
+  assert.equal(before.isDisposed, true);
+  assert.equal(binding.tree.node.$_tag, "article");
+  assert.equal(binding.status, "active");
+  binding.tree.attrs.set("id", "delegated");
+  assert.equal(map.document.attrs.get(path(), "id"), "delegated");
   map.document.attrs.set(path(), "title", "canonical-only");
-  assert.equal(binding.tree.attrs.get("title"), undefined);
+  assert.equal(binding.tree.attrs.get("title"), "canonical-only");
   binding.dispose();
 });
 

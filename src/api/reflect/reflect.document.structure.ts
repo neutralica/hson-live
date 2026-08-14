@@ -19,6 +19,8 @@ import { apply_projected_attrs_replacement } from "../livetree/managers/attr-han
 import {
   admit_livetree_quid_graph_preserving_absence,
   get_node_by_quid,
+  preflight_livetree_quid_lineage_transfer,
+  type LiveTreeQuidLineageTransfer,
 } from "../livetree/quid/data-quid.js";
 import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import { get_el_for_node } from "../livetree/utils/node-map-helpers.js";
@@ -52,12 +54,24 @@ type ShadowNode = {
   content: ShadowContent[];
 };
 
+type PlannedQuidLineageTransfer = Readonly<{
+  quid: string;
+  from: HsonNode;
+  to: HsonNode;
+}>;
+
+type ContinuityPlanningContext = {
+  readonly byQuid: ReadonlyMap<string, ShadowNode>;
+  readonly transfers: PlannedQuidLineageTransfer[];
+};
+
 export type DocumentStructuralPlan = Readonly<{
   root: ShadowNode;
   finalNodes: ReadonlySet<HsonNode>;
   removedRoots: readonly HsonNode[];
   affectedOwners: readonly HsonNode[];
   runtime: LiveTreeRuntime;
+  lineageTransfers: readonly PlannedQuidLineageTransfer[];
 }>;
 
 type PersistedQuidLookup = (node: HsonNode) => string | undefined;
@@ -71,6 +85,10 @@ export function plan_document_structural_transaction(
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
+  const continuity: ContinuityPlanningContext = {
+    byQuid: index_shadow_quids(root),
+    transfers: [],
+  };
   const affectedOwners = new Set<ShadowNode>();
   const incomingRoots: ShadowContent[] = [];
 
@@ -110,7 +128,7 @@ export function plan_document_structural_transaction(
         affectedOwners.add(nearest_ordinary_owner(target));
         assert_insert_index(target, operation.index, operation.op);
         {
-          const inserted = shadow_insert_content(target, operation.content);
+          const inserted = shadow_insert_content(target, operation.content, continuity);
           target.content.splice(operation.index, 0, inserted);
           incomingRoots.push(inserted);
         }
@@ -133,7 +151,7 @@ export function plan_document_structural_transaction(
         affectedOwners.add(nearest_ordinary_owner(target));
         assert_existing_index(target, operation.index, operation.op);
         const current = target.content[operation.index];
-        const replacement = plan_replacement(target, current, operation.replacement);
+        const replacement = plan_replacement(target, current, operation.replacement, continuity);
         target.content[operation.index] = replacement;
         incomingRoots.push(replacement);
         break;
@@ -156,6 +174,7 @@ export function plan_document_structural_transaction(
     removedRoots,
     affectedOwners: Object.freeze(mountedAffectedOwners),
     runtime,
+    lineageTransfers: Object.freeze([...continuity.transfers]),
   });
 }
 
@@ -167,9 +186,13 @@ export function plan_document_root_structural_transaction(
 ): DocumentStructuralPlan {
   const root = shadow_existing(projectedRoot, persistedQuidForExisting);
   const runtime = runtime_for_node(projectedRoot) ?? default_livetree_runtime();
+  const continuity: ContinuityPlanningContext = {
+    byQuid: index_shadow_quids(root),
+    transfers: [],
+  };
   root.attrs = must_attrs(canonicalFinalRoot.$_attrs ?? {});
   root.content = canonicalFinalRoot.$_content.map((item, index) =>
-    plan_root_replacement(root, root.content[index], item));
+    plan_continuous_content(root, root.content[index], item, continuity));
 
   validate_shadow_against_canonical(root, canonicalFinalRoot);
   const oldNodes = new Set(collect_subtree_nodes(projectedRoot, "pre"));
@@ -184,40 +207,32 @@ export function plan_document_root_structural_transaction(
     }
   });
   const affectedOwners = Object.freeze(mountedOwners);
-  return Object.freeze({ root, finalNodes, removedRoots, affectedOwners, runtime });
-}
-
-function plan_root_replacement(
-  parent: ShadowNode,
-  current: ShadowContent | undefined,
-  replacement: HsonNode | Primitive,
-): ShadowContent {
-  if (!is_shadow_node(current) || !is_Node(replacement)) {
-    return shadow_fresh(clone_node(replacement), parent);
-  }
-  if (!current.node.$_tag.startsWith(HSON_SYS_PREFIX) || !replacement.$_tag.startsWith(HSON_SYS_PREFIX)) {
-    return plan_replacement(parent, current, replacement);
-  }
-  if (current.node.$_tag !== replacement.$_tag) {
-    return shadow_fresh(clone_node(replacement), parent);
-  }
-  const shadow: ShadowNode = {
-    node: current.node,
-    fresh: false,
-    parent,
-    attrs: must_attrs(replacement.$_attrs ?? {}),
-    content: [],
-  };
-  shadow.content = replacement.$_content.map((item, index) =>
-    plan_root_replacement(shadow, current.content[index], item));
-  return shadow;
+  return Object.freeze({
+    root,
+    finalNodes,
+    removedRoots,
+    affectedOwners,
+    runtime,
+    lineageTransfers: Object.freeze([...continuity.transfers]),
+  });
 }
 
 /** Apply one fully validated structural plan through explicit internal graph/DOM machinery. */
 export function apply_document_structural_transaction(plan: DocumentStructuralPlan): void {
+  const transfers: LiveTreeQuidLineageTransfer[] = plan.lineageTransfers.map((transfer) => (
+    preflight_livetree_quid_lineage_transfer(
+      transfer.quid,
+      transfer.from,
+      transfer.to,
+      plan.runtime,
+    )
+  ));
   apply_shadow_node(plan.root);
   bind_graph_runtime(plan.root.node, plan.runtime);
+  for (const transfer of transfers) transfer.apply();
   for (const removed of plan.removedRoots) {
+    detach_retained_projection_descendants(removed, plan.finalNodes);
+    prune_retained_graph_descendants(removed, plan.finalNodes);
     release_subtree_ownership(removed);
     dispose_node_deep(removed, plan.runtime);
   }
@@ -247,59 +262,125 @@ function shadow_existing(
   return shadow;
 }
 
-function shadow_fresh(content: HsonNode | Primitive, parent?: ShadowNode): ShadowContent {
-  if (!is_Node(content)) return content;
-  const persistedQuid = is_ordinary_element_node(content) ? content.$_meta?.[HSON_META_QUID] : undefined;
-  const shadow: ShadowNode = {
-    node: content,
-    fresh: true,
-    ...(parent === undefined ? {} : { parent }),
-    ...(persistedQuid === undefined ? {} : { persistedQuid }),
-    attrs: must_attrs(content.$_attrs ?? {}),
-    content: [],
-  };
-  shadow.content = content.$_content.map((item) => shadow_fresh(item, shadow));
-  return shadow;
-}
-
-function shadow_insert_content(target: ShadowNode, content: HsonNode | Primitive): ShadowContent {
+function shadow_insert_content(
+  target: ShadowNode,
+  content: HsonNode | Primitive,
+  continuity: ContinuityPlanningContext,
+): ShadowContent {
   if (target.node.$_tag === ELEM_TAG && typeof content === "string") {
-    return shadow_fresh({ $_tag: STR_TAG, $_content: [content] }, target);
+    return plan_continuous_content(
+      target,
+      undefined,
+      { $_tag: STR_TAG, $_content: [content] },
+      continuity,
+    );
   }
-  return shadow_fresh(clone_node(content), target);
+  return plan_continuous_content(target, undefined, clone_node(content), continuity);
 }
 
 function plan_replacement(
   parent: ShadowNode,
   current: ShadowContent | undefined,
   replacementInput: HsonNode | Primitive,
+  continuity: ContinuityPlanningContext,
 ): ShadowContent {
-  const replacement = clone_node(replacementInput);
-  if (!is_shadow_node(current) || !is_Node(replacement)) {
-    return shadow_fresh(replacement, parent);
-  }
-  const currentQuid = current.persistedQuid;
+  return plan_continuous_content(parent, current, clone_node(replacementInput), continuity);
+}
+
+function plan_continuous_content(
+  parent: ShadowNode,
+  current: ShadowContent | undefined,
+  replacement: HsonNode | Primitive,
+  continuity: ContinuityPlanningContext,
+): ShadowContent {
+  if (!is_Node(replacement)) return replacement;
+
   const replacementQuid = is_ordinary_element_node(replacement)
     ? replacement.$_meta?.[HSON_META_QUID]
     : undefined;
-  if (currentQuid === undefined || replacementQuid === undefined || currentQuid !== replacementQuid) {
-    return shadow_fresh(replacement, parent);
+  const continuous = replacementQuid === undefined
+    ? undefined
+    : continuity.byQuid.get(replacementQuid);
+
+  if (continuous !== undefined && is_ordinary_element_node(continuous.node)) {
+    if (replacementQuid === undefined) throw new Error("Continuous subject planning requires persisted identity.");
+    if (continuous.node.$_tag === replacement.$_tag) {
+      return plan_compatible_subject(parent, continuous, replacement, continuity);
+    }
+    const transferred = shadow_fresh_continuous(replacement, parent, continuous, continuity);
+    if (!is_shadow_node(transferred)) throw new Error("QUID lineage transfer target is not a node.");
+    continuity.transfers.push(Object.freeze({
+      quid: replacementQuid,
+      from: continuous.node,
+      to: transferred.node,
+    }));
+    return transferred;
   }
-  if (!is_ordinary_element_node(current.node)
-    || !is_ordinary_element_node(replacement)
-    || current.node.$_tag !== replacement.$_tag) {
-    return shadow_fresh(replacement, parent);
+
+  if (is_shadow_node(current)
+    && current.node.$_tag.startsWith(HSON_SYS_PREFIX)
+    && current.node.$_tag === replacement.$_tag) {
+    const shadow: ShadowNode = {
+      node: current.node,
+      fresh: false,
+      parent,
+      attrs: must_attrs(replacement.$_attrs ?? {}),
+      content: [],
+    };
+    shadow.content = replacement.$_content.map((item, index) =>
+      plan_continuous_content(shadow, current.content[index], item, continuity));
+    return shadow;
   }
+
+  return shadow_fresh_continuous(
+    replacement,
+    parent,
+    is_shadow_node(current) ? current : undefined,
+    continuity,
+  );
+}
+
+function plan_compatible_subject(
+  parent: ShadowNode,
+  current: ShadowNode,
+  replacement: HsonNode,
+  continuity: ContinuityPlanningContext,
+): ShadowNode {
+  const quid = current.persistedQuid;
+  if (quid === undefined) throw new Error("Compatible subject planning requires persisted identity.");
   const shadow: ShadowNode = {
     node: current.node,
     fresh: false,
     parent,
-    persistedQuid: currentQuid,
+    persistedQuid: quid,
     replacementSource: replacement,
     attrs: must_attrs(replacement.$_attrs ?? {}),
     content: [],
   };
-  shadow.content = replacement.$_content.map((item) => shadow_fresh(item, shadow));
+  shadow.content = replacement.$_content.map((item, index) =>
+    plan_continuous_content(shadow, current.content[index], item, continuity));
+  return shadow;
+}
+
+function shadow_fresh_continuous(
+  replacement: HsonNode,
+  parent: ShadowNode,
+  prior: ShadowNode | undefined,
+  continuity: ContinuityPlanningContext,
+): ShadowNode {
+  const persistedQuid = is_ordinary_element_node(replacement)
+    ? replacement.$_meta?.[HSON_META_QUID]
+    : undefined;
+  const shadow: ShadowNode = {
+    node: replacement,
+    fresh: true,
+    parent,
+    ...(persistedQuid === undefined ? {} : { persistedQuid }),
+    attrs: must_attrs(replacement.$_attrs ?? {}),
+    content: [],
+  };
+  shadow.content = replacement.$_content.map((item, index) =>
+    plan_continuous_content(shadow, prior?.content[index], item, continuity));
   return shadow;
 }
 
@@ -338,8 +419,6 @@ function copy_replacement_shell(target: HsonNode, source: HsonNode): void {
     );
   }
   target.$_tag = source.$_tag;
-  if (source.$_attrs === undefined) delete target.$_attrs;
-  else target.$_attrs = clone_node(source.$_attrs);
   if (source.$_meta === undefined) delete target.$_meta;
   else target.$_meta = clone_node(source.$_meta);
 }
@@ -473,6 +552,57 @@ function validate_incoming_quids(
     for (const child of shadow.content) visit(child);
   };
   for (const root of incomingRoots) visit(root);
+}
+
+function index_shadow_quids(root: ShadowNode): ReadonlyMap<string, ShadowNode> {
+  const byQuid = new Map<string, ShadowNode>();
+  walk_shadow(root, (shadow) => {
+    const quid = shadow.persistedQuid;
+    if (quid === undefined) return;
+    const prior = byQuid.get(quid);
+    if (prior !== undefined && prior.node !== shadow.node) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+        "Projected structural input contains duplicate active persisted QUIDs.",
+      );
+    }
+    byQuid.set(quid, shadow);
+  });
+  return byQuid;
+}
+
+function detach_retained_projection_descendants(
+  removedRoot: HsonNode,
+  finalNodes: ReadonlySet<HsonNode>,
+): void {
+  const visit = (node: HsonNode): void => {
+    if (finalNodes.has(node)) {
+      const element = get_el_for_node(node);
+      if (element !== undefined) {
+        element.remove();
+        return;
+      }
+    }
+    for (const child of node.$_content) if (is_Node(child)) visit(child);
+  };
+  visit(removedRoot);
+}
+
+function prune_retained_graph_descendants(
+  removedRoot: HsonNode,
+  finalNodes: ReadonlySet<HsonNode>,
+): void {
+  const retained: Array<HsonNode | Primitive> = [];
+  for (const item of removedRoot.$_content) {
+    if (!is_Node(item)) {
+      retained.push(item);
+      continue;
+    }
+    if (finalNodes.has(item)) continue;
+    prune_retained_graph_descendants(item, finalNodes);
+    retained.push(item);
+  }
+  removedRoot.$_content = retained;
 }
 
 function find_removed_roots(root: HsonNode, finalNodes: ReadonlySet<HsonNode>): HsonNode[] {

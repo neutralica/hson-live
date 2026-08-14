@@ -99,6 +99,7 @@ import {
 } from "./livemap.document.identity.js";
 import {
   livemap_document_commit_continuity,
+  register_livemap_document_observation_evidence,
   register_livemap_document_commit_continuity,
 } from "./livemap.document.capture.js";
 import {
@@ -288,6 +289,37 @@ function make_livemap_core_from_owned_root(
   let currentDocumentSchema: InternalDocumentRootSchema | undefined = initial.documentSchema;
   /** Revision zero represents the initial graph before any changed commit. */
   const transitionController = make_livemap_transition_controller(initialMode, () => owned.revision);
+  const publicationQueue: Array<() => void> = [];
+  let publicationCursor = 0;
+  let publishing = false;
+
+  const enqueuePublication = (publish: () => void): void => {
+    publicationQueue.push(publish);
+    if (publishing) return;
+    publishing = true;
+    let firstFailure: unknown;
+    let failed = false;
+    try {
+      while (publicationCursor < publicationQueue.length) {
+        const next = publicationQueue[publicationCursor];
+        publicationCursor += 1;
+        if (next === undefined) continue;
+        try {
+          next();
+        } catch (error) {
+          if (!failed) {
+            firstFailure = error;
+            failed = true;
+          }
+        }
+      }
+    } finally {
+      publicationQueue.length = 0;
+      publicationCursor = 0;
+      publishing = false;
+    }
+    if (failed) throw firstFailure;
+  };
 
   const publishCommitWithWatch = (
     commit: LiveMapCommit<LiveMapAnyOp>,
@@ -297,20 +329,62 @@ function make_livemap_core_from_owned_root(
     // first; ordinary observers then run in registration order. Reflection is
     // one such observer, so callbacks before its slot can observe the new
     // canonical revision while that downstream runtime projection is older.
-    const watchFailure = initialMode === "element" || initialMode === "fragment"
-      ? documentWatchHub.emitCommit(commit)
-      : projectedWatchHub.emitCommit(commit);
-    publish_livemap_after_watch(watchFailure, publishExisting);
+    const documentEvidence = initialMode === "element" || initialMode === "fragment"
+      ? Object.freeze({
+        mode: initialMode,
+        revision: commit.rev,
+        root: owned.root,
+        continuity: livemap_document_commit_continuity(commit)
+          ?? (commit.ops[0] !== undefined
+            && "domain" in commit.ops[0]
+            && commit.ops[0].op === "replace-root"
+            ? "new-epoch"
+            : "same-epoch"),
+      })
+      : undefined;
+    enqueuePublication(() => {
+      const watchFailure = initialMode === "element" || initialMode === "fragment"
+        ? documentWatchHub.emitCommit(commit)
+        : projectedWatchHub.emitCommit(commit);
+      publish_livemap_after_watch(watchFailure, () => {
+        if (documentEvidence !== undefined) {
+          commitObserverHub.prepareObservation((observation) => {
+            register_livemap_document_observation_evidence(observation, documentEvidence);
+          });
+        }
+        publishExisting();
+      });
+    });
   };
 
-  const publishSnapshotWithWatch = (revision: number): void => {
-    const watchFailure = initialMode === "element" || initialMode === "fragment"
-      ? documentWatchHub.emitSnapshot()
-      : projectedWatchHub.emitSnapshot();
-    publish_livemap_after_watch(
-      watchFailure,
-      () => commitObserverHub.emitSnapshot(revision),
-    );
+  const publishSnapshotWithWatch = (
+    revision: number,
+    continuity?: "same-epoch" | "new-epoch",
+  ): void => {
+    const documentEvidence = initialMode === "element" || initialMode === "fragment"
+      ? Object.freeze({
+        mode: initialMode,
+        revision,
+        root: owned.root,
+        continuity: continuity ?? "new-epoch",
+      })
+      : undefined;
+    enqueuePublication(() => {
+      const watchFailure = initialMode === "element" || initialMode === "fragment"
+        ? documentWatchHub.emitSnapshot()
+        : projectedWatchHub.emitSnapshot();
+      publish_livemap_after_watch(
+        watchFailure,
+        () => {
+          if (documentEvidence !== undefined) {
+            commitObserverHub.prepareObservation((observation) => {
+              register_livemap_document_observation_evidence(observation, documentEvidence);
+            });
+          }
+          commitObserverHub.emitSnapshot(revision);
+        },
+      );
+    });
   };
 
   function prepareDetachedCommit(
@@ -1040,7 +1114,7 @@ function make_livemap_core_from_owned_root(
         revision,
       };
       transitionController.invalidate();
-      publishSnapshotWithWatch(revision);
+      publishSnapshotWithWatch(revision, continuity);
     },
     applyMutation: <TOp extends LiveMapGraphOp>(candidate: PreparedDocumentMutation<TOp>): LiveMapGraphCommit<TOp> => {
       transitionController.assertPublicMutationAllowed();

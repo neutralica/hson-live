@@ -44,7 +44,7 @@ export function plan_document_root_convergence(
       "Observed whole-root material does not match the current canonical ElementLiveMap root.",
     );
   }
-  const canonicalElement = top_level_element(canonicalDocumentRoot);
+  const canonicalElement = document_element_from_root(canonicalDocumentRoot);
   if (!is_ordinary_element_node(projectedRoot) || !is_ordinary_element_node(canonicalElement)
     || projectedRoot.$_tag !== canonicalElement.$_tag) {
     throw new DocumentReflectError(
@@ -77,7 +77,8 @@ export function plan_document_root_convergence(
   }
 }
 
-function top_level_element(root: HsonNode): HsonNode {
+/** Resolve the ordinary element projected by one canonical element-mode document root. @internal */
+export function document_element_from_root(root: HsonNode): HsonNode {
   const cluster = root.$_tag === ELEM_TAG
     ? root
     : root.$_tag === ROOT_TAG && is_Node(root.$_content[0]) && root.$_content[0].$_tag === ELEM_TAG

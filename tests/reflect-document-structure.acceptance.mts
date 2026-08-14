@@ -8,7 +8,6 @@ import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
-  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
   DocumentReflectError,
@@ -221,15 +220,14 @@ check("structural DOM failure preserves canonical commit and fails observer-side
   binding.dispose();
 });
 
-check("incompatible snapshot restore remains observer-isolated", () => {
+check("new-epoch snapshot restore reconstructs an incompatible exact root", () => {
   const map = element(`<main @000000416/>`);
   const binding = hsonReflect(map);
   const replacement = element(`<article @000000417/>`);
   map.restore(replacement.capture());
   assert.equal(map.element.node().$_tag, "article");
-  assert.equal(binding.tree.node.$_tag, "main");
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
+  assert.equal(binding.tree.node.$_tag, "article");
+  assert.equal(binding.status, "active");
   assert.equal(binding.sourceRevision, 0);
   binding.dispose();
 });

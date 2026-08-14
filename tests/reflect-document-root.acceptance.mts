@@ -7,10 +7,6 @@ import { is_Node } from "../src/core/node-guards.ts";
 import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
   DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
-  DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE,
-  DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE,
-  DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
-  DocumentReflectError,
 } from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
@@ -50,7 +46,7 @@ function mount(root: HsonNode): FakeElement {
   return project_livetree(root) as unknown as FakeElement;
 }
 
-check("compatible install retains tree, root, DOM, and bounded descendant identity", () => {
+check("durable install constructs a fresh tree, DOM, and descendant identity epoch", () => {
   const map = element(`<main @000000501 class="old" <p @000000502 "old"/> <i/>/>`);
   const binding = hsonReflect(map);
   const tree = binding.tree;
@@ -66,24 +62,30 @@ check("compatible install retains tree, root, DOM, and bounded descendant identi
 
   assert.equal(commit.changed, true);
   assert.equal(binding.status, "active");
-  assert.equal(binding.tree, tree);
-  assert.equal(binding.tree.node, root);
-  assert.equal(get_el_for_node(root), rootDom as unknown as Element);
-  assert.equal(Reflect.get(rootDom, "marker"), marker);
-  assert.equal(raw_node(root, [0, 0]), paragraph);
-  assert.equal(get_el_for_node(paragraph), paragraphDom);
-  assert.equal(root.$_attrs?.class, "new");
-  assert.equal((rootDom.childNodes[0] as FakeElement).childNodes[0] instanceof FakeText, true);
-  assert.equal(((rootDom.childNodes[0] as FakeElement).childNodes[0] as FakeText).data, "next");
+  const nextTree = binding.tree;
+  const nextRoot = nextTree.node;
+  const nextRootDom = get_el_for_node(nextRoot) as FakeElement | undefined;
+  const nextParagraph = raw_node(nextRoot, [0, 0]);
+  assert.notEqual(nextTree, tree);
+  assert.notEqual(nextRoot, root);
+  assert.notEqual(nextRootDom, rootDom);
+  assert.equal(tree.isDisposed, true);
+  assert.equal(get_el_for_node(root), undefined);
+  assert.equal(get_el_for_node(paragraph), undefined);
+  assert.equal(get_el_for_node(nextParagraph) === paragraphDom, false);
+  assert.equal(Reflect.get(nextRootDom ?? {}, "marker"), undefined);
+  assert.equal(nextRoot.$_attrs?.class, "new");
+  assert.equal((nextRootDom?.childNodes[0] as FakeElement).childNodes[0] instanceof FakeText, true);
+  assert.equal(((nextRootDom?.childNodes[0] as FakeElement).childNodes[0] as FakeText).data, "next");
   assert.equal(binding.sourceRevision, commit.rev);
   assert.equal(binding.diagnostics().updatesApplied, 1);
 
-  create_livetree(paragraph).adoptRoots(root).attrs.set("after", "replace");
+  create_livetree(nextParagraph).adoptRoots(nextRoot).attrs.set("after", "replace");
   assert.equal(map.document.attrs.get(path(0, 0), "after"), "replace");
   binding.dispose();
 });
 
-check("QUID-less compatible root preserves canonical identity absence", () => {
+check("QUID-less durable install is fresh while preserving canonical identity absence", () => {
   const map = element(`<main class="old"/>`);
   const binding = hsonReflect(map);
   const root = binding.tree.node;
@@ -91,13 +93,14 @@ check("QUID-less compatible root preserves canonical identity absence", () => {
   const replacement = element(`<main class="next" "text"/>`);
   map.install(replacement.capture());
   assert.equal(binding.status, "active");
-  assert.equal(binding.tree.node, root);
-  assert.equal(root.$_meta?.["quid"], undefined);
+  assert.notEqual(binding.tree.node, root);
+  assert.equal(binding.tree.node.$_meta?.["quid"], undefined);
+  assert.equal(binding.tree.node.$_attrs?.class, "next");
   assert.equal(map.element.node().$_meta?.["quid"], undefined);
   binding.dispose();
 });
 
-check("replayed compatible replace-root uses one convergence transaction", () => {
+check("replayed replace-root constructs one fresh projection transaction", () => {
   const source = element(`<main @000000503/>`);
   const target = element(`<main @000000503/>`);
   const binding = hsonReflect(target);
@@ -105,7 +108,8 @@ check("replayed compatible replace-root uses one convergence transaction", () =>
   const replacement = element(`<main @000000503 title="replayed" <b/>/>`);
   const commit = source.install(replacement.capture());
   target.replay(commit);
-  assert.equal(binding.tree.node, root);
+  assert.notEqual(binding.tree.node, root);
+  assert.equal(binding.tree.node.$_tag, "main");
   assert.equal(binding.tree.attrs.get("title"), "replayed");
   assert.equal(binding.sourceRevision, 1);
   assert.equal(binding.diagnostics().updatesApplied, 1);
@@ -124,21 +128,23 @@ check("canonical-equivalent install performs no convergence", () => {
   binding.dispose();
 });
 
-check("tag and persisted root-QUID transitions fail closed", () => {
+check("new epochs admit fresh tag and persisted root-QUID transitions", () => {
   const tagMap = element(`<main @000000505/>`);
   const tagBinding = hsonReflect(tagMap);
-  const tagRoot = structuredClone(tagBinding.tree.node);
+  const tagRoot = tagBinding.tree.node;
   tagMap.install(element(`<article @000000505/>`).capture());
-  assert.equal(tagBinding.failure?.code, DOCUMENT_REFLECT_ROOT_KIND_MISMATCH_ERROR_CODE);
-  assert.deepEqual(tagBinding.tree.node, tagRoot);
+  assert.equal(tagBinding.status, "active");
+  assert.notEqual(tagBinding.tree.node, tagRoot);
+  assert.equal(tagBinding.tree.node.$_tag, "article");
   tagBinding.dispose();
 
   const quidMap = element(`<main @000000506/>`);
   const quidBinding = hsonReflect(quidMap);
-  const quidRoot = structuredClone(quidBinding.tree.node);
+  const quidRoot = quidBinding.tree.node;
   quidMap.install(element(`<main @000000507/>`).capture());
-  assert.equal(quidBinding.failure?.code, DOCUMENT_REFLECT_ROOT_QUID_CONFLICT_ERROR_CODE);
-  assert.deepEqual(quidBinding.tree.node, quidRoot);
+  assert.equal(quidBinding.status, "active");
+  assert.notEqual(quidBinding.tree.node, quidRoot);
+  assert.equal(quidBinding.tree.node.$_meta?.quid, "000000507");
   quidBinding.dispose();
 });
 
@@ -155,37 +161,40 @@ check("descendant QUID collision fails before projected mutation", () => {
   binding.dispose();
 });
 
-check("mounted root DOM failure preserves canonical install and fails observer-side", () => {
+check("new-epoch mounted install does not reuse the old DOM convergence path", () => {
   const map = element(`<main @000000510 <a/>/>`);
   const binding = hsonReflect(map);
-  const rootDom = mount(binding.tree.node);
+  const oldTree = binding.tree;
+  const rootDom = mount(oldTree.node);
   rootDom.failReplace = true;
   const commit = map.install(element(`<main @000000510 title="canonical" <b/>/>`).capture());
   assert.equal(commit.changed, true);
   assert.equal(map.document.attrs.get(path(), "title"), "canonical");
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
-  assert.equal(binding.sourceRevision, 0);
-  assert.throws(() => binding.tree.attrs.set("blocked", true), DocumentReflectError);
+  assert.equal(binding.status, "active");
+  assert.equal(binding.sourceRevision, 1);
+  assert.notEqual(binding.tree, oldTree);
+  assert.equal(oldTree.isDisposed, true);
+  assert.equal(get_el_for_node(binding.tree.node)?.getAttribute("title"), "canonical");
   binding.dispose();
 });
 
-check("reentrant observation during root DOM convergence fails closed", () => {
+check("new-epoch reconstruction never invokes stale DOM convergence hooks", () => {
   const map = element(`<main @000000511 <a/>/>`);
   const binding = hsonReflect(map);
   const rootDom = mount(binding.tree.node);
+  let invoked = 0;
   rootDom.beforeReplace = () => {
-    rootDom.beforeReplace = undefined;
+    invoked += 1;
     map.document.attrs.set(path(), "reentrant", true);
   };
   const commit = map.install(element(`<main @000000511 <b/>/>`).capture());
   assert.equal(commit.changed, true);
-  assert.equal(map.rev, 2);
-  assert.equal(map.document.attrs.get(path(), "reentrant"), true);
-  assert.equal(binding.status, "failed");
-  assert.equal(binding.failure?.code, DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE);
-  assert.equal(binding.sourceRevision, 0);
-  assert.equal(binding.diagnostics().updatesApplied, 0);
+  assert.equal(invoked, 0);
+  assert.equal(map.rev, 1);
+  assert.equal(map.document.attrs.get(path(), "reentrant"), undefined);
+  assert.equal(binding.status, "active");
+  assert.equal(binding.sourceRevision, 1);
+  assert.equal(binding.diagnostics().updatesApplied, 1);
   binding.dispose();
 });
 

@@ -213,14 +213,14 @@ check("same-position move preserves identity without churn", () => {
   binding.dispose();
 });
 
-check("compatible root replacement preserves the projected root object", () => {
+check("durable root replacement crosses an exact projected-object boundary", () => {
   const map = element(`<main @${Q1} <a @${Q2}/>/` + `>`);
   const { binding } = reflected(map);
   const root = binding.tree.node;
   const replacement = element(`<main @${Q1} <b @${Q3}/>/` + `>`);
   map.install(replacement.capture());
-  assert.equal(binding.tree.node, root);
-  assert.equal(raw_node(root, [0, 0]).$_tag, "b");
+  assert.notEqual(binding.tree.node, root);
+  assert.equal(raw_node(binding.tree.node, [0, 0]).$_tag, "b");
   binding.dispose();
 });
 

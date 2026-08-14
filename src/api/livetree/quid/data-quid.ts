@@ -52,6 +52,10 @@ export type SuppliedLiveTreeQuidReservation = Readonly<{
   release: () => void;
 }>;
 
+export type LiveTreeQuidLineageTransfer = Readonly<{
+  apply: () => void;
+}>;
+
 function runtime_for_operation(n: HsonNode, runtime?: LiveTreeRuntime): LiveTreeRuntime {
   return runtime ?? runtime_for_node(n) ?? default_livetree_runtime();
 }
@@ -140,6 +144,88 @@ function assert_claims_available(
   runtime: LiveTreeRuntime,
 ): void {
   for (const claim of claims) assert_quid_available(claim.quid, claim.node, runtime);
+}
+
+/** Preflight one active same-epoch subject transfer between incompatible exact nodes. @internal */
+export function preflight_livetree_quid_lineage_transfer(
+  quid: string,
+  from: HsonNode,
+  to: HsonNode,
+  runtime: LiveTreeRuntime,
+): LiveTreeQuidLineageTransfer {
+  assert_livetree_quid_eligible(from, "transfer");
+  assert_livetree_quid_eligible(to, "transfer");
+  if (read_hson_node_quid(from) !== quid || read_hson_node_quid(to) !== quid) {
+    throw new Error("LiveTree QUID lineage transfer requires matching persisted identity evidence.");
+  }
+  if (runtime.quidToNode.get(quid) !== from || runtime.nodeToQuid.get(from) !== quid) {
+    throw new Error("LiveTree QUID lineage transfer source is not the active runtime subject.");
+  }
+  const pending = runtime.pendingQuidClaims.get(quid);
+  if (pending !== undefined && pending !== from) {
+    throw new Error("LiveTree QUID lineage transfer collides with a pending runtime claim.");
+  }
+  const targetClaim = runtime.nodeToQuid.get(to);
+  if (targetClaim !== undefined && targetClaim !== quid) {
+    throw new Error("LiveTree QUID lineage transfer target already owns another identity.");
+  }
+  let applied = false;
+  return Object.freeze({
+    apply(): void {
+      if (applied) return;
+      if (runtime.quidToNode.get(quid) !== from || runtime.nodeToQuid.get(from) !== quid) {
+        throw new Error("LiveTree QUID lineage transfer source changed after preflight.");
+      }
+      runtime.quidToNode.set(quid, to);
+      runtime.nodeToQuid.set(to, quid);
+      runtime.nodeToQuid.delete(from);
+      record_issued_quid(quid, runtime);
+      record_livetree_materialization("quidRegistryWrites", 2);
+      applied = true;
+    },
+  });
+}
+
+/** Validate a fresh Reflection projection before crossing one canonical owner-epoch boundary. @internal */
+export function preflight_livetree_quid_epoch_replacement(
+  incomingRoot: HsonNode,
+  outgoingRoot: HsonNode,
+  outgoingEpochQuids: ReadonlySet<string>,
+  runtime: LiveTreeRuntime,
+): void {
+  const claims = unique_incoming_claims(incomingRoot);
+  const outgoingNodes = new Set(collect_subtree_nodes(outgoingRoot, "pre"));
+  assert_graph_runtime_available(incomingRoot, runtime);
+  for (const claim of claims) {
+    const active = runtime.quidToNode.get(claim.quid);
+    if (active !== undefined
+      && active !== claim.node
+      && (!outgoingEpochQuids.has(claim.quid) || !outgoingNodes.has(active))) {
+      throw new Error(`Duplicate QUID \"${claim.quid}\" is already registered to another node.`);
+    }
+    const pending = runtime.pendingQuidClaims.get(claim.quid);
+    if (pending !== undefined && pending !== claim.node) {
+      throw new Error(`Duplicate QUID \"${claim.quid}\" is reserved for another node.`);
+    }
+    if (active === undefined
+      && runtime.issuedQuids.has(claim.quid)
+      && !outgoingEpochQuids.has(claim.quid)) {
+      throw new LiveTreeQuidReuseError(claim.quid);
+    }
+  }
+}
+
+/** Close one Reflection-owned runtime identity epoch after all of its active nodes are disposed. @internal */
+export function reset_livetree_quid_epoch(
+  quids: ReadonlySet<string>,
+  runtime: LiveTreeRuntime,
+): void {
+  for (const quid of quids) {
+    if (runtime.quidToNode.has(quid) || runtime.pendingQuidClaims.has(quid)) {
+      throw new Error("Cannot reset a LiveTree QUID epoch while one of its claims remains active.");
+    }
+  }
+  for (const quid of quids) runtime.issuedQuids.delete(quid);
 }
 
 /** Validate one complete incoming graph against LiveTree's active ownership. */

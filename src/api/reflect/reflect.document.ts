@@ -1,9 +1,9 @@
 import { ELEM_TAG, STR_TAG, VAL_TAG, HSON_META_QUID } from "../../core/constants.js";
+import { clone_node } from "../../core/clone-node.js";
 import { canonical_public_attrs_equal, decode_public_attrs } from "../../core/public-attrs.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { CanonicalPublicAttrs, HsonNode } from "../../core/types.js";
 import type {
-  DocumentLiveMapCapture,
   ElementLiveMap,
   LiveMapCommitObservation,
   LiveMapDisposer,
@@ -13,6 +13,7 @@ import type {
   LiveMapGraphOp,
 } from "../../types/livemap.types.js";
 import { create_linked_livetree_in_runtime } from "../livetree/creation/create-livetree.js";
+import { project_linked_livetree } from "../livetree/creation/project-live-tree.js";
 import type { LiveTree } from "../livetree/livetree.js";
 import {
   document_binding_for_node,
@@ -25,7 +26,9 @@ import {
 import { apply_projected_attrs_replacement } from "../livetree/managers/attr-handle.js";
 import {
   HSON_QUID_MARKUP_NAME,
+  preflight_livetree_quid_epoch_replacement,
   preflight_supplied_livetree_quid,
+  reset_livetree_quid_epoch,
   type SuppliedLiveTreeQuidReservation,
 } from "../livetree/quid/data-quid.js";
 import { LiveTreeQuidReuseError } from "../livetree/livetree.error.js";
@@ -34,6 +37,7 @@ import {
   get_el_for_node,
   get_node_for_el,
 } from "../livetree/utils/node-map-helpers.js";
+import { dispose_node_deep } from "../livetree/utils/dispose-node.js";
 import { serialize_style } from "../transform/utils/attrs-utils/serialize-style.js";
 import {
   DOCUMENT_REFLECT_ALREADY_BOUND_ERROR_CODE,
@@ -42,11 +46,11 @@ import {
   DOCUMENT_REFLECT_DELEGATION_UNSUPPORTED_ERROR_CODE,
   DOCUMENT_REFLECT_DOM_MAPPING_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_NODE_KIND_MISMATCH_ERROR_CODE,
+  DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
   DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_QUID_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
   DOCUMENT_REFLECT_ROOT_REPLACEMENT_FAILED_ERROR_CODE,
-  DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE,
   DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
   DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
   DOCUMENT_REFLECT_UNSUPPORTED_OPERATION_ERROR_CODE,
@@ -57,6 +61,7 @@ import {
   plan_document_structural_transaction,
 } from "./reflect.document.structure.js";
 import {
+  document_element_from_root,
   plan_document_root_convergence,
   type DocumentRootMaterial,
 } from "./reflect.document.root.js";
@@ -77,6 +82,7 @@ import {
   type LiveMapDocumentIdentityAppliedClaim,
   type LiveMapDocumentIdentityCommitReservation,
 } from "../livemap/livemap.document.registration.js";
+import { livemap_document_observation_evidence } from "../livemap/livemap.document.capture.js";
 import {
   append_document_path,
   document_path_effect_for_graph_operation,
@@ -154,6 +160,7 @@ export function reflect_document_in_runtime(
   let registrations: ProjectedRegistration[] = [];
   const byPath = new Map<string, ProjectedRegistration>();
   const byQuid = new Map<string, ProjectedRegistration>();
+  const runtimeEpochQuids = new Set<string>();
   const mountedElements = new WeakMap<HsonNode, Element>();
   let currentStatus: DocumentReflectStatus = "initializing";
   let currentRevision = capturedRevision;
@@ -375,7 +382,10 @@ export function reflect_document_in_runtime(
     register_document_binding_node(node, registration);
     registrations.push(registration);
     byPath.set(pathKey, registration);
-    if (persistedQuid !== undefined) byQuid.set(persistedQuid, registration);
+    if (persistedQuid !== undefined) {
+      byQuid.set(persistedQuid, registration);
+      runtimeEpochQuids.add(persistedQuid);
+    }
   };
 
   const walk = (node: HsonNode, path: readonly number[]): void => {
@@ -663,7 +673,9 @@ export function reflect_document_in_runtime(
       path: registration.canonicalPath,
       changed: false,
     }));
-    const retired = new Set<ProjectedRegistration>();
+    // Path displacement is operation-local; canonical subject retirement is
+    // decided separately by the accepted final identity effects.
+    const displaced = new Set<ProjectedRegistration>();
     let introducedPaths: LiveMapDocumentPath[] = [];
 
     for (const operation of operations) {
@@ -686,7 +698,7 @@ export function reflect_document_in_runtime(
           );
         }
         if (transformed.kind === "retired") {
-          retired.add(entry.registration);
+          displaced.add(entry.registration);
           continue;
         }
         nextPending.push({
@@ -717,7 +729,7 @@ export function reflect_document_in_runtime(
 
     const moved = pending.filter((entry) => entry.changed);
     const unchanged = pending.filter((entry) => !entry.changed);
-    for (const registration of retired) unregister_document_binding_node(registration.node, owner);
+    for (const registration of displaced) unregister_document_binding_node(registration.node, owner);
     for (const entry of moved) unregister_document_binding_node(entry.registration.node, owner);
 
     registrations = unchanged.map((entry) => entry.registration);
@@ -743,7 +755,7 @@ export function reflect_document_in_runtime(
     }
 
     incrementalCorrespondenceUpdates += 1;
-    correspondenceEntriesChanged += retired.size + moved.length + introducedRegistrations;
+    correspondenceEntriesChanged += displaced.size + moved.length + introducedRegistrations;
   };
 
   const resolve_registration = (target: LiveMapDocumentCommitTarget): ProjectedRegistration => {
@@ -775,8 +787,69 @@ export function reflect_document_in_runtime(
     validate_registration(registration, mountedElements);
   };
 
+  /** Cross the approved hard owner-epoch boundary with a fresh exact projection lineage. */
+  const reconstruct_new_epoch = (
+    canonicalMaterial: DocumentRootMaterial,
+    targetRevision: number,
+  ): void => {
+    for (const registration of registrations) validate_bound_registration(registration);
+    const outgoingRoot = tree.node;
+    const incomingRoot = clone_node(document_element_from_root(canonicalMaterial.root));
+    try {
+      preflight_livetree_quid_epoch_replacement(
+        incomingRoot,
+        outgoingRoot,
+        runtimeEpochQuids,
+        runtime,
+      );
+    } catch (cause) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_QUID_COLLISION_ERROR_CODE,
+        "Fresh owner-epoch projection identity collides in the selected LiveTree runtime.",
+        cause,
+      );
+    }
+
+    const outgoingElement = get_el_for_node(outgoingRoot);
+    const parent = outgoingElement?.parentNode;
+    const nextSibling = outgoingElement?.nextSibling;
+    const ownerDocument = outgoingElement?.ownerDocument;
+    const namespace: "html" | "svg" = outgoingElement?.namespaceURI === "http://www.w3.org/2000/svg"
+      ? "svg"
+      : "html";
+
+    currentStatus = "replacing";
+    for (const registration of registrations) unregister_document_binding_node(registration.node, owner);
+    registrations = [];
+    byPath.clear();
+    byQuid.clear();
+    dispose_node_deep(outgoingRoot, runtime);
+    reset_livetree_quid_epoch(runtimeEpochQuids, runtime);
+    runtimeEpochQuids.clear();
+    if (currentStatus !== "replacing") return;
+
+    tree = create_linked_livetree_in_runtime(incomingRoot, runtime);
+    walk(tree.node, []);
+    wholeCorrespondenceBuilds += 1;
+    if (ownerDocument !== undefined) {
+      const incomingElement = project_linked_livetree(
+        tree.node,
+        namespace,
+        runtime,
+        ownerDocument,
+      );
+      if (parent !== null && parent !== undefined) {
+        parent.insertBefore(incomingElement, nextSibling ?? null);
+      }
+    }
+    for (const registration of registrations) validate_bound_registration(registration);
+    currentRevision = targetRevision;
+    updatesApplied += 1;
+    currentStatus = "active";
+  };
+
   const converge_compatible_root = (
-    canonicalCapture: DocumentLiveMapCapture<"element">,
+    canonicalMaterial: DocumentRootMaterial,
     observedMaterial: DocumentRootMaterial,
     targetRevision: number,
   ): void => {
@@ -784,7 +857,7 @@ export function reflect_document_in_runtime(
     const priorRootQuid = byPath.get(path_key([]))?.persistedQuid;
     const convergence = plan_document_root_convergence(
       tree.node,
-      canonicalCapture.root,
+      canonicalMaterial.root,
       observedMaterial,
       priorRootQuid,
       (node) => {
@@ -821,31 +894,38 @@ export function reflect_document_in_runtime(
   };
 
   const apply_observation = (observation: LiveMapCommitObservation<LiveMapGraphOp>): void => {
+    const evidence = livemap_document_observation_evidence(observation);
+    if (evidence === undefined || evidence.mode !== "element") {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_UPDATE_FAILED_ERROR_CODE,
+        "ElementLiveMap observation reached Reflection without exact accepted-state evidence.",
+      );
+    }
     if (observation.kind === "snapshot") {
-      let canonicalCapture: DocumentLiveMapCapture<"element">;
-      try {
-        canonicalCapture = map.capture();
-      } catch (cause) {
-        throw new DocumentReflectError(
-          DOCUMENT_REFLECT_SNAPSHOT_CAPTURE_FAILED_ERROR_CODE,
-          "ElementLiveMap snapshot recapture failed.",
-          cause,
-        );
-      }
-      if (canonicalCapture.rev !== observation.revision) {
+      if (evidence.revision !== observation.revision) {
         throw new DocumentReflectError(
           DOCUMENT_REFLECT_SNAPSHOT_REVISION_MISMATCH_ERROR_CODE,
-          `Snapshot observation revision ${observation.revision} does not match captured revision ${canonicalCapture.rev}.`,
+          `Snapshot observation revision ${observation.revision} does not match accepted evidence revision ${evidence.revision}.`,
         );
       }
-      converge_compatible_root(
-        canonicalCapture,
-        canonicalCapture,
-        observation.revision,
-      );
+      if (evidence.continuity === "new-epoch") {
+        reconstruct_new_epoch(evidence, observation.revision);
+      } else {
+        converge_compatible_root(
+          evidence,
+          evidence,
+          observation.revision,
+        );
+      }
       return;
     }
     const { commit } = observation;
+    if (evidence.revision !== commit.rev) {
+      throw new DocumentReflectError(
+        DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
+        `Commit revision ${commit.rev} does not match accepted evidence revision ${evidence.revision}.`,
+      );
+    }
     if (commit.prevRev !== currentRevision) {
       throw new DocumentReflectError(
         DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
@@ -866,14 +946,11 @@ export function reflect_document_in_runtime(
       ? commit.ops[0]
       : undefined;
     if (replaceRoot !== undefined) {
-      const canonicalCapture = map.capture();
-      if (canonicalCapture.rev !== commit.rev) {
-        throw new DocumentReflectError(
-          DOCUMENT_REFLECT_REVISION_GAP_ERROR_CODE,
-          "ElementLiveMap revision changed before compatible root convergence could be planned.",
-        );
+      if (evidence.continuity === "new-epoch") {
+        reconstruct_new_epoch(evidence, commit.rev);
+      } else {
+        converge_compatible_root(evidence, replaceRoot, commit.rev);
       }
-      converge_compatible_root(canonicalCapture, replaceRoot, commit.rev);
       return;
     }
     if (commit.ops.some((operation) => operation.domain !== "graph"
@@ -897,10 +974,9 @@ export function reflect_document_in_runtime(
       || operation.op === "replace-content");
     if (hasStructuralOperation) {
       for (const registration of registrations) validate_bound_registration(registration);
-      const canonicalRoot = map.element.node();
       const plan = plan_document_structural_transaction(
         tree.node,
-        canonicalRoot,
+        document_element_from_root(evidence.root),
         commit.ops,
         (node) => {
           const registration = document_binding_for_node(node);
@@ -932,7 +1008,7 @@ export function reflect_document_in_runtime(
       if (operation.op !== "set-attr" && operation.op !== "remove-attr" && operation.op !== "replace-attrs") continue;
       const registration = resolve_registration(operation.target);
       validate_bound_registration(registration);
-      planned.set(registration, read_map_attrs(map, registration.canonicalTarget));
+      planned.set(registration, read_document_root_attrs(evidence.root, registration.canonicalTarget));
     }
 
     for (const [registration, attrs] of planned) {
@@ -995,7 +1071,7 @@ export function reflect_document_in_runtime(
   }
 
   const binding: DocumentReflect = Object.freeze({
-    tree,
+    get tree() { return tree; },
     get status() { return currentStatus; },
     get sourceRevision() { return currentRevision; },
     get failure() { return currentFailure; },
@@ -1031,6 +1107,20 @@ function read_map_attrs(map: ElementLiveMap, target: LiveMapDocumentCommitTarget
     );
   }
   return attrs;
+}
+
+function read_document_root_attrs(
+  root: HsonNode,
+  target: LiveMapDocumentCommitTarget,
+): CanonicalPublicAttrs {
+  const node = resolve_raw_node(document_element_from_root(root), target.path);
+  if (node === undefined || !is_ordinary_element_node(node)) {
+    throw new DocumentReflectError(
+      DOCUMENT_REFLECT_TARGET_MISSING_ERROR_CODE,
+      "Accepted document evidence has no ordinary element at the observed attribute target.",
+    );
+  }
+  return read_projected_attrs(node);
 }
 
 function read_projected_attrs(node: HsonNode): CanonicalPublicAttrs {
