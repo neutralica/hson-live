@@ -1,0 +1,189 @@
+Date : 2026-08-14 10:46:52
+Directory : /Users/philliphanson/Documents/Design/web/hson/hson-live
+Total : 132 files,  11983 codes, 229 comments, 1801 blanks, all 14013 lines
+
+Languages
++------------+------------+------------+------------+------------+------------+
+| language   | files      | code       | comment    | blank      | total      |
++------------+------------+------------+------------+------------+------------+
+| TypeScript |        105 |     10,015 |        227 |        959 |     11,201 |
+| Markdown   |         18 |      1,375 |          0 |        810 |      2,185 |
+| JavaScript |          7 |        571 |          2 |         32 |        605 |
+| JSON       |          2 |         22 |          0 |          0 |         22 |
++------------+------------+------------+------------+------------+------------+
+
+Directories
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                                                    | files      | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                                                       |        132 |     11,983 |        229 |      1,801 |     14,013 |
+| . (Files)                                                                                                               |          2 |        101 |          0 |         20 |        121 |
+| benchmarks                                                                                                              |          1 |        324 |          2 |         19 |        345 |
+| docs                                                                                                                    |         17 |      1,295 |          0 |        790 |      2,085 |
+| docs (Files)                                                                                                            |          3 |        106 |          0 |         15 |        121 |
+| docs/contracts                                                                                                          |          1 |         -2 |          0 |          0 |         -2 |
+| docs/livehost                                                                                                           |          2 |       -220 |          0 |        -12 |       -232 |
+| docs/livemap                                                                                                            |          4 |       -124 |          0 |        102 |        -22 |
+| docs/livetree                                                                                                           |          1 |         29 |          0 |          3 |         32 |
+| docs/plans                                                                                                              |          4 |        722 |          0 |        188 |        910 |
+| docs/release-notes                                                                                                      |          1 |        973 |          0 |        494 |      1,467 |
+| docs/transform                                                                                                          |          1 |       -189 |          0 |          0 |       -189 |
+| src                                                                                                                     |         46 |      3,874 |         18 |        250 |      4,142 |
+| src (Files)                                                                                                             |          2 |         38 |          0 |          0 |         38 |
+| src/_tests                                                                                                              |          2 |        210 |          1 |          0 |        211 |
+| src/api                                                                                                                 |         34 |      2,856 |         17 |        165 |      3,038 |
+| src/api/livehost                                                                                                        |          8 |       -173 |          0 |        -21 |       -194 |
+| src/api/liveinspect                                                                                                     |          1 |          1 |          0 |          0 |          1 |
+| src/api/livemap                                                                                                         |         19 |      2,969 |         20 |        187 |      3,176 |
+| src/api/livetree                                                                                                        |          5 |         47 |         -3 |         -1 |         43 |
+| src/api/livetree (Files)                                                                                                |          2 |         35 |          5 |          0 |         40 |
+| src/api/livetree/managers                                                                                               |          1 |         11 |          0 |         -2 |          9 |
+| src/api/livetree/methods                                                                                                |          1 |          1 |          0 |          1 |          2 |
+| src/api/livetree/quid                                                                                                   |          1 |          0 |         -8 |          0 |         -8 |
+| src/api/transform                                                                                                       |          1 |         12 |          0 |          0 |         12 |
+| src/core                                                                                                                |          3 |         82 |          9 |         12 |        103 |
+| src/types                                                                                                               |          5 |        688 |         -9 |         73 |        752 |
+| tests                                                                                                                   |         66 |      6,389 |        209 |        722 |      7,320 |
+| tests (Files)                                                                                                           |         56 |      5,517 |        135 |        689 |      6,341 |
+| tests/entrypoints                                                                                                       |          4 |        625 |         74 |         20 |        719 |
+| tests/runtime-probes                                                                                                    |          6 |        247 |          0 |         13 |        260 |
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| filename                                                                                                                | language   | code       | comment    | blank      | total      |
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/benchmarks/quid-scale.mjs                                      | JavaScript |        324 |          2 |         19 |        345 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/contracts/hson-node-representation.md                     | Markdown   |         -2 |          0 |          0 |         -2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/hson-livehost.md                                          | Markdown   |          6 |          0 |          0 |          6 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/hson-livemap.md                                           | Markdown   |         97 |          0 |         15 |        112 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/hson-nodes.md                                             | Markdown   |          3 |          0 |          0 |          3 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livehost/api-livehost.md                                  | Markdown   |       -194 |          0 |          1 |       -193 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livehost/overview.md                                      | Markdown   |        -26 |          0 |        -13 |        -39 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livemap/api-livemap.md                                    | Markdown   |       -108 |          0 |         50 |        -58 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livemap/handle-proxy.md                                   | Markdown   |       -137 |          0 |         37 |       -100 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livemap/hson-livemap.md                                   | Markdown   |        145 |          0 |         34 |        179 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livemap/overview.md                                       | Markdown   |        -24 |          0 |        -19 |        -43 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/livetree/api-livetree.md                                  | Markdown   |         29 |          0 |          3 |         32 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/plans/connectivity-layer-fascia-audit.md                  | Markdown   |        312 |          0 |        122 |        434 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/plans/quid-scale-and-namespace-proof.md                   | Markdown   |        399 |          0 |         64 |        463 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/plans/quid-scope-and-encoding-audit.md                    | Markdown   |          5 |          0 |          1 |          6 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/plans/reflected-identity-coordination-audit.md            | Markdown   |          6 |          0 |          1 |          7 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/release-notes/v-3-3.md                                    | Markdown   |        973 |          0 |        494 |      1,467 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/docs/transform/api-transform.md                                | Markdown   |       -189 |          0 |          0 |       -189 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/package.json                                                   | JSON       |         21 |          0 |          0 |         21 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/readme.md                                                      | Markdown   |         80 |          0 |         20 |        100 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/_tests/test-exports.ts                                     | TypeScript |          0 |          1 |          0 |          1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/_tests/test-launchers.ts                                   | TypeScript |        210 |          0 |          0 |        210 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/index.ts                                      | TypeScript |          8 |          0 |          0 |          8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.authority.ts                         | TypeScript |          6 |          0 |          0 |          6 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.client.ts                            | TypeScript |          8 |          0 |          0 |          8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.core.ts                              | TypeScript |       -109 |          0 |         -3 |       -112 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.facade.ts                            | TypeScript |         -2 |          0 |          0 |         -2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.persistence.ts                       | TypeScript |          8 |          1 |          1 |         10 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.protocol.ts                          | TypeScript |         -2 |          0 |         -1 |         -3 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livehost/livehost.resume.ts                            | TypeScript |        -90 |         -1 |        -18 |       -109 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/liveinspect/liveinspect.ts                             | TypeScript |          1 |          0 |          0 |          1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/index.ts                                       | TypeScript |          0 |          0 |         -1 |         -1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.bridge-bindings.ts                     | TypeScript |          1 |          0 |          1 |          2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.core.ts                                | TypeScript |        420 |          0 |          4 |        424 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.attrs.ts                      | TypeScript |         24 |          1 |          1 |         26 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.id-discovery.ts               | TypeScript |         39 |          6 |          4 |         49 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.identity.ts                   | TypeScript |          0 |          7 |          0 |          7 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.location.ts                   | TypeScript |        378 |          2 |         27 |        407 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.logical.ts                    | TypeScript |        566 |         20 |         43 |        629 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.mutation.ts                   | TypeScript |        102 |          1 |          5 |        108 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.schema.ts                     | TypeScript |        729 |          0 |         63 |        792 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.document.ts                            | TypeScript |         59 |          4 |          0 |         63 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.facade.ts                              | TypeScript |        -10 |          0 |          0 |        -10 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.handle.ts                              | TypeScript |         12 |          1 |          1 |         14 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.index.ts                               | TypeScript |         -3 |          0 |          0 |         -3 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.internal.ts                            | TypeScript |         18 |          3 |          6 |         27 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.node.ts                                | TypeScript |       -223 |        -31 |        -41 |       -295 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.proxy.ts                               | TypeScript |         35 |          2 |          5 |         42 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.schema.ts                              | TypeScript |        703 |         -1 |         53 |        755 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livemap/livemap.watch.ts                               | TypeScript |        119 |          5 |         16 |        140 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livetree/index.ts                                      | TypeScript |         35 |          0 |          0 |         35 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livetree/livetree.ts                                   | TypeScript |          0 |          5 |          0 |          5 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livetree/managers/attr-handle.ts                       | TypeScript |         11 |          0 |         -2 |          9 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livetree/methods/livetree.bind.ts                      | TypeScript |          1 |          0 |          1 |          2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/livetree/quid/data-quid.ts                             | TypeScript |          0 |         -8 |          0 |         -8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/api/transform/index.ts                                     | TypeScript |         12 |          0 |          0 |         12 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/core/hson-node-quid.ts                                     | TypeScript |          3 |          0 |          1 |          4 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/core/ordered-projected-value.ts                            | TypeScript |          4 |          0 |          0 |          4 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/core/public-attr-transitions.ts                            | TypeScript |         75 |          9 |         11 |         95 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/hson.ts                                                    | TypeScript |         10 |          0 |          0 |         10 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/index.ts                                                   | TypeScript |         28 |          0 |          0 |         28 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/types/index.ts                                             | TypeScript |          5 |          0 |          0 |          5 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/types/livehost.types.ts                                    | TypeScript |         -9 |         -1 |         -1 |        -11 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/types/liveinspect.types.ts                                 | TypeScript |         -1 |          0 |          0 |         -1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/types/livemap.types.ts                                     | TypeScript |        693 |        -13 |         74 |        754 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/src/types/livetree-internals.types.ts                          | TypeScript |          0 |          5 |          0 |          5 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/document-same-quid-replacement-continuity.acceptance.mts | TypeScript |        433 |          1 |         32 |        466 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/entrypoints/livemap-worker.ts                            | TypeScript |         45 |         12 |          2 |         59 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/entrypoints/public-entrypoints.ts                        | TypeScript |        566 |         62 |         18 |        646 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/entrypoints/root-compatibility.ts                        | TypeScript |         13 |          0 |          0 |         13 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/entrypoints/tsconfig.public.json                         | JSON       |          1 |          0 |          0 |          1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/hson-node-quid-egress.acceptance.mts                     | TypeScript |          3 |          0 |          0 |          3 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/hson-node-quid-ingress.acceptance.mts                    | TypeScript |          9 |          0 |          0 |          9 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/hson-node-quid.acceptance.mts                            | TypeScript |          6 |          0 |          0 |          6 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livehost-authority-lifecycle.acceptance.mts              | TypeScript |         -1 |          0 |          0 |         -1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livehost-bootstrap.acceptance.mts                        | TypeScript |         -8 |          0 |          0 |         -8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livehost-document-request-compatibility.acceptance.mts   | TypeScript |          9 |          0 |          0 |          9 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livehost-document.types.ts                               | TypeScript |          7 |          1 |          0 |          8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livehost-graph-content-codec.acceptance.mts              | TypeScript |          4 |          0 |          0 |          4 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-canonical-ownership.acceptance.mts               | TypeScript |        120 |          1 |         18 |        139 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-attrs-read.acceptance.mts               | TypeScript |          1 |          0 |          0 |          1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-attrs-schema.acceptance.mts             | TypeScript |        220 |          1 |         23 |        244 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-attrs-schema.types.ts                   | TypeScript |        115 |         22 |         13 |        150 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-flags.acceptance.mts                    | TypeScript |        151 |          1 |         16 |        168 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-id-discovery.acceptance.mts             | TypeScript |        165 |          1 |         31 |        197 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-id-public.acceptance.mts                | TypeScript |        168 |          1 |         31 |        200 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-identity-compatibility.acceptance.mts   | TypeScript |          1 |          0 |          0 |          1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-install.acceptance.mts                  | TypeScript |          2 |          0 |          0 |          2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-location-attrs.acceptance.mts           | TypeScript |         53 |          1 |          4 |         58 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-location-content.acceptance.mts         | TypeScript |         41 |          1 |          4 |         46 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-location-mutation.acceptance.mts        | TypeScript |        200 |          1 |         32 |        233 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-location.acceptance.mts                 | TypeScript |        281 |          1 |         49 |        331 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-logical-traversal.acceptance.mts        | TypeScript |        527 |          3 |         69 |        599 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-mutation-inputs.types.ts                | TypeScript |         89 |         14 |         20 |        123 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-proxy-typing.types.ts                   | TypeScript |        103 |         10 |         18 |        131 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-proxy.acceptance.mts                    | TypeScript |        169 |          1 |         32 |        202 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-relative-paths.types.ts                 | TypeScript |        102 |         12 |         19 |        133 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-schema-construction.acceptance.mts      | TypeScript |        233 |          1 |         41 |        275 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-schema-enforcement.acceptance.mts       | TypeScript |        172 |          1 |          6 |        179 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-schema.types.ts                         | TypeScript |        184 |         12 |         23 |        219 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document-typed-paths.types.ts                    | TypeScript |        112 |         11 |         23 |        146 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-document.acceptance.mts                          | TypeScript |          6 |          0 |          0 |          6 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-exact-propagation.acceptance.mts                 | TypeScript |        -22 |          0 |         -1 |        -23 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-exact-route-closure.acceptance.mts               | TypeScript |        -13 |          0 |         -1 |        -14 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-linked-identity-closure.acceptance.mts           | TypeScript |          4 |          0 |          0 |          4 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-path-handle.acceptance.mts                       | TypeScript |        458 |          0 |         65 |        523 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-projected-intent-propagation.acceptance.mts      | TypeScript |          7 |          0 |          1 |          8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-reflection-publication-order.acceptance.mts      | TypeScript |        406 |          1 |         29 |        436 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-rejection-closure.acceptance.mts                 | TypeScript |         -1 |          0 |          0 |         -1 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-composition.acceptance.mts                | TypeScript |        210 |          1 |          5 |        216 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-composition.types.ts                      | TypeScript |        165 |         30 |         17 |        212 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-counted-repeat.acceptance.mts             | TypeScript |         53 |          1 |          5 |         59 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-empty.acceptance.mts                      | TypeScript |         68 |          1 |          5 |         74 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-owner-contract.acceptance.mts             | TypeScript |        186 |          1 |         27 |        214 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-value-boundary.acceptance.mts             | TypeScript |         -4 |          0 |          0 |         -4 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-schema-vocabulary.acceptance.mts                 | TypeScript |         47 |          1 |          6 |         54 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livemap-staged-authority.acceptance.mts                  | TypeScript |          2 |          0 |          0 |          2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livetree-attrs.acceptance.mts                            | TypeScript |         13 |          0 |          0 |         13 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livetree-livemap-attrs-convergence.acceptance.mts        | TypeScript |         85 |          1 |         14 |        100 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livetree-quid-runtime-closure.acceptance.mts             | TypeScript |          7 |          0 |          1 |          8 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/livetree-terminal-reuse-boundaries.acceptance.mts        | TypeScript |         82 |          0 |          7 |         89 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/public-boundaries.acceptance.mts                         | TypeScript |         -8 |          0 |         -1 |         -9 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/reflect-document-delegation.acceptance.mts               | TypeScript |         30 |          0 |          4 |         34 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/reflect-document-snapshot.acceptance.mts                 | TypeScript |          2 |          0 |          0 |          2 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/root-compatibility.acceptance.mts                        | TypeScript |         47 |          0 |          1 |         48 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-authority.acceptance.mjs         | JavaScript |         73 |          0 |          6 |         79 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-client-recovery.acceptance.mjs   | JavaScript |        146 |          0 |          5 |        151 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-document-recovery.acceptance.mjs | JavaScript |        -28 |          0 |         -2 |        -30 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-persistence.acceptance.mjs       | JavaScript |         34 |          0 |          2 |         36 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-recovery.acceptance.mjs          | JavaScript |         10 |          0 |          1 |         11 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/runtime-probes/livehost-session.acceptance.mjs           | JavaScript |         12 |          0 |          1 |         13 |
+| /Users/philliphanson/Documents/Design/web/hson/hson-live/tests/view-state-snapshot-codec.acceptance.mts                 | TypeScript |         16 |          0 |          1 |         17 |
+| Total                                                                                                                   |            |     11,983 |        229 |      1,801 |     14,013 |
++-------------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
