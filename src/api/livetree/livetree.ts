@@ -344,7 +344,12 @@ export class LiveTree implements LiveTreeApi<LiveTree> {
    * @see LiveTreeContent
    ***************************************/
 
-  /** @deprecated Specialized semantic-element removal. Use empty() or detachContents(). */
+  /**
+   * @deprecated Removes only direct semantic element children through the
+   * legacy nonterminal path: exact handles and QUID claims survive, while DOM,
+   * listener, CSS, and other runtime resources are detached. Use terminal
+   * empty() or identity-preserving detachContents() for explicit lifecycle.
+   */
   public removeChildren(): number {
     this.assertActive("remove children");
     const parent = this.nodeRef.resolveNode();

@@ -129,6 +129,8 @@
     "test:reflect-document-snapshot": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-snapshot.acceptance.mts",
     "test:reflect-document-path-authority": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-path-authority.acceptance.mts",
     "test:reflect-document-continuity": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-continuity.acceptance.mts",
+    "test:livemap-reflection-publication-order": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-reflection-publication-order.acceptance.mts",
+    "test:document-same-quid-replacement-continuity": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/document-same-quid-replacement-continuity.acceptance.mts",
     "test:reflect-document-correspondence": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-document-correspondence.acceptance.mts",
     "test:reflect-linked-no-mint-projection": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-linked-no-mint-projection.acceptance.mts",
     "test:reflect-supplied-identity-preservation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/reflect-supplied-identity-preservation.acceptance.mts",

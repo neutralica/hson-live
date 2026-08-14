@@ -27,7 +27,14 @@ export type LiveMapDocumentIdentityOverlay = Readonly<{
   quidAtPath: (path: LiveMapDocumentPath) => string | undefined;
 }>;
 
-/** Derived evidence from one canonical operation; never an independent command. */
+/**
+ * Derived structural evidence from one canonical operation; never an
+ * independent lifecycle command. In particular, `retired` means displaced
+ * from the operation's old structural edge. A same-QUID replacement may pair
+ * `retired` with `introduced` while the final overlay and owner epoch retain
+ * one continuously active subject. Terminal QUID retirement is decided from
+ * the before/final active sets by the identity-epoch ledger, not by this word.
+ */
 export type LiveMapDocumentIdentityEffect =
   | Readonly<{ kind: "preserved"; quid: string; path: LiveMapDocumentPath }>
   | Readonly<{ kind: "moved"; quid: string; from: LiveMapDocumentPath; to: LiveMapDocumentPath }>

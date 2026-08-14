@@ -293,6 +293,10 @@ function make_livemap_core_from_owned_root(
     commit: LiveMapCommit<LiveMapAnyOp>,
     publishExisting: () => void,
   ): void => {
+    // Canonical install is already complete here. Location watches publish
+    // first; ordinary observers then run in registration order. Reflection is
+    // one such observer, so callbacks before its slot can observe the new
+    // canonical revision while that downstream runtime projection is older.
     const watchFailure = initialMode === "element" || initialMode === "fragment"
       ? documentWatchHub.emitCommit(commit)
       : projectedWatchHub.emitCommit(commit);

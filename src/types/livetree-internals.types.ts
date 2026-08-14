@@ -124,7 +124,12 @@ export interface LiveTreeContent<TSelf> {
      *
      * @returns The number of direct node-children removed.
      */
-    /** @deprecated Specialized semantic-element removal; use empty or detachContents. */
+    /**
+     * @deprecated Removes only direct semantic element children through a
+     * legacy nonterminal path. Exact handles and QUID claims survive, but DOM
+     * and runtime resources are detached; use empty or detachContents for an
+     * explicit lifecycle choice.
+     */
     removeChildren(): number;
 
     /**
