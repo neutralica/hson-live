@@ -950,6 +950,23 @@ export function validate_livemap_schema_projected_root(
   return validate_schema_node(schema.root, [], value);
 }
 
+/** Validate one already-admitted endpoint, including an explicitly missing value. */
+export function validate_livemap_schema_projected_value(
+  schema: LiveMapProjectedSchema,
+  path: LivePath,
+  value: OrderedProjectedValue | undefined,
+): LiveMapSchemaValidation {
+  const node = schema_node_at_path(schema.root, path);
+  if (node === undefined) {
+    return validation_issue(
+      "UNKNOWN_PATH",
+      path,
+      `LiveMap schema has no rule for ${format_schema_path(path)}`,
+    );
+  }
+  return validate_schema_node(node, path, value === undefined ? MISSING_SCHEMA_VALUE : value);
+}
+
 function make_schema_token<TValue = unknown>(draft: LiveMapSchemaDraft): LiveMapSchemaToken<TValue> {
   const token = Object.freeze({
     kind: draft.kind,

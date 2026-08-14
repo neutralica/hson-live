@@ -185,7 +185,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
+      executableChecks: 27,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({
@@ -305,7 +305,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-issued-quid-lifecycle",
       repositoryModule: "tests/livetree-issued-quid-lifecycle.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 27,
+      executableChecks: 20,
       collections: ["quid", "runtime", "lifecycle", "identity", "externally-discoverable"],
     }),
     launcher({

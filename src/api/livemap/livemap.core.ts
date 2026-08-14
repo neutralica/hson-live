@@ -4,12 +4,24 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCapture, LiveMapCaptureInput, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
 import {
   validate_livemap_schema_projected_root,
+  validate_livemap_schema_projected_value,
   type LiveMapProjectedSchema,
   type LiveMapSchemaResolution,
   type LiveMapSchemaValidation,
   type LiveMapSchemaValue,
 } from "./livemap.schema.js";
-import { clone_live_root, overwrite_hson_node, project_live_path, resolve_value_node, snap_live_path } from "./livemap.editor.js";
+import {
+  clone_live_root,
+  delete_live_path,
+  overwrite_hson_node,
+  project_live_path,
+  replace_live_path,
+  replace_live_path_from_projected,
+  resolve_value_node,
+  set_live_path,
+  set_live_path_from_projected,
+  snap_live_path,
+} from "./livemap.editor.js";
 import { make_livemap_feed_hub } from "./livemap.feed.js";
 import { make_livemap_commit_observer_hub } from "./livemap.commit-observer.js";
 import { make_livemap_path_handle } from "./livemap.handle.js";
@@ -69,6 +81,7 @@ import {
   type PreparedLiveMapTransition,
 } from "./livemap.authority.js";
 import {
+  livemap_projected_propagation,
   register_livemap_projected_propagation,
   type LiveMapProjectedDeleteWrite,
   type LiveMapProjectedPropagation,
@@ -152,11 +165,15 @@ type BuiltLiveMapCore = Readonly<{
   currentRoot: () => HsonNode;
   currentSchema: () => LiveMapProjectedSchema | undefined;
   currentDocumentSchema: () => InternalDocumentRootSchema | undefined;
+  currentPreparedRoot: () => ReturnType<typeof prepare_livemap_root>;
   watchDocument: LiveMapDocumentWatchRegistration;
   prepareDetachedCommit: (
     commit: LiveMapCommit<LiveMapAnyOp>,
     nextRoot: HsonNode,
+    preparedNext?: ReturnType<typeof prepare_livemap_root>,
   ) => PreparedLiveMapTransition;
+  prepareProjectedWriteOps: (writeOps: readonly LiveMapCoreWriteOp[]) => PreparedLiveMapTransition;
+  prepareProjectedBatch: (fn: (tx: LiveMapBatchTx<JsonValue | undefined>) => void) => PreparedLiveMapTransition;
 }>;
 
 
@@ -226,6 +243,14 @@ function make_livemap_core_from_owned_root(
     projectedOverlay: prepared.projectedOverlay,
     revision: initial.revision ?? 0,
   };
+  let currentProjectedValue = initialMode === "element" || initialMode === "fragment"
+    ? undefined
+    : must_projected_root_value(owned.root);
+  const getProjectedValue = (): OrderedProjectedValue => {
+    if (currentProjectedValue === undefined) throw new Error("Projected value is unavailable in document mode.");
+    return currentProjectedValue;
+  };
+  const setProjectedValue = (value: OrderedProjectedValue): void => { currentProjectedValue = value; };
   const feedHub = make_livemap_feed_hub();
   const commitObserverHub = make_livemap_commit_observer_hub<LiveMapAnyOp>();
   const projectedWatchHub = make_livemap_watch_hub({
@@ -287,8 +312,10 @@ function make_livemap_core_from_owned_root(
   function prepareDetachedCommit(
     commit: LiveMapCommit<LiveMapAnyOp>,
     detachedRoot: HsonNode,
+    preparedInput?: ReturnType<typeof prepare_livemap_root>,
   ): PreparedLiveMapTransition {
-    const preparedNext = prepare_livemap_root(detachedRoot);
+    const baseRoot = clone_live_root(owned.root);
+    const preparedNext = preparedInput ?? prepare_livemap_root(detachedRoot);
     if (preparedNext.mode !== initialMode) {
       throw new Error(`Prepared LiveMap transition mode mismatch: expected ${initialMode}, observed ${preparedNext.mode}.`);
     }
@@ -304,10 +331,17 @@ function make_livemap_core_from_owned_root(
         "issue",
       );
     }
-    const baseRoot = clone_live_root(owned.root);
+    const installsProjectedDelta = initialMode !== "element"
+      && initialMode !== "fragment"
+      && require_projected_overlay(owned.projectedOverlay).size === 0
+      && require_projected_overlay(preparedNext.projectedOverlay).size === 0
+      && commit.ops.every((operation) => !("domain" in operation))
+      && !commit.ops.some((operation) => (
+        !("domain" in operation) && operation.kind === "replace" && operation.path.length === 0
+      ));
     return transitionController.prepare({
       commit,
-      baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
+      baseStillCurrent: () => owned.revision === commit.prevRev && canonical_graph_equal(owned.root, baseRoot),
       install: () => {
         if (initialMode === "element" || initialMode === "fragment") {
           const continuity = livemap_document_commit_continuity(commit);
@@ -333,6 +367,10 @@ function make_livemap_core_from_owned_root(
             projectedOverlay: undefined,
             revision: commit.rev,
           };
+        } else if (installsProjectedDelta) {
+          apply_materialized_projected_ops(owned.root, commit.ops as readonly LiveMapDataOp[]);
+          currentProjectedValue = must_projected_root_value(preparedNext.root);
+          owned = { ...owned, revision: commit.rev };
         } else {
           if (commit.ops.some((operation) => (
             !("domain" in operation)
@@ -350,6 +388,7 @@ function make_livemap_core_from_owned_root(
             ));
           }
           overwrite_hson_node(owned.root, preparedNext.root);
+          currentProjectedValue = must_projected_root_value(preparedNext.root);
           owned = { ...owned, projectedOverlay: preparedNext.projectedOverlay, revision: commit.rev };
         }
       },
@@ -395,6 +434,8 @@ function make_livemap_core_from_owned_root(
       transitionController.invalidate();
       return apply_replay_ops(
         owned.root,
+        getProjectedValue,
+        setProjectedValue,
         currentSchema,
         feedHub,
         () => owned.revision,
@@ -409,6 +450,8 @@ function make_livemap_core_from_owned_root(
     }
     const transition = prepare_projected_transition(
       owned.root,
+      getProjectedValue,
+      setProjectedValue,
       currentSchema,
       feedHub,
       () => owned.revision,
@@ -518,7 +561,6 @@ function make_livemap_core_from_owned_root(
       rev: prevRev + 1,
       ops: Object.freeze([operation]),
     });
-    const baseRoot = clone_live_root(owned.root);
     const nextLedger = stage_livemap_identity_epoch(
       documentIdentityEpoch.issued(),
       livemap_projected_identity_quids(require_projected_overlay(owned.projectedOverlay)),
@@ -526,7 +568,7 @@ function make_livemap_core_from_owned_root(
     );
     const transition = transitionController.prepare({
       commit,
-      baseStillCurrent: () => canonical_graph_equal(owned.root, baseRoot),
+      baseStillCurrent: () => owned.revision === prevRev,
       install: () => {
         documentIdentityEpoch.install(nextLedger);
         overwrite_hson_node(owned.root, nextRoot);
@@ -781,6 +823,7 @@ function make_livemap_core_from_owned_root(
         projectedOverlay: preparedCandidate.projectedOverlay,
         revision: normalized.rev,
       };
+      currentProjectedValue = planned.value;
       transitionController.invalidate();
       publishSnapshotWithWatch(normalized.rev);
     },
@@ -840,8 +883,51 @@ function make_livemap_core_from_owned_root(
       currentRoot: () => owned.root,
       currentSchema: () => currentSchema,
       currentDocumentSchema: () => currentDocumentSchema,
+      currentPreparedRoot: () => ({
+        root: owned.root,
+        mode: initialMode,
+        projectedOverlay: require_projected_overlay(owned.projectedOverlay),
+      }),
       watchDocument: documentWatchHub.add,
       prepareDetachedCommit,
+      prepareProjectedWriteOps: (writeOps) => prepare_projected_transition(
+        owned.root,
+        getProjectedValue,
+        setProjectedValue,
+        currentSchema,
+        feedHub,
+        () => owned.revision,
+        (revision) => { owned = { ...owned, revision }; },
+        writeOps,
+        commitObserverHub,
+        publishCommitWithWatch,
+        transitionController,
+        require_projected_overlay(owned.projectedOverlay),
+        (overlay) => { owned = { ...owned, projectedOverlay: overlay }; },
+        documentIdentityEpoch,
+      ),
+      prepareProjectedBatch: (fn) => {
+        const writeOps: LiveMapCoreWriteOp[] = [];
+        let open = true;
+        try { fn(make_batch_tx_from_candidate(getProjectedValue(), writeOps, () => open)); }
+        finally { open = false; }
+        return prepare_projected_transition(
+          owned.root,
+          getProjectedValue,
+          setProjectedValue,
+          currentSchema,
+          feedHub,
+          () => owned.revision,
+          (revision) => { owned = { ...owned, revision }; },
+          writeOps,
+          commitObserverHub,
+          publishCommitWithWatch,
+          transitionController,
+          require_projected_overlay(owned.projectedOverlay),
+          (overlay) => { owned = { ...owned, projectedOverlay: overlay }; },
+          documentIdentityEpoch,
+        );
+      },
     };
   }
 
@@ -1050,8 +1136,44 @@ function make_livemap_core_from_owned_root(
     currentRoot: () => owned.root,
     currentSchema: () => currentSchema,
     currentDocumentSchema: () => currentDocumentSchema,
+    currentPreparedRoot: () => ({
+      root: owned.root,
+      mode: initialMode,
+      ...(owned.documentOverlay === undefined ? {} : { documentOverlay: owned.documentOverlay }),
+      ...(owned.projectedOverlay === undefined ? {} : { projectedOverlay: owned.projectedOverlay }),
+    }),
     watchDocument: documentWatchHub.add,
     prepareDetachedCommit,
+    prepareProjectedWriteOps: (writeOps) => {
+      if (initialMode === "element" || initialMode === "fragment") {
+        throw new LiveMapTransitionError(
+          "LIVEMAP_TRANSITION_INVALID",
+          "Projected staged write operations are unavailable for document maps.",
+        );
+      }
+      return prepare_projected_transition(
+        owned.root,
+        getProjectedValue,
+        setProjectedValue,
+        currentSchema,
+        feedHub,
+        () => owned.revision,
+        (revision) => { owned = { ...owned, revision }; },
+        writeOps,
+        commitObserverHub,
+        publishCommitWithWatch,
+        transitionController,
+        require_projected_overlay(owned.projectedOverlay),
+        (overlay) => { owned = { ...owned, projectedOverlay: overlay }; },
+        documentIdentityEpoch,
+      );
+    },
+    prepareProjectedBatch: () => {
+      throw new LiveMapTransitionError(
+        "LIVEMAP_TRANSITION_INVALID",
+        "Projected staged batches are unavailable for document maps.",
+      );
+    },
   };
 }
 
@@ -1059,41 +1181,95 @@ function make_livemap_core_from_owned_root(
 function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLiveMapCore): void {
   register_livemap_staged_authority(map, Object.freeze({
     prepare(mutation): PreparedLiveMapTransition {
-      const preparedDraft = prepare_livemap_root(built.currentRoot());
-      const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
-        revision: built.core.rev,
-        ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
-        ...(built.currentDocumentSchema() !== undefined
-          ? { documentSchema: built.currentDocumentSchema() }
-          : {}),
-      });
-      const draft = facade_for_livemap_root(
-        draftBuilt.core,
-        preparedDraft,
-        draftBuilt.document,
-        draftBuilt.watchDocument,
-      );
-      register_livemap_projected_propagation(draftBuilt.core, draftBuilt.projected);
-      register_livemap_projected_propagation(draft, draftBuilt.projected);
-      const observations: Array<Readonly<{
-        commit: LiveMapCommit<LiveMapAnyOp>;
-        origin: "authoritative" | "replay";
-      }>> = [];
-      draft.commits.observe((event) => {
-        if (event.kind === "commit") observations.push({ commit: event.commit, origin: event.origin });
-        else observations.push({
-          commit: Object.freeze({ changed: false, prevRev: event.revision, rev: event.revision, ops: Object.freeze([]) }),
-          origin: "replay",
-        });
-      });
+      type DetachedFallback = Readonly<{
+        preparedDraft: ReturnType<typeof prepare_livemap_root>;
+        draftBuilt: BuiltLiveMapCore;
+        ephemeral: ReturnType<typeof make_ephemeral_staged_draft<TMap>>;
+        observations: Array<Readonly<{
+          commit: LiveMapCommit<LiveMapAnyOp>;
+          origin: "authoritative" | "replay";
+        }>>;
+      }>;
+      let fallback: DetachedFallback | undefined;
+      let fastTransition: PreparedLiveMapTransition | undefined;
+      let active = true;
 
-      const ephemeral = make_ephemeral_staged_draft(draft as TMap);
-      register_livemap_projected_propagation(ephemeral.draft, draftBuilt.projected);
+      const ensureFallback = (): DetachedFallback => {
+        if (fastTransition !== undefined) {
+          throw new LiveMapTransitionError(
+            "LIVEMAP_TRANSITION_INVALID",
+            "Staged LiveMap mutation must produce exactly one commit.",
+          );
+        }
+        if (fallback !== undefined) return fallback;
+        const preparedDraft = prepare_livemap_root(built.currentRoot());
+        const draftBuilt = make_livemap_core_from_owned_root(preparedDraft, {
+          revision: built.core.rev,
+          ...(built.currentSchema() !== undefined ? { schema: built.currentSchema() } : {}),
+          ...(built.currentDocumentSchema() !== undefined
+            ? { documentSchema: built.currentDocumentSchema() }
+            : {}),
+        });
+        const draft = facade_for_livemap_root(
+          draftBuilt.core,
+          preparedDraft,
+          draftBuilt.document,
+          draftBuilt.watchDocument,
+        );
+        register_livemap_projected_propagation(draftBuilt.core, draftBuilt.projected);
+        register_livemap_projected_propagation(draft, draftBuilt.projected);
+        const observations: DetachedFallback["observations"] = [];
+        draft.commits.observe((event) => {
+          if (event.kind === "commit") observations.push({ commit: event.commit, origin: event.origin });
+          else observations.push({
+            commit: Object.freeze({ changed: false, prevRev: event.revision, rev: event.revision, ops: Object.freeze([]) }),
+            origin: "replay",
+          });
+        });
+        const ephemeral = make_ephemeral_staged_draft(draft as TMap);
+        register_livemap_projected_propagation(ephemeral.draft, draftBuilt.projected);
+        fallback = { preparedDraft, draftBuilt, ephemeral, observations };
+        return fallback;
+      };
+
+      const stagedDraft = new Proxy(Object.create(null) as TMap, {
+        has(_target, property) {
+          return Reflect.has(ensureFallback().ephemeral.draft, property);
+        },
+        ownKeys() {
+          return Reflect.ownKeys(ensureFallback().ephemeral.draft);
+        },
+        getOwnPropertyDescriptor(_target, property) {
+          const descriptor = Reflect.getOwnPropertyDescriptor(ensureFallback().ephemeral.draft, property);
+          return descriptor === undefined ? undefined : { ...descriptor, configurable: true };
+        },
+        get(_target, property) {
+          if (!active) {
+            throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", "Staged LiveMap draft is expired.");
+          }
+          if (property === "batch" && built.core.mode !== "element" && built.core.mode !== "fragment" && fallback === undefined) {
+            return (fn: (tx: LiveMapBatchTx<JsonValue | undefined>) => void): LiveMapCommit => {
+              if (fastTransition !== undefined) {
+                throw new LiveMapTransitionError("LIVEMAP_TRANSITION_INVALID", "Staged LiveMap mutation must produce exactly one commit.");
+              }
+              fastTransition = built.prepareProjectedBatch(fn);
+              return fastTransition.commit as LiveMapCommit;
+            };
+          }
+          return Reflect.get(ensureFallback().ephemeral.draft, property);
+        },
+      });
+      register_livemap_projected_propagation(stagedDraft, Object.freeze({
+        read: (path) => livemap_projected_propagation(ensureFallback().ephemeral.draft)!.read(path),
+        feed: (path, listener) => livemap_projected_propagation(ensureFallback().ephemeral.draft)!.feed(path, listener),
+        commit: (ops) => livemap_projected_propagation(ensureFallback().ephemeral.draft)!.commit(ops),
+      }));
       let result: unknown;
       try {
-        result = mutation(ephemeral.draft);
+        result = mutation(stagedDraft);
       } finally {
-        ephemeral.expire();
+        active = false;
+        fallback?.ephemeral.expire();
       }
       if (is_promise_like(result)) {
         throw new LiveMapTransitionError(
@@ -1104,20 +1280,34 @@ function register_staged_facade<TMap extends object>(map: TMap, built: BuiltLive
       if (!is_livemap_commit(result)) {
         throw new Error("Staged LiveMap mutation must return its LiveMap commit.");
       }
+      if (fastTransition !== undefined) {
+        if (result !== fastTransition.commit) {
+          throw new Error("Staged LiveMap mutation must return its LiveMap commit.");
+        }
+        return fastTransition;
+      }
+      const detached = fallback;
+      if (detached === undefined) {
+        throw new Error("Staged LiveMap mutation did not use its draft.");
+      }
       if (result.changed) {
-        const observation = observations[0];
-        if (observations.length !== 1
+        const observation = detached.observations[0];
+        if (detached.observations.length !== 1
           || observation === undefined
           || observation.origin !== "authoritative"
           || observation.commit !== result) {
           throw new Error("Staged LiveMap mutation must produce exactly one authoritative commit.");
         }
-      } else if (observations.length !== 0
-        || !canonical_graph_equal(preparedDraft.root, draftBuilt.currentRoot())) {
+      } else if (detached.observations.length !== 0
+        || !canonical_graph_equal(detached.preparedDraft.root, detached.draftBuilt.currentRoot())) {
         throw new Error("Staged LiveMap no-op mutation changed detached authority state.");
       }
 
-      return built.prepareDetachedCommit(result, draftBuilt.currentRoot());
+      return built.prepareDetachedCommit(
+        result,
+        detached.draftBuilt.currentRoot(),
+        detached.draftBuilt.currentPreparedRoot(),
+      );
     },
     accept: built.transitionController.accept,
     discard: built.transitionController.discard,
@@ -1290,8 +1480,16 @@ function make_batch_tx(
   writeOps: LiveMapCoreWriteOp[],
   isOpen: () => boolean,
 ): LiveMapBatchTx<JsonValue | undefined> {
+  return make_batch_tx_from_candidate(must_projected_root_value(root), writeOps, isOpen);
+}
+
+function make_batch_tx_from_candidate(
+  initialCandidate: OrderedProjectedValue,
+  writeOps: LiveMapCoreWriteOp[],
+  isOpen: () => boolean,
+): LiveMapBatchTx<JsonValue | undefined> {
   /** The transaction mirrors Core mutation semantics. */
-  let candidate = must_projected_root_value(root);
+  let candidate = initialCandidate;
 
   const pushWriteOps = (ops: readonly LiveMapCoreWriteOp[]) => {
     candidate = plan_write_ops(candidate, ops).value;
@@ -1621,10 +1819,46 @@ function projected_candidate_graph(
   throw new Error("LiveMap projected constructor did not produce a value node.");
 }
 
+/** Apply accepted projected data operations without rebuilding unaffected graph branches. */
+function apply_materialized_projected_ops(
+  root: HsonNode,
+  operations: readonly LiveMapDataOp[],
+): void {
+  for (const operation of operations) {
+    if (operation.kind === "delete") {
+      delete_live_path(root, operation.path);
+    } else if (operation.kind === "set") {
+      if (operation.next === undefined) throw new Error("Projected set operation is missing its next value.");
+      set_live_path(root, operation.path, operation.next);
+    } else {
+      if (operation.next === undefined) throw new Error("Projected operation is missing its next value.");
+      replace_live_path(root, operation.path, operation.next);
+    }
+  }
+}
+
+/** Apply already-admitted transition operations to only their addressed graph branches. */
+function apply_projected_transport_ops(
+  root: HsonNode,
+  operations: readonly LiveMapProjectedDataOp[],
+): void {
+  for (const operation of operations) {
+    if (operation.kind === "delete") {
+      delete_live_path(root, operation.path);
+    } else if (operation.kind === "set") {
+      set_live_path_from_projected(root, operation.path, operation.next);
+    } else {
+      replace_live_path_from_projected(root, operation.path, operation.next);
+    }
+  }
+}
+
 
 /** Prepare one exact projected transition entirely against detached state. */
 function prepare_projected_transition(
   root: HsonNode,
+  getProjectedValue: () => OrderedProjectedValue,
+  setProjectedValue: (value: OrderedProjectedValue) => void,
   schema: LiveMapProjectedSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
   getRev: () => number,
@@ -1637,18 +1871,22 @@ function prepare_projected_transition(
   setOverlay: (overlay: LiveMapProjectedIdentityOverlay) => void,
   identityEpoch: LiveMapIdentityEpochController,
 ): PreparedLiveMapTransition {
-  const baseRoot = clone_live_root(root);
   const planned = plan_write_ops_with_identity(
-    must_projected_root_value(root),
+    getProjectedValue(),
     writeOps,
     currentOverlay,
   );
   must_core_schema_candidate(schema, planned.value, writeOps);
-  const nextRoot = projected_candidate_graph(root, planned.value, writeOps);
   const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
-  apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
   const replacesRoot = planned.changed
     && writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+  const installsProjectedDelta = currentOverlay.size === 0
+    && nextOverlay.size === 0
+    && !replacesRoot;
+  const nextRoot = installsProjectedDelta
+    ? undefined
+    : projected_candidate_graph(root, planned.value, writeOps);
+  if (nextRoot !== undefined) apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
   const nextLedger = replacesRoot
     ? undefined
     : stage_livemap_identity_epoch(
@@ -1669,9 +1907,11 @@ function prepare_projected_transition(
   });
   return transitionController.prepare({
     commit,
-    baseStillCurrent: () => canonical_graph_equal(root, baseRoot),
+    baseStillCurrent: () => getRev() === prevRev,
     install: () => {
-      overwrite_hson_node(root, nextRoot);
+      if (installsProjectedDelta) apply_projected_transport_ops(root, planned.transportOps);
+      else overwrite_hson_node(root, nextRoot!);
+      setProjectedValue(planned.value);
       setRev(rev);
       setOverlay(nextOverlay);
       if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
@@ -1689,6 +1929,8 @@ function prepare_projected_transition(
 /** Privileged historical replay retains its exact existing notification semantics. */
 function apply_replay_ops(
   root: HsonNode,
+  getProjectedValue: () => OrderedProjectedValue,
+  setProjectedValue: (value: OrderedProjectedValue) => void,
   schema: LiveMapProjectedSchema | undefined,
   feedHub: ReturnType<typeof make_livemap_feed_hub>,
   getRev: () => number,
@@ -1701,7 +1943,7 @@ function apply_replay_ops(
   identityEpoch: LiveMapIdentityEpochController,
 ): LiveMapCommit {
   const planned = plan_write_ops_with_identity(
-    must_projected_root_value(root),
+    getProjectedValue(),
     writeOps,
     currentOverlay,
   );
@@ -1709,10 +1951,15 @@ function apply_replay_ops(
   const prevRev = getRev();
   const rev = planned.changed ? prevRev + 1 : prevRev;
   if (planned.changed) {
-    const nextRoot = projected_candidate_graph(root, planned.value, writeOps);
     const nextOverlay = reconcile_livemap_projected_identity_overlay(currentOverlay, planned.transportOps);
-    apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
     const replacesRoot = writeOps.some((op) => op.kind === "replace" && op.path.length === 0);
+    const installsProjectedDelta = currentOverlay.size === 0
+      && nextOverlay.size === 0
+      && !replacesRoot;
+    const nextRoot = installsProjectedDelta
+      ? undefined
+      : projected_candidate_graph(root, planned.value, writeOps);
+    if (nextRoot !== undefined) apply_livemap_projected_identity_overlay(nextRoot, nextOverlay);
     const nextLedger = replacesRoot
       ? undefined
       : stage_livemap_identity_epoch(
@@ -1720,7 +1967,9 @@ function apply_replay_ops(
         livemap_projected_identity_quids(currentOverlay),
         livemap_projected_identity_quids(nextOverlay),
       );
-    overwrite_hson_node(root, nextRoot);
+    if (installsProjectedDelta) apply_projected_transport_ops(root, planned.transportOps);
+    else overwrite_hson_node(root, nextRoot!);
+    setProjectedValue(planned.value);
     setOverlay(nextOverlay);
     if (replacesRoot) identityEpoch.replace(livemap_projected_identity_quids(nextOverlay));
     else if (nextLedger !== undefined) identityEpoch.install(nextLedger);
@@ -2010,6 +2259,31 @@ function must_core_schema_candidate(
   writeOps: readonly LiveMapCoreWriteOp[],
 ): void {
   if (schema === undefined) return;
+  const paths = writeOps.map((operation) => operation.path);
+  const requiresRootValidation = paths.some((path) => path.length === 0)
+    || schema.rules.some((rule) => rule.kind === "constrain" && paths.some((path) => (
+      rule.path.length < path.length
+      && rule.path.every((part, index) => part === path[index] || part === "*")
+    )));
+  if (!requiresRootValidation) {
+    const validationPaths = paths.map((path) => {
+      let resolved = path;
+      while (resolved.length > 0 && !schema.has(resolved)) resolved = resolved.slice(0, -1);
+      return resolved;
+    });
+    const uniquePaths = new Map(validationPaths.map((path) => [live_path_key(path), path]));
+    const validations = [...uniquePaths.values()].map((path) => (
+      validate_livemap_schema_projected_value(schema, path, ordered_projected_value_at(candidate, path))
+    ));
+    const failed = validations.find((validation) => !validation.ok);
+    if (failed === undefined) return;
+    must_schema_validation(
+      failed,
+      write_op_path(writeOps[0]),
+      schema_headline_mode_for_write_ops(writeOps),
+    );
+    return;
+  }
   must_schema_validation(
     validate_livemap_schema_projected_root(schema, candidate),
     write_op_path(writeOps[0]),

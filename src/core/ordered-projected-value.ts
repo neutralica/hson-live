@@ -2,6 +2,7 @@ import { hsonNumber } from "./hson-number.js";
 import type { Primitive } from "./types.js";
 
 const ORDERED_PROJECTED_OBJECT: unique symbol = Symbol("hson.ordered-projected-object");
+const VALIDATED_ORDERED_PROJECTED_VALUES = new WeakSet<object>();
 
 /** One object-shaped projected value whose property order is explicit data. */
 export type OrderedProjectedObject = Readonly<{
@@ -76,6 +77,7 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
     if (typeof candidate !== "object") {
       throw new TypeError(`Unsupported ordered projected value type ${typeof candidate}.`);
     }
+    if (VALIDATED_ORDERED_PROJECTED_VALUES.has(candidate)) return;
     if (active.has(candidate)) {
       throw new TypeError("Ordered projected values must be acyclic.");
     }
@@ -92,6 +94,7 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
         visit(candidate[index]);
       }
       active.delete(candidate);
+      VALIDATED_ORDERED_PROJECTED_VALUES.add(candidate);
       return;
     }
 
@@ -118,6 +121,7 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
       visit(child);
     }
     active.delete(candidate);
+    VALIDATED_ORDERED_PROJECTED_VALUES.add(candidate);
   };
 
   visit(value);
