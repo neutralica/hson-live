@@ -4,8 +4,8 @@ import type {
   LiveHostServerCanonicalCommitMessage,
   LiveHostServerRecoveryCommitMessage,
   LiveHostServerRecoverySnapshotMessage,
-  LiveHostSnapshotEnvelope,
-} from "../../types/livehost.types.js";
+} from "../../types/livehost.protocol.types.js";
+import type { LiveHostSnapshotEnvelope } from "../../types/livehost.representation.types.js";
 import type { LiveHostCanonicalCommitCompatibility } from "./livehost.protocol.js";
 import {
   decode_view_state_snapshot,

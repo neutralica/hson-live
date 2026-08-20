@@ -126,6 +126,30 @@ function fixture(state: JsonValue = { value: 1 }, history?: Readonly<{ maxCommit
 
 const base = fixture();
 
+const established_base_bootstrap: LiveHostBootstrapPackageV1 = Object.freeze({
+  format: LIVEHOST_BOOTSTRAP_FORMAT,
+  formatVersion: 1,
+  authoritySelector: "probe:one",
+  logicalMapId: "bootstrap-map",
+  incarnationId: "bootstrap-incarnation",
+  mode: "data-object",
+  rev: 0,
+  state: Object.freeze({ format: "hson", payload: "<value 1>" }),
+  continuation: Object.freeze({
+    transport: "websocket",
+    endpoint: "/live?livehost=probe%3Aone",
+    capabilities: Object.freeze({ hsonSnapshots: true }),
+  }),
+});
+
+const established_base_encoding = '<format "hson-livehost-bootstrap" formatVersion 1 authoritySelector "probe:one" logicalMapId "bootstrap-map" incarnationId "bootstrap-incarnation" mode "data-object" rev 0 state <format "hson" payload "<value 1>"> continuation <transport "websocket" endpoint "/live?livehost=probe%3Aone" capabilities <hsonSnapshots true>>>';
+
+check("capture assembles the established authority cut and delivery contract exactly", () => {
+  assert.deepEqual(base.bootstrap, established_base_bootstrap);
+  assert.equal(encode_livehost_bootstrap(base.bootstrap), established_base_encoding);
+  assert.equal(LIVEHOST_BOOTSTRAP_MEDIA_TYPE, "application/vnd.hson-live.livehost-bootstrap+hson; version=1");
+});
+
 check("capture returns one exact canonical identity, revision, mode, and state cut", () => {
   assert.equal(base.bootstrap.logicalMapId, base.authority.stream.logicalMapId);
   assert.equal(base.bootstrap.incarnationId, base.authority.stream.incarnationId);

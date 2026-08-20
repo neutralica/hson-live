@@ -230,6 +230,57 @@ function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHos
   });
 }
 
+/**
+ * Capture the one-map authority cut required for bootstrap recovery.
+ *
+ * This deliberately knows nothing about selector routing or continuation
+ * delivery. The recovery planner remains the sole source of canonical map
+ * identity, revision, mode, and HSON state.
+ */
+function with_livehost_bootstrap_snapshot<T>(
+  authority: LiveHostBootstrapAuthority,
+  useSnapshot: (snapshot: LiveHostSnapshotEnvelope) => T,
+): T {
+  let plan;
+  try {
+    plan = authority.recovery.plan({ logicalMapId: authority.stream.logicalMapId });
+    if (plan.outcome !== "snapshot") {
+      throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
+    }
+    return useSnapshot(plan.body);
+  } finally {
+    if (plan !== undefined && plan.outcome !== "reject") plan.dispose();
+  }
+}
+
+/** Application/host-owned routing and continuation inputs for one bootstrap. */
+type LiveHostBootstrapRoutingIngredients = Readonly<{
+  authoritySelector: string;
+  websocketEndpoint: string;
+}>;
+
+/** The only construction point that combines authority state with delivery metadata. */
+function assemble_livehost_bootstrap(
+  snapshot: LiveHostSnapshotEnvelope,
+  routing: LiveHostBootstrapRoutingIngredients,
+): LiveHostBootstrapPackageV1 {
+  return Object.freeze({
+    format: LIVEHOST_BOOTSTRAP_FORMAT,
+    formatVersion: LIVEHOST_BOOTSTRAP_FORMAT_VERSION,
+    authoritySelector: routing.authoritySelector,
+    logicalMapId: snapshot.logicalMapId,
+    incarnationId: snapshot.incarnationId,
+    mode: snapshot.mode,
+    rev: snapshot.rev,
+    state: Object.freeze({ format: "hson", payload: snapshot.hson }),
+    continuation: Object.freeze({
+      transport: "websocket",
+      endpoint: routing.websocketEndpoint,
+      capabilities: Object.freeze({ hsonSnapshots: true }),
+    }),
+  });
+}
+
 function map_from_snapshot(
   snapshot: LiveHostSnapshotEnvelope,
   options: LiveHostBootstrapCodecOptions,
@@ -453,33 +504,16 @@ export function capture_livehost_bootstrap(
   websocketEndpoint: string,
   options: LiveHostBootstrapCodecOptions = {},
 ): LiveHostBootstrapPackageV1 {
-  let plan;
   try {
-    plan = authority.recovery.plan({ logicalMapId: authority.stream.logicalMapId });
-    if (plan.outcome !== "snapshot") {
-      throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
-    }
-    const snapshot = plan.body;
-    const bootstrap: LiveHostBootstrapPackageV1 = Object.freeze({
-      format: LIVEHOST_BOOTSTRAP_FORMAT,
-      formatVersion: LIVEHOST_BOOTSTRAP_FORMAT_VERSION,
-      authoritySelector,
-      logicalMapId: snapshot.logicalMapId,
-      incarnationId: snapshot.incarnationId,
-      mode: snapshot.mode,
-      rev: snapshot.rev,
-      state: Object.freeze({ format: "hson", payload: snapshot.hson }),
-      continuation: Object.freeze({
-        transport: "websocket",
-        endpoint: websocketEndpoint,
-        capabilities: Object.freeze({ hsonSnapshots: true }),
-      }),
+    return with_livehost_bootstrap_snapshot(authority, (snapshot) => {
+      const bootstrap = assemble_livehost_bootstrap(snapshot, {
+        authoritySelector,
+        websocketEndpoint,
+      });
+      validate_package(bootstrap, options);
+      return bootstrap;
     });
-    validate_package(bootstrap, options);
-    plan.dispose();
-    return bootstrap;
   } catch (cause) {
-    if (plan !== undefined && plan.outcome !== "reject") plan.dispose();
     if (cause instanceof LiveHostBootstrapError) throw cause;
     throw new LiveHostBootstrapError(
       "LIVEHOST_BOOTSTRAP_CAPTURE_FAILED",

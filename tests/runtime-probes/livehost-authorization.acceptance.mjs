@@ -133,5 +133,67 @@ await check("opaque connection attachment reaches action policy without entering
   assert.equal([...pair.clientSent, ...pair.serverSent].some((raw) => raw.includes("attachment-only")), false);
 });
 
+await check("direct dispatch intentionally bypasses session-origin application authorization", async () => {
+  let policyCalls = 0;
+  const f = fixture({ authorizeAction() { policyCalls += 1; return false; } });
+  const result = await f.host.dispatch_action({ type: "action", id: "direct-set", name: "set", payload: { value: 17 } });
+  assert.equal(result.type, "ack");
+  assert.equal(policyCalls, 0);
+  assert.deepEqual(f.host.map.snap(), { value: 17 });
+});
+
+await check("session-origin authorization observes a replacement policy after host creation", async () => {
+  const options = {
+    map: hson.liveMap.fromJson({ value: 0 }),
+    actions: {
+      async set(context, value) { await context.mutate((draft) => draft.set(["value"], value)); },
+    },
+    authorizeAction: () => false,
+  };
+  const host = hson.liveHost.create(options);
+  const client = connect(host, "replace-policy").client;
+  assert.equal((await client.action("set", 18)).error.code, "LIVEHOST_ACTION_FORBIDDEN");
+
+  options.authorizeAction = () => true;
+
+  assert.equal((await client.action("set", 18)).type, "ack");
+  assert.deepEqual(host.map.snap(), { value: 18 });
+});
+
+await check("custom application handlers can use external state and emit non-canonical connection events", async () => {
+  const applicationState = { deliveries: [] };
+  const host = hson.liveHost.create({
+    state: { value: 0 },
+    logicalMapId: "application-boundary",
+    actions: {
+      notify(context, payload, message) {
+        applicationState.deliveries.push({ origin: context.origin.kind, payload, action: message.name });
+        return { delivered: context.emit_event("application.notice", payload) };
+      },
+    },
+  });
+  const { client } = connect(host, "application");
+  const events = [];
+  client.on_event((event) => events.push(event));
+  const beforeMap = host.map.capture();
+  const beforeRev = host.map.rev;
+  const beforeHistory = host.stream.history.debug().retainedCommitCount;
+
+  const result = await client.action("notify", { source: "application" });
+
+  assert.equal(result.type, "ack");
+  assert.deepEqual(result.result, { delivered: true });
+  assert.deepEqual(applicationState.deliveries, [{
+    origin: "session",
+    payload: { source: "application" },
+    action: "notify",
+  }]);
+  assert.deepEqual(events, [{ type: "event", event: "application.notice", payload: { source: "application" } }]);
+  assert.equal(host.map.rev, beforeRev);
+  assert.equal(host.stream.headRev, beforeRev);
+  assert.equal(host.stream.history.debug().retainedCommitCount, beforeHistory);
+  assert.deepEqual(host.map.capture(), beforeMap);
+});
+
 process.stdout.write(`# ${checks} LiveHost authorization checks passed\n`);
 emit_hson_live_test_completion("livehost.authorization", checks, checks, 0);

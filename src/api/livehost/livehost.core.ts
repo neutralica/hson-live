@@ -98,6 +98,19 @@ type LiveHostConnectionRecoveryState =
   }>
   | Readonly<{ phase: "failed" }>;
 
+/**
+ * Private application boundary for the semantic callbacks supplied to one-map
+ * LiveHost. The authority runtime owns admission, ordering, delivery, and
+ * canonical mutation; these callbacks retain application-defined meaning.
+ */
+type LiveHostApplicationCallbacks<
+  TMap extends LiveMapAuthority,
+  TActions extends LiveHostActionPayloads,
+> = Readonly<{
+  actions: Partial<LiveHostActionsForMap<TActions, TMap>>;
+  authorizeAction: ExistingMapLiveHostOptions<TMap, TActions>["authorizeAction"];
+}>;
+
 class LiveHostConnectionRecoveryError extends Error {
   public constructor(
     public readonly code: string,
@@ -304,7 +317,12 @@ function create_livehost_for_map<
       retainedSessionReleases.delete(event.session.sessionId);
     }
   });
-  const actions = (options.actions ?? {}) as Partial<LiveHostActionsForMap<TActions, TMap>>;
+  // Keep application semantics separate from the one-map runtime mechanics below.
+  // Reserved document actions deliberately do not enter this callback boundary.
+  const application: LiveHostApplicationCallbacks<TMap, TActions> = Object.freeze({
+    actions: (options.actions ?? {}) as Partial<LiveHostActionsForMap<TActions, TMap>>,
+    get authorizeAction() { return options.authorizeAction; },
+  });
   let seq = 0;
   const actionRequests = make_livehost_action_dedupe_store(
     () => stream.headRev,
@@ -532,7 +550,7 @@ function create_livehost_for_map<
       lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_ACTION_UNAVAILABLE" }));
       return { ok: false, code: "LIVEHOST_ACTION_UNAVAILABLE", message: documentAction.message };
     }
-    const configuredHandler = actions[message.name];
+    const configuredHandler = application.actions[message.name];
     if (documentAction.kind === "not-document-action" && !configuredHandler) {
       lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_UNKNOWN_ACTION" }));
       return { ok: false, code: "LIVEHOST_ACTION_UNKNOWN", message: `Unknown LiveHost action: ${message.name}` };
@@ -605,7 +623,7 @@ function create_livehost_for_map<
     parentSpanId?: string,
     connectionContext?: LiveHostConnectionContext,
   ): AuthorizationResult | Promise<AuthorizationResult> {
-    const authorizer = options.authorizeAction;
+    const authorizer = application.authorizeAction;
     if (authorizer === undefined) {
       trace?.emit({
         subsystem: "livehost",
