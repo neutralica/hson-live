@@ -35,13 +35,13 @@ export type {
 export {
   create_livehost_store,
   create_livehost_store as create_livehost_registry,
-} from "./livehost.store.js";
-export { create_livehost_authority_registry } from "./livehost.authority-registry.js";
+} from "./services/livehost.store.js";
+export { create_livehost_authority_registry } from "./services/livehost.authority-registry.js";
 export {
-  create_livehost_persistent_store,
   create_persistent_livehost,
   LiveHostPersistenceError,
 } from "./livehost.persistence.js";
+export { create_livehost_persistent_store } from "./services/livehost.persistent-store.js";
 export {
   make_livehost_sync_manager,
   type LiveHostSyncManager,

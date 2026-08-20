@@ -131,12 +131,12 @@ export {
     stop_all,
     subscribe_paths,
 } from "./api/livemap/livemap-helpers.js";
-export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/livehost.store.js";
+export { create_livehost_store, create_livehost_store as create_livehost_registry } from "./api/livehost/services/livehost.store.js";
 export {
   create_persistent_livehost,
-  create_livehost_persistent_store,
   LiveHostPersistenceError,
 } from "./api/livehost/livehost.persistence.js";
+export { create_livehost_persistent_store } from "./api/livehost/services/livehost.persistent-store.js";
 export type { LiveHostPersistenceErrorCode } from "./api/livehost/livehost.persistence.error.js";
 export { create_livehost_client } from "./api/livehost/livehost.client.js";
 export {

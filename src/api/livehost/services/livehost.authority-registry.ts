@@ -1,16 +1,16 @@
 import type {
   LiveHostActivitySnapshot,
+} from "../../../types/livehost.core.types.js";
+import type {
   LiveHostAuthorityAcquisition,
   LiveHostAuthorityEvictionResult,
   LiveHostAuthorityRegistry,
   LiveHostAuthorityRegistryBlocker,
   LiveHostAuthorityRegistryEvent,
   LiveHostAuthorityRegistryOptions,
-  LiveHostDisposer,
   LiveHostLifecycleAuthority,
-  LiveHostResult,
-  LiveHostStoreId,
-} from "../../types/livehost.types.js";
+} from "../../../types/livehost.services.types.js";
+import type { LiveHostDisposer, LiveHostResult, LiveHostStoreId } from "../../../types/livehost.shared.types.js";
 
 // Application-owned coalescing, residency, release, and eviction key.
 type AcquisitionResidencyKey = LiveHostStoreId;
