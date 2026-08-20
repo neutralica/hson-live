@@ -12,6 +12,9 @@ import type {
   LiveHostStoreId,
 } from "../../types/livehost.types.js";
 
+// Application-owned coalescing, residency, release, and eviction key.
+type AcquisitionResidencyKey = LiveHostStoreId;
+
 type PendingEntry<TAuthority extends LiveHostLifecycleAuthority> = {
   readonly state: "loading";
   readonly promise: Promise<TAuthority>;
@@ -83,7 +86,7 @@ export function create_livehost_authority_registry<
       // Lifecycle policy cannot be changed by an operational observer.
     }
   };
-  const entries = new Map<LiveHostStoreId, Entry<TAuthority>>();
+  const entries = new Map<AcquisitionResidencyKey, Entry<TAuthority>>();
   let state: "accepting" | "disposing" | "disposed" = "accepting";
   let stopSweep: LiveHostDisposer | undefined;
   let sweepRunning: Promise<number> | undefined;
@@ -113,7 +116,7 @@ export function create_livehost_authority_registry<
   }
 
   function update_idle(
-    key: LiveHostStoreId,
+    key: AcquisitionResidencyKey,
     entry: ReadyEntry<TAuthority>,
     snapshot = entry_snapshot(entry),
   ): void {
@@ -134,7 +137,7 @@ export function create_livehost_authority_registry<
     }
   }
 
-  function install_ready(key: LiveHostStoreId, authority: TAuthority): ReadyEntry<TAuthority> {
+  function install_ready(key: AcquisitionResidencyKey, authority: TAuthority): ReadyEntry<TAuthority> {
     const entry: ReadyEntry<TAuthority> = {
       state: "ready",
       authority,
@@ -149,7 +152,7 @@ export function create_livehost_authority_registry<
   }
 
   function acquire_ready(
-    key: LiveHostStoreId,
+    key: AcquisitionResidencyKey,
     entry: ReadyEntry<TAuthority>,
   ): LiveHostResult<LiveHostAuthorityAcquisition<TAuthority>> {
     if (state !== "accepting" || entry.state !== "ready") {
@@ -173,9 +176,9 @@ export function create_livehost_authority_registry<
     }));
   }
 
-  function idle_candidates(ignoreIdleDuration: boolean): readonly [LiveHostStoreId, ReadyEntry<TAuthority>][] {
+  function idle_candidates(ignoreIdleDuration: boolean): readonly [AcquisitionResidencyKey, ReadyEntry<TAuthority>][] {
     return [...entries.entries()]
-      .filter((item): item is [LiveHostStoreId, ReadyEntry<TAuthority>] => {
+      .filter((item): item is [AcquisitionResidencyKey, ReadyEntry<TAuthority>] => {
         const entry = item[1];
         return entry.state === "ready"
           && blockers(entry).length === 0
@@ -189,7 +192,7 @@ export function create_livehost_authority_registry<
   }
 
   async function evict_entry(
-    key: LiveHostStoreId,
+    key: AcquisitionResidencyKey,
     expectedGeneration?: number,
   ): Promise<LiveHostAuthorityEvictionResult> {
     event({ type: "eviction-requested", key });
@@ -253,7 +256,7 @@ export function create_livehost_authority_registry<
   }
 
   async function acquire(
-    key: LiveHostStoreId,
+    key: AcquisitionResidencyKey,
   ): Promise<LiveHostResult<LiveHostAuthorityAcquisition<TAuthority>>> {
     if (state !== "accepting") {
       return fail("LIVEHOST_AUTHORITY_REGISTRY_DISPOSED", "LiveHost authority registry is disposed.");
@@ -391,7 +394,7 @@ export function create_livehost_authority_registry<
     acquire,
     evict: evict_entry,
     sweep,
-    has: (key: LiveHostStoreId) => entries.has(key),
+    has: (key: AcquisitionResidencyKey) => entries.has(key),
     diagnostics() {
       const values = [...entries.values()];
       const ready = values.filter((entry): entry is ReadyEntry<TAuthority> => entry.state !== "loading");

@@ -51,33 +51,6 @@ import type {
   LiveHostValidator,
 } from "./livehost.shared.types.js";
 import type { LiveTraceSink } from "./livehost.trace.types.js";
-import type {
-  LiveHostPersistenceAdapter,
-  LiveHostPersistedCheckpoint,
-  LiveHostPersistedCommit,
-  LiveHostPersistedDocumentCheckpoint,
-  LiveHostPersistedMapKind,
-  LiveHostPersistedMapState,
-  LiveHostPersistedViewState,
-  PersistentDocumentLiveHostOptions,
-  PersistentLiveHostForMap,
-} from "./livehost.persistence.types.js";
-import type {
-  LiveHostAuthorityAcquisition,
-  LiveHostAuthorityEvictionResult,
-  LiveHostAuthorityRegistry,
-  LiveHostAuthorityRegistryBlocker,
-  LiveHostAuthorityRegistryDiagnostics,
-  LiveHostAuthorityRegistryEvent,
-  LiveHostAuthorityRegistryOptions,
-  LiveHostAuthorityRegistrySchedule,
-  LiveHostLifecycleAuthority,
-  LiveHostPersistentStore,
-  LiveHostPersistentStoreEntry,
-  LiveHostStore,
-  LiveHostStoreCreateOptions,
-  LiveHostStoreEntry,
-} from "./livehost.services.types.js";
 
 
 /** Wire-safe representation of a projected value that may be absent. */
@@ -255,4 +228,3 @@ export type LiveHostSnapshotCapabilities = Readonly<{
 export type LiveHostSnapshotEncodingSelection =
   | Readonly<{ format: "hson" }>
   | Readonly<{ format: "view-state"; formatVersion: number }>;
-

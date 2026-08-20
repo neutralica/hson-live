@@ -33,6 +33,16 @@ function element_root(source = `<main @000000001/>`) {
   return map.capture().root;
 }
 
+check("hello hostId remains accepted compatibility input without altering client identity", () => {
+  const withoutHostId = decode_livehost_message(JSON.stringify({ type: "hello", clientId: "client-a" }));
+  const withHostId = decode_livehost_message(JSON.stringify({ type: "hello", clientId: "client-a", hostId: "ignored-route" }));
+  assert.equal(withoutHostId.ok, true);
+  assert.equal(withHostId.ok, true);
+  assert.equal(withoutHostId.ok && withoutHostId.value.clientId, "client-a");
+  assert.equal(withHostId.ok && withHostId.value.clientId, "client-a");
+  assert.equal(withHostId.ok && withHostId.value.hostId, "ignored-route");
+});
+
 check("projected commits retain their exact data operation domain", () => {
   const valid = decode(commit("data-object", [{
     kind: "set",

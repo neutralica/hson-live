@@ -4,6 +4,8 @@ import { JsonValue } from "../../core/types.js";
 import { LiveHostResult, LiveHostStore, LiveHostStoreId, LiveHost, LiveHostActionPayloads, LiveHostStoreCreateOptions, LiveHostStoreEntry, LiveHostSocketLike, LiveHostDisposer, LiveHostConnectionContext } from "../../types/livehost.types.js";
 import { create_livehost } from "./livehost.core.js";
 
+// Application-owned lookup key; it is intentionally independent of logicalMapId.
+type RuntimeStoreLookupKey = LiveHostStoreId;
 
 function ok<T>(value: T): LiveHostResult<T> {
   return { ok: true, value };
@@ -14,57 +16,57 @@ function fail(message: string, code: string): LiveHostResult<never> {
 }
 
 export function create_livehost_store(): LiveHostStore {
-  const hosts = new Map<LiveHostStoreId, LiveHost>();
+  const hosts = new Map<RuntimeStoreLookupKey, LiveHost>();
 
-  function has(id: LiveHostStoreId): boolean {
-    return hosts.has(id);
+  function has(storeKey: RuntimeStoreLookupKey): boolean {
+    return hosts.has(storeKey);
   }
 
-  function get(id: LiveHostStoreId): LiveHost | undefined {
-    return hosts.get(id);
+  function get(storeKey: RuntimeStoreLookupKey): LiveHost | undefined {
+    return hosts.get(storeKey);
   }
 
   function create<
     TState extends JsonValue | undefined = JsonValue | undefined,
     TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
-  >(id: LiveHostStoreId, options: LiveHostStoreCreateOptions<TState, TActions> = {}): LiveHostResult<LiveHost<TState, TActions>> {
-    if (hosts.has(id)) {
-      return fail(`LiveHost store entry already exists: ${id}`, "LIVEHOST_STORE_DUPLICATE_ID");
+  >(storeKey: RuntimeStoreLookupKey, options: LiveHostStoreCreateOptions<TState, TActions> = {}): LiveHostResult<LiveHost<TState, TActions>> {
+    if (hosts.has(storeKey)) {
+      return fail(`LiveHost store entry already exists: ${storeKey}`, "LIVEHOST_STORE_DUPLICATE_ID");
     }
 
     const host = create_livehost<TState, TActions>(options);
-    hosts.set(id, host as unknown as LiveHost);
+    hosts.set(storeKey, host as unknown as LiveHost);
     return ok(host);
   }
 
   function set<
     TState extends JsonValue | undefined = JsonValue | undefined,
     TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
-  >(id: LiveHostStoreId, host: LiveHost<TState, TActions>): LiveHostResult<LiveHost<TState, TActions>> {
-    if (hosts.has(id)) {
-      return fail(`LiveHost store entry already exists: ${id}`, "LIVEHOST_STORE_DUPLICATE_ID");
+  >(storeKey: RuntimeStoreLookupKey, host: LiveHost<TState, TActions>): LiveHostResult<LiveHost<TState, TActions>> {
+    if (hosts.has(storeKey)) {
+      return fail(`LiveHost store entry already exists: ${storeKey}`, "LIVEHOST_STORE_DUPLICATE_ID");
     }
 
-    hosts.set(id, host as unknown as LiveHost);
+    hosts.set(storeKey, host as unknown as LiveHost);
     return ok(host);
   }
 
-  function delete_host(id: LiveHostStoreId): boolean {
-    return hosts.delete(id);
+  function delete_host(storeKey: RuntimeStoreLookupKey): boolean {
+    return hosts.delete(storeKey);
   }
 
   function list(): readonly LiveHostStoreEntry[] {
-    return Array.from(hosts.entries(), ([id, host]) => Object.freeze({ id, host }));
+    return Array.from(hosts.entries(), ([storeKey, host]) => Object.freeze({ id: storeKey, host }));
   }
 
   function connect(
-    id: LiveHostStoreId,
+    storeKey: RuntimeStoreLookupKey,
     socket: LiveHostSocketLike,
     context?: LiveHostConnectionContext,
   ): LiveHostResult<LiveHostDisposer> {
-    const host = hosts.get(id);
+    const host = hosts.get(storeKey);
     if (!host) {
-      return fail(`Unknown LiveHost store entry: ${id}`, "LIVEHOST_STORE_UNKNOWN_ID");
+      return fail(`Unknown LiveHost store entry: ${storeKey}`, "LIVEHOST_STORE_UNKNOWN_ID");
     }
 
     return ok(host.connect(socket, context));

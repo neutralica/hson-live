@@ -7,7 +7,7 @@ import {
   type LiveHostBootstrapCodecOptions,
   type LiveHostBootstrapAuthority,
 } from "../livehost.bootstrap.js";
-import type { LiveHostDisposer } from "../../../types/livehost.types.js";
+import type { LiveHostDisposer, LiveHostRoutingSelector } from "../../../types/livehost.types.js";
 
 export type NodeLiveHostBootstrapResolution =
   | Readonly<{
@@ -40,7 +40,7 @@ export type NodeLiveHostBootstrapOperationalEvent = Readonly<{
 export type NodeLiveHostBootstrapHandlerOptions = LiveHostBootstrapCodecOptions & Readonly<{
   selectorParameter?: string;
   resolve(
-    authoritySelector: string,
+    authoritySelector: LiveHostRoutingSelector,
     request: IncomingMessage,
   ): NodeLiveHostBootstrapResolution | Promise<NodeLiveHostBootstrapResolution>;
   log?(event: NodeLiveHostBootstrapOperationalEvent): void;

@@ -7,6 +7,7 @@ import {
 import {
   create_livehost,
   create_livehost_authority_registry,
+  create_livehost_store,
   create_persistent_livehost,
   type LiveHost,
   type LiveHostSocketLike,
@@ -99,6 +100,19 @@ check("new authorities expose a non-sensitive idle activity snapshot", () => {
   assert.equal(host.activity.snapshot().state, "idle");
   host.dispose();
   assert.equal(host.activity.snapshot().state, "disposed");
+});
+
+check("basic store lookup key remains independent from a hosted logical map ID", () => {
+  const store = create_livehost_store();
+  const stored = store.create("runtime-lookup", {
+    state: { value: 1 },
+    logicalMapId: "canonical-map",
+  });
+  assert.equal(stored.ok, true);
+  assert.equal(store.has("runtime-lookup"), true);
+  assert.equal(store.get("runtime-lookup")?.stream.logicalMapId, "canonical-map");
+  assert.equal(store.get("canonical-map"), undefined);
+  if (stored.ok) stored.value.dispose();
 });
 
 check("transport attachment and exact listener disposal drive connection activity", () => {
@@ -282,6 +296,26 @@ check("two application-owned registries isolate equal keys and disposal", async 
   await first.value.dispose();
   assert.equal(second.value.has("equal"), true);
   await second.value.dispose();
+});
+
+check("registry acquisition key remains independent from hosted logical map identity", async () => {
+  const fixture = registry({
+    create(acquisitionKey) {
+      return create_livehost<TestState>({
+        state: { acquisitionKey },
+        logicalMapId: "canonical-map",
+      });
+    },
+  });
+  const acquired = await fixture.value.acquire("resident-entry");
+  assert.equal(acquired.ok, true);
+  if (acquired.ok) {
+    assert.equal(acquired.value.authority.stream.logicalMapId, "canonical-map");
+    assert.equal(fixture.value.has("resident-entry"), true);
+    assert.equal(fixture.value.has("canonical-map"), false);
+    acquired.value.release();
+  }
+  await fixture.value.dispose();
 });
 
 check("registry disposal invalidates acquisition and disposes each authority once", async () => {

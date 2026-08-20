@@ -1,16 +1,8 @@
 // Multi-authority store, persistence residency, and lifecycle registry contracts.
 
-import type { DocumentLiveMap, LiveMapAuthority } from "./livemap.types.js";
-import type {
-  LiveHost,
-  LiveHostActionPayloads,
-  LiveHostActivity,
-  LiveHostActivityKind,
-  LiveHostConnectionContext,
-  LiveHostForMap,
-  LiveHostOptions,
-  LiveHostSocketLike,
-} from "./livehost.types.js";
+import type { DocumentLiveMap } from "./livemap.types.js";
+import type { LiveHost, LiveHostActivity, LiveHostActivityKind, LiveHostForMap, LiveHostOptions } from "./livehost.core.types.js";
+import type { LiveHostActionPayloads, LiveHostConnectionContext, LiveHostSocketLike } from "./livehost.protocol.types.js";
 import type {
   LiveHostDisposer,
   LiveHostResult,

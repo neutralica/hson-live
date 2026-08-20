@@ -80,34 +80,6 @@ export type LiveHostRecoveryRejectCode =
   | "LIVEHOST_RECOVERY_INVALID_TARGET"
   | "LIVEHOST_RECOVERY_INVALID_REQUEST"
   | "REVISION_AHEAD_OF_AUTHORITY";
-import type { LiveTraceSink } from "./livehost.trace.types.js";
-import type {
-  LiveHostPersistenceAdapter,
-  LiveHostPersistedCheckpoint,
-  LiveHostPersistedCommit,
-  LiveHostPersistedDocumentCheckpoint,
-  LiveHostPersistedMapKind,
-  LiveHostPersistedMapState,
-  LiveHostPersistedViewState,
-  PersistentDocumentLiveHostOptions,
-  PersistentLiveHostForMap,
-} from "./livehost.persistence.types.js";
-import type {
-  LiveHostAuthorityAcquisition,
-  LiveHostAuthorityEvictionResult,
-  LiveHostAuthorityRegistry,
-  LiveHostAuthorityRegistryBlocker,
-  LiveHostAuthorityRegistryDiagnostics,
-  LiveHostAuthorityRegistryEvent,
-  LiveHostAuthorityRegistryOptions,
-  LiveHostAuthorityRegistrySchedule,
-  LiveHostLifecycleAuthority,
-  LiveHostPersistentStore,
-  LiveHostPersistentStoreEntry,
-  LiveHostStore,
-  LiveHostStoreCreateOptions,
-  LiveHostStoreEntry,
-} from "./livehost.services.types.js";
 
 
 /** Wire-safe representation of a projected value that may be absent. */

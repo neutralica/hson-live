@@ -12,6 +12,7 @@ import {
   type NodeRequestContext,
   type NodeTrustedProxyPolicy,
 } from "./livehost.node-policy.js";
+import type { LiveHostRoutingSelector } from "../../../types/livehost.types.js";
 
 export type NodeAuthorityNamespace =
   | Readonly<{ kind: "exact"; value: string }>
@@ -195,10 +196,10 @@ function resolve_limits(deployment: NodeHostDeployment): NodeHostTransportLimits
   return Object.freeze(values);
 }
 
-function namespace_matches(namespace: NodeAuthorityNamespace, authorityId: string): boolean {
-  if (namespace.kind === "exact") return authorityId === namespace.value;
-  if (!authorityId.startsWith(namespace.value)) return false;
-  const suffix = authorityId.slice(namespace.value.length);
+function namespace_matches(namespace: NodeAuthorityNamespace, routingSelector: LiveHostRoutingSelector): boolean {
+  if (namespace.kind === "exact") return routingSelector === namespace.value;
+  if (!routingSelector.startsWith(namespace.value)) return false;
+  const suffix = routingSelector.slice(namespace.value.length);
   if (suffix.length === 0) return false;
   const constraint = namespace.suffix;
   return constraint === undefined
@@ -394,11 +395,11 @@ export async function start_node_application_host(
   const security_for = (application: NodeHostedApplication): NodeApplicationSecurity =>
     application.security ?? developmentSecurity;
 
-  const select_authority = (authorityId: string): NodeHostedApplication | undefined => {
+  const select_authority = (routingSelector: LiveHostRoutingSelector): NodeHostedApplication | undefined => {
     let selected: NodeHostedApplication | undefined;
     for (const application of applications) {
-      if (!application.authorities.some((namespace) => namespace_matches(namespace, authorityId))) continue;
-      if (selected !== undefined) throw new Error(`Ambiguous WebSocket authority dispatch for "${authorityId}".`);
+      if (!application.authorities.some((namespace) => namespace_matches(namespace, routingSelector))) continue;
+      if (selected !== undefined) throw new Error(`Ambiguous WebSocket authority dispatch for "${routingSelector}".`);
       selected = application;
     }
     return selected;
@@ -534,7 +535,8 @@ export async function start_node_application_host(
         reject_upgrade(socket, 400, "A non-empty livehost authority ID is required.");
         return;
       }
-      const application = select_authority(authorityId);
+      const routingSelector: LiveHostRoutingSelector = authorityId;
+      const application = select_authority(routingSelector);
       if (application === undefined) {
         reject_upgrade(socket, 404, "No application owns this livehost authority.");
         return;
@@ -544,7 +546,7 @@ export async function start_node_application_host(
         const normalized = normalize_node_request(request, {
           transport: "websocket",
           application: application.name,
-          authorityId,
+          authorityId: routingSelector,
         }, {
           ...(deployment.mode === "production" && deployment.proxy !== undefined
             ? { proxy: deployment.proxy }
@@ -596,7 +598,7 @@ export async function start_node_application_host(
         websocketServer.handleUpgrade(request, socket, head, (websocket) => {
           const state: ActiveConnection = {
             application: application.name,
-            authorityId,
+            authorityId: routingSelector,
             clientAddress: normalized.value.effectiveClientAddress,
             correlationId: normalized.value.correlationId,
             alive: true,
@@ -639,7 +641,7 @@ export async function start_node_application_host(
           });
           log({ type: "websocket-dispatch", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "accepted" });
           try {
-            const accepted = application.acceptWebSocket(authorityId, websocket, Object.freeze({
+            const accepted = application.acceptWebSocket(routingSelector, websocket, Object.freeze({
               request: normalized.value,
               principal: authenticated.value,
               transportPolicy: Object.freeze({

@@ -306,6 +306,8 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   const created = await store.create("persistent-reload", { map });
   assert.equal(created.ok, true);
   const host = created.value;
+  assert.equal(host.stream.logicalMapId, "persistent-reload");
+  assert.equal(adapter.state("persistent-reload").checkpoint.logicalMapId, host.stream.logicalMapId);
   await host.mutate((draft) => draft.document.attrs.setMany(root, {
     count: 0,
     enabled: false,
@@ -329,6 +331,8 @@ await check("persistent store unload and checkpoint-plus-tail reload preserve ex
   const loaded = await store.load("persistent-reload");
   assert.equal(loaded.ok, true);
   const restored = loaded.value;
+  assert.equal(restored.stream.logicalMapId, "persistent-reload");
+  assert.equal(adapter.loadCalls.at(-1), restored.stream.logicalMapId);
   assert.equal(restored.stream.incarnationId, incarnation);
   assert.equal(restored.map.rev, expected.rev);
   assert.equal(canonical_hson_graph_equal(restored.map.capture().root, expected.root), true);

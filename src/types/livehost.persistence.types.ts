@@ -1,12 +1,9 @@
 // One-map persistence contracts.
 
 import type { DocumentLiveMap } from "./livemap.types.js";
-import type {
-  ExistingMapLiveHostOptions,
-  LiveHostActionPayloads,
-  LiveHostCanonicalCommit,
-  LiveHostForMap,
-} from "./livehost.types.js";
+import type { ExistingMapLiveHostOptions, LiveHostForMap } from "./livehost.core.types.js";
+import type { LiveHostActionPayloads } from "./livehost.protocol.types.js";
+import type { LiveHostCanonicalCommit } from "./livehost.representation.types.js";
 import type { LiveHostIncarnationId, LiveHostLogicalMapId } from "./livehost.shared.types.js";
 
 /** Stable persisted map-kind discriminant. Projected data is reserved for a later codec. */

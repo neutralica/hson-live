@@ -11,6 +11,9 @@ import type {
   LiveHostId,
 } from "../../types/livehost.types.js";
 
+// `LiveHostId` is the retry-safe client identity, never an authority or map ID.
+type ClientIdentity = LiveHostId;
+
 const DEFAULT_MAX_TERMINAL_RECORDS = 1_024;
 const DEFAULT_MAX_TERMINAL_BYTES = 4 * 1_024 * 1_024;
 const DEFAULT_TERMINAL_RETENTION_MS = 5 * 60_000;
@@ -41,7 +44,7 @@ type TerminalRecord = {
 type ActionRecord = PendingRecord | TerminalRecord;
 
 export type LiveHostActionExecuteRequest = Readonly<{
-  clientId: LiveHostId;
+  clientId: ClientIdentity;
   requestId: LiveHostActionRequestId;
   actionName: string;
   payload: JsonValue | undefined;
@@ -70,7 +73,7 @@ export type LiveHostActionStatusResult = Readonly<{
 
 export type LiveHostActionDedupeStore = Readonly<{
   execute: (request: LiveHostActionExecuteRequest) => Promise<LiveHostActionExecuteResult>;
-  status: (clientId: LiveHostId, requestId: LiveHostActionRequestId) => LiveHostActionStatusResult;
+  status: (clientId: ClientIdentity, requestId: LiveHostActionRequestId) => LiveHostActionStatusResult;
   debug: () => LiveHostActionDedupeDiagnostics;
   dispose: LiveHostDisposer;
 }>;
@@ -135,7 +138,7 @@ function fingerprint(namespace: string, actionName: string, payload: JsonValue |
   return `${canonical(namespace)}|${canonical(actionName)}|${payload === undefined ? "absent" : `present:${canonical(payload)}`}`;
 }
 
-function request_key(clientId: LiveHostId, requestId: LiveHostActionRequestId): string {
+function client_request_key(clientId: ClientIdentity, requestId: LiveHostActionRequestId): string {
   return `${clientId.length}:${clientId}${requestId}`;
 }
 
@@ -260,7 +263,7 @@ export function make_livehost_action_dedupe_store(
     if (!valid_identity(request.clientId) || !valid_identity(request.requestId)) {
       return { ok: false, code: "LIVEHOST_ACTION_REQUEST_ID_MALFORMED", message: "LiveHost action request identity is malformed." };
     }
-    const key = request_key(request.clientId, request.requestId);
+    const key = client_request_key(request.clientId, request.requestId);
     const requestFingerprint = fingerprint(namespace, request.actionName, request.payload);
     const existing = records.get(key);
     if (existing) {
@@ -325,9 +328,9 @@ export function make_livehost_action_dedupe_store(
     };
   }
 
-  function status(clientId: LiveHostId, requestId: LiveHostActionRequestId): LiveHostActionStatusResult {
+  function status(clientId: ClientIdentity, requestId: LiveHostActionRequestId): LiveHostActionStatusResult {
     if (!valid_identity(clientId) || !valid_identity(requestId)) return Object.freeze({ state: "unknown" });
-    const key = request_key(clientId, requestId);
+    const key = client_request_key(clientId, requestId);
     const record = records.get(key);
     if (record?.state === "pending") return Object.freeze({ state: "pending" });
     if (record) return Object.freeze({ state: record.state, outcome: record.outcome });
