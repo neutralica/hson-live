@@ -17,9 +17,6 @@ export type LiveHostConnectionEpoch = number;
 export type LiveHostLogicalMapId = string;
 export type LiveHostIncarnationId = string;
 
-/** @internal Application-defined route selector; public fields retain their current spellings. */
-export type LiveHostRoutingSelector = string;
-
 export type LiveHostDisposer = () => void;
 export type LiveHostSchemaIssue = string;
 

@@ -7,7 +7,8 @@ import {
   type LiveHostBootstrapCodecOptions,
   type LiveHostBootstrapAuthority,
 } from "../livehost.bootstrap.js";
-import type { LiveHostDisposer, LiveHostRoutingSelector } from "../../../types/livehost.types.js";
+import type { LiveHostDisposer } from "../../../types/livehost.types.js";
+import type { LiveHostRoutingSelector } from "../../../types/internal/livehost.routing.types.js";
 
 export type NodeLiveHostBootstrapResolution =
   | Readonly<{
@@ -40,7 +41,7 @@ export type NodeLiveHostBootstrapOperationalEvent = Readonly<{
 export type NodeLiveHostBootstrapHandlerOptions = LiveHostBootstrapCodecOptions & Readonly<{
   selectorParameter?: string;
   resolve(
-    authoritySelector: LiveHostRoutingSelector,
+    authoritySelector: string,
     request: IncomingMessage,
   ): NodeLiveHostBootstrapResolution | Promise<NodeLiveHostBootstrapResolution>;
   log?(event: NodeLiveHostBootstrapOperationalEvent): void;
@@ -119,11 +120,12 @@ export async function handle_node_livehost_bootstrap_request(
     );
     return;
   }
+  const routingSelector: LiveHostRoutingSelector = selector;
   log({ type: "bootstrap-request-accepted" });
 
   let resolution: NodeLiveHostBootstrapResolution;
   try {
-    resolution = await options.resolve(selector, request);
+    resolution = await options.resolve(routingSelector, request);
   } catch {
     log({ type: "bootstrap-rejected", status: 503, code: "LIVEHOST_BOOTSTRAP_AUTHORITY_UNAVAILABLE" });
     write_error(
@@ -144,7 +146,7 @@ export async function handle_node_livehost_bootstrap_request(
   try {
     const bootstrap = capture_livehost_bootstrap(
       resolution.authority,
-      selector,
+      routingSelector,
       resolution.websocketEndpoint,
       options,
     );

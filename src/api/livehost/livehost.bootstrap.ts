@@ -10,9 +10,9 @@ import type {
   LiveHostClientForMap,
   LiveHostClientOptionsForMap,
   LiveHostRecoveryPlanner,
-  LiveHostRoutingSelector,
   LiveHostSnapshotEnvelope,
 } from "../../types/livehost.types.js";
+import type { LiveHostRoutingSelector } from "../../types/internal/livehost.routing.types.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
@@ -43,7 +43,7 @@ export type LiveHostBootstrapContinuation = Readonly<{
 export type LiveHostBootstrapPackageV1 = Readonly<{
   format: typeof LIVEHOST_BOOTSTRAP_FORMAT;
   formatVersion: typeof LIVEHOST_BOOTSTRAP_FORMAT_VERSION;
-  authoritySelector: LiveHostRoutingSelector;
+  authoritySelector: string;
   logicalMapId: string;
   incarnationId: string;
   mode: LiveMapRootMode;
@@ -501,14 +501,15 @@ export function decode_livehost_bootstrap(
 /** Capture a single exact authority cut using the established recovery planner. */
 export function capture_livehost_bootstrap(
   authority: LiveHostBootstrapAuthority,
-  authoritySelector: LiveHostRoutingSelector,
+  authoritySelector: string,
   websocketEndpoint: string,
   options: LiveHostBootstrapCodecOptions = {},
 ): LiveHostBootstrapPackageV1 {
   try {
     return with_livehost_bootstrap_snapshot(authority, (snapshot) => {
+      const routingSelector: LiveHostRoutingSelector = authoritySelector;
       const bootstrap = assemble_livehost_bootstrap(snapshot, {
-        authoritySelector,
+        authoritySelector: routingSelector,
         websocketEndpoint,
       });
       validate_package(bootstrap, options);

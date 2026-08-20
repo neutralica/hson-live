@@ -12,7 +12,7 @@ import {
   type NodeRequestContext,
   type NodeTrustedProxyPolicy,
 } from "./livehost.node-policy.js";
-import type { LiveHostRoutingSelector } from "../../../types/livehost.types.js";
+import type { LiveHostRoutingSelector } from "../../../types/internal/livehost.routing.types.js";
 
 export type NodeAuthorityNamespace =
   | Readonly<{ kind: "exact"; value: string }>
