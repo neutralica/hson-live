@@ -1,9 +1,9 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 // @hson-live-external-test
 import assert from "node:assert/strict";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { hson } from "hson-live";
 import type { JsonValue } from "hson-live/types";
+import type { LiveHostApplication, LiveHostApplicationContext, LiveHostConnection } from "hson-live/livehost";
 import {
   LOCUS_BOOTSTRAP_FORMAT,
   LOCUS_BOOTSTRAP_MEDIA_TYPE,
@@ -15,16 +15,11 @@ import {
   encode_locus_bootstrap,
   install_locus_bootstrap,
   type LocusBootstrap,
+  type LocusBootstrapAuthority,
   type LocusSocketLike,
 } from "hson-live/locus";
-import {
-  create_node_locus_socket,
-  handle_node_locus_bootstrap_request,
-} from "hson-live/locus/node";
-import {
-  start_node_application_host,
-  type NodeHostedApplication,
-} from "hson-live/livehost/node";
+import { create_node_locus_socket } from "hson-live/locus/node";
+import { start_node_application_host } from "hson-live/livehost/node";
 import WebSocket from "ws";
 
 let checks = 0;
@@ -45,6 +40,73 @@ function error_code(run: () => unknown): string | undefined {
   } catch (error) {
     return error instanceof LocusBootstrapError ? error.code : undefined;
   }
+}
+
+type BootstrapResolution =
+  | Readonly<{ ok: true; authority: LocusBootstrapAuthority; websocketEndpoint: string; release?: () => void }>
+  | Readonly<{ ok: false; status: 404 | 503; code: string; message: string }>;
+
+function bootstrap_error(status: number, code: string, message: string, headers: HeadersInit = {}): Response {
+  return new Response(JSON.stringify({ error: { code, message } }), {
+    status,
+    headers: { "content-type": "application/problem+json; charset=utf-8", "cache-control": "no-store", ...headers },
+  });
+}
+
+async function bootstrap_response(
+  request: Request,
+  resolve: (selector: string) => BootstrapResolution | Promise<BootstrapResolution>,
+  maxBytes?: number,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return bootstrap_error(405, "LOCUS_BOOTSTRAP_METHOD_UNSUPPORTED", "Locus bootstrap supports GET only.", { allow: "GET" });
+  }
+  const accept = request.headers.get("accept");
+  if (accept !== null && !accept.split(",").map((value) => value.trim().toLowerCase())
+    .some((value) => value === "*/*" || value === LOCUS_BOOTSTRAP_MEDIA_TYPE)) {
+    return bootstrap_error(406, "LOCUS_BOOTSTRAP_NOT_ACCEPTABLE", "The requested response media type is not available.");
+  }
+  const selector = new URL(request.url).searchParams.get("locus");
+  if (selector === null || selector.trim() === "") {
+    return bootstrap_error(400, "LOCUS_BOOTSTRAP_SELECTOR_INVALID", "A non-empty Locus selector is required.");
+  }
+  const resolution = await resolve(selector);
+  if (!resolution.ok) return bootstrap_error(resolution.status, resolution.code, resolution.message);
+  try {
+    const codecOptions = maxBytes === undefined ? {} : { maxBytes };
+    const body = encode_locus_bootstrap(
+      capture_locus_bootstrap(resolution.authority, selector, resolution.websocketEndpoint, codecOptions),
+      codecOptions,
+    );
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": LOCUS_BOOTSTRAP_MEDIA_TYPE, "cache-control": "no-store" },
+    });
+  } catch (cause) {
+    const error = cause instanceof LocusBootstrapError ? cause : undefined;
+    const status = error?.code === "LOCUS_BOOTSTRAP_TOO_LARGE" ? 413 : 500;
+    return bootstrap_error(
+      status,
+      error?.code ?? "LOCUS_BOOTSTRAP_ENCODING_FAILED",
+      status === 413 ? "Locus bootstrap package exceeds its configured byte limit." : "Locus bootstrap package could not be produced.",
+    );
+  } finally {
+    resolution.release?.();
+  }
+}
+
+function generic_locus_socket(connection: LiveHostConnection): LocusSocketLike {
+  return Object.freeze({
+    send(message) { connection.send(message); },
+    close(code, reason) { connection.close(code, reason); },
+    onMessage(listener) {
+      return connection.onMessage((data) => {
+        if (typeof data === "string") listener(data);
+        else connection.close(1003, "Locus accepts text messages only.");
+      });
+    },
+    onClose(listener) { return connection.onClose(listener); },
+  });
 }
 
 function replace_package(
@@ -116,7 +178,7 @@ function socket_pair(): Readonly<{
 function fixture(state: JsonValue = { value: 1 }, history?: Readonly<{ maxCommits: number }>) {
   const authority = create_locus({
     state,
-        logicalMapId: "bootstrap-map",
+    logicalMapId: "bootstrap-map",
     incarnationId: "bootstrap-incarnation",
     ...(history === undefined ? {} : { history }),
   });
@@ -301,13 +363,13 @@ check("data-array bootstrap installs exact state and revision", () => {
 check("element bootstrap installs exact state and revision", () => {
   verify_mode("element", create_locus({
     map: hson.liveMap.fromHson(`<main @000000001 "hello"/>`),
-      }));
+  }));
 });
 
 check("fragment bootstrap installs exact state and revision", () => {
   verify_mode("fragment", create_locus({
     map: hson.liveMap.fromHson(`"before" <em @000000002 "middle"/>`),
-      }));
+  }));
 });
 
 check("preinstalled mirror continues as current through existing recovery", async () => {
@@ -371,7 +433,7 @@ check("revision gap after bootstrap recovery fails through the existing client p
     state: { value: 1 },
     logicalMapId: bootstrap.logicalMapId,
     incarnationId: bootstrap.incarnationId,
-      });
+  });
   await other.mutate((draft) => draft.set(["value"], 2));
   await other.mutate((draft) => draft.set(["value"], 3));
   const gap = other.stream.history.replay_after(1)?.[0];
@@ -420,7 +482,7 @@ check("incarnation replacement never treats revision equality as current", async
   const first = fixture();
   const replacement = create_locus({
     state: { value: 9 },
-        logicalMapId: first.bootstrap.logicalMapId,
+    logicalMapId: first.bootstrap.logicalMapId,
     incarnationId: "replacement-incarnation",
   });
   const pair = socket_pair();
@@ -448,11 +510,11 @@ check("equal route-local selectors stay isolated across application-owned author
   const left = create_locus({
     state: { owner: "left" },
     logicalMapId: "left-map",
-      });
+  });
   const right = create_locus({
     state: { owner: "right" },
     logicalMapId: "right-map",
-      });
+  });
   const leftBootstrap = capture_locus_bootstrap(left, "local:equal", "/left");
   const rightBootstrap = capture_locus_bootstrap(right, "local:equal", "/right");
   assert.equal(leftBootstrap.locusSelector, rightBootstrap.locusSelector);
@@ -499,43 +561,44 @@ check("bootstrap capture and installation are DOM, CSS, and LiveTree-runtime fre
 check("real HTTP helper and WebSocket continuation share one application authority", async () => {
   const authority = create_locus({
     state: { value: 1 },
-        logicalMapId: "network-map",
+    logicalMapId: "network-map",
     incarnationId: "network-incarnation",
   });
   const selector = "probe:network";
   let resolutions = 0;
   let acquisitionReleases = 0;
-  const application: NodeHostedApplication = {
+  const application: LiveHostApplication = {
     name: "bootstrap-probe",
-    authorities: [{ kind: "exact", value: selector }],
-    httpRoutes: Object.freeze(["GET", "POST"].map((method) => Object.freeze({
+    requests: Object.freeze(["GET", "POST"].map((method) => Object.freeze({
       method,
       path: "/bootstrap",
-      handle(request: IncomingMessage, response: ServerResponse) {
-        return handle_node_locus_bootstrap_request(request, response, {
-          resolve(candidate) {
-            resolutions += 1;
-            return candidate === selector
-              ? {
-                  ok: true,
-                  authority,
-                  websocketEndpoint: `/?locus=${encodeURIComponent(selector)}`,
-                  release: () => { acquisitionReleases += 1; },
-                }
-              : {
-                  ok: false,
-                  status: 404,
-                  code: "LOCUS_BOOTSTRAP_AUTHORITY_UNKNOWN",
-                  message: "Unknown bootstrap authority.",
-                };
-          },
+      handle(request: Request) {
+        return bootstrap_response(request, (candidate) => {
+          resolutions += 1;
+          return candidate === selector
+            ? {
+                ok: true,
+                authority,
+                websocketEndpoint: `/bootstrap-connect?locus=${encodeURIComponent(selector)}`,
+                release: () => { acquisitionReleases += 1; },
+              }
+            : {
+                ok: false,
+                status: 404,
+                code: "LOCUS_BOOTSTRAP_AUTHORITY_UNKNOWN",
+                message: "Unknown bootstrap authority.",
+              };
         });
       },
     }))),
-    acceptWebSocket(candidate, websocket) {
-      assert.equal(candidate, selector);
-      authority.connect(create_node_locus_socket(websocket));
-    },
+    connections: Object.freeze([Object.freeze({
+      path: "/bootstrap-connect",
+      accept(request: Request, connection: LiveHostConnection, _context: LiveHostApplicationContext) {
+        const candidate = new URL(request.url).searchParams.get("locus");
+        assert.equal(candidate, selector);
+        authority.connect(generic_locus_socket(connection));
+      },
+    })]),
     dispose() {
       authority.dispose();
     },
@@ -570,25 +633,21 @@ check("real HTTP helper and WebSocket continuation share one application authori
     client.dispose();
     websocket.close();
   } finally {
-    await host.stop();
+    await host.dispose();
   }
 });
 
 check("HTTP accepts wildcard media type and rejects incompatible Accept", async () => {
   const authority = create_locus({ state: { value: 1 } });
-  const application: NodeHostedApplication = {
+  const application: LiveHostApplication = {
     name: "accept-probe",
-    authorities: [{ kind: "exact", value: "accept:one" }],
-    httpRoutes: Object.freeze([Object.freeze({
+    requests: Object.freeze([Object.freeze({
       method: "GET",
       path: "/bootstrap",
-      handle(request: IncomingMessage, response: ServerResponse) {
-        return handle_node_locus_bootstrap_request(request, response, {
-          resolve: () => ({ ok: true, authority, websocketEndpoint: "/ws" }),
-        });
+      handle(request: Request) {
+        return bootstrap_response(request, () => ({ ok: true, authority, websocketEndpoint: "/ws" }));
       },
     })]),
-    acceptWebSocket() {},
     dispose() { authority.dispose(); },
   };
   const host = await start_node_application_host({ port: 0, applications: [application] });
@@ -607,32 +666,28 @@ check("HTTP accepts wildcard media type and rejects incompatible Accept", async 
     });
     assert.equal(oldVersioned.status, 406);
   } finally {
-    await host.stop();
+    await host.dispose();
   }
 });
 
 check("HTTP rejects method, missing selector, unknown authority, and hides stacks", async () => {
   const authority = create_locus({ state: { value: 1 } });
-  const handler = (request: IncomingMessage, response: ServerResponse) =>
-    handle_node_locus_bootstrap_request(request, response, {
-      resolve: (selector) => selector === "known"
+  const handler = (request: Request) =>
+    bootstrap_response(request, (selector) => selector === "known"
         ? { ok: true, authority, websocketEndpoint: "/ws" }
         : {
             ok: false,
             status: 404,
             code: "LOCUS_BOOTSTRAP_AUTHORITY_UNKNOWN",
             message: "Unknown authority.",
-          },
-    });
-  const application: NodeHostedApplication = {
+          });
+  const application: LiveHostApplication = {
     name: "errors",
-    authorities: [{ kind: "exact", value: "known" }],
-    httpRoutes: Object.freeze(["GET", "POST"].map((method) => Object.freeze({
+    requests: Object.freeze(["GET", "POST"].map((method) => Object.freeze({
       method,
       path: "/bootstrap",
       handle: handler,
     }))),
-    acceptWebSocket() {},
     dispose() { authority.dispose(); },
   };
   const host = await start_node_application_host({ port: 0, applications: [application] });
@@ -645,26 +700,21 @@ check("HTTP rejects method, missing selector, unknown authority, and hides stack
     assert.equal(unknown.status, 404);
     assert.doesNotMatch(await unknown.text(), /at .+\\.ts|stack/iu);
   } finally {
-    await host.stop();
+    await host.dispose();
   }
 });
 
 check("HTTP encoded-size failure is deterministic and no-store", async () => {
   const authority = create_locus({ state: { payload: "large" } });
-  const application: NodeHostedApplication = {
+  const application: LiveHostApplication = {
     name: "size",
-    authorities: [{ kind: "exact", value: "size:one" }],
-    httpRoutes: Object.freeze([Object.freeze({
+    requests: Object.freeze([Object.freeze({
       method: "GET",
       path: "/bootstrap",
-      handle(request: IncomingMessage, response: ServerResponse) {
-        return handle_node_locus_bootstrap_request(request, response, {
-          maxBytes: 10,
-          resolve: () => ({ ok: true, authority, websocketEndpoint: "/ws" }),
-        });
+      handle(request: Request) {
+        return bootstrap_response(request, () => ({ ok: true, authority, websocketEndpoint: "/ws" }), 10);
       },
     })]),
-    acceptWebSocket() {},
     dispose() { authority.dispose(); },
   };
   const host = await start_node_application_host({ port: 0, applications: [application] });
@@ -674,7 +724,7 @@ check("HTTP encoded-size failure is deterministic and no-store", async () => {
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.equal((await response.json()).error.code, "LOCUS_BOOTSTRAP_TOO_LARGE");
   } finally {
-    await host.stop();
+    await host.dispose();
   }
 });
 

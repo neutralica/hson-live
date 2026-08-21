@@ -1,27 +1,67 @@
 import type {
+  Locus,
+  LocusActivity,
+  LocusActivityKind,
   LocusActivitySnapshot,
 } from "../../../types/locus.core.types.js";
 import type {
-  LiveHostAuthorityAcquisition,
-  LiveHostAuthorityEvictionResult,
-  LiveHostAuthorityRegistry,
-  LiveHostAuthorityRegistryBlocker,
-  LiveHostAuthorityRegistryEvent,
-  LiveHostAuthorityRegistryOptions,
-  LiveHostLifecycleAuthority,
-  LiveHostStoreId,
-} from "../../../types/livehost.services.types.js";
-import type { LocusDisposer, LocusResult } from "../../../types/locus.shared.types.js";
+  LiveHostLocusAcquisition,
+  LiveHostLocusEvictionResult,
+  LiveHostLocusRegistry,
+  LiveHostLocusRegistryOptions,
+  LiveHostLocusRegistryResult,
+} from "../../../types/livehost.types.js";
+import type { LocusDisposer } from "../../../types/locus.shared.types.js";
 
 // Application-owned coalescing, residency, release, and eviction key.
-type AcquisitionResidencyKey = LiveHostStoreId;
+type AcquisitionResidencyKey = string;
+type RegistryBlocker = LocusActivityKind | "acquisition" | "loading" | "disposing";
+type RegistryEvent = Readonly<{
+  type:
+    | "creation-started"
+    | "creation-completed"
+    | "creation-failed"
+    | "became-active"
+    | "became-idle"
+    | "eviction-requested"
+    | "eviction-blocked"
+    | "eviction-completed"
+    | "eviction-failed"
+    | "capacity-rejected"
+    | "disposal-started"
+    | "disposal-completed"
+    | "disposal-failed";
+  key?: string;
+  code?: string;
+  blockers?: readonly RegistryBlocker[];
+}>;
+type RegistryRuntime = Readonly<{
+  now?: () => number;
+  schedule?: (delayMs: number, callback: () => void) => LocusDisposer;
+  event?: (event: RegistryEvent) => void;
+}>;
+type ManagedLocus = Readonly<{ activity: LocusActivity; dispose(): void }>;
+type RegistryDiagnostics = Readonly<{
+  state: "accepting" | "disposing" | "disposed";
+  entryCount: number;
+  loadingCount: number;
+  activeCount: number;
+  idleCount: number;
+  disposingCount: number;
+  acquisitionCount: number;
+}>;
+type InternalRegistry<TLocus extends ManagedLocus> = LiveHostLocusRegistry<TLocus> & Readonly<{
+  sweep(): Promise<number>;
+  diagnostics(): RegistryDiagnostics;
+}>;
 
-type PendingEntry<TAuthority extends LiveHostLifecycleAuthority> = {
+type PendingEntry<TAuthority extends ManagedLocus> = {
   readonly state: "loading";
   readonly promise: Promise<TAuthority>;
+  acquisitions: number;
 };
 
-type ReadyEntry<TAuthority extends LiveHostLifecycleAuthority> = {
+type ReadyEntry<TAuthority extends ManagedLocus> = {
   state: "ready" | "disposing";
   readonly authority: TAuthority;
   acquisitions: number;
@@ -29,60 +69,74 @@ type ReadyEntry<TAuthority extends LiveHostLifecycleAuthority> = {
   lastUsedAt: number;
   idleSince?: number;
   stopActivity: LocusDisposer;
-  disposal?: Promise<LiveHostAuthorityEvictionResult>;
+  disposal?: Promise<LiveHostLocusEvictionResult>;
 };
 
-type Entry<TAuthority extends LiveHostLifecycleAuthority> =
+type Entry<TAuthority extends ManagedLocus> =
   | PendingEntry<TAuthority>
   | ReadyEntry<TAuthority>;
 
-function ok<T>(value: T): LocusResult<T> {
+function ok<T>(value: T): LiveHostLocusRegistryResult<T> {
   return Object.freeze({ ok: true, value });
 }
 
-function fail<T>(code: string, message: string): LocusResult<T> {
-  return Object.freeze({ ok: false, error: Object.freeze({ code, message }) });
+function fail<T>(code: string, message: string, cause?: unknown): LiveHostLocusRegistryResult<T> {
+  return Object.freeze({
+    ok: false,
+    error: Object.freeze({ code, message, ...(cause === undefined ? {} : { cause }) }),
+  });
 }
 
 function default_schedule(delayMs: number, callback: () => void): LocusDisposer {
   const timer = setTimeout(callback, delayMs);
   if (typeof timer === "object" && timer !== null && "unref" in timer) {
-    (timer as ReturnType<typeof setTimeout> & { unref(): void }).unref();
+    const unref = Reflect.get(timer, "unref");
+    if (typeof unref === "function") Reflect.apply(unref, timer, []);
   }
   return () => clearTimeout(timer);
 }
 
 function positive_integer(value: number, name: string): number {
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`LiveHost authority registry ${name} must be a positive integer.`);
+    throw new Error(`LiveHost Locus registry ${name} must be a positive integer.`);
   }
   return value;
 }
 
 function nonnegative_finite(value: number, name: string): number {
   if (!Number.isFinite(value) || value < 0) {
-    throw new Error(`LiveHost authority registry ${name} must be finite and non-negative.`);
+    throw new Error(`LiveHost Locus registry ${name} must be finite and non-negative.`);
   }
   return value;
 }
 
-/** Application-owned, activity-aware registry for finite authority lifetimes. */
-export function create_livehost_authority_registry<
-  TAuthority extends LiveHostLifecycleAuthority,
+/** Application-owned, activity-aware registry for finite Locus lifetimes. */
+export function create_livehost_locus_registry<
+  TAuthority extends ManagedLocus = Locus,
 >(
-  options: LiveHostAuthorityRegistryOptions<TAuthority>,
-): LiveHostAuthorityRegistry<TAuthority> {
-  const maxAuthorities = positive_integer(options.maxAuthorities, "maxAuthorities");
+  options: LiveHostLocusRegistryOptions<TAuthority>,
+): LiveHostLocusRegistry<TAuthority> {
+  return create_livehost_locus_registry_internal(options);
+}
+
+/** @internal Deterministic runtime seam; not part of the public LiveHost contract. */
+export function create_livehost_locus_registry_internal<
+  TAuthority extends ManagedLocus = Locus,
+>(
+  options: LiveHostLocusRegistryOptions<TAuthority>,
+  runtime: RegistryRuntime = {},
+): InternalRegistry<TAuthority> {
+  const maxAuthorities = positive_integer(options.maxLoci, "maxLoci");
   const idleMs = nonnegative_finite(options.idleMs, "idleMs");
   const sweepIntervalMs = positive_integer(
     options.sweepIntervalMs ?? Math.max(1, Math.min(30_000, idleMs || 1_000)),
     "sweepIntervalMs",
   );
-  const now = options.now ?? (() => performance.now());
-  const schedule = options.schedule ?? default_schedule;
-  const event = (value: LiveHostAuthorityRegistryEvent): void => {
+  const now = runtime.now ?? (() => performance.now());
+  const schedule = runtime.schedule ?? default_schedule;
+  const event = (value: RegistryEvent): void => {
     try {
-      options.event?.(Object.freeze(value));
+      runtime.event?.(Object.freeze(value));
     } catch {
       // Lifecycle policy cannot be changed by an operational observer.
     }
@@ -92,6 +146,23 @@ export function create_livehost_authority_registry<
   let stopSweep: LocusDisposer | undefined;
   let sweepRunning: Promise<number> | undefined;
   let disposal: Promise<void> | undefined;
+  let admissionTail = Promise.resolve();
+  let queuedAdmissions = 0;
+
+  async function with_admission<T>(run: () => T | Promise<T>): Promise<T> {
+    queuedAdmissions += 1;
+    const previous = admissionTail;
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    admissionTail = previous.then(() => current);
+    await previous;
+    try {
+      return await run();
+    } finally {
+      queuedAdmissions = Math.max(0, queuedAdmissions - 1);
+      release();
+    }
+  }
 
   function dispose_authority(authority: TAuthority): void | Promise<void> {
     return options.dispose === undefined ? authority.dispose() : options.dispose(authority);
@@ -109,8 +180,8 @@ export function create_livehost_authority_registry<
     return entry.authority.activity.snapshot();
   }
 
-  function blockers(entry: ReadyEntry<TAuthority>): readonly LiveHostAuthorityRegistryBlocker[] {
-    const values: LiveHostAuthorityRegistryBlocker[] = [];
+  function blockers(entry: ReadyEntry<TAuthority>): readonly RegistryBlocker[] {
+    const values: RegistryBlocker[] = [];
     if (entry.acquisitions > 0) values.push("acquisition");
     values.push(...entry_snapshot(entry).blockers);
     return Object.freeze(values);
@@ -138,11 +209,15 @@ export function create_livehost_authority_registry<
     }
   }
 
-  function install_ready(key: AcquisitionResidencyKey, authority: TAuthority): ReadyEntry<TAuthority> {
+  function install_ready(
+    key: AcquisitionResidencyKey,
+    authority: TAuthority,
+    acquisitions = 0,
+  ): ReadyEntry<TAuthority> {
     const entry: ReadyEntry<TAuthority> = {
       state: "ready",
       authority,
-      acquisitions: 0,
+      acquisitions,
       generation: 0,
       lastUsedAt: now(),
       stopActivity: () => {},
@@ -152,20 +227,65 @@ export function create_livehost_authority_registry<
     return entry;
   }
 
+  function reserve_loading(key: AcquisitionResidencyKey): PendingEntry<TAuthority> {
+    event({ type: "creation-started", key });
+    let entry!: PendingEntry<TAuthority>;
+    let loading!: Promise<TAuthority>;
+    loading = Promise.resolve().then(() => options.create(key)).then(async (authority) => {
+      if (state !== "accepting" || entries.get(key)?.state !== "loading") {
+        await dispose_authority(authority);
+        throw new Error("LiveHost Locus registry stopped during creation.");
+      }
+      entries.set(key, install_ready(key, authority, entry.acquisitions));
+      event({ type: "creation-completed", key });
+      return authority;
+    }, (cause) => {
+      if (entries.get(key)?.state === "loading") entries.delete(key);
+      event({ type: "creation-failed", key, code: "LIVEHOST_LOCUS_CREATION_FAILED" });
+      throw cause;
+    });
+    entry = { state: "loading", promise: loading, acquisitions: 0 };
+    entries.set(key, entry);
+    return entry;
+  }
+
+  async function acquire_loading(
+    key: AcquisitionResidencyKey,
+    entry: PendingEntry<TAuthority>,
+  ): Promise<LiveHostLocusRegistryResult<LiveHostLocusAcquisition<TAuthority>>> {
+    entry.acquisitions += 1;
+    try {
+      const authority = await entry.promise;
+      const ready = entries.get(key);
+      return ready?.state === "ready" && ready.authority === authority
+        ? acquire_ready(key, ready, true)
+        : fail("LIVEHOST_LOCUS_REGISTRY_UNAVAILABLE", "LiveHost Locus is unavailable.");
+    } catch (cause) {
+      if (entries.get(key)?.state === "loading") entries.delete(key);
+      return fail(
+        "LIVEHOST_LOCUS_CREATION_FAILED",
+        cause instanceof Error ? cause.message : "LiveHost Locus creation failed.",
+        cause,
+      );
+    }
+  }
+
   function acquire_ready(
     key: AcquisitionResidencyKey,
     entry: ReadyEntry<TAuthority>,
-  ): LocusResult<LiveHostAuthorityAcquisition<TAuthority>> {
+    reserved = false,
+  ): LiveHostLocusRegistryResult<LiveHostLocusAcquisition<TAuthority>> {
     if (state !== "accepting" || entry.state !== "ready") {
-      return fail("LIVEHOST_AUTHORITY_REGISTRY_UNAVAILABLE", "LiveHost authority registry is unavailable.");
+      if (reserved) entry.acquisitions = Math.max(0, entry.acquisitions - 1);
+      return fail("LIVEHOST_LOCUS_REGISTRY_UNAVAILABLE", "LiveHost Locus registry is unavailable.");
     }
-    entry.acquisitions += 1;
+    if (!reserved) entry.acquisitions += 1;
     entry.lastUsedAt = now();
     entry.generation += 1;
     update_idle(key, entry);
     let held = true;
     return ok(Object.freeze({
-      authority: entry.authority,
+      locus: entry.authority,
       release() {
         if (!held) return;
         held = false;
@@ -195,7 +315,7 @@ export function create_livehost_authority_registry<
   async function evict_entry(
     key: AcquisitionResidencyKey,
     expectedGeneration?: number,
-  ): Promise<LiveHostAuthorityEvictionResult> {
+  ): Promise<LiveHostLocusEvictionResult> {
     event({ type: "eviction-requested", key });
     const current = entries.get(key);
     if (current === undefined) return Object.freeze({ status: "not-found" });
@@ -220,7 +340,7 @@ export function create_livehost_authority_registry<
     current.state = "disposing";
     current.generation += 1;
     current.stopActivity();
-    const operation = (async (): Promise<LiveHostAuthorityEvictionResult> => {
+    const operation = (async (): Promise<LiveHostLocusEvictionResult> => {
       try {
         await dispose_authority(current.authority);
         if (entries.get(key) === current) entries.delete(key);
@@ -232,8 +352,8 @@ export function create_livehost_authority_registry<
         current.stopActivity = current.authority.activity.on_change((snapshot) => update_idle(key, current, snapshot));
         update_idle(key, current);
         const error = Object.freeze({
-          code: "LIVEHOST_AUTHORITY_EVICTION_FAILED",
-          message: cause instanceof Error ? cause.message : "LiveHost authority eviction failed.",
+          code: "LIVEHOST_LOCUS_EVICTION_FAILED",
+          message: cause instanceof Error ? cause.message : "LiveHost Locus eviction failed.",
           cause,
         });
         event({ type: "eviction-failed", key, code: error.code });
@@ -258,71 +378,64 @@ export function create_livehost_authority_registry<
 
   async function acquire(
     key: AcquisitionResidencyKey,
-  ): Promise<LocusResult<LiveHostAuthorityAcquisition<TAuthority>>> {
+  ): Promise<LiveHostLocusRegistryResult<LiveHostLocusAcquisition<TAuthority>>> {
     if (state !== "accepting") {
-      return fail("LIVEHOST_AUTHORITY_REGISTRY_DISPOSED", "LiveHost authority registry is disposed.");
+      return fail("LIVEHOST_LOCUS_REGISTRY_DISPOSED", "LiveHost Locus registry is disposed.");
     }
     const existing = entries.get(key);
     if (existing?.state === "ready") return acquire_ready(key, existing);
     if (existing?.state === "disposing") {
-      return fail("LIVEHOST_AUTHORITY_DISPOSING", "LiveHost authority is disposing.");
+      return fail("LIVEHOST_LOCUS_DISPOSING", "LiveHost Locus is disposing.");
     }
     if (existing?.state === "loading") {
-      try {
-        const authority = await existing.promise;
-        const ready = entries.get(key);
-        return ready?.state === "ready" && ready.authority === authority
-          ? acquire_ready(key, ready)
-          : fail("LIVEHOST_AUTHORITY_REGISTRY_UNAVAILABLE", "LiveHost authority is unavailable.");
-      } catch (cause) {
-        return fail(
-          "LIVEHOST_AUTHORITY_CREATION_FAILED",
-          cause instanceof Error ? cause.message : "LiveHost authority creation failed.",
-        );
+      return acquire_loading(key, existing);
+    }
+    if (queuedAdmissions === 0 && entries.size < maxAuthorities) {
+      return acquire_loading(key, reserve_loading(key));
+    }
+    const admitted = await with_admission(async () => {
+      if (state !== "accepting") {
+        return Object.freeze({
+          kind: "failure" as const,
+          result: fail<LiveHostLocusAcquisition<TAuthority>>(
+            "LIVEHOST_LOCUS_REGISTRY_DISPOSED",
+            "LiveHost Locus registry is disposed.",
+          ),
+        });
       }
-    }
-    if (!(await ensure_capacity())) {
-      event({ type: "capacity-rejected", key, code: "LIVEHOST_AUTHORITY_CAPACITY_EXHAUSTED" });
-      return fail(
-        "LIVEHOST_AUTHORITY_CAPACITY_EXHAUSTED",
-        "LiveHost authority capacity is exhausted and no idle authority can be evicted.",
-      );
-    }
-    if (state !== "accepting") {
-      return fail("LIVEHOST_AUTHORITY_REGISTRY_DISPOSED", "LiveHost authority registry is disposed.");
-    }
-    const raced = entries.get(key);
-    if (raced !== undefined) return acquire(key);
+      const raced = entries.get(key);
+      if (raced !== undefined) return Object.freeze({ kind: "entry" as const, entry: raced });
+      if (!(await ensure_capacity())) {
+        event({ type: "capacity-rejected", key, code: "LIVEHOST_LOCUS_CAPACITY_EXHAUSTED" });
+        return Object.freeze({
+          kind: "failure" as const,
+          result: fail<LiveHostLocusAcquisition<TAuthority>>(
+            "LIVEHOST_LOCUS_CAPACITY_EXHAUSTED",
+            "LiveHost Locus capacity is exhausted and no idle Locus can be evicted.",
+          ),
+        });
+      }
+      if (state !== "accepting") {
+        return Object.freeze({
+          kind: "failure" as const,
+          result: fail<LiveHostLocusAcquisition<TAuthority>>(
+            "LIVEHOST_LOCUS_REGISTRY_DISPOSED",
+            "LiveHost Locus registry is disposed.",
+          ),
+        });
+      }
+      const capacityRace = entries.get(key);
+      if (capacityRace !== undefined) return Object.freeze({ kind: "entry" as const, entry: capacityRace });
 
-    event({ type: "creation-started", key });
-    let loading!: Promise<TAuthority>;
-    loading = Promise.resolve().then(() => options.create(key)).then(async (authority) => {
-      if (state !== "accepting" || entries.get(key)?.state !== "loading") {
-        await dispose_authority(authority);
-        throw new Error("LiveHost authority registry stopped during creation.");
-      }
-      entries.set(key, install_ready(key, authority));
-      event({ type: "creation-completed", key });
-      return authority;
-    }, (cause) => {
-      if (entries.get(key)?.state === "loading") entries.delete(key);
-      event({ type: "creation-failed", key, code: "LIVEHOST_AUTHORITY_CREATION_FAILED" });
-      throw cause;
+      const entry = reserve_loading(key);
+      return Object.freeze({ kind: "entry" as const, entry });
     });
-    entries.set(key, { state: "loading", promise: loading });
-    try {
-      const authority = await loading;
-      const ready = entries.get(key);
-      return ready?.state === "ready" && ready.authority === authority
-        ? acquire_ready(key, ready)
-        : fail("LIVEHOST_AUTHORITY_REGISTRY_UNAVAILABLE", "LiveHost authority is unavailable.");
-    } catch (cause) {
-      if (entries.get(key)?.state === "loading") entries.delete(key);
-      return fail(
-        "LIVEHOST_AUTHORITY_CREATION_FAILED",
-        cause instanceof Error ? cause.message : "LiveHost authority creation failed.",
-      );
+    if (admitted.kind === "failure") return admitted.result;
+    if ("promise" in admitted.entry) {
+      return acquire_loading(key, admitted.entry);
     }
+    if (admitted.entry.state === "ready") return acquire_ready(key, admitted.entry);
+    return fail("LIVEHOST_LOCUS_DISPOSING", "LiveHost Locus is disposing.");
   }
 
   async function sweep(): Promise<number> {
@@ -381,8 +494,8 @@ export function create_livehost_authority_registry<
       }
       state = "disposed";
       if (failures.length > 0) {
-        event({ type: "disposal-failed", code: "LIVEHOST_AUTHORITY_REGISTRY_DISPOSAL_FAILED" });
-        throw new AggregateError(failures, "LiveHost authority registry disposal failed.");
+        event({ type: "disposal-failed", code: "LIVEHOST_LOCUS_REGISTRY_DISPOSAL_FAILED" });
+        throw new AggregateError(failures, "LiveHost Locus registry disposal failed.");
       }
       event({ type: "disposal-completed" });
     })();

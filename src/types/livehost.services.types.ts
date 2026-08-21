@@ -1,7 +1,7 @@
 // Multi-authority store, persistence residency, and lifecycle registry contracts.
 
 import type { DocumentLiveMap, LiveMap } from "./livemap.types.js";
-import type { Locus, LocusActivity, LocusActivityKind, ProjectedLocusOptions } from "./locus.core.types.js";
+import type { Locus, ProjectedLocusOptions } from "./locus.core.types.js";
 import type { LocusActionPayloads, LocusConnectionContext, LocusSocketLike } from "./locus.protocol.types.js";
 import type {
   LocusDisposer,
@@ -48,14 +48,3 @@ export type LiveHostStore = Readonly<{
   list: () => readonly LiveHostStoreEntry[];
   connect: (id: LiveHostStoreId, socket: LocusSocketLike, context?: LocusConnectionContext) => LocusResult<LocusDisposer>;
 }>;
-
-export type LiveHostAuthorityRegistryBlocker = LocusActivityKind | "acquisition" | "loading" | "disposing";
-export type LiveHostAuthorityAcquisition<TAuthority extends LiveHostLifecycleAuthority = Locus> = Readonly<{ authority: TAuthority; release: LocusDisposer }>;
-export type LiveHostAuthorityEvictionResult = Readonly<{ status: "evicted" }> | Readonly<{ status: "not-found" }> | Readonly<{ status: "busy"; blockers: readonly LiveHostAuthorityRegistryBlocker[] }> | Readonly<{ status: "disposing" }> | Readonly<{ status: "failed"; error: Readonly<{ code: string; message: string; cause?: unknown }> }>;
-export type LiveHostAuthorityRegistryEvent = Readonly<{ type: "creation-started" | "creation-completed" | "creation-failed" | "became-active" | "became-idle" | "eviction-requested" | "eviction-blocked" | "eviction-completed" | "eviction-failed" | "capacity-rejected" | "disposal-started" | "disposal-completed" | "disposal-failed"; key?: string; code?: string; blockers?: readonly LiveHostAuthorityRegistryBlocker[] }>;
-export type LiveHostAuthorityRegistrySchedule = (delayMs: number, callback: () => void) => LocusDisposer;
-export type LiveHostAuthorityRegistryOptions<TAuthority extends LiveHostLifecycleAuthority = Locus> = Readonly<{ maxAuthorities: number; idleMs: number; sweepIntervalMs?: number; create(key: LiveHostStoreId): TAuthority | Promise<TAuthority>; dispose?(authority: TAuthority): void | Promise<void>; now?: () => number; schedule?: LiveHostAuthorityRegistrySchedule; event?(event: LiveHostAuthorityRegistryEvent): void }>;
-export type LiveHostAuthorityRegistryDiagnostics = Readonly<{ state: "accepting" | "disposing" | "disposed"; entryCount: number; loadingCount: number; activeCount: number; idleCount: number; disposingCount: number; acquisitionCount: number }>;
-export type LiveHostAuthorityRegistry<TAuthority extends LiveHostLifecycleAuthority = Locus> = Readonly<{ acquire(key: LiveHostStoreId): Promise<LocusResult<LiveHostAuthorityAcquisition<TAuthority>>>; evict(key: LiveHostStoreId): Promise<LiveHostAuthorityEvictionResult>; sweep(): Promise<number>; has(key: LiveHostStoreId): boolean; diagnostics(): LiveHostAuthorityRegistryDiagnostics; dispose(): Promise<void> }>;
-/** Minimum authority-owned lifecycle surface accepted by the bounded registry. */
-export type LiveHostLifecycleAuthority = Readonly<{ activity: LocusActivity; dispose: LocusDisposer }>;

@@ -50,6 +50,10 @@
       "types": "./dist/api/locus/node/index.d.ts",
       "import": "./dist/api/locus/node/index.js"
     },
+    "./livehost": {
+      "types": "./dist/api/livehost/index.d.ts",
+      "import": "./dist/api/livehost/index.js"
+    },
     "./livehost/node": {
       "types": "./dist/api/livehost/node/index.d.ts",
       "import": "./dist/api/livehost/node/index.js"

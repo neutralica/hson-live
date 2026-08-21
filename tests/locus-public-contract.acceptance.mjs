@@ -74,8 +74,9 @@ await check("the future-host Node package resolves without Locus adapters", asyn
   ]);
 });
 
-await check("the generic LiveHost package root is not exported", async () => {
-  await assert.rejects(import("hson-live/livehost"), (error) => error?.code === "ERR_PACKAGE_PATH_NOT_EXPORTED");
+await check("the generic LiveHost package root exposes only the approved runtime service", async () => {
+  const module = await import("hson-live/livehost");
+  assert.deepEqual(Object.keys(module).sort(), ["create_livehost_locus_registry"]);
 });
 
 await check("the root exposes Locus and no historical one-map aliases", async () => {

@@ -1,64 +1,25 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { Duplex } from "node:stream";
-import { WebSocketServer, type WebSocket } from "ws";
+import { Duplex, Readable } from "node:stream";
+import { WebSocketServer, type RawData, type WebSocket } from "ws";
+import type {
+  LiveHost,
+  LiveHostApplication,
+  LiveHostApplicationContext,
+  LiveHostConnection,
+  LiveHostConnectionRoute,
+  LiveHostPrincipal,
+  LiveHostRequestRoute,
+} from "../../../types/livehost.types.js";
 import {
   create_node_development_security,
   normalize_node_request,
   type NodeApplicationSecurity,
-  type NodeAuthenticatedPrincipal,
   type NodePolicyRejection,
   type NodePolicyResult,
   type NodeRequestContext,
   type NodeTrustedProxyPolicy,
 } from "./livehost.node-policy.js";
-import type { LocusSelector } from "../../../types/locus.types.js";
-
-export type NodeAuthorityNamespace =
-  | Readonly<{ kind: "exact"; value: string }>
-  | Readonly<{
-      kind: "prefix";
-      value: string;
-      suffix?: Readonly<{ minLength: number; maxLength: number; pattern: RegExp }>;
-    }>;
-
-export type NodeApplicationHttpRoute = Readonly<{
-  method: string;
-  path: string;
-  access?: "bootstrap-read" | "http-route";
-  bodyless?: boolean;
-  handle(
-    request: IncomingMessage,
-    response: ServerResponse,
-    context: NodeRequestContext,
-    principal: NodeAuthenticatedPrincipal,
-  ): void | Promise<void>;
-}>;
-
-export type NodeWebSocketTransportPolicy = Readonly<{
-  maxBufferedAmount: number;
-  onBackpressure(): void;
-}>;
-
-export type NodeWebSocketDispatchContext = Readonly<{
-  request: NodeRequestContext;
-  principal: NodeAuthenticatedPrincipal;
-  transportPolicy: NodeWebSocketTransportPolicy;
-}>;
-
-export type NodeHostedApplication = Readonly<{
-  name: string;
-  authorities: readonly NodeAuthorityNamespace[];
-  httpRoutes?: readonly NodeApplicationHttpRoute[];
-  security?: NodeApplicationSecurity;
-  ready?(): boolean;
-  acceptWebSocket(
-    locusSelector: LocusSelector,
-    websocket: WebSocket,
-    context: NodeWebSocketDispatchContext,
-  ): void | Promise<void>;
-  dispose(): void | Promise<void>;
-}>;
 
 export type NodeHostOperationalEvent = Readonly<{
   type:
@@ -120,30 +81,34 @@ export type NodeApplicationHostOptions = Readonly<{
   host?: string;
   port?: number;
   shutdownTimeoutMs?: number;
-  /**
-   * Explicit deployment policy. Omission retains the experimental pre-2C1
-   * localhost compatibility behavior; production executables must pass
-   * `{ mode: "production" }`.
-   */
   deployment?: NodeHostDeployment;
-  applications: readonly NodeHostedApplication[];
+  applications: readonly LiveHostApplication[];
+  security?: ReadonlyMap<string, NodeApplicationSecurity>;
   log?: (event: NodeHostOperationalEvent) => void;
 }>;
 
-export type NodeApplicationHost = Readonly<{
+export type NodeApplicationHost = LiveHost & Readonly<{
   host: string;
   port: number;
   url: string;
   httpUrl: string;
-  applicationNames: readonly string[];
   connectionCount(applicationName?: string): number;
-  disconnectConnections(applicationName?: string, locusSelector?: LocusSelector): void;
-  stop(): Promise<void>;
+  disconnectConnections(applicationName?: string): void;
+}>;
+
+type RegisteredRequestRoute = Readonly<{
+  application: LiveHostApplication;
+  route: LiveHostRequestRoute;
+}>;
+
+type RegisteredConnectionRoute = Readonly<{
+  application: LiveHostApplication;
+  route: LiveHostConnectionRoute;
 }>;
 
 type ActiveConnection = {
   readonly application: string;
-  readonly locusSelector: LocusSelector;
+  readonly route: string;
   readonly clientAddress: string;
   readonly correlationId: string;
   alive: boolean;
@@ -196,95 +161,68 @@ function resolve_limits(deployment: NodeHostDeployment): NodeHostTransportLimits
   return Object.freeze(values);
 }
 
-function namespace_matches(namespace: NodeAuthorityNamespace, routingSelector: LocusSelector): boolean {
-  if (namespace.kind === "exact") return routingSelector === namespace.value;
-  if (!routingSelector.startsWith(namespace.value)) return false;
-  const suffix = routingSelector.slice(namespace.value.length);
-  if (suffix.length === 0) return false;
-  const constraint = namespace.suffix;
-  return constraint === undefined
-    || (
-      suffix.length >= constraint.minLength
-      && suffix.length <= constraint.maxLength
-      && constraint.pattern.test(suffix)
-    );
-}
-
-function namespaces_overlap(left: NodeAuthorityNamespace, right: NodeAuthorityNamespace): boolean {
-  if (left.kind === "exact") return namespace_matches(right, left.value);
-  if (right.kind === "exact") return namespace_matches(left, right.value);
-  return left.value.startsWith(right.value) || right.value.startsWith(left.value);
-}
-
-function route_key(route: NodeApplicationHttpRoute): string {
+function route_key(route: LiveHostRequestRoute): string {
   return `${route.method.toUpperCase()} ${route.path}`;
 }
 
-function validate_applications(
-  applications: readonly NodeHostedApplication[],
+function validate_path(path: string, description: string): void {
+  if (!path.startsWith("/") || path.includes("?") || path.includes("#")) {
+    throw new Error(`${description} must be an exact absolute path.`);
+  }
+}
+
+function register_applications(
+  applications: readonly LiveHostApplication[],
   deployment: NodeHostDeployment,
+  security: ReadonlyMap<string, NodeApplicationSecurity>,
   log: (event: NodeHostOperationalEvent) => void,
-): void {
+): Readonly<{
+  requests: readonly RegisteredRequestRoute[];
+  connections: readonly RegisteredConnectionRoute[];
+}> {
   const names = new Set<string>();
-  const routes = new Map<string, string>();
-  const collectedNamespaces: { application: string; namespace: NodeAuthorityNamespace }[] = [];
+  const requestKeys = new Set<string>();
+  const connectionPaths = new Set<string>();
+  const requests: RegisteredRequestRoute[] = [];
+  const connections: RegisteredConnectionRoute[] = [];
   for (const application of applications) {
     if (application.name.trim() === "" || names.has(application.name)) {
       const error = `Duplicate or empty Node application name: ${JSON.stringify(application.name)}.`;
       log({ type: "registration-conflict", application: application.name, error });
       throw new Error(error);
     }
-    if (deployment.mode === "production" && application.security === undefined) {
+    if (deployment.mode === "production" && !security.has(application.name)) {
       const error = `Production Node application "${application.name}" requires explicit security policy.`;
       log({ type: "registration-conflict", application: application.name, error });
       throw new Error(error);
     }
     names.add(application.name);
-    for (const route of application.httpRoutes ?? []) {
+    for (const route of application.requests ?? []) {
+      validate_path(route.path, `Application "${application.name}" request route`);
       const key = route_key(route);
-      const existing = routes.get(key);
-      if (route.path === "/healthz" || existing !== undefined) {
+      if (route.path === "/healthz" || requestKeys.has(key)) {
         const error = route.path === "/healthz"
           ? `Application "${application.name}" conflicts with reserved route ${key}.`
-          : `HTTP route ${key} overlaps applications "${existing}" and "${application.name}".`;
+          : `HTTP route ${key} overlaps another application.`;
         log({ type: "registration-conflict", application: application.name, route: key, error });
         throw new Error(error);
       }
-      routes.set(key, application.name);
+      requestKeys.add(key);
+      requests.push(Object.freeze({ application, route }));
     }
-    for (const namespace of application.authorities) {
-      if (namespace.value.length === 0) {
-        const error = `Application "${application.name}" registered an empty authority namespace.`;
-        log({ type: "registration-conflict", application: application.name, error });
+    for (const route of application.connections ?? []) {
+      validate_path(route.path, `Application "${application.name}" connection route`);
+      if (connectionPaths.has(route.path)) {
+        const error = `Connection route ${route.path} overlaps another application.`;
+        log({ type: "registration-conflict", application: application.name, route: route.path, error });
         throw new Error(error);
       }
-      if (
-        namespace.kind === "prefix"
-        && namespace.suffix !== undefined
-        && (
-          !Number.isInteger(namespace.suffix.minLength)
-          || !Number.isInteger(namespace.suffix.maxLength)
-          || namespace.suffix.minLength < 1
-          || namespace.suffix.maxLength < namespace.suffix.minLength
-          || namespace.suffix.pattern.global
-          || namespace.suffix.pattern.sticky
-        )
-      ) {
-        const error = `Application "${application.name}" registered an invalid authority suffix constraint.`;
-        log({ type: "registration-conflict", application: application.name, error });
-        throw new Error(error);
-      }
-      for (const existing of collectedNamespaces) {
-        if (namespaces_overlap(existing.namespace, namespace)) {
-          const error = `Authority namespaces overlap applications "${existing.application}" and "${application.name}".`;
-          log({ type: "registration-conflict", application: application.name, error });
-          throw new Error(error);
-        }
-      }
-      collectedNamespaces.push({ application: application.name, namespace });
+      connectionPaths.add(route.path);
+      connections.push(Object.freeze({ application, route }));
     }
     log({ type: "application-registration", application: application.name });
   }
+  return Object.freeze({ requests: Object.freeze(requests), connections: Object.freeze(connections) });
 }
 
 function status_text(status: number): string {
@@ -320,8 +258,8 @@ function reject_http(response: ServerResponse, rejection: NodePolicyRejection): 
 }
 
 async function dispose_once(
-  applications: readonly NodeHostedApplication[],
-  disposed: Set<NodeHostedApplication>,
+  applications: readonly LiveHostApplication[],
+  disposed: Set<LiveHostApplication>,
 ): Promise<void> {
   const failures: unknown[] = [];
   for (const application of applications) {
@@ -333,7 +271,7 @@ async function dispose_once(
       failures.push(error);
     }
   }
-  if (failures.length !== 0) throw new AggregateError(failures, "One or more Node applications failed to dispose.");
+  if (failures.length !== 0) throw new AggregateError(failures, "One or more applications failed to dispose.");
 }
 
 async function bounded_policy<T>(
@@ -358,7 +296,183 @@ async function bounded_policy<T>(
   }
 }
 
-/** @experimental Transport-only Node application host. */
+function request_has_body(request: IncomingMessage): boolean {
+  return request.headers["transfer-encoding"] !== undefined
+    || Number(request.headers["content-length"] ?? "0") !== 0;
+}
+
+function make_web_request(request: IncomingMessage, url: URL): Request {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(request.headers)) {
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      for (const item of value) headers.append(name, item);
+    } else {
+      headers.set(name, value);
+    }
+  }
+  const method = request.method ?? "GET";
+  const init: RequestInit & { duplex?: "half" } = { method, headers };
+  if (method !== "GET" && method !== "HEAD" && request_has_body(request)) {
+    init.body = Readable.toWeb(request) as ReadableStream<Uint8Array>;
+    init.duplex = "half";
+  }
+  return new Request(url, init);
+}
+
+function apply_web_response_headers(target: ServerResponse, headers: Headers): void {
+  headers.forEach((value, name) => {
+    if (name !== "set-cookie") target.setHeader(name, value);
+  });
+  const cookies = headers.getSetCookie();
+  if (cookies.length > 0) target.setHeader("set-cookie", cookies);
+}
+
+function wait_for_node_response_drain(target: ServerResponse): Promise<boolean> {
+  return new Promise((resolve) => {
+    const cleanup = (): void => {
+      target.off("drain", drained);
+      target.off("close", closed);
+      target.off("error", closed);
+    };
+    const drained = (): void => {
+      cleanup();
+      resolve(true);
+    };
+    const closed = (): void => {
+      cleanup();
+      resolve(false);
+    };
+    target.once("drain", drained);
+    target.once("close", closed);
+    target.once("error", closed);
+  });
+}
+
+async function write_web_response(
+  target: ServerResponse,
+  source: Response,
+  headRequest: boolean,
+): Promise<void> {
+  if (headRequest || source.body === null) {
+    if (source.body !== null) {
+      await source.body.cancel("HEAD response body omitted by Node LiveHost.").catch(() => undefined);
+    }
+    apply_web_response_headers(target, source.headers);
+    target.writeHead(source.status);
+    target.end();
+    return;
+  }
+
+  const reader = source.body.getReader();
+  let disconnected = false;
+  const cancel_reader = (): void => {
+    if (target.writableEnded) return;
+    disconnected = true;
+    void reader.cancel("Node response transport disconnected.").catch(() => undefined);
+  };
+  target.once("close", cancel_reader);
+  try {
+    let next = await reader.read();
+    if (disconnected || target.destroyed) return;
+    apply_web_response_headers(target, source.headers);
+    target.writeHead(source.status);
+    while (!next.done) {
+      if (!target.write(next.value) && !(await wait_for_node_response_drain(target))) {
+        disconnected = true;
+        void reader.cancel("Node response transport disconnected.").catch(() => undefined);
+        return;
+      }
+      next = await reader.read();
+      if (disconnected || target.destroyed) return;
+    }
+    target.end();
+  } catch (cause) {
+    if (target.headersSent) {
+      if (!target.destroyed) target.destroy();
+      return;
+    }
+    throw cause;
+  } finally {
+    target.off("close", cancel_reader);
+    reader.releaseLock();
+  }
+}
+
+function application_context(
+  normalized: NodeRequestContext,
+  principal: LiveHostPrincipal,
+): LiveHostApplicationContext {
+  return Object.freeze({
+    applicationName: normalized.application,
+    correlationId: normalized.correlationId,
+    principal,
+    ...(normalized.effectiveClientAddress === "unknown"
+      ? {}
+      : { clientAddress: normalized.effectiveClientAddress }),
+  });
+}
+
+function raw_data_bytes(data: RawData): number {
+  if (Array.isArray(data)) return data.reduce((total, value) => total + value.byteLength, 0);
+  return data.byteLength;
+}
+
+function binary_data(data: RawData): Uint8Array {
+  if (Array.isArray(data)) return new Uint8Array(Buffer.concat(data));
+  if (data instanceof ArrayBuffer) return new Uint8Array(data.slice(0));
+  return new Uint8Array(Buffer.from(data));
+}
+
+function make_connection(
+  websocket: WebSocket,
+  maxBufferedAmount: number,
+  onBackpressure: () => void,
+): LiveHostConnection {
+  return Object.freeze({
+    send(data: string | Uint8Array) {
+      if (websocket.readyState !== websocket.OPEN) return;
+      if (websocket.bufferedAmount > maxBufferedAmount) {
+        onBackpressure();
+        websocket.close(1013, "LiveHost transport backpressure limit exceeded.");
+        return;
+      }
+      try {
+        websocket.send(data);
+      } catch {
+        websocket.close(1011, "LiveHost connection send failed.");
+      }
+    },
+    close(code?: number, reason?: string) {
+      if (websocket.readyState === websocket.CLOSED) return;
+      websocket.close(code, reason);
+    },
+    onMessage(listener: (data: string | Uint8Array) => void) {
+      const handle = (data: RawData, isBinary: boolean): void => {
+        listener(isBinary ? binary_data(data) : data.toString());
+      };
+      websocket.on("message", handle);
+      let listening = true;
+      return () => {
+        if (!listening) return;
+        listening = false;
+        websocket.off("message", handle);
+      };
+    },
+    onClose(listener: () => void) {
+      const handle = (): void => listener();
+      websocket.on("close", handle);
+      let listening = true;
+      return () => {
+        if (!listening) return;
+        listening = false;
+        websocket.off("close", handle);
+      };
+    },
+  });
+}
+
+/** @experimental Node implementation of the platform-neutral LiveHost contract. */
 export async function start_node_application_host(
   options: NodeApplicationHostOptions,
 ): Promise<NodeApplicationHost> {
@@ -369,10 +483,13 @@ export async function start_node_application_host(
   const limits = resolve_limits(deployment);
   const log = options.log ?? (() => undefined);
   const applications = Object.freeze([...options.applications]);
-  const disposedApplications = new Set<NodeHostedApplication>();
+  const security = options.security ?? new Map<string, NodeApplicationSecurity>();
+  const disposedApplications = new Set<LiveHostApplication>();
+  const developmentSecurity = create_node_development_security();
   log({ type: "host-startup", host: bindHost, port: bindPort });
+  let routes: ReturnType<typeof register_applications>;
   try {
-    validate_applications(applications, deployment, log);
+    routes = register_applications(applications, deployment, security, log);
   } catch (error) {
     await dispose_once(applications, disposedApplications);
     log({
@@ -390,20 +507,52 @@ export async function start_node_application_host(
   let pendingHandshakes = 0;
   const activeConnections = new Map<WebSocket, ActiveConnection>();
   const websocketServer = new WebSocketServer({ noServer: true, maxPayload: limits.maxPayloadBytes });
-  const developmentSecurity = create_node_development_security();
 
-  const security_for = (application: NodeHostedApplication): NodeApplicationSecurity =>
-    application.security ?? developmentSecurity;
+  const security_for = (application: LiveHostApplication): NodeApplicationSecurity =>
+    security.get(application.name) ?? developmentSecurity;
 
-  const select_authority = (routingSelector: LocusSelector): NodeHostedApplication | undefined => {
-    let selected: NodeHostedApplication | undefined;
-    for (const application of applications) {
-      if (!application.authorities.some((namespace) => namespace_matches(namespace, routingSelector))) continue;
-      if (selected !== undefined) throw new Error(`Ambiguous WebSocket authority dispatch for "${routingSelector}".`);
-      selected = application;
-    }
-    return selected;
+  const authorize = async (
+    application: LiveHostApplication,
+    normalized: NodeRequestContext,
+  ): Promise<NodePolicyResult<LiveHostPrincipal>> => {
+    const policy = security_for(application);
+    const origin = await bounded_policy(() => policy.origin(normalized), limits.handshakeTimeoutMs);
+    if (!origin.ok) return origin;
+    const authenticated = await bounded_policy(() => policy.authenticate(normalized), limits.handshakeTimeoutMs);
+    if (!authenticated.ok) return authenticated;
+    const authorized = await bounded_policy(
+      () => policy.authorize(normalized, authenticated.value),
+      limits.handshakeTimeoutMs,
+    );
+    return authorized.ok ? authenticated : authorized;
   };
+
+  const normalization_options = (): Readonly<{
+    proxy?: NodeTrustedProxyPolicy;
+    maxUrlBytes: number;
+    maxHeaderValueBytes: number;
+  }> => Object.freeze({
+    ...(deployment.mode === "production" && deployment.proxy !== undefined
+      ? { proxy: deployment.proxy }
+      : {}),
+    maxUrlBytes: limits.maxUrlBytes,
+    maxHeaderValueBytes: limits.maxHeaderValueBytes,
+  });
+
+  const log_rejection = (
+    application: LiveHostApplication,
+    normalized: NodeRequestContext,
+    transport: "http" | "websocket",
+    rejection: NodePolicyRejection,
+  ): void => log({
+    type: "policy-rejection",
+    application: application.name,
+    correlationId: normalized.correlationId,
+    transport,
+    proxyInterpretation: normalized.proxyInterpretation,
+    outcome: "rejected",
+    code: rejection.code,
+  });
 
   const server = createServer({ maxHeaderSize: limits.maxHeaderBytes }, (request, response) => {
     void (async () => {
@@ -424,12 +573,12 @@ export async function start_node_application_host(
         return;
       }
       if (request.method === "GET" && requestUrl.pathname === "/healthz") {
-        log({ type: "http-dispatch", route: "GET /healthz", transport: "http", outcome: "accepted" });
         const applicationHealth = applications.map((application) => ({
           name: application.name,
           ready: application.ready?.() ?? true,
         }));
         const ready = applicationHealth.every((application) => application.ready);
+        log({ type: "http-dispatch", route: "GET /healthz", transport: "http", outcome: "accepted" });
         response.writeHead(ready ? 200 : 503, {
           "content-type": "application/json; charset=utf-8",
           "cache-control": "no-store",
@@ -437,70 +586,56 @@ export async function start_node_application_host(
         response.end(JSON.stringify({ ready, applications: applicationHealth }));
         return;
       }
-      const route = applications
-        .flatMap((application) => (application.httpRoutes ?? []).map((candidate) => ({ application, candidate })))
-        .find(({ candidate }) => candidate.method.toUpperCase() === request.method && candidate.path === requestUrl.pathname);
-      if (route === undefined) {
+      const registered = routes.requests.find(({ route }) =>
+        route.method.toUpperCase() === request.method && route.path === requestUrl.pathname);
+      if (registered === undefined) {
         response.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
         response.end("Not found.\n");
         return;
       }
-      if (
-        route.candidate.bodyless === true
-        && (request.headers["transfer-encoding"] !== undefined || Number(request.headers["content-length"] ?? "0") !== 0)
-      ) {
+      if ((request.method === "GET" || request.method === "HEAD") && request_has_body(request)) {
         reject_http(response, { ok: false, status: 400, code: "NODE_HOST_BODY_NOT_ALLOWED" });
         return;
       }
+      const key = route_key(registered.route);
       const normalized = normalize_node_request(request, {
         transport: "http",
-        application: route.application.name,
-        route: `${request.method} ${requestUrl.pathname}`,
-        ...(requestUrl.searchParams.get("locus") === null
-          ? {}
-          : { locusSelector: requestUrl.searchParams.get("locus") ?? undefined }),
-      }, {
-        ...(deployment.mode === "production" && deployment.proxy !== undefined
-          ? { proxy: deployment.proxy }
-          : {}),
-        maxUrlBytes: limits.maxUrlBytes,
-        maxHeaderValueBytes: limits.maxHeaderValueBytes,
-      });
+        application: registered.application.name,
+        route: key,
+      }, normalization_options());
       if (!normalized.ok) {
         reject_http(response, normalized);
         return;
       }
-      const security = security_for(route.application);
-      const origin = await bounded_policy(() => security.origin(normalized.value), limits.handshakeTimeoutMs);
-      if (!origin.ok) {
-        log({ type: "policy-rejection", application: route.application.name, correlationId: normalized.value.correlationId, transport: "http", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: origin.code });
-        reject_http(response, origin);
+      const authorization = await authorize(registered.application, normalized.value);
+      if (!authorization.ok) {
+        log_rejection(registered.application, normalized.value, "http", authorization);
+        reject_http(response, authorization);
         return;
       }
-      const authenticated = await bounded_policy(() => security.authenticate(normalized.value), limits.handshakeTimeoutMs);
-      if (!authenticated.ok) {
-        log({ type: "policy-rejection", application: route.application.name, correlationId: normalized.value.correlationId, transport: "http", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: authenticated.code });
-        reject_http(response, authenticated);
-        return;
-      }
-      const authorized = await bounded_policy(
-        () => security.authorizeAuthority(
-          normalized.value,
-          authenticated.value,
-          route.candidate.access ?? "http-route",
-        ),
-        limits.handshakeTimeoutMs,
-      );
-      if (!authorized.ok) {
-        log({ type: "policy-rejection", application: route.application.name, correlationId: normalized.value.correlationId, transport: "http", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: authorized.code });
-        reject_http(response, authorized);
-        return;
-      }
-      log({ type: "http-dispatch", application: route.application.name, route: `${request.method} ${requestUrl.pathname}`, correlationId: normalized.value.correlationId, transport: "http", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "accepted" });
+      log({
+        type: "http-dispatch",
+        application: registered.application.name,
+        route: key,
+        correlationId: normalized.value.correlationId,
+        transport: "http",
+        proxyInterpretation: normalized.value.proxyInterpretation,
+        outcome: "accepted",
+      });
       try {
-        await route.candidate.handle(request, response, normalized.value, authenticated.value);
+        const webRequest = make_web_request(request, normalized.value.url);
+        const webResponse = await registered.route.handle(
+          webRequest,
+          application_context(normalized.value, authorization.value),
+        );
+        await write_web_response(response, webResponse, request.method === "HEAD");
       } catch {
-        if (!response.headersSent) response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+        if (response.destroyed || response.writableEnded) return;
+        if (response.headersSent) {
+          response.destroy();
+          return;
+        }
+        response.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
         response.end("Application request failed.\n");
       }
     })();
@@ -511,94 +646,77 @@ export async function start_node_application_host(
   server.on("upgrade", (request, socket, head) => {
     void (async () => {
       if (!operational || stopping) {
-        reject_upgrade(socket, 503, "Host is not accepting WebSocket work.");
+        reject_upgrade(socket, 503, "Host is not accepting connection work.");
         return;
       }
       if (pendingHandshakes >= limits.maxPendingHandshakes) {
         log({ type: "resource-rejection", transport: "websocket", outcome: "rejected", code: "NODE_HOST_PENDING_LIMIT" });
-        reject_upgrade(socket, 503, "WebSocket admission unavailable.");
+        reject_upgrade(socket, 503, "Connection admission unavailable.");
         return;
       }
       if (Buffer.byteLength(request.url ?? "/") > limits.maxUrlBytes) {
-        reject_upgrade(socket, 413, "WebSocket request is too large.");
+        reject_upgrade(socket, 413, "Connection request is too large.");
         return;
       }
       let requestUrl: URL;
       try {
-        requestUrl = new URL(request.url ?? "/", `ws://${request.headers.host ?? bindHost}`);
+        requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? bindHost}`);
       } catch {
-        reject_upgrade(socket, 400, "Malformed WebSocket request.");
+        reject_upgrade(socket, 400, "Malformed connection request.");
         return;
       }
-      const locusSelector = requestUrl.searchParams.get("locus");
-      if (locusSelector === null || locusSelector.trim() === "") {
-        reject_upgrade(socket, 400, "A non-empty Locus selector is required.");
-        return;
-      }
-      const routingSelector: LocusSelector = locusSelector;
-      const application = select_authority(routingSelector);
-      if (application === undefined) {
-        reject_upgrade(socket, 404, "No application owns this Locus selector.");
+      const registered = routes.connections.find(({ route }) => route.path === requestUrl.pathname);
+      if (registered === undefined) {
+        reject_upgrade(socket, 404, "No application owns this connection route.");
         return;
       }
       pendingHandshakes += 1;
       try {
         const normalized = normalize_node_request(request, {
           transport: "websocket",
-          application: application.name,
-          locusSelector: routingSelector,
-        }, {
-          ...(deployment.mode === "production" && deployment.proxy !== undefined
-            ? { proxy: deployment.proxy }
-            : {}),
-          maxUrlBytes: limits.maxUrlBytes,
-          maxHeaderValueBytes: limits.maxHeaderValueBytes,
-        });
+          application: registered.application.name,
+          route: registered.route.path,
+        }, normalization_options());
         if (!normalized.ok) {
-          reject_upgrade(socket, normalized.status, "WebSocket request rejected.");
+          reject_upgrade(socket, normalized.status, "Connection request rejected.");
           return;
         }
-        const security = security_for(application);
-        const origin = await bounded_policy(() => security.origin(normalized.value), limits.handshakeTimeoutMs);
-        if (!origin.ok) {
-          log({ type: "policy-rejection", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: origin.code });
-          reject_upgrade(socket, origin.status, "WebSocket policy rejected.");
+        const authorization = await authorize(registered.application, normalized.value);
+        if (!authorization.ok) {
+          log_rejection(registered.application, normalized.value, "websocket", authorization);
+          reject_upgrade(socket, authorization.status, "Connection policy rejected.");
           return;
         }
-        const authenticated = await bounded_policy(() => security.authenticate(normalized.value), limits.handshakeTimeoutMs);
-        if (!authenticated.ok) {
-          log({ type: "policy-rejection", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: authenticated.code });
-          reject_upgrade(socket, authenticated.status, "WebSocket policy rejected.");
-          return;
-        }
-        const authorized = await bounded_policy(
-          () => security.authorizeAuthority(normalized.value, authenticated.value, "websocket-connect"),
-          limits.handshakeTimeoutMs,
-        );
-        if (!authorized.ok) {
-          log({ type: "policy-rejection", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: authorized.code });
-          reject_upgrade(socket, authorized.status, "WebSocket policy rejected.");
-          return;
-        }
-        const appConnections = [...activeConnections.values()].filter((item) => item.application === application.name).length;
-        const clientConnections = [...activeConnections.values()].filter((item) => item.clientAddress === normalized.value.effectiveClientAddress).length;
+        const appConnections = [...activeConnections.values()]
+          .filter((item) => item.application === registered.application.name).length;
+        const clientConnections = [...activeConnections.values()]
+          .filter((item) => item.clientAddress === normalized.value.effectiveClientAddress).length;
         if (
           activeConnections.size >= limits.maxConnections
           || appConnections >= limits.maxConnectionsPerApplication
           || clientConnections >= limits.maxConnectionsPerClient
         ) {
-          log({ type: "resource-rejection", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "rejected", code: "NODE_HOST_CONNECTION_LIMIT" });
-          reject_upgrade(socket, 503, "WebSocket capacity unavailable.");
+          log({
+            type: "resource-rejection",
+            application: registered.application.name,
+            correlationId: normalized.value.correlationId,
+            transport: "websocket",
+            proxyInterpretation: normalized.value.proxyInterpretation,
+            outcome: "rejected",
+            code: "NODE_HOST_CONNECTION_LIMIT",
+          });
+          reject_upgrade(socket, 503, "Connection capacity unavailable.");
           return;
         }
         if (!operational || stopping || socket.destroyed) {
-          if (!socket.destroyed) reject_upgrade(socket, 503, "Host is not accepting WebSocket work.");
+          if (!socket.destroyed) reject_upgrade(socket, 503, "Host is not accepting connection work.");
           return;
         }
+        const webRequest = make_web_request(request, normalized.value.url);
         websocketServer.handleUpgrade(request, socket, head, (websocket) => {
           const state: ActiveConnection = {
-            application: application.name,
-            locusSelector: routingSelector,
+            application: registered.application.name,
+            route: registered.route.path,
             clientAddress: normalized.value.effectiveClientAddress,
             correlationId: normalized.value.correlationId,
             alive: true,
@@ -607,10 +725,7 @@ export async function start_node_application_host(
             messageBytes: 0,
           };
           activeConnections.set(websocket, state);
-          websocket.on("error", () => {
-            // Transport errors are normalized to close; applications receive
-            // closure through their adapter without an unhandled EventEmitter error.
-          });
+          websocket.on("error", () => undefined);
           websocket.on("pong", () => {
             state.alive = true;
             if (state.heartbeatDeadline !== undefined) clearTimeout(state.heartbeatDeadline);
@@ -624,41 +739,59 @@ export async function start_node_application_host(
               state.messageBytes = 0;
             }
             state.messageCount += 1;
-            state.messageBytes += Array.isArray(data)
-              ? data.reduce((total, item) => total + item.byteLength, 0)
-              : Buffer.byteLength(data);
+            state.messageBytes += raw_data_bytes(data);
             if (
               state.messageCount > limits.maxMessagesPerWindow
               || state.messageBytes > limits.maxMessageBytesPerWindow
             ) {
-              log({ type: "resource-rejection", application: application.name, correlationId: state.correlationId, transport: "websocket", outcome: "rejected", code: "NODE_HOST_MESSAGE_RATE_LIMIT" });
-              websocket.close(1008, "WebSocket message budget exceeded.");
+              log({
+                type: "resource-rejection",
+                application: registered.application.name,
+                correlationId: state.correlationId,
+                transport: "websocket",
+                outcome: "rejected",
+                code: "NODE_HOST_MESSAGE_RATE_LIMIT",
+              });
+              websocket.close(1008, "Connection message budget exceeded.");
             }
           });
           websocket.once("close", () => {
             if (state.heartbeatDeadline !== undefined) clearTimeout(state.heartbeatDeadline);
             activeConnections.delete(websocket);
           });
-          log({ type: "websocket-dispatch", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", proxyInterpretation: normalized.value.proxyInterpretation, outcome: "accepted" });
-          try {
-            const accepted = application.acceptWebSocket(routingSelector, websocket, Object.freeze({
-              request: normalized.value,
-              principal: authenticated.value,
-              transportPolicy: Object.freeze({
-                maxBufferedAmount: limits.maxBufferedAmount,
-                onBackpressure() {
-                  log({ type: "backpressure", application: application.name, correlationId: normalized.value.correlationId, transport: "websocket", outcome: "rejected", code: "NODE_HOST_BACKPRESSURE" });
-                },
-              }),
-            }));
-            if (accepted instanceof Promise) {
-              void accepted.catch(() => {
-                websocket.close(1011, "Application WebSocket dispatch failed.");
-              });
-            }
-          } catch {
-            websocket.close(1011, "Application WebSocket dispatch failed.");
-          }
+          log({
+            type: "websocket-dispatch",
+            application: registered.application.name,
+            route: registered.route.path,
+            correlationId: normalized.value.correlationId,
+            transport: "websocket",
+            proxyInterpretation: normalized.value.proxyInterpretation,
+            outcome: "accepted",
+          });
+          const connection = make_connection(websocket, limits.maxBufferedAmount, () => {
+            log({
+              type: "backpressure",
+              application: registered.application.name,
+              correlationId: normalized.value.correlationId,
+              transport: "websocket",
+              outcome: "rejected",
+              code: "NODE_HOST_BACKPRESSURE",
+            });
+          });
+          websocket.pause();
+          void Promise.resolve().then(() => registered.route.accept(
+            webRequest,
+            connection,
+            application_context(normalized.value, authorization.value),
+          )).then(
+            () => {
+              if (websocket.readyState === websocket.OPEN) websocket.resume();
+            },
+            () => {
+              websocket.resume();
+              websocket.close(1011, "Application connection dispatch failed.");
+            },
+          );
         });
       } finally {
         pendingHandshakes -= 1;
@@ -669,13 +802,20 @@ export async function start_node_application_host(
   const heartbeat = setInterval(() => {
     if (!operational || stopping) return;
     for (const [websocket, state] of activeConnections) {
-      if (websocket.readyState !== websocket.OPEN) continue;
-      if (!state.alive) continue;
+      if (websocket.readyState !== websocket.OPEN || !state.alive) continue;
       state.alive = false;
       websocket.ping();
       state.heartbeatDeadline = setTimeout(() => {
         if (state.alive) return;
-        log({ type: "heartbeat-timeout", application: state.application, correlationId: state.correlationId, transport: "websocket", outcome: "rejected", code: "NODE_HOST_HEARTBEAT_TIMEOUT" });
+        log({
+          type: "heartbeat-timeout",
+          application: state.application,
+          route: state.route,
+          correlationId: state.correlationId,
+          transport: "websocket",
+          outcome: "rejected",
+          code: "NODE_HOST_HEARTBEAT_TIMEOUT",
+        });
         websocket.terminate();
       }, limits.heartbeatDeadlineMs);
       state.heartbeatDeadline.unref?.();
@@ -713,7 +853,7 @@ export async function start_node_application_host(
   log({ type: "host-listening", host: bindHost, port });
 
   let shutdown: Promise<void> | undefined;
-  const stop = (): Promise<void> => shutdown ??= (async () => {
+  const dispose = (): Promise<void> => shutdown ??= (async () => {
     stopping = true;
     operational = false;
     clearInterval(heartbeat);
@@ -765,18 +905,18 @@ export async function start_node_application_host(
     url: `ws://${bindHost}:${port}`,
     httpUrl: `http://${bindHost}:${port}`,
     applicationNames: Object.freeze(applications.map((application) => application.name)),
-    connectionCount(applicationName) {
+    ready: () => operational && !stopping && applications.every((application) => application.ready?.() ?? true),
+    connectionCount(applicationName?: string) {
       return [...activeConnections.values()]
         .filter((connection) => applicationName === undefined || connection.application === applicationName)
         .length;
     },
-    disconnectConnections(applicationName, locusSelector) {
+    disconnectConnections(applicationName?: string) {
       for (const [websocket, connection] of [...activeConnections]) {
         if (applicationName !== undefined && connection.application !== applicationName) continue;
-        if (locusSelector !== undefined && connection.locusSelector !== locusSelector) continue;
         websocket.close(1012, "Application connection interrupted.");
       }
     },
-    stop,
+    dispose,
   });
 }

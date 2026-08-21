@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
-import type { LocusSelector } from "../../../types/locus.types.js";
+import type { LiveHostPrincipal } from "../../../types/livehost.types.js";
 
 export type NodeRequestTransport = "http" | "websocket";
 export type NodeProxyInterpretation = "direct" | "trusted-proxy";
@@ -23,7 +23,6 @@ export type NodeRequestContext = Readonly<{
   url: URL;
   application: string;
   route?: string;
-  locusSelector?: LocusSelector;
   rawScheme: "http" | "https";
   effectiveScheme: "http" | "https";
   rawHost: string;
@@ -45,22 +44,14 @@ export type NodePolicyRejection = Readonly<{
 export type NodePolicySuccess<T> = Readonly<{ ok: true; value: T }>;
 export type NodePolicyResult<T> = NodePolicySuccess<T> | NodePolicyRejection;
 
-/** Application-defined identity. `value` is never logged or serialized by the host. */
-export type NodeAuthenticatedPrincipal = Readonly<{
-  id?: string;
-  anonymous: boolean;
-  value?: unknown;
-}>;
-
 export type NodeApplicationSecurity = Readonly<{
   origin(context: NodeRequestContext): NodePolicyResult<void> | Promise<NodePolicyResult<void>>;
   authenticate(
     context: NodeRequestContext,
-  ): NodePolicyResult<NodeAuthenticatedPrincipal> | Promise<NodePolicyResult<NodeAuthenticatedPrincipal>>;
-  authorizeAuthority(
+  ): NodePolicyResult<LiveHostPrincipal> | Promise<NodePolicyResult<LiveHostPrincipal>>;
+  authorize(
     context: NodeRequestContext,
-    principal: NodeAuthenticatedPrincipal,
-    operation: "bootstrap-read" | "http-route" | "websocket-connect",
+    principal: LiveHostPrincipal,
   ): NodePolicyResult<void> | Promise<NodePolicyResult<void>>;
 }>;
 
@@ -140,7 +131,6 @@ export function normalize_node_request(
     transport: NodeRequestTransport;
     application: string;
     route?: string;
-    locusSelector?: LocusSelector;
   }>,
   options: NodeRequestNormalizationOptions,
 ): NodePolicyResult<NodeRequestContext> {
@@ -202,7 +192,6 @@ export function normalize_node_request(
         url,
         application: input.application,
         ...(input.route === undefined ? {} : { route: input.route }),
-        ...(input.locusSelector === undefined ? {} : { locusSelector: input.locusSelector }),
         rawScheme: scheme,
         effectiveScheme,
         rawHost,
@@ -250,7 +239,7 @@ export function create_node_development_security(): NodeApplicationSecurity {
       ok: true,
       value: Object.freeze({ id: "development-anonymous", anonymous: true }),
     }),
-    authorizeAuthority: () => ({ ok: true, value: undefined }),
+    authorize: () => ({ ok: true, value: undefined }),
   };
   return Object.freeze(security);
 }

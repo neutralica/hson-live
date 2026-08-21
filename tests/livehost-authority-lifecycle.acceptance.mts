@@ -10,7 +10,7 @@ import {
   type Locus,
   type LocusSocketLike,
 } from "hson-live/locus";
-import { create_livehost_authority_registry } from "../src/api/livehost/services/livehost.authority-registry.ts";
+import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
 import { create_livehost_store } from "../src/api/livehost/services/livehost.store.ts";
 import type { JsonValue, LiveMap } from "hson-live/types";
 
@@ -71,21 +71,22 @@ type TestState = Record<string, JsonValue>;
 type TestHost = Locus<LiveMap<TestState>>;
 
 function registry(
-  options: Partial<Parameters<typeof create_livehost_authority_registry<TestHost>>[0]> = {},
+  options: Partial<Parameters<typeof create_livehost_locus_registry_internal<TestHost>>[0]> = {},
 ) {
   let time = 1_000;
   let creations = 0;
-  const value = create_livehost_authority_registry<TestHost>({
-    maxAuthorities: 2,
+  const value = create_livehost_locus_registry_internal<TestHost>({
+    maxLoci: 2,
     idleMs: 100,
     sweepIntervalMs: 50,
-    now: () => time,
-    schedule: () => () => {},
     create(key) {
       creations += 1;
       return create_locus<TestState>({ state: { key }, logicalMapId: key });
     },
     ...options,
+  }, {
+    now: () => time,
+    schedule: () => () => {},
   });
   return {
     value,
@@ -188,7 +189,7 @@ check("acquisition is counted, release is idempotent, and idle eviction succeeds
   await fixture.value.dispose();
 });
 
-check("ordinary eviction leaves an acquired authority reachable", async () => {
+check("ordinary eviction leaves an acquired Locus reachable", async () => {
   const fixture = registry();
   const acquired = await fixture.value.acquire("busy");
   assert.equal(acquired.ok, true);
@@ -205,7 +206,7 @@ check("connection and retained-session activity block ordinary registry eviction
   assert.equal(acquired.ok, true);
   if (!acquired.ok) return;
   const socket = socket_fixture();
-  acquired.value.authority.connect(socket.socket);
+  acquired.value.locus.connect(socket.socket);
   acquired.value.release();
   const result = await fixture.value.evict("connected");
   assert.equal(result.status, "busy");
@@ -230,9 +231,111 @@ check("concurrent same-key acquisition deduplicates one asynchronous creation", 
   assert.equal(creations, 1);
   gate.resolve();
   const [a, b] = await Promise.all([first, second]);
-  assert.equal(a.ok && b.ok && Object.is(a.value.authority, b.value.authority), true);
+  assert.equal(a.ok && b.ok && Object.is(a.value.locus, b.value.locus), true);
   if (a.ok) a.value.release();
   if (b.ok) b.value.release();
+  await fixture.value.dispose();
+});
+
+check("maxLoci one reserves capacity before a distinct concurrent creation", async () => {
+  const leftStarted = deferred<void>();
+  const releaseLeft = deferred<void>();
+  const created: string[] = [];
+  const fixture = registry({
+    maxLoci: 1,
+    async create(key) {
+      created.push(key);
+      if (key === "left") {
+        leftStarted.resolve();
+        await releaseLeft.promise;
+      }
+      return create_locus<TestState>({ state: { key }, logicalMapId: key });
+    },
+  });
+  const left = fixture.value.acquire("left");
+  await leftStarted.promise;
+  const right = await fixture.value.acquire("right");
+  assert.equal(right.ok, false);
+  if (!right.ok) assert.equal(right.error.code, "LIVEHOST_LOCUS_CAPACITY_EXHAUSTED");
+  assert.deepEqual(created, ["left"]);
+  assert.deepEqual(fixture.value.diagnostics(), {
+    state: "accepting",
+    entryCount: 1,
+    loadingCount: 1,
+    activeCount: 0,
+    idleCount: 0,
+    disposingCount: 0,
+    acquisitionCount: 0,
+  });
+  assert.equal(fixture.value.has("left"), true);
+  assert.equal(fixture.value.has("right"), false);
+  releaseLeft.resolve();
+  const acquired = await left;
+  if (acquired.ok) acquired.value.release();
+  await fixture.value.dispose();
+});
+
+check("maxLoci two permits distinct creations to remain concurrent", async () => {
+  const gates = new Map([
+    ["left", deferred<void>()],
+    ["right", deferred<void>()],
+  ]);
+  const started = new Set<string>();
+  const bothStarted = deferred<void>();
+  const fixture = registry({
+    maxLoci: 2,
+    async create(key) {
+      started.add(key);
+      if (started.size === 2) bothStarted.resolve();
+      await gates.get(key)?.promise;
+      return create_locus<TestState>({ state: { key }, logicalMapId: key });
+    },
+  });
+  const left = fixture.value.acquire("left");
+  const right = fixture.value.acquire("right");
+  await bothStarted.promise;
+  assert.deepEqual(new Set(started), new Set(["left", "right"]));
+  assert.equal(fixture.value.diagnostics().entryCount, 2);
+  assert.equal(fixture.value.diagnostics().loadingCount, 2);
+  gates.get("left")?.resolve();
+  gates.get("right")?.resolve();
+  const [acquiredLeft, acquiredRight] = await Promise.all([left, right]);
+  assert.equal(acquiredLeft.ok && acquiredRight.ok, true);
+  if (acquiredLeft.ok) acquiredLeft.value.release();
+  if (acquiredRight.ok) acquiredRight.value.release();
+  assert.equal(fixture.value.has("left"), true);
+  assert.equal(fixture.value.has("right"), true);
+  await fixture.value.dispose();
+});
+
+check("failed creation removes its reservation for a later distinct key", async () => {
+  const failureStarted = deferred<void>();
+  const releaseFailure = deferred<void>();
+  const created: string[] = [];
+  const fixture = registry({
+    maxLoci: 1,
+    async create(key) {
+      created.push(key);
+      if (key === "failed") {
+        failureStarted.resolve();
+        await releaseFailure.promise;
+        throw new Error("controlled creation failure");
+      }
+      return create_locus<TestState>({ state: { key }, logicalMapId: key });
+    },
+  });
+  const failed = fixture.value.acquire("failed");
+  await failureStarted.promise;
+  const blocked = await fixture.value.acquire("later");
+  assert.equal(blocked.ok, false);
+  releaseFailure.resolve();
+  assert.equal((await failed).ok, false);
+  assert.equal(fixture.value.diagnostics().entryCount, 0);
+  assert.equal(fixture.value.diagnostics().loadingCount, 0);
+  const later = await fixture.value.acquire("later");
+  assert.equal(later.ok, true);
+  assert.deepEqual(created, ["failed", "later"]);
+  if (later.ok) later.value.release();
   await fixture.value.dispose();
 });
 
@@ -252,18 +355,18 @@ check("failed creation releases capacity and a later retry may succeed", async (
   await fixture.value.dispose();
 });
 
-check("finite capacity never selects an active authority", async () => {
-  const fixture = registry({ maxAuthorities: 1 });
+check("finite capacity never selects an active Locus", async () => {
+  const fixture = registry({ maxLoci: 1 });
   const active = await fixture.value.acquire("active");
   const rejected = await fixture.value.acquire("other");
   assert.equal(rejected.ok, false);
-  if (!rejected.ok) assert.equal(rejected.error.code, "LIVEHOST_AUTHORITY_CAPACITY_EXHAUSTED");
+  if (!rejected.ok) assert.equal(rejected.error.code, "LIVEHOST_LOCUS_CAPACITY_EXHAUSTED");
   if (active.ok) active.value.release();
   await fixture.value.dispose();
 });
 
-check("capacity pressure deterministically removes an idle authority", async () => {
-  const fixture = registry({ maxAuthorities: 1 });
+check("capacity pressure deterministically removes an idle Locus", async () => {
+  const fixture = registry({ maxLoci: 1 });
   const first = await fixture.value.acquire("old");
   if (first.ok) first.value.release();
   const second = await fixture.value.acquire("new");
@@ -290,7 +393,7 @@ check("two application-owned registries isolate equal keys and disposal", async 
   const second = registry();
   const a = await first.value.acquire("equal");
   const b = await second.value.acquire("equal");
-  assert.equal(a.ok && b.ok && !Object.is(a.value.authority, b.value.authority), true);
+  assert.equal(a.ok && b.ok && !Object.is(a.value.locus, b.value.locus), true);
   if (a.ok) a.value.release();
   if (b.ok) b.value.release();
   await first.value.dispose();
@@ -310,7 +413,7 @@ check("registry acquisition key remains independent from hosted logical map iden
   const acquired = await fixture.value.acquire("resident-entry");
   assert.equal(acquired.ok, true);
   if (acquired.ok) {
-    assert.equal(acquired.value.authority.stream.logicalMapId, "canonical-map");
+    assert.equal(acquired.value.locus.stream.logicalMapId, "canonical-map");
     assert.equal(fixture.value.has("resident-entry"), true);
     assert.equal(fixture.value.has("canonical-map"), false);
     acquired.value.release();
@@ -318,12 +421,12 @@ check("registry acquisition key remains independent from hosted logical map iden
   await fixture.value.dispose();
 });
 
-check("registry disposal invalidates acquisition and disposes each authority once", async () => {
+check("registry disposal invalidates acquisition and disposes each Locus once", async () => {
   let disposals = 0;
   const fixture = registry({
-    dispose(authority) {
+    dispose(locus) {
       disposals += 1;
-      authority.dispose();
+      locus.dispose();
     },
   });
   const acquired = await fixture.value.acquire("dispose");
@@ -335,24 +438,24 @@ check("registry disposal invalidates acquisition and disposes each authority onc
 });
 
 check("ephemeral recreation retains logical identity but replaces incarnation", async () => {
-  const fixture = registry({ maxAuthorities: 1 });
+  const fixture = registry({ maxLoci: 1 });
   const first = await fixture.value.acquire("ephemeral");
   assert.equal(first.ok, true);
   if (!first.ok) return;
-  const incarnation = first.value.authority.stream.incarnationId;
+  const incarnation = first.value.locus.stream.incarnationId;
   first.value.release();
   assert.equal((await fixture.value.evict("ephemeral")).status, "evicted");
   const second = await fixture.value.acquire("ephemeral");
   assert.equal(second.ok, true);
   if (second.ok) {
-    assert.equal(second.value.authority.stream.logicalMapId, "ephemeral");
-    assert.notEqual(second.value.authority.stream.incarnationId, incarnation);
+    assert.equal(second.value.locus.stream.logicalMapId, "ephemeral");
+    assert.notEqual(second.value.locus.stream.incarnationId, incarnation);
     second.value.release();
   }
   await fixture.value.dispose();
 });
 
-check("persistent append and checkpoint work are reported as authority activity", async () => {
+check("persistent append and checkpoint work are reported as Locus activity", async () => {
   const appends: ReturnType<typeof deferred<void>>[] = [];
   const adapter = {
     async load() { return undefined; },
@@ -379,7 +482,7 @@ check("persistent append and checkpoint work are reported as authority activity"
   host.dispose();
 });
 
-check("activity observers stop cleanly and authority-only lifecycle creates no DOM", () => {
+check("activity observers stop cleanly and Locus-only lifecycle creates no DOM", () => {
   const before = Reflect.get(globalThis, "document");
   const host = create_locus({ state: {} });
   let changes = 0;
@@ -395,4 +498,4 @@ check("activity observers stop cleanly and authority-only lifecycle creates no D
 
 await sequence;
 process.stdout.write(`1..${checks}\n`);
-emit_hson_live_test_completion("livehost.authority-lifecycle", checks, checks, 0);
+emit_hson_live_test_completion("livehost.locus-lifecycle", checks, checks, 0);

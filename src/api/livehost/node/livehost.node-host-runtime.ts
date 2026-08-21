@@ -7,7 +7,6 @@ export {
 } from "./livehost.node-policy.js";
 export type {
   NodeApplicationSecurity,
-  NodeAuthenticatedPrincipal,
   NodeExactOriginPolicyOptions,
   NodePolicyRejection,
   NodePolicyResult,
@@ -24,12 +23,7 @@ export { start_node_application_host } from "./livehost.node-application-host.js
 export type {
   NodeApplicationHost,
   NodeApplicationHostOptions,
-  NodeApplicationHttpRoute,
-  NodeAuthorityNamespace,
   NodeHostDeployment,
   NodeHostTransportLimits,
-  NodeHostedApplication,
   NodeHostOperationalEvent,
-  NodeWebSocketDispatchContext,
-  NodeWebSocketTransportPolicy,
 } from "./livehost.node-application-host.js";

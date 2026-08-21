@@ -121,6 +121,7 @@ import type { DocumentBindingSource } from "hson-live/livetree";
 import {
   LocusAuthorityError,
   hsonLocus as hostSubpath,
+  type Locus,
   type LocusAuthorityErrorCode,
   type LocusReadonlyMap,
   type LocusSyncManager,
@@ -132,9 +133,21 @@ import { create_livehost } from "hson-live";
 // @ts-expect-error The historical one-map facade is removed from the root.
 import { hsonLiveHost } from "hson-live";
 // @ts-expect-error The Locus surface exposes no historical LiveHost type aliases.
-import type { LiveHost } from "hson-live/locus";
-// @ts-expect-error The generic LiveHost package root is intentionally absent until U11.
-import type { LiveHostOptions } from "hson-live/livehost";
+import type { LiveHost as RemovedLocusLiveHost } from "hson-live/locus";
+import type {
+  LiveHost,
+  LiveHostApplication,
+  LiveHostApplicationContext,
+  LiveHostConnection,
+  LiveHostConnectionRoute,
+  LiveHostLocusAcquisition,
+  LiveHostLocusEvictionResult,
+  LiveHostLocusRegistry,
+  LiveHostLocusRegistryOptions,
+  LiveHostLocusRegistryResult,
+  LiveHostPrincipal,
+  LiveHostRequestRoute,
+} from "hson-live/livehost";
 import {
   hsonReflect as reflectSubpath,
   type CollectionReflect,
@@ -179,8 +192,48 @@ void LiveMapRevError;
 void LocusAuthorityError;
 void create_livehost;
 void hsonLiveHost;
+void (0 as unknown as RemovedLocusLiveHost);
 void (0 as unknown as LiveHost);
-void (0 as unknown as LiveHostOptions);
+void (0 as unknown as LiveHostApplication);
+void (0 as unknown as LiveHostApplicationContext);
+void (0 as unknown as LiveHostConnection);
+void (0 as unknown as LiveHostConnectionRoute);
+void (0 as unknown as LiveHostLocusAcquisition);
+void (0 as unknown as LiveHostLocusEvictionResult);
+void (0 as unknown as LiveHostLocusRegistry);
+void (0 as unknown as LiveHostLocusRegistryOptions);
+void (0 as unknown as LiveHostLocusRegistryResult<unknown>);
+void (0 as unknown as LiveHostPrincipal);
+void (0 as unknown as LiveHostRequestRoute);
+
+declare const managedLocus: Locus;
+const publicRegistryOptions: LiveHostLocusRegistryOptions = {
+  maxLoci: 2,
+  idleMs: 100,
+  create: () => managedLocus,
+};
+const privateClockRegistryOptions: LiveHostLocusRegistryOptions = {
+  ...publicRegistryOptions,
+  // @ts-expect-error Deterministic clocks are an internal runtime/testing seam.
+  now: () => 0,
+};
+const bodylessRequestRoute: LiveHostRequestRoute = {
+  method: "GET",
+  path: "/",
+  handle: () => new Response(),
+  // @ts-expect-error Body suppression is a Node ingress rule, not an application route contract.
+  bodyless: true,
+};
+const binaryConnection: LiveHostConnection = {
+  send: (_data: string | Uint8Array) => {},
+  close: () => {},
+  onMessage: (_listener: (data: string | Uint8Array) => void) => () => {},
+  onClose: () => () => {},
+};
+void publicRegistryOptions;
+void privateClockRegistryOptions;
+void bodylessRequestRoute;
+void binaryConnection;
 void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
