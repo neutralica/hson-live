@@ -22,8 +22,8 @@ export { CREATE_NODE as _CREATE_NODE } from "../core/factories.js";
 export { _listeners_off_for_target, _listeners_debug_hard_reset } from "../api/livetree/managers/listener-builder.js";
 export { begin_livetree_materialization_profile } from "../api/livetree/debug/materialization-profile.js";
 export type { LiveTreeMaterializationProfile } from "../api/livetree/debug/materialization-profile.js";
-export { create_live_trace_collector } from "../api/livehost/livehost.trace.collector.js";
-export { create_live_trace_console_sink } from "../api/livehost/livehost.trace.console.js";
+export { create_live_trace_collector } from "../api/locus/locus.trace.collector.js";
+export { create_live_trace_console_sink } from "../api/locus/locus.trace.console.js";
 export type {
   LiveTraceCollector,
   LiveTraceCollectorOptions,

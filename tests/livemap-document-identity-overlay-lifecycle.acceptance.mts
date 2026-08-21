@@ -43,7 +43,7 @@ function graph(tag: string, quid: string, child?: Readonly<{ tag: string; quid: 
 }
 
 function invalidCapture(root: HsonNode): unknown {
-  return { kind: "hson-document", version: 2, mode: "element", rev: 0, root };
+  return { kind: "hson-document", mode: "element", rev: 0, root };
 }
 
 check("construction completes exactly one overlay build", () => {
@@ -75,7 +75,7 @@ check("capture serializes graph identity but not the derived overlay", () => {
   const map = element(`<main @${Q1}/>`);
   const before = livemap_document_identity_overlay_build_count();
   const capture = map.capture();
-  assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root", "version"]);
+  assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
   assert.equal(JSON.stringify(capture.root).includes(Q1), true);
   assert.equal(livemap_document_identity_overlay_build_count(), before);
 });

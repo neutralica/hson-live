@@ -21,7 +21,6 @@ import {
 } from "../transform/utils/json-utils/ordered-json.js";
 
 export const LIVEMAP_STRUCTURAL_JSON_FORMAT = "structural-json" as const;
-export const LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION = 1 as const;
 
 type ProjectedSetOrReplaceOp = Readonly<{
   kind: "set" | "replace";
@@ -84,13 +83,12 @@ export class LiveMapTransportCodecError extends Error {
   }
 }
 
-/** Emit one immutable carrier directly as an exact versioned JSON-text envelope. */
+/** Emit one immutable carrier directly as the canonical JSON-text envelope. */
 export function encode_projected_value_transport(
   value: OrderedProjectedValue,
 ): LiveMapStructuralJsonEnvelope {
   return Object.freeze({
     format: LIVEMAP_STRUCTURAL_JSON_FORMAT,
-    formatVersion: LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION,
     payload: emit_ordered_json(value),
   });
 }
@@ -120,7 +118,7 @@ export function decode_livemap_replay_payload(payload: string): readonly LiveMap
   return Object.freeze(decoded.map(carrier_to_projected_op));
 }
 
-/** Materialize one public compatibility operation from its exact carrier witness. */
+/** Materialize one public semantic operation from its exact carrier witness. */
 export function materialize_livemap_projected_op(op: LiveMapProjectedDataOp): LiveMapDataOp {
   if (op.kind === "delete") {
     return Object.freeze({

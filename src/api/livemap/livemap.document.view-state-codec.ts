@@ -22,9 +22,7 @@ import {
 } from "./livemap.document.view-state-codec.error.js";
 
 const FORMAT = "view-state" as const;
-const FORMAT_VERSION = 2 as const;
 const CAPTURE_KIND = "hson-document" as const;
-const CAPTURE_VERSION = 2 as const;
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 4 * 1_024 * 1_024;
 const DEFAULT_MAX_DEPTH = 256;
@@ -34,7 +32,6 @@ const textEncoder = new TextEncoder();
 /** @internal */
 export type ViewStateSnapshotEncoding = Readonly<{
   format: typeof FORMAT;
-  formatVersion: typeof FORMAT_VERSION;
   payload: string;
 }>;
 
@@ -71,7 +68,6 @@ type CodecValue =
 
 type CodecPayload = Readonly<{
   captureKind: typeof CAPTURE_KIND;
-  captureVersion: typeof CAPTURE_VERSION;
   mode: DocumentLiveMapMode;
   revision: number;
   root: CodecValue;
@@ -79,7 +75,6 @@ type CodecPayload = Readonly<{
 
 type ExactValuePayload = Readonly<{
   valueKind: "canonical-graph-content";
-  valueVersion: 2;
   value: CodecValue;
 }>;
 
@@ -97,7 +92,6 @@ export function encode_view_state_snapshot(
   validate_canonical_document(capture.root, capture.mode);
   return Object.freeze({
     format: FORMAT,
-    formatVersion: FORMAT_VERSION,
     payload: encode_view_state_payload(capture, limits),
   });
 }
@@ -109,7 +103,6 @@ function encode_view_state_payload(
   const budget: Budget = { nodes: 0 };
   const payloadValue: CodecPayload = {
     captureKind: CAPTURE_KIND,
-    captureVersion: CAPTURE_VERSION,
     mode: capture.mode,
     revision: capture.rev,
     root: encode_value(capture.root, 1, budget, limits),
@@ -166,7 +159,6 @@ export function decode_view_state_snapshot(
   const payload = decode_payload(representation, limits);
   const decodedInput: DocumentLiveMapCapture = {
     kind: CAPTURE_KIND,
-    version: CAPTURE_VERSION,
     mode: payload.mode,
     rev: payload.revision,
     root: payload.root,
@@ -178,7 +170,7 @@ export function decode_view_state_snapshot(
   if (deterministicInputPayload !== encoded.payload) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_ROUND_TRIP_MISMATCH",
-      "View-state snapshot payload is not the deterministic version 2 representation.",
+      "View-state snapshot payload is not the deterministic canonical representation.",
     );
   }
   let normalizedRoot: HsonNode;
@@ -196,7 +188,6 @@ export function decode_view_state_snapshot(
   }
   const capture: DocumentLiveMapCapture = Object.freeze({
     kind: CAPTURE_KIND,
-    version: CAPTURE_VERSION,
     mode: payload.mode,
     rev: payload.revision,
     root: normalizedRoot,
@@ -216,7 +207,6 @@ export function encode_exact_hson_value(
   const limits = codec_limits(options);
   const payloadValue: ExactValuePayload = {
     valueKind: "canonical-graph-content",
-    valueVersion: 2,
     value: encode_value(value, 1, { nodes: 0 }, limits),
   };
   let payload: string;
@@ -254,8 +244,8 @@ export function decode_exact_hson_value(
     );
   }
   const representation = json_value_from_node(parsedNode);
-  const record = exact_record(representation, ["valueKind", "valueVersion", "value"]);
-  if (record.valueKind !== "canonical-graph-content" || record.valueVersion !== 2) {
+  const record = exact_record(representation, ["valueKind", "value"]);
+  if (record.valueKind !== "canonical-graph-content") {
     throw invalid_representation();
   }
   const value = decode_value(record.value, 1, { nodes: 0 }, limits);
@@ -363,8 +353,8 @@ function decode_payload(value: JsonValue, limits: CodecLimits): Readonly<{
   revision: number;
   root: HsonNode;
 }> {
-  const record = exact_record(value, ["captureKind", "captureVersion", "mode", "revision", "root"]);
-  if (record.captureKind !== CAPTURE_KIND || record.captureVersion !== CAPTURE_VERSION) {
+  const record = exact_record(value, ["captureKind", "mode", "revision", "root"]);
+  if (record.captureKind !== CAPTURE_KIND) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
       "View-state snapshot payload declares an unsupported capture representation.",
@@ -535,7 +525,7 @@ function decode_meta(value: Record<string, unknown>): HsonMeta {
 function validate_capture_header(capture: DocumentLiveMapCapture): void {
   if (!is_plain_record(capture)
     || capture.kind !== CAPTURE_KIND
-    || capture.version !== CAPTURE_VERSION
+    || Object.keys(capture).length !== 4
     || !is_Node(capture.root)) {
     throw codec_error(
       "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
@@ -595,13 +585,7 @@ function validate_encoding_wrapper(encoded: ViewStateSnapshotEncoding): void {
       "View-state snapshot format is unknown.",
     );
   }
-  if (encoded.formatVersion !== FORMAT_VERSION) {
-    throw codec_error(
-      "VIEW_STATE_SNAPSHOT_VERSION_UNSUPPORTED",
-      "View-state snapshot format version is unsupported.",
-    );
-  }
-  require_exact_keys(encoded, ["format", "formatVersion", "payload"]);
+  require_exact_keys(encoded, ["format", "payload"]);
   if (typeof encoded.payload !== "string") throw invalid_representation();
 }
 

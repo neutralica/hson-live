@@ -57,7 +57,7 @@ check("exact capture restores to the strict original graph", () => {
 });
 check("exact apply reconstructs the strict original graph", () => {
   const source = map(nested); const target = map(object([["old", true]])); const capture = source.capture();
-  target.apply({ prevRev: 0, format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload }); assert_same_graph(source, target);
+  target.apply({ prevRev: 0, format: capture.format, payload: capture.payload }); assert_same_graph(source, target);
 });
 check("exact replay closes a mutation commit", () => {
   const initial = object([["value", object([])]]); const source = map(initial); const target = map(initial);
@@ -129,9 +129,9 @@ check("LiveHost canonical commit payloads decode to the committed carrier", () =
   const operations = decode_livemap_replay_payload(payload!);
   assert.deepEqual(keys(operations[0]?.next), ["10", "2", "1", "tail"]);
 });
-check("legacy capture input remains readable and observably lossy", () => {
+check("legacy capture input is rejected", () => {
   const source = hson.liveMap.fromJson('{"10":10,"2":2,"1":1}'); const legacy = { rev: source.rev, value: source.snap() as JsonValue };
-  const target = map(object([])); target.restore(legacy); assert.deepEqual(keys(carrier(target)), ["1", "2", "10"]); assert.equal(canonical_hson_graph_equal(source.root(), target.root()), false);
+  const target = map(object([])); assert.throws(() => target.restore(legacy as never)); assert.deepEqual(keys(carrier(target)), []);
 });
 check("custom selector-result equality remains a separate detached domain", () => {
   const valueMap = hson.liveMap.fromJson({ value: 0, other: 0 }); let calls = 0; let equalityCalls = 0;

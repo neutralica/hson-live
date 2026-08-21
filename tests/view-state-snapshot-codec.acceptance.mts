@@ -43,7 +43,6 @@ function element_capture(
 ): DocumentLiveMapCapture<"element"> {
   return {
     kind: "hson-document",
-    version: 2,
     mode: "element",
     rev,
     root: node("_hson_root", [node("_hson_elem", [element], undefined, clusterMeta)], undefined, rootMeta),
@@ -58,7 +57,6 @@ function fragment_capture(
 ): DocumentLiveMapCapture<"fragment"> {
   return {
     kind: "hson-document",
-    version: 2,
     mode: "fragment",
     rev,
     root: node("_hson_root", [node("_hson_elem", content, undefined, clusterMeta)], undefined, rootMeta),
@@ -68,7 +66,6 @@ function fragment_capture(
 function empty_fragment_capture(rev = 3): DocumentLiveMapCapture<"fragment"> {
   return {
     kind: "hson-document",
-    version: 2,
     mode: "fragment",
     rev,
     root: node("_hson_root"),
@@ -120,7 +117,6 @@ function decoded_payload_value(encoded: ViewStateSnapshotEncoding): JsonValue {
 function encoding_with_payload(value: JsonValue): ViewStateSnapshotEncoding {
   return Object.freeze({
     format: "view-state",
-    formatVersion: 2,
     payload: compact_json_payload(value),
   });
 }
@@ -213,7 +209,7 @@ check("element capture round-trips with detached nested identity and typed docum
   ));
   const { encoded, decoded } = round_trip(capture);
   assert.equal(encoded.format, "view-state");
-  assert.equal(encoded.formatVersion, 2);
+  assert.equal(Object.hasOwn(encoded, "formatVersion"), false);
   assert.notEqual(decoded.root.$_content[0], capture.root.$_content[0]);
 
   const target = hson.liveMap.fromNode(element_capture(node("aside"), 0).root);
@@ -483,7 +479,7 @@ check("non-finite numbers are rejected with sanitized controlled errors", () => 
   }
 });
 
-check("format and version reject before malformed payload parsing", () => {
+check("unknown formats and removed generation fields reject before payload parsing", () => {
   expect_codec_error(
     () => decode_view_state_snapshot(unsafe_encoding({ format: "other", formatVersion: 2, payload: "secret <" })),
     "VIEW_STATE_SNAPSHOT_FORMAT_UNKNOWN",
@@ -491,14 +487,14 @@ check("format and version reject before malformed payload parsing", () => {
   );
   expect_codec_error(
     () => decode_view_state_snapshot(unsafe_encoding({ format: "view-state", formatVersion: 1, payload: "secret <" })),
-    "VIEW_STATE_SNAPSHOT_VERSION_UNSUPPORTED",
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
     "secret",
   );
 });
 
 check("syntax and explicit representation failures remain classified and sanitized", () => {
   expect_codec_error(
-    () => decode_view_state_snapshot({ format: "view-state", formatVersion: 2, payload: "secret <" }),
+    () => decode_view_state_snapshot({ format: "view-state", payload: "secret <" }),
     "VIEW_STATE_SNAPSHOT_SYNTAX_INVALID",
     "secret",
   );
@@ -508,6 +504,10 @@ check("syntax and explicit representation failures remain classified and sanitiz
 
   expect_codec_error(
     () => decode_view_state_snapshot(encoding_with_payload({ ...base, unexpected: true })),
+    "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
+  );
+  expect_codec_error(
+    () => decode_view_state_snapshot(encoding_with_payload({ ...base, captureVersion: 2 })),
     "VIEW_STATE_SNAPSHOT_REPRESENTATION_INVALID",
   );
   expect_codec_error(
@@ -601,7 +601,7 @@ check("decode rejects duplicate and malformed persisted QUIDs without exposing i
 check("UTF-8 payload bytes, depth, and node-count limits are enforced", () => {
   expect_codec_error(
     () => decode_view_state_snapshot(
-      { format: "view-state", formatVersion: 2, payload: "é" },
+      { format: "view-state", payload: "é" },
       { maxPayloadBytes: 1 },
     ),
     "VIEW_STATE_SNAPSHOT_PAYLOAD_TOO_LARGE",

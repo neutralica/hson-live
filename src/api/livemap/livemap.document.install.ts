@@ -113,9 +113,6 @@ export function prepare_document_install(
   if (capture.kind !== "hson-document") {
     throw new LiveMapDocumentInstallError(`unsupported capture kind ${JSON.stringify(capture.kind)}`);
   }
-  if (capture.version !== 2) {
-    throw new LiveMapDocumentInstallError(`unsupported capture version ${String(capture.version)}`);
-  }
   if (capture.mode !== "element" && capture.mode !== "fragment") {
     throw new LiveMapDocumentInstallError(`unsupported capture mode ${JSON.stringify(capture.mode)}`);
   }
@@ -187,5 +184,9 @@ export function prepare_document_install(
 function assert_capture_object(capture: DocumentLiveMapCapture): void {
   if (typeof capture !== "object" || capture === null || Array.isArray(capture)) {
     throw new LiveMapDocumentInstallError("capture must be an object");
+  }
+  const keys = Object.keys(capture);
+  if (keys.length !== 4 || !keys.every((key) => ["kind", "mode", "rev", "root"].includes(key))) {
+    throw new LiveMapDocumentInstallError("capture contains missing or unknown fields");
   }
 }

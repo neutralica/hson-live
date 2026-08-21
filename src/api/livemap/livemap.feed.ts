@@ -167,11 +167,8 @@ function detached_public_commit(
     prevRev: commit.prevRev,
     rev: commit.rev,
     ops: Object.freeze(ops.map(materialize_livemap_projected_op)),
-    ...(commit.format === undefined ? {} : {
-      format: commit.format,
-      formatVersion: commit.formatVersion,
-      payload: commit.payload,
-    }),
+    format: commit.format,
+    payload: commit.payload,
   });
 }
 

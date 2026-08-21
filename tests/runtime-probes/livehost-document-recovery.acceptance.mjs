@@ -332,7 +332,7 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
   assert.equal(snapshot?.mode, "fragment");
   assert.equal(snapshot?.format, "view-state");
-  assert.equal(snapshot?.formatVersion, 2);
+  assert.equal("formatVersion" in snapshot, false);
   assert.equal(typeof snapshot?.payload, "string");
   assert.equal("hson" in snapshot, false);
   assert.equal("value" in snapshot, false);
@@ -554,7 +554,7 @@ await check("view-state element snapshot recovery preserves typed document state
   assert.equal((await client.recovery.recover()).strategy, "snapshot");
   const snapshot = pair.serverSent.map(JSON.parse).find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal(snapshot.format, "view-state");
-  assert.equal(snapshot.formatVersion, 2);
+  assert.equal("formatVersion" in snapshot, false);
   assert.equal(typeof snapshot.payload, "string");
   assert.equal("hson" in snapshot, false);
   assert.equal(snapshot.logicalMapId, host.stream.logicalMapId);
@@ -665,11 +665,11 @@ await check("view-state snapshot envelope discrimination rejects unsupported and
 
   await expect_scripted_snapshot_failure(
     { ...common, format: "view-state", formatVersion: 1, payload: encoded.payload },
-    "LIVEHOST_RECOVERY_SNAPSHOT_VERSION_UNSUPPORTED",
+    "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "unknown-view-state-format", formatVersion: 2, payload: encoded.payload },
+    { ...common, format: "unknown-view-state-format", payload: encoded.payload },
     "LIVEHOST_RECOVERY_SNAPSHOT_FORMAT_UNSUPPORTED",
     [encoded.payload],
   );
@@ -683,16 +683,16 @@ await check("view-state snapshot envelope discrimination rejects unsupported and
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", formatVersion: 2 },
+    { ...common, format: "view-state" },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", payload: encoded.payload },
+    { ...common, format: "view-state", payload: encoded.payload, extra: true },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
     [encoded.payload],
   );
   await expect_scripted_snapshot_failure(
-    { ...common, format: "view-state", formatVersion: 2, payload: 42 },
+    { ...common, format: "view-state", payload: 42 },
     "LIVEHOST_RECOVERY_SNAPSHOT_ENVELOPE_INVALID",
   );
 });
@@ -704,7 +704,6 @@ await check("view-state codec failures are translated without payload disclosure
       rev: 0,
       mode: "element",
       format: "view-state",
-      formatVersion: 2,
       payload: privatePayload,
     },
     "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED",

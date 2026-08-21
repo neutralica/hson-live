@@ -8,7 +8,7 @@ type Map = LiveMapCore<JsonValue | undefined>;
 
 function exact(map: Map): string {
   const capture = map.capture();
-  return JSON.stringify({ format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload });
+  return JSON.stringify({ format: capture.format, payload: capture.payload });
 }
 
 function result(classification: OperatorResult["classification"], before: string, input: string, after: string, revisionDelta: number, publications: number, evidence: readonly string[] = []): OperatorResult {
@@ -32,11 +32,11 @@ export const transport_propagation_operators: readonly DeterministicLiveMapOpera
   lifecycle_operator("transport/capture-stable", "capture exact state", "Repeated exact captures are byte-stable and non-mutating.", "Map contains an admitted projected root.", "accept", () => {
     const map = changed_source(); const before = exact(map); const first = map.capture(); const second = map.capture(); assert.equal(first.payload, second.payload); return result("accept", before, "capture() twice", exact(map), 0, 0, ["payloads byte-identical"]);
   }),
-  lifecycle_operator("transport/restore-exact", "restore an exact capture", "Restore adopts exact ordered carrier state.", "Capture is a valid structural-json v1 envelope.", "change", () => {
+  lifecycle_operator("transport/restore-exact", "restore an exact capture", "Restore adopts exact ordered carrier state.", "Capture is the canonical structural-json representation.", "change", () => {
     const source = changed_source(); const target = hson.liveMap.fromJson(INITIAL); const before = exact(target); target.restore(source.capture()); assert.equal(exact(target), exact(source)); return result("change", before, "source.capture()", exact(target), target.rev, 0, ["target payload equals source"]);
   }),
   lifecycle_operator("transport/apply-exact", "apply an exact snapshot", "Apply reconstructs exact captured state at the expected revision.", "Expected revision matches and envelope is valid.", "change", () => {
-    const source = changed_source(); const capture = source.capture(); const target = hson.liveMap.fromJson(INITIAL); const before = exact(target); let publications = 0; target.commits.observe(() => { publications += 1; }); target.apply({ prevRev: 0, format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload }); assert.equal(exact(target), exact(source)); return result("change", before, "prevRev=0 plus exact capture", exact(target), target.rev, publications);
+    const source = changed_source(); const capture = source.capture(); const target = hson.liveMap.fromJson(INITIAL); const before = exact(target); let publications = 0; target.commits.observe(() => { publications += 1; }); target.apply({ prevRev: 0, format: capture.format, payload: capture.payload }); assert.equal(exact(target), exact(source)); return result("change", before, "prevRev=0 plus exact capture", exact(target), target.rev, publications);
   }),
   lifecycle_operator("transport/replay-change", "replay an exact changed commit", "Replay verifies prev and installs next exactly.", "Target matches operation strict previous witness.", "change", () => {
     const source = hson.liveMap.fromJson(INITIAL); const target = hson.liveMap.fromJson(INITIAL); const before = exact(target); const commit = source.replace(["value"], ORDERED); const replayed = target.replay(commit); assert.equal(exact(target), exact(source)); return result(replayed.changed ? "change" : "no-op", before, "exact replace commit", exact(target), target.rev, 1, [`ops=${replayed.ops.length}`]);
@@ -48,16 +48,16 @@ export const transport_propagation_operators: readonly DeterministicLiveMapOpera
     const source = hson.liveMap.fromJson({ value: 0 }); const target = hson.liveMap.fromJson({ value: -0 }); const before = exact(target); const commit = source.set(["value"], 1); let code = "missing"; try { target.replay(commit); } catch (error) { code = error_code(error); } assert.equal(code, "REPLAY_CONFLICT"); return result("conflict", before, "commit prev=+0 next=1", exact(target), 0, 0, [code]);
   }),
   lifecycle_operator("transport/reject-format", "reject an unsupported exact format", "Unknown exact format never falls back.", "Restore carries format=wrong.", "rejection", () => {
-    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "wrong", formatVersion: 1, payload: "null" } as never); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "format=wrong version=1 payload=null", exact(map), 0, 0, [code]);
+    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "wrong", payload: "null", root: map.root() } as never); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "format=wrong payload=null", exact(map), 0, 0, [code]);
   }),
   lifecycle_operator("transport/reject-capture-payload", "reject malformed capture structural text", "Malformed exact capture is atomic.", "Payload is incomplete text {.", "rejection", () => {
-    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "structural-json", formatVersion: 1, payload: "{" }); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "format=structural-json version=1 payload={", exact(map), 0, 0, [code]);
+    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "structural-json", payload: "{", root: map.root() }); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "format=structural-json payload={", exact(map), 0, 0, [code]);
   }),
   lifecycle_operator("transport/reject-replay-shape", "reject malformed replay operation shape", "Replay payload must decode to an operation array.", "Exact payload decodes to object {}.", "rejection", () => {
-    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.replay({ prevRev: 0, format: "structural-json", formatVersion: 1, payload: "{}" }); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "exact replay payload={}", exact(map), 0, 0, [code]);
+    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.replay({ prevRev: 0, format: "structural-json", payload: "{}" }); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "exact replay payload={}", exact(map), 0, 0, [code]);
   }),
-  lifecycle_operator("transport/exact-precedence", "reject malformed exact data despite legacy value", "Exact fields prevent fallback to a compatibility value.", "Exact payload is malformed and legacy value is valid.", "rejection", () => {
-    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "structural-json", formatVersion: 1, payload: "{", value: { valid: true } }); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "payload={ plus value={valid:true}", exact(map), 0, 0, [code]);
+  lifecycle_operator("transport/removed-projection", "reject a removed compatibility value", "The canonical reader rejects the historical value projection.", "Capture includes the removed value field.", "rejection", () => {
+    const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let code = "missing"; try { map.restore({ rev: 1, format: "structural-json", payload: "{", root: map.root(), value: { valid: true } } as never); } catch (error) { code = error_code(error); } assert.equal(exact(map), before); return result("rejection", before, "canonical capture plus removed value field", exact(map), 0, 0, [code]);
   }),
   lifecycle_operator("propagation/feed-change", "publish a changed feed value", "One changed commit delivers one detached public feed event.", "Listener observes changed path value.", "change", () => {
     const map = hson.liveMap.fromJson(INITIAL); const before = exact(map); let feeds = 0; map.feed(["value"], (event) => { feeds += 1; (event.value as Record<string, JsonValue>)["10"] = 99; }); const commit = map.replace(["value"], ORDERED); assert.equal(feeds, 1); assert.equal((map.snap(["value"]) as Record<string, JsonValue>)["10"], 10); return result(commit.changed ? "change" : "no-op", before, "replace value with ordered dangerous object", exact(map), map.rev, 1, ["feeds=1", "listener mutation detached"]);

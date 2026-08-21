@@ -257,7 +257,7 @@ check("capture serializes no overlay and changes no identity accounting", () => 
   const before = livemap_document_identity_accounting();
   const capture = map.capture();
   assert.deepEqual(livemap_document_identity_accounting(), before);
-  assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root", "version"]);
+  assert.deepEqual(Object.keys(capture).sort(), ["kind", "mode", "rev", "root"]);
 });
 
 check("legacy QUID replay lowers through the same incremental reducer", () => {

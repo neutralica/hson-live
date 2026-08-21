@@ -204,7 +204,7 @@ check("a stale expected revision does not consume a valid capability", () => {
 
 check("same-epoch provenance adds no enumerable capture fields", () => {
   const capture = element(`<main @${Q1}/>`).capture({ identity: "same-epoch" });
-  assert.deepEqual(Object.keys(capture), ["kind", "version", "mode", "rev", "root"]);
+  assert.deepEqual(Object.keys(capture), ["kind", "mode", "rev", "root"]);
 });
 
 check("same-epoch provenance is absent from JSON serialization", () => {

@@ -107,11 +107,11 @@ check("schema queries expose immutable owner-independent evidence", () => {
   assert.equal("root" in (rule ?? {}), false);
 });
 
-check("capture values are detached from canonical ownership", () => {
+check("capture graphs are detached without a compatibility value projection", () => {
   const map = hson.liveMap.fromJson({ nested: { value: 1 } });
   const capture = map.capture();
-  if (!("value" in capture)) throw new Error("expected projected capture");
-  (capture.value as { nested: { value: number } }).nested.value = 9;
+  assert.equal("value" in capture, false);
+  capture.root.$_content.length = 0;
   assert.deepEqual(map.snap(), { nested: { value: 1 } });
 });
 

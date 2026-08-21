@@ -20,7 +20,7 @@ import {
   restore_persistent_livehost,
   type PersistenceTraceOptions,
   unload_persistent_livehost,
-} from "../livehost.persistence.js";
+} from "../../locus/locus.persistence.js";
 
 // Persistent residency and adapter lookup are both keyed by this map identity.
 type PersistentStoreKey = LiveHostLogicalMapId;

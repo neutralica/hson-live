@@ -414,7 +414,10 @@ await check("restored authority serves legacy HSON modern view-state and replay 
     }));
     const snapshot = pair.serverSent.find((message) => message.type === "recovery-snapshot")?.snapshot;
     if (capabilities === undefined) assert.equal(typeof snapshot.hson, "string");
-    else assert.deepEqual({ format: snapshot.format, formatVersion: snapshot.formatVersion }, { format: "view-state", formatVersion: 2 });
+    else {
+      assert.equal(snapshot.format, "view-state");
+      assert.equal("formatVersion" in snapshot, false);
+    }
   }
 
   const replayPair = socket_pair();

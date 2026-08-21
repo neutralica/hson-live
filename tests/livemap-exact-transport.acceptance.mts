@@ -69,12 +69,12 @@ const orderedRoot = object([
   ["a", object([["z", -0], ["b", true]])],
 ]);
 
-check("capture emits the exact versioned envelope and compatibility value", () => {
+check("capture emits the sole canonical structural envelope", () => {
   const capture = make_map(orderedRoot).capture();
   assert.equal(capture.format, "structural-json");
-  assert.equal(capture.formatVersion, 1);
   assert.equal(typeof capture.payload, "string");
-  assert.equal(typeof capture.value, "object");
+  assert.equal(Object.hasOwn(capture, "value"), false);
+  assert.equal(Object.hasOwn(capture, "formatVersion"), false);
 });
 
 check("repeated captures are byte-identical", () => {
@@ -82,10 +82,10 @@ check("repeated captures are byte-identical", () => {
   assert.equal(map.capture().payload, map.capture().payload);
 });
 
-check("mutating the compatibility view cannot change the exact payload", () => {
+check("the canonical capture has no compatibility value projection", () => {
   const map = make_map(orderedRoot);
   const capture = map.capture();
-  (capture.value as Record<string, JsonValue>).a = null;
+  assert.equal(Reflect.get(capture, "value"), undefined);
   assert.equal(map.capture().payload, capture.payload);
 });
 
@@ -153,42 +153,42 @@ check("exact capture restore closes to the original strict graph", () => {
   assert.equal(canonical_hson_graph_equal(target.root(), baseline), true);
 });
 
-check("restore accepts the minimal exact envelope without a JavaScript value", () => {
+check("restore rejects a structural envelope without canonical graph metadata", () => {
   const source = make_map(orderedRoot);
   const capture = source.capture();
   const target = make_map(object([["old", true]]));
-  target.restore({ rev: capture.rev, format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload });
-  assert.deepEqual(keys(carrier(target)), ["10", "2", "1", "a"]);
+  assert.throws(() => target.restore({ rev: capture.rev, format: capture.format, payload: capture.payload } as never));
+  assert.deepEqual(keys(carrier(target)), ["old"]);
 });
 
-check("exact restore ignores a divergent compatibility value", () => {
+check("restore rejects a removed compatibility value projection", () => {
   const source = make_map(orderedRoot);
   const capture = source.capture();
   const target = make_map(object([["old", true]]));
-  target.restore({ ...capture, value: { degraded: true } });
-  assert.deepEqual(keys(carrier(target)), ["10", "2", "1", "a"]);
+  assert.throws(() => target.restore({ ...capture, value: { degraded: true } } as never));
+  assert.deepEqual(keys(carrier(target)), ["old"]);
 });
 
 check("exact apply reconstructs complete canonical order", () => {
   const source = make_map(orderedRoot);
   const capture = source.capture();
   const target = make_map(object([["old", true]]));
-  target.apply({ prevRev: 0, format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload });
+  target.apply({ prevRev: 0, format: capture.format, payload: capture.payload });
   assert.equal(canonical_hson_graph_equal(target.root(), source.root()), true);
 });
 
 check("exact apply preserves nested negative zero", () => {
   const capture = make_map(object([["value", -0]])).capture();
   const target = make_map(object([["value", 0]]));
-  target.apply({ prevRev: 0, format: capture.format, formatVersion: capture.formatVersion, payload: capture.payload });
+  target.apply({ prevRev: 0, format: capture.format, payload: capture.payload });
   assert.equal(Object.is(target.snap(["value"]), -0), true);
 });
 
-check("data commits emit exact replay payloads alongside legacy operations", () => {
+check("data commits emit structural replay payloads and semantic operations", () => {
   const map = make_map(object([["value", 0]]));
   const commit = map.set(["value"], -0);
   assert.equal(commit.format, "structural-json");
-  assert.equal(commit.formatVersion, 1);
+  assert.equal(Object.hasOwn(commit, "formatVersion"), false);
   assert.equal(typeof commit.payload, "string");
   assert.equal(commit.ops.length, 1);
 });
@@ -270,7 +270,7 @@ check("exact replay snapshots input before later caller mutation", () => {
   const source = make_map(initial);
   const target = make_map(initial);
   const commit = source.set(["value"], -0);
-  const input = { prevRev: commit.prevRev, format: commit.format!, formatVersion: commit.formatVersion!, payload: commit.payload! };
+  const input = { prevRev: commit.prevRev, format: commit.format, payload: commit.payload };
   target.replay(input);
   input.payload = "[]";
   assert.equal(Object.is(target.snap(["value"]), -0), true);

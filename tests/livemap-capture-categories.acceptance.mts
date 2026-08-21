@@ -31,7 +31,7 @@ function captureText(map: ElementLiveMap): string {
   return hson.fromNode(map.element.node()).toHson().serialize();
 }
 
-check("compatibility capture remains exact durable metadata", () => {
+check("default capture remains exact durable metadata", () => {
   const capture = element(`<main @${Q1}/>`).capture();
   assert.equal(JSON.stringify(capture).includes(Q1), true);
 });
@@ -98,7 +98,7 @@ check("capture categories never mint into a QUID-free source", () => {
   assert.equal(JSON.stringify(map.root()).includes("quid"), false);
 });
 
-check("compatibility install preserves metadata as fresh map-local claims", () => {
+check("default install preserves metadata as fresh map-local claims", () => {
   const target = element(`<main/>`);
   target.install(element(`<main @${Q1}/>`).capture());
   assert.equal(target.document.byQuid(Q1)?.$_tag, "main");

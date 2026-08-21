@@ -162,7 +162,8 @@ check("restore, replay, schema changes and internal graph divergence invalidate 
   const restored = data();
   const restoredAuthority = get_livemap_staged_authority(restored);
   const beforeRestore = restoredAuthority.prepare((draft) => draft.set(["value"], 1));
-  restored.restore({ rev: 7, value: { value: 7, sibling: "kept" } });
+  const restoreSource = hson.liveMap.fromJson({ value: 7, sibling: "kept" }).capture();
+  restored.restore({ rev: 7, format: restoreSource.format, payload: restoreSource.payload, root: restoreSource.root });
   transitionCode(() => restoredAuthority.accept(beforeRestore), "LIVEMAP_TRANSITION_STALE");
 
   const replayed = data();
@@ -317,7 +318,8 @@ check("existing projected mutation facades retain synchronous commit behavior", 
   assert.deepEqual(objectMap.snap(), { kept: true, added: 1 });
 
   const applied = data();
-  assert.equal(applied.apply({ prevRev: 0, value: { value: 7, sibling: "applied" } }).rev, 1);
+  const applySource = hson.liveMap.fromJson({ value: 7, sibling: "applied" }).capture();
+  assert.equal(applied.apply({ prevRev: 0, format: applySource.format, payload: applySource.payload }).rev, 1);
   assert.deepEqual(applied.snap(), { value: 7, sibling: "applied" });
 });
 

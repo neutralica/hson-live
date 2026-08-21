@@ -6,7 +6,7 @@ import {
   LiveHostBootstrapError,
   type LiveHostBootstrapCodecOptions,
   type LiveHostBootstrapAuthority,
-} from "../livehost.bootstrap.js";
+} from "../locus.bootstrap.js";
 import type { LiveHostDisposer } from "../../../types/livehost.types.js";
 import type { LiveHostRoutingSelector } from "../../../types/internal/livehost.routing.types.js";
 

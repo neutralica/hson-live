@@ -476,9 +476,12 @@ check("bootstrap capture and installation are DOM, CSS, and LiveTree-runtime fre
   assert.equal("window" in globalThis, false);
   assert.equal("CSSStyleSheet" in globalThis, false);
   const captured = capture_livehost_bootstrap(create_livehost({ state: { ready: true } }), "probe:dom-free", "/ws");
-  const capture = install_livehost_bootstrap(captured).map.capture();
-  assert.equal("value" in capture, true);
-  assert.deepEqual("value" in capture ? capture.value : undefined, { ready: true });
+  const installed = install_livehost_bootstrap(captured).map;
+  if (installed.mode !== "data-object" && installed.mode !== "data-array") {
+    throw new Error(`Expected projected bootstrap map, observed ${installed.mode}.`);
+  }
+  assert.equal("value" in installed.capture(), false);
+  assert.deepEqual(installed.snap(), { ready: true });
 });
 
 check("real HTTP helper and WebSocket continuation share one application authority", async () => {

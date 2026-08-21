@@ -1,7 +1,7 @@
 // core.ts
 
 import type { HsonNode, JsonValue } from "../../core/types.js";
-import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCapture, LiveMapCaptureInput, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
+import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapCommit, LiveMapReplay, LiveMapCore, LiveMapCoreSchemaApi, LiveMapCoreSnap, LiveMapFeedListener, LiveMapPathValue, LiveMapStoreApi, LiveMapStorePathListener, LiveMapStoreSelectedListener, LiveMapStoreSubscribeOptions, LiveMapSubApi, LivePath, LiveMapDataOp, LiveMapBatchTx, LiveMapPathHandle, LiveMapCaptureOptions, LiveMapApply, LiveMapGraphCommit, LiveMapProjectedGraphEnsureQuidOp, LiveMapGraphOp, LiveMapGraphReplaceRootOp, LiveMapRootMode } from "../../types/livemap.types.js";
 import {
   validate_livemap_schema_projected_root,
   validate_livemap_schema_projected_value,
@@ -57,7 +57,6 @@ import {
   encode_livemap_replay_transport,
   encode_projected_value_transport,
   LIVEMAP_STRUCTURAL_JSON_FORMAT,
-  LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION,
   LiveMapTransportCodecError,
   materialize_livemap_projected_op,
   type LiveMapProjectedDataOp,
@@ -864,9 +863,7 @@ function make_livemap_core_from_owned_root(
       };
       must_core_schema_write_ops(currentSchema, owned.root, [operation]);
       const planned = plan_write_ops(must_projected_root_value(owned.root), [operation]);
-      let candidate = normalized.root === undefined
-        ? projected_value_to_hson_root(planned.value)
-        : clone_live_root(normalized.root);
+      let candidate = clone_live_root(normalized.root);
       if (options?.identity === "strip") candidate = clone_hson_graph_without_quids(candidate);
       if (options?.identity === "reject") {
         const preparedForReject = prepare_livemap_root(candidate);
@@ -906,7 +903,7 @@ function make_livemap_core_from_owned_root(
       publishSnapshotWithWatch(normalized.rev);
     },
     /** Replace the root only when the caller's base revision is still current. */
-    apply: (input: LiveMapApply<JsonValue | undefined>) => {
+    apply: (input: LiveMapApply) => {
       const normalized = must_projected_apply(input);
       must_expected_rev(
         normalized.prevRev,
@@ -1675,31 +1672,26 @@ function replay_write_ops(
   return writeOps;
 }
 
-function must_projected_capture(input: unknown): Readonly<{ rev: number; value: OrderedProjectedValue; root?: HsonNode }> {
+function must_projected_capture(input: unknown): Readonly<{ rev: number; value: OrderedProjectedValue; root: HsonNode }> {
   if (!is_plain_unknown_record(input)) {
     throw new LiveMapProjectedTransportError("restore", "capture is not an object");
   }
   if (typeof input.rev !== "number" || !Number.isInteger(input.rev) || input.rev < 0) {
     throw new LiveMapProjectedTransportError("restore", "revision is not a non-negative integer");
   }
-  if (has_projected_transport_field(input)) {
-    const root = Object.hasOwn(input, "root") ? input.root : undefined;
-    if (root !== undefined && !is_Node(root)) {
-      throw new LiveMapProjectedTransportError("restore", "canonical root is not an HSON node");
-    }
-    return Object.freeze({
-      rev: input.rev,
-      value: must_exact_projected_value(input, "restore"),
-      ...(root === undefined ? {} : { root: clone_live_root(root) }),
-    });
+  if (Object.hasOwn(input, "formatVersion") || Object.hasOwn(input, "value")) {
+    throw new LiveMapProjectedTransportError("restore", "capture is not the canonical structural representation");
   }
-  const keys = Object.keys(input);
-  if (keys.length !== 2 || !keys.includes("rev") || !keys.includes("value")) {
-    throw new LiveMapProjectedTransportError("restore", "legacy capture contains missing or unknown fields");
+  if (!has_projected_transport_field(input)) {
+    throw new LiveMapProjectedTransportError("restore", "capture is missing structural transport");
+  }
+  if (!Object.hasOwn(input, "root") || !is_Node(input.root)) {
+    throw new LiveMapProjectedTransportError("restore", "canonical root is not an HSON node");
   }
   return Object.freeze({
     rev: input.rev,
-    value: must_ordered_projected_value(input.value, []),
+    value: must_exact_projected_value(input, "restore"),
+    root: clone_live_root(input.root),
   });
 }
 
@@ -1710,11 +1702,15 @@ function must_projected_apply(input: unknown): Readonly<{ prevRev: number; value
   if (typeof input.prevRev !== "number" || !Number.isInteger(input.prevRev) || input.prevRev < 0) {
     throw new Error(`LiveMap expected revision is not valid: ${String(input.prevRev)}`);
   }
+  if (Object.hasOwn(input, "formatVersion") || Object.hasOwn(input, "value")) {
+    throw new LiveMapProjectedTransportError("apply", "input is not the canonical structural representation");
+  }
+  if (!has_projected_transport_field(input)) {
+    throw new LiveMapProjectedTransportError("apply", "input is missing structural transport");
+  }
   return Object.freeze({
     prevRev: input.prevRev,
-    value: has_projected_transport_field(input)
-      ? must_exact_projected_value(input, "apply")
-      : must_ordered_projected_value(input.value, []),
+    value: must_exact_projected_value(input, "apply"),
   });
 }
 
@@ -1724,9 +1720,6 @@ function must_exact_projected_value(
 ): OrderedProjectedValue {
   if (input.format !== LIVEMAP_STRUCTURAL_JSON_FORMAT) {
     throw new LiveMapProjectedTransportError(context, "format is not supported");
-  }
-  if (input.formatVersion !== LIVEMAP_STRUCTURAL_JSON_FORMAT_VERSION) {
-    throw new LiveMapProjectedTransportError(context, "formatVersion is not supported");
   }
   if (typeof input.payload !== "string") {
     throw new LiveMapProjectedTransportError(context, "payload is not a string");
@@ -1743,7 +1736,6 @@ function must_exact_projected_value(
 
 function has_projected_transport_field(input: Readonly<Record<string, unknown>>): boolean {
   return Object.hasOwn(input, "format")
-    || Object.hasOwn(input, "formatVersion")
     || Object.hasOwn(input, "payload");
 }
 

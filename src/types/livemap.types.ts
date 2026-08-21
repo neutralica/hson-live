@@ -121,7 +121,7 @@ export type LiveMapRestoreOptions = Readonly<{ identity?: LiveMapCaptureIdentity
 
 export type LiveMapCoreReplay = {
   (input: LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp>;
-  (input: LiveMapReplay): LiveMapCommit;
+  (input: LiveMapReplay): LiveMapCommit<LiveMapDataOp>;
 };
 
 declare const LIVEMAP_INVALID_STATIC_PATH: unique symbol;
@@ -230,11 +230,11 @@ export type LiveMapPathSetManyValues<TValue, TPath extends LivePath> =
   LiveMapObjectSetManyValues<LiveMapPathValue<TValue, TPath>>;
 
 export type LiveMapReplaceFn<TValue = JsonValue | undefined> = {
-  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCommit;
+  (value: NoInfer<LiveMapWriteValue<TValue>>): LiveMapCommit<LiveMapDataOp>;
   <const TPath extends LivePath>(
     path: TPath,
     value: NoInfer<LiveMapPathWriteValue<TValue, TPath>>,
-  ): LiveMapCommit;
+  ): LiveMapCommit<LiveMapDataOp>;
 };
 
 export type LiveMapBatchReplaceFn<TValue = JsonValue | undefined> = {
@@ -321,32 +321,32 @@ export type LiveMapCore<
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   proxy: <const TPath extends LivePath = []>(path?: TPath) => LiveMapProxy<TValue, TPath>;
   /** Set a resolved projected path; plain objects expand into shallow child sets. */
-  set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCommit;
+  set: <const TPath extends LivePath>(path: TPath, value: NoInfer<LiveMapPathSetValue<TValue, TPath>>) => LiveMapCommit<LiveMapDataOp>;
   /** Shallow object set that expands values into child-path sets and preserves unspecified siblings. */
   setMany: <const TPath extends LivePath>(
     path: TPath,
     values: NoInfer<LiveMapPathSetManyValues<TValue, TPath>>,
-  ) => LiveMapCommit;
-  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCommit;
+  ) => LiveMapCommit<LiveMapDataOp>;
+  splice: (path: LivePath, start: number, deleteCount: number, ...items: readonly JsonValue[]) => LiveMapCommit<LiveMapDataOp>;
   /** Exact root replacement, or exact endpoint replacement at a projected path; `set([])` remains invalid. */
   replace: LiveMapReplaceFn<TValue>;
-  delete: (path: LivePath) => LiveMapCommit;
+  delete: (path: LivePath) => LiveMapCommit<LiveMapDataOp>;
   /** Explicit synchronous transaction grouping for one commit. */
-  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit;
+  batch: (fn: (tx: LiveMapBatchTx<TValue>) => void) => LiveMapCommit<LiveMapDataOp>;
   feed: (path: LivePath, listener: LiveMapFeedListener) => LiveMapDisposer;
   commits: LiveMapCommitObserverApi;
   sub: LiveMapSubApi<TValue>;
   readonly rev: number;
-  /** Emit exact structural JSON plus a detached JavaScript compatibility view. */
+  /** Emit the canonical structural-JSON capture with detached graph metadata. */
   capture: {
-    (): LiveMapCanonicalCapture<TValue>;
-    (options: LiveMapCaptureOptions): LiveMapCanonicalCapture<TValue>;
+    (): LiveMapCapture;
+    (options: LiveMapCaptureOptions): LiveMapCapture;
   };
-  /** Atomically restore exact-v1 state, or bounded legacy JavaScript-value state. */
-  restore: (capture: LiveMapCaptureInput<TValue>, options?: LiveMapRestoreOptions) => void;
-  /** Apply exact-v1 state, or bounded legacy JavaScript-value state, at one base revision. */
-  apply: (input: LiveMapApply<TValue>) => LiveMapCommit;
-  /** Replay an exact data commit/envelope, or bounded legacy projected operations. */
+  /** Atomically restore one canonical structural-JSON capture. */
+  restore: (capture: LiveMapCapture, options?: LiveMapRestoreOptions) => void;
+  /** Apply canonical structural-JSON state at one base revision. */
+  apply: (input: LiveMapApply) => LiveMapCommit<LiveMapDataOp>;
+  /** Replay one canonical structural-JSON operation envelope. */
   replay: LiveMapCoreReplay;
 }>;
 
@@ -369,7 +369,6 @@ export type DocumentLiveMapCapture<
   TMode extends DocumentLiveMapMode = DocumentLiveMapMode,
 > = Readonly<{
   kind: "hson-document";
-  version: 2;
   mode: TMode;
   rev: number;
   root: HsonNode;
@@ -381,7 +380,7 @@ export type DocumentLiveMapCaptureIdentity =
   | "preserve-metadata"
   | "strip";
 
-/** Capture policy. Omission retains the durable exact-metadata compatibility form. */
+/** Capture policy. Omission preserves durable exact metadata. */
 export type DocumentLiveMapCaptureOptions = Readonly<{
   identity: DocumentLiveMapCaptureIdentity;
 }>;
@@ -1557,19 +1556,23 @@ export type LiveMapAnyOp = LiveMapOp<"data" | "graph"> | LiveMapProjectedGraphEn
  */
 export type LiveMapStructuralJsonEnvelope = Readonly<{
   format: "structural-json";
-  formatVersion: 1;
   payload: string;
 }>;
 
-export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = Readonly<{
+type LiveMapCommitFields<TOp extends LiveMapAnyOp> = Readonly<{
   changed: boolean;
   rev: number;
   prevRev: number;
   ops: readonly TOp[];
-}> & Partial<LiveMapStructuralJsonEnvelope>;
+}>;
+
+export type LiveMapCommit<TOp extends LiveMapAnyOp = LiveMapDataOp> = LiveMapCommitFields<TOp> & ([TOp] extends [LiveMapDataOp]
+  ? LiveMapStructuralJsonEnvelope
+  : Partial<LiveMapStructuralJsonEnvelope>);
 
 /** Existing commit envelope specialized to graph-domain operations. */
-export type LiveMapGraphCommit<TOp extends LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphOp> = LiveMapCommit<TOp>;
+export type LiveMapGraphCommit<TOp extends LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp = LiveMapGraphOp> =
+  LiveMapCommitFields<TOp> & Partial<LiveMapStructuralJsonEnvelope>;
 
 /** Why a canonical commit became visible on one LiveMap instance. */
 export type LiveMapCommitOrigin = "authoritative" | "replay";
@@ -1607,7 +1610,7 @@ export type LiveMapFeedEvent = Readonly<{
   path: LivePath;
   value: JsonValue | undefined;
   ops: readonly LiveMapDataOp[];
-  commit: LiveMapCommit;
+  commit: LiveMapCommit<LiveMapDataOp>;
 }>;
 
 /** Listener called when a feed receives an overlapping operation. */
@@ -1722,14 +1725,14 @@ export type LiveMapPathHandle<TValue = JsonValue | undefined> = Readonly<{
     path: TPath & ([LiveMapPathValue<TValue, TPath>] extends [never] ? never : unknown),
   ) => LiveMapPathHandle<LiveMapPathValue<TValue, TPath>>;
   /** Set this resolved handle path; plain objects expand into shallow child sets. */
-  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit;
+  set: (value: LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
   /** Exact replacement at this handle path using replace-shaped commit ops. */
-  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit;
+  replace: (value: LiveMapWriteValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
   /** Shallow object set below this handle path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit<LiveMapDataOp>;
   /** Delete this handle path. */
-  delete: () => LiveMapCommit;
-  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit;
+  delete: () => LiveMapCommit<LiveMapDataOp>;
+  update: (updater: (value: TValue) => LiveMapSetValue<TValue>) => LiveMapCommit<LiveMapDataOp>;
   array: LiveMapPathArrayApi<TValue>;
   object: LiveMapPathObjectApi<TValue>;
   feed: (listener: LiveMapFeedListener) => LiveMapDisposer;
@@ -1751,13 +1754,13 @@ export type LiveMapPathObjectApi<TValue = JsonValue | undefined> = Readonly<{
   values: () => readonly LiveMapObjectShape<TValue>[LiveMapObjectKey<TValue>][];
   entries: () => readonly LiveMapObjectEntry<TValue>[];
   /** Set one child key under this object path, creating that key if needed. */
-  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => LiveMapCommit;
+  setKey: <const TKey extends LiveMapObjectKey<TValue>>(key: TKey, value: NoInfer<LiveMapObjectSetValue<TValue, TKey>>) => LiveMapCommit<LiveMapDataOp>;
   /** Shallow child-key writes under this object path, preserving unspecified siblings. */
-  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit,
-  clear: () => LiveMapCommit;
-  deleteKey: (key: string) => LiveMapCommit;
-  deleteMany: (keys: readonly string[]) => LiveMapCommit;
-  renameKey: (fromKey: string, toKey: string) => LiveMapCommit;
+  setMany: (values: NoInfer<LiveMapObjectSetManyValues<TValue>>) => LiveMapCommit<LiveMapDataOp>,
+  clear: () => LiveMapCommit<LiveMapDataOp>;
+  deleteKey: (key: string) => LiveMapCommit<LiveMapDataOp>;
+  deleteMany: (keys: readonly string[]) => LiveMapCommit<LiveMapDataOp>;
+  renameKey: (fromKey: string, toKey: string) => LiveMapCommit<LiveMapDataOp>;
 }>;
 /**
  * Array-scoped helper API.
@@ -1780,24 +1783,24 @@ export type LiveMapPathArrayApi<TValue = JsonValue | undefined> = Readonly<{
   last: () => LiveMapArrayItem<TValue>;
   includes: (value: JsonValue) => boolean;
   indexOf: (value: JsonValue) => number;
-  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
-  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit;
-  pop: () => LiveMapCommit;
-  shift: () => LiveMapCommit;
-  clear: () => LiveMapCommit;
-  reverse: () => LiveMapCommit;
-  sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit;
-  sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit;
-  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => LiveMapCommit;
-  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-  remove: (index: number) => LiveMapCommit;
-  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit;
-  move: (fromIndex: number, toIndex: number) => LiveMapCommit;
-  unique: () => LiveMapCommit;
-  removeValue: (value: JsonValue) => LiveMapCommit;
-  removeAll: (value: JsonValue) => LiveMapCommit;
+  push: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
+  pushMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit<LiveMapDataOp>;
+  unshift: (value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
+  unshiftMany: (values: readonly NoInfer<LiveMapArrayWriteItem<TValue>>[]) => LiveMapCommit<LiveMapDataOp>;
+  pop: () => LiveMapCommit<LiveMapDataOp>;
+  shift: () => LiveMapCommit<LiveMapDataOp>;
+  clear: () => LiveMapCommit<LiveMapDataOp>;
+  reverse: () => LiveMapCommit<LiveMapDataOp>;
+  sortNumbers: (direction?: LiveMapSortDirection) => LiveMapCommit<LiveMapDataOp>;
+  sortStrings: (direction?: LiveMapSortDirection) => LiveMapCommit<LiveMapDataOp>;
+  splice: (...args: [start: number] | [start: number, deleteCount: number, ...items: NoInfer<LiveMapArrayWriteItem<TValue>>[]]) => LiveMapCommit<LiveMapDataOp>;
+  insert: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
+  remove: (index: number) => LiveMapCommit<LiveMapDataOp>;
+  replace: (index: number, value: NoInfer<LiveMapArrayWriteItem<TValue>>) => LiveMapCommit<LiveMapDataOp>;
+  move: (fromIndex: number, toIndex: number) => LiveMapCommit<LiveMapDataOp>;
+  unique: () => LiveMapCommit<LiveMapDataOp>;
+  removeValue: (value: JsonValue) => LiveMapCommit<LiveMapDataOp>;
+  removeAll: (value: JsonValue) => LiveMapCommit<LiveMapDataOp>;
 }>;
 
 export type LiveMapSchemaIssueCode =
@@ -1828,49 +1831,16 @@ export type LiveMapSpliceOp = Readonly<{
   next: JsonValue;
 }>;
 
-/** Exact versioned generic projected-state transport, without a compatibility view. */
-export type LiveMapExactCapture = Readonly<{
+/** Canonical projected-state capture with detached exact graph metadata. */
+export type LiveMapCapture = Readonly<{
   rev: number;
+  root: HsonNode;
 }> & LiveMapStructuralJsonEnvelope;
 
-/** Bounded compatibility input admitted through ordinary JavaScript-value rules. */
-export type LiveMapLegacyCapture<TValue = JsonValue | undefined> = Readonly<{
-  rev: number;
-  value: TValue;
-}>;
-
-/** Exact transport plus the detached public JavaScript view retained for compatibility. */
-export type LiveMapCapture<TValue = JsonValue | undefined> =
-  LiveMapExactCapture & LiveMapLegacyCapture<TValue>;
-
-/** Current canonical projected capture, additively retaining the detached exact graph. */
-export type LiveMapCanonicalCapture<TValue = JsonValue | undefined> =
-  LiveMapCapture<TValue> & Readonly<{ root: HsonNode }>;
-
-export type LiveMapCaptureInput<TValue = JsonValue | undefined> =
-  | LiveMapExactCapture
-  | LiveMapLegacyCapture<TValue>;
-
-export type LiveMapLegacyApply<TValue = JsonValue | undefined> = Readonly<{
-  prevRev: number;
-  value: TValue;
-}>;
-
-export type LiveMapExactApply = Readonly<{
+export type LiveMapApply = Readonly<{
   prevRev: number;
 }> & LiveMapStructuralJsonEnvelope;
 
-export type LiveMapApply<TValue = JsonValue | undefined> =
-  | LiveMapExactApply
-  | LiveMapLegacyApply<TValue>;
-
-export type LiveMapLegacyReplay = Readonly<{
-  prevRev: number;
-  ops: readonly LiveMapDataOp[];
-}>;
-
-export type LiveMapExactReplay = Readonly<{
+export type LiveMapReplay = Readonly<{
   prevRev: number;
 }> & LiveMapStructuralJsonEnvelope;
-
-export type LiveMapReplay = LiveMapExactReplay | LiveMapLegacyReplay;

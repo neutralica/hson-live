@@ -344,6 +344,12 @@ check("LiveMap splice and move regenerate dense indexes and preserve addressabil
 
 check("exact graph decoding canonicalizes valid permutations and rejects malformed sets", () => {
   const payload = encode_exact_hson_value(reversed);
+  const representation = hson.fromHson(payload).toJson().value();
+  if (typeof representation !== "object" || representation === null || Array.isArray(representation)) {
+    throw new Error("Expected exact value representation record.");
+  }
+  assert.equal(Object.hasOwn(representation, "valueKind"), true);
+  assert.equal(Object.hasOwn(representation, "valueVersion"), false);
   const decoded = decode_exact_hson_value(payload);
   assert.ok(is_Node(decoded));
   assert.deepEqual(payload_tags(decoded), ["a", "b"]);
@@ -356,6 +362,9 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   });
   assert.ok(is_Node(livehostDecoded));
   assert.deepEqual(payload_tags(livehostDecoded), ["a", "b"]);
+  assert.throws(() => decode_exact_hson_value(
+    hson.fromJson({ ...representation, valueVersion: 2 }).toHson().noBreak().serialize(),
+  ));
   assert.throws(() =>
     decode_exact_hson_value(
       encode_exact_hson_value(array_root([item("0", "a"), item("0", "b")])),
@@ -363,10 +372,9 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   );
 });
 
-check("version-2 document snapshots reject array structure inside an element branch", () => {
+check("canonical document snapshots reject array structure inside an element branch", () => {
   const capture = {
     kind: "hson-document" as const,
-    version: 2 as const,
     mode: "element" as const,
     rev: 4,
     root: {

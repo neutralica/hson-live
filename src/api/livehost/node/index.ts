@@ -1,4 +1,4 @@
-export * from "./livehost.node-adapters.js";
+export * from "../../locus/node/locus.node-adapters.js";
 export {
   assert_supported_livehost_node_runtime,
   is_supported_livehost_node_runtime,

@@ -14,7 +14,7 @@ import { clone_live_root } from "./livemap.editor.js";
 import { LiveMapDocumentIdentityProvenanceError } from "./livemap.error.js";
 import type { LiveMapIdentityEpochController } from "./livemap.identity-epoch.js";
 
-type CaptureCategory = DocumentLiveMapCaptureIdentity | "compatibility";
+type CaptureCategory = DocumentLiveMapCaptureIdentity | "default";
 
 type CaptureProvenance = Readonly<{
   owner: object;
@@ -52,7 +52,6 @@ export function capture_livemap_document<TMode extends DocumentLiveMapMode>(
     : clone_live_root(root);
   const capture: DocumentLiveMapCapture<TMode> = Object.freeze({
     kind: "hson-document",
-    version: 2,
     mode,
     rev,
     root: captureRoot,
@@ -168,7 +167,7 @@ export function clone_hson_graph_without_quids(root: HsonNode): HsonNode {
 }
 
 function capture_category(options: DocumentLiveMapCaptureOptions | undefined): CaptureCategory {
-  if (options === undefined) return "compatibility";
+  if (options === undefined) return "default";
   if (typeof options !== "object" || options === null || Array.isArray(options)) {
     throw provenance_error(
       "UNSUPPORTED_CAPTURE_CATEGORY",

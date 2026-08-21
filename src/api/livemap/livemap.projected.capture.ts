@@ -1,11 +1,10 @@
 import { canonical_hson_graph_equal } from "../../core/canonical-hson-equal.js";
-import type { HsonNode, JsonValue } from "../../core/types.js";
+import type { HsonNode } from "../../core/types.js";
 import type {
-  LiveMapCanonicalCapture,
+  LiveMapCapture,
   LiveMapCaptureOptions,
   LiveMapRestoreOptions,
 } from "../../types/livemap.types.js";
-import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import type { OrderedProjectedValue } from "../../core/ordered-projected-value.js";
 import { clone_hson_graph_without_quids, type LiveMapDocumentIdentityEpochController } from "./livemap.document.capture.js";
 import { clone_live_root } from "./livemap.editor.js";
@@ -27,7 +26,7 @@ export function capture_livemap_projected(
   root: HsonNode,
   projected: OrderedProjectedValue,
   options?: LiveMapCaptureOptions,
-): LiveMapCanonicalCapture<JsonValue | undefined> {
+): LiveMapCapture {
   const category = options?.identity ?? "preserve-metadata";
   if (category !== "same-epoch" && category !== "preserve-metadata" && category !== "strip") {
     throw new Error(`Unsupported projected identity capture category ${JSON.stringify(category)}.`);
@@ -35,9 +34,8 @@ export function capture_livemap_projected(
   const captureRoot = category === "strip"
     ? clone_hson_graph_without_quids(root)
     : clone_live_root(root);
-  const capture: LiveMapCanonicalCapture<JsonValue | undefined> = {
+  const capture: LiveMapCapture = {
     rev,
-    value: materialize_projected_value(projected),
     ...encode_projected_value_transport(projected),
     root: captureRoot,
   };
@@ -70,7 +68,7 @@ export function projected_capture_continuity(
     || proof.epoch !== controller.current()) {
     throw new Error("Same-epoch projected restore requires the exact active capture capability.");
   }
-  const candidate = capture as Partial<LiveMapCanonicalCapture>;
+  const candidate = capture as Partial<LiveMapCapture>;
   if (candidate.rev !== proof.rev
     || candidate.root === undefined
     || !canonical_hson_graph_equal(candidate.root, proof.root)) {

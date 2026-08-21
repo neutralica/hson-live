@@ -58,35 +58,41 @@ function replay_failure(run: () => unknown, reason: string, opIndex?: number): v
   });
 }
 
-check("legacy restore admits JavaScript-observable integer-key order", () => {
+check("legacy restore is rejected", () => {
   const target = map(ordered_projected_object([["old", true]]));
-  target.restore({ rev: 4, value: own_data([["10", 10], ["2", 2], ["1", 1]]) });
-  assert.deepEqual(graph_keys(target), ["1", "2", "10"]);
-  assert.equal(target.rev, 4);
+  transport_failure(
+    () => target.restore({ rev: 4, value: own_data([["10", 10], ["2", 2], ["1", 1]]) } as never),
+    "restore",
+    "capture is not the canonical structural representation",
+  );
+  assert.deepEqual(graph_keys(target), ["old"]);
+  assert.equal(target.rev, 0);
 });
 
-check("legacy apply admits JavaScript-observable integer-key order", () => {
+check("legacy apply is rejected", () => {
   const target = map(ordered_projected_object([["old", true]]));
-  target.apply({ prevRev: 0, value: own_data([["10", 10], ["2", 2], ["1", 1]]) });
-  assert.deepEqual(graph_keys(target), ["1", "2", "10"]);
+  transport_failure(
+    () => target.apply({ prevRev: 0, value: own_data([["10", 10], ["2", 2], ["1", 1]]) } as never),
+    "apply",
+    "input is not the canonical structural representation",
+  );
+  assert.deepEqual(graph_keys(target), ["old"]);
 });
 
-check("legacy duplicate history cannot be recovered after object materialization", () => {
+check("materialized legacy duplicate history is not admitted", () => {
   const target = map(ordered_projected_object([["old", true]]));
   const parsed = JSON.parse('{"a":1,"a":2}') as JsonValue;
-  target.restore({ rev: 1, value: parsed });
-  assert.deepEqual(graph_keys(target), ["a"]);
-  assert.equal(target.snap(["a"]), 2);
+  assert.throws(() => target.restore({ rev: 1, value: parsed } as never));
+  assert.deepEqual(graph_keys(target), ["old"]);
 });
 
-check("legacy replay remains explicitly available through prevRev and ops", () => {
+check("legacy replay through prevRev and ops is rejected", () => {
   const target = map(ordered_projected_object([["value", 0]]));
-  const result = target.replay({
-    prevRev: 0,
-    ops: [{ kind: "set", path: ["value"], prev: 0, next: -0 }],
-  });
-  assert.equal(result.changed, true);
-  assert.equal(Object.is(target.snap(["value"]), -0), true);
+  replay_failure(
+    () => target.replay({ prevRev: 0, ops: [{ kind: "set", path: ["value"], prev: 0, next: -0 }] } as never),
+    "envelope is not the canonical structural representation",
+  );
+  assert.equal(Object.is(target.snap(["value"]), 0), true);
 });
 
 check("exact output never silently downgrades to the legacy shape", () => {
@@ -102,25 +108,25 @@ check("exact output never silently downgrades to the legacy shape", () => {
 check("restore rejects an unsupported exact format", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   transport_failure(
-    () => target.restore({ rev: 0, format: "other", formatVersion: 1, payload: "{}" } as never),
+    () => target.restore({ rev: 0, format: "other", payload: "{}", root: target.root() } as never),
     "restore",
     "format is not supported",
   );
 });
 
-check("restore rejects an unsupported exact version", () => {
+check("restore rejects a removed generation marker", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   transport_failure(
     () => target.restore({ rev: 0, format: "structural-json", formatVersion: 2, payload: "{}" } as never),
     "restore",
-    "formatVersion is not supported",
+    "capture is not the canonical structural representation",
   );
 });
 
 check("apply rejects a non-string exact payload", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   transport_failure(
-    () => target.apply({ prevRev: 0, format: "structural-json", formatVersion: 1, payload: 1 } as never),
+    () => target.apply({ prevRev: 0, format: "structural-json", payload: 1 } as never),
     "apply",
     "payload is not a string",
   );
@@ -129,7 +135,7 @@ check("apply rejects a non-string exact payload", () => {
 check("restore rejects malformed structural JSON deterministically", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   transport_failure(
-    () => target.restore({ rev: 0, format: "structural-json", formatVersion: 1, payload: "{" }),
+    () => target.restore({ rev: 0, format: "structural-json", payload: "{", root: target.root() }),
     "restore",
     "payload is not valid structural JSON",
   );
@@ -139,22 +145,22 @@ check("a partial exact replay envelope never falls back to legacy ops", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   replay_failure(
     () => target.replay({ prevRev: 0, format: "structural-json", ops: [] } as never),
-    "formatVersion is not supported",
+    "payload is not a string",
   );
 });
 
-check("replay rejects an unsupported exact version", () => {
+check("replay rejects a removed generation marker", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   replay_failure(
     () => target.replay({ prevRev: 0, format: "structural-json", formatVersion: 2, payload: "[]" } as never),
-    "formatVersion is not supported",
+    "envelope is not the canonical structural representation",
   );
 });
 
 check("replay rejects a non-array structural payload root", () => {
   const target = map(ordered_projected_object([["value", 0]]));
   replay_failure(
-    () => target.replay({ prevRev: 0, format: "structural-json", formatVersion: 1, payload: "{}" }),
+    () => target.replay({ prevRev: 0, format: "structural-json", payload: "{}" }),
     "payload root is not an operation array",
   );
 });
@@ -165,7 +171,6 @@ check("replay rejects malformed exact operation structure with an index", () => 
     () => target.replay({
       prevRev: 0,
       format: "structural-json",
-      formatVersion: 1,
       payload: '[{"path":["value"],"kind":"set","prev":[0],"next":[1]}]',
     }),
     "operation fields are missing, unknown, or out of order",

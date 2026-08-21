@@ -108,16 +108,16 @@ export function make_livehost_activity_controller(): LiveHostActivityController 
 }
 
 export function register_livehost_activity_controller(
-  host: object,
+  locus: object,
   controller: LiveHostActivityController,
 ): void {
-  controllers.set(host, controller);
+  controllers.set(locus, controller);
 }
 
 /** @internal Claim work performed by a wrapper around an established authority. */
 export function acquire_livehost_internal_activity(
-  host: object,
+  locus: object,
   kind: LiveHostActivityKind,
 ): LiveHostDisposer {
-  return controllers.get(host)?.acquire(kind) ?? (() => {});
+  return controllers.get(locus)?.acquire(kind) ?? (() => {});
 }

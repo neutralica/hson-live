@@ -135,31 +135,31 @@ export { create_livehost_store, create_livehost_store as create_livehost_registr
 export {
   create_persistent_livehost,
   LiveHostPersistenceError,
-} from "./api/livehost/livehost.persistence.js";
+} from "./api/locus/locus.persistence.js";
 export { create_livehost_persistent_store } from "./api/livehost/services/livehost.persistent-store.js";
-export type { LiveHostPersistenceErrorCode } from "./api/livehost/livehost.persistence.error.js";
-export { create_livehost_client } from "./api/livehost/livehost.client.js";
+export type { LiveHostPersistenceErrorCode } from "./api/locus/locus.persistence.error.js";
+export { create_livehost_client } from "./api/locus/locus.client.js";
 export {
     LiveHostDisconnectedError,
     LiveHostDuplicateActionIdError,
     LiveHostClientRecoveryError,
     LiveHostClientSessionError,
     LiveHostRecoveryError,
-} from "./api/livehost/livehost.error.js";
+} from "./api/locus/locus.error.js";
 export {
     make_livehost_sync_manager,
     type LiveHostSyncManager,
     type LiveHostSyncSend,
     type LiveHostSyncSession,
-} from "./api/livehost/livehost.sync.js";
-export { make_livehost_canonical_stream } from "./api/livehost/livehost.history.js";
-export { make_livehost_recovery_planner } from "./api/livehost/livehost.recovery.js";
-export { decode_livehost_message, decode_livehost_server_message, encode_livehost_message } from "./api/livehost/livehost.protocol.js";
-export { create_livehost } from "./api/livehost/livehost.core.js";
+} from "./api/locus/locus.sync.js";
+export { make_livehost_canonical_stream } from "./api/locus/locus.history.js";
+export { make_livehost_recovery_planner } from "./api/locus/locus.recovery.js";
+export { decode_livehost_message, decode_livehost_server_message, encode_livehost_message } from "./api/locus/locus.protocol.js";
+export { create_livehost } from "./api/locus/locus.core.js";
 export {
     LiveHostAuthorityError,
     type LiveHostAuthorityErrorCode,
-} from "./api/livehost/livehost.authority.js";
+} from "./api/locus/locus.authority.js";
 export type {
     LiveMapPathHandle,
     LiveMapProxy,
@@ -168,16 +168,8 @@ export type {
     LiveMapEditResult,
     LiveMapCommit,
     LiveMapStructuralJsonEnvelope,
-    LiveMapExactCapture,
-    LiveMapCanonicalCapture,
-    LiveMapLegacyCapture,
     LiveMapCapture,
-    LiveMapCaptureInput,
-    LiveMapExactApply,
-    LiveMapLegacyApply,
     LiveMapApply,
-    LiveMapExactReplay,
-    LiveMapLegacyReplay,
     LiveMapReplay,
     LiveMapOp,
     LiveMapAnyOp,
@@ -449,7 +441,7 @@ export type {
     LiveHostValidator,
     LiveHostWireValue,
 } from "./types/index.js";
-export type { LiveHostDocumentSnapshotEncoding } from "./api/livehost/livehost.document-snapshot.js";
+export type { LiveHostDocumentSnapshotEncoding } from "./api/locus/locus.document-snapshot.js";
 export { LiveMapSchemaError } from "./api/livemap/livemap.error.js";
 export { snap_live_path } from "./api/livemap/livemap.editor.js";
 export type { InferLiveMapSchema, LiveMapSchema, LiveMapSchemaValue, LiveMapSchemaValidation, LiveMapSchemaIssue, LiveMapSchemaRule } from "./api/livemap/livemap.schema.js";

@@ -5,7 +5,7 @@ import type { LiveHost } from "../../../types/livehost.core.types.js";
 import type { LiveHostActionPayloads, LiveHostConnectionContext, LiveHostSocketLike } from "../../../types/livehost.protocol.types.js";
 import type { LiveHostResult, LiveHostStoreId, LiveHostDisposer } from "../../../types/livehost.shared.types.js";
 import type { LiveHostStore, LiveHostStoreCreateOptions, LiveHostStoreEntry } from "../../../types/livehost.services.types.js";
-import { create_livehost } from "../livehost.core.js";
+import { create_livehost } from "../../locus/locus.core.js";
 
 // Application-owned lookup key; it is intentionally independent of logicalMapId.
 type RuntimeStoreLookupKey = LiveHostStoreId;

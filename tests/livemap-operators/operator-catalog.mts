@@ -35,7 +35,6 @@ function exact(map: Map): string {
   const capture = map.capture();
   return JSON.stringify({
     format: capture.format,
-    formatVersion: capture.formatVersion,
     payload: capture.payload,
   });
 }

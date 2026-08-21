@@ -253,7 +253,7 @@ check("duplicate whole-root install remains atomic", () => {
     $_tag: "_hson_root",
     $_content: [{ $_tag: "_hson_elem", $_content: [ordinary("main", Q2, ordinary("b", Q2))] }],
   };
-  assert.throws(() => Reflect.apply(map.install, map, [{ kind: "hson-document", version: 2, mode: "element", rev: 0, root: duplicate }]));
+  assert.throws(() => Reflect.apply(map.install, map, [{ kind: "hson-document", mode: "element", rev: 0, root: duplicate }]));
   assertState(map, before);
 });
 
@@ -261,7 +261,7 @@ check("malformed whole-root restore remains atomic", () => {
   const map = element(`<main @${Q1}/>`);
   const before = state(map);
   const malformed: HsonNode = { $_tag: "_hson_root", $_content: [{ $_tag: "_hson_elem", $_content: [ordinary("main", "short")] }] };
-  assert.throws(() => Reflect.apply(map.restore, map, [{ kind: "hson-document", version: 2, mode: "element", rev: 7, root: malformed }]));
+  assert.throws(() => Reflect.apply(map.restore, map, [{ kind: "hson-document", mode: "element", rev: 7, root: malformed }]));
   assertState(map, before);
 });
 

@@ -168,26 +168,26 @@ await check_async("LiveHost history retains move intent", async () => {
   host.dispose();
 });
 
-check("legacy public rename replay remains bounded and deterministic", () => {
+check("canonical rename replay remains bounded and deterministic", () => {
   const source = map({ source: 1 });
   const commit = source.at([]).object.renameKey("source", "destination");
   const target = map({ source: 1 });
-  target.replay({ prevRev: 0, ops: commit.ops });
+  target.replay(commit);
   assert.deepEqual(target.snap(), source.snap());
 });
 
-check("legacy public move replay remains bounded and deterministic", () => {
+check("canonical move replay remains bounded and deterministic", () => {
   const source = map({ items: [1, 2, 3] });
   const commit = source.at(["items"]).array.move(0, 2);
   const target = map({ items: [1, 2, 3] });
-  target.replay({ prevRev: 0, ops: commit.ops });
+  target.replay(commit);
   assert.deepEqual(target.snap(), source.snap());
 });
 
-check("older set-shaped legacy replay remains supported", () => {
+check("older set-shaped legacy replay is rejected", () => {
   const target = map({ value: 1 });
-  target.replay({ prevRev: 0, ops: [{ kind: "set", path: ["value"], prev: 1, next: 2 }] });
-  assert.deepEqual(target.snap(), { value: 2 });
+  assert.throws(() => target.replay({ prevRev: 0, ops: [{ kind: "set", path: ["value"], prev: 1, next: 2 }] } as never));
+  assert.deepEqual(target.snap(), { value: 1 });
 });
 
 check("malformed exact move indexes reject", () => {

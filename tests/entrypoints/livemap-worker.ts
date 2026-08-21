@@ -9,7 +9,7 @@ import {
   type LiveMapDocumentInstallFailureCode,
   type LiveMapMoveOp,
   type LiveMap,
-  type LiveMapCanonicalCapture,
+  type LiveMapCapture,
   type LiveMapProjectedIdentityErrorCode,
   type LiveMapProjectedIdentityHandle,
   type LiveMapProjectedMutationErrorCode,
@@ -20,7 +20,7 @@ const map = hsonLiveMap.fromJson({ ready: true });
 void map.snap();
 declare const projectedHandle: LiveMapProjectedIdentityHandle;
 const projectedAcquisitionIsPublic: "ensureIdentity" extends keyof typeof map ? true : false = false;
-const projectedCapture: LiveMapCanonicalCapture = map.capture();
+const projectedCapture: LiveMapCapture = map.capture();
 void projectedHandle.path();
 void projectedAcquisitionIsPublic;
 void projectedCapture.root;

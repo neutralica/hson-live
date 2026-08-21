@@ -81,20 +81,23 @@ function restore_projected_revision(map, rev) {
   map.restore({
     rev,
     format: capture.format,
-    formatVersion: capture.formatVersion,
     payload: capture.payload,
+    root: capture.root,
   });
   assert.equal(map.rev, rev);
   return map;
 }
 
 function canonical_set(logicalMapId, incarnationId, prevRev, rev, prev, next) {
+  const structural = hson.liveMap.fromJson({ value: prev }).set(["value"], next);
   return {
     logicalMapId,
     incarnationId,
     mode: "data-object",
     prevRev,
     rev,
+    format: structural.format,
+    payload: structural.payload,
     ops: [{
       kind: "set",
       path: ["value"],
@@ -671,7 +674,7 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
 
 await check("client rejects mismatched snapshot formats and out-of-order replay without applying twice", async () => {
   for (const [label, snapshotEncoding, snapshot] of [
-    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", formatVersion: 2, payload: "<invalid>" }],
+    ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", payload: "<invalid>" }],
     ["ack-view-state-body-hson", { format: "view-state", formatVersion: 2 }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
   ]) {
     const fixture = begin_scripted_projected_recovery(label);

@@ -7,7 +7,6 @@ import type {
   LiveMapAuthority,
   LiveMapDocumentContent,
   LiveMapGraphCommit,
-  LiveMapOp,
   LiveMapProjectedGraphEnsureQuidOp,
 } from "../../types/livemap.types.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
@@ -59,23 +58,23 @@ import {
   LiveHostClientSessionError,
   LiveHostDisconnectedError,
   LiveHostDuplicateActionIdError,
-} from "./livehost.error.js";
+} from "./locus.error.js";
 import {
   decode_livehost_client_server_message,
   replay_livehost_document_commit_compat,
   is_livehost_json_value,
   type LiveHostCanonicalCommitCompatibility,
-} from "./livehost.protocol.js";
+} from "./locus.protocol.js";
 import {
   encode_livehost_graph_content,
-} from "./livehost.graph-content-codec.js";
-import { create_live_trace_context, type LiveTraceContext } from "./livehost.trace.js";
+} from "./locus.graph-content-codec.js";
+import { create_live_trace_context, type LiveTraceContext } from "./locus.trace.js";
 import {
   decode_livehost_document_snapshot,
   LiveHostDocumentSnapshotDecodeError,
   type LiveHostDecodedServerMessage,
   type LiveHostValidatedSnapshotEnvelope,
-} from "./livehost.document-snapshot.js";
+} from "./locus.document-snapshot.js";
 
 let nextFallbackIdentityId = 0;
 let nextActionAttemptId = 0;
@@ -218,29 +217,6 @@ function reject_pending_action_statuses(
   const statuses = [...pendingStatuses.values()];
   pendingStatuses.clear();
   for (const status of statuses) status.reject(error);
-}
-
-function local_ops(commit: LiveHostCanonicalCommitCompatibility): readonly LiveMapOp[] {
-  return commit.ops.map((op): LiveMapOp => {
-    if ("domain" in op) throw new Error("Canonical graph operation cannot replay on a projected mirror.");
-    const prev = op.prev.present ? op.prev.value : undefined;
-    const next = op.next.present ? op.next.value : undefined;
-    if (op.kind === "delete") return { kind: "delete", path: op.path, prev, next: undefined };
-    if (op.kind === "splice") {
-      if (!Array.isArray(prev) || !Array.isArray(next)) throw new Error("Canonical splice values must be arrays.");
-      return { kind: "splice", path: op.path, start: op.start, removed: op.removed, inserted: op.inserted, prev, next };
-    }
-    if (op.kind === "rename") {
-      if (!op.prev.present || next === undefined) throw new Error("Canonical rename witness value is absent.");
-      return { kind: "rename", path: op.path, from: op.from, to: op.to, prev: op.prev.value, next };
-    }
-    if (op.kind === "move") {
-      if (!op.prev.present || next === undefined) throw new Error("Canonical move witness value is absent.");
-      return { kind: "move", path: op.path, from: op.from, to: op.to, prev: op.prev.value, next };
-    }
-    if (next === undefined) throw new Error(`Canonical ${op.kind} next value is absent.`);
-    return { kind: op.kind, path: op.path, prev, next };
-  });
 }
 
 function projected_identity_replay(
@@ -487,15 +463,13 @@ export function create_livehost_client<
         : projected_identity_replay(commit, localRevBefore) !== undefined
           ? map.replay(projected_identity_replay(commit, localRevBefore)!)
         : commit.format === "structural-json"
-          && commit.formatVersion === 1
           && typeof commit.payload === "string"
           ? map.replay({
             prevRev: localRevBefore,
             format: commit.format,
-            formatVersion: commit.formatVersion,
             payload: commit.payload,
           })
-          : map.replay({ prevRev: localRevBefore, ops: local_ops(commit) });
+          : (() => { throw new Error("Canonical projected commit is missing structural transport."); })();
       if (!applied.changed || map.rev !== localRevBefore + 1) {
         throw new Error("Canonical changed commit did not advance the client mirror exactly once.");
       }
@@ -556,7 +530,6 @@ export function create_livehost_client<
         map.restore(Object.freeze({
           rev: snapshot.rev,
           format: capture.format,
-          formatVersion: capture.formatVersion,
           payload: capture.payload,
           root: capture.root,
         }));
@@ -1256,11 +1229,11 @@ function has_projected_transport(value: object): boolean {
 function apply_projected_message(
   map: LiveMap,
   path: readonly (string | number)[],
-  message: Readonly<{ format?: unknown; formatVersion?: unknown; payload?: unknown }>,
+  message: Readonly<{ format?: unknown; payload?: unknown }>,
   kind: "set" | "replace",
 ): void {
   if (message.format !== "structural-json"
-    || message.formatVersion !== 1
+    || Object.hasOwn(message, "formatVersion")
     || typeof message.payload !== "string") {
     throw new Error("LiveHost projected message has an invalid exact transport envelope.");
   }

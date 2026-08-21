@@ -128,15 +128,15 @@ check("malformed exact envelopes reject atomically without legacy downgrade", ()
   const before = map.capture();
   assert.throws(() => map.restore({ rev: 4, format: "structural-json", value: { value: 9 } } as never));
   assert.deepEqual(map.capture(), before);
-  assert.throws(() => map.apply({ prevRev: 0, format: "structural-json", formatVersion: 1, value: { value: 9 } } as never));
+  assert.throws(() => map.apply({ prevRev: 0, format: "structural-json", value: { value: 9 } } as never));
   assert.deepEqual(map.capture(), before);
 });
 
 check("malformed structural payloads reject restore apply and replay atomically", () => {
   const map = hson.liveMap.fromJson({ value: 1 });
   const before = map.capture();
-  const malformed = { format: "structural-json", formatVersion: 1, payload: "{not-json" } as const;
-  assert.throws(() => map.restore({ rev: 2, ...malformed }));
+  const malformed = { format: "structural-json", payload: "{not-json" } as const;
+  assert.throws(() => map.restore({ rev: 2, ...malformed, root: map.root() }));
   assert.throws(() => map.apply({ prevRev: 0, ...malformed }));
   assert.throws(() => map.replay({ prevRev: 0, ...malformed }));
   assert.deepEqual(map.capture(), before);

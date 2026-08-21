@@ -155,7 +155,7 @@ check("element reads and captures are recursively detached", () => {
   const content = map.document.content();
 
   assert.equal(capture.kind, "hson-document");
-  assert.equal(capture.version, 2);
+  assert.equal(Object.hasOwn(capture, "version"), false);
   assert.equal(capture.mode, "element");
   assert.equal(capture.rev, beforeRev);
   assert_fully_detached(rootCopy, capture.root);

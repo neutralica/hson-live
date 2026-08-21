@@ -7,14 +7,6 @@ export type { DetachedLiveContent, LiveTreeLifecycleResult } from './lifecycle.t
 export type {
   LiveMapApply,
   LiveMapCapture,
-  LiveMapCanonicalCapture,
-  LiveMapCaptureInput,
-  LiveMapExactApply,
-  LiveMapExactCapture,
-  LiveMapExactReplay,
-  LiveMapLegacyApply,
-  LiveMapLegacyCapture,
-  LiveMapLegacyReplay,
   LiveMapReplay,
   LiveMapStructuralJsonEnvelope,
 } from "./livemap.types.js";

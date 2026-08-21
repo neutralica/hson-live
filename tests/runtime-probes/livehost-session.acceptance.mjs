@@ -130,8 +130,8 @@ function restore_projected_revision(map, rev) {
   map.restore({
     rev,
     format: capture.format,
-    formatVersion: capture.formatVersion,
     payload: capture.payload,
+    root: capture.root,
   });
   assert.equal(map.rev, rev);
   return map;

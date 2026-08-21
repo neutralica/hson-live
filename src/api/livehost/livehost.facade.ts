@@ -1,10 +1,10 @@
-import { create_livehost_client } from "./livehost.client.js";
-import { create_livehost } from "./livehost.core.js";
-import { make_livehost_canonical_stream } from "./livehost.history.js";
-import { decode_livehost_message, encode_livehost_message } from "./livehost.protocol.js";
-import { make_livehost_recovery_planner } from "./livehost.recovery.js";
+import { create_livehost_client } from "../locus/locus.client.js";
+import { create_livehost } from "../locus/locus.core.js";
+import { make_livehost_canonical_stream } from "../locus/locus.history.js";
+import { decode_livehost_message, encode_livehost_message } from "../locus/locus.protocol.js";
+import { make_livehost_recovery_planner } from "../locus/locus.recovery.js";
 import { create_livehost_store } from "./services/livehost.store.js";
-import { make_livehost_sync_manager } from "./livehost.sync.js";
+import { make_livehost_sync_manager } from "../locus/locus.sync.js";
 
 /**
  * Stable LiveHost namespace shared by `hson.liveHost` and the dedicated

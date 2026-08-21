@@ -11,7 +11,6 @@ export type LiveHostPersistedMapKind = "document" | "projected-data";
 
 export type LiveHostPersistedViewState = Readonly<{
   format: "view-state";
-  formatVersion: 2;
   payload: string;
 }>;
 
