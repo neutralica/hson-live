@@ -9,9 +9,9 @@ Each successful projected mutation produces a data-shaped commit. A commit recor
 
 LiveMap schemas combine TypeScript-inferred state structure with runtime validation. The same schema can guide TypeScript-facing APIs and validate live graph state before accepting mutations. If a proposed operation would violate expected value type, node kind, array behavior, required object structure, or document constraints, LiveMap can reject the operation before changing the authoritative graph.
 
-LiveMap also provides path handles, feeds, proxies, object and array helpers, snapshots, capture/apply/replay operations, and explicit bindings to LiveTree. These features allow the graph to drive local views, DOM projections, inspectors, editors, and LiveHost replication through ordered commits and snapshots.
+LiveMap also provides path handles, feeds, proxies, object and array helpers, snapshots, capture/apply/replay operations, and explicit bindings to LiveTree. These features allow the graph to drive local views, DOM projections, inspectors, editors, and Locus synchronization through ordered commits and snapshots.
 
-LiveMap snapshots are local revisioned state captures. Hosted snapshot transport, recovery policy, and client coordination are LiveHost concerns.
+LiveMap snapshots are local revisioned state captures. Authoritative snapshot transport, recovery policy, and client coordination are Locus concerns.
  -->
 
 
@@ -27,7 +27,7 @@ It is designed to make the same graph useful in three roles:
 
 The implemented local-state core includes projected paths, atomic mutations, commits, revisions, feeds, schema validation, path handles, proxies, array/object helpers, links, and capture/apply/replay.
 
-LiveHost now builds on those facilities with authoritative hosted state, ordered commits, snapshots, recovery, reconnect behavior, deduplication, and multi-client coordination. Further roadmap work includes identity-aware reconciliation, deterministic lifecycle scopes, richer derived views, persistence, authorization, and broader operational hardening.
+Locus builds on those facilities with authoritative state, ordered commits, snapshots, recovery, reconnect behavior, deduplication, and multi-client coordination.
 
 This document describes LiveMap's implemented semantics, architectural boundaries, and roadmap direction without presenting planned behavior as current API. The complete implemented callable surface is documented in `api-livemap.md`.
 
@@ -214,18 +214,16 @@ no-op commit:   rev = prevRev
 
 Normal construction establishes initial state at revision 0 without producing an instantiation commit. Revision therefore counts committed transitions on the current map instance rather than construction steps.
 
-On data maps, `capture()` returns a detached compatibility projection, the
-revision, and an exact versioned structural-JSON payload. The exact payload
+On data maps, `capture()` returns a detached canonical root, the revision, and
+the current exact structural-JSON payload. The exact payload
 preserves property order, dangerous keys, and negative zero without crossing a
 plain-object intermediary. `apply()` performs a conditional root replacement
 only when its `prevRev` still matches the map. `replay()` conditionally
 re-applies normalized operation records and verifies both their declared
-previous values and computed next values before mutation. Exact fields take
-precedence; malformed exact data rejects without falling back to a legacy
-value/op shape. Legacy shapes remain readable but lossy, with no removal release
-currently assigned.
+previous values and computed next values before mutation. Malformed current
+transport, `formatVersion`, and old value/op shapes reject without fallback.
 
-These operations form the implemented local foundation for LiveHost:
+These operations form the implemented local foundation for Locus:
 
 - captures provide snapshot envelopes;
 - commits provide ordered semantic deltas;
@@ -236,7 +234,7 @@ Document maps instead return a detached canonical HSON capture preserving ordere
 
 Incremental document operations use a shared discriminated path-or-QUID target. Numeric document paths traverse physical canonical `$_content`; they are not projected JSON paths or DOM child indexes. Persisted-QUID targets resolve only through the current map's sparse index. Attribute mutation is restricted to ordinary elements and cannot edit `hson:*` metadata. Every `data-*` name is an ordinary application attribute. Content replacement swaps one existing slot, clones caller input, validates the complete candidate graph and sparse identity, and atomically replaces owned root/index state. Its commit operations are `set-attr`, `remove-attr`, and `replace-content`, never `replace-root`.
 
-These LiveMap operations do not themselves define transport, persistence, retry policy, authorization, conflict merging, or multi-writer consensus. Those responsibilities belong outside LiveMap. LiveHost now implements the authoritative transport, recovery, retry, deduplication, and session-facing parts of that boundary, while persistence and authorization remain separate concerns.
+These LiveMap operations do not themselves define transport, persistence, retry policy, authorization, conflict merging, or multi-writer consensus. Those responsibilities belong outside LiveMap. Locus implements one-map transport, recovery, retry, deduplication, sessions, and optional persistence; applications own authorization-policy meaning.
 
 A revision is meaningful only within the history and authority domain that issued it. Revision 12 in one LiveMap or host session is not interchangeable with revision 12 in another.
 
@@ -451,14 +449,14 @@ Those facilities are consistent with the present architecture but remain roadmap
 
 Implemented one-way links forward selected local changes from one LiveMap to another. They are intentionally narrow: no initial synchronization, no bidirectional loop protection, no transforms, and no conflict resolution.
 
-The implemented distributed model is authoritative rather than peer-to-peer. LiveHost establishes a single accepted revision order, and clients recover, mirror, and propose changes against that authority. Actions and conditional proposals cross the authority boundary, while snapshots and ordered commits return from it.
+The implemented distributed model is authoritative rather than peer-to-peer. Locus establishes a single accepted revision order, and clients recover, mirror, and propose changes against that authority. Actions and conditional proposals cross the authority boundary, while snapshots and ordered commits return from it.
 
-LiveHost does not turn LiveMap into a CRDT or provide automatic divergent-history merging.
+Locus does not turn LiveMap into a CRDT or provide automatic divergent-history merging.
 
 This preserves a clean separation:
 
 - LiveMap defines local state and semantic changes;
-- LiveHost defines authority, sessions, transport, and revision-based recovery; and
+- Locus defines authority, sessions, transport, and revision-based recovery; and
 - LiveTree defines presentation and DOM behavior.
 
 CRDT behavior, multi-master consensus, and automatic divergent-history merging are not goals of the initial architecture.

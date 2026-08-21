@@ -11,7 +11,9 @@ LiveMap owns local state semantics: paths, mutations, schemas, commits, revision
 
 It does not require a server, transport, session, or persistent backend. A LiveMap may exist entirely within one process or browser.
 
-When remote authority, actions, connections, durable persistence, or client recovery are required, a LiveMap may be governed by LiveHost. Those concerns are documented separately.
+When remote authority, actions, connections, one-map persistence, or client
+recovery are required, a LiveMap may be governed by a Locus. Those concerns are
+documented separately.
 
 ---
 
@@ -30,7 +32,7 @@ LiveMap
   revisioned state, paths, mutations, schemas, commits, subscriptions,
   links, capture, restore, and replay
 
-LiveHost
+Locus
   hosted authority, actions, sessions, transport, persistence,
   and remote recovery
 ```
@@ -974,9 +976,9 @@ A retained proxy may continue resolving its path against current state, but call
 
 Where an endpoint has been deleted or changed to an incompatible type, proxy operations fail according to current path semantics.
 
-LiveHost management may dynamically fence proxy mutations while leaving permitted reads available.
+Locus management may dynamically fence proxy mutations while leaving permitted reads available.
 
-That management behavior belongs to LiveHost; the proxy itself remains a LiveMap feature.
+That management behavior belongs to Locus; the proxy itself remains a LiveMap feature.
 
 ---
 
@@ -1444,12 +1446,10 @@ A projected snapshot may preserve:
 - revision metadata;
 - map configuration required by the format.
 
-The implemented data-map capture includes both a detached JavaScript
-compatibility value and a versioned `structural-json` payload. The payload is
-the exact ordered form used by restore/apply/replay and propagation. Exact
-fields take precedence; malformed exact data fails without legacy fallback.
-Legacy value/op shapes remain readable but are lossy, with no removal release
-currently assigned.
+The implemented data-map capture includes a detached canonical root and the
+current `structural-json` payload. The payload is the exact ordered form used by
+restore/apply/replay and propagation. Malformed current transport,
+`formatVersion`, and old value/op shapes reject without fallback.
 
 An exact document view-state may additionally preserve:
 
@@ -1739,7 +1739,7 @@ Each accepted mutation receives its own revision boundary.
 
 LiveMap does not by itself coordinate independent asynchronous writers across processes.
 
-That is an authority concern supplied by LiveHost or another owner.
+That is an authority concern supplied by Locus or another owner.
 
 Applications should not hold a projected read, await unrelated work, and then assume the path is unchanged before writing. Use `update`, a batch, or an external authority boundary appropriate to the problem.
 
@@ -1820,9 +1820,9 @@ The exact binding between a hosted document map and a client LiveTree remains a 
 
 ---
 
-## Relationship to LiveHost
+## Relationship to Locus
 
-LiveHost governs a LiveMap when the application requires shared or remote authority.
+Locus governs a LiveMap when the application requires shared or remote authority.
 
 LiveMap supplies:
 
@@ -1838,7 +1838,7 @@ LiveMap supplies:
 - restore;
 - replay.
 
-LiveHost supplies:
+Locus supplies:
 
 - hosted mutation ordering;
 - mutation queues;
@@ -1853,9 +1853,9 @@ LiveHost supplies:
 
 A standalone LiveMap does not need to understand connections or storage.
 
-A hosted LiveMap has its public mutation surfaces dynamically fenced so all writes pass through the host’s ordered authority.
+A governed LiveMap has its public mutation surfaces dynamically fenced so all writes pass through the Locus's ordered authority.
 
-Those management rules are described in the LiveHost documentation.
+Those management rules are described in the Locus documentation.
 
 ---
 
@@ -1993,7 +1993,7 @@ Detailed documentation should be divided into focused chapters:
 
 The exact callable surface belongs in the LiveMap API reference.
 
-Remote actions, sessions, persistence, and client recovery belong in the LiveHost documentation.
+Remote actions, sessions, one-map persistence, and client recovery belong in the Locus documentation.
 
 Server rendering, DOM adoption, render streams, and variable client participation belong in separate projection documentation once those systems are established.
 
@@ -2047,7 +2047,7 @@ Restore and replay are explicit historical operations rather than ordinary mutat
 
 ### Layered authority
 
-LiveMap defines local mutation truth. LiveHost may govern when and by whom those mutations are accepted.
+LiveMap defines local mutation truth. Locus may govern when and by whom those mutations are accepted.
 
 ---
 
@@ -2082,7 +2082,7 @@ application
 or serve as the state engine beneath other layers:
 
 ```text
-LiveHost
+Locus
 → LiveMap
 → LiveTree or another projection
 ```

@@ -2,7 +2,7 @@
 
 # Lifecycle and Disposal Contract
 ## Status
-This document defines the common lifecycle expectations for LiveTree, LiveMap, LiveHost, bindings, sessions, and test-run resources.
+This document defines the common lifecycle expectations for LiveTree, LiveMap, Locus, LiveHost, bindings, sessions, and test-run resources.
 Lifecycle is part of correctness.
 ## Core rule
 Every resource that subscribes, observes, registers, attaches, or retains external state must have one deterministic disposal path.
@@ -54,7 +54,7 @@ Examples:
 
 * a LiveTree subtree owns its nested bindings;
 * a keyed child scope owns that child’s event listeners and CSS;
-* a LiveHost session owns its subscriptions and pending requests;
+* a Locus session owns its subscriptions and pending requests;
 * a test run owns its execution and result-stream resources;
 * a client adapter owns its socket listeners.
 
@@ -138,7 +138,7 @@ When the owning subtree or identity is disposed:
 * shared CSS must use reference or registry semantics;
 * stale QUID rules must not accumulate indefinitely.
 
-LiveHost session lifecycle
+Locus session lifecycle
 
 A host session owns all resources created on behalf of one client connection or resumable session.
 
@@ -290,4 +290,4 @@ Tests must continue to prove:
 * initialization failure cleans up partial resources;
 * repeated create/dispose cycles do not grow registries without bound.
 
-These four establish the immediate contracts needed before the LiveHost test-run vertical slice expands.
+These four establish the lifecycle contracts used by Locus-backed test execution.

@@ -132,7 +132,7 @@ stored in `$_attrs`.
 ### Internal root boundary
 
 An empty `_hson_root` remains a valid runtime fragment carrier for LiveMap and
-LiveHost. Populated roots also remain meaningful internal attachment carriers.
+Locus. Populated roots also remain meaningful internal attachment carriers.
 Neither is transported HSON: `serialize_hson()` rejects every `_hson_root` and
 does not substitute, melt, or silently unwrap it. HSON-source public terminals
 detach exactly one validated semantic child before target projection, while
@@ -146,7 +146,7 @@ boundaries must establish their own canonical inputs before invoking equality.
 The future architecture must choose, separately, among:
 
 - adding unambiguous HSON syntax for an empty fragment/root;
-- migrating LiveMap and LiveHost away from the empty-root carrier; or
+- migrating LiveMap and Locus away from the empty-root carrier; or
 - separating the serializable HSON graph type from the broader runtime carrier
   type.
 

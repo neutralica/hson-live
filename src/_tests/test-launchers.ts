@@ -1286,7 +1286,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-node-hosting",
       repositoryModule: "tests/livehost-node-hosting.acceptance.mts",
       runtime: "node-real-websocket",
-      executableChecks: 44,
+      executableChecks: 24,
       collections: ["transport", "websocket", "node-host", "externally-discoverable"],
     }),
     launcher({
@@ -1302,12 +1302,12 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "livehost.authority-lifecycle",
       subject: "LiveHost",
-      displayName: "LiveHost authority lifecycle",
+      displayName: "LiveHost Locus registry lifecycle",
       packageScript: "test:livehost-authority-lifecycle",
       repositoryModule: "tests/livehost-authority-lifecycle.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
-      collections: ["authority", "lifecycle", "eviction", "capacity", "restart", "externally-discoverable"],
+      executableChecks: 25,
+      collections: ["locus-registry", "lifecycle", "eviction", "capacity", "restart", "externally-discoverable"],
     }),
   ]);
 

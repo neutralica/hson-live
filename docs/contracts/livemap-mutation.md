@@ -46,7 +46,7 @@ Projected mutations participate in:
 - commit generation;
 - revision accounting;
 - feeds and subscriptions;
-- LiveHost synchronization.
+- Locus synchronization.
 Low-level physical node mutation is outside this contract unless it is explicitly converted into projected operations and committed through LiveMap.
 ## Paths
 Every operation targets a canonical `LivePath`.
@@ -160,21 +160,19 @@ capture
 capture() returns detached projected state, exact structural transport, and the
 revision at which it was observed.
 
-type LiveMapCapture<TValue> = Readonly<{
+type LiveMapCapture = Readonly<{
   rev: number;
-  value: TValue;
+  root: HsonNode;
   format: "structural-json";
-  formatVersion: 1;
   payload: string;
 }>;
 
 A capture must remain stable after later map mutations.
 
-`value` is a compatibility JavaScript projection. `payload` is the exact
-ordered representation and preserves `-0`. Any presence of exact transport
-fields selects exact decoding; malformed exact data rejects and never falls
-back to `value`. Legacy `{ rev, value }` captures remain readable but are lossy,
-and no removal release is currently assigned.
+`payload` is the exact ordered representation and preserves `-0`. `root`
+preserves the detached canonical graph. Malformed current transport, a
+`formatVersion` field, or an old `{ rev, value }` capture rejects; there is no
+compatibility fallback.
 
 A capture is observed state. It is not itself a mutation request.
 
@@ -229,7 +227,7 @@ ordinary revision once and publishes through ordinary canonical commit and
 history observers; reuse publishes nothing. Projected value feeds, links, and
 stores publish nothing for metadata-only registration because their values are
 unchanged. The operation is
-additive in current exact LiveHost graph transport because it preserves the
+additive in current exact Locus graph transport because it preserves the
 established graph discriminants, path target, and recorded scalar value without
 changing the envelope version. Replay validates the recorded value and never
 allocates.

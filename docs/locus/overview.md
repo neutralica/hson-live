@@ -491,8 +491,9 @@ await host.checkpoint();
 
 Use this constructor when authoritative document commits must become durable before visibility.
 
-Multi-Locus persistent stores and authority registries remain internal pending
-the future LiveHost boundary. They are not exported from `hson-live/locus`.
+Basic and persistent multi-Locus stores remain internal application utilities.
+The generic bounded `LiveHostLocusRegistry` is public from
+`hson-live/livehost`; it is not exported from `hson-live/locus`.
 
 The exact callable surface is documented separately in the Locus API reference.
 

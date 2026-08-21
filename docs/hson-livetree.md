@@ -11,7 +11,7 @@ LiveTree exposes practical authoring surfaces for content, text, attributes, fla
 
 LiveTree also binds presentation to LiveMap state. A tree can subscribe to LiveMap paths and project values into text, attributes, inline styles, or custom callbacks. This allows LiveMap’s validated, revisioned graph state to drive live DOM presentation while keeping state management, transport, and rendering concerns separated.
 
-In the broader architecture, LiveTree is the view/projection layer: HSON defines the graph representation, LiveMap defines validated mutation and revisioned state, LiveHost defines hosted authority and synchronization, and LiveTree turns graph state into interactive browser presentation.
+In the broader architecture, LiveTree is the view/projection layer: HSON defines the graph representation, LiveMap defines validated mutation and revisioned state, Locus defines one-map authority and synchronization, applications own meaning and topology, LiveHost hosts applications, and LiveTree turns graph state into interactive browser presentation.
  -->
 
 # LiveTree

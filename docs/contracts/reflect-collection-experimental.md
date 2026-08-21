@@ -145,7 +145,7 @@ const reflector = hson.reflect.collection({
   },
 });
 
-// Later, including after a LiveHost snapshot installs a fresh mirror:
+// Later, including after a Locus snapshot installs a fresh mirror:
 reflector.replaceSource(nextMirror.at(["items"]));
 reflector.dispose();
 ```

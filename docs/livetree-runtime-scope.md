@@ -171,7 +171,7 @@ Immutable lookup sets are included for completeness.
 | active document-binding weak set | `reflect.document.ts` | Enforces one binding per exact map object, independent of QUID value. |
 | LiveMap authority weak registry | `livemap.authority.ts` | Exact LiveMap object authority, intentionally outside LiveTree identity. |
 | LiveMap path-handle weak internals | `livemap.handle.ts` | Exact handle internals; per-map path cache remains closure-local. |
-| LiveHost weak authority/internal tables | LiveHost core/persistence | Exact host/map objects; not LiveTree QUID resource ownership. |
+| Locus weak authority/internal tables | Locus core/persistence | Exact Locus/map objects; not LiveTree QUID resource ownership. |
 | sanitizer-by-window weak cache | `sanitize-html.utils.ts` | Correctly keyed by exact DOM window. |
 | LiveInspect pass-value weak map | `liveinspect.source.ts` | Exact inspected object only. |
 
@@ -184,12 +184,12 @@ and its owner is released when an inactive internal runtime is disposed.
 
 ### C. Separate issue, deferred
 
-High priority after the Node LiveHost refactor and before SSR:
+Deferred to the approved pre-SSR sidecar:
 
-- LiveHost/client/history/persistence process counters used for fallback,
+- Locus/client/history/persistence process counters used for fallback,
   session, trace, map, incarnation, action, and recovery identifiers.
-- LiveHost hosted-map and authority weak registries: object-safe now,
-  but their process ownership model belongs to the Node LiveHost refactor.
+- Locus authoritative-map weak registries: object-safe now, but their process
+  ownership remains a pre-SSR audit subject.
 - mutable transform sanitizer injection in
   `transform/constructors/construct-output-2.ts`.
 - materialization profiler module activation state.
@@ -201,8 +201,7 @@ High priority after the Node LiveHost refactor and before SSR:
   documents. This phase must isolate all QUID-owned/tree-handle CSS; a broader
   application-global stylesheet host policy remains a separate product decision.
 
-These items must be addressed before SSR if the Node LiveHost refactor does not
-remove or explicitly own them.
+These items remain explicitly deferred until the pre-SSR sidecar.
 
 ### Immutable/shared tables
 
@@ -290,7 +289,7 @@ independent Node rendering jobs
 
 Multiple runtimes projecting into one physical `Document` are unsupported.
 Separate browser tabs, windows, workers, processes, and JavaScript realms are
-naturally isolated. A Node LiveHost authority does not acquire a LiveTree
+naturally isolated. A Locus does not acquire a LiveTree
 runtime or CSS state unless it actually performs LiveTree rendering or
 projection. No runtime is created per tree, root, QUID, LiveMap, or client.
 
@@ -322,10 +321,10 @@ mapping, element, and reusable resources. The specialized legacy
   borrowed root first stops the bridge and then performs normal runtime
   teardown; later disposal is idempotent.
 
-## Deferred post-LiveHost / pre-SSR work
+## Deferred pre-SSR work
 
 Category C remains intentionally bounded to the items recorded above:
-LiveHost counters and authority ownership, transform sanitizer injection,
+Locus counters and authority ownership, transform sanitizer injection,
 materialization profiling state, and remaining ambient query/body, safe-mount,
 inspection, style-read, and canvas defaults. None indexes or cleans up active
 LiveTree QUID ownership after this phase.

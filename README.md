@@ -383,7 +383,7 @@ For broader graph reflection, `hson.reflect` provides an optional binding that b
 
 ## Locus
 
-Locus manages canonical application state in an authoritative server-side runtime.
+Locus makes exactly one LiveMap authoritative.
 
 A Locus authority owns one LiveMap and its ordered commit history. Clients do not independently simulate the same application and exchange events afterward. They maintain revisioned mirrors of one canonical state and follow the same accepted commit stream.
 
@@ -402,18 +402,42 @@ Locus provides:
 - recovery after disconnect;
 - document-state persistence contracts;
 - browser and Node WebSocket adapters;
-- a reusable Node HTTP/WebSocket host;
-- application routing and isolation;
-- origin, authentication, and authority-authorization hooks;
-- transport limits, liveness, and backpressure handling.
+- one-map bootstrap contribution; and
+- activity and quiescence observation.
 
 The core authority remains transport-independent. It accepts a small socket-like interface and does not depend on Node, browsers, or Cloudflare APIs.
 
 Platform adapters connect real sockets to that boundary.
 
+Applications own domain meaning, custom actions and side effects,
+authorization-policy meaning, event semantics, topology, acquisition keys,
+retention, and cross-Locus workflows.
+
+## LiveHost
+
+LiveHost is the application/runtime boundary. It registers applications,
+dispatches exact request and connection routes, carries generic principal
+evidence, exposes readiness and disposal, and optionally furnishes a bounded
+Locus registry. An application may use zero or more Loci.
+
+```text
+zero-Locus:     request -> LiveHost -> application -> Response
+optional state: request/connection -> LiveHost -> application -> selected Locus
+```
+
+Applications interpret domain selectors and own Locus topology. LiveHost does
+not treat `?locus=` as a universal topology system.
+
+Node LiveHost is the current concrete runtime. It owns HTTP ingress, WebSocket
+transport, Web Request/Response adaptation, origin and proxy policy, resource
+limits, heartbeat/backpressure, `/healthz`, and network/process shutdown.
+See [the current architecture and runtime boundary](docs/livehost/overview.md).
+
 ### HTTP bootstrap and WebSocket continuation
 
-Locus can capture an exact canonical authority state at revision `R` and deliver it as an unversioned HSON bootstrap response.
+Locus can contribute an exact canonical authority state at revision `R` to an
+unversioned HSON bootstrap response. Application/runtime code contributes the
+routing and delivery continuation, and one assembler emits one artifact.
 
 The browser installs that state and enters the ordinary WebSocket recovery path from the same authority identity and revision:
 
@@ -534,6 +558,13 @@ The genuine Node application-host runtime remains available from:
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
+The platform-neutral application/runtime contracts and bounded registry are
+available from:
+
+```ts
+import { create_livehost_locus_registry } from "hson-live/livehost";
+```
+
 Do not import either Node subpath into browser or Worker bundles.
 
 Public diagnostic launchers are available from:
@@ -571,6 +602,7 @@ The `docs/` directory contains architecture and API references for:
 - LiveMap;
 - LiveTree;
 - Locus;
+- LiveHost and the Node runtime boundary;
 - CSS and animation management;
 - diagnostics and package entrypoints.
 

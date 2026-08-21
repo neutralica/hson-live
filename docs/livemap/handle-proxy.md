@@ -132,7 +132,7 @@ key, address it through explicit paths or the parent handle's object helpers.
 
 ## Hosted maps
 
-When LiveHost manages a map, reads through existing handles and proxies continue
+When a Locus governs a map, reads through existing handles and proxies continue
 to resolve current state. Mutation methods remain subject to the same authority
 fencing as direct map writes; retaining a handle or proxy does not bypass the
 host.

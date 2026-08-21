@@ -65,7 +65,7 @@ Resource audit decisions:
   stylesheet flush. It does not retain or call a LiveTree. QUID cleanup removes
   the disposed tree's rules before that flush runs, and manager reset/sync paths
   cancel pending work.
-- LiveMap feeds, links, stores, and LiveHost transport subscriptions that are
+- LiveMap feeds, links, stores, and Locus transport subscriptions that are
   not created on behalf of a LiveTree remain explicitly manual and are owned by
   their map, link, store, or host session.
 - No LiveTree-owned intervals, timeouts, AbortControllers, WebSockets, or

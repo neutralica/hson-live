@@ -1,6 +1,8 @@
 # Locus Recovery Contract
 
-Status: proposed contract for Locus reconnect, resume, replay, and snapshot recovery.
+Status: historical implementation design record. The current public recovery
+contract is documented in `docs/locus/api-locus.md`; historical sequencing and
+version language below is retained as an audit record, not current API guidance.
 
 This document defines the architectural rules for recovering a client mirror after transport loss. It intentionally separates state synchronization from transport connection management, session management, and action execution.
 

@@ -62,7 +62,7 @@ const direct = hson.inspect.create({
 
 const subtree = hson.inspect.create({ source: map.at(["users"]), host });
 
-// A LiveHost client mirror is still only a LiveMap to the inspector.
+// A Locus client mirror is still only a LiveMap to the inspector.
 const mirrorView = hson.inspect.create({ source: client.map, host });
 clientRecovery.onSnapshot((replacementMap) => mirrorView.replaceSource(replacementMap));
 
@@ -74,6 +74,6 @@ const canonical = hson.inspect.fromHson({ value: serializedHson, host, hsonMode:
 - Only finite JSON-shaped values are accepted; cycles, class instances, DOM nodes, functions, symbols, bigints, `NaN`, and infinities are rejected.
 - Unkeyed arrays provide positional continuity only.
 - Schema and canonical HSON-node inspection require a full `LiveMap`, not an isolated path handle.
-- This experimental surface has no clipboard contract, editing controls, custom elements, Shadow DOM, drag/drop, transport logic, or LiveHost action submission.
+- This experimental surface has no clipboard contract, editing controls, custom elements, Shadow DOM, drag/drop, transport logic, or Locus action submission.
 - Materialization is synchronous and non-virtualized; very large visible collections can block the calling thread. There is no cancellation API because no work remains scheduled after a call returns.
 - Hosted jsdom timings are reproducible development evidence, not a browser latency guarantee. Browser-specific measurements are not yet part of CI.

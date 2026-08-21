@@ -98,7 +98,12 @@ map.capture();                // { rev, value }
 
 `snap(path?)` never returns a live object/array reference. A missing projected path returns `undefined`; wrong path syntax throws. `at(path)` always creates a stable path handle, even if the path is currently missing; `handle.snap()` then returns `undefined`. There is no map-level `get`/`has` method. Use `snap`, object handle `hasKey`, schema `has`, or a proxy handle as appropriate.
 
-`capture()` returns a detached compatibility `value`, its exact revision, and a versioned structural-JSON envelope (`format`, `formatVersion`, `payload`). The payload preserves ordered object entries and `-0`; the plain JavaScript `value` does not preserve arbitrary integer-key order. `restore`, `apply`, and `replay` prefer exact fields whenever any exact transport field is present. Malformed or unsupported exact data rejects and never falls back to the compatibility value. Legacy value/op-only inputs remain readable but are lossy; no release is currently assigned for their removal.
+`capture()` returns the exact revision, a detached canonical `root`, and the
+current structural-JSON envelope (`format`, `payload`). The payload preserves
+ordered object entries and `-0`. `restore`, `apply`, and `replay` require this
+current structural representation. A `value` field, `formatVersion`, malformed
+transport, or an old value/op-only form rejects; there is no compatibility
+fallback.
 
 ## Core projected writes
 
@@ -439,7 +444,7 @@ stop();
 
 Registration does **not** call listeners immediately; obtain initial state with `snap()`/`sub.snapshot` semantics (the public shorthand exposes subscriptions, while `make_livemap_store_api` exposes `snapshot`). Values are detached clones. Disposers are idempotent. One batch produces at most one subscriber publication. 
 
-Link-applied writes use normal commits and therefore notify target subscribers. Feeds, path subscriptions, links, stores, and applicable LiveHost routes carry exact projected carriers or versioned payloads internally; callbacks receive detached JavaScript materializations. A rejected link write is atomic for the target, but source and target are not one distributed transaction.
+Link-applied writes use normal commits and therefore notify target subscribers. Feeds, path subscriptions, links, stores, and applicable Locus routes carry current exact projected carriers; callbacks receive detached JavaScript materializations. A rejected link write is atomic for the target, but source and target are not one distributed transaction.
 
 ## Proxy API
 
@@ -544,9 +549,9 @@ const serialized = JSON.stringify(transfer);
 
 Use `snap()` for a detached rendering value and `capture()` when the revision must travel with it. Clone/isolate per-request state unless intentional shared mutation is required. A batch can prepare one deterministic request-scoped transition and one commit.
 
-LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes exact structural transport, a detached projected compatibility value, and a detached canonical root so hidden identity metadata can be durably restored. Document captures likewise contain HSON nodes; LiveHost recovery serializes durable structural form as HSON or negotiated view-state. Neither wire format carries the local same-epoch capability.
+LiveMap supplies state to a renderer; it does not render HTML. LiveTree is the DOM projection API and has different runtime constraints. A server-created data capture includes exact structural transport and a detached canonical root so hidden identity metadata can be durably restored. Document captures likewise contain HSON nodes; Locus recovery serializes durable structural form as the selected current HSON or view-state representation. Neither wire format carries the local same-epoch capability.
 
-Passing browser `Element` objects belongs to other hson/LiveTree construction paths and is unavailable in Node/Worker execution. Synchronization coordination between a server LiveMap, LiveHost revision, and LiveTree is not yet a public product contract.
+Passing browser `Element` objects belongs to other hson/LiveTree construction paths and is unavailable in Node/Worker execution. Synchronization coordination between an authoritative LiveMap/Locus revision and LiveTree remains an explicit application composition.
 
 ## Errors
 

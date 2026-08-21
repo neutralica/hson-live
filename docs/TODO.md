@@ -15,10 +15,10 @@
 • TLS/reverse-proxy deployment expectations.
 
 
-## High priority after Node LiveHost refactor, before SSR
+## Approved pre-SSR sidecar (not started in U12)
 
 • Close the deferred mutable-global findings in
-  `docs/livetree-runtime-scope.md`: LiveHost identity/trace counters and
+  `docs/livetree-runtime-scope.md`: Locus identity/trace counters and
   authority ownership, transform sanitizer injection, materialization profiling
   state, and the remaining ambient document/window entrypoints.
 

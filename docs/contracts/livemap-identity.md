@@ -121,7 +121,11 @@ Active document APIs accept `LiveMapDocumentRequestTarget`, which retains path-o
 
 A commit target may carry `witness: { quid }`. The path always routes. A matching active endpoint QUID validates same-epoch intent; an active different endpoint QUID reports a structured witness conflict; no endpoint QUID leaves identity-free replay available. A witness elsewhere cannot repair or reroute an invalid path, and raw bytes remain insufficient epoch provenance.
 
-Pre-Unit-1 QUID-targeted replay is retained behind explicitly named compatibility adapters. Successful compatibility replay lowers each operation against its exact staged base and immediately normalizes it to path plus witness. Current canonical LiveHost decoding rejects QUID-only targets; only internal client and persistence compatibility readers admit the old shape. New authoritative history is produced from path-authoritative LiveMap commits.
+Raw-QUID targeting is supported only at request boundaries. The accepting
+transaction resolves the current subject and lowers it immediately to path plus
+an optional witness. Current canonical Locus decoding rejects QUID-only targets,
+and no compatibility reader admits the old canonical shape. New authoritative
+history is produced from path-authoritative LiveMap commits.
 
 `LiveMapPathHandle` follows a projected location. It may observe a different value after movement, splice, replacement, deletion, or replay. It does not silently become an identity handle.
 
@@ -167,11 +171,12 @@ The overlay never mints QUIDs, owns LiveTree claims, retains DOM nodes, or manag
 
 ## Request lowering and canonical closure
 
-Path-or-QUID unions are request surfaces only. Document attribute and content APIs, LiveHost built-in document actions, and custom LiveHost handlers operating on their staged draft may accept a QUID request. Resolution occurs inside the accepting mutation or replay transaction against that ordinal's current owned graph and sparse overlay. Queue delay therefore cannot freeze an earlier path, and a deduplicated retry joins or reuses one action execution rather than resolving again against a later base.
+Path-or-QUID unions are request surfaces only. Document attribute and content APIs, Locus built-in document actions, and custom Locus handlers operating on their staged draft may accept a QUID request. Resolution occurs inside the accepting mutation or replay transaction against that ordinal's current owned graph and sparse overlay. Queue delay therefore cannot freeze an earlier path, and a deduplicated retry joins or reuses one action execution rather than resolving again against a later base.
 
-Every newly produced `LiveMapGraphOp`, `LiveHostEncodedGraphOp`, history entry, recovery body or tail, client-applied canonical commit, and persistence append uses a validated path target. A QUID may remain only as an optional non-routing witness. No current canonical encoder or public current-format decoder accepts a QUID as the operation's sole address.
+Every newly produced `LiveMapGraphOp`, `LocusEncodedGraphOp`, history entry, recovery body or tail, client-applied canonical commit, and persistence append uses a validated path target. A QUID may remain only as an optional non-routing witness. No current canonical encoder or public current-format decoder accepts a QUID as the operation's sole address.
 
-Legacy QUID-only canonical input is bounded compatibility data, not a second canonical model. Translation requires the exact checkpoint/base graph and matching map mode, resolves operations in ordinal order through the staged overlay, rejects missing, malformed, duplicate, or conflicting identity, and publishes only the normalized path commit. The persistence reader performs this normalization in memory without rewriting stored records. An isolated legacy operation without its exact base cannot be translated and must not be guessed, discarded, or resolved against a final graph.
+Legacy QUID-only canonical input is rejected. It is not a second address model
+and is not translated by current protocol or persistence readers.
 
 Reflection registrations retain path-authoritative commit targets; their QUID correspondence remains live continuity evidence only. `document.byQuid` is a detached read-only current-epoch lookup and never creates a commit. No supported public API exposes a live canonical-node bypass.
 
@@ -263,7 +268,7 @@ or survive owner-epoch replacement merely because the same bytes reappear.
 
 There is no `fromQuid`, global registry, user-supplied-QUID setter, DOM-query
 authoring contract, public replacement/retirement operation, or remote
-LiveHost acquisition action. Projected mode adds no raw-QUID lookup merely for
+Locus acquisition action. Projected mode adds no raw-QUID lookup merely for
 symmetry, and there is no public handle-construction route. Application identity
 remains application data.
 
@@ -279,7 +284,7 @@ is:
 - mutated through ordinary attributes or content operations;
 - moved, deleted, or replaced;
 - captured, installed, restored, or replayed; or
-- installed from a LiveHost-compatible snapshot.
+- installed from a Locus-compatible snapshot.
 
 Supplied valid sparse QUID metadata is preserved where exact graph contracts
 require it. Untouched unquidded nodes remain unquidded. Explicit acquisition
@@ -291,7 +296,7 @@ unrelated nodes.
 Every controlled boundary has one of four meanings:
 
 1. **Same-epoch live capture** preserves canonical QUID metadata and carries an opaque exact-object capability issued by the same active map epoch. `capture({ identity: "same-epoch" })` creates that local capability. `install` or `restore` must explicitly request `identity: "same-epoch"`; copied, spread, JSON-round-tripped, view-state-decoded, stale, mutated, or foreign captures reject. The capability is held out of band in a `WeakMap`, has no enumerable or serialized field, authorizes nothing, and becomes stale when a changed durable install or durable restore replaces the map epoch.
-2. **Durable structural capture** preserves the exact canonical graph, QUID metadata, and revision. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, LiveHost snapshots, bootstrap, recovery, and persistence checkpoints use this category. Installation validates all claims and admits preserved strings as fresh map-local active overlay claims. It does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
+2. **Durable structural capture** preserves the exact canonical graph, QUID metadata, and revision. Existing `capture()` retains this compatibility meaning; `capture({ identity: "preserve-metadata" })` is its explicit form. View-state, graph-content, Locus snapshots, bootstrap, recovery, and persistence checkpoints use this category. Installation validates all claims and admits preserved strings as fresh map-local active overlay claims. It does not prove continuity with handles from the source map, process, mirror, or LiveTree runtime.
 3. **Identity-free projection** intentionally removes QUID metadata. `capture({ identity: "strip" })`, install/restore with `identity: "strip"`, HSON `noQuid`, and ordinary application JSON are examples. The source is unchanged, the installed overlay is empty or reduced to remaining claims, and exact canonical equality is lost when metadata was removed. This is valid projection, not corruption.
 4. **External graph admission** covers every graph without trusted same-epoch provenance, including syntactically valid serialized QUIDs. Install/restore policy is explicit: `preserve-metadata` validates and admits claims as fresh local identity, `strip` removes them before ownership, and `reject` refuses QUID-bearing input. Internal owner-authorized acquisition remains ensure-if-absent only; no public acquisition, rekey, raw assignment, replacement, or retirement API is exposed. Construction, authored transforms, graph-content insertion, LiveTree import, and graft retain their existing collision-aware admission rules and never treat the bytes as proof of prior handle continuity.
 
@@ -321,11 +326,11 @@ One document LiveMap epoch and one `LiveTreeRuntime` epoch are separate owners. 
 | ordinary HTML / managed DOM | LiveTree diagnostic/runtime representation; copied markup is external | Exact mounted nodes belong to the current LiveTree runtime; strings alone prove nothing | No change |
 | structural JSON | External/durable metadata in `$_meta.quid` | Detached until admitted | No format change |
 | ordinary application JSON | Identity-free application projection; a user `quid` key remains user data | No system identity | No change |
-| view-state codec v2 | Durable exact structural capture preserving QUID metadata | Decoding never recreates a same-epoch capability | No version change |
-| graph-content codec v2 | Durable/external detached content preserving QUID metadata | Insert admission validates fresh local claims; no source-handle continuity | No version change |
-| LiveHost snapshot | Durable structural capture, HSON or view-state | A receiving mirror admits a new local map epoch | No protocol change |
-| LiveHost bootstrap | Durable structural bootstrap preserving useful metadata | `logicalMapId` and `incarnationId` are history identity, not node-epoch proof | No protocol change |
-| LiveHost recovery | Durable snapshot plus path-authoritative tail | Snapshot creates/replaces the mirror epoch; tail needs no QUID routing | No protocol change |
+| current view-state codec | Durable exact structural capture preserving QUID metadata | Decoding never recreates a same-epoch capability | One current form |
+| current graph-content codec | Durable/external detached content preserving QUID metadata | Insert admission validates fresh local claims; no source-handle continuity | One current form |
+| Locus snapshot | Durable structural capture, HSON or view-state | A receiving mirror admits a new local map epoch | One current form |
+| Locus bootstrap | Durable structural bootstrap preserving useful metadata | `logicalMapId` and `incarnationId` are history identity, not node-epoch proof | One current form |
+| Locus recovery | Durable snapshot plus path-authoritative tail | Snapshot creates/replaces the mirror epoch; tail needs no QUID routing | One current form |
 | persistence checkpoint | Durable exact view-state capture | Authority restart creates a new local map epoch | No storage change |
 | persistence tail | Durable path-authoritative commits; graph content may preserve QUIDs | Replayed against the reconstructed local overlay; QUID is never the sole target | No storage change |
 | Reflect initial binding | Current-map claims are collision-checked into a LiveTree runtime; absent claims remain absent | Exact binding/runtime objects provide LiveTree provenance without requiring a QUID | Unit 10R-A removes projection-local minting |
@@ -373,12 +378,12 @@ Automated acceptance coverage must continue to establish:
 15. Incoming content admission visits only the incoming subtree for new QUID claims and rejects collisions with surviving sparse claims before publication.
 16. Derived identity effects cannot be submitted, replayed, persisted, or published independently of the accepted canonical commit.
 17. Replay validates witnesses against the overlay produced by prior staged ordinals and installs only the final coherent root/revision/overlay state.
-18. Path-or-QUID targets remain active request data; canonical LiveMap and LiveHost operation types admit only paths plus optional witnesses.
+18. Path-or-QUID targets remain active request data; canonical LiveMap and Locus operation types admit only paths plus optional witnesses.
 19. QUID requests lower inside the accepting staged transaction and never before authority queue admission.
-20. Changed LiveHost actions publish path targets; no-op and failed actions publish no canonical commit.
+20. Changed Locus actions publish path targets; no-op and failed actions publish no canonical commit.
 21. New history, recovery tails, client canonical application, and persistence appends contain no QUID-only targets.
-22. Current canonical protocol decoding rejects QUID-only targets, while named compatibility readers remain isolated from public current-format output.
-23. Legacy translation requires the exact base and lowers each ordinal against its current staged overlay; it never guesses or resolves against the final graph.
+22. Current canonical protocol and persistence decoding reject QUID-only targets.
+23. No current legacy canonical translation path exists.
 24. Reflection QUIDs are correspondence evidence rather than canonical routing authority.
 25. Read-only QUID lookup and private low-level test access do not redefine canonical mutation guarantees; no public LiveMap debug route exposes canonical nodes.
 26. Ordinary local Reflection operations transform correspondence through the shared canonical path effect and never rebuild the whole correspondence domain.
@@ -388,12 +393,12 @@ Automated acceptance coverage must continue to establish:
 30. Existing `capture()` is durable exact-metadata capture; explicit same-epoch capture requires a nonserialized exact-object capability.
 31. Copied QUID-bearing bytes can be admitted as fresh map-local claims but can never prove source-map or source-runtime handle continuity.
 32. Durable install/restore replaces the local map epoch only when it replaces authoritative state; valid same-epoch installation retains it.
-33. View-state, graph-content, LiveHost snapshot/bootstrap/recovery, and persistence formats remain durable structural formats and carry no persisted epoch capability.
+33. View-state, graph-content, Locus snapshot/bootstrap/recovery, and persistence formats remain durable structural formats and carry no persisted epoch capability.
 34. Identity stripping happens before ownership/admission, never as a silent mutation of a LiveMap-owned graph.
 35. Projected object rename and array move remain explicit canonical operation intent; equality never infers movement.
 36. Rename retains the source position and subtree, retires an existing destination, and rejects a missing source.
 37. Projected move uses nonnegative safe final indexes and shifts each intervening sibling exactly once.
-38. Projected rename/move preserve exact transport, replay, feed, link, store, and LiveHost history intent without minting QUIDs; when a container was explicitly acquired, Unit 11 reconciles its sparse identity path from that semantic intent.
+38. Projected rename/move preserve exact transport, replay, feed, link, store, and Locus history intent without minting QUIDs; when a container was explicitly acquired, Unit 11 reconciles its sparse identity path from that semantic intent.
 39. Reflection preserves canonical QUID absence for roots and descendants and emits no `hson:quid` without a canonical claim.
 40. Supplied canonical QUIDs are admitted unchanged into the selected runtime and DOM; collision validation remains runtime-local and atomic.
 41. Exact-node wrapping, traversal, reverse DOM lookup, diagnostics, ordinary delegated mutations, replacement, and disposal do not mint linked identity.

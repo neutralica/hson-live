@@ -1,5 +1,9 @@
 // README.md / 30MAY 2026
 
+> Historical v2.3.3 README snapshot. The package names and compatibility
+> statements below describe that release and are not current API guidance.
+> See `readme.md` and `docs/livehost/overview.md` for the current contract.
+
 #### hson-live v2.3.3 / hson.terminalgothic.com 
 
 # HSON: Hypertext Structured Object Notation

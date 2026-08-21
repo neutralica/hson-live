@@ -153,7 +153,7 @@ function payload(length, nodes, identities) {
     structuralJson: JSON.stringify({ $_tag: "main", $_content: jsonNodes }),
     structuralHtml: `<main>${htmlNodes.join("")}</main>`,
     snapshot: JSON.stringify({ kind: "document", rev: 42, root: { $_tag: "main", $_content: jsonNodes } }),
-    liveHost: JSON.stringify({ kind: "snapshot", logicalMapId: "scale", incarnationId: "proof", rev: 42, graph: { $_tag: "main", $_content: jsonNodes } }),
+    locus: JSON.stringify({ kind: "snapshot", logicalMapId: "scale", incarnationId: "proof", rev: 42, graph: { $_tag: "main", $_content: jsonNodes } }),
   };
   return Object.fromEntries(Object.entries(formats).map(([name, text]) => [name, {
     raw: Buffer.byteLength(text),

@@ -234,11 +234,12 @@ The current `LocusSchema` is preliminary. It validates action payloads at dispat
 ## Composition, routing, and deployment
 
 Applications compose zero or more Loci and own the mapping from a
-`LocusSelector` to one authority. The existing multi-Locus store and registry
-implementations are internal in U10; they are not exported from
-`hson-live/locus`, and no generic `hson-live/livehost` root is published yet.
+`LocusSelector` to one authority. `hson-live/livehost` now publishes the generic
+application/runtime contracts and optional bounded `LiveHostLocusRegistry`.
+The basic and persistent multi-Locus stores remain internal application
+utilities and are not exported from `hson-live/locus`.
 
-The larger deployment model can grow around that small abstraction:
+The application/runtime layer composes that small abstraction:
 
 - create or load a host by stable application key;
 - attach persistence and commit retention;
@@ -248,8 +249,10 @@ The larger deployment model can grow around that small abstraction:
 - observe health and resource usage; and
 - recover from process failure without inventing a second writer.
 
-Those are future LiveHost concerns. U11 will decide the minimum generic
-application-host and multi-Locus service boundary.
+LiveHost routes to applications; applications interpret domain selectors,
+choose which Loci exist, and own acquisition-key meaning. A zero-Locus
+application naturally handles `request -> LiveHost -> application -> Response`.
+Node LiveHost is the current concrete HTTP/WebSocket runtime.
 
 ---
 

@@ -29,10 +29,10 @@ import {
 import { start_node_application_host } from "hson-live/livehost/node";
 ```
 
-There is no generic `hson-live/livehost` package root in the U10 boundary.
-Multi-Locus store, persistent-store, and authority-registry implementations are
-internal pending the future LiveHost API. They are not members of `hsonLocus`
-or `hson.locus`.
+`hson-live/livehost` is the platform-neutral application/runtime contract and
+exports the bounded `LiveHostLocusRegistry` service. The basic and persistent
+multi-Locus stores remain internal application utilities. None of these
+services is a member of `hsonLocus` or `hson.locus`.
 
 The Locus facade has exactly four members:
 
@@ -124,6 +124,10 @@ constant, version parameter, or `formatVersion` field. The selector field is
 The Node HTTP helper is exported from `hson-live/locus/node`. Successful HTTP
 capture and WebSocket continuation must resolve the same application-owned
 Locus. The route query is `?locus=`; `?livehost=` is not an alias.
+
+Locus supplies the authoritative snapshot/cut. Application/runtime code
+supplies routing and delivery continuation, and one assembler produces the
+single bootstrap artifact.
 
 ## Persistence
 
