@@ -1,6 +1,6 @@
 import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
-import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
+import { decode_livehost_message, decode_livehost_server_message, encode_livehost_message, hson } from "../../src/index.ts";
 import { encode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
 
 let checks = 0;
@@ -31,6 +31,13 @@ function element_root(source = `<main @000000001/>`) {
   if (map.mode !== "element") throw new Error(`Expected element, observed ${map.mode}`);
   return map.capture().root;
 }
+
+check("current server message encoding closes through the sole server decoder", () => {
+  const message = { type: "event", event: "application.notice", payload: { exact: true, values: [0, null, ""] } };
+  const decoded = decode_livehost_server_message(encode_livehost_message(message));
+  assert.equal(decoded.ok, true);
+  assert.deepEqual(decoded.ok && decoded.value, message);
+});
 
 check("hello hostId remains accepted compatibility input without altering client identity", () => {
   const withoutHostId = decode_livehost_message(JSON.stringify({ type: "hello", clientId: "client-a" }));

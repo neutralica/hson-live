@@ -339,6 +339,28 @@ await check("all ten names are recognized but unavailable for data-object and da
   }
 });
 
+await check("reserved document actions take precedence over same-named application handlers", async () => {
+  let customCalls = 0;
+  const host = hson.liveHost.create({
+    map: element(`<main/>`),
+    actions: {
+      "document.attrs.set": async () => {
+        customCalls += 1;
+        return { shadowed: true };
+      },
+    },
+  });
+  const client = await connected_document_client(host, element(`<main/>`));
+  const result = await client.action("document.attrs.set", {
+    target: rootPath,
+    name: "title",
+    value: "built-in",
+  });
+  assert.equal(result.type, "ack");
+  assert.equal(host.map.element.node().$_attrs?.title, "built-in");
+  assert.equal(customCalls, 0);
+});
+
 await check("obsolete document.attr actions are unknown", async () => {
   const host = hson.liveHost.create({ map: element(`<main/>`) });
   const client = await connected_document_client(host, element(`<main/>`));
