@@ -3,7 +3,7 @@ import { scan_hson_node_quids } from "../../core/hson-node-quid.js";
 import { is_Node } from "../../core/node-guards.js";
 import type { HsonNode, Primitive } from "../../core/types.js";
 import type { LiveMapDocumentContent } from "../../types/livemap.types.js";
-import type { LiveHostEncodedGraphContent } from "../../types/livehost.types.js";
+import type { LocusEncodedGraphContent } from "../../types/locus.types.js";
 import {
   decode_exact_hson_value,
   encode_exact_hson_value,
@@ -12,26 +12,26 @@ import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-st
 
 const FORMAT = "hson-graph" as const;
 
-export type LiveHostGraphContentCodecErrorCode =
-  | "LIVEHOST_GRAPH_CONTENT_FORMAT_UNKNOWN"
-  | "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID"
-  | "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID"
-  | "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID";
+export type LocusGraphContentCodecErrorCode =
+  | "LOCUS_GRAPH_CONTENT_FORMAT_UNKNOWN"
+  | "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID"
+  | "LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID"
+  | "LOCUS_GRAPH_CONTENT_GRAPH_INVALID";
 
-export class LiveHostGraphContentCodecError extends Error {
+export class LocusGraphContentCodecError extends Error {
   public constructor(
-    public readonly code: LiveHostGraphContentCodecErrorCode,
+    public readonly code: LocusGraphContentCodecErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "LiveHostGraphContentCodecError";
+    this.name = "LocusGraphContentCodecError";
   }
 }
 
-export function encode_livehost_graph_content(
+export function encode_locus_graph_content(
   content: LiveMapDocumentContent,
-): LiveHostEncodedGraphContent {
+): LocusEncodedGraphContent {
   validate_content(content);
   try {
     return Object.freeze({
@@ -40,28 +40,28 @@ export function encode_livehost_graph_content(
     });
   } catch (cause) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID",
-      "LiveHost graph content could not be encoded.",
+      "LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID",
+      "Locus graph content could not be encoded.",
       cause,
     );
   }
 }
 
-export function decode_livehost_graph_content(
+export function decode_locus_graph_content(
   encoded: unknown,
 ): LiveMapDocumentContent {
   const record = exact_record(encoded);
   if (record.format !== FORMAT) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_FORMAT_UNKNOWN",
-      "LiveHost graph content format is unknown.",
+      "LOCUS_GRAPH_CONTENT_FORMAT_UNKNOWN",
+      "Locus graph content format is unknown.",
     );
   }
   require_exact_keys(record, ["format", "payload"]);
   if (typeof record.payload !== "string") {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
-      "LiveHost graph content payload is malformed.",
+      "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
+      "Locus graph content payload is malformed.",
     );
   }
   let content: HsonNode | Primitive;
@@ -69,19 +69,19 @@ export function decode_livehost_graph_content(
     content = decode_exact_hson_value(record.payload);
   } catch (cause) {
     const message = cause instanceof ViewStateSnapshotCodecError
-      ? "LiveHost graph content HSON is malformed."
-      : "LiveHost graph content could not be decoded.";
-    throw graph_error("LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID", message, cause);
+      ? "Locus graph content HSON is malformed."
+      : "Locus graph content could not be decoded.";
+    throw graph_error("LOCUS_GRAPH_CONTENT_PAYLOAD_INVALID", message, cause);
   }
   validate_content(content);
   return content;
 }
 
-export function is_livehost_encoded_graph_content(
+export function is_locus_encoded_graph_content(
   value: unknown,
-): value is LiveHostEncodedGraphContent {
+): value is LocusEncodedGraphContent {
   try {
-    decode_livehost_graph_content(value);
+    decode_locus_graph_content(value);
     return true;
   } catch {
     return false;
@@ -93,17 +93,17 @@ function validate_content(content: HsonNode | Primitive): void {
     if (content === null || typeof content === "string" || typeof content === "boolean"
       || (typeof content === "number" && Number.isFinite(content))) return;
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID",
-      "LiveHost graph content primitive is invalid.",
+      "LOCUS_GRAPH_CONTENT_GRAPH_INVALID",
+      "Locus graph content primitive is invalid.",
     );
   }
   try {
-    assert_invariants(content, "livehost graph-content codec");
+    assert_invariants(content, "locus graph-content codec");
     scan_hson_node_quids(content);
   } catch (cause) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID",
-      "LiveHost graph content is not canonical.",
+      "LOCUS_GRAPH_CONTENT_GRAPH_INVALID",
+      "Locus graph content is not canonical.",
       cause,
     );
   }
@@ -112,15 +112,15 @@ function validate_content(content: HsonNode | Primitive): void {
 function exact_record(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
-      "LiveHost graph content envelope is malformed.",
+      "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
+      "Locus graph content envelope is malformed.",
     );
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
-      "LiveHost graph content envelope is malformed.",
+      "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
+      "Locus graph content envelope is malformed.",
     );
   }
   return value as Readonly<Record<string, unknown>>;
@@ -130,16 +130,16 @@ function require_exact_keys(value: Readonly<Record<string, unknown>>, expected: 
   const keys = Object.keys(value);
   if (keys.length !== expected.length || !keys.every((key) => expected.includes(key))) {
     throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
-      "LiveHost graph content envelope contains missing or unexpected fields.",
+      "LOCUS_GRAPH_CONTENT_ENVELOPE_INVALID",
+      "Locus graph content envelope contains missing or unexpected fields.",
     );
   }
 }
 
 function graph_error(
-  code: LiveHostGraphContentCodecErrorCode,
+  code: LocusGraphContentCodecErrorCode,
   message: string,
   cause?: unknown,
-): LiveHostGraphContentCodecError {
-  return new LiveHostGraphContentCodecError(code, message, cause);
+): LocusGraphContentCodecError {
+  return new LocusGraphContentCodecError(code, message, cause);
 }

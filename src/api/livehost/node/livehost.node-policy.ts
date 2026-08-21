@@ -1,5 +1,6 @@
 import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
+import type { LocusSelector } from "../../../types/locus.types.js";
 
 export type NodeRequestTransport = "http" | "websocket";
 export type NodeProxyInterpretation = "direct" | "trusted-proxy";
@@ -22,7 +23,7 @@ export type NodeRequestContext = Readonly<{
   url: URL;
   application: string;
   route?: string;
-  authorityId?: string;
+  locusSelector?: LocusSelector;
   rawScheme: "http" | "https";
   effectiveScheme: "http" | "https";
   rawHost: string;
@@ -139,7 +140,7 @@ export function normalize_node_request(
     transport: NodeRequestTransport;
     application: string;
     route?: string;
-    authorityId?: string;
+    locusSelector?: LocusSelector;
   }>,
   options: NodeRequestNormalizationOptions,
 ): NodePolicyResult<NodeRequestContext> {
@@ -201,7 +202,7 @@ export function normalize_node_request(
         url,
         application: input.application,
         ...(input.route === undefined ? {} : { route: input.route }),
-        ...(input.authorityId === undefined ? {} : { authorityId: input.authorityId }),
+        ...(input.locusSelector === undefined ? {} : { locusSelector: input.locusSelector }),
         rawScheme: scheme,
         effectiveScheme,
         rawHost,

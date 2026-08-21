@@ -1,4 +1,4 @@
-// livehost/client.ts
+// locus/client.ts
 
 import type { JsonValue } from "../../core/types.js";
 import type {
@@ -15,65 +15,61 @@ import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { decode_projected_value_payload } from "../livemap/livemap.transport.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import type {
-  LiveHostActionId,
-  LiveHostActionPayloads,
-  LiveHostActionRequestId,
-  LiveHostActionStatusId,
-  LiveHostCanonicalCommit,
-  LiveHostClient,
-  LiveHostClientForMap,
-  LiveHostClientActionMessage,
-  LiveHostClientActionPromise,
-  LiveHostClientActionRequest,
-  LiveHostClientActionResult,
-  LiveHostClientActionStatusResult,
-  LiveHostClientMessage,
-  LiveHostClientOptions,
-  LiveHostClientOptionsForMap,
-  LiveHostClientRecoveryChange,
-  LiveHostClientRecoveryChangeForMap,
-  LiveHostClientRecoveryChangeListener,
-  LiveHostClientRecoveryChangeListenerForMap,
-  LiveHostClientRecoveryDiagnostics,
-  LiveHostClientRecoveryFailure,
-  LiveHostClientRecoveryResult,
-  LiveHostClientRecoveryStatus,
-  LiveHostClientRecoveryStrategy,
-  LiveHostClientSessionDiagnostics,
-  LiveHostClientSessionResult,
-  LiveHostClientSessionStatus,
-  LiveHostDisposer,
-  LiveHostEventListener,
-  LiveHostId,
-  LiveHostRecoveryId,
-  LiveHostSessionCredential,
-  LiveHostSessionRequestId,
-  LiveHostSeq,
-  LiveHostServerMessage,
-  LiveHostServerRecoveryPlanMessage,
-  LiveHostSnapshotCapabilities,
-  LiveHostSnapshotEncodingSelection,
-} from "../../types/livehost.types.js";
+  LocusActionId,
+  LocusActionPayloads,
+  LocusActionRequestId,
+  LocusActionStatusId,
+  LocusCanonicalCommit,
+  LocusClient,
+  LocusClientActionMessage,
+  LocusClientActionPromise,
+  LocusClientActionRequest,
+  LocusClientActionResult,
+  LocusClientActionStatusResult,
+  LocusClientMessage,
+  LocusClientOptions,
+  LocusClientRecoveryChange,
+  LocusClientRecoveryChangeListener,
+  LocusClientRecoveryDiagnostics,
+  LocusClientRecoveryFailure,
+  LocusClientRecoveryResult,
+  LocusClientRecoveryStatus,
+  LocusClientRecoveryStrategy,
+  LocusClientSessionDiagnostics,
+  LocusClientSessionResult,
+  LocusClientSessionStatus,
+  LocusDisposer,
+  LocusEventListener,
+  LocusClientId,
+  LocusRecoveryId,
+  LocusSessionCredential,
+  LocusSessionRequestId,
+  LocusSeq,
+  LocusServerMessage,
+  LocusServerRecoveryPlanMessage,
+  LocusSnapshotCapabilities,
+  LocusSnapshotEncodingSelection,
+} from "../../types/locus.types.js";
 import {
-  LiveHostClientRecoveryError,
-  LiveHostClientSessionError,
-  LiveHostDisconnectedError,
-  LiveHostDuplicateActionIdError,
+  LocusClientRecoveryError,
+  LocusClientSessionError,
+  LocusDisconnectedError,
+  LocusDuplicateActionIdError,
 } from "./locus.error.js";
 import {
-  decode_livehost_server_message,
-  replay_livehost_document_commit,
-  is_livehost_json_value,
+  decode_locus_server_message,
+  replay_locus_document_commit,
+  is_locus_json_value,
 } from "./locus.protocol.js";
 import {
-  encode_livehost_graph_content,
+  encode_locus_graph_content,
 } from "./locus.graph-content-codec.js";
 import { create_live_trace_context, type LiveTraceContext } from "./locus.trace.js";
 import {
-  decode_livehost_document_snapshot,
-  LiveHostDocumentSnapshotDecodeError,
-  type LiveHostDecodedServerMessage,
-  type LiveHostValidatedSnapshotEnvelope,
+  decode_locus_document_snapshot,
+  LocusDocumentSnapshotDecodeError,
+  type LocusDecodedServerMessage,
+  type LocusValidatedSnapshotEnvelope,
 } from "./locus.document-snapshot.js";
 
 let nextFallbackIdentityId = 0;
@@ -82,7 +78,7 @@ let nextRecoveryId = 0;
 let nextSessionRequestId = 0;
 let nextActionStatusId = 0;
 
-const CLIENT_SNAPSHOT_CAPABILITIES: LiveHostSnapshotCapabilities = Object.freeze({
+const CLIENT_SNAPSHOT_CAPABILITIES: LocusSnapshotCapabilities = Object.freeze({
   hson: true,
   viewState: true,
 });
@@ -94,41 +90,41 @@ function make_reload_safe_id(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${nextFallbackIdentityId.toString(36)}`;
 }
 
-function make_client_id(): LiveHostId {
+function make_client_id(): LocusClientId {
   return make_reload_safe_id("lhc");
 }
 
-function make_action_id(): LiveHostActionId {
+function make_action_id(): LocusActionId {
   return make_reload_safe_id("lha");
 }
 
-function make_action_attempt_id(): LiveHostActionId {
+function make_action_attempt_id(): LocusActionId {
   nextActionAttemptId += 1;
   return `lhaa-${nextActionAttemptId}`;
 }
 
-function make_recovery_id(): LiveHostRecoveryId {
+function make_recovery_id(): LocusRecoveryId {
   nextRecoveryId += 1;
   return `lhr-${nextRecoveryId}`;
 }
 
-function make_session_request_id(): LiveHostSessionRequestId {
+function make_session_request_id(): LocusSessionRequestId {
   nextSessionRequestId += 1;
   return `lhsr-${nextSessionRequestId}`;
 }
 
-function make_action_status_id(): LiveHostActionStatusId {
+function make_action_status_id(): LocusActionStatusId {
   nextActionStatusId += 1;
   return `lhas-${nextActionStatusId}`;
 }
 
-function recovery_trace_strategy(strategy: LiveHostClientRecoveryStrategy | undefined): string {
+function recovery_trace_strategy(strategy: LocusClientRecoveryStrategy | undefined): string {
   if (strategy === "current") return "already-current";
   if (strategy === "replay") return "incremental-replay";
   return strategy ?? "unavailable";
 }
 
-function encode_client_message<TActions extends LiveHostActionPayloads>(message: LiveHostClientMessage<TActions>): string {
+function encode_client_message<TActions extends LocusActionPayloads>(message: LocusClientMessage<TActions>): string {
   if (message.type !== "action" || message.payload === undefined) return JSON.stringify(message);
   if (message.name !== "document.content.insert" && message.name !== "document.content.replace") {
     return JSON.stringify(message);
@@ -140,7 +136,7 @@ function encode_client_message<TActions extends LiveHostActionPayloads>(message:
   if (!Object.prototype.hasOwnProperty.call(message.payload, field)) return JSON.stringify(message);
   let encodedContent;
   try {
-    encodedContent = encode_livehost_graph_content(message.payload[field] as LiveMapDocumentContent);
+    encodedContent = encode_locus_graph_content(message.payload[field] as LiveMapDocumentContent);
   } catch {
     // Preserve the established asynchronous structured action rejection path
     // without ever falling back to a raw node-shaped wire payload.
@@ -156,20 +152,20 @@ function encode_client_message<TActions extends LiveHostActionPayloads>(message:
 }
 
 type PendingAction = Readonly<{
-  resolve: (result: LiveHostClientActionResult) => void;
-  reject: (error: LiveHostDisconnectedError) => void;
+  resolve: (result: LocusClientActionResult) => void;
+  reject: (error: LocusDisconnectedError) => void;
 }>;
 
 type PendingActionStatus = Readonly<{
-  requestId: LiveHostActionRequestId;
-  resolve: (result: LiveHostClientActionStatusResult) => void;
-  reject: (error: LiveHostDisconnectedError) => void;
+  requestId: LocusActionRequestId;
+  resolve: (result: LocusClientActionStatusResult) => void;
+  reject: (error: LocusDisconnectedError) => void;
 }>;
 
 type PendingRecovery = {
-  id: LiveHostRecoveryId;
-  resolve: (result: LiveHostClientRecoveryResult) => void;
-  reject: (error: LiveHostClientRecoveryError) => void;
+  id: LocusRecoveryId;
+  resolve: (result: LocusClientRecoveryResult) => void;
+  reject: (error: LocusClientRecoveryError) => void;
   trace?: LiveTraceContext;
   startedAt: number;
   localRevBefore: number;
@@ -182,27 +178,27 @@ type PendingRecovery = {
 
 type ClientRecoveryLifecycle =
   | Readonly<{ phase: "disconnected" | "idle" | "failed" }>
-  | Readonly<{ phase: "awaiting-plan"; requestId: LiveHostRecoveryId }>
+  | Readonly<{ phase: "awaiting-plan"; requestId: LocusRecoveryId }>
   | Readonly<{
     phase: "consuming";
-    requestId: LiveHostRecoveryId;
-    plan: Exclude<LiveHostServerRecoveryPlanMessage, { outcome: "reject" }>;
+    requestId: LocusRecoveryId;
+    plan: Exclude<LocusServerRecoveryPlanMessage, { outcome: "reject" }>;
     snapshotReceived: boolean;
     tailStarted: boolean;
   }>
-  | Readonly<{ phase: "caught-up"; requestId: LiveHostRecoveryId }>;
+  | Readonly<{ phase: "caught-up"; requestId: LocusRecoveryId }>;
 
 type PendingSession = Readonly<{
-  id: LiveHostSessionRequestId;
+  id: LocusSessionRequestId;
   kind: "create" | "reattach" | "goodbye";
-  resolve: (result: LiveHostClientSessionResult | undefined) => void;
-  reject: (error: LiveHostClientSessionError) => void;
+  resolve: (result: LocusClientSessionResult | undefined) => void;
+  reject: (error: LocusClientSessionError) => void;
 }>;
 
 function reject_pending_actions(
-  pendingActions: Map<LiveHostActionId, PendingAction[]>,
-  pendingAttempts: Map<LiveHostActionRequestId, LiveHostActionId[]>,
-  error: LiveHostDisconnectedError,
+  pendingActions: Map<LocusActionId, PendingAction[]>,
+  pendingAttempts: Map<LocusActionRequestId, LocusActionId[]>,
+  error: LocusDisconnectedError,
 ): void {
   const actions = [...pendingActions.values()].flat();
   pendingActions.clear();
@@ -211,8 +207,8 @@ function reject_pending_actions(
 }
 
 function reject_pending_action_statuses(
-  pendingStatuses: Map<LiveHostActionStatusId, PendingActionStatus>,
-  error: LiveHostDisconnectedError,
+  pendingStatuses: Map<LocusActionStatusId, PendingActionStatus>,
+  error: LocusDisconnectedError,
 ): void {
   const statuses = [...pendingStatuses.values()];
   pendingStatuses.clear();
@@ -220,7 +216,7 @@ function reject_pending_action_statuses(
 }
 
 function projected_identity_replay(
-  commit: LiveHostCanonicalCommit,
+  commit: LocusCanonicalCommit,
   prevRev: number,
 ): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> | undefined {
   const operations: LiveMapProjectedGraphEnsureQuidOp[] = [];
@@ -256,19 +252,19 @@ function clone_action_payload(value: JsonValue): JsonValue {
   return Object.freeze(clone);
 }
 
-export function create_livehost_client<
+export function create_locus_client<
   TState extends JsonValue | undefined = JsonValue | undefined,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: LiveHostClientOptions<TState>): LiveHostClient<TState, TActions>;
-export function create_livehost_client<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusClientOptions<LiveMap<TState>>): LocusClient<LiveMap<TState>, TActions>;
+export function create_locus_client<
   TMap extends ClassifiedLiveMap,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: LiveHostClientOptionsForMap<TMap> & Readonly<{ map: TMap }>): LiveHostClientForMap<TMap, TActions>;
-export function create_livehost_client<
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: LiveHostClientOptionsForMap<LiveMapAuthority>): unknown {
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusClientOptions<TMap> & Readonly<{ map: TMap }>): LocusClient<TMap, TActions>;
+export function create_locus_client<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusClientOptions<LiveMapAuthority>): unknown {
   if (options.recovery?.cursor && !options.map) {
-    throw new Error("LiveHost recovery cursor requires the exact corresponding mirror.");
+    throw new Error("Locus recovery cursor requires the exact corresponding mirror.");
   }
 
   const clientId = options.clientId ?? make_client_id();
@@ -278,29 +274,29 @@ export function create_livehost_client<
   let map: ClassifiedLiveMap = classified_live_map(options.map);
   const initialRecoveryCursor = options.recovery?.cursor;
   if (initialRecoveryCursor !== undefined && initialRecoveryCursor.lastAppliedRev !== map.rev) {
-    throw new LiveHostClientRecoveryError(
-      "LIVEHOST_RECOVERY_CURSOR_MISMATCH",
-      `LiveHost recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
+    throw new LocusClientRecoveryError(
+      "LOCUS_RECOVERY_CURSOR_MISMATCH",
+      `Locus recovery cursor revision ${initialRecoveryCursor.lastAppliedRev} does not match mirror revision ${map.rev}.`,
     );
   }
-  const pendingActions = new Map<LiveHostActionId, PendingAction[]>();
-  const pendingActionAttemptsByRequest = new Map<LiveHostActionRequestId, LiveHostActionId[]>();
-  const pendingActionStatuses = new Map<LiveHostActionStatusId, PendingActionStatus>();
-  const eventListeners = new Set<LiveHostEventListener>();
-  const recoveryListeners = new Set<LiveHostClientRecoveryChangeListenerForMap<ClassifiedLiveMap>>();
-  const disposers: LiveHostDisposer[] = [];
-  let seq: LiveHostSeq = 0;
+  const pendingActions = new Map<LocusActionId, PendingAction[]>();
+  const pendingActionAttemptsByRequest = new Map<LocusActionRequestId, LocusActionId[]>();
+  const pendingActionStatuses = new Map<LocusActionStatusId, PendingActionStatus>();
+  const eventListeners = new Set<LocusEventListener>();
+  const recoveryListeners = new Set<LocusClientRecoveryChangeListener<ClassifiedLiveMap>>();
+  const disposers: LocusDisposer[] = [];
+  let seq: LocusSeq = 0;
   let isConnected = false;
   let recoveryDisposed = false;
-  let recoveryStatus: LiveHostClientRecoveryStatus = "idle";
-  let recoveryStrategy: LiveHostClientRecoveryStrategy | undefined;
+  let recoveryStatus: LocusClientRecoveryStatus = "idle";
+  let recoveryStrategy: LocusClientRecoveryStrategy | undefined;
   let incarnationId = options.recovery?.cursor?.incarnationId;
   let lastAppliedRev = options.recovery?.cursor?.lastAppliedRev;
-  let firstFailure: LiveHostClientRecoveryFailure | undefined;
+  let firstFailure: LocusClientRecoveryFailure | undefined;
   let pendingRecovery: PendingRecovery | undefined;
   let recoveryLifecycle: ClientRecoveryLifecycle = Object.freeze({ phase: "disconnected" });
-  let stopRecoveryMessages: LiveHostDisposer | undefined;
-  let negotiatedSnapshotEncoding: LiveHostSnapshotEncodingSelection | undefined;
+  let stopRecoveryMessages: LocusDisposer | undefined;
+  let negotiatedSnapshotEncoding: LocusSnapshotEncodingSelection | undefined;
   let bodyCommitsApplied = 0;
   let snapshotInstalls = 0;
   let duplicateCommitsIgnored = 0;
@@ -311,9 +307,9 @@ export function create_livehost_client<
   let recoveryFailures = 0;
   let consumerNotifications = 0;
   let observerFailures = 0;
-  let sessionStatus: LiveHostClientSessionStatus = "idle";
+  let sessionStatus: LocusClientSessionStatus = "idle";
   let sessionId: string | undefined;
-  let sessionCredential: LiveHostSessionCredential | undefined = options.session?.credential;
+  let sessionCredential: LocusSessionCredential | undefined = options.session?.credential;
   let sessionEpoch: number | undefined;
   let sessionFailure: Readonly<{ code: string; message: string }> | undefined;
   let pendingSession: PendingSession | undefined;
@@ -323,7 +319,7 @@ export function create_livehost_client<
   let sessionFencingCount = 0;
   let sessionRejectionCount = 0;
 
-  function send(message: LiveHostClientMessage<TActions>): void {
+  function send(message: LocusClientMessage<TActions>): void {
     options.socket.send(encode_client_message(message));
   }
 
@@ -370,46 +366,46 @@ export function create_livehost_client<
         errorCode: code,
       }),
     });
-    pending?.reject(new LiveHostClientRecoveryError(code, message, cause));
+    pending?.reject(new LocusClientRecoveryError(code, message, cause));
   }
 
-  function notify(change: LiveHostClientRecoveryChangeForMap<ClassifiedLiveMap>): void {
+  function notify(change: LocusClientRecoveryChange<ClassifiedLiveMap>): void {
     consumerNotifications += 1;
     try {
       for (const listener of [...recoveryListeners]) listener(change);
     } catch (cause) {
       observerFailures += 1;
-      fail_recovery("LIVEHOST_RECOVERY_OBSERVER_FAILED", "LiveHost recovery observer failed after state application.", cause);
+      fail_recovery("LOCUS_RECOVERY_OBSERVER_FAILED", "Locus recovery observer failed after state application.", cause);
     }
   }
 
-  function require_plan(messageId: string): LiveHostServerRecoveryPlanMessage | undefined {
+  function require_plan(messageId: string): LocusServerRecoveryPlanMessage | undefined {
     if (recoveryLifecycle.phase !== "consuming" || recoveryLifecycle.requestId !== messageId) return undefined;
     return recoveryLifecycle.plan;
   }
 
   function validate_snapshot_encoding_acknowledgment(
-    selected: LiveHostSnapshotEncodingSelection | undefined,
+    selected: LocusSnapshotEncodingSelection | undefined,
   ): boolean {
     if (selected === undefined) {
       fail_recovery(
-        "LIVEHOST_SNAPSHOT_NEGOTIATION_MISSING",
-        "LiveHost recovery plan omitted the snapshot encoding acknowledgment.",
+        "LOCUS_SNAPSHOT_NEGOTIATION_MISSING",
+        "Locus recovery plan omitted the snapshot encoding acknowledgment.",
       );
       return false;
     }
     if (selected.format === "view-state" && CLIENT_SNAPSHOT_CAPABILITIES.viewState !== true) {
       fail_recovery(
-        "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED",
-        "LiveHost selected an unsupported view-state snapshot format.",
+        "LOCUS_SNAPSHOT_NEGOTIATION_UNSUPPORTED",
+        "Locus selected an unsupported view-state snapshot format.",
       );
       return false;
     }
     if (negotiatedSnapshotEncoding !== undefined
       && negotiatedSnapshotEncoding.format !== selected.format) {
       fail_recovery(
-        "LIVEHOST_SNAPSHOT_NEGOTIATION_CHANGED",
-        "LiveHost changed the selected snapshot encoding during one connection.",
+        "LOCUS_SNAPSHOT_NEGOTIATION_CHANGED",
+        "Locus changed the selected snapshot encoding during one connection.",
       );
       return false;
     }
@@ -417,15 +413,15 @@ export function create_livehost_client<
     return true;
   }
 
-  function apply_commit(commit: LiveHostCanonicalCommit, phase: "body" | "tail" | "live"): void {
+  function apply_commit(commit: LocusCanonicalCommit, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
     const logicalMapId = options.recovery?.logicalMapId;
     if (!logicalMapId || commit.logicalMapId !== logicalMapId || commit.incarnationId !== incarnationId) {
-      fail_recovery("LIVEHOST_RECOVERY_STREAM_MISMATCH", "Canonical commit does not match the active recovery stream.");
+      fail_recovery("LOCUS_RECOVERY_STREAM_MISMATCH", "Canonical commit does not match the active recovery stream.");
       return;
     }
     if (lastAppliedRev === undefined) {
-      fail_recovery("LIVEHOST_RECOVERY_CURSOR_MISSING", "Canonical commit arrived before a mirror cursor was installed.");
+      fail_recovery("LOCUS_RECOVERY_CURSOR_MISSING", "Canonical commit arrived before a mirror cursor was installed.");
       return;
     }
     if (commit.rev <= lastAppliedRev) {
@@ -433,20 +429,20 @@ export function create_livehost_client<
       return;
     }
     if (commit.rev !== commit.prevRev + 1) {
-      fail_recovery("LIVEHOST_RECOVERY_INVALID_REVISION_DELTA", "Canonical commit revision delta is invalid.");
+      fail_recovery("LOCUS_RECOVERY_INVALID_REVISION_DELTA", "Canonical commit revision delta is invalid.");
       return;
     }
     if (commit.prevRev !== lastAppliedRev) {
       if (commit.prevRev > lastAppliedRev) gapsDetected += 1;
       fail_recovery(
-        commit.prevRev > lastAppliedRev ? "LIVEHOST_RECOVERY_COMMIT_GAP" : "LIVEHOST_RECOVERY_COMMIT_OVERLAP",
+        commit.prevRev > lastAppliedRev ? "LOCUS_RECOVERY_COMMIT_GAP" : "LOCUS_RECOVERY_COMMIT_OVERLAP",
         `Canonical commit expected prevRev ${lastAppliedRev}, received ${commit.prevRev}.`,
       );
       return;
     }
     if (commit.mode !== map.mode) {
       fail_recovery(
-        "LIVEHOST_RECOVERY_MAP_MODE_MISMATCH",
+        "LOCUS_RECOVERY_MAP_MODE_MISMATCH",
         `Canonical commit mode ${commit.mode} does not match mirror mode ${map.mode}.`,
       );
       return;
@@ -455,7 +451,7 @@ export function create_livehost_client<
     const localRevBefore = map.rev;
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
-        ? replay_livehost_document_commit(map, commit)
+        ? replay_locus_document_commit(map, commit)
         : projected_identity_replay(commit, localRevBefore) !== undefined
           ? map.replay(projected_identity_replay(commit, localRevBefore)!)
         : commit.format === "structural-json"
@@ -473,10 +469,10 @@ export function create_livehost_client<
       if (map.rev === localRevBefore + 1) {
         lastAppliedRev = commit.rev;
         observerFailures += 1;
-        fail_recovery("LIVEHOST_RECOVERY_OBSERVER_FAILED", "A mirror observer failed after canonical state application.", cause);
+        fail_recovery("LOCUS_RECOVERY_OBSERVER_FAILED", "A mirror observer failed after canonical state application.", cause);
       } else {
         replayConflicts += 1;
-        fail_recovery("LIVEHOST_RECOVERY_REPLAY_CONFLICT", "Canonical commit conflicts with the client mirror.", cause);
+        fail_recovery("LOCUS_RECOVERY_REPLAY_CONFLICT", "Canonical commit conflicts with the client mirror.", cause);
       }
       return;
     }
@@ -494,26 +490,26 @@ export function create_livehost_client<
     notify({ kind: "commit", logicalMapId, incarnationId: commit.incarnationId, rev: commit.rev, map });
   }
 
-  function install_snapshot(messageId: string, snapshot: LiveHostValidatedSnapshotEnvelope): void {
+  function install_snapshot(messageId: string, snapshot: LocusValidatedSnapshotEnvelope): void {
     const plan = require_plan(messageId);
     if (!plan || plan.outcome !== "snapshot") return;
     if (snapshot.logicalMapId !== plan.logicalMapId || snapshot.incarnationId !== plan.incarnationId || snapshot.rev !== plan.headRev) {
-      fail_recovery("LIVEHOST_RECOVERY_INVALID_SNAPSHOT", "Snapshot identity or revision does not match its recovery plan.");
+      fail_recovery("LOCUS_RECOVERY_INVALID_SNAPSHOT", "Snapshot identity or revision does not match its recovery plan.");
       return;
     }
     const snapshotFormat = "hson" in snapshot ? "hson" : "view-state";
     if (negotiatedSnapshotEncoding?.format !== snapshotFormat) {
       fail_recovery(
-        "LIVEHOST_SNAPSHOT_NEGOTIATION_MISMATCH",
-        "LiveHost recovery snapshot does not match the negotiated encoding.",
+        "LOCUS_SNAPSHOT_NEGOTIATION_MISMATCH",
+        "Locus recovery snapshot does not match the negotiated encoding.",
       );
       return;
     }
     try {
       if (is_projected_live_map(map)) {
         if (!("hson" in snapshot)) {
-          throw new LiveHostDocumentSnapshotDecodeError(
-            "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
+          throw new LocusDocumentSnapshotDecodeError(
+            "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
             "Canonical document snapshot cannot restore a projected-data mirror.",
           );
         }
@@ -531,11 +527,11 @@ export function create_livehost_client<
         }));
         if (schema) map.schema.use(schema);
       } else if (is_document_live_map(map)) {
-        const capture = decode_livehost_document_snapshot(snapshot);
+        const capture = decode_locus_document_snapshot(snapshot);
         if (capture.mode !== map.mode) {
-          throw new LiveHostDocumentSnapshotDecodeError(
-            "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
-            "LiveHost document snapshot mode does not match the mirror mode.",
+          throw new LocusDocumentSnapshotDecodeError(
+            "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
+            "Locus document snapshot mode does not match the mirror mode.",
           );
         }
         map.restore(capture, { identity: "preserve-metadata" });
@@ -551,15 +547,15 @@ export function create_livehost_client<
       }
       notify({ kind: "snapshot", logicalMapId: snapshot.logicalMapId, incarnationId: snapshot.incarnationId, rev: snapshot.rev, map });
     } catch (cause) {
-      if (cause instanceof LiveHostDocumentSnapshotDecodeError) {
+      if (cause instanceof LocusDocumentSnapshotDecodeError) {
         fail_recovery(cause.code, cause.message, cause.cause);
         return;
       }
-      fail_recovery("LIVEHOST_RECOVERY_INVALID_SNAPSHOT", "Snapshot replacement mirror could not be constructed.", cause);
+      fail_recovery("LOCUS_RECOVERY_INVALID_SNAPSHOT", "Snapshot replacement mirror could not be constructed.", cause);
     }
   }
 
-  function handle_recovery_message(message: LiveHostDecodedServerMessage): boolean {
+  function handle_recovery_message(message: LocusDecodedServerMessage): boolean {
     if (message.type !== "recovery-plan" && message.type !== "recovery-commit" && message.type !== "recovery-snapshot" && message.type !== "recovery-caught-up" && message.type !== "commit" && message.type !== "recovery-error") return false;
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return true;
     const activeRequestId = recoveryLifecycle.phase === "awaiting-plan"
@@ -571,11 +567,11 @@ export function create_livehost_client<
 
     if (message.type === "recovery-plan") {
       if (recoveryLifecycle.phase !== "awaiting-plan") {
-        fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost sent more than one recovery plan for one recovery lifecycle.");
+        fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus sent more than one recovery plan for one recovery lifecycle.");
         return true;
       }
       if (message.logicalMapId !== options.recovery?.logicalMapId) {
-        fail_recovery("LIVEHOST_RECOVERY_STREAM_MISMATCH", "Recovery plan targets a different logical map.");
+        fail_recovery("LOCUS_RECOVERY_STREAM_MISMATCH", "Recovery plan targets a different logical map.");
         return true;
       }
       if (!validate_snapshot_encoding_acknowledgment(message.snapshotEncoding)) return true;
@@ -585,7 +581,7 @@ export function create_livehost_client<
         return true;
       }
       if (message.outcome !== "snapshot" && (incarnationId !== message.incarnationId || lastAppliedRev === undefined)) {
-        fail_recovery("LIVEHOST_RECOVERY_CURSOR_MISMATCH", "Recovery plan requires a matching complete mirror cursor.");
+        fail_recovery("LOCUS_RECOVERY_CURSOR_MISMATCH", "Recovery plan requires a matching complete mirror cursor.");
         return true;
       }
       recoveryLifecycle = Object.freeze({
@@ -599,12 +595,12 @@ export function create_livehost_client<
     }
 
     if (message.type === "recovery-error") {
-      fail_recovery(message.error.code ?? "LIVEHOST_RECOVERY_FAILED", message.error.message, message.error.cause);
+      fail_recovery(message.error.code ?? "LOCUS_RECOVERY_FAILED", message.error.message, message.error.cause);
       return true;
     }
 
     if (recoveryLifecycle.phase === "awaiting-plan") {
-      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery material arrived before its recovery plan.");
+      fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery material arrived before its recovery plan.");
       return true;
     }
     if (recoveryLifecycle.phase === "caught-up") {
@@ -612,14 +608,14 @@ export function create_livehost_client<
         apply_commit(message.commit, "live");
         return true;
       }
-      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery material arrived after caught-up.");
+      fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery material arrived after caught-up.");
       return true;
     }
     const plan = require_plan(message.id);
     if (!plan || plan.outcome === "reject" || recoveryLifecycle.phase !== "consuming") return true;
     if (message.type === "recovery-snapshot") {
       if (plan.outcome !== "snapshot" || recoveryLifecycle.snapshotReceived || recoveryLifecycle.tailStarted) {
-        fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery snapshot order is invalid.");
+        fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery snapshot order is invalid.");
         return true;
       }
       install_snapshot(message.id, message.snapshot);
@@ -628,12 +624,12 @@ export function create_livehost_client<
     if (message.type === "recovery-commit") {
       if (message.phase === "body") {
         if (plan.outcome !== "replay" || recoveryLifecycle.tailStarted) {
-          fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery body commit order is invalid.");
+          fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery body commit order is invalid.");
           return true;
         }
       } else {
         if (plan.outcome === "snapshot" && !recoveryLifecycle.snapshotReceived) {
-          fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost recovery tail arrived before its snapshot.");
+          fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus recovery tail arrived before its snapshot.");
           return true;
         }
         if (!recoveryLifecycle.tailStarted) {
@@ -644,13 +640,13 @@ export function create_livehost_client<
       return true;
     }
     if (message.type === "commit") {
-      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost live commit arrived before caught-up.");
+      fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus live commit arrived before caught-up.");
       return true;
     }
 
     const caught = message.caughtUp;
     if (plan.outcome === "snapshot" && !recoveryLifecycle.snapshotReceived) {
-      fail_recovery("LIVEHOST_RECOVERY_MESSAGE_OUT_OF_ORDER", "LiveHost caught-up arrived before its snapshot.");
+      fail_recovery("LOCUS_RECOVERY_MESSAGE_OUT_OF_ORDER", "Locus caught-up arrived before its snapshot.");
       return true;
     }
     if (caught.logicalMapId !== plan.logicalMapId
@@ -659,7 +655,7 @@ export function create_livehost_client<
       || incarnationId !== caught.incarnationId
       || map.rev !== lastAppliedRev
       || lastAppliedRev !== caught.throughRev) {
-      fail_recovery("LIVEHOST_RECOVERY_CAUGHT_UP_MISMATCH", "Caught-up boundary does not match the installed mirror cursor.");
+      fail_recovery("LOCUS_RECOVERY_CAUGHT_UP_MISMATCH", "Caught-up boundary does not match the installed mirror cursor.");
       return true;
     }
     recoveryStatus = "caught_up";
@@ -715,7 +711,7 @@ export function create_livehost_client<
     return true;
   }
 
-  function is_recovery_message(message: LiveHostDecodedServerMessage): boolean {
+  function is_recovery_message(message: LocusDecodedServerMessage): boolean {
     return message.type === "recovery-plan"
       || message.type === "recovery-commit"
       || message.type === "recovery-snapshot"
@@ -725,8 +721,8 @@ export function create_livehost_client<
   }
 
   function is_session_message(
-    message: LiveHostDecodedServerMessage,
-  ): message is Extract<LiveHostServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }> {
+    message: LocusDecodedServerMessage,
+  ): message is Extract<LocusServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }> {
     return message.type === "session-created"
       || message.type === "session-attached"
       || message.type === "session-rejected"
@@ -735,18 +731,18 @@ export function create_livehost_client<
   }
 
   function handle_session_message(
-    message: Extract<LiveHostServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }>,
+    message: Extract<LocusServerMessage, { type: "session-created" | "session-attached" | "session-rejected" | "session-fenced" | "session-ended" }>,
   ): void {
     if (sessionDisposed) return;
     if (message.type === "session-fenced") {
       if (sessionId !== message.sessionId || sessionEpoch !== message.epoch) return;
       sessionFencingCount += 1;
       sessionStatus = "detached";
-      sessionFailure ??= Object.freeze({ code: message.code, message: "LiveHost session attachment was fenced." });
-      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LiveHostDisconnectedError());
-      reject_pending_action_statuses(pendingActionStatuses, new LiveHostDisconnectedError());
+      sessionFailure ??= Object.freeze({ code: message.code, message: "Locus session attachment was fenced." });
+      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
+      reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
       if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
-        fail_recovery(message.code, "LiveHost session attachment was fenced.");
+        fail_recovery(message.code, "Locus session attachment was fenced.");
       }
       return;
     }
@@ -757,14 +753,14 @@ export function create_livehost_client<
       sessionRejectionCount += 1;
       sessionStatus = "failed";
       sessionFailure ??= Object.freeze({ code: message.code, message: message.message });
-      pending.reject(new LiveHostClientSessionError(message.code, message.message));
+      pending.reject(new LocusClientSessionError(message.code, message.message));
       return;
     }
     if (message.type === "session-ended") {
       sessionStatus = "ended";
       sessionCredential = undefined;
-      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LiveHostDisconnectedError());
-      reject_pending_action_statuses(pendingActionStatuses, new LiveHostDisconnectedError());
+      reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
+      reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
       pending.resolve(undefined);
       return;
     }
@@ -783,11 +779,11 @@ export function create_livehost_client<
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
     stopRecoveryMessages = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_server_message(raw);
+      const decoded = decode_locus_server_message(raw);
       if (!decoded.ok) {
         if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
           fail_recovery(
-            decoded.error.code ?? "LIVEHOST_RECOVERY_PROTOCOL_DECODE_FAILED",
+            decoded.error.code ?? "LOCUS_RECOVERY_PROTOCOL_DECODE_FAILED",
             decoded.error.message,
             decoded.error.cause,
           );
@@ -798,7 +794,7 @@ export function create_livehost_client<
     }) ?? (() => { });
   }
 
-  function handle_server_message(message: LiveHostDecodedServerMessage): void {
+  function handle_server_message(message: LocusDecodedServerMessage): void {
     if (handle_recovery_message(message)) return;
     if (is_session_message(message)) {
       handle_session_message(message);
@@ -813,7 +809,7 @@ export function create_livehost_client<
       if (is_projected_live_map(map)) {
         if (has_projected_transport(message)) {
           apply_projected_message(map, [], message, "replace");
-        } else if (is_livehost_json_value(message.snapshot)) {
+        } else if (is_locus_json_value(message.snapshot)) {
           map.replace(message.snapshot);
         }
       }
@@ -826,7 +822,7 @@ export function create_livehost_client<
         if (has_projected_transport(message)) {
           apply_projected_message(map, message.path, message, message.path.length === 0 ? "replace" : "set");
         } else if (message.path.length === 0) {
-          if (is_livehost_json_value(message.value)) map.replace(message.value);
+          if (is_locus_json_value(message.value)) map.replace(message.value);
         } else if (message.value === undefined) {
           map.delete(message.path);
         } else {
@@ -871,7 +867,7 @@ export function create_livehost_client<
     }
   }
 
-  function connect(): LiveHostDisposer {
+  function connect(): LocusDisposer {
     if (isConnected) return disconnect;
     isConnected = true;
     if (!recoveryDisposed) {
@@ -883,7 +879,7 @@ export function create_livehost_client<
       }
     }
     const stopMessage = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_server_message(raw);
+      const decoded = decode_locus_server_message(raw);
       if (!decoded.ok || is_recovery_message(decoded.value)) return;
       handle_server_message(decoded.value);
     });
@@ -902,24 +898,24 @@ export function create_livehost_client<
     while (disposers.length) disposers.pop()?.();
     stopRecoveryMessages?.();
     stopRecoveryMessages = undefined;
-    reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LiveHostDisconnectedError());
-    reject_pending_action_statuses(pendingActionStatuses, new LiveHostDisconnectedError());
+    reject_pending_actions(pendingActions, pendingActionAttemptsByRequest, new LocusDisconnectedError());
+    reject_pending_action_statuses(pendingActionStatuses, new LocusDisconnectedError());
     const sessionPending = pendingSession;
     pendingSession = undefined;
-    sessionPending?.reject(new LiveHostClientSessionError("LIVEHOST_SESSION_DISCONNECTED", "LiveHost session transport disconnected."));
+    sessionPending?.reject(new LocusClientSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session transport disconnected."));
     if (sessionStatus === "attached") sessionStatus = "detached";
     if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
-      fail_recovery("LIVEHOST_RECOVERY_DISCONNECTED", "LiveHost recovery transport disconnected.");
+      fail_recovery("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery transport disconnected.");
     }
     recoveryLifecycle = Object.freeze({ phase: "disconnected" });
   }
 
-  function recover(): Promise<LiveHostClientRecoveryResult> {
-    if (recoveryDisposed) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_DISPOSED", "LiveHost client recovery is disposed."));
-    if (!options.recovery) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_NOT_CONFIGURED", "LiveHost client recovery is not configured."));
-    if (!isConnected) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_DISCONNECTED", "LiveHost recovery requires a connected transport."));
-    if (pendingRecovery) return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_IN_PROGRESS", "LiveHost recovery is already in progress."));
-    if (recoveryStatus === "failed") return Promise.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_LIFECYCLE_INVALID", "LiveHost recovery requires a reconnect after failure."));
+  function recover(): Promise<LocusClientRecoveryResult> {
+    if (recoveryDisposed) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISPOSED", "Locus client recovery is disposed."));
+    if (!options.recovery) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_NOT_CONFIGURED", "Locus client recovery is not configured."));
+    if (!isConnected) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISCONNECTED", "Locus recovery requires a connected transport."));
+    if (pendingRecovery) return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_IN_PROGRESS", "Locus recovery is already in progress."));
+    if (recoveryStatus === "failed") return Promise.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_LIFECYCLE_INVALID", "Locus recovery requires a reconnect after failure."));
     const id = make_recovery_id();
     install_recovery_messages();
     recoveryLifecycle = Object.freeze({ phase: "awaiting-plan", requestId: id });
@@ -929,7 +925,7 @@ export function create_livehost_client<
     const startedAt = Date.now();
     const trace = options.trace === undefined
       ? undefined
-      : create_live_trace_context(options.trace, `lht-client-recovery-${id}`);
+      : create_live_trace_context(options.trace, `locus-client-recovery-${id}`);
     trace?.emit({
       subsystem: "client",
       phase: "recovery.request",
@@ -943,7 +939,7 @@ export function create_livehost_client<
         currentRev: map.rev,
       }),
     });
-    const promise = new Promise<LiveHostClientRecoveryResult>((resolve, reject) => {
+    const promise = new Promise<LocusClientRecoveryResult>((resolve, reject) => {
       pendingRecovery = {
         id,
         resolve,
@@ -987,20 +983,20 @@ export function create_livehost_client<
         finalRev: map.rev,
         commitCount: pending.commitCount,
         outcome: "cancelled",
-        errorCode: "LIVEHOST_RECOVERY_DISPOSED",
+        errorCode: "LOCUS_RECOVERY_DISPOSED",
       }),
     });
-    pending?.reject(new LiveHostClientRecoveryError("LIVEHOST_RECOVERY_DISPOSED", "LiveHost client recovery was disposed."));
+    pending?.reject(new LocusClientRecoveryError("LOCUS_RECOVERY_DISPOSED", "Locus client recovery was disposed."));
     recoveryListeners.clear();
   }
 
-  function on_change(listener: LiveHostClientRecoveryChangeListenerForMap<ClassifiedLiveMap>): LiveHostDisposer {
+  function on_change(listener: LocusClientRecoveryChangeListener<ClassifiedLiveMap>): LocusDisposer {
     if (recoveryDisposed) return () => { };
     recoveryListeners.add(listener);
     return () => recoveryListeners.delete(listener);
   }
 
-  function debug(): LiveHostClientRecoveryDiagnostics {
+  function debug(): LocusClientRecoveryDiagnostics {
     return Object.freeze({
       status: recoveryStatus,
       ...(recoveryStrategy ? { strategy: recoveryStrategy } : {}),
@@ -1022,45 +1018,45 @@ export function create_livehost_client<
 
   function begin_session_request(
     kind: PendingSession["kind"],
-    message: LiveHostClientMessage<TActions>,
-  ): Promise<LiveHostClientSessionResult | undefined> {
-    if (sessionDisposed) return Promise.reject(new LiveHostClientSessionError("LIVEHOST_SESSION_DISPOSED", "LiveHost client session API is disposed."));
-    if (!isConnected) return Promise.reject(new LiveHostClientSessionError("LIVEHOST_SESSION_DISCONNECTED", "LiveHost session requires a connected transport."));
-    if (pendingSession) return Promise.reject(new LiveHostClientSessionError("LIVEHOST_SESSION_REQUEST_PENDING", "A LiveHost session request is already pending."));
+    message: LocusClientMessage<TActions>,
+  ): Promise<LocusClientSessionResult | undefined> {
+    if (sessionDisposed) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_DISPOSED", "Locus client session API is disposed."));
+    if (!isConnected) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_DISCONNECTED", "Locus session requires a connected transport."));
+    if (pendingSession) return Promise.reject(new LocusClientSessionError("LOCUS_SESSION_REQUEST_PENDING", "A Locus session request is already pending."));
     if (kind === "create") sessionStatus = "creating";
     if (kind === "reattach") sessionStatus = "attaching";
     const id = "id" in message && typeof message.id === "string" ? message.id : make_session_request_id();
-    const promise = new Promise<LiveHostClientSessionResult | undefined>((resolve, reject) => {
+    const promise = new Promise<LocusClientSessionResult | undefined>((resolve, reject) => {
       pendingSession = { id, kind, resolve, reject };
     });
     send(message);
     return promise;
   }
 
-  async function create_session(): Promise<LiveHostClientSessionResult> {
-    if (sessionStatus === "attached") throw new LiveHostClientSessionError("LIVEHOST_SESSION_ALREADY_ATTACHED", "A LiveHost session is already attached.");
+  async function create_session(): Promise<LocusClientSessionResult> {
+    if (sessionStatus === "attached") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("create", { type: "session-create", id });
-    if (!result) throw new LiveHostClientSessionError("LIVEHOST_SESSION_CREATE_FAILED", "LiveHost session creation produced no result.");
+    if (!result) throw new LocusClientSessionError("LOCUS_SESSION_CREATE_FAILED", "Locus session creation produced no result.");
     return result;
   }
 
-  async function reattach_session(credential = sessionCredential): Promise<LiveHostClientSessionResult> {
-    if (sessionStatus === "attached") throw new LiveHostClientSessionError("LIVEHOST_SESSION_ALREADY_ATTACHED", "A LiveHost session is already attached.");
+  async function reattach_session(credential = sessionCredential): Promise<LocusClientSessionResult> {
+    if (sessionStatus === "attached") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_ATTACHED", "A Locus session is already attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("reattach", {
       type: "session-attach",
       id,
       ...(credential !== undefined ? { credential } : {}),
     });
-    if (!result) throw new LiveHostClientSessionError("LIVEHOST_SESSION_ATTACH_FAILED", "LiveHost session reattachment produced no result.");
+    if (!result) throw new LocusClientSessionError("LOCUS_SESSION_ATTACH_FAILED", "Locus session reattachment produced no result.");
     sessionCredential = credential;
     return result;
   }
 
   async function goodbye_session(): Promise<void> {
-    if (sessionStatus === "ended") throw new LiveHostClientSessionError("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session is already ended.");
-    if (sessionStatus !== "attached") throw new LiveHostClientSessionError("LIVEHOST_SESSION_NOT_ATTACHED", "No authoritative LiveHost session is attached.");
+    if (sessionStatus === "ended") throw new LocusClientSessionError("LOCUS_SESSION_ALREADY_GONE", "Locus session is already ended.");
+    if (sessionStatus !== "attached") throw new LocusClientSessionError("LOCUS_SESSION_NOT_ATTACHED", "No authoritative Locus session is attached.");
     const id = make_session_request_id();
     const result = await begin_session_request("goodbye", { type: "session-goodbye", id });
     void result;
@@ -1072,10 +1068,10 @@ export function create_livehost_client<
     const pending = pendingSession;
     pendingSession = undefined;
     sessionStatus = "disposed";
-    pending?.reject(new LiveHostClientSessionError("LIVEHOST_SESSION_DISPOSED", "LiveHost client session API was disposed."));
+    pending?.reject(new LocusClientSessionError("LOCUS_SESSION_DISPOSED", "Locus client session API was disposed."));
   }
 
-  function debug_session(): LiveHostClientSessionDiagnostics {
+  function debug_session(): LocusClientSessionDiagnostics {
     return Object.freeze({
       status: sessionStatus,
       ...(sessionId ? { sessionId } : {}),
@@ -1090,20 +1086,20 @@ export function create_livehost_client<
 
   function subscribe(path: readonly (string | number)[]): void { send({ type: "subscribe", path: [...path] }); }
   function unsubscribe(path: readonly (string | number)[]): void { send({ type: "unsubscribe", path: [...path] }); }
-  function on_event(listener: LiveHostEventListener): LiveHostDisposer {
+  function on_event(listener: LocusEventListener): LocusDisposer {
     eventListeners.add(listener);
     return () => eventListeners.delete(listener);
   }
 
   function action_handle<TName extends keyof TActions & string>(
-    request: LiveHostClientActionRequest<TActions, TName>,
+    request: LocusClientActionRequest<TActions, TName>,
     retry: boolean,
-  ): LiveHostClientActionPromise<TActions, TName> {
+  ): LocusClientActionPromise<TActions, TName> {
     const attemptId = makeActionAttemptId();
     const connected = isConnected && (options.session === undefined || sessionStatus === "attached");
     const duplicateNewId = pendingActions.has(attemptId);
     const promise = connected && !duplicateNewId
-      ? new Promise<LiveHostClientActionResult>((resolve, reject) => {
+      ? new Promise<LocusClientActionResult>((resolve, reject) => {
         const waiters = pendingActions.get(attemptId) ?? [];
         waiters.push({ resolve, reject });
         pendingActions.set(attemptId, waiters);
@@ -1112,9 +1108,9 @@ export function create_livehost_client<
         pendingActionAttemptsByRequest.set(request.requestId, attempts);
       })
       : Promise.reject(duplicateNewId
-        ? new LiveHostDuplicateActionIdError(attemptId)
-        : new LiveHostDisconnectedError());
-    const handle: LiveHostClientActionPromise<TActions, TName> = Object.assign(promise, { request });
+        ? new LocusDuplicateActionIdError(attemptId)
+        : new LocusDisconnectedError());
+    const handle: LocusClientActionPromise<TActions, TName> = Object.assign(promise, { request });
     if (connected && !duplicateNewId) {
       const message = {
         type: "action",
@@ -1125,7 +1121,7 @@ export function create_livehost_client<
         name: request.name,
         ...(request.payload !== undefined ? { payload: request.payload } : {}),
         ...(retry ? { retry: true as const } : {}),
-      } as LiveHostClientActionMessage<TActions>;
+      } as LocusClientActionMessage<TActions>;
       send(message);
     }
     return handle;
@@ -1134,7 +1130,7 @@ export function create_livehost_client<
   function action<TName extends keyof TActions & string>(
     name: TName,
     ...args: undefined extends TActions[TName] ? [payload?: TActions[TName]] : [payload: TActions[TName]]
-  ): LiveHostClientActionPromise<TActions, TName> {
+  ): LocusClientActionPromise<TActions, TName> {
     const requestId = makeActionId();
     const payload = args[0];
     const request = Object.freeze({
@@ -1146,9 +1142,9 @@ export function create_livehost_client<
   }
 
   function retry_action<TName extends keyof TActions & string>(
-    request: LiveHostClientActionRequest<TActions, TName>,
-  ): LiveHostClientActionPromise<TActions, TName> {
-    const stableRequest: LiveHostClientActionRequest<TActions, TName> = Object.freeze({
+    request: LocusClientActionRequest<TActions, TName>,
+  ): LocusClientActionPromise<TActions, TName> {
+    const stableRequest: LocusClientActionRequest<TActions, TName> = Object.freeze({
       requestId: request.requestId,
       name: request.name,
       ...(request.payload !== undefined ? { payload: clone_action_payload(request.payload as JsonValue) as TActions[TName] } : {}),
@@ -1156,10 +1152,10 @@ export function create_livehost_client<
     return action_handle(stableRequest, true);
   }
 
-  function action_status(requestId: LiveHostActionRequestId): Promise<LiveHostClientActionStatusResult> {
-    if (!isConnected || (options.session !== undefined && sessionStatus !== "attached")) return Promise.reject(new LiveHostDisconnectedError());
+  function action_status(requestId: LocusActionRequestId): Promise<LocusClientActionStatusResult> {
+    if (!isConnected || (options.session !== undefined && sessionStatus !== "attached")) return Promise.reject(new LocusDisconnectedError());
     const id = makeActionStatusId();
-    const result = new Promise<LiveHostClientActionStatusResult>((resolve, reject) => {
+    const result = new Promise<LocusClientActionStatusResult>((resolve, reject) => {
       pendingActionStatuses.set(id, { requestId, resolve, reject });
     });
     send({ type: "action-status", id, clientId, requestId });
@@ -1231,11 +1227,11 @@ function apply_projected_message(
   if (message.format !== "structural-json"
     || Object.hasOwn(message, "formatVersion")
     || typeof message.payload !== "string") {
-    throw new Error("LiveHost projected message has an invalid exact transport envelope.");
+    throw new Error("Locus projected message has an invalid exact transport envelope.");
   }
   const projected = livemap_projected_propagation(map);
   if (projected === undefined) {
-    throw new Error("LiveHost projected mirror has no carrier propagation capability.");
+    throw new Error("Locus projected mirror has no carrier propagation capability.");
   }
   projected.commit([Object.freeze({
     kind,
@@ -1253,5 +1249,5 @@ function is_document_live_map(map: LiveMapAuthority): map is Extract<ClassifiedL
 function classified_live_map(map: LiveMapAuthority | undefined): ClassifiedLiveMap {
   if (map === undefined) return make_classified_livemap(parse_json({}));
   if (is_projected_live_map(map) || is_document_live_map(map)) return map;
-  throw new Error("LiveHost client map is not a classified LiveMap authority.");
+  throw new Error("Locus client map is not a classified LiveMap authority.");
 }

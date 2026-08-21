@@ -1,4 +1,4 @@
-// livehost.history.ts
+// locus.history.ts
 
 import type {
   LiveMapAuthority,
@@ -11,23 +11,23 @@ import type {
 } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveHostCanonicalCommit,
-  LiveHostCanonicalCommitListener,
-  LiveHostCanonicalHistory,
-  LiveHostCanonicalHistoryDiagnostics,
-  LiveHostCanonicalOp,
-  LiveHostCanonicalStream,
-  LiveHostCanonicalStreamOptions,
-  LiveHostIncarnationId,
-  LiveHostLogicalMapId,
-  LiveHostWireValue,
-} from "../../types/livehost.types.js";
-import { create_live_trace_context, type LiveHostCommitCausation } from "./locus.trace.js";
+  LocusCanonicalCommit,
+  LocusCanonicalCommitListener,
+  LocusCanonicalHistory,
+  LocusCanonicalHistoryDiagnostics,
+  LocusCanonicalOp,
+  LocusCanonicalStream,
+  LocusCanonicalStreamOptions,
+  LocusIncarnationId,
+  LocusLogicalMapId,
+  LocusWireValue,
+} from "../../types/locus.types.js";
+import { create_live_trace_context, type LocusCommitCausation } from "./locus.trace.js";
 import { clone_node } from "../../core/clone-node.js";
 import { is_Node } from "../../core/node-guards.js";
 import { clone_live_root } from "../livemap/livemap.editor.js";
 import { validate_document_path } from "../livemap/livemap.document.path.js";
-import { encode_livehost_graph_content } from "./locus.graph-content-codec.js";
+import { encode_locus_graph_content } from "./locus.graph-content-codec.js";
 import { admit_projected_value } from "../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 
@@ -40,18 +40,18 @@ let logicalMapIdIncrement = 0;
 let incarnationIdIncrement = 0;
 
 type RetainedCommit = Readonly<{
-  commit: LiveHostCanonicalCommit;
+  commit: LocusCanonicalCommit;
   encodedBytes: number;
 }>;
 
-function make_logical_map_id(): LiveHostLogicalMapId {
+function make_logical_map_id(): LocusLogicalMapId {
   logicalMapIdIncrement += 1;
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return `lhm-${uuid}`;
   return `lhm-${Date.now().toString(36)}-${logicalMapIdIncrement.toString(36)}`;
 }
 
-function make_incarnation_id(): LiveHostIncarnationId {
+function make_incarnation_id(): LocusIncarnationId {
   incarnationIdIncrement += 1;
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return `lhi-${uuid}`;
@@ -60,13 +60,13 @@ function make_incarnation_id(): LiveHostIncarnationId {
 
 function must_identity(value: string, name: string): string {
   if (value.length > 0) return value;
-  throw new Error(`LiveHost ${name} must be a non-empty string.`);
+  throw new Error(`Locus ${name} must be a non-empty string.`);
 }
 
 function must_bound(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
   if (Number.isFinite(value) && value >= 0) return Math.trunc(value);
-  throw new Error(`LiveHost canonical history ${name} must be a finite non-negative number.`);
+  throw new Error(`Locus canonical history ${name} must be a finite non-negative number.`);
 }
 
 function freeze_projected_value(value: JsonValue): JsonValue {
@@ -82,38 +82,38 @@ function clone_projected_value(value: JsonValue, field: string): JsonValue {
       materialize_projected_value(admit_projected_value(value)),
     );
   } catch {
-    throw new Error(`LiveHost canonical commit ${field} is not a supported projected value.`);
+    throw new Error(`Locus canonical commit ${field} is not a supported projected value.`);
   }
 }
 
-function wire_value(value: JsonValue | undefined, field: string): LiveHostWireValue {
+function wire_value(value: JsonValue | undefined, field: string): LocusWireValue {
   if (value === undefined) return ABSENT_VALUE;
   return Object.freeze({ present: true, value: clone_projected_value(value, field) });
 }
 
 function must_path(path: LivePath): LivePath {
-  if (!Array.isArray(path)) throw new Error("LiveHost canonical commit path is not an array.");
+  if (!Array.isArray(path)) throw new Error("Locus canonical commit path is not an array.");
   for (const part of path) {
     if (typeof part === "string") continue;
     if (typeof part === "number" && Number.isInteger(part) && part >= 0) continue;
-    throw new Error("LiveHost canonical commit path contains an invalid segment.");
+    throw new Error("Locus canonical commit path contains an invalid segment.");
   }
   return Object.freeze([...path]);
 }
 
 function must_json_array(values: readonly JsonValue[], field: string): readonly JsonValue[] {
   if (!Array.isArray(values)) {
-    throw new Error(`LiveHost canonical commit ${field} is not a projected array.`);
+    throw new Error(`Locus canonical commit ${field} is not a projected array.`);
   }
   return Object.freeze(values.map((value, index) =>
     clone_projected_value(value, `${field}[${index}]`)));
 }
 
-function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
+function canonical_op(op: LiveMapOp): LocusCanonicalOp {
   const path = must_path(op.path);
 
   if (op.kind === "delete") {
-    if (op.next !== undefined) throw new Error("LiveHost canonical delete next value must be absent.");
+    if (op.next !== undefined) throw new Error("Locus canonical delete next value must be absent.");
     return Object.freeze({
       kind: "delete",
       path,
@@ -124,10 +124,10 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
 
   if (op.kind === "splice") {
     if (!Number.isInteger(op.start) || op.start < 0) {
-      throw new Error("LiveHost canonical splice start must be a non-negative integer.");
+      throw new Error("Locus canonical splice start must be a non-negative integer.");
     }
     if (!Array.isArray(op.prev) || !Array.isArray(op.next)) {
-      throw new Error("LiveHost canonical splice prev and next values must be arrays.");
+      throw new Error("Locus canonical splice prev and next values must be arrays.");
     }
     return Object.freeze({
       kind: "splice",
@@ -143,7 +143,7 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
   if (op.kind === "rename") {
     if (op.prev === null || typeof op.prev !== "object" || Array.isArray(op.prev)
       || op.next === null || typeof op.next !== "object" || Array.isArray(op.next)) {
-      throw new Error("LiveHost canonical rename prev and next values must be objects.");
+      throw new Error("Locus canonical rename prev and next values must be objects.");
     }
     return Object.freeze({
       kind: op.kind,
@@ -157,10 +157,10 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
 
   if (op.kind === "move") {
     if (!Number.isSafeInteger(op.from) || op.from < 0 || !Number.isSafeInteger(op.to) || op.to < 0) {
-      throw new Error("LiveHost canonical move indexes must be non-negative safe integers.");
+      throw new Error("Locus canonical move indexes must be non-negative safe integers.");
     }
     if (!Array.isArray(op.prev) || !Array.isArray(op.next)) {
-      throw new Error("LiveHost canonical move prev and next values must be arrays.");
+      throw new Error("Locus canonical move prev and next values must be arrays.");
     }
     return Object.freeze({
       kind: op.kind,
@@ -173,7 +173,7 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
   }
 
   if (op.next === undefined) {
-    throw new Error(`LiveHost canonical ${op.kind} next value must be present.`);
+    throw new Error(`Locus canonical ${op.kind} next value must be present.`);
   }
 
   if (op.kind === "set") {
@@ -194,7 +194,7 @@ function canonical_op(op: LiveMapOp): LiveHostCanonicalOp {
     });
   }
 
-  throw new Error("LiveHost canonical commit operation kind is invalid.");
+  throw new Error("Locus canonical commit operation kind is invalid.");
 }
 
 function is_projected_ensure_quid_op(
@@ -203,13 +203,13 @@ function is_projected_ensure_quid_op(
   return op.op === "ensure-quid" && "projected" in op.target && op.target.projected === true;
 }
 
-function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp): LiveHostCanonicalOp {
+function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuidOp): LocusCanonicalOp {
   if (op.op === "replace-root") {
     return Object.freeze({
       domain: "graph",
       op: "replace-root",
       mode: op.mode,
-      root: encode_livehost_graph_content(clone_live_root(op.root)),
+      root: encode_locus_graph_content(clone_live_root(op.root)),
     });
   }
   if (is_projected_ensure_quid_op(op)) {
@@ -262,7 +262,7 @@ function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuid
       op: "replace-content",
       target,
       index: documentOp.index,
-      replacement: encode_livehost_graph_content(
+      replacement: encode_locus_graph_content(
         is_Node(documentOp.replacement) ? clone_live_root(documentOp.replacement) : documentOp.replacement,
       ),
     });
@@ -273,7 +273,7 @@ function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuid
       op: "insert-content",
       target,
       index: documentOp.index,
-      content: encode_livehost_graph_content(
+      content: encode_locus_graph_content(
         is_Node(documentOp.content) ? clone_live_root(documentOp.content) : documentOp.content,
       ),
     });
@@ -290,31 +290,31 @@ function canonical_graph_op(op: LiveMapGraphOp | LiveMapProjectedGraphEnsureQuid
       to: documentOp.to,
     });
   }
-  throw new Error("LiveHost canonical graph operation discriminant is invalid.");
+  throw new Error("Locus canonical graph operation discriminant is invalid.");
 }
 
 /** @internal Construct the exact detached canonical envelope used by history and persistence. */
-export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
+export function make_locus_canonical_commit<TMap extends LiveMapAuthority>(
   map: TMap,
   commit: LiveMapCommit<LiveMapAnyOp>,
-  logicalMapId: LiveHostLogicalMapId,
-  incarnationId: LiveHostIncarnationId,
+  logicalMapId: LocusLogicalMapId,
+  incarnationId: LocusIncarnationId,
   expectedPrevRev: number,
-): LiveHostCanonicalCommit {
-  if (!commit.changed) throw new Error("LiveHost canonical history received an unchanged commit.");
+): LocusCanonicalCommit {
+  if (!commit.changed) throw new Error("Locus canonical history received an unchanged commit.");
   if (!Number.isInteger(commit.prevRev) || commit.prevRev < 0) {
-    throw new Error("LiveHost canonical commit prevRev is invalid.");
+    throw new Error("Locus canonical commit prevRev is invalid.");
   }
   if (!Number.isInteger(commit.rev) || commit.rev !== commit.prevRev + 1) {
-    throw new Error("LiveHost canonical commit revision transition is invalid.");
+    throw new Error("Locus canonical commit revision transition is invalid.");
   }
   if (commit.prevRev !== expectedPrevRev) {
     throw new Error(
-      `LiveHost canonical commit is not contiguous: expected prevRev ${expectedPrevRev}, received ${commit.prevRev}.`,
+      `Locus canonical commit is not contiguous: expected prevRev ${expectedPrevRev}, received ${commit.prevRev}.`,
     );
   }
   if (!Array.isArray(commit.ops) || commit.ops.length === 0) {
-    throw new Error("LiveHost canonical changed commit must contain operations.");
+    throw new Error("Locus canonical changed commit must contain operations.");
   }
   const documentMode = map.mode === "element" || map.mode === "fragment";
   const projectedIdentityOnly = !documentMode && commit.ops.every((operation) => (
@@ -324,19 +324,19 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
     && operation.target.projected === true
   ));
   if (commit.ops.some((operation) => ("domain" in operation) !== documentMode && !projectedIdentityOnly)) {
-    throw new Error(`LiveHost canonical commit operation domain is incompatible with ${map.mode}.`);
+    throw new Error(`Locus canonical commit operation domain is incompatible with ${map.mode}.`);
   }
   if (documentMode && commit.ops.some((operation) =>
     "domain" in operation
     && operation.op === "replace-root"
     && operation.mode !== map.mode)) {
-    throw new Error(`LiveHost canonical root replacement is incompatible with ${map.mode}.`);
+    throw new Error(`Locus canonical root replacement is incompatible with ${map.mode}.`);
   }
   if (!documentMode && !projectedIdentityOnly && (
     commit.format !== "structural-json"
     || typeof commit.payload !== "string"
   )) {
-    throw new Error("LiveHost projected canonical commit requires exact structural transport.");
+    throw new Error("Locus projected canonical commit requires exact structural transport.");
   }
 
   return Object.freeze({
@@ -354,7 +354,7 @@ export function make_livehost_canonical_commit<TMap extends LiveMapAuthority>(
   });
 }
 
-function encoded_bytes(commit: LiveHostCanonicalCommit): number {
+function encoded_bytes(commit: LocusCanonicalCommit): number {
   return textEncoder.encode(JSON.stringify(commit)).byteLength;
 }
 
@@ -362,27 +362,27 @@ function encoded_bytes(commit: LiveHostCanonicalCommit): number {
  * Attach canonical commit history and ordered publication to one authoritative
  * LiveMap. This is stream machinery only; it does not add recovery behavior.
  */
-export function make_livehost_canonical_stream<TMap extends LiveMapAuthority>(
+export function make_locus_canonical_stream<TMap extends LiveMapAuthority>(
   map: TMap,
-  options: LiveHostCanonicalStreamOptions = {},
-): LiveHostCanonicalStream<TMap> {
-  return make_livehost_canonical_stream_runtime(map, options).stream;
+  options: LocusCanonicalStreamOptions = {},
+): LocusCanonicalStream<TMap> {
+  return make_locus_canonical_stream_runtime(map, options).stream;
 }
 
 /** Internal stream construction with explicit action-to-commit correlation. */
-export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAuthority>(
+export function make_locus_canonical_stream_runtime<TMap extends LiveMapAuthority>(
   map: TMap,
-  options: LiveHostCanonicalStreamOptions = {},
+  options: LocusCanonicalStreamOptions = {},
   runtime: Readonly<{
     observeCommits?: boolean;
     initialHistory?: Readonly<{
       baseRevision: number;
-      commits: readonly LiveHostCanonicalCommit[];
+      commits: readonly LocusCanonicalCommit[];
     }>;
   }> = {},
 ): Readonly<{
-  stream: LiveHostCanonicalStream<TMap>;
-  correlateCommit: (commit: LiveMapCommit<LiveMapAnyOp>, causation: LiveHostCommitCausation) => void;
+  stream: LocusCanonicalStream<TMap>;
+  correlateCommit: (commit: LiveMapCommit<LiveMapAnyOp>, causation: LocusCommitCausation) => void;
   ingestAccepted: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
 }> {
   const logicalMapId = must_identity(options.logicalMapId ?? make_logical_map_id(), "logical map ID");
@@ -391,16 +391,16 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
   const maxBytes = must_bound(options.history?.maxBytes, DEFAULT_MAX_BYTES, "maxBytes");
   const retained: RetainedCommit[] = [];
   const publicationQueue: Array<Readonly<{
-    canonical: LiveHostCanonicalCommit;
+    canonical: LocusCanonicalCommit;
     source: LiveMapCommit<LiveMapAnyOp>;
   }>> = [];
-  const listeners = new Set<LiveHostCanonicalCommitListener>();
+  const listeners = new Set<LocusCanonicalCommitListener>();
   let retainedEncodedBytes = 0;
   let headRev = runtime.initialHistory?.baseRevision ?? map.rev;
   let isPublishing = false;
   let publishedCommitCount = 0;
   let publicationErrorCount = 0;
-  const commitCausation = new WeakMap<LiveMapCommit<LiveMapAnyOp>, LiveHostCommitCausation>();
+  const commitCausation = new WeakMap<LiveMapCommit<LiveMapAnyOp>, LocusCommitCausation>();
   const pendingCommitTraces = new WeakMap<LiveMapCommit<LiveMapAnyOp>, Readonly<{
     listenerCount: number;
     publicationFailureCount: number;
@@ -413,7 +413,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     }
   }
 
-  function append_history(commit: LiveHostCanonicalCommit): void {
+  function append_history(commit: LocusCanonicalCommit): void {
     const entry = Object.freeze({ commit, encodedBytes: encoded_bytes(commit) });
     retained.push(entry);
     retainedEncodedBytes += entry.encodedBytes;
@@ -422,7 +422,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
 
   if (runtime.initialHistory !== undefined) {
     if (!Number.isInteger(headRev) || headRev < 0) {
-      throw new Error("LiveHost initial history base revision is invalid.");
+      throw new Error("Locus initial history base revision is invalid.");
     }
     for (const commit of runtime.initialHistory.commits) {
       if (commit.logicalMapId !== logicalMapId
@@ -430,13 +430,13 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
         || commit.mode !== map.mode
         || commit.prevRev !== headRev
         || commit.rev !== headRev + 1) {
-        throw new Error("LiveHost initial history is not contiguous with its authority.");
+        throw new Error("Locus initial history is not contiguous with its authority.");
       }
       append_history(commit);
       headRev = commit.rev;
     }
     if (map.rev !== headRev) {
-      throw new Error("LiveHost restored authority revision does not match initial history.");
+      throw new Error("Locus restored authority revision does not match initial history.");
     }
   }
 
@@ -475,7 +475,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
       trace_commit(commit, origin, "skip");
       return;
     }
-    const canonical = make_livehost_canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
+    const canonical = make_locus_canonical_commit(map, commit, logicalMapId, incarnationId, headRev);
     append_history(canonical);
     headRev = canonical.rev;
     publicationQueue.push(Object.freeze({ canonical, source: commit }));
@@ -494,7 +494,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
   ): void {
     const sink = options.trace;
     if (sink === undefined) return;
-    const trace = create_live_trace_context(sink, `lht-stream-${logicalMapId}-${commit.rev}`);
+    const trace = create_live_trace_context(sink, `locus-stream-${logicalMapId}-${commit.rev}`);
     const first = commit.ops[0];
     const causation = commitCausation.get(commit);
     const publication = pendingCommitTraces.get(commit);
@@ -542,7 +542,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
           outcome: publication.publicationFailureCount > 0 ? "failed" : "published",
           ...(publication.publicationFailureCount > 0 ? {
             publicationFailureCount: publication.publicationFailureCount,
-            errorCode: "LIVEHOST_COMMIT_PUBLICATION_FAILED",
+            errorCode: "LOCUS_COMMIT_PUBLICATION_FAILED",
           } : {}),
         } : {}),
         ...causalDetails,
@@ -550,14 +550,14 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     });
   }
 
-  function replay_after(fromRev: number, throughRev = headRev): readonly LiveHostCanonicalCommit[] | undefined {
+  function replay_after(fromRev: number, throughRev = headRev): readonly LocusCanonicalCommit[] | undefined {
     if (!Number.isInteger(fromRev) || fromRev < 0) return undefined;
     if (!Number.isInteger(throughRev) || throughRev < 0 || throughRev > headRev) return undefined;
     if (fromRev === throughRev) return Object.freeze([]);
     if (fromRev > throughRev) return undefined;
 
     let cursor = fromRev;
-    const commits: LiveHostCanonicalCommit[] = [];
+    const commits: LocusCanonicalCommit[] = [];
 
     for (const entry of retained) {
       const commit = entry.commit;
@@ -571,7 +571,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     return cursor === throughRev ? Object.freeze(commits) : undefined;
   }
 
-  function debug(): LiveHostCanonicalHistoryDiagnostics {
+  function debug(): LocusCanonicalHistoryDiagnostics {
     const first = retained[0]?.commit;
     const last = retained[retained.length - 1]?.commit;
 
@@ -591,7 +591,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     });
   }
 
-  const history: LiveHostCanonicalHistory = Object.freeze({
+  const history: LocusCanonicalHistory = Object.freeze({
     can_replay(fromRev, throughRev = headRev): boolean {
       return replay_after(fromRev, throughRev) !== undefined;
     },
@@ -599,7 +599,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     debug,
   });
 
-  const stream: LiveHostCanonicalStream<TMap> = Object.freeze({
+  const stream: LocusCanonicalStream<TMap> = Object.freeze({
     mode: map.mode,
     logicalMapId,
     incarnationId,
@@ -628,7 +628,7 @@ export function make_livehost_canonical_stream_runtime<TMap extends LiveMapAutho
     if (map.mode !== "element" && map.mode !== "fragment") return;
     const sink = options.trace;
     if (sink === undefined) return;
-    const trace = create_live_trace_context(sink, `lht-stream-${logicalMapId}-snapshot-${revision}`);
+    const trace = create_live_trace_context(sink, `locus-stream-${logicalMapId}-snapshot-${revision}`);
     trace.emit({
       subsystem: "livemap",
       phase: "snapshot.installation",

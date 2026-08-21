@@ -193,7 +193,7 @@ check("reads over absent attrs remain complete no-ops", () => {
 });
 
 check("local reads through a hosted authority create no history or publication", () => {
-  const host = hson.liveHost.create({
+  const host = hson.locus.create({
     map: element(`<main id="local" @000000106/>`),
   });
   let publications = 0;

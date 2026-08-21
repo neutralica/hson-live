@@ -1,6 +1,6 @@
-import type { LiveHostSocketLike } from "../../types/livehost.types.js";
+import type { LocusSocketLike } from "../../types/locus.types.js";
 
-export type BrowserLiveHostSocketStatus = "connecting" | "open" | "closed";
+export type BrowserLocusSocketStatus = "connecting" | "open" | "closed";
 
 export type BrowserWebSocketLike = Readonly<{
   readonly readyState: number;
@@ -18,10 +18,10 @@ export type BrowserWebSocketLike = Readonly<{
 
 export type BrowserWebSocketConstructor = new (url: string) => BrowserWebSocketLike;
 
-export type BrowserLiveHostSocket = Readonly<{
-  socket: LiveHostSocketLike;
+export type BrowserLocusSocket = Readonly<{
+  socket: LocusSocketLike;
   ready: Promise<void>;
-  readonly status: BrowserLiveHostSocketStatus;
+  readonly status: BrowserLocusSocketStatus;
   dispose(): void;
 }>;
 
@@ -33,15 +33,15 @@ function default_browser_websocket_constructor(): BrowserWebSocketConstructor {
   return candidate as BrowserWebSocketConstructor;
 }
 
-/** @experimental Concrete browser transport adapter for LiveHost. */
-export function create_browser_livehost_socket(
+/** @experimental Concrete browser transport adapter for Locus. */
+export function create_browser_locus_socket(
   url: string,
   WebSocketConstructor: BrowserWebSocketConstructor = default_browser_websocket_constructor(),
-): BrowserLiveHostSocket {
+): BrowserLocusSocket {
   const websocket = new WebSocketConstructor(url);
   const messageListeners = new Set<(message: string) => void>();
   const closeListeners = new Set<() => void>();
-  let status: BrowserLiveHostSocketStatus = "connecting";
+  let status: BrowserLocusSocketStatus = "connecting";
   let disposed = false;
   let settled = false;
   let resolveReady: () => void = () => undefined;
@@ -69,24 +69,24 @@ export function create_browser_livehost_socket(
   const onMessage = (event: Readonly<{ data: unknown }>): void => {
     if (disposed) return;
     if (typeof event.data !== "string") {
-      websocket.close(1003, "LiveHost accepts text messages only.");
+      websocket.close(1003, "Locus accepts text messages only.");
       return;
     }
     for (const listener of [...messageListeners]) listener(event.data);
   };
   const onClose = (): void => {
     if (disposed) return;
-    if (status === "connecting") reject_ready("LiveHost WebSocket closed before opening.");
+    if (status === "connecting") reject_ready("Locus WebSocket closed before opening.");
     status = "closed";
     for (const listener of [...closeListeners]) listener();
   };
   const onError = (): void => {
     if (disposed) return;
     if (status === "connecting") {
-      reject_ready(`Unable to connect LiveHost WebSocket at ${url}.`);
+      reject_ready(`Unable to connect Locus WebSocket at ${url}.`);
       return;
     }
-    if (status === "open") websocket.close(1011, "LiveHost WebSocket error.");
+    if (status === "open") websocket.close(1011, "Locus WebSocket error.");
   };
 
   websocket.addEventListener("open", onOpen);
@@ -94,9 +94,9 @@ export function create_browser_livehost_socket(
   websocket.addEventListener("close", onClose);
   websocket.addEventListener("error", onError);
 
-  const socket: LiveHostSocketLike = Object.freeze({
+  const socket: LocusSocketLike = Object.freeze({
     send(message) {
-      if (status !== "open") throw new Error("LiveHost WebSocket is not open.");
+      if (status !== "open") throw new Error("Locus WebSocket is not open.");
       websocket.send(message);
     },
     close(code, reason) {
@@ -132,7 +132,7 @@ export function create_browser_livehost_socket(
     get status() { return status; },
     dispose() {
       if (disposed) return;
-      if (status === "connecting") reject_ready("LiveHost WebSocket disposed before opening.");
+      if (status === "connecting") reject_ready("Locus WebSocket disposed before opening.");
       disposed = true;
       messageListeners.clear();
       closeListeners.clear();
@@ -140,7 +140,7 @@ export function create_browser_livehost_socket(
       websocket.removeEventListener("message", onMessage);
       websocket.removeEventListener("close", onClose);
       websocket.removeEventListener("error", onError);
-      if (status !== "closed") websocket.close(1000, "LiveHost client disposed.");
+      if (status !== "closed") websocket.close(1000, "Locus client disposed.");
       status = "closed";
     },
   });

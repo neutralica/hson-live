@@ -1,11 +1,11 @@
 import type { DocumentLiveMapCapture } from "../../types/livemap.types.js";
 import type {
-  LiveHostServerMessage,
-  LiveHostServerCanonicalCommitMessage,
-  LiveHostServerRecoveryCommitMessage,
-  LiveHostServerRecoverySnapshotMessage,
-} from "../../types/livehost.protocol.types.js";
-import type { LiveHostSnapshotEnvelope } from "../../types/livehost.representation.types.js";
+  LocusServerMessage,
+  LocusServerCanonicalCommitMessage,
+  LocusServerRecoveryCommitMessage,
+  LocusServerRecoverySnapshotMessage,
+} from "../../types/locus.protocol.types.js";
+import type { LocusSnapshotEnvelope } from "../../types/locus.representation.types.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
@@ -17,73 +17,73 @@ import { serialize_hson_owned_element_text_fragment } from "../transform/seriali
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
 /** @internal Common outer recovery fields shared by both snapshot bodies. */
-export type LiveHostSnapshotCommonFields = Pick<
-  LiveHostSnapshotEnvelope,
+export type LocusSnapshotCommonFields = Pick<
+  LocusSnapshotEnvelope,
   "logicalMapId" | "incarnationId" | "rev" | "mode"
 >;
 
 /** @internal Ordinary-HSON snapshot body. */
-export type LiveHostHsonSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { hson: string }>;
+export type LocusHsonSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { hson: string }>;
 
 /** @internal Exact document-state snapshot body. */
-export type LiveHostViewStateSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { format: "view-state" }>;
+export type LocusViewStateSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { format: "view-state" }>;
 
 /** @internal Fully validated incoming snapshot representation. */
-export type LiveHostValidatedSnapshotEnvelope =
-  LiveHostSnapshotEnvelope;
+export type LocusValidatedSnapshotEnvelope =
+  LocusSnapshotEnvelope;
 
-/** Closed host-side document snapshot wire selection. */
-export type LiveHostDocumentSnapshotEncoding =
+/** Closed Locus-side document snapshot wire selection. */
+export type LocusDocumentSnapshotEncoding =
   | Readonly<{ format: "hson" }>
   | Readonly<{ format: "view-state" }>;
 
 /** @internal Outbound document snapshot body selected from one capture. */
-export type LiveHostOutboundDocumentSnapshotEnvelope =
-  | LiveHostHsonSnapshotEnvelope
-  | LiveHostViewStateSnapshotEnvelope;
+export type LocusOutboundDocumentSnapshotEnvelope =
+  | LocusHsonSnapshotEnvelope
+  | LocusViewStateSnapshotEnvelope;
 
 /** @internal Current decoded server-message aliases. */
-export type LiveHostDecodedServerRecoverySnapshotMessage = LiveHostServerRecoverySnapshotMessage;
-export type LiveHostDecodedServerRecoveryCommitMessage = LiveHostServerRecoveryCommitMessage;
-export type LiveHostDecodedServerCanonicalCommitMessage = LiveHostServerCanonicalCommitMessage;
-export type LiveHostDecodedServerMessage = LiveHostServerMessage;
+export type LocusDecodedServerRecoverySnapshotMessage = LocusServerRecoverySnapshotMessage;
+export type LocusDecodedServerRecoveryCommitMessage = LocusServerRecoveryCommitMessage;
+export type LocusDecodedServerCanonicalCommitMessage = LocusServerCanonicalCommitMessage;
+export type LocusDecodedServerMessage = LocusServerMessage;
 
 /** @internal */
-export type LiveHostDocumentSnapshotDecodeErrorCode =
-  | "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED"
-  | "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH"
-  | "LIVEHOST_RECOVERY_SNAPSHOT_REVISION_MISMATCH";
+export type LocusDocumentSnapshotDecodeErrorCode =
+  | "LOCUS_RECOVERY_SNAPSHOT_DECODE_FAILED"
+  | "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH"
+  | "LOCUS_RECOVERY_SNAPSHOT_REVISION_MISMATCH";
 
 /** @internal */
-export type LiveHostDocumentSnapshotEncodeErrorCode =
-  "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED";
+export type LocusDocumentSnapshotEncodeErrorCode =
+  "LOCUS_RECOVERY_SNAPSHOT_ENCODE_FAILED";
 
-/** @internal Payload-safe document snapshot failure owned by the LiveHost boundary. */
-export class LiveHostDocumentSnapshotDecodeError extends Error {
+/** @internal Payload-safe document snapshot failure owned by the Locus boundary. */
+export class LocusDocumentSnapshotDecodeError extends Error {
   public constructor(
-    public readonly code: LiveHostDocumentSnapshotDecodeErrorCode,
+    public readonly code: LocusDocumentSnapshotDecodeErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "LiveHostDocumentSnapshotDecodeError";
+    this.name = "LocusDocumentSnapshotDecodeError";
   }
 }
 
-/** @internal Payload-safe host-side view-state snapshot construction failure. */
-export class LiveHostDocumentSnapshotEncodeError extends Error {
+/** @internal Payload-safe Locus-side view-state snapshot construction failure. */
+export class LocusDocumentSnapshotEncodeError extends Error {
   public constructor(
-    public readonly code: LiveHostDocumentSnapshotEncodeErrorCode,
+    public readonly code: LocusDocumentSnapshotEncodeErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "LiveHostDocumentSnapshotEncodeError";
+    this.name = "LocusDocumentSnapshotEncodeError";
   }
 }
 
 function is_view_state_encoding(value: unknown): value is Extract<
-  LiveHostDocumentSnapshotEncoding,
+  LocusDocumentSnapshotEncoding,
   { format: "view-state" }
 > {
   return typeof value === "object"
@@ -94,7 +94,7 @@ function is_view_state_encoding(value: unknown): value is Extract<
 }
 
 function is_hson_encoding(value: unknown): value is Extract<
-  LiveHostDocumentSnapshotEncoding,
+  LocusDocumentSnapshotEncoding,
   { format: "hson" }
 > {
   return typeof value === "object"
@@ -105,11 +105,11 @@ function is_hson_encoding(value: unknown): value is Extract<
 }
 
 /** @internal Encode one detached capture without independently supplied mode or revision. */
-export function encode_livehost_document_snapshot(
-  common: Pick<LiveHostSnapshotCommonFields, "logicalMapId" | "incarnationId">,
+export function encode_locus_document_snapshot(
+  common: Pick<LocusSnapshotCommonFields, "logicalMapId" | "incarnationId">,
   capture: DocumentLiveMapCapture,
-  encoding: LiveHostDocumentSnapshotEncoding,
-): LiveHostOutboundDocumentSnapshotEnvelope {
+  encoding: LocusDocumentSnapshotEncoding,
+): LocusOutboundDocumentSnapshotEnvelope {
   if (is_hson_encoding(encoding)) {
     return Object.freeze({
       ...common,
@@ -122,9 +122,9 @@ export function encode_livehost_document_snapshot(
     });
   }
   if (!is_view_state_encoding(encoding)) {
-    throw new LiveHostDocumentSnapshotEncodeError(
-      "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED",
-      "LiveHost document snapshot encoding is unsupported.",
+    throw new LocusDocumentSnapshotEncodeError(
+      "LOCUS_RECOVERY_SNAPSHOT_ENCODE_FAILED",
+      "Locus document snapshot encoding is unsupported.",
     );
   }
 
@@ -137,9 +137,9 @@ export function encode_livehost_document_snapshot(
     });
   } catch (cause) {
     if (cause instanceof ViewStateSnapshotCodecError) {
-      throw new LiveHostDocumentSnapshotEncodeError(
-        "LIVEHOST_RECOVERY_SNAPSHOT_ENCODE_FAILED",
-        "LiveHost view-state snapshot could not be encoded.",
+      throw new LocusDocumentSnapshotEncodeError(
+        "LOCUS_RECOVERY_SNAPSHOT_ENCODE_FAILED",
+        "Locus view-state snapshot could not be encoded.",
         cause,
       );
     }
@@ -148,8 +148,8 @@ export function encode_livehost_document_snapshot(
 }
 
 /** @internal Decode either accepted document snapshot body into one detached capture. */
-export function decode_livehost_document_snapshot(
-  snapshot: LiveHostValidatedSnapshotEnvelope,
+export function decode_locus_document_snapshot(
+  snapshot: LocusValidatedSnapshotEnvelope,
 ): DocumentLiveMapCapture {
   if ("hson" in snapshot) {
     const staged = make_classified_livemap(parse_hson(
@@ -157,10 +157,10 @@ export function decode_livehost_document_snapshot(
       { allowTopLevelTextFragment: true },
     ));
     if (staged.mode !== "element" && staged.mode !== "fragment") {
-      throw new Error("LiveHost HSON document snapshot reconstructed a non-document root.");
+      throw new Error("Locus HSON document snapshot reconstructed a non-document root.");
     }
     if (staged.mode !== snapshot.mode) {
-      throw new Error("LiveHost HSON document snapshot mode does not match its envelope.");
+      throw new Error("Locus HSON document snapshot mode does not match its envelope.");
     }
     return Object.freeze({ ...staged.capture(), rev: snapshot.rev });
   }
@@ -173,9 +173,9 @@ export function decode_livehost_document_snapshot(
     });
   } catch (cause) {
     if (cause instanceof ViewStateSnapshotCodecError) {
-      throw new LiveHostDocumentSnapshotDecodeError(
-        "LIVEHOST_RECOVERY_SNAPSHOT_DECODE_FAILED",
-        "LiveHost view-state snapshot could not be decoded.",
+      throw new LocusDocumentSnapshotDecodeError(
+        "LOCUS_RECOVERY_SNAPSHOT_DECODE_FAILED",
+        "Locus view-state snapshot could not be decoded.",
         cause,
       );
     }
@@ -183,15 +183,15 @@ export function decode_livehost_document_snapshot(
   }
 
   if (capture.mode !== snapshot.mode) {
-    throw new LiveHostDocumentSnapshotDecodeError(
-      "LIVEHOST_RECOVERY_SNAPSHOT_MODE_MISMATCH",
-      "LiveHost view-state snapshot mode does not match its envelope.",
+    throw new LocusDocumentSnapshotDecodeError(
+      "LOCUS_RECOVERY_SNAPSHOT_MODE_MISMATCH",
+      "Locus view-state snapshot mode does not match its envelope.",
     );
   }
   if (capture.rev !== snapshot.rev) {
-    throw new LiveHostDocumentSnapshotDecodeError(
-      "LIVEHOST_RECOVERY_SNAPSHOT_REVISION_MISMATCH",
-      "LiveHost view-state snapshot revision does not match its envelope.",
+    throw new LocusDocumentSnapshotDecodeError(
+      "LOCUS_RECOVERY_SNAPSHOT_REVISION_MISMATCH",
+      "Locus view-state snapshot revision does not match its envelope.",
     );
   }
   return capture;

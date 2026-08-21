@@ -223,7 +223,7 @@ export function make_livemap_transition_controller(
       if (management === undefined) return;
       throw new LiveMapTransitionError(
         "LIVEMAP_MANAGED_MUTATION_REJECTED",
-        "LiveMap mutation is controlled by an exclusive LiveHost authority.",
+        "LiveMap mutation is controlled by an exclusive Locus authority.",
       );
     },
     claimManagement(owner, schedule): void {
@@ -266,7 +266,7 @@ export function get_livemap_staged_authority<TMap extends object>(
   );
 }
 
-/** Route a managed link-target mutation without importing LiveHost into LiveMap. */
+/** Route a managed link-target mutation without importing Locus into LiveMap. */
 export function schedule_livemap_managed_mutation<TMap extends object>(
   map: TMap,
   mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,

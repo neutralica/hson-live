@@ -6,24 +6,24 @@ import type {
 } from "../../types/livemap.types.js";
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveHostDocumentActionName,
-} from "../../types/livehost.types.js";
+  LocusDocumentActionName,
+} from "../../types/locus.types.js";
 import {
-  decode_livehost_document_attribute_name,
-  decode_livehost_document_attrs,
-  decode_livehost_document_attribute_value,
-  decode_livehost_document_target,
-  is_livehost_json_value,
+  decode_locus_document_attribute_name,
+  decode_locus_document_attrs,
+  decode_locus_document_attribute_value,
+  decode_locus_document_target,
+  is_locus_json_value,
 } from "./locus.protocol.js";
-import { decode_livehost_graph_content } from "./locus.graph-content-codec.js";
+import { decode_locus_graph_content } from "./locus.graph-content-codec.js";
 
-export type LiveHostDocumentActionResolution =
+export type LocusDocumentActionResolution =
   | Readonly<{ kind: "not-document-action" }>
   | Readonly<{ kind: "unavailable"; message: string }>
   | Readonly<{ kind: "invalid"; message: string }>
   | Readonly<{ kind: "ready"; payload: JsonValue; execute: (targetMap?: LiveMapAuthority) => LiveMapGraphCommit }>;
 
-const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActionName>([
+const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LocusDocumentActionName>([
   "document.attrs.set",
   "document.attrs.drop",
   "document.attrs.setMany",
@@ -37,36 +37,36 @@ const DOCUMENT_ACTION_NAMES: ReadonlySet<string> = new Set<LiveHostDocumentActio
 ]);
 
 /** Resolve one reserved built-in without mutating. Execution remains in the normal action pipeline. */
-export function resolve_livehost_document_action(
+export function resolve_locus_document_action(
   map: LiveMapAuthority,
   name: string,
   payload: JsonValue | undefined,
-): LiveHostDocumentActionResolution {
+): LocusDocumentActionResolution {
   if (!is_document_action_name(name)) return Object.freeze({ kind: "not-document-action" });
   if (!is_document_live_map(map)) {
     return Object.freeze({
       kind: "unavailable",
-      message: `LiveHost action ${name} is unavailable for projected authorities.`,
+      message: `Locus action ${name} is unavailable for projected authorities.`,
     });
   }
   if (!is_record(payload)) {
-    return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} requires an object payload.` });
+    return Object.freeze({ kind: "invalid", message: `Locus action ${name} requires an object payload.` });
   }
 
-  const target = decode_livehost_document_target(payload.target);
+  const target = decode_locus_document_target(payload.target);
   if (target === undefined) {
-    return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} target is malformed.` });
+    return Object.freeze({ kind: "invalid", message: `Locus action ${name} target is malformed.` });
   }
 
   if (name === "document.attrs.set") {
     if (!has_exact_keys(payload, ["target", "name", "value"])) return invalid_fields(name);
-    const attributeName = decode_livehost_document_attribute_name(payload.name);
+    const attributeName = decode_locus_document_attribute_name(payload.name);
     if (attributeName === undefined) {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} attribute name is invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} attribute name is invalid.` });
     }
-    const value = decode_livehost_document_attribute_value(attributeName, payload.value);
+    const value = decode_locus_document_attribute_value(attributeName, payload.value);
     if (value === undefined) {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} attribute value is invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} attribute value is invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -77,9 +77,9 @@ export function resolve_livehost_document_action(
 
   if (name === "document.attrs.drop") {
     if (!has_exact_keys(payload, ["target", "name"])) return invalid_fields(name);
-    const attributeName = decode_livehost_document_attribute_name(payload.name);
+    const attributeName = decode_locus_document_attribute_name(payload.name);
     if (attributeName === undefined) {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} attribute name is invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} attribute name is invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -90,9 +90,9 @@ export function resolve_livehost_document_action(
 
   if (name === "document.attrs.setMany" || name === "document.attrs.replace") {
     if (!has_exact_keys(payload, ["target", "values"])) return invalid_fields(name);
-    const values = decode_livehost_document_attrs(payload.values);
+    const values = decode_locus_document_attrs(payload.values);
     if (values === undefined) {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} values are invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} values are invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -109,7 +109,7 @@ export function resolve_livehost_document_action(
     if (!has_exact_keys(payload, ["target", "names"])) return invalid_fields(name);
     const names = decode_attribute_names(payload.names);
     if (names === undefined) {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} names are invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} names are invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -133,9 +133,9 @@ export function resolve_livehost_document_action(
     if (index === undefined) return invalid_index(name);
     let replacement;
     try {
-      replacement = decode_livehost_graph_content(payload.replacement);
+      replacement = decode_locus_graph_content(payload.replacement);
     } catch {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} replacement is invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} replacement is invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -150,9 +150,9 @@ export function resolve_livehost_document_action(
     if (index === undefined) return invalid_index(name);
     let content;
     try {
-      content = decode_livehost_graph_content(payload.content);
+      content = decode_locus_graph_content(payload.content);
     } catch {
-      return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content is invalid.` });
+      return Object.freeze({ kind: "invalid", message: `Locus action ${name} content is invalid.` });
     }
     return Object.freeze({
       kind: "ready",
@@ -183,16 +183,16 @@ export function resolve_livehost_document_action(
   });
 }
 
-function is_document_action_name(name: string): name is LiveHostDocumentActionName {
+function is_document_action_name(name: string): name is LocusDocumentActionName {
   return DOCUMENT_ACTION_NAMES.has(name);
 }
 
-function invalid_fields(name: LiveHostDocumentActionName): LiveHostDocumentActionResolution {
-  return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} payload fields are malformed.` });
+function invalid_fields(name: LocusDocumentActionName): LocusDocumentActionResolution {
+  return Object.freeze({ kind: "invalid", message: `Locus action ${name} payload fields are malformed.` });
 }
 
-function invalid_index(name: LiveHostDocumentActionName): LiveHostDocumentActionResolution {
-  return Object.freeze({ kind: "invalid", message: `LiveHost action ${name} content index is invalid.` });
+function invalid_index(name: LocusDocumentActionName): LocusDocumentActionResolution {
+  return Object.freeze({ kind: "invalid", message: `Locus action ${name} content index is invalid.` });
 }
 
 function non_negative_integer(value: JsonValue | undefined): number | undefined {
@@ -203,7 +203,7 @@ function decode_attribute_names(value: JsonValue | undefined): readonly string[]
   if (!Array.isArray(value)) return undefined;
   const names: string[] = [];
   for (const item of value) {
-    const name = decode_livehost_document_attribute_name(item);
+    const name = decode_locus_document_attribute_name(item);
     if (name === undefined) return undefined;
     names.push(name);
   }
@@ -211,8 +211,8 @@ function decode_attribute_names(value: JsonValue | undefined): readonly string[]
 }
 
 function decoded_action_payload(value: unknown): JsonValue {
-  if (is_livehost_json_value(value)) return value;
-  throw new Error("Decoded LiveHost document action payload is not canonical JSON.");
+  if (is_locus_json_value(value)) return value;
+  throw new Error("Decoded Locus document action payload is not canonical JSON.");
 }
 
 function is_document_live_map(map: LiveMapAuthority): map is DocumentLiveMap {
@@ -225,7 +225,7 @@ function document_api(map: DocumentLiveMap): LiveMapDocumentApi {
 
 function document_api_for(map: LiveMapAuthority): LiveMapDocumentApi {
   if (is_document_live_map(map)) return document_api(map);
-  throw new Error("LiveHost document action draft mode is unavailable.");
+  throw new Error("Locus document action draft mode is unavailable.");
 }
 
 function is_record(value: unknown): value is Readonly<Record<string, JsonValue>> {

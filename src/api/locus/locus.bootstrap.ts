@@ -7,85 +7,82 @@ import type {
   LiveMapRootMode,
 } from "../../types/livemap.types.js";
 import type {
-  LiveHostClientForMap,
-  LiveHostClientOptionsForMap,
-  LiveHostRecoveryPlanner,
-  LiveHostSnapshotEnvelope,
-} from "../../types/livehost.types.js";
-import type { LiveHostRoutingSelector } from "../../types/internal/livehost.routing.types.js";
+  LocusClient,
+  LocusClientOptions,
+  LocusRecoveryPlanner,
+  LocusSelector,
+  LocusSnapshotEnvelope,
+} from "../../types/locus.types.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import { json_value_from_node } from "../transform/serializers/serialize-json.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import { create_livehost_client } from "./locus.client.js";
-import { decode_livehost_document_snapshot } from "./locus.document-snapshot.js";
+import { create_locus_client } from "./locus.client.js";
+import { decode_locus_document_snapshot } from "./locus.document-snapshot.js";
 
-export const LIVEHOST_BOOTSTRAP_FORMAT = "hson-livehost-bootstrap" as const;
-export const LIVEHOST_BOOTSTRAP_FORMAT_VERSION = 1 as const;
-export const LIVEHOST_BOOTSTRAP_MEDIA_TYPE = "application/vnd.hson-live.livehost-bootstrap+hson; version=1" as const;
-export const DEFAULT_LIVEHOST_BOOTSTRAP_MAX_BYTES = 1024 * 1024;
-export const DEFAULT_LIVEHOST_BOOTSTRAP_MAX_GRAPH_DEPTH = 256;
-export const DEFAULT_LIVEHOST_BOOTSTRAP_MAX_GRAPH_NODES = 100_000;
+export const LOCUS_BOOTSTRAP_FORMAT = "hson-locus-bootstrap" as const;
+export const LOCUS_BOOTSTRAP_MEDIA_TYPE = "application/vnd.hson-live.locus-bootstrap+hson" as const;
+export const DEFAULT_LOCUS_BOOTSTRAP_MAX_BYTES = 1024 * 1024;
+export const DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_DEPTH = 256;
+export const DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_NODES = 100_000;
 
-export type LiveHostBootstrapState = Readonly<{
+export type LocusBootstrapState = Readonly<{
   format: "hson";
   payload: string;
 }>;
 
-export type LiveHostBootstrapContinuation = Readonly<{
+export type LocusBootstrapContinuation = Readonly<{
   transport: "websocket";
   endpoint: string;
   capabilities: Readonly<{ hsonSnapshots: true }>;
 }>;
 
-export type LiveHostBootstrapPackageV1 = Readonly<{
-  format: typeof LIVEHOST_BOOTSTRAP_FORMAT;
-  formatVersion: typeof LIVEHOST_BOOTSTRAP_FORMAT_VERSION;
-  authoritySelector: string;
+export type LocusBootstrap = Readonly<{
+  format: typeof LOCUS_BOOTSTRAP_FORMAT;
+  locusSelector: LocusSelector;
   logicalMapId: string;
   incarnationId: string;
   mode: LiveMapRootMode;
   rev: number;
-  state: LiveHostBootstrapState;
-  continuation: LiveHostBootstrapContinuation;
+  state: LocusBootstrapState;
+  continuation: LocusBootstrapContinuation;
 }>;
 
-export type LiveHostBootstrapCodecOptions = Readonly<{
+export type LocusBootstrapCodecOptions = Readonly<{
   maxBytes?: number;
   maxGraphDepth?: number;
   maxGraphNodes?: number;
 }>;
 
-export type LiveHostBootstrapErrorCode =
-  | "LIVEHOST_BOOTSTRAP_MALFORMED_HSON"
-  | "LIVEHOST_BOOTSTRAP_ENVELOPE_INVALID"
-  | "LIVEHOST_BOOTSTRAP_FORMAT_UNSUPPORTED"
-  | "LIVEHOST_BOOTSTRAP_VERSION_UNSUPPORTED"
-  | "LIVEHOST_BOOTSTRAP_SELECTOR_INVALID"
-  | "LIVEHOST_BOOTSTRAP_IDENTITY_INVALID"
-  | "LIVEHOST_BOOTSTRAP_REVISION_INVALID"
-  | "LIVEHOST_BOOTSTRAP_MODE_INVALID"
-  | "LIVEHOST_BOOTSTRAP_STATE_INVALID"
-  | "LIVEHOST_BOOTSTRAP_CONTINUATION_INVALID"
-  | "LIVEHOST_BOOTSTRAP_TOO_LARGE"
-  | "LIVEHOST_BOOTSTRAP_GRAPH_LIMIT_EXCEEDED"
-  | "LIVEHOST_BOOTSTRAP_CAPTURE_FAILED";
+export type LocusBootstrapErrorCode =
+  | "LOCUS_BOOTSTRAP_MALFORMED_HSON"
+  | "LOCUS_BOOTSTRAP_ENVELOPE_INVALID"
+  | "LOCUS_BOOTSTRAP_FORMAT_UNSUPPORTED"
+  | "LOCUS_BOOTSTRAP_SELECTOR_INVALID"
+  | "LOCUS_BOOTSTRAP_IDENTITY_INVALID"
+  | "LOCUS_BOOTSTRAP_REVISION_INVALID"
+  | "LOCUS_BOOTSTRAP_MODE_INVALID"
+  | "LOCUS_BOOTSTRAP_STATE_INVALID"
+  | "LOCUS_BOOTSTRAP_CONTINUATION_INVALID"
+  | "LOCUS_BOOTSTRAP_TOO_LARGE"
+  | "LOCUS_BOOTSTRAP_GRAPH_LIMIT_EXCEEDED"
+  | "LOCUS_BOOTSTRAP_CAPTURE_FAILED";
 
-export class LiveHostBootstrapError extends Error {
+export class LocusBootstrapError extends Error {
   public constructor(
-    public readonly code: LiveHostBootstrapErrorCode,
+    public readonly code: LocusBootstrapErrorCode,
     message: string,
     public override readonly cause?: unknown,
   ) {
     super(message, cause === undefined ? undefined : { cause });
-    this.name = "LiveHostBootstrapError";
+    this.name = "LocusBootstrapError";
   }
 }
 
-export type LiveHostBootstrapInstall = Readonly<{
-  bootstrap: LiveHostBootstrapPackageV1;
+export type LocusBootstrapInstall = Readonly<{
+  bootstrap: LocusBootstrap;
   map: ClassifiedLiveMap;
   recovery: Readonly<{
     logicalMapId: string;
@@ -94,13 +91,13 @@ export type LiveHostBootstrapInstall = Readonly<{
 }>;
 
 /** Minimum authority surface required for one canonical bootstrap cut. */
-export type LiveHostBootstrapAuthority = Readonly<{
+export type LocusBootstrapAuthority = Readonly<{
   stream: Readonly<{ logicalMapId: string }>;
-  recovery: LiveHostRecoveryPlanner;
+  recovery: LocusRecoveryPlanner;
 }>;
 
-export type LiveHostBootstrapClient<TMap extends LiveMapAuthority = ClassifiedLiveMap> = Readonly<{
-  bootstrap: LiveHostBootstrapPackageV1;
+export type LocusBootstrapClient<TMap extends LiveMapAuthority = ClassifiedLiveMap> = Readonly<{
+  bootstrap: LocusBootstrap;
   map: TMap;
   readonly status:
     | "installed"
@@ -110,7 +107,7 @@ export type LiveHostBootstrapClient<TMap extends LiveMapAuthority = ClassifiedLi
     | "failed"
     | "disposed";
   readonly failure: unknown;
-  client: LiveHostClientForMap<TMap>;
+  client: LocusClient<TMap>;
   connect_and_recover(): Promise<Readonly<{
     status: "live";
     strategy: "current" | "replay" | "snapshot";
@@ -142,9 +139,9 @@ function is_data_map(map: ClassifiedLiveMap): map is LiveMap<JsonValue | undefin
 function limit(value: number | undefined, fallback: number, name: string): number {
   const selected = value ?? fallback;
   if (!Number.isInteger(selected) || selected <= 0) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_ENVELOPE_INVALID",
-      `LiveHost bootstrap ${name} must be a positive integer.`,
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_ENVELOPE_INVALID",
+      `Locus bootstrap ${name} must be a positive integer.`,
     );
   }
   return selected;
@@ -152,16 +149,16 @@ function limit(value: number | undefined, fallback: number, name: string): numbe
 
 function exact_record(value: unknown): Readonly<Record<string, unknown>> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_ENVELOPE_INVALID",
-      "LiveHost bootstrap envelope must be an object.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_ENVELOPE_INVALID",
+      "Locus bootstrap envelope must be an object.",
     );
   }
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_ENVELOPE_INVALID",
-      "LiveHost bootstrap envelope has an invalid prototype.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_ENVELOPE_INVALID",
+      "Locus bootstrap envelope has an invalid prototype.",
     );
   }
   return value as Readonly<Record<string, unknown>>;
@@ -170,9 +167,9 @@ function exact_record(value: unknown): Readonly<Record<string, unknown>> {
 function require_keys(record: Readonly<Record<string, unknown>>, keys: readonly string[]): void {
   const actual = Object.keys(record);
   if (actual.length !== keys.length || !actual.every((key) => keys.includes(key))) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_ENVELOPE_INVALID",
-      "LiveHost bootstrap envelope contains missing or unexpected fields.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_ENVELOPE_INVALID",
+      "Locus bootstrap envelope contains missing or unexpected fields.",
     );
   }
 }
@@ -187,7 +184,7 @@ function bounded_string(value: unknown, max: number): value is string {
 function valid_websocket_endpoint(value: unknown): value is string {
   if (!bounded_string(value, 2048)) return false;
   try {
-    const resolved = new URL(value, "ws://livehost-bootstrap.invalid/");
+    const resolved = new URL(value, "ws://locus-bootstrap.invalid/");
     return (resolved.protocol === "ws:" || resolved.protocol === "wss:")
       && resolved.username === ""
       && resolved.password === "";
@@ -198,17 +195,17 @@ function valid_websocket_endpoint(value: unknown): value is string {
 
 function validate_graph_limits(
   value: unknown,
-  options: LiveHostBootstrapCodecOptions,
+  options: LocusBootstrapCodecOptions,
 ): void {
-  const maxDepth = limit(options.maxGraphDepth, DEFAULT_LIVEHOST_BOOTSTRAP_MAX_GRAPH_DEPTH, "graph depth limit");
-  const maxNodes = limit(options.maxGraphNodes, DEFAULT_LIVEHOST_BOOTSTRAP_MAX_GRAPH_NODES, "graph node limit");
+  const maxDepth = limit(options.maxGraphDepth, DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_DEPTH, "graph depth limit");
+  const maxNodes = limit(options.maxGraphNodes, DEFAULT_LOCUS_BOOTSTRAP_MAX_GRAPH_NODES, "graph node limit");
   let nodes = 0;
   const visit = (current: unknown, depth: number): void => {
     nodes += 1;
     if (nodes > maxNodes || depth > maxDepth) {
-      throw new LiveHostBootstrapError(
-        "LIVEHOST_BOOTSTRAP_GRAPH_LIMIT_EXCEEDED",
-        "LiveHost bootstrap graph exceeds its configured limits.",
+      throw new LocusBootstrapError(
+        "LOCUS_BOOTSTRAP_GRAPH_LIMIT_EXCEEDED",
+        "Locus bootstrap graph exceeds its configured limits.",
       );
     }
     if (typeof current !== "object" || current === null) return;
@@ -221,9 +218,9 @@ function validate_graph_limits(
   visit(value, 0);
 }
 
-type LiveHostBootstrapSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { hson: string }>;
+type LocusBootstrapSnapshotEnvelope = Extract<LocusSnapshotEnvelope, { hson: string }>;
 
-function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHostBootstrapSnapshotEnvelope {
+function snapshot_from_bootstrap(bootstrap: LocusBootstrap): LocusBootstrapSnapshotEnvelope {
   return Object.freeze({
     logicalMapId: bootstrap.logicalMapId,
     incarnationId: bootstrap.incarnationId,
@@ -240,9 +237,9 @@ function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHos
  * delivery. The recovery planner remains the sole source of canonical map
  * identity, revision, mode, and HSON state.
  */
-function with_livehost_bootstrap_snapshot<T>(
-  authority: LiveHostBootstrapAuthority,
-  useSnapshot: (snapshot: LiveHostBootstrapSnapshotEnvelope) => T,
+function with_locus_bootstrap_snapshot<T>(
+  authority: LocusBootstrapAuthority,
+  useSnapshot: (snapshot: LocusBootstrapSnapshotEnvelope) => T,
 ): T {
   let plan;
   try {
@@ -259,21 +256,20 @@ function with_livehost_bootstrap_snapshot<T>(
   }
 }
 
-/** Application/host-owned routing and continuation inputs for one bootstrap. */
-type LiveHostBootstrapRoutingIngredients = Readonly<{
-  authoritySelector: LiveHostRoutingSelector;
+/** Application/runtime-owned routing and continuation inputs for one bootstrap. */
+type LocusBootstrapRoutingIngredients = Readonly<{
+  locusSelector: LocusSelector;
   websocketEndpoint: string;
 }>;
 
 /** The only construction point that combines authority state with delivery metadata. */
-function assemble_livehost_bootstrap(
-  snapshot: LiveHostBootstrapSnapshotEnvelope,
-  routing: LiveHostBootstrapRoutingIngredients,
-): LiveHostBootstrapPackageV1 {
+function assemble_locus_bootstrap(
+  snapshot: LocusBootstrapSnapshotEnvelope,
+  routing: LocusBootstrapRoutingIngredients,
+): LocusBootstrap {
   return Object.freeze({
-    format: LIVEHOST_BOOTSTRAP_FORMAT,
-    formatVersion: LIVEHOST_BOOTSTRAP_FORMAT_VERSION,
-    authoritySelector: routing.authoritySelector,
+    format: LOCUS_BOOTSTRAP_FORMAT,
+    locusSelector: routing.locusSelector,
     logicalMapId: snapshot.logicalMapId,
     incarnationId: snapshot.incarnationId,
     mode: snapshot.mode,
@@ -288,16 +284,16 @@ function assemble_livehost_bootstrap(
 }
 
 function map_from_snapshot(
-  snapshot: LiveHostBootstrapSnapshotEnvelope,
-  options: LiveHostBootstrapCodecOptions,
+  snapshot: LocusBootstrapSnapshotEnvelope,
+  options: LocusBootstrapCodecOptions,
 ): ClassifiedLiveMap {
   let root;
   try {
     root = parse_hson(snapshot.hson, { allowTopLevelTextFragment: true });
   } catch (cause) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_STATE_INVALID",
-      "LiveHost bootstrap state HSON is malformed.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus bootstrap state HSON is malformed.",
       cause,
     );
   }
@@ -306,16 +302,16 @@ function map_from_snapshot(
   try {
     map = make_classified_livemap(root);
   } catch (cause) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_STATE_INVALID",
-      "LiveHost bootstrap state is not a canonical LiveMap graph.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus bootstrap state is not a canonical LiveMap graph.",
       cause,
     );
   }
   if (map.mode !== snapshot.mode) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_STATE_INVALID",
-      "LiveHost bootstrap state mode does not match its envelope.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus bootstrap state mode does not match its envelope.",
     );
   }
   try {
@@ -328,15 +324,15 @@ function map_from_snapshot(
         root: capture.root,
       }));
     } else if (is_document_map(map)) {
-      const capture = decode_livehost_document_snapshot(snapshot);
+      const capture = decode_locus_document_snapshot(snapshot);
       map.restore(capture, { identity: "preserve-metadata" });
     } else {
-      throw new Error("LiveHost bootstrap reconstructed an unsupported map mode.");
+      throw new Error("Locus bootstrap reconstructed an unsupported map mode.");
     }
   } catch (cause) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_STATE_INVALID",
-      "LiveHost bootstrap state could not be installed.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus bootstrap state could not be installed.",
       cause,
     );
   }
@@ -345,13 +341,12 @@ function map_from_snapshot(
 
 function validate_package(
   value: unknown,
-  options: LiveHostBootstrapCodecOptions,
-): LiveHostBootstrapPackageV1 {
+  options: LocusBootstrapCodecOptions,
+): LocusBootstrap {
   const record = exact_record(value);
   require_keys(record, [
     "format",
-    "formatVersion",
-    "authoritySelector",
+    "locusSelector",
     "logicalMapId",
     "incarnationId",
     "mode",
@@ -359,48 +354,42 @@ function validate_package(
     "state",
     "continuation",
   ]);
-  if (record.format !== LIVEHOST_BOOTSTRAP_FORMAT) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_FORMAT_UNSUPPORTED",
-      "LiveHost bootstrap format is unsupported.",
+  if (record.format !== LOCUS_BOOTSTRAP_FORMAT) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_FORMAT_UNSUPPORTED",
+      "Locus bootstrap format is unsupported.",
     );
   }
-  if (record.formatVersion !== LIVEHOST_BOOTSTRAP_FORMAT_VERSION) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_VERSION_UNSUPPORTED",
-      "LiveHost bootstrap format version is unsupported.",
-    );
-  }
-  if (!bounded_string(record.authoritySelector, 512)) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_SELECTOR_INVALID",
-      "LiveHost bootstrap authority selector is invalid.",
+  if (!bounded_string(record.locusSelector, 512)) {
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_SELECTOR_INVALID",
+      "Locus bootstrap selector is invalid.",
     );
   }
   if (!bounded_string(record.logicalMapId, 512) || !bounded_string(record.incarnationId, 512)) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_IDENTITY_INVALID",
-      "LiveHost bootstrap canonical identity is invalid.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_IDENTITY_INVALID",
+      "Locus bootstrap canonical identity is invalid.",
     );
   }
   if (!is_revision(record.rev)) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_REVISION_INVALID",
-      "LiveHost bootstrap revision is invalid.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_REVISION_INVALID",
+      "Locus bootstrap revision is invalid.",
     );
   }
   if (!is_mode(record.mode)) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_MODE_INVALID",
-      "LiveHost bootstrap map mode is invalid.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_MODE_INVALID",
+      "Locus bootstrap map mode is invalid.",
     );
   }
   const state = exact_record(record.state);
   require_keys(state, ["format", "payload"]);
   if (state.format !== "hson" || typeof state.payload !== "string") {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_STATE_INVALID",
-      "LiveHost bootstrap state encoding is invalid.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_STATE_INVALID",
+      "Locus bootstrap state encoding is invalid.",
     );
   }
   const continuation = exact_record(record.continuation);
@@ -412,16 +401,15 @@ function validate_package(
     || !valid_websocket_endpoint(continuation.endpoint)
     || capabilities.hsonSnapshots !== true
   ) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_CONTINUATION_INVALID",
-      "LiveHost bootstrap continuation metadata is invalid.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_CONTINUATION_INVALID",
+      "Locus bootstrap continuation metadata is invalid.",
     );
   }
 
-  const bootstrap: LiveHostBootstrapPackageV1 = Object.freeze({
-    format: LIVEHOST_BOOTSTRAP_FORMAT,
-    formatVersion: LIVEHOST_BOOTSTRAP_FORMAT_VERSION,
-    authoritySelector: record.authoritySelector,
+  const bootstrap: LocusBootstrap = Object.freeze({
+    format: LOCUS_BOOTSTRAP_FORMAT,
+    locusSelector: record.locusSelector,
     logicalMapId: record.logicalMapId,
     incarnationId: record.incarnationId,
     mode: record.mode,
@@ -437,16 +425,15 @@ function validate_package(
   return bootstrap;
 }
 
-/** Encode one fully validated version-1 HTTP bootstrap package as canonical HSON text. */
-export function encode_livehost_bootstrap(
-  bootstrap: LiveHostBootstrapPackageV1,
-  options: LiveHostBootstrapCodecOptions = {},
+/** Encode one fully validated current HTTP bootstrap package as canonical HSON text. */
+export function encode_locus_bootstrap(
+  bootstrap: LocusBootstrap,
+  options: LocusBootstrapCodecOptions = {},
 ): string {
   const validated = validate_package(bootstrap, options);
   const representation: JsonValue = {
     format: validated.format,
-    formatVersion: validated.formatVersion,
-    authoritySelector: validated.authoritySelector,
+    locusSelector: validated.locusSelector,
     logicalMapId: validated.logicalMapId,
     incarnationId: validated.incarnationId,
     mode: validated.mode,
@@ -467,35 +454,35 @@ export function encode_livehost_bootstrap(
     detach_hson_root_value(parse_json(representation)),
     { noBreak: true },
   );
-  const maxBytes = limit(options.maxBytes, DEFAULT_LIVEHOST_BOOTSTRAP_MAX_BYTES, "byte limit");
+  const maxBytes = limit(options.maxBytes, DEFAULT_LOCUS_BOOTSTRAP_MAX_BYTES, "byte limit");
   if (textEncoder.encode(encoded).byteLength > maxBytes) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_TOO_LARGE",
-      "LiveHost bootstrap package exceeds its configured byte limit.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_TOO_LARGE",
+      "Locus bootstrap package exceeds its configured byte limit.",
     );
   }
   return encoded;
 }
 
-/** Decode and completely validate one version-1 HTTP bootstrap package. */
-export function decode_livehost_bootstrap(
+/** Decode and completely validate one current HTTP bootstrap package. */
+export function decode_locus_bootstrap(
   encoded: string,
-  options: LiveHostBootstrapCodecOptions = {},
-): LiveHostBootstrapPackageV1 {
-  const maxBytes = limit(options.maxBytes, DEFAULT_LIVEHOST_BOOTSTRAP_MAX_BYTES, "byte limit");
+  options: LocusBootstrapCodecOptions = {},
+): LocusBootstrap {
+  const maxBytes = limit(options.maxBytes, DEFAULT_LOCUS_BOOTSTRAP_MAX_BYTES, "byte limit");
   if (textEncoder.encode(encoded).byteLength > maxBytes) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_TOO_LARGE",
-      "LiveHost bootstrap package exceeds its configured byte limit.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_TOO_LARGE",
+      "Locus bootstrap package exceeds its configured byte limit.",
     );
   }
   let value: JsonValue;
   try {
     value = json_value_from_node(parse_hson(encoded));
   } catch (cause) {
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_MALFORMED_HSON",
-      "LiveHost bootstrap package is malformed HSON.",
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_MALFORMED_HSON",
+      "Locus bootstrap package is malformed HSON.",
       cause,
     );
   }
@@ -503,37 +490,36 @@ export function decode_livehost_bootstrap(
 }
 
 /** Capture a single exact authority cut using the established recovery planner. */
-export function capture_livehost_bootstrap(
-  authority: LiveHostBootstrapAuthority,
-  authoritySelector: string,
+export function capture_locus_bootstrap(
+  authority: LocusBootstrapAuthority,
+  locusSelector: LocusSelector,
   websocketEndpoint: string,
-  options: LiveHostBootstrapCodecOptions = {},
-): LiveHostBootstrapPackageV1 {
+  options: LocusBootstrapCodecOptions = {},
+): LocusBootstrap {
   try {
-    return with_livehost_bootstrap_snapshot(authority, (snapshot) => {
-      const routingSelector: LiveHostRoutingSelector = authoritySelector;
-      const bootstrap = assemble_livehost_bootstrap(snapshot, {
-        authoritySelector: routingSelector,
+    return with_locus_bootstrap_snapshot(authority, (snapshot) => {
+      const bootstrap = assemble_locus_bootstrap(snapshot, {
+        locusSelector,
         websocketEndpoint,
       });
       validate_package(bootstrap, options);
       return bootstrap;
     });
   } catch (cause) {
-    if (cause instanceof LiveHostBootstrapError) throw cause;
-    throw new LiveHostBootstrapError(
-      "LIVEHOST_BOOTSTRAP_CAPTURE_FAILED",
-      "LiveHost authority bootstrap capture failed.",
+    if (cause instanceof LocusBootstrapError) throw cause;
+    throw new LocusBootstrapError(
+      "LOCUS_BOOTSTRAP_CAPTURE_FAILED",
+      "Locus authority bootstrap capture failed.",
       cause,
     );
   }
 }
 
 /** Install a validated detached mirror and its exact existing-recovery cursor. */
-export function install_livehost_bootstrap(
-  bootstrap: LiveHostBootstrapPackageV1,
-  options: LiveHostBootstrapCodecOptions = {},
-): LiveHostBootstrapInstall {
+export function install_locus_bootstrap(
+  bootstrap: LocusBootstrap,
+  options: LocusBootstrapCodecOptions = {},
+): LocusBootstrapInstall {
   const validated = validate_package(bootstrap, options);
   const map = map_from_snapshot(snapshot_from_bootstrap(validated), options);
   return Object.freeze({
@@ -549,21 +535,21 @@ export function install_livehost_bootstrap(
   });
 }
 
-/** Create the existing LiveHost client around an installed bootstrap mirror. */
-export function create_livehost_bootstrap_client<TMap extends LiveMapAuthority>(
-  install: LiveHostBootstrapInstall & Readonly<{ map: TMap }>,
-  options: Omit<LiveHostClientOptionsForMap<TMap>, "map" | "recovery">,
-): LiveHostBootstrapClient<TMap> {
-  const client = create_livehost_client({
+/** Create the existing Locus client around an installed bootstrap mirror. */
+export function create_locus_bootstrap_client<TMap extends LiveMapAuthority>(
+  install: LocusBootstrapInstall & Readonly<{ map: TMap }>,
+  options: Omit<LocusClientOptions<TMap>, "map" | "recovery">,
+): LocusBootstrapClient<TMap> {
+  const client = create_locus_client({
     ...options,
     map: install.map,
     recovery: install.recovery,
   });
   let disposed = false;
   let connected = false;
-  let status: LiveHostBootstrapClient<TMap>["status"] = "installed";
+  let status: LocusBootstrapClient<TMap>["status"] = "installed";
   let failure: unknown;
-  const result: LiveHostBootstrapClient<TMap> = {
+  const result: LocusBootstrapClient<TMap> = {
     bootstrap: install.bootstrap,
     map: install.map,
     get status() {
@@ -574,7 +560,7 @@ export function create_livehost_bootstrap_client<TMap extends LiveMapAuthority>(
     },
     client,
     async connect_and_recover() {
-      if (disposed) throw new Error("LiveHost bootstrap client is disposed.");
+      if (disposed) throw new Error("Locus bootstrap client is disposed.");
       try {
         if (!connected) {
           status = "socket-connecting";
@@ -602,7 +588,7 @@ export function create_livehost_bootstrap_client<TMap extends LiveMapAuthority>(
       client.recovery.dispose();
       client.session.dispose();
       client.disconnect();
-      options.socket.close(1000, "LiveHost bootstrap client disposed.");
+      options.socket.close(1000, "Locus bootstrap client disposed.");
     },
   };
   return Object.freeze(result);

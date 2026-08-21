@@ -1,38 +1,38 @@
-// livehost.recovery.ts
+// locus.recovery.ts
 
 import type { DocumentLiveMapCapture, LiveMapAuthority } from "../../types/livemap.types.js";
 import { is_Node } from "../../core/node-guards.js";
 import type {
-  LiveHostCanonicalCommit,
-  LiveHostCanonicalStream,
-  LiveHostDisposer,
-  LiveHostRecoveryAttemptDiagnostics,
-  LiveHostRecoveryAttemptState,
-  LiveHostRecoveryBodyItem,
-  LiveHostRecoveryBodyObserver,
-  LiveHostRecoveryCompletion,
-  LiveHostRecoveryCurrentPlan,
-  LiveHostRecoveryHooks,
-  LiveHostRecoveryOptions,
-  LiveHostRecoveryPlan,
-  LiveHostRecoveryPlanner,
-  LiveHostRecoveryPlannerDiagnostics,
-  LiveHostRecoveryRejectCode,
-  LiveHostRecoveryRejectPlan,
-  LiveHostRecoveryReplayPlan,
-  LiveHostRecoveryRequest,
-  LiveHostRecoveryRuntimeErrorCode,
-  LiveHostRecoverySnapshotPlan,
-  LiveHostRecoverySnapshotReason,
-  LiveHostSnapshotEnvelope,
+  LocusCanonicalCommit,
+  LocusCanonicalStream,
+  LocusDisposer,
+  LocusRecoveryAttemptDiagnostics,
+  LocusRecoveryAttemptState,
+  LocusRecoveryBodyItem,
+  LocusRecoveryBodyObserver,
+  LocusRecoveryCompletion,
+  LocusRecoveryCurrentPlan,
+  LocusRecoveryHooks,
+  LocusRecoveryOptions,
+  LocusRecoveryPlan,
+  LocusRecoveryPlanner,
+  LocusRecoveryPlannerDiagnostics,
+  LocusRecoveryRejectCode,
+  LocusRecoveryRejectPlan,
+  LocusRecoveryReplayPlan,
+  LocusRecoveryRequest,
+  LocusRecoveryRuntimeErrorCode,
+  LocusRecoverySnapshotPlan,
+  LocusRecoverySnapshotReason,
+  LocusSnapshotEnvelope,
   LiveTraceSink,
-} from "../../types/livehost.types.js";
-import { LiveHostRecoveryError } from "./locus.error.js";
+} from "../../types/locus.types.js";
+import { LocusRecoveryError } from "./locus.error.js";
 import { create_live_trace_context, type LiveTraceContext } from "./locus.trace.js";
 import {
-  encode_livehost_document_snapshot,
-  type LiveHostDocumentSnapshotEncoding,
-  type LiveHostOutboundDocumentSnapshotEnvelope,
+  encode_locus_document_snapshot,
+  type LocusDocumentSnapshotEncoding,
+  type LocusOutboundDocumentSnapshotEnvelope,
 } from "./locus.document-snapshot.js";
 import { serialize_hson } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
@@ -45,7 +45,7 @@ const textEncoder = new TextEncoder();
 function must_bound(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
   if (Number.isFinite(value) && value >= 0) return Math.trunc(value);
-  throw new Error(`LiveHost recovery ${name} must be a finite non-negative number.`);
+  throw new Error(`Locus recovery ${name} must be a finite non-negative number.`);
 }
 
 function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
@@ -64,45 +64,45 @@ function is_document_capture(value: unknown): value is DocumentLiveMapCapture {
 
 function encoded_bytes(value: unknown): number {
   const encoded = JSON.stringify(value);
-  if (encoded === undefined) throw new Error("LiveHost recovery value is not JSON-encodable.");
+  if (encoded === undefined) throw new Error("Locus recovery value is not JSON-encodable.");
   return textEncoder.encode(encoded).byteLength;
 }
 
 function runtime_error(
-  code: LiveHostRecoveryRuntimeErrorCode,
+  code: LocusRecoveryRuntimeErrorCode,
   message: string,
   cause?: unknown,
-): LiveHostRecoveryError {
-  return new LiveHostRecoveryError(code, message, cause);
+): LocusRecoveryError {
+  return new LocusRecoveryError(code, message, cause);
 }
 
-type TracedLiveHostRecoveryPlanner = LiveHostRecoveryPlanner & Readonly<{
+type TracedLocusRecoveryPlanner = LocusRecoveryPlanner & Readonly<{
   plan_traced: (
-    request: LiveHostRecoveryRequest,
+    request: LocusRecoveryRequest,
     trace: LiveTraceContext,
     correlation?: Readonly<{ requestId?: string }>,
-    hooks?: LiveHostRecoveryHooks,
-  ) => LiveHostRecoveryPlan;
+    hooks?: LocusRecoveryHooks,
+  ) => LocusRecoveryPlan;
   plan_with_snapshot_encoding: (
-    request: LiveHostRecoveryRequest,
-    encoding: LiveHostDocumentSnapshotEncoding,
-    hooks?: LiveHostRecoveryHooks,
-  ) => LiveHostRecoveryPlan;
+    request: LocusRecoveryRequest,
+    encoding: LocusDocumentSnapshotEncoding,
+    hooks?: LocusRecoveryHooks,
+  ) => LocusRecoveryPlan;
   plan_traced_with_snapshot_encoding: (
-    request: LiveHostRecoveryRequest,
-    encoding: LiveHostDocumentSnapshotEncoding,
+    request: LocusRecoveryRequest,
+    encoding: LocusDocumentSnapshotEncoding,
     trace: LiveTraceContext,
     correlation?: Readonly<{ requestId?: string }>,
-    hooks?: LiveHostRecoveryHooks,
-  ) => LiveHostRecoveryPlan;
+    hooks?: LocusRecoveryHooks,
+  ) => LocusRecoveryPlan;
 }>;
 
-const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
+const HSON_SNAPSHOT_ENCODING: LocusDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
 
 /** Keep the public planner and connection-selected snapshot body on one current envelope. */
 function recovery_plan_snapshot_view(
-  snapshot: LiveHostOutboundDocumentSnapshotEnvelope,
-): LiveHostSnapshotEnvelope {
+  snapshot: LocusOutboundDocumentSnapshotEnvelope,
+): LocusSnapshotEnvelope {
   return snapshot;
 }
 
@@ -110,23 +110,23 @@ function recovery_plan_snapshot_view(
  * Create the Locus-side recovery planner for one canonical LiveMap stream.
  * The planner produces recovery material directly and has no transport role.
  */
-export function make_livehost_recovery_planner<TMap extends LiveMapAuthority>(
+export function make_locus_recovery_planner<TMap extends LiveMapAuthority>(
   map: TMap,
-  stream: LiveHostCanonicalStream<TMap>,
-  options: LiveHostRecoveryOptions = {},
+  stream: LocusCanonicalStream<TMap>,
+  options: LocusRecoveryOptions = {},
   traceSink?: LiveTraceSink,
-): TracedLiveHostRecoveryPlanner {
-  return make_livehost_recovery_planner_internal(map, stream, options, traceSink);
+): TracedLocusRecoveryPlanner {
+  return make_locus_recovery_planner_internal(map, stream, options, traceSink);
 }
 
 /** @internal Construct the real planner with connection-selected snapshot planning support. */
-export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuthority>(
+export function make_locus_recovery_planner_internal<TMap extends LiveMapAuthority>(
   map: TMap,
-  stream: LiveHostCanonicalStream<TMap>,
-  options: LiveHostRecoveryOptions,
+  stream: LocusCanonicalStream<TMap>,
+  options: LocusRecoveryOptions,
   traceSink: LiveTraceSink | undefined,
   activity?: (active: boolean) => void,
-): TracedLiveHostRecoveryPlanner {
+): TracedLocusRecoveryPlanner {
   const maxTailCommits = must_bound(options.maxTailCommits, DEFAULT_MAX_TAIL_COMMITS, "maxTailCommits");
   const maxTailBytes = must_bound(options.maxTailBytes, DEFAULT_MAX_TAIL_BYTES, "maxTailBytes");
   let activeAttemptCount = 0;
@@ -139,10 +139,10 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
   let abortedAttemptCount = 0;
   let overflowCount = 0;
   let traceAttemptCount = 0;
-  const activeAttemptDisposers = new Set<LiveHostDisposer>();
+  const activeAttemptDisposers = new Set<LocusDisposer>();
   let disposed = false;
 
-  function reject(code: LiveHostRecoveryRejectCode, message: string): LiveHostRecoveryRejectPlan {
+  function reject(code: LocusRecoveryRejectCode, message: string): LocusRecoveryRejectPlan {
     rejectPlanCount += 1;
     return Object.freeze({
       outcome: "reject",
@@ -155,30 +155,30 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
     });
   }
 
-  function plan(request: LiveHostRecoveryRequest, hooks: LiveHostRecoveryHooks = {}): LiveHostRecoveryPlan {
+  function plan(request: LocusRecoveryRequest, hooks: LocusRecoveryHooks = {}): LocusRecoveryPlan {
     if (traceSink === undefined) return plan_internal(request, hooks, undefined, undefined, HSON_SNAPSHOT_ENCODING);
     traceAttemptCount += 1;
     const trace = create_live_trace_context(
       traceSink,
-      `lht-recovery-${stream.logicalMapId}-${traceAttemptCount}`,
+      `locus-recovery-${stream.logicalMapId}-${traceAttemptCount}`,
     );
     return plan_internal(request, hooks, trace, undefined, HSON_SNAPSHOT_ENCODING);
   }
 
   function plan_internal(
-    request: LiveHostRecoveryRequest,
-    hooks: LiveHostRecoveryHooks,
+    request: LocusRecoveryRequest,
+    hooks: LocusRecoveryHooks,
     trace: LiveTraceContext | undefined,
     correlation: Readonly<{ requestId?: string }> | undefined,
-    documentSnapshotEncoding: LiveHostDocumentSnapshotEncoding,
-  ): LiveHostRecoveryPlan {
+    documentSnapshotEncoding: LocusDocumentSnapshotEncoding,
+  ): LocusRecoveryPlan {
     if (disposed) {
-      throw runtime_error("LIVEHOST_RECOVERY_DISPOSED", "LiveHost recovery planner is disposed.");
+      throw runtime_error("LOCUS_RECOVERY_DISPOSED", "Locus recovery planner is disposed.");
     }
     if (request.logicalMapId !== stream.logicalMapId) {
       const rejected = reject(
-        "LIVEHOST_RECOVERY_INVALID_TARGET",
-        `Unknown LiveHost logical map ID: ${request.logicalMapId}`,
+        "LOCUS_RECOVERY_INVALID_TARGET",
+        `Unknown Locus logical map ID: ${request.logicalMapId}`,
       );
       trace_plan(trace, request, rejected, "invalid", correlation);
       return rejected;
@@ -189,8 +189,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       && (!Number.isInteger(request.lastAppliedRev) || request.lastAppliedRev < 0)
     ) {
       const rejected = reject(
-        "LIVEHOST_RECOVERY_INVALID_REQUEST",
-        "LiveHost recovery lastAppliedRev must be a non-negative integer.",
+        "LOCUS_RECOVERY_INVALID_REQUEST",
+        "Locus recovery lastAppliedRev must be a non-negative integer.",
       );
       trace_plan(trace, request, rejected, "invalid", correlation);
       return rejected;
@@ -201,19 +201,19 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
     } catch (cause) {
       abortedAttemptCount += 1;
       throw runtime_error(
-        "LIVEHOST_RECOVERY_PLANNING_FAILED",
-        "LiveHost recovery failed before establishing its cut.",
+        "LOCUS_RECOVERY_PLANNING_FAILED",
+        "Locus recovery failed before establishing its cut.",
         cause,
       );
     }
 
-    const preliminary: LiveHostCanonicalCommit[] = [];
-    const tail: LiveHostCanonicalCommit[] = [];
+    const preliminary: LocusCanonicalCommit[] = [];
+    const tail: LocusCanonicalCommit[] = [];
     let tailBytes = 0;
     let cutRev: number | undefined;
-    let state: LiveHostRecoveryAttemptState = "active";
-    let attemptError: LiveHostRecoveryError | undefined;
-    let stopSubscription: LiveHostDisposer = () => {};
+    let state: LocusRecoveryAttemptState = "active";
+    let attemptError: LocusRecoveryError | undefined;
+    let stopSubscription: LocusDisposer = () => {};
     let released = false;
 
     function release_active_attempt(): void {
@@ -230,7 +230,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       tailBytes = 0;
     }
 
-    function abort(error: LiveHostRecoveryError): void {
+    function abort(error: LocusRecoveryError): void {
       if (state !== "active") return;
       state = "aborted";
       attemptError = error;
@@ -238,10 +238,10 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       clear_queues();
       release_active_attempt();
       abortedAttemptCount += 1;
-      if (error.code === "LIVEHOST_RECOVERY_TAIL_OVERFLOW") overflowCount += 1;
+      if (error.code === "LOCUS_RECOVERY_TAIL_OVERFLOW") overflowCount += 1;
     }
 
-    function enqueue_tail(commit: LiveHostCanonicalCommit): void {
+    function enqueue_tail(commit: LocusCanonicalCommit): void {
       if (state !== "active") return;
       if (cutRev === undefined) {
         preliminary.push(commit);
@@ -252,8 +252,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       const expectedPrevRev = tail[tail.length - 1]?.rev ?? cutRev;
       if (commit.prevRev !== expectedPrevRev) {
         abort(runtime_error(
-          "LIVEHOST_RECOVERY_TAIL_GAP",
-          `LiveHost recovery tail expected prevRev ${expectedPrevRev}, received ${commit.prevRev}.`,
+          "LOCUS_RECOVERY_TAIL_GAP",
+          `Locus recovery tail expected prevRev ${expectedPrevRev}, received ${commit.prevRev}.`,
         ));
         return;
       }
@@ -263,8 +263,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
         commitBytes = encoded_bytes(commit);
       } catch (cause) {
         abort(runtime_error(
-          "LIVEHOST_RECOVERY_PLANNING_FAILED",
-          "LiveHost recovery could not encode a queued tail commit.",
+          "LOCUS_RECOVERY_PLANNING_FAILED",
+          "Locus recovery could not encode a queued tail commit.",
           cause,
         ));
         return;
@@ -275,8 +275,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
       if (tail.length > maxTailCommits || tailBytes > maxTailBytes) {
         abort(runtime_error(
-          "LIVEHOST_RECOVERY_TAIL_OVERFLOW",
-          "LiveHost recovery tail exceeded its configured count or byte limit.",
+          "LOCUS_RECOVERY_TAIL_OVERFLOW",
+          "Locus recovery tail exceeded its configured count or byte limit.",
         ));
       }
     }
@@ -300,9 +300,9 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
     let outcome: "current" | "replay" | "snapshot";
     let headRev = stream.headRev;
-    let replayBody: readonly LiveHostCanonicalCommit[] | undefined;
-    let snapshotBody: LiveHostSnapshotEnvelope | undefined;
-    let snapshotReason: LiveHostRecoverySnapshotReason | undefined;
+    let replayBody: readonly LocusCanonicalCommit[] | undefined;
+    let snapshotBody: LocusSnapshotEnvelope | undefined;
+    let snapshotReason: LocusRecoverySnapshotReason | undefined;
 
     try {
       const sameIncarnation = request.incarnationId === stream.incarnationId;
@@ -337,8 +337,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
           }
         } catch (cause) {
           throw runtime_error(
-            "LIVEHOST_RECOVERY_REPLAY_FAILED",
-            "LiveHost recovery could not prepare replay material.",
+            "LOCUS_RECOVERY_REPLAY_FAILED",
+            "Locus recovery could not prepare replay material.",
             cause,
           );
         }
@@ -358,16 +358,16 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
           const capture = map.capture();
           if (capture.rev !== stream.headRev) {
             throw new Error(
-              `LiveHost recovery snapshot revision ${capture.rev} does not match stream head ${stream.headRev}.`,
+              `Locus recovery snapshot revision ${capture.rev} does not match stream head ${stream.headRev}.`,
             );
           }
 
           headRev = capture.rev;
           if (map.mode === "element" || map.mode === "fragment") {
             if (!is_document_capture(capture)) {
-              throw new Error("LiveHost document capture has no canonical root.");
+              throw new Error("Locus document capture has no canonical root.");
             }
-            snapshotBody = recovery_plan_snapshot_view(encode_livehost_document_snapshot(
+            snapshotBody = recovery_plan_snapshot_view(encode_locus_document_snapshot(
               {
                 logicalMapId: stream.logicalMapId,
                 incarnationId: stream.incarnationId,
@@ -377,7 +377,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
             ));
           } else {
             if (!("payload" in capture) || typeof capture.payload !== "string" || !("root" in capture) || !is_Node(capture.root)) {
-              throw new Error("LiveHost recovery snapshot has no exact projected graph.");
+              throw new Error("Locus recovery snapshot has no exact projected graph.");
             }
             snapshotBody = Object.freeze({
               logicalMapId: stream.logicalMapId,
@@ -393,10 +393,10 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
           encoded_bytes(snapshotBody);
           establish_cut(headRev);
         } catch (cause) {
-          if (cause instanceof LiveHostRecoveryError) throw cause;
+          if (cause instanceof LocusRecoveryError) throw cause;
           throw runtime_error(
-            "LIVEHOST_RECOVERY_SNAPSHOT_FAILED",
-            "LiveHost recovery could not capture a valid atomic snapshot.",
+            "LOCUS_RECOVERY_SNAPSHOT_FAILED",
+            "Locus recovery could not capture a valid atomic snapshot.",
             cause,
           );
         }
@@ -405,11 +405,11 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       hooks.after_cut?.(headRev);
       throw_if_aborted();
     } catch (cause) {
-      const error = cause instanceof LiveHostRecoveryError
+      const error = cause instanceof LocusRecoveryError
         ? cause
         : runtime_error(
-          "LIVEHOST_RECOVERY_PLANNING_FAILED",
-          "LiveHost recovery planning failed after tail registration.",
+          "LOCUS_RECOVERY_PLANNING_FAILED",
+          "Locus recovery planning failed after tail registration.",
           cause,
         );
       abort(error);
@@ -420,9 +420,9 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       if (state === "active") return;
       if (state === "aborted" && attemptError) throw attemptError;
       if (state === "completed") {
-        throw runtime_error("LIVEHOST_RECOVERY_COMPLETED", "LiveHost recovery attempt is already completed.");
+        throw runtime_error("LOCUS_RECOVERY_COMPLETED", "Locus recovery attempt is already completed.");
       }
-      throw runtime_error("LIVEHOST_RECOVERY_DISPOSED", "LiveHost recovery attempt is disposed.");
+      throw runtime_error("LOCUS_RECOVERY_DISPOSED", "Locus recovery attempt is disposed.");
     }
 
     function dispose(): void {
@@ -434,7 +434,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       disposedAttemptCount += 1;
     }
 
-    function body_items(): readonly LiveHostRecoveryBodyItem[] {
+    function body_items(): readonly LocusRecoveryBodyItem[] {
       if (outcome === "current") return EMPTY_BODY;
       if (outcome === "snapshot" && snapshotBody) {
         return Object.freeze([Object.freeze({ kind: "snapshot", snapshot: snapshotBody })]);
@@ -443,14 +443,14 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
         return Object.freeze(replayBody.map((commit) => Object.freeze({ kind: "commit", commit })));
       }
       throw runtime_error(
-        "LIVEHOST_RECOVERY_PLANNING_FAILED",
-        "LiveHost recovery attempt has incomplete body material.",
+        "LOCUS_RECOVERY_PLANNING_FAILED",
+        "Locus recovery attempt has incomplete body material.",
       );
     }
 
     const producedBody = body_items();
 
-    function complete(observer: LiveHostRecoveryBodyObserver = () => {}): LiveHostRecoveryCompletion {
+    function complete(observer: LocusRecoveryBodyObserver = () => {}): LocusRecoveryCompletion {
       must_be_active();
 
       try {
@@ -461,8 +461,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       } catch (cause) {
         if (state === "aborted" && attemptError) throw attemptError;
         const error = runtime_error(
-          "LIVEHOST_RECOVERY_OBSERVER_FAILED",
-          "LiveHost recovery body observer failed.",
+          "LOCUS_RECOVERY_OBSERVER_FAILED",
+          "Locus recovery body observer failed.",
           cause,
         );
         abort(error);
@@ -489,7 +489,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
       return Object.freeze({ caughtUp, tail: completedTail });
     }
 
-    function debug(): LiveHostRecoveryAttemptDiagnostics {
+    function debug(): LocusRecoveryAttemptDiagnostics {
       return Object.freeze({
         state,
         outcome,
@@ -514,7 +514,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
     if (outcome === "current") {
       currentPlanCount += 1;
-      const currentPlan: LiveHostRecoveryCurrentPlan = Object.freeze({
+      const currentPlan: LocusRecoveryCurrentPlan = Object.freeze({
         ...base,
         outcome: "current",
         body: EMPTY_BODY,
@@ -525,7 +525,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
     if (outcome === "replay" && replayBody) {
       replayPlanCount += 1;
-      const replayPlan: LiveHostRecoveryReplayPlan = Object.freeze({
+      const replayPlan: LocusRecoveryReplayPlan = Object.freeze({
         ...base,
         outcome: "replay",
         body: replayBody,
@@ -536,7 +536,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
     if (outcome === "snapshot" && snapshotBody && snapshotReason) {
       snapshotPlanCount += 1;
-      const snapshotPlan: LiveHostRecoverySnapshotPlan = Object.freeze({
+      const snapshotPlan: LocusRecoverySnapshotPlan = Object.freeze({
         ...base,
         outcome: "snapshot",
         reason: snapshotReason,
@@ -553,14 +553,14 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
     }
 
     const error = runtime_error(
-      "LIVEHOST_RECOVERY_PLANNING_FAILED",
-      "LiveHost recovery planner produced an incomplete plan.",
+      "LOCUS_RECOVERY_PLANNING_FAILED",
+      "Locus recovery planner produced an incomplete plan.",
     );
     abort(error);
     throw error;
   }
 
-  function debug(): LiveHostRecoveryPlannerDiagnostics {
+  function debug(): LocusRecoveryPlannerDiagnostics {
     return Object.freeze({
       activeAttemptCount,
       currentPlanCount,
@@ -583,8 +583,8 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
   function trace_plan(
     trace: LiveTraceContext | undefined,
-    request: LiveHostRecoveryRequest,
-    recoveryPlan: LiveHostRecoveryPlan,
+    request: LocusRecoveryRequest,
+    recoveryPlan: LocusRecoveryPlan,
     relationship: string,
     correlation: Readonly<{ requestId?: string }> | undefined,
   ): void {
@@ -596,7 +596,7 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
         ? "incremental-replay"
         : recoveryPlan.outcome;
     trace.emit({
-      subsystem: "livehost",
+      subsystem: "locus",
       phase: "recovery.plan",
       status: recoveryPlan.outcome === "reject" ? "failure" : "success",
       details: () => ({
@@ -620,23 +620,23 @@ export function make_livehost_recovery_planner_internal<TMap extends LiveMapAuth
 
   function trace_material(
     trace: LiveTraceContext | undefined,
-    request: LiveHostRecoveryRequest,
+    request: LocusRecoveryRequest,
     outcome: "current" | "replay" | "snapshot",
-    body: readonly LiveHostRecoveryBodyItem[],
-    tail: readonly LiveHostCanonicalCommit[],
+    body: readonly LocusRecoveryBodyItem[],
+    tail: readonly LocusCanonicalCommit[],
     headRev: number,
-    snapshot: LiveHostSnapshotEnvelope | undefined,
+    snapshot: LocusSnapshotEnvelope | undefined,
     correlation: Readonly<{ requestId?: string }> | undefined,
   ): void {
     if (trace === undefined || outcome === "current") return;
     const commits = [
-      ...body.filter((item): item is Extract<LiveHostRecoveryBodyItem, { kind: "commit" }> => item.kind === "commit").map((item) => item.commit),
+      ...body.filter((item): item is Extract<LocusRecoveryBodyItem, { kind: "commit" }> => item.kind === "commit").map((item) => item.commit),
       ...tail,
     ];
     const operationKinds = commits.flatMap((commit) => commit.ops.map((operation) =>
       "domain" in operation ? operation.op : operation.kind));
     trace.emit({
-      subsystem: "livehost",
+      subsystem: "locus",
       phase: "recovery.material",
       status: "success",
       details: () => ({

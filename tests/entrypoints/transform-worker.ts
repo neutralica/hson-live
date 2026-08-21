@@ -4,10 +4,10 @@ import {
   type UniversalCircuitVerificationResult,
 } from "hson-live/diagnostics/universal-circuit";
 import { hsonCalc, hsonNumber, type HsonNumber } from "hson-live/number";
-import { hsonLiveHost } from "hson-live/livehost";
+import { hsonLocus } from "hson-live/locus";
 import { assertCanonicalClosure } from "hson-live/diagnostics/transform-test-oracle";
 
-void hsonLiveHost;
+void hsonLocus;
 void assertCanonicalClosure;
 void hsonTransform.fromHson(`<worker <ready true>>`).toNode();
 void hsonTransform.fromJson({ ready: true }).toHson().serialize();

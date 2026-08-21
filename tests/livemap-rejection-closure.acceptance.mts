@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
-import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
+import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
 import { ProjectedValueAdmissionError, admit_projected_value, type ProjectedValueAdmissionCode } from "../src/core/projected-value-admission.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { JsonValue } from "../src/core/types.ts";
@@ -68,7 +68,7 @@ function assert_rejection_closure(
   source.commits.observe(() => { commits += 1; });
   source.feed([], () => { feeds += 1; });
   make_livemap_store_api(source).subscribe(() => { stores += 1; });
-  make_livehost_canonical_stream(source, { logicalMapId: "unit-f", incarnationId: "rejection" })
+  make_locus_canonical_stream(source, { logicalMapId: "unit-f", incarnationId: "rejection" })
     .on_commit(() => { hostCommits += 1; });
 
   assert.throws(() => mutate(route, source, witness));

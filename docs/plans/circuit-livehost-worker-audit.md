@@ -349,7 +349,7 @@ One directional lap can be a pure, synchronous, environment-neutral state transi
 | Structured tracing across delegated work | Implemented but unsuitable | Host tracing correlates action lifecycle and dedupe; no handler trace context or worker adapter carries it onward. | Copy application correlation IDs privately. |
 | Reconnectable long-running jobs | Implemented but unsuitable | Pending/terminal dedupe status can be queried, but progress is transient and sessions do not own pending work. | MVP may recover terminal status, but must not promise replayed progress or work ownership. |
 
-The design document itself describes worker ports or process IPC as possible transport adapters, not as implemented worker execution, and separately lists pending action ownership, cancellation, backpressure, and quota as future work ([transport direction](../hson-livehost.md#L184-L201), [session/future-work boundary](../hson-livehost.md#L151-L164)). Implementation is authoritative where that document's roadmap is stale.
+The design document itself describes worker ports or process IPC as possible transport adapters, not as implemented worker execution, and separately lists pending action ownership, cancellation, backpressure, and quota as future work ([transport direction](../hson-locus.md#L184-L201), [session/future-work boundary](../hson-locus.md#L151-L164)). Implementation is authoritative where that document's roadmap is stale.
 
 LiveHost currently creates or manages **none** of Web Workers, Node `worker_threads`, or child processes. Transport neutrality only means another `LiveHostSocketLike` could be supplied; it neither schedules computation nor grants worker lifecycle semantics.
 
@@ -636,7 +636,7 @@ Primary `hson-live` sources:
 - [`livehost.browser-socket.ts`](../../src/api/livehost/livehost.browser-socket.ts) and [`livehost.node-socket.ts`](../../src/api/livehost/node/livehost.node-socket.ts): implemented WebSocket adapters.
 - [`livehost.node-application-host.ts`](../../src/api/livehost/node/livehost.node-application-host.ts): Node application hosting, limits, heartbeats, backpressure, and shutdown.
 - [`livehost.authority-registry.ts`](../../src/api/livehost/livehost.authority-registry.ts) and [`livehost.activity.ts`](../../src/api/livehost/livehost.activity.ts): authority bounds, idle eviction, and activity accounting.
-- [`docs/hson-livehost.md`](../hson-livehost.md): documented current/future boundary, checked against implementation.
+- [`docs/hson-locus.md`](../hson-locus.md): documented current/future boundary, checked against implementation.
 
 Primary `hson-demo2` integration sources:
 

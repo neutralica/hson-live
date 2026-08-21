@@ -1,24 +1,24 @@
-import type { LiveHostSocketLike } from "../../../types/livehost.types.js";
+import type { LocusSocketLike } from "../../../types/locus.types.js";
 import WebSocket from "ws";
 
-export type NodeLiveHostSocketOptions = Readonly<{
+export type NodeLocusSocketOptions = Readonly<{
   onSend?: (message: string) => void;
   maxBufferedAmount?: number;
   onBackpressure?: () => void;
 }>;
 
-/** @experimental Concrete Node `ws` transport adapter for LiveHost. */
-export function create_node_livehost_socket(
+/** @experimental Concrete Node `ws` transport adapter for Locus. */
+export function create_node_locus_socket(
   websocket: WebSocket,
-  optionsOrOnSend?: NodeLiveHostSocketOptions | ((message: string) => void),
-): LiveHostSocketLike {
-  const options: NodeLiveHostSocketOptions = typeof optionsOrOnSend === "function"
+  optionsOrOnSend?: NodeLocusSocketOptions | ((message: string) => void),
+): LocusSocketLike {
+  const options: NodeLocusSocketOptions = typeof optionsOrOnSend === "function"
     ? { onSend: optionsOrOnSend }
     : optionsOrOnSend ?? {};
   let backpressureClosed = false;
   const close_after_error = (): void => {
     if (websocket.readyState === WebSocket.OPEN || websocket.readyState === WebSocket.CONNECTING) {
-      websocket.close(1011, "LiveHost WebSocket error.");
+      websocket.close(1011, "Locus WebSocket error.");
     }
   };
   const stop_error_handling = (): void => {
@@ -37,7 +37,7 @@ export function create_node_livehost_socket(
         if (!backpressureClosed) {
           backpressureClosed = true;
           options.onBackpressure?.();
-          websocket.close(1013, "LiveHost transport backpressure limit exceeded.");
+          websocket.close(1013, "Locus transport backpressure limit exceeded.");
         }
         return;
       }
@@ -55,7 +55,7 @@ export function create_node_livehost_socket(
     onMessage(listener) {
       const handle = (data: WebSocket.RawData, isBinary: boolean): void => {
         if (isBinary) {
-          websocket.close(1003, "LiveHost accepts text messages only.");
+          websocket.close(1003, "Locus accepts text messages only.");
           return;
         }
         listener(data.toString("utf8"));

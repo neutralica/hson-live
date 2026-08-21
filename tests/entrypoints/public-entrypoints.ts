@@ -119,14 +119,22 @@ import type { BindingSource } from "hson-live/livetree";
 // @ts-expect-error DocumentBindingSource is intentionally not a public export.
 import type { DocumentBindingSource } from "hson-live/livetree";
 import {
-  LiveHostAuthorityError,
-  hsonLiveHost as hostSubpath,
-  type LiveHostAuthorityErrorCode,
-  type LiveHostReadonlyMap,
-  type LiveHostSyncManager,
-  type LiveHostSyncSend,
-  type LiveHostSyncSession,
-} from "hson-live/livehost";
+  LocusAuthorityError,
+  hsonLocus as hostSubpath,
+  type LocusAuthorityErrorCode,
+  type LocusReadonlyMap,
+  type LocusSyncManager,
+  type LocusSyncSend,
+  type LocusSyncSession,
+} from "hson-live/locus";
+// @ts-expect-error The historical one-map constructor is removed from the root.
+import { create_livehost } from "hson-live";
+// @ts-expect-error The historical one-map facade is removed from the root.
+import { hsonLiveHost } from "hson-live";
+// @ts-expect-error The Locus surface exposes no historical LiveHost type aliases.
+import type { LiveHost } from "hson-live/locus";
+// @ts-expect-error The generic LiveHost package root is intentionally absent until U11.
+import type { LiveHostOptions } from "hson-live/livehost";
 import {
   hsonReflect as reflectSubpath,
   type CollectionReflect,
@@ -168,7 +176,11 @@ void LiveMapProjectedValueError;
 void LiveMapReplayError;
 void LiveMapReplayInputError;
 void LiveMapRevError;
-void LiveHostAuthorityError;
+void LocusAuthorityError;
+void create_livehost;
+void hsonLiveHost;
+void (0 as unknown as LiveHost);
+void (0 as unknown as LiveHostOptions);
 void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
@@ -352,7 +364,7 @@ if (typedBindingDocumentCandidate.mode === "element") {
   bindingTree.bind.text(typedBindingDocument.at([]));
 }
 declare const mixedBindingMap: LiveMap<Readonly<{ count: number }>>;
-declare const readonlyBindingMap: LiveHostReadonlyMap<LiveMap<ProjectedPathTruth>>;
+declare const readonlyBindingMap: LocusReadonlyMap<LiveMap<ProjectedPathTruth>>;
 declare const dynamicPath: LivePath;
 declare const dynamicObjectKey: string;
 declare const dynamicTupleIndex: number;
@@ -553,16 +565,16 @@ type PublicLiveMapClosure =
   | LiveMapSchemaConstraint
   | ProjectedValueAdmissionCode
   | ProjectedValuePath;
-type PublicLiveHostClosure =
-  | LiveHostAuthorityErrorCode
-  | LiveHostSyncManager
-  | LiveHostSyncSend
-  | LiveHostSyncSession;
+type PublicLocusClosure =
+  | LocusAuthorityErrorCode
+  | LocusSyncManager
+  | LocusSyncSend
+  | LocusSyncSession;
 declare const publicDeclarationClosure:
   | PublicTransformClosure
   | PublicLiveTreeClosure
   | PublicLiveMapClosure
-  | PublicLiveHostClosure;
+  | PublicLocusClosure;
 void publicDeclarationClosure;
 
 const declarationTruthSchema = mapSubpath.schema.define((schema) => schema.object.exact({
@@ -894,7 +906,7 @@ declare const futurePrimitiveDocumentLocation: PrimitiveDocumentLocation;
 bindingTree.bind.text(futurePrimitiveDocumentLocation);
 bindingTree.bind.attr(futurePrimitiveDocumentLocation, "data-future");
 
-declare const readonlyDocumentMap: LiveHostReadonlyMap<ElementLiveMap>;
+declare const readonlyDocumentMap: LocusReadonlyMap<ElementLiveMap>;
 // @ts-expect-error Readonly Host document locations are not part of the Host surface.
 readonlyDocumentMap.at([]);
 

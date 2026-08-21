@@ -13,7 +13,7 @@ HSON—Hypertext Structured Object Notation—is the underlying notation. It mod
 - **hson.transform** converts between HSON, JSON, HTML, XML, SVG, and canonical HSON nodes.
 - **LiveMap** operates on HSON as local application state.
 - **LiveTree** projects HSON into live browser documents.
-- **LiveHost** maintains authoritative HSON state across clients and server runtimes.
+- **Locus** maintains authoritative HSON state across clients and server runtimes.
 
 The library is experimental. It is working architectural research, not a finished general-purpose web framework.
 
@@ -99,7 +99,7 @@ HSON / JSON / HTML / SVG / XML
 
 or:
 
-         canonical LiveHost
+         canonical Locus
                 ↓
       ordered revision stream
                 ↓
@@ -141,7 +141,7 @@ The transformation system handles cases that are commonly awkward at format boun
 - canonical metadata;
 - persisted node identity.
 
-HSON is not only an interchange format. The same graph produced by the transformation layer is used by LiveMap, LiveTree, and LiveHost.
+HSON is not only an interchange format. The same graph produced by the transformation layer is used by LiveMap, LiveTree, and Locus.
 
 ---
 
@@ -381,13 +381,13 @@ For broader graph reflection, `hson.reflect` provides an optional binding that b
 
 ---
 
-## LiveHost
+## Locus
 
-LiveHost manages canonical application state in an authoritative server-side runtime.
+Locus manages canonical application state in an authoritative server-side runtime.
 
-A LiveHost authority owns one LiveMap and its ordered commit history. Clients do not independently simulate the same application and exchange events afterward. They maintain revisioned mirrors of one canonical state and follow the same accepted commit stream.
+A Locus authority owns one LiveMap and its ordered commit history. Clients do not independently simulate the same application and exchange events afterward. They maintain revisioned mirrors of one canonical state and follow the same accepted commit stream.
 
-LiveHost provides:
+Locus provides:
 
 - typed and validated actions;
 - action authorization;
@@ -413,7 +413,7 @@ Platform adapters connect real sockets to that boundary.
 
 ### HTTP bootstrap and WebSocket continuation
 
-LiveHost can capture an exact canonical authority state at revision `R` and deliver it as a versioned HSON bootstrap response.
+Locus can capture an exact canonical authority state at revision `R` and deliver it as an unversioned HSON bootstrap response.
 
 The browser installs that state and enters the ordinary WebSocket recovery path from the same authority identity and revision:
 
@@ -453,7 +453,7 @@ LiveMap and LiveTree retain different responsibilities. When connected deliberat
 
 ### A hosted application can be a revisioned graph rather than a collection of client-side simulations
 
-LiveHost accepts actions, mutates one authority, and publishes one ordered history. Clients recover from canonical identity and revision rather than relying on timing or best-effort event replay.
+Locus accepts actions, mutates one authority, and publishes one ordered history. Clients recover from canonical identity and revision rather than relying on timing or best-effort event replay.
 
 ### Infrastructure should be inspectable
 
@@ -465,7 +465,7 @@ The public LiveDemo environment exposes demos, diagnostics, test inventories, an
 
 hson-live 3.x is experimental and pre-stable.
 
-The transformation system, LiveMap, LiveTree, and LiveHost all have substantial automated coverage, but public and experimental APIs may still change as the architecture is tested under broader use.
+The transformation system, LiveMap, LiveTree, and Locus all have substantial automated coverage, but public and experimental APIs may still change as the architecture is tested under broader use.
 
 Current limitations include:
 
@@ -473,7 +473,7 @@ Current limitations include:
 - distributed authority coordination is not implemented;
 - projected-data persistence is not currently provided;
 - document persistence remains experimental;
-- LiveHost is not a CRDT and does not provide offline merge;
+- Locus is not a CRDT and does not provide offline merge;
 - HTTP HSON bootstrap is implemented, but LiveTree HTML adoption is not;
 - framework-specific SSR integrations are not provided;
 - the library has not been presented as a security-certified runtime.
@@ -510,28 +510,31 @@ The root package is the umbrella entrypoint:
 import { hson } from "hson-live";
 import type { LiveMap } from "hson-live/livemap";
 import type { LiveTree } from "hson-live/livetree";
-import type { LiveHost } from "hson-live/livehost";
+import type { Locus } from "hson-live/locus";
 ```
 
-LiveHost’s environment-neutral network surface is available from:
+Locus’s environment-neutral network surface is available from:
 
 ```ts
 import {
-  create_livehost,
-  create_livehost_client,
-} from "hson-live/livehost";
+  create_locus,
+  create_locus_client,
+} from "hson-live/locus";
 ```
 
-The official Node-only host and socket integration are available from:
+The one-map Node socket adapter is available from:
 
 ```ts
-import {
-  start_node_application_host,
-  create_node_livehost_socket,
-} from "hson-live/livehost/node";
+import { create_node_locus_socket } from "hson-live/locus/node";
 ```
 
-Do not import `hson-live/livehost/node` into browser or Worker bundles.
+The genuine Node application-host runtime remains available from:
+
+```ts
+import { start_node_application_host } from "hson-live/livehost/node";
+```
+
+Do not import either Node subpath into browser or Worker bundles.
 
 Public diagnostic launchers are available from:
 
@@ -567,7 +570,7 @@ The `docs/` directory contains architecture and API references for:
 - HSON syntax and transformation;
 - LiveMap;
 - LiveTree;
-- LiveHost;
+- Locus;
 - CSS and animation management;
 - diagnostics and package entrypoints.
 
@@ -591,7 +594,7 @@ It contains:
 - browser and Node integration checks;
 - regression suites;
 - externally executed package diagnostics;
-- working examples of LiveMap, LiveTree, and LiveHost.
+- working examples of LiveMap, LiveTree, and Locus.
 
 The test inventory is generated from the current repositories rather than fixed in this README.
 

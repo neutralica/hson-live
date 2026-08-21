@@ -1,6 +1,6 @@
 import type {
-  LiveHostActivitySnapshot,
-} from "../../../types/livehost.core.types.js";
+  LocusActivitySnapshot,
+} from "../../../types/locus.core.types.js";
 import type {
   LiveHostAuthorityAcquisition,
   LiveHostAuthorityEvictionResult,
@@ -9,8 +9,9 @@ import type {
   LiveHostAuthorityRegistryEvent,
   LiveHostAuthorityRegistryOptions,
   LiveHostLifecycleAuthority,
+  LiveHostStoreId,
 } from "../../../types/livehost.services.types.js";
-import type { LiveHostDisposer, LiveHostResult, LiveHostStoreId } from "../../../types/livehost.shared.types.js";
+import type { LocusDisposer, LocusResult } from "../../../types/locus.shared.types.js";
 
 // Application-owned coalescing, residency, release, and eviction key.
 type AcquisitionResidencyKey = LiveHostStoreId;
@@ -27,7 +28,7 @@ type ReadyEntry<TAuthority extends LiveHostLifecycleAuthority> = {
   generation: number;
   lastUsedAt: number;
   idleSince?: number;
-  stopActivity: LiveHostDisposer;
+  stopActivity: LocusDisposer;
   disposal?: Promise<LiveHostAuthorityEvictionResult>;
 };
 
@@ -35,15 +36,15 @@ type Entry<TAuthority extends LiveHostLifecycleAuthority> =
   | PendingEntry<TAuthority>
   | ReadyEntry<TAuthority>;
 
-function ok<T>(value: T): LiveHostResult<T> {
+function ok<T>(value: T): LocusResult<T> {
   return Object.freeze({ ok: true, value });
 }
 
-function fail<T>(code: string, message: string): LiveHostResult<T> {
+function fail<T>(code: string, message: string): LocusResult<T> {
   return Object.freeze({ ok: false, error: Object.freeze({ code, message }) });
 }
 
-function default_schedule(delayMs: number, callback: () => void): LiveHostDisposer {
+function default_schedule(delayMs: number, callback: () => void): LocusDisposer {
   const timer = setTimeout(callback, delayMs);
   if (typeof timer === "object" && timer !== null && "unref" in timer) {
     (timer as ReturnType<typeof setTimeout> & { unref(): void }).unref();
@@ -88,7 +89,7 @@ export function create_livehost_authority_registry<
   };
   const entries = new Map<AcquisitionResidencyKey, Entry<TAuthority>>();
   let state: "accepting" | "disposing" | "disposed" = "accepting";
-  let stopSweep: LiveHostDisposer | undefined;
+  let stopSweep: LocusDisposer | undefined;
   let sweepRunning: Promise<number> | undefined;
   let disposal: Promise<void> | undefined;
 
@@ -104,7 +105,7 @@ export function create_livehost_authority_registry<
     });
   }
 
-  function entry_snapshot(entry: ReadyEntry<TAuthority>): LiveHostActivitySnapshot {
+  function entry_snapshot(entry: ReadyEntry<TAuthority>): LocusActivitySnapshot {
     return entry.authority.activity.snapshot();
   }
 
@@ -154,7 +155,7 @@ export function create_livehost_authority_registry<
   function acquire_ready(
     key: AcquisitionResidencyKey,
     entry: ReadyEntry<TAuthority>,
-  ): LiveHostResult<LiveHostAuthorityAcquisition<TAuthority>> {
+  ): LocusResult<LiveHostAuthorityAcquisition<TAuthority>> {
     if (state !== "accepting" || entry.state !== "ready") {
       return fail("LIVEHOST_AUTHORITY_REGISTRY_UNAVAILABLE", "LiveHost authority registry is unavailable.");
     }
@@ -257,7 +258,7 @@ export function create_livehost_authority_registry<
 
   async function acquire(
     key: AcquisitionResidencyKey,
-  ): Promise<LiveHostResult<LiveHostAuthorityAcquisition<TAuthority>>> {
+  ): Promise<LocusResult<LiveHostAuthorityAcquisition<TAuthority>>> {
     if (state !== "accepting") {
       return fail("LIVEHOST_AUTHORITY_REGISTRY_DISPOSED", "LiveHost authority registry is disposed.");
     }

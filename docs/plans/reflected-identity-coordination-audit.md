@@ -196,7 +196,7 @@ Deletion and disposal already conditionally release QUID-owned artifacts only wh
 
 ## 5. Existing canonical QUID behavior
 
-When a canonical node already contains valid QUID `q`, initial graph admission scans supplied claims, validates collision freedom, and publishes the same `q` in runtime indexes. It does not remint that node. The current acceptance suite proves root preservation and local collision rejection ([`livehost-capture-identity-closure.acceptance.mts`](../../tests/livehost-capture-identity-closure.acceptance.mts#L174-L185)). Separate runtimes may admit equal bytes without sharing exact object identity.
+When a canonical node already contains valid QUID `q`, initial graph admission scans supplied claims, validates collision freedom, and publishes the same `q` in runtime indexes. It does not remint that node. The current acceptance suite proves root preservation and local collision rejection ([`locus-capture-identity-closure.acceptance.mts`](../../tests/locus-capture-identity-closure.acceptance.mts#L174-L185)). Separate runtimes may admit equal bytes without sharing exact object identity.
 
 Unit 10R-A preserves that useful behavior without the trailing root-mint rule:
 

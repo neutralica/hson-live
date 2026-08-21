@@ -8,7 +8,7 @@ import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { livemap_projected_propagation } from "../src/api/livemap/livemap.projected-propagation.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
 import { decode_livemap_replay_payload, decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
-import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
+import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
 import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -122,8 +122,8 @@ check("carrier-native commits remain authoritative and mocks do not define them"
   const mock = { snap: () => ({}) } as unknown as LiveMapCore<JsonValue | undefined>;
   assert.equal(livemap_projected_propagation(mock), undefined);
 });
-check("LiveHost canonical commit payloads decode to the committed carrier", () => {
-  const valueMap = map(object([["value", object([])]])); const stream = make_livehost_canonical_stream(valueMap, { logicalMapId: "unit-f", incarnationId: "closure" });
+check("Locus canonical commit payloads decode to the committed carrier", () => {
+  const valueMap = map(object([["value", object([])]])); const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "unit-f", incarnationId: "closure" });
   let payload: string | undefined; stream.on_commit((commit) => { payload = commit.payload; }); capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
   assert.equal(typeof payload, "string");
   const operations = decode_livemap_replay_payload(payload!);

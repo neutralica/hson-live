@@ -288,7 +288,7 @@ function dispose_all(disposers: readonly LiveMapDisposer[]): void {
 function classify_binding_source(source: unknown): BindingSourceMode {
   if (is_livemap_projected_location(source)) return "projected";
   if (is_livemap_document_location(source)) return "document";
-  throw new TypeError("LiveTree.bind source must be an authentic passive LiveMap or LiveHost location.");
+  throw new TypeError("LiveTree.bind source must be an authentic passive LiveMap or Locus location.");
 }
 
 function binding_capability<TSource extends BindingSource>(

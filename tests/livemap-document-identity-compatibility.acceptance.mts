@@ -248,7 +248,7 @@ check("raw QUID strings remain diagnostic rather than application identity", () 
   assert.equal(Reflect.get(map.document, "fromQuid"), undefined);
 });
 
-check("internal identity acquisition adds no public LiveHost or remote registration action", () => {
+check("internal identity acquisition adds no public Locus or remote registration action", () => {
   const map = element(`<main/>`);
   assert.equal(Reflect.get(map.document, "requestIdentity"), undefined);
   assert.equal(Reflect.get(map.document, "ensureIdentityWithQuid"), undefined);

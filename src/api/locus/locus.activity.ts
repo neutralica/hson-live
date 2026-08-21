@@ -1,11 +1,11 @@
 import type {
-  LiveHostActivity,
-  LiveHostActivityKind,
-  LiveHostActivitySnapshot,
-  LiveHostDisposer,
-} from "../../types/livehost.types.js";
+  LocusActivity,
+  LocusActivityKind,
+  LocusActivitySnapshot,
+  LocusDisposer,
+} from "../../types/locus.types.js";
 
-const ACTIVITY_KINDS: readonly LiveHostActivityKind[] = Object.freeze([
+const ACTIVITY_KINDS: readonly LocusActivityKind[] = Object.freeze([
   "connection",
   "session",
   "action",
@@ -14,18 +14,18 @@ const ACTIVITY_KINDS: readonly LiveHostActivityKind[] = Object.freeze([
   "persistence",
 ]);
 
-export type LiveHostActivityController = Readonly<{
-  public: LiveHostActivity;
-  acquire(kind: LiveHostActivityKind): LiveHostDisposer;
+export type LocusActivityController = Readonly<{
+  public: LocusActivity;
+  acquire(kind: LocusActivityKind): LocusDisposer;
   dispose(): void;
 }>;
 
-const controllers = new WeakMap<object, LiveHostActivityController>();
+const controllers = new WeakMap<object, LocusActivityController>();
 
 function make_snapshot(
-  counts: ReadonlyMap<LiveHostActivityKind, number>,
+  counts: ReadonlyMap<LocusActivityKind, number>,
   disposed: boolean,
-): LiveHostActivitySnapshot {
+): LocusActivitySnapshot {
   const blockers = ACTIVITY_KINDS.filter((kind) => (counts.get(kind) ?? 0) > 0);
   return Object.freeze({
     state: disposed ? "disposed" : blockers.length === 0 ? "idle" : "active",
@@ -40,9 +40,9 @@ function make_snapshot(
   });
 }
 
-export function make_livehost_activity_controller(): LiveHostActivityController {
-  const counts = new Map<LiveHostActivityKind, number>();
-  const listeners = new Set<(snapshot: LiveHostActivitySnapshot) => void>();
+export function make_locus_activity_controller(): LocusActivityController {
+  const counts = new Map<LocusActivityKind, number>();
+  const listeners = new Set<(snapshot: LocusActivitySnapshot) => void>();
   let disposed = false;
   let previous = make_snapshot(counts, disposed);
 
@@ -67,7 +67,7 @@ export function make_livehost_activity_controller(): LiveHostActivityController 
     }
   }
 
-  const publicActivity: LiveHostActivity = Object.freeze({
+  const publicActivity: LocusActivity = Object.freeze({
     snapshot: () => previous,
     on_change(listener) {
       if (disposed) return () => {};
@@ -107,17 +107,17 @@ export function make_livehost_activity_controller(): LiveHostActivityController 
   });
 }
 
-export function register_livehost_activity_controller(
+export function register_locus_activity_controller(
   locus: object,
-  controller: LiveHostActivityController,
+  controller: LocusActivityController,
 ): void {
   controllers.set(locus, controller);
 }
 
 /** @internal Claim work performed by a wrapper around an established authority. */
-export function acquire_livehost_internal_activity(
+export function acquire_locus_internal_activity(
   locus: object,
-  kind: LiveHostActivityKind,
-): LiveHostDisposer {
+  kind: LocusActivityKind,
+): LocusDisposer {
   return controllers.get(locus)?.acquire(kind) ?? (() => {});
 }

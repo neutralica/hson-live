@@ -193,9 +193,9 @@ await check("schema attachment invalidates a previously prepared schema-less can
   assert.deepEqual(map.snap(), { count: 0 });
 });
 
-await check("LiveHost mutations remain governed by the permanent schema", async () => {
+await check("Locus mutations remain governed by the permanent schema", async () => {
   const map = hson.liveMap.fromJson({ count: 0 }).schema.use(State);
-  const host = hson.liveHost.create({ map });
+  const host = hson.locus.create({ map });
   await host.mutate((draft) => draft.set(["count"], 1));
   await assert.rejects(host.mutate((draft) => draft.set(["count"], "wrong" as never)));
   assert.deepEqual(map.snap(), { count: 1 });

@@ -197,7 +197,7 @@ export function decode_view_state_snapshot(
 }
 
 /**
- * Internal exact-value primitive shared with LiveHost's graph-content boundary.
+ * Internal exact-value primitive shared with Locus's graph-content boundary.
  * The returned string is deterministic HSON data, not source-style document HSON.
  */
 export function encode_exact_hson_value(

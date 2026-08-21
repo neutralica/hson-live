@@ -1,4 +1,4 @@
-// livehost/sync.ts
+// locus/sync.ts
 
 import type { JsonValue } from "../../core/types.js";
 import type { LiveMap, LiveMapAuthority, LivePath } from "../../types/livemap.types.js";
@@ -6,43 +6,43 @@ import { materialize_projected_value } from "../../core/projected-value-material
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
 import type {
-  LiveHostError,
-  LiveHostResult,
-  LiveHostSeq,
-  LiveHostServerSyncMessage,
-  LiveHostSessionId,
-} from "../../types/livehost.types.js";
+  LocusError,
+  LocusResult,
+  LocusSeq,
+  LocusServerSyncMessage,
+  LocusSessionId,
+} from "../../types/locus.types.js";
 
-export type LiveHostSyncSend = (message: LiveHostServerSyncMessage) => void;
+export type LocusSyncSend = (message: LocusServerSyncMessage) => void;
 
-export type LiveHostSyncSession = Readonly<{
-  sessionId: LiveHostSessionId;
+export type LocusSyncSession = Readonly<{
+  sessionId: LocusSessionId;
   paths: readonly LivePath[];
 }>;
 
-export type LiveHostSyncManager = Readonly<{
-  add_session: (sessionId: LiveHostSessionId, send: LiveHostSyncSend) => LiveHostResult<void>;
-  attach_session: (sessionId: LiveHostSessionId, send: LiveHostSyncSend) => LiveHostResult<void>;
-  detach_session: (sessionId: LiveHostSessionId) => LiveHostResult<void>;
-  remove_session: (sessionId: LiveHostSessionId) => void;
-  subscribe: (sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq) => LiveHostResult<void>;
-  unsubscribe: (sessionId: LiveHostSessionId, path: LivePath) => LiveHostResult<void>;
-  sync_session_path: (sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq) => LiveHostResult<void>;
-  sync_all: (seq: LiveHostSeq) => void;
-  debug_sessions: () => readonly LiveHostSyncSession[];
+export type LocusSyncManager = Readonly<{
+  add_session: (sessionId: LocusSessionId, send: LocusSyncSend) => LocusResult<void>;
+  attach_session: (sessionId: LocusSessionId, send: LocusSyncSend) => LocusResult<void>;
+  detach_session: (sessionId: LocusSessionId) => LocusResult<void>;
+  remove_session: (sessionId: LocusSessionId) => void;
+  subscribe: (sessionId: LocusSessionId, path: LivePath, seq: LocusSeq) => LocusResult<void>;
+  unsubscribe: (sessionId: LocusSessionId, path: LivePath) => LocusResult<void>;
+  sync_session_path: (sessionId: LocusSessionId, path: LivePath, seq: LocusSeq) => LocusResult<void>;
+  sync_all: (seq: LocusSeq) => void;
+  debug_sessions: () => readonly LocusSyncSession[];
 }>;
 
-type LiveHostSyncSessionState = {
-  readonly sessionId: LiveHostSessionId;
-  send: LiveHostSyncSend | undefined;
+type LocusSyncSessionState = {
+  readonly sessionId: LocusSessionId;
+  send: LocusSyncSend | undefined;
   readonly paths: Map<string, LivePath>;
 };
 
-function ok<T>(value: T): LiveHostResult<T> {
+function ok<T>(value: T): LocusResult<T> {
   return { ok: true, value };
 }
 
-function fail(message: string, extra?: Omit<LiveHostError, "message">): LiveHostResult<never> {
+function fail(message: string, extra?: Omit<LocusError, "message">): LocusResult<never> {
   return { ok: false, error: { message, ...extra } };
 }
 
@@ -64,7 +64,7 @@ function sync_value_for_path<TState extends JsonValue | undefined>(
 }> {
   const propagation = livemap_projected_propagation(map);
   if (propagation === undefined) {
-    throw new Error("LiveHost projected sync requires a carrier propagation capability.");
+    throw new Error("Locus projected sync requires a carrier propagation capability.");
   }
   const projected = propagation.read(path);
   if (projected === undefined) return Object.freeze({ value: undefined });
@@ -76,9 +76,9 @@ function sync_value_for_path<TState extends JsonValue | undefined>(
 
 function send_sync<TState extends JsonValue | undefined>(
   map: LiveMap<TState>,
-  session: LiveHostSyncSessionState,
+  session: LocusSyncSessionState,
   path: LivePath,
-  seq: LiveHostSeq,
+  seq: LocusSeq,
 ): void {
   const projected = sync_value_for_path(map, path);
   session.send?.({
@@ -89,13 +89,13 @@ function send_sync<TState extends JsonValue | undefined>(
   });
 }
 
-export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncManager {
-  const sessions = new Map<LiveHostSessionId, LiveHostSyncSessionState>();
+export function make_locus_sync_manager(map: LiveMapAuthority): LocusSyncManager {
+  const sessions = new Map<LocusSessionId, LocusSyncSessionState>();
 
-  function add_session(sessionId: LiveHostSessionId, send: LiveHostSyncSend): LiveHostResult<void> {
+  function add_session(sessionId: LocusSessionId, send: LocusSyncSend): LocusResult<void> {
     if (sessions.has(sessionId)) {
-      return fail(`LiveHost sync session already exists: ${sessionId}`, {
-        code: "LIVEHOST_DUPLICATE_SESSION",
+      return fail(`Locus sync session already exists: ${sessionId}`, {
+        code: "LOCUS_DUPLICATE_SESSION",
       });
     }
 
@@ -108,52 +108,52 @@ export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncM
     return ok(undefined);
   }
 
-  function remove_session(sessionId: LiveHostSessionId): void {
+  function remove_session(sessionId: LocusSessionId): void {
     sessions.delete(sessionId);
   }
 
-  function attach_session(sessionId: LiveHostSessionId, send: LiveHostSyncSend): LiveHostResult<void> {
+  function attach_session(sessionId: LocusSessionId, send: LocusSyncSend): LocusResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     sessionResult.value.send = send;
     return ok(undefined);
   }
 
-  function detach_session(sessionId: LiveHostSessionId): LiveHostResult<void> {
+  function detach_session(sessionId: LocusSessionId): LocusResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     sessionResult.value.send = undefined;
     return ok(undefined);
   }
 
-  function session_or_error(sessionId: LiveHostSessionId): LiveHostResult<LiveHostSyncSessionState> {
+  function session_or_error(sessionId: LocusSessionId): LocusResult<LocusSyncSessionState> {
     const session = sessions.get(sessionId);
     if (session) return ok(session);
 
-    return fail(`Unknown LiveHost sync session: ${sessionId}`, {
-      code: "LIVEHOST_UNKNOWN_SESSION",
+    return fail(`Unknown Locus sync session: ${sessionId}`, {
+      code: "LOCUS_UNKNOWN_SESSION",
     });
   }
 
-  function sync_session_path(sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq): LiveHostResult<void> {
+  function sync_session_path(sessionId: LocusSessionId, path: LivePath, seq: LocusSeq): LocusResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
 
     if (!is_projected_live_map(map)) {
       return fail("Projected path subscriptions are unavailable for document authorities.", {
-        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+        code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }
     send_sync(map, sessionResult.value, path, seq);
     return ok(undefined);
   }
 
-  function subscribe(sessionId: LiveHostSessionId, path: LivePath, seq: LiveHostSeq): LiveHostResult<void> {
+  function subscribe(sessionId: LocusSessionId, path: LivePath, seq: LocusSeq): LocusResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     if (!is_projected_live_map(map)) {
       return fail("Projected path subscriptions are unavailable for document authorities.", {
-        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+        code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }
 
@@ -164,12 +164,12 @@ export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncM
     return ok(undefined);
   }
 
-  function unsubscribe(sessionId: LiveHostSessionId, path: LivePath): LiveHostResult<void> {
+  function unsubscribe(sessionId: LocusSessionId, path: LivePath): LocusResult<void> {
     const sessionResult = session_or_error(sessionId);
     if (!sessionResult.ok) return sessionResult;
     if (!is_projected_live_map(map)) {
       return fail("Projected path subscriptions are unavailable for document authorities.", {
-        code: "LIVEHOST_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
+        code: "LOCUS_PROJECTED_SUBSCRIPTION_UNSUPPORTED",
       });
     }
 
@@ -177,7 +177,7 @@ export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncM
     return ok(undefined);
   }
 
-  function sync_all(seq: LiveHostSeq): void {
+  function sync_all(seq: LocusSeq): void {
     if (!is_projected_live_map(map)) return;
     for (const session of sessions.values()) {
       for (const path of session.paths.values()) {
@@ -186,7 +186,7 @@ export function make_livehost_sync_manager(map: LiveMapAuthority): LiveHostSyncM
     }
   }
 
-  function debug_sessions(): readonly LiveHostSyncSession[] {
+  function debug_sessions(): readonly LocusSyncSession[] {
     return Array.from(sessions.values(), (session) => Object.freeze({
       sessionId: session.sessionId,
       paths: Array.from(session.paths.values(), clone_live_path),

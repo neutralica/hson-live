@@ -453,7 +453,7 @@ If a target is absent, duplicated, malformed, or the tail has a gap, stop. Requi
 - During a bounded compatibility window, servers may decode v1 canonical history only in a migration context with the base graph.
 - Clients must negotiate commit-format versions before recovery. A v1-only client cannot safely consume v2 witness semantics; a v2-only client cannot infer the staging of an unknown legacy record.
 - Persistence types need explicit checkpoint/history format versions. Current exact-key validation means an additive field is already a wire/storage change.
-- `logicalMapId` and `incarnationId` remain host-history identifiers. Persistence intentionally preserves incarnation across restart ([`docs/livehost/overview.md`](../livehost/overview.md#L180)); that must not silently imply the same active QUID epoch after restart.
+- `logicalMapId` and `incarnationId` remain host-history identifiers. Persistence intentionally preserves incarnation across restart ([`docs/locus/overview.md`](../locus/overview.md#L180)); that must not silently imply the same active QUID epoch after restart.
 - `hson-demo2` LiveHost harnesses should add compatibility fixtures and migration cases, but its application/session/authorization transport should not be redesigned.
 
 ## 11. QUID eligibility and minting implications

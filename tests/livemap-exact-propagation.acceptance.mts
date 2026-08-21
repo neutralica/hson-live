@@ -7,9 +7,9 @@ import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
 import { livemap_projected_propagation } from "../src/api/livemap/livemap.projected-propagation.ts";
 import { decode_projected_value_payload } from "../src/api/livemap/livemap.transport.ts";
-import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
-import { make_livehost_recovery_planner } from "../src/api/livehost/livehost.recovery.ts";
-import { make_livehost_sync_manager } from "../src/api/livehost/livehost.sync.ts";
+import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
+import { make_locus_recovery_planner } from "../src/api/locus/locus.recovery.ts";
+import { make_locus_sync_manager } from "../src/api/locus/locus.sync.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import {
   is_ordered_projected_object,
@@ -24,7 +24,7 @@ import {
 } from "../src/core/projected-value-graph.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import type { JsonValue } from "../src/core/types.ts";
-import type { LiveHostCanonicalCommit, LiveHostServerSyncMessage } from "../src/types/livehost.types.ts";
+import type { LocusCanonicalCommit, LocusServerSyncMessage } from "../src/types/locus.types.ts";
 
 let checks = 0;
 function check(name: string, run: () => void): void {
@@ -255,26 +255,26 @@ check("store listener mutation cannot affect dangerous-key state", () => {
   assert.deepEqual(keys(capability(valueMap).read(["value"])), ["__proto__", "constructor", "prototype"]);
 });
 
-check("LiveHost canonical commits retain exact payloads", () => {
+check("Locus canonical commits retain exact payloads", () => {
   const valueMap = map(object([["value", object([])]]));
-  const stream = make_livehost_canonical_stream(valueMap, { logicalMapId: "map", incarnationId: "inc" });
-  let canonical: LiveHostCanonicalCommit | undefined;
+  const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "map", incarnationId: "inc" });
+  let canonical: LocusCanonicalCommit | undefined;
   stream.on_commit((commit) => { canonical = commit; });
   capability(valueMap).commit([{ kind: "replace", path: ["value"], value: ordered }]);
   assert.equal(canonical?.format, "structural-json");
   assert.equal(typeof canonical?.payload, "string");
 });
 
-check("LiveHost sync and recovery use exact projected transport", () => {
+check("Locus sync and recovery use exact projected transport", () => {
   const valueMap = map(object([["value", ordered]]));
-  const sent: LiveHostServerSyncMessage[] = [];
-  const sync = make_livehost_sync_manager(valueMap);
+  const sent: LocusServerSyncMessage[] = [];
+  const sync = make_locus_sync_manager(valueMap);
   assert.equal(sync.add_session("session", (message) => { sent.push(message); }).ok, true);
   assert.equal(sync.subscribe("session", ["value"], 1).ok, true);
   assert.deepEqual(keys(decode_projected_value_payload(sent[0]!.payload!)), ["10", "2", "1"]);
 
-  const stream = make_livehost_canonical_stream(valueMap, { logicalMapId: "recovery-map", incarnationId: "recovery-inc" });
-  const recovery = make_livehost_recovery_planner(valueMap, stream);
+  const stream = make_locus_canonical_stream(valueMap, { logicalMapId: "recovery-map", incarnationId: "recovery-inc" });
+  const recovery = make_locus_recovery_planner(valueMap, stream);
   const plan = recovery.plan({ logicalMapId: stream.logicalMapId });
   assert.equal(plan.outcome, "snapshot");
   if (plan.outcome !== "snapshot" || !("hson" in plan.body)) throw new Error("Expected HSON snapshot.");

@@ -178,7 +178,7 @@ check("ordinary commit replay on a QUID-free graph does not mint", () => {
   assertNoQuids(target);
 });
 
-check("LiveHost-compatible view-state installation does not mint", () => {
+check("Locus-compatible view-state installation does not mint", () => {
   const source = manyUnquidded();
   const decoded = decode_view_state_snapshot(encode_view_state_snapshot(source.capture()));
   const target = element(`<aside @${Q1}/>`);

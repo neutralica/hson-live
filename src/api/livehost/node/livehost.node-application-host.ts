@@ -12,7 +12,7 @@ import {
   type NodeRequestContext,
   type NodeTrustedProxyPolicy,
 } from "./livehost.node-policy.js";
-import type { LiveHostRoutingSelector } from "../../../types/internal/livehost.routing.types.js";
+import type { LocusSelector } from "../../../types/locus.types.js";
 
 export type NodeAuthorityNamespace =
   | Readonly<{ kind: "exact"; value: string }>
@@ -53,7 +53,7 @@ export type NodeHostedApplication = Readonly<{
   security?: NodeApplicationSecurity;
   ready?(): boolean;
   acceptWebSocket(
-    authorityId: string,
+    locusSelector: LocusSelector,
     websocket: WebSocket,
     context: NodeWebSocketDispatchContext,
   ): void | Promise<void>;
@@ -137,13 +137,13 @@ export type NodeApplicationHost = Readonly<{
   httpUrl: string;
   applicationNames: readonly string[];
   connectionCount(applicationName?: string): number;
-  disconnectConnections(applicationName?: string, authorityId?: string): void;
+  disconnectConnections(applicationName?: string, locusSelector?: LocusSelector): void;
   stop(): Promise<void>;
 }>;
 
 type ActiveConnection = {
   readonly application: string;
-  readonly authorityId: string;
+  readonly locusSelector: LocusSelector;
   readonly clientAddress: string;
   readonly correlationId: string;
   alive: boolean;
@@ -196,7 +196,7 @@ function resolve_limits(deployment: NodeHostDeployment): NodeHostTransportLimits
   return Object.freeze(values);
 }
 
-function namespace_matches(namespace: NodeAuthorityNamespace, routingSelector: LiveHostRoutingSelector): boolean {
+function namespace_matches(namespace: NodeAuthorityNamespace, routingSelector: LocusSelector): boolean {
   if (namespace.kind === "exact") return routingSelector === namespace.value;
   if (!routingSelector.startsWith(namespace.value)) return false;
   const suffix = routingSelector.slice(namespace.value.length);
@@ -395,7 +395,7 @@ export async function start_node_application_host(
   const security_for = (application: NodeHostedApplication): NodeApplicationSecurity =>
     application.security ?? developmentSecurity;
 
-  const select_authority = (routingSelector: LiveHostRoutingSelector): NodeHostedApplication | undefined => {
+  const select_authority = (routingSelector: LocusSelector): NodeHostedApplication | undefined => {
     let selected: NodeHostedApplication | undefined;
     for (const application of applications) {
       if (!application.authorities.some((namespace) => namespace_matches(namespace, routingSelector))) continue;
@@ -456,9 +456,9 @@ export async function start_node_application_host(
         transport: "http",
         application: route.application.name,
         route: `${request.method} ${requestUrl.pathname}`,
-        ...(requestUrl.searchParams.get("livehost") === null
+        ...(requestUrl.searchParams.get("locus") === null
           ? {}
-          : { authorityId: requestUrl.searchParams.get("livehost") ?? undefined }),
+          : { locusSelector: requestUrl.searchParams.get("locus") ?? undefined }),
       }, {
         ...(deployment.mode === "production" && deployment.proxy !== undefined
           ? { proxy: deployment.proxy }
@@ -530,15 +530,15 @@ export async function start_node_application_host(
         reject_upgrade(socket, 400, "Malformed WebSocket request.");
         return;
       }
-      const authorityId = requestUrl.searchParams.get("livehost");
-      if (authorityId === null || authorityId.trim() === "") {
-        reject_upgrade(socket, 400, "A non-empty livehost authority ID is required.");
+      const locusSelector = requestUrl.searchParams.get("locus");
+      if (locusSelector === null || locusSelector.trim() === "") {
+        reject_upgrade(socket, 400, "A non-empty Locus selector is required.");
         return;
       }
-      const routingSelector: LiveHostRoutingSelector = authorityId;
+      const routingSelector: LocusSelector = locusSelector;
       const application = select_authority(routingSelector);
       if (application === undefined) {
-        reject_upgrade(socket, 404, "No application owns this livehost authority.");
+        reject_upgrade(socket, 404, "No application owns this Locus selector.");
         return;
       }
       pendingHandshakes += 1;
@@ -546,7 +546,7 @@ export async function start_node_application_host(
         const normalized = normalize_node_request(request, {
           transport: "websocket",
           application: application.name,
-          authorityId: routingSelector,
+          locusSelector: routingSelector,
         }, {
           ...(deployment.mode === "production" && deployment.proxy !== undefined
             ? { proxy: deployment.proxy }
@@ -598,7 +598,7 @@ export async function start_node_application_host(
         websocketServer.handleUpgrade(request, socket, head, (websocket) => {
           const state: ActiveConnection = {
             application: application.name,
-            authorityId: routingSelector,
+            locusSelector: routingSelector,
             clientAddress: normalized.value.effectiveClientAddress,
             correlationId: normalized.value.correlationId,
             alive: true,
@@ -770,10 +770,10 @@ export async function start_node_application_host(
         .filter((connection) => applicationName === undefined || connection.application === applicationName)
         .length;
     },
-    disconnectConnections(applicationName, authorityId) {
+    disconnectConnections(applicationName, locusSelector) {
       for (const [websocket, connection] of [...activeConnections]) {
         if (applicationName !== undefined && connection.application !== applicationName) continue;
-        if (authorityId !== undefined && connection.authorityId !== authorityId) continue;
+        if (locusSelector !== undefined && connection.locusSelector !== locusSelector) continue;
         websocket.close(1012, "Application connection interrupted.");
       }
     },

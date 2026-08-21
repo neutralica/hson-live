@@ -1,18 +1,18 @@
 import type { JsonValue } from "../../core/types.js";
 import type {
-  LiveHostActionDedupeDiagnostics,
-  LiveHostActionDedupeOptions,
-  LiveHostActionDelivery,
-  LiveHostActionRequestErrorCode,
-  LiveHostActionRequestId,
-  LiveHostActionStatusState,
-  LiveHostActionTerminalOutcome,
-  LiveHostDisposer,
-  LiveHostId,
-} from "../../types/livehost.types.js";
+  LocusActionDedupeDiagnostics,
+  LocusActionDedupeOptions,
+  LocusActionDelivery,
+  LocusActionRequestErrorCode,
+  LocusActionRequestId,
+  LocusActionStatusState,
+  LocusActionTerminalOutcome,
+  LocusDisposer,
+  LocusClientId,
+} from "../../types/locus.types.js";
 
-// `LiveHostId` is the retry-safe client identity, never an authority or map ID.
-type ClientIdentity = LiveHostId;
+// `LocusClientId` is the retry-safe client identity, never an authority or map ID.
+type ClientIdentity = LocusClientId;
 
 const DEFAULT_MAX_TERMINAL_RECORDS = 1_024;
 const DEFAULT_MAX_TERMINAL_BYTES = 4 * 1_024 * 1_024;
@@ -25,8 +25,8 @@ type PendingRecord = {
   readonly key: string;
   readonly fingerprint: string;
   readonly sourceTraceId?: string;
-  readonly promise: Promise<LiveHostActionTerminalOutcome | undefined>;
-  readonly resolve: (outcome: LiveHostActionTerminalOutcome | undefined) => void;
+  readonly promise: Promise<LocusActionTerminalOutcome | undefined>;
+  readonly resolve: (outcome: LocusActionTerminalOutcome | undefined) => void;
   waiterCount: number;
 };
 
@@ -35,56 +35,56 @@ type TerminalRecord = {
   readonly key: string;
   readonly fingerprint: string;
   readonly sourceTraceId?: string;
-  readonly outcome: LiveHostActionTerminalOutcome;
+  readonly outcome: LocusActionTerminalOutcome;
   readonly encodedBytes: number;
   readonly completedAt: number;
-  stopExpiry: LiveHostDisposer;
+  stopExpiry: LocusDisposer;
 };
 
 type ActionRecord = PendingRecord | TerminalRecord;
 
-export type LiveHostActionExecuteRequest = Readonly<{
+export type LocusActionExecuteRequest = Readonly<{
   clientId: ClientIdentity;
-  requestId: LiveHostActionRequestId;
+  requestId: LocusActionRequestId;
   actionName: string;
   payload: JsonValue | undefined;
   retry: boolean;
   sourceTraceId?: string;
-  run: () => Promise<LiveHostActionTerminalOutcome>;
+  run: () => Promise<LocusActionTerminalOutcome>;
 }>;
 
-export type LiveHostActionExecuteResult =
+export type LocusActionExecuteResult =
   | Readonly<{
     ok: true;
-    outcome: LiveHostActionTerminalOutcome;
-    delivery: Exclude<LiveHostActionDelivery, "rejected">;
+    outcome: LocusActionTerminalOutcome;
+    delivery: Exclude<LocusActionDelivery, "rejected">;
     sourceTraceId?: string;
   }>
   | Readonly<{
     ok: false;
-    code: LiveHostActionRequestErrorCode;
+    code: LocusActionRequestErrorCode;
     message: string;
   }>;
 
-export type LiveHostActionStatusResult = Readonly<{
-  state: LiveHostActionStatusState;
-  outcome?: LiveHostActionTerminalOutcome;
+export type LocusActionStatusResult = Readonly<{
+  state: LocusActionStatusState;
+  outcome?: LocusActionTerminalOutcome;
 }>;
 
-export type LiveHostActionDedupeStore = Readonly<{
-  execute: (request: LiveHostActionExecuteRequest) => Promise<LiveHostActionExecuteResult>;
-  status: (clientId: ClientIdentity, requestId: LiveHostActionRequestId) => LiveHostActionStatusResult;
-  debug: () => LiveHostActionDedupeDiagnostics;
-  dispose: LiveHostDisposer;
+export type LocusActionDedupeStore = Readonly<{
+  execute: (request: LocusActionExecuteRequest) => Promise<LocusActionExecuteResult>;
+  status: (clientId: ClientIdentity, requestId: LocusActionRequestId) => LocusActionStatusResult;
+  debug: () => LocusActionDedupeDiagnostics;
+  dispose: LocusDisposer;
 }>;
 
 function bound(value: number | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
   if (Number.isFinite(value) && value >= 0) return Math.trunc(value);
-  throw new Error(`LiveHost action dedupe ${name} must be a non-negative finite number.`);
+  throw new Error(`Locus action dedupe ${name} must be a non-negative finite number.`);
 }
 
-function default_schedule(delayMs: number, callback: () => void): LiveHostDisposer {
+function default_schedule(delayMs: number, callback: () => void): LocusDisposer {
   const timer = setTimeout(callback, delayMs);
   const scheduled = timer as unknown as {
     unref?: () => void;
@@ -107,7 +107,7 @@ function clone_json(value: JsonValue): JsonValue {
   return Object.freeze(clone);
 }
 
-function clone_outcome(outcome: LiveHostActionTerminalOutcome): LiveHostActionTerminalOutcome {
+function clone_outcome(outcome: LocusActionTerminalOutcome): LocusActionTerminalOutcome {
   if (outcome.state === "succeeded") {
     return Object.freeze({
       state: "succeeded",
@@ -138,7 +138,7 @@ function fingerprint(namespace: string, actionName: string, payload: JsonValue |
   return `${canonical(namespace)}|${canonical(actionName)}|${payload === undefined ? "absent" : `present:${canonical(payload)}`}`;
 }
 
-function client_request_key(clientId: ClientIdentity, requestId: LiveHostActionRequestId): string {
+function client_request_key(clientId: ClientIdentity, requestId: LocusActionRequestId): string {
   return `${clientId.length}:${clientId}${requestId}`;
 }
 
@@ -146,16 +146,16 @@ function valid_identity(value: string): boolean {
   return value.length > 0 && value.length <= 256;
 }
 
-function encoded_bytes(outcome: LiveHostActionTerminalOutcome): number {
+function encoded_bytes(outcome: LocusActionTerminalOutcome): number {
   return textEncoder.encode(JSON.stringify(outcome)).byteLength;
 }
 
-export function make_livehost_action_dedupe_store(
+export function make_locus_action_dedupe_store(
   headRev: () => number,
   currentSeq: () => number,
-  options: LiveHostActionDedupeOptions = {},
-): LiveHostActionDedupeStore {
-  const namespace = options.namespace ?? "livehost-action";
+  options: LocusActionDedupeOptions = {},
+): LocusActionDedupeStore {
+  const namespace = options.namespace ?? "locus-action";
   const maxTerminalRecords = bound(options.maxTerminalRecords, DEFAULT_MAX_TERMINAL_RECORDS, "maxTerminalRecords");
   const maxTerminalBytes = bound(options.maxTerminalBytes, DEFAULT_MAX_TERMINAL_BYTES, "maxTerminalBytes");
   const terminalRetentionMs = bound(options.terminalRetentionMs, DEFAULT_TERMINAL_RETENTION_MS, "terminalRetentionMs");
@@ -211,21 +211,21 @@ export function make_livehost_action_dedupe_store(
     }
   }
 
-  function infrastructure_outcome(): LiveHostActionTerminalOutcome {
+  function infrastructure_outcome(): LocusActionTerminalOutcome {
     return Object.freeze({
       state: "failed",
       seq: currentSeq(),
       completionRev: headRev(),
       error: Object.freeze({
-        code: "LIVEHOST_ACTION_OUTCOME_NORMALIZATION_FAILED",
-        message: "LiveHost could not normalize the terminal action outcome.",
+        code: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
+        message: "Locus could not normalize the terminal action outcome.",
       }),
     });
   }
 
-  function settle(pending: PendingRecord, candidate: LiveHostActionTerminalOutcome): void {
+  function settle(pending: PendingRecord, candidate: LocusActionTerminalOutcome): void {
     if (records.get(pending.key) !== pending) return;
-    let outcome: LiveHostActionTerminalOutcome;
+    let outcome: LocusActionTerminalOutcome;
     try {
       outcome = clone_outcome(candidate);
       encoded_bytes(outcome);
@@ -233,7 +233,7 @@ export function make_livehost_action_dedupe_store(
       outcome = infrastructure_outcome();
     }
     const completedAt = now();
-    if (outcome.state === "failed" && outcome.error.code === "LIVEHOST_ACTION_OUTCOME_NORMALIZATION_FAILED") {
+    if (outcome.state === "failed" && outcome.error.code === "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED") {
       outcomeNormalizationFailureCount += 1;
     }
     const terminal: TerminalRecord = {
@@ -256,12 +256,12 @@ export function make_livehost_action_dedupe_store(
     pending.resolve(outcome);
   }
 
-  async function execute(request: LiveHostActionExecuteRequest): Promise<LiveHostActionExecuteResult> {
+  async function execute(request: LocusActionExecuteRequest): Promise<LocusActionExecuteResult> {
     if (disposed) {
-      return { ok: false, code: "LIVEHOST_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "LiveHost action dedupe store is unavailable." };
+      return { ok: false, code: "LOCUS_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "Locus action dedupe store is unavailable." };
     }
     if (!valid_identity(request.clientId) || !valid_identity(request.requestId)) {
-      return { ok: false, code: "LIVEHOST_ACTION_REQUEST_ID_MALFORMED", message: "LiveHost action request identity is malformed." };
+      return { ok: false, code: "LOCUS_ACTION_REQUEST_ID_MALFORMED", message: "Locus action request identity is malformed." };
     }
     const key = client_request_key(request.clientId, request.requestId);
     const requestFingerprint = fingerprint(namespace, request.actionName, request.payload);
@@ -269,13 +269,13 @@ export function make_livehost_action_dedupe_store(
     if (existing) {
       if (existing.fingerprint !== requestFingerprint) {
         requestIdConflictCount += 1;
-        return { ok: false, code: "LIVEHOST_ACTION_REQUEST_ID_CONFLICT", message: "LiveHost action request ID was reused with different content." };
+        return { ok: false, code: "LOCUS_ACTION_REQUEST_ID_CONFLICT", message: "Locus action request ID was reused with different content." };
       }
       if (existing.state === "pending") {
         joinedPendingDuplicateCount += 1;
         existing.waiterCount += 1;
         const outcome = await existing.promise;
-        if (!outcome) return { ok: false, code: "LIVEHOST_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "LiveHost action dedupe store was disposed while the request was pending." };
+        if (!outcome) return { ok: false, code: "LOCUS_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "Locus action dedupe store was disposed while the request was pending." };
         return {
           ok: true,
           outcome,
@@ -292,14 +292,14 @@ export function make_livehost_action_dedupe_store(
       };
     }
     if (tombstones.has(key)) {
-      return { ok: false, code: "LIVEHOST_ACTION_REQUEST_EXPIRED", message: "LiveHost action request outcome has expired." };
+      return { ok: false, code: "LOCUS_ACTION_REQUEST_EXPIRED", message: "Locus action request outcome has expired." };
     }
     if (request.retry) {
-      return { ok: false, code: "LIVEHOST_ACTION_REQUEST_UNKNOWN", message: "LiveHost cannot prove a prior execution for this retry request." };
+      return { ok: false, code: "LOCUS_ACTION_REQUEST_UNKNOWN", message: "Locus cannot prove a prior execution for this retry request." };
     }
 
-    let resolveOutcome: (outcome: LiveHostActionTerminalOutcome | undefined) => void = () => {};
-    const promise = new Promise<LiveHostActionTerminalOutcome | undefined>((resolve) => { resolveOutcome = resolve; });
+    let resolveOutcome: (outcome: LocusActionTerminalOutcome | undefined) => void = () => {};
+    const promise = new Promise<LocusActionTerminalOutcome | undefined>((resolve) => { resolveOutcome = resolve; });
     const pending: PendingRecord = {
       state: "pending",
       key,
@@ -319,7 +319,7 @@ export function make_livehost_action_dedupe_store(
       }
     })();
     const outcome = await promise;
-    if (!outcome) return { ok: false, code: "LIVEHOST_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "LiveHost action dedupe store was disposed while the request was pending." };
+    if (!outcome) return { ok: false, code: "LOCUS_ACTION_DEDUPE_STORE_UNAVAILABLE", message: "Locus action dedupe store was disposed while the request was pending." };
     return {
       ok: true,
       outcome,
@@ -328,7 +328,7 @@ export function make_livehost_action_dedupe_store(
     };
   }
 
-  function status(clientId: ClientIdentity, requestId: LiveHostActionRequestId): LiveHostActionStatusResult {
+  function status(clientId: ClientIdentity, requestId: LocusActionRequestId): LocusActionStatusResult {
     if (!valid_identity(clientId) || !valid_identity(requestId)) return Object.freeze({ state: "unknown" });
     const key = client_request_key(clientId, requestId);
     const record = records.get(key);
@@ -339,7 +339,7 @@ export function make_livehost_action_dedupe_store(
     return Object.freeze({ state: "unknown" });
   }
 
-  function debug(): LiveHostActionDedupeDiagnostics {
+  function debug(): LocusActionDedupeDiagnostics {
     const pending = [...records.values()].filter((record): record is PendingRecord => record.state === "pending");
     const terminals = terminalOrder.map((key) => records.get(key)).filter((record): record is TerminalRecord => record !== undefined && record.state !== "pending");
     const oldest = terminals[0];

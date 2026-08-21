@@ -2,12 +2,11 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import {
   hson,
-  hsonLiveHost,
+  hsonLocus,
   hsonLiveMap,
   hsonReflect,
   hsonLiveTree,
   hsonTransform,
-  liveHost,
 } from "../src/hson.ts";
 import type { HsonNode, Primitive } from "../src/core/types.ts";
 
@@ -21,9 +20,8 @@ function check(name: string, fn: () => void): void {
 
 check("canonical facade runtime identities remain stable", () => {
   assert.equal(hson.transform, hsonTransform);
-  assert.equal(hson.liveHost, hsonLiveHost);
+  assert.equal(hson.locus, hsonLocus);
   assert.equal(hson.liveTree, hsonLiveTree);
-  assert.equal(liveHost, hsonLiveHost);
   assert.equal(hson.reflect, hsonReflect);
   assert.equal(typeof hsonReflect, "function");
   assert.equal(hsonReflect.collection, hson.reflect.collection);

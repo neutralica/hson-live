@@ -3,15 +3,14 @@ import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { create_livehost } from "hson-live/livehost";
+import { create_locus } from "hson-live/locus";
 import {
-  create_browser_livehost_socket,
+  create_browser_locus_socket,
   type BrowserWebSocketLike,
-} from "hson-live/livehost";
+} from "hson-live/locus";
 import {
   assert_supported_livehost_node_runtime,
   create_node_exact_origin_policy,
-  create_node_livehost_socket,
   is_supported_livehost_node_runtime,
   normalize_node_request,
   start_node_application_host,
@@ -22,6 +21,7 @@ import {
   type NodePolicyResult,
   type NodeRequestContext,
 } from "hson-live/livehost/node";
+import { create_node_locus_socket } from "hson-live/locus/node";
 import WebSocket, { type RawData } from "ws";
 
 let checks = 0;
@@ -77,7 +77,7 @@ class MockBrowserWebSocket implements BrowserWebSocketLike {
 
 function browser_fixture(): Readonly<{
   raw: MockBrowserWebSocket;
-  adapter: ReturnType<typeof create_browser_livehost_socket>;
+  adapter: ReturnType<typeof create_browser_locus_socket>;
 }> {
   let raw: MockBrowserWebSocket | undefined;
   class Constructor extends MockBrowserWebSocket {
@@ -86,7 +86,7 @@ function browser_fixture(): Readonly<{
       raw = this;
     }
   }
-  const adapter = create_browser_livehost_socket("ws://example.test", Constructor);
+  const adapter = create_browser_locus_socket("ws://example.test", Constructor);
   if (raw === undefined) throw new Error("browser fixture constructor did not run");
   return { raw, adapter };
 }
@@ -151,7 +151,7 @@ function mock_application(
           },
         })]),
       }),
-      acceptWebSocket(_authorityId: string, websocket: WebSocket) {
+      acceptWebSocket(_locusSelector: string, websocket: WebSocket) {
         accepts += 1;
         websocket.on("message", (message: RawData) => websocket.send(`${name}:${message.toString()}`));
       },
@@ -216,7 +216,7 @@ check("browser adapter rejects non-text messages with close code 1003", () => {
   const { raw, adapter } = browser_fixture();
   raw.emit("open");
   raw.emit("message", { data: new Uint8Array([1, 2, 3]) });
-  assert.deepEqual(raw.closes.at(-1), { code: 1003, reason: "LiveHost accepts text messages only." });
+  assert.deepEqual(raw.closes.at(-1), { code: 1003, reason: "Locus accepts text messages only." });
   adapter.dispose();
 });
 
@@ -229,7 +229,7 @@ check("browser adapter rejects send unless open and normalizes close and error d
   assert.deepEqual(raw.sent, ["ready"]);
   assert.deepEqual(raw.closes.at(-1), { code: 1008, reason: "policy" });
   raw.emit("error");
-  assert.deepEqual(raw.closes.at(-1), { code: 1011, reason: "LiveHost WebSocket error." });
+  assert.deepEqual(raw.closes.at(-1), { code: 1011, reason: "Locus WebSocket error." });
   adapter.dispose();
 });
 
@@ -246,7 +246,7 @@ check("browser adapter readiness failure and cleanup are idempotent", async () =
 check("Node adapter delivers real ws text messages", async () => {
   const app = mock_application("node-text", [{ kind: "exact", value: "node-text" }]);
   const host = await start_node_application_host({ port: 0, applications: [app.registration] });
-  const client = await open_websocket(`${host.url}?livehost=node-text`);
+  const client = await open_websocket(`${host.url}?locus=node-text`);
   const received = new Promise<string>((resolve) => client.once("message", (data) => resolve(data.toString())));
   client.send("hello");
   assert.equal(await received, "node-text:hello");
@@ -259,14 +259,14 @@ check("Node adapter rejects binary messages with close code 1003", async () => {
   const app: NodeHostedApplication = Object.freeze({
     name: "node-binary",
     authorities: [{ kind: "exact" as const, value: "node-binary" }],
-    acceptWebSocket(_authorityId, websocket) {
+    acceptWebSocket(_locusSelector, websocket) {
       adapted = true;
-      create_node_livehost_socket(websocket).onMessage(() => undefined);
+      create_node_locus_socket(websocket).onMessage(() => undefined);
     },
     dispose() {},
   });
   const host = await start_node_application_host({ port: 0, applications: [app] });
-  const client = await open_websocket(`${host.url}?livehost=node-binary`);
+  const client = await open_websocket(`${host.url}?locus=node-binary`);
   const closed = socket_close(client);
   client.send(Buffer.from([1, 2, 3]));
   assert.equal(await closed, 1003);
@@ -279,15 +279,15 @@ check("Node adapter message listener disposal is idempotent", async () => {
   const app: NodeHostedApplication = Object.freeze({
     name: "node-dispose",
     authorities: [{ kind: "exact" as const, value: "node-dispose" }],
-    acceptWebSocket(_authorityId, websocket) {
-      const stop = create_node_livehost_socket(websocket).onMessage(() => messages += 1);
+    acceptWebSocket(_locusSelector, websocket) {
+      const stop = create_node_locus_socket(websocket).onMessage(() => messages += 1);
       stop?.();
       stop?.();
     },
     dispose() {},
   });
   const host = await start_node_application_host({ port: 0, applications: [app] });
-  const client = await open_websocket(`${host.url}?livehost=node-dispose`);
+  const client = await open_websocket(`${host.url}?locus=node-dispose`);
   client.send("ignored");
   await new Promise<void>((resolve) => setTimeout(resolve, 20));
   assert.equal(messages, 0);
@@ -300,15 +300,15 @@ check("Node adapter close listener disposal is idempotent", async () => {
   const app: NodeHostedApplication = Object.freeze({
     name: "node-close",
     authorities: [{ kind: "exact" as const, value: "node-close" }],
-    acceptWebSocket(_authorityId, websocket) {
-      const stop = create_node_livehost_socket(websocket).onClose(() => closes += 1);
+    acceptWebSocket(_locusSelector, websocket) {
+      const stop = create_node_locus_socket(websocket).onClose(() => closes += 1);
       stop?.();
       stop?.();
     },
     dispose() {},
   });
   const host = await start_node_application_host({ port: 0, applications: [app] });
-  const client = await open_websocket(`${host.url}?livehost=node-close`);
+  const client = await open_websocket(`${host.url}?locus=node-close`);
   const closed = socket_close(client);
   client.close();
   await closed;
@@ -317,17 +317,17 @@ check("Node adapter close listener disposal is idempotent", async () => {
 });
 
 check("Node adapter isolates send after transport closure", async () => {
-  let adapter: ReturnType<typeof create_node_livehost_socket> | undefined;
+  let adapter: ReturnType<typeof create_node_locus_socket> | undefined;
   const app: NodeHostedApplication = Object.freeze({
     name: "node-send",
     authorities: [{ kind: "exact" as const, value: "node-send" }],
-    acceptWebSocket(_authorityId, websocket) {
-      adapter = create_node_livehost_socket(websocket);
+    acceptWebSocket(_locusSelector, websocket) {
+      adapter = create_node_locus_socket(websocket);
     },
     dispose() {},
   });
   const host = await start_node_application_host({ port: 0, applications: [app] });
-  const client = await open_websocket(`${host.url}?livehost=node-send`);
+  const client = await open_websocket(`${host.url}?locus=node-send`);
   const closed = socket_close(client);
   client.close();
   await closed;
@@ -346,14 +346,14 @@ check("socket adapters expose transport behavior but no authority state", () => 
   adapter.dispose();
 });
 
-check("built browser and authority entrypoints exclude Node transport modules", async () => {
-  const [root, livehost, authorityCore, nodeHost] = await Promise.all([
+check("built browser and Locus entrypoints exclude Node transport modules", async () => {
+  const [root, locus, authorityCore, nodeHost] = await Promise.all([
     readFile(new URL("../dist/index.js", import.meta.url), "utf8"),
-    readFile(new URL("../dist/api/livehost/index.js", import.meta.url), "utf8"),
-    readFile(new URL("../dist/api/livehost/livehost.core.js", import.meta.url), "utf8"),
+    readFile(new URL("../dist/api/locus/index.js", import.meta.url), "utf8"),
+    readFile(new URL("../dist/api/locus/locus.core.js", import.meta.url), "utf8"),
     readFile(new URL("../dist/api/livehost/node/livehost.node-application-host.js", import.meta.url), "utf8"),
   ]);
-  for (const source of [root, livehost, authorityCore]) {
+  for (const source of [root, locus, authorityCore]) {
     assert.equal(source.includes("node:http"), false);
     assert.equal(source.includes('from "ws"'), false);
   }
@@ -365,8 +365,8 @@ check("multiple applications receive only their HTTP and WebSocket routes", asyn
   const alpha = mock_application("alpha", [{ kind: "exact", value: "alpha" }], "/alpha");
   const beta = mock_application("beta", [{ kind: "prefix", value: "beta:" }], "/beta");
   const host = await start_node_application_host({ port: 0, applications: [alpha.registration, beta.registration] });
-  const alphaSocket = await open_websocket(`${host.url}?livehost=alpha`);
-  const betaSocket = await open_websocket(`${host.url}?livehost=beta%3Aroom`);
+  const alphaSocket = await open_websocket(`${host.url}?locus=alpha`);
+  const betaSocket = await open_websocket(`${host.url}?locus=beta%3Aroom`);
   assert.equal(await (await fetch(`${host.httpUrl}/alpha`)).text(), "alpha");
   assert.equal(await (await fetch(`${host.httpUrl}/beta`)).text(), "beta");
   assert.equal((await fetch(`${host.httpUrl}/missing`)).status, 404);
@@ -418,8 +418,9 @@ check("missing malformed and unmatched authorities never touch application state
   }]);
   const host = await start_node_application_host({ port: 0, applications: [app.registration] });
   assert.equal(await rejected_websocket_status(host.url), 400);
-  assert.equal(await rejected_websocket_status(`${host.url}?livehost=room%3A1`), 404);
-  assert.equal(await rejected_websocket_status(`${host.url}?livehost=unknown`), 404);
+  assert.equal(await rejected_websocket_status(`${host.url}?livehost=room%3Aok`), 400);
+  assert.equal(await rejected_websocket_status(`${host.url}?locus=room%3A1`), 404);
+  assert.equal(await rejected_websocket_status(`${host.url}?locus=unknown`), 404);
   assert.equal(app.accepts(), 0);
   await host.stop();
 });
@@ -454,7 +455,7 @@ check("application disposal remains independent", async () => {
   const beta = mock_application("beta", [{ kind: "exact", value: "beta" }]);
   const host = await start_node_application_host({ port: 0, applications: [alpha.registration, beta.registration] });
   await alpha.registration.dispose();
-  const betaSocket = await open_websocket(`${host.url}?livehost=beta`);
+  const betaSocket = await open_websocket(`${host.url}?locus=beta`);
   assert.equal(beta.accepts(), 1);
   assert.equal(alpha.disposals(), 1);
   betaSocket.close();
@@ -463,14 +464,14 @@ check("application disposal remains independent", async () => {
   assert.equal(beta.disposals(), 1);
 });
 
-check("multiple LiveHost authorities coexist behind independent applications", async () => {
-  const firstAuthority = create_livehost({ state: { id: "equal", count: 0 } });
-  const secondAuthority = create_livehost({ state: { id: "equal", count: 0 } });
+check("multiple Locus authorities coexist behind independent applications", async () => {
+  const firstAuthority = create_locus({ state: { id: "equal", count: 0 } });
+  const secondAuthority = create_locus({ state: { id: "equal", count: 0 } });
   const first: NodeHostedApplication = Object.freeze({
     name: "authority-a",
     authorities: [{ kind: "exact" as const, value: "authority-a" }],
     acceptWebSocket(_id, websocket) {
-      firstAuthority.connect(create_node_livehost_socket(websocket));
+      firstAuthority.connect(create_node_locus_socket(websocket));
     },
     dispose() { firstAuthority.dispose(); },
   });
@@ -478,7 +479,7 @@ check("multiple LiveHost authorities coexist behind independent applications", a
     name: "authority-b",
     authorities: [{ kind: "exact" as const, value: "authority-b" }],
     acceptWebSocket(_id, websocket) {
-      secondAuthority.connect(create_node_livehost_socket(websocket));
+      secondAuthority.connect(create_node_locus_socket(websocket));
     },
     dispose() { secondAuthority.dispose(); },
   });
@@ -506,7 +507,7 @@ check("authority-only hosting creates no rendering runtime or DOM and installs n
 check("shutdown is idempotent disposes once and closes active sockets", async () => {
   const app = mock_application("active", [{ kind: "exact", value: "active" }]);
   const host = await start_node_application_host({ port: 0, applications: [app.registration] });
-  const websocket = await open_websocket(`${host.url}?livehost=active`);
+  const websocket = await open_websocket(`${host.url}?locus=active`);
   const closed = socket_close(websocket);
   await Promise.all([host.stop(), host.stop()]);
   assert.equal(await closed, 1001);
@@ -534,7 +535,7 @@ check("operational events remain structured and separate from protocol state", a
     log: (event) => events.push(event),
   });
   await fetch(`${host.httpUrl}/logged`);
-  const websocket = await open_websocket(`${host.url}?livehost=logged`);
+  const websocket = await open_websocket(`${host.url}?locus=logged`);
   websocket.close();
   await host.stop();
   assert.deepEqual(
@@ -601,7 +602,7 @@ function secure_application(
         response.end("secure");
       },
     }],
-    acceptWebSocket(_authorityId, websocket, context) {
+    acceptWebSocket(_locusSelector, websocket, context) {
       accepts += 1;
       contexts.push(context.request);
       websocket.on("message", (message: RawData) => websocket.send(message));
@@ -728,7 +729,7 @@ check("one exact origin policy protects HTTP and WebSocket before dispatch", asy
     headers: { ...secureHeaders, Origin: "https://evil.example" },
   })).status, 403);
   assert.equal(await rejected_websocket_status(
-    `${host.url}?livehost=secure`,
+    `${host.url}?locus=secure`,
     { ...secureHeaders, Origin: "https://evil.example" },
   ), 403);
   assert.equal(app.accepts(), 0);
@@ -772,7 +773,7 @@ check("authentication and authority authorization complete before callbacks or u
     deployment: { mode: "production" },
     applications: [app.registration],
   });
-  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`), 401);
+  assert.equal(await rejected_websocket_status(`${host.url}?locus=secure`), 401);
   assert.equal(authentication, 1);
   assert.equal(authorization, 0);
   assert.equal(app.accepts(), 0);
@@ -801,7 +802,7 @@ check("HTTP bootstrap and WebSocket independently authenticate the same principa
     applications: [app.registration],
   });
   assert.equal((await fetch(`${host.httpUrl}/bootstrap`, { headers: secureHeaders })).status, 200);
-  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  const websocket = await open_websocket(`${host.url}?locus=secure`, secureHeaders);
   websocket.close();
   assert.deepEqual(principalIds, ["same-user", "same-user"]);
   assert.deepEqual(operations, ["bootstrap-read", "websocket-connect"]);
@@ -821,7 +822,7 @@ check("asynchronous policy is bounded before WebSocket acceptance", async () => 
     deployment: { mode: "production", limits: { handshakeTimeoutMs: 20 } },
     applications: [app.registration],
   });
-  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`), 408);
+  assert.equal(await rejected_websocket_status(`${host.url}?locus=secure`), 408);
   assert.equal(app.accepts(), 0);
   await host.stop();
 });
@@ -849,8 +850,8 @@ check("connection admission is bounded globally before a second upgrade", async 
     },
     applications: [app.registration],
   });
-  const first = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
-  assert.equal(await rejected_websocket_status(`${host.url}?livehost=secure`, secureHeaders), 503);
+  const first = await open_websocket(`${host.url}?locus=secure`, secureHeaders);
+  assert.equal(await rejected_websocket_status(`${host.url}?locus=secure`, secureHeaders), 503);
   first.close();
   await host.stop();
 });
@@ -865,7 +866,7 @@ check("WebSocket message-rate budget closes abusive connections", async () => {
     },
     applications: [app.registration],
   });
-  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  const websocket = await open_websocket(`${host.url}?locus=secure`, secureHeaders);
   const closed = socket_close(websocket);
   websocket.send("one");
   websocket.send("two");
@@ -882,7 +883,7 @@ check("security events are structured and redact selectors principals and creden
     applications: [app.registration],
     log: (event) => events.push(event),
   });
-  await rejected_websocket_status(`${host.url}?livehost=secure`, {
+  await rejected_websocket_status(`${host.url}?locus=secure`, {
     Origin: "https://public.example",
     Authorization: "Bearer very-secret-invalid-token",
   });
@@ -896,7 +897,7 @@ check("security events are structured and redact selectors principals and creden
 
 check("resumable credentials are principal-bound before an active attachment can be fenced", async () => {
   let nextSession = 0;
-  const authority = create_livehost({
+  const authority = create_locus({
     state: { value: 0 },
     sessionId: () => `bound-session-${++nextSession}`,
   });
@@ -915,8 +916,8 @@ check("resumable credentials are principal-bound before an active attachment can
     name: "bound",
     authorities: [{ kind: "exact", value: "bound" }],
     security,
-    acceptWebSocket(_authorityId, websocket, context) {
-      authority.connect(create_node_livehost_socket(websocket), {
+    acceptWebSocket(_locusSelector, websocket, context) {
+      authority.connect(create_node_locus_socket(websocket), {
         principalId: context.principal.id,
         attachment: context.principal.value,
       });
@@ -932,7 +933,7 @@ check("resumable credentials are principal-bound before an active attachment can
     applications: [app],
   });
   const headersA = { Origin: "https://public.example", "X-Test-Principal": "principal-a" };
-  const first = await open_websocket(`${host.url}?livehost=bound`, headersA);
+  const first = await open_websocket(`${host.url}?locus=bound`, headersA);
   const createdMessage = next_json_message(first);
   first.send(JSON.stringify({ type: "session-create", id: "create" }));
   const created = await createdMessage;
@@ -943,7 +944,7 @@ check("resumable credentials are principal-bound before an active attachment can
   first.on("message", (data) => {
     if (JSON.parse(data.toString()).type === "session-fenced") fenced = true;
   });
-  const wrong = await open_websocket(`${host.url}?livehost=bound`, {
+  const wrong = await open_websocket(`${host.url}?locus=bound`, {
     Origin: "https://public.example",
     "X-Test-Principal": "principal-b",
   });
@@ -951,11 +952,11 @@ check("resumable credentials are principal-bound before an active attachment can
   wrong.send(JSON.stringify({ type: "session-attach", id: "wrong", credential: created.credential }));
   const rejected = await rejectedMessage;
   assert.equal(rejected.type, "session-rejected");
-  assert.equal(rejected.code, "LIVEHOST_SESSION_CREDENTIAL_UNKNOWN");
+  assert.equal(rejected.code, "LOCUS_SESSION_CREDENTIAL_UNKNOWN");
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   assert.equal(fenced, false);
 
-  const second = await open_websocket(`${host.url}?livehost=bound`, headersA);
+  const second = await open_websocket(`${host.url}?locus=bound`, headersA);
   const attachedMessage = next_json_message(second);
   second.send(JSON.stringify({ type: "session-attach", id: "right", credential: created.credential }));
   assert.equal((await attachedMessage).type, "session-attached");
@@ -977,7 +978,7 @@ check("heartbeat preserves responsive idle sockets", async () => {
     },
     applications: [app.registration],
   });
-  const websocket = await open_websocket(`${host.url}?livehost=secure`, secureHeaders);
+  const websocket = await open_websocket(`${host.url}?locus=secure`, secureHeaders);
   await new Promise<void>((resolve) => setTimeout(resolve, 90));
   assert.equal(websocket.readyState, WebSocket.OPEN);
   websocket.close();
@@ -994,7 +995,7 @@ check("heartbeat terminates a socket that does not answer ping", async () => {
     },
     applications: [app.registration],
   });
-  const websocket = new WebSocket(`${host.url}?livehost=secure`, {
+  const websocket = new WebSocket(`${host.url}?locus=secure`, {
     headers: secureHeaders,
     autoPong: false,
   });
@@ -1013,9 +1014,9 @@ check("Node adapter closes on outgoing backpressure without dropping a canonical
     name: "pressure",
     authorities: [{ kind: "exact", value: "pressure" }],
     security,
-    acceptWebSocket(_authorityId, websocket) {
+    acceptWebSocket(_locusSelector, websocket) {
       Object.defineProperty(websocket, "bufferedAmount", { configurable: true, value: 2 });
-      create_node_livehost_socket(websocket, {
+      create_node_locus_socket(websocket, {
         maxBufferedAmount: 1,
         onBackpressure: () => backpressure += 1,
       }).send("canonical-commit");
@@ -1027,12 +1028,12 @@ check("Node adapter closes on outgoing backpressure without dropping a canonical
     deployment: { mode: "production" },
     applications: [Object.freeze(appValue)],
   });
-  const websocket = await open_websocket(`${host.url}?livehost=pressure`, secureHeaders);
+  const websocket = await open_websocket(`${host.url}?locus=pressure`, secureHeaders);
   assert.equal(await socket_close(websocket), 1013);
   assert.equal(backpressure, 1);
   await host.stop();
 });
 
 await sequence;
-process.stdout.write(`# ${checks} LiveHost Node hosting checks passed\n`);
+process.stdout.write(`# ${checks} Locus Node hosting checks passed\n`);
 emit_hson_live_test_completion("livehost.node-hosting", checks, checks, 0);

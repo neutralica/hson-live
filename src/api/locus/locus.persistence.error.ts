@@ -1,21 +1,21 @@
-export type LiveHostPersistenceErrorCode =
-  | "LIVEHOST_PERSISTENCE_REQUIRES_EXCLUSIVE"
-  | "LIVEHOST_PERSISTENCE_MAP_KIND_UNSUPPORTED"
-  | "LIVEHOST_PERSISTENCE_INITIAL_CHECKPOINT_FAILED"
-  | "LIVEHOST_PERSISTENCE_APPEND_FAILED"
-  | "LIVEHOST_PERSISTENCE_CHECKPOINT_FAILED"
-  | "LIVEHOST_PERSISTENCE_LOAD_FAILED"
-  | "LIVEHOST_PERSISTED_STATE_INVALID"
-  | "LIVEHOST_PERSISTENCE_REGISTRY_CONFLICT";
+export type LocusPersistenceErrorCode =
+  | "LOCUS_PERSISTENCE_REQUIRES_EXCLUSIVE"
+  | "LOCUS_PERSISTENCE_MAP_KIND_UNSUPPORTED"
+  | "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED"
+  | "LOCUS_PERSISTENCE_APPEND_FAILED"
+  | "LOCUS_PERSISTENCE_CHECKPOINT_FAILED"
+  | "LOCUS_PERSISTENCE_LOAD_FAILED"
+  | "LOCUS_PERSISTED_STATE_INVALID"
+  | "LOCUS_PERSISTENCE_REGISTRY_CONFLICT";
 
 /** Content-safe persistence-boundary failure. */
-export class LiveHostPersistenceError extends Error {
+export class LocusPersistenceError extends Error {
   constructor(
-    readonly code: LiveHostPersistenceErrorCode,
+    readonly code: LocusPersistenceErrorCode,
     message: string,
     options?: ErrorOptions,
   ) {
     super(message, options);
-    this.name = "LiveHostPersistenceError";
+    this.name = "LocusPersistenceError";
   }
 }

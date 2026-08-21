@@ -342,7 +342,7 @@ check("binding source authenticity is exact-object based and value-shape indepen
   };
   assert.throws(
     () => (tree.bind.path as (source: unknown, apply: () => void) => () => void)(fabricated, () => undefined),
-    /authentic passive LiveMap or LiveHost location/,
+    /authentic passive LiveMap or Locus location/,
   );
   assert.equal(snaps, 0);
 

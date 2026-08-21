@@ -15,11 +15,11 @@ import {
   set_livemap_document_quid_candidate_source_for_tests,
 } from "../src/api/livemap/livemap.document.registration.ts";
 import { livemap_document_identity_overlay_for } from "../src/api/livemap/livemap.document.identity.ts";
-import { make_livehost_canonical_commit } from "../src/api/livehost/livehost.history.ts";
+import { make_locus_canonical_commit } from "../src/api/locus/locus.history.ts";
 import {
-  decode_livehost_canonical_commit,
-  decode_livehost_document_commit,
-} from "../src/api/livehost/livehost.protocol.ts";
+  decode_locus_canonical_commit,
+  decode_locus_document_commit,
+} from "../src/api/locus/locus.protocol.ts";
 import { PERSISTED_QUID_ALPHABET, PERSISTED_QUID_LENGTH } from "../src/core/hson-node-quid.ts";
 import type { LiveMapAnyOp, LiveMapCommit } from "../src/types/livemap.types.ts";
 import { FakeElement } from "./helpers/fake-document.mts";
@@ -73,17 +73,17 @@ check("replay never consults the map allocator", () => {
   assert.equal(map.element.node().$_meta?.quid, Q1);
 });
 
-check("LiveHost canonical history retains path and recorded QUID", () => {
+check("Locus canonical history retains path and recorded QUID", () => {
   const { map, binding } = reflected(`<main/>`);
   let commit: LiveMapCommit<LiveMapAnyOp> | undefined;
   map.commits.observe((observation) => { if (observation.kind === "commit") commit = observation.commit; });
   const quid = binding.tree.quid;
-  const encoded = make_livehost_canonical_commit(map, commit!, "identity-map", "identity-incarnation", 0);
+  const encoded = make_locus_canonical_commit(map, commit!, "identity-map", "identity-incarnation", 0);
   assert.deepEqual(encoded.ops[0], { domain: "graph", op: "ensure-quid", target: path(), quid });
   close(binding);
 });
 
-check("current LiveHost decoder accepts additive ensure-quid transport", () => {
+check("current Locus decoder accepts additive ensure-quid transport", () => {
   const encoded = {
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
@@ -92,10 +92,10 @@ check("current LiveHost decoder accepts additive ensure-quid transport", () => {
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
   };
-  assert.equal(Reflect.get(decode_livehost_canonical_commit(encoded)!.ops[0]!, "quid"), Q1);
+  assert.equal(Reflect.get(decode_locus_canonical_commit(encoded)!.ops[0]!, "quid"), Q1);
 });
 
-check("LiveHost decoder rejects malformed registration QUID", () => {
+check("Locus decoder rejects malformed registration QUID", () => {
   const encoded = {
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
@@ -104,15 +104,15 @@ check("LiveHost decoder rejects malformed registration QUID", () => {
     rev: 1,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "bad" }],
   };
-  assert.equal(decode_livehost_canonical_commit(encoded), undefined);
-  assert.equal(decode_livehost_canonical_commit({
+  assert.equal(decode_locus_canonical_commit(encoded), undefined);
+  assert.equal(decode_locus_canonical_commit({
     ...encoded,
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: "0000000000000001" }],
   }), undefined);
 });
 
-check("decoded LiveHost registration replays on a document mirror", () => {
-  const encoded = decode_livehost_canonical_commit({
+check("decoded Locus registration replays on a document mirror", () => {
+  const encoded = decode_locus_canonical_commit({
     logicalMapId: "identity-map",
     incarnationId: "identity-incarnation",
     mode: "element",
@@ -121,7 +121,7 @@ check("decoded LiveHost registration replays on a document mirror", () => {
     ops: [{ domain: "graph", op: "ensure-quid", target: path(), quid: Q1 }],
   })!;
   const mirror = element(`<main/>`);
-  Reflect.apply(mirror.replay, mirror, [decode_livehost_document_commit(encoded)]);
+  Reflect.apply(mirror.replay, mirror, [decode_locus_document_commit(encoded)]);
   assert.equal(mirror.document.byQuid(Q1)?.$_tag, "main");
 });
 

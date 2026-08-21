@@ -20,7 +20,7 @@ import {
   encode_view_state_snapshot,
 } from "../src/api/livemap/livemap.document.view-state-codec.ts";
 import { is_Node } from "../src/core/node-guards.ts";
-import { decode_livehost_graph_content } from "../src/api/livehost/livehost.graph-content-codec.ts";
+import { decode_locus_graph_content } from "../src/api/locus/locus.graph-content-codec.ts";
 import type { HsonNode } from "../src/core/types.ts";
 
 let checks = 0;
@@ -355,13 +355,13 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   assert.deepEqual(payload_tags(decoded), ["a", "b"]);
   assert.deepEqual(indexes(decoded), ["0", "1"]);
   assert.notEqual(encode_exact_hson_value(decoded), payload);
-  const livehostDecoded = decode_livehost_graph_content({
+  const locusDecoded = decode_locus_graph_content({
     format: "hson-graph",
     formatVersion: 2,
     payload,
   });
-  assert.ok(is_Node(livehostDecoded));
-  assert.deepEqual(payload_tags(livehostDecoded), ["a", "b"]);
+  assert.ok(is_Node(locusDecoded));
+  assert.deepEqual(payload_tags(locusDecoded), ["a", "b"]);
   assert.throws(() => decode_exact_hson_value(
     hson.fromJson({ ...representation, valueVersion: 2 }).toHson().noBreak().serialize(),
   ));

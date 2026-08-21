@@ -7,13 +7,13 @@ import {
   create_live_trace_console_sink,
 } from "../diagnostics/index.js";
 import type {
-  LiveHostOptions,
-  LiveHostActionAuthorizationContext,
-  LiveHostActionAuthorizer,
+  ProjectedLocusOptions,
+  LocusActionAuthorizationContext,
+  LocusActionAuthorizer,
   LiveTraceCollector,
   LiveTraceEvent,
   LiveTraceSink,
-} from "../types/livehost.types.js";
+} from "../types/locus.types.js";
 
 type Equal<Left, Right> =
   (<Value>() => Value extends Left ? 1 : 2) extends
@@ -77,7 +77,7 @@ type DataLiveMapOmitsInstall = Expect<
 >;
 type TraceSinkHasOneMethod = Expect<Equal<keyof LiveTraceSink, "emit">>;
 type TraceConfigurationIsOptional = Expect<
-  Equal<undefined extends LiveHostOptions["trace"] ? true : false, true>
+  Equal<undefined extends ProjectedLocusOptions["trace"] ? true : false, true>
 >;
 type TraceEventIsReadonly = Expect<
   Equal<Readonly<LiveTraceEvent>, LiveTraceEvent>
@@ -86,7 +86,7 @@ type LiveMapOmitsTrace = Expect<
   Equal<"trace" extends keyof LiveMapSurface ? true : false, false>
 >;
 type AuthorizationContextIsReadonly = Expect<
-  Equal<Readonly<LiveHostActionAuthorizationContext>, LiveHostActionAuthorizationContext>
+  Equal<Readonly<LocusActionAuthorizationContext>, LocusActionAuthorizationContext>
 >;
 
 function read_node_from_any_source(source: AnySourceSurface): HsonNode {
@@ -190,26 +190,26 @@ function assert_document_surface(documentMap: DocumentLiveMapSurface): void {
 function assert_trace_diagnostics_exports(): LiveTraceCollector {
   const collector = create_live_trace_collector({ capacity: 8 });
   const sink: LiveTraceSink = create_live_trace_console_sink({ write: () => undefined });
-  const options: LiveHostOptions = { trace: sink };
+  const options: ProjectedLocusOptions = { trace: sink };
   void options;
   return collector;
 }
 
-function assert_livehost_authorization_types(): void {
+function assert_locus_authorization_types(): void {
   type Actions = Readonly<{ set: Readonly<{ value: number }> }>;
-  const sync: LiveHostActionAuthorizer<Actions> = (context) => {
+  const sync: LocusActionAuthorizer<Actions> = (context) => {
     // @ts-expect-error Authorization context fields are readonly.
     context.action = "set";
     // @ts-expect-error The validated policy payload is readonly.
     context.payload.value = 2;
     return context.session.resumable;
   };
-  const asyncPolicy: LiveHostActionAuthorizer<Actions> = async () => true;
-  const options: LiveHostOptions<Readonly<{ value: number }>, Actions> = {
+  const asyncPolicy: LocusActionAuthorizer<Actions> = async () => true;
+  const options: ProjectedLocusOptions<Readonly<{ value: number }>, Actions> = {
     state: { value: 0 },
     authorizeAction: sync,
   };
-  const asyncOptions: LiveHostOptions<Readonly<{ value: number }>, Actions> = {
+  const asyncOptions: ProjectedLocusOptions<Readonly<{ value: number }>, Actions> = {
     state: { value: 0 },
     authorizeAction: asyncPolicy,
   };

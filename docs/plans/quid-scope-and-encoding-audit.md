@@ -328,7 +328,7 @@ Stale style cleanup is coupled to lifecycle cleanup. Detach intentionally retain
 - [`docs/hson-livetree.md`](../hson-livetree.md#L88) correctly describes internal live identity, detach stability, fresh clone identity, transform output as non-persistence, and QUIDs as non-security values.
 - [`docs/hson-livemap.md`](../hson-livemap.md#L365) describes sparse map-local identity and says LiveMap does not mint QUIDs, matching code. Earlier roadmap text still says graph apply/replay/recovery/persistence do not exist even though those paths are implemented.
 - [`docs/livemap/overview.md`](../livemap/overview.md#L1125) says QUID identity is stable through capture, restoration, and replay. That is a durable scoped identity promise and conflicts with a blanket ephemeral-only statement.
-- [`docs/hson-livehost.md`](../hson-livehost.md#L262) says snapshots do not preserve graph QUID identity or presents preservation as roadmap work, contradicting the implemented exact metadata codecs, history, recovery, and persistence.
+- [`docs/hson-locus.md`](../hson-locus.md#L262) says snapshots do not preserve graph QUID identity or presents preservation as roadmap work, contradicting the implemented exact metadata codecs, history, recovery, and persistence.
 - Transform documentation publicly specifies the persisted 80-bit format. Combined with public parsing/serialization, that makes width and alphabet a compatibility surface even if application authors are discouraged from using the values.
 
 ## 14. Probability comparison: 8, 10, and 16 characters

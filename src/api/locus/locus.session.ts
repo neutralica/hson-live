@@ -1,35 +1,35 @@
 import type {
-  LiveHostConnectionEpoch,
-  LiveHostConnectionContext,
-  LiveHostDisposer,
-  LiveHostResult,
-  LiveHostSessionCredential,
-  LiveHostSessionDiagnostic,
-  LiveHostSessionDiagnostics,
-  LiveHostSessionId,
-  LiveHostSessionLifecycleEvent,
-  LiveHostSessionOptions,
-  LiveHostSessionRejectCode,
-  LiveHostSessionState,
-} from "../../types/livehost.types.js";
+  LocusConnectionEpoch,
+  LocusConnectionContext,
+  LocusDisposer,
+  LocusResult,
+  LocusSessionCredential,
+  LocusSessionDiagnostic,
+  LocusSessionDiagnostics,
+  LocusSessionId,
+  LocusSessionLifecycleEvent,
+  LocusSessionOptions,
+  LocusSessionRejectCode,
+  LocusSessionState,
+} from "../../types/locus.types.js";
 
 const DEFAULT_GRACE_MS = 30_000;
 
 type SessionAttachment = Readonly<{
-  fence: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => void;
+  fence: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => void;
 }>;
 
 type SessionRecord = {
-  readonly sessionId: LiveHostSessionId;
-  readonly credential?: LiveHostSessionCredential;
+  readonly sessionId: LocusSessionId;
+  readonly credential?: LocusSessionCredential;
   readonly resumable: boolean;
   readonly principalId?: string;
-  readonly disposeResources: LiveHostDisposer;
+  readonly disposeResources: LocusDisposer;
   readonly subscriptionCount: () => number;
-  state: LiveHostSessionState;
-  epoch: LiveHostConnectionEpoch;
+  state: LocusSessionState;
+  epoch: LocusConnectionEpoch;
   attachment?: SessionAttachment;
-  stopExpiry?: LiveHostDisposer;
+  stopExpiry?: LocusDisposer;
   disconnectedAt?: number;
   expiresAt?: number;
   reattachmentCount: number;
@@ -39,73 +39,73 @@ type SessionRecord = {
 };
 
 type SessionSuccess = Readonly<{
-  sessionId: LiveHostSessionId;
-  epoch: LiveHostConnectionEpoch;
+  sessionId: LocusSessionId;
+  epoch: LocusConnectionEpoch;
   resumable: boolean;
-  credential?: LiveHostSessionCredential;
+  credential?: LocusSessionCredential;
 }>;
 
-export type LiveHostSessionManager = Readonly<{
+export type LocusSessionManager = Readonly<{
   create: (
-    sessionId: LiveHostSessionId,
+    sessionId: LocusSessionId,
     resumable: boolean,
     attachment: SessionAttachment,
-    disposeResources: LiveHostDisposer,
+    disposeResources: LocusDisposer,
     subscriptionCount: () => number,
-    context?: LiveHostConnectionContext,
-  ) => LiveHostResult<SessionSuccess>;
+    context?: LocusConnectionContext,
+  ) => LocusResult<SessionSuccess>;
   reattach: (
     credential: unknown,
     attachment: SessionAttachment,
-    context?: LiveHostConnectionContext,
-  ) => LiveHostResult<SessionSuccess>;
-  detach: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => boolean;
-  goodbye: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => LiveHostResult<void>;
-  is_active: (sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch) => boolean;
-  debug: () => LiveHostSessionDiagnostics;
-  on_change: (listener: (event: LiveHostSessionLifecycleEvent) => void) => LiveHostDisposer;
-  dispose: LiveHostDisposer;
+    context?: LocusConnectionContext,
+  ) => LocusResult<SessionSuccess>;
+  detach: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
+  goodbye: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => LocusResult<void>;
+  is_active: (sessionId: LocusSessionId, epoch: LocusConnectionEpoch) => boolean;
+  debug: () => LocusSessionDiagnostics;
+  on_change: (listener: (event: LocusSessionLifecycleEvent) => void) => LocusDisposer;
+  dispose: LocusDisposer;
 }>;
 
-function ok<T>(value: T): LiveHostResult<T> {
+function ok<T>(value: T): LocusResult<T> {
   return { ok: true, value };
 }
 
-function fail(code: LiveHostSessionRejectCode, message: string): LiveHostResult<never> {
+function fail(code: LocusSessionRejectCode, message: string): LocusResult<never> {
   return { ok: false, error: { code, message } };
 }
 
-function default_schedule(delayMs: number, callback: () => void): LiveHostDisposer {
+function default_schedule(delayMs: number, callback: () => void): LocusDisposer {
   const timer = setTimeout(callback, delayMs);
   return () => clearTimeout(timer);
 }
 
-function random_credential(): LiveHostSessionCredential {
+function random_credential(): LocusSessionCredential {
   const bytes = new Uint8Array(32);
   globalThis.crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function valid_credential(value: unknown): value is LiveHostSessionCredential {
+function valid_credential(value: unknown): value is LocusSessionCredential {
   return typeof value === "string" && value.length >= 16 && value.length <= 512;
 }
 
-export function make_livehost_session_manager(options: LiveHostSessionOptions = {}): LiveHostSessionManager {
+export function make_locus_session_manager(options: LocusSessionOptions = {}): LocusSessionManager {
   const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
-  if (!Number.isFinite(graceMs) || graceMs < 0) throw new Error("LiveHost session graceMs must be non-negative and finite.");
+  if (!Number.isFinite(graceMs) || graceMs < 0) throw new Error("Locus session graceMs must be non-negative and finite.");
   const now = options.now ?? Date.now;
   const schedule = options.schedule ?? default_schedule;
   const makeCredential = options.credential ?? random_credential;
-  const sessions = new Map<LiveHostSessionId, SessionRecord>();
-  const credentials = new Map<LiveHostSessionCredential, SessionRecord>();
-  const listeners = new Set<(event: LiveHostSessionLifecycleEvent) => void>();
-  const rejected = new Map<LiveHostSessionRejectCode, number>();
+  const sessions = new Map<LocusSessionId, SessionRecord>();
+  const credentials = new Map<LocusSessionCredential, SessionRecord>();
+  const listeners = new Set<(event: LocusSessionLifecycleEvent) => void>();
+  const rejected = new Map<LocusSessionRejectCode, number>();
   let totalReattachments = 0;
   let totalFencing = 0;
   let totalExpiry = 0;
   let disposed = false;
 
-  function emit(event: LiveHostSessionLifecycleEvent): void {
+  function emit(event: LocusSessionLifecycleEvent): void {
     for (const listener of [...listeners]) {
       try {
         listener(event);
@@ -115,7 +115,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     }
   }
 
-  function on_change(listener: (event: LiveHostSessionLifecycleEvent) => void): LiveHostDisposer {
+  function on_change(listener: (event: LocusSessionLifecycleEvent) => void): LocusDisposer {
     if (disposed) return () => {};
     listeners.add(listener);
     let active = true;
@@ -126,7 +126,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     };
   }
 
-  function reject(code: LiveHostSessionRejectCode, message: string): LiveHostResult<never> {
+  function reject(code: LocusSessionRejectCode, message: string): LocusResult<never> {
     rejected.set(code, (rejected.get(code) ?? 0) + 1);
     return fail(code, message);
   }
@@ -158,20 +158,20 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
   }
 
   function create(
-    sessionId: LiveHostSessionId,
+    sessionId: LocusSessionId,
     resumable: boolean,
     attachment: SessionAttachment,
-    disposeResources: LiveHostDisposer,
+    disposeResources: LocusDisposer,
     subscriptionCount: () => number,
-    context?: LiveHostConnectionContext,
-  ): LiveHostResult<SessionSuccess> {
-    if (disposed) return fail("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session manager is disposed.");
-    if (sessions.has(sessionId)) return fail("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", `LiveHost session ID is already in use: ${sessionId}`);
-    let credential: LiveHostSessionCredential | undefined;
+    context?: LocusConnectionContext,
+  ): LocusResult<SessionSuccess> {
+    if (disposed) return fail("LOCUS_SESSION_ALREADY_GONE", "Locus session manager is disposed.");
+    if (sessions.has(sessionId)) return fail("LOCUS_SESSION_CREDENTIAL_UNKNOWN", `Locus session ID is already in use: ${sessionId}`);
+    let credential: LocusSessionCredential | undefined;
     if (resumable) {
       credential = makeCredential();
-      if (!valid_credential(credential)) throw new Error("LiveHost generated session credential is malformed.");
-      if (credentials.has(credential)) throw new Error("LiveHost generated a duplicate session credential.");
+      if (!valid_credential(credential)) throw new Error("Locus generated session credential is malformed.");
+      if (credentials.has(credential)) throw new Error("Locus generated a duplicate session credential.");
     }
     const record: SessionRecord = {
       sessionId,
@@ -197,21 +197,21 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
   function reattach(
     credential: unknown,
     attachment: SessionAttachment,
-    context?: LiveHostConnectionContext,
-  ): LiveHostResult<SessionSuccess> {
-    if (disposed) return reject("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session manager is disposed.");
+    context?: LocusConnectionContext,
+  ): LocusResult<SessionSuccess> {
+    if (disposed) return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session manager is disposed.");
     if (credential === undefined || credential === null || credential === "") {
-      return reject("LIVEHOST_SESSION_CREDENTIAL_MISSING", "LiveHost session credential is missing.");
+      return reject("LOCUS_SESSION_CREDENTIAL_MISSING", "Locus session credential is missing.");
     }
     if (!valid_credential(credential)) {
-      return reject("LIVEHOST_SESSION_CREDENTIAL_MALFORMED", "LiveHost session credential is malformed.");
+      return reject("LOCUS_SESSION_CREDENTIAL_MALFORMED", "Locus session credential is malformed.");
     }
     const record = credentials.get(credential);
-    if (!record) return reject("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", "LiveHost session credential is unknown.");
-    if (record.state === "expired") return reject("LIVEHOST_SESSION_CREDENTIAL_EXPIRED", "LiveHost session credential has expired.");
-    if (record.state === "revoked") return reject("LIVEHOST_SESSION_CREDENTIAL_REVOKED", "LiveHost session credential has been revoked.");
+    if (!record) return reject("LOCUS_SESSION_CREDENTIAL_UNKNOWN", "Locus session credential is unknown.");
+    if (record.state === "expired") return reject("LOCUS_SESSION_CREDENTIAL_EXPIRED", "Locus session credential has expired.");
+    if (record.state === "revoked") return reject("LOCUS_SESSION_CREDENTIAL_REVOKED", "Locus session credential has been revoked.");
     if (record.principalId !== context?.principalId) {
-      return reject("LIVEHOST_SESSION_CREDENTIAL_UNKNOWN", "LiveHost session credential is unknown.");
+      return reject("LOCUS_SESSION_CREDENTIAL_UNKNOWN", "Locus session credential is unknown.");
     }
 
     const previous = record.attachment;
@@ -235,7 +235,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     return ok({ sessionId: record.sessionId, epoch: record.epoch, resumable: record.resumable });
   }
 
-  function detach(sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch): boolean {
+  function detach(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
     const record = sessions.get(sessionId);
     if (!record || record.state !== "attached" || record.epoch !== epoch) return false;
     record.attachment = undefined;
@@ -247,13 +247,13 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     return true;
   }
 
-  function goodbye(sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch): LiveHostResult<void> {
+  function goodbye(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): LocusResult<void> {
     const record = sessions.get(sessionId);
     if (!record || record.state === "expired" || record.state === "revoked") {
-      return reject("LIVEHOST_SESSION_ALREADY_GONE", "LiveHost session is already gone.");
+      return reject("LOCUS_SESSION_ALREADY_GONE", "Locus session is already gone.");
     }
     if (record.state !== "attached" || record.epoch !== epoch) {
-      return reject("LIVEHOST_SESSION_ATTACHMENT_FENCED", "LiveHost session attachment is no longer authoritative.");
+      return reject("LOCUS_SESSION_ATTACHMENT_FENCED", "Locus session attachment is no longer authoritative.");
     }
     record.stopExpiry?.();
     record.stopExpiry = undefined;
@@ -266,12 +266,12 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     return ok(undefined);
   }
 
-  function is_active(sessionId: LiveHostSessionId, epoch: LiveHostConnectionEpoch): boolean {
+  function is_active(sessionId: LocusSessionId, epoch: LocusConnectionEpoch): boolean {
     const record = sessions.get(sessionId);
     return record?.state === "attached" && record.epoch === epoch && record.attachment !== undefined;
   }
 
-  function diagnostic(record: SessionRecord): LiveHostSessionDiagnostic {
+  function diagnostic(record: SessionRecord): LocusSessionDiagnostic {
     return Object.freeze({
       sessionId: record.sessionId,
       state: record.state,
@@ -287,10 +287,10 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
     });
   }
 
-  function debug(): LiveHostSessionDiagnostics {
+  function debug(): LocusSessionDiagnostics {
     const records = [...sessions.values()];
     const sessionDiagnostics = Object.freeze(records.map(diagnostic));
-    const rejectedCredentialCounts: Partial<Record<LiveHostSessionRejectCode, number>> = {};
+    const rejectedCredentialCounts: Partial<Record<LocusSessionRejectCode, number>> = {};
     for (const [code, count] of rejected) rejectedCredentialCounts[code] = count;
     return Object.freeze({
       activeSessionCount: records.filter((record) => record.state === "attached" || record.state === "disconnected").length,
@@ -318,7 +318,7 @@ export function make_livehost_session_manager(options: LiveHostSessionOptions = 
       record.disconnectedAt = undefined;
       record.expiresAt = undefined;
       dispose_resources(record);
-      if (revoke) emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "host_disposed" }));
+      if (revoke) emit(Object.freeze({ kind: "revoked", session: diagnostic(record), reason: "locus_disposed" }));
     }
     credentials.clear();
     listeners.clear();

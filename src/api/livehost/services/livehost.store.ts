@@ -1,56 +1,57 @@
 // livehost.store.ts
 
 import { JsonValue } from "../../../core/types.js";
-import type { LiveHost } from "../../../types/livehost.core.types.js";
-import type { LiveHostActionPayloads, LiveHostConnectionContext, LiveHostSocketLike } from "../../../types/livehost.protocol.types.js";
-import type { LiveHostResult, LiveHostStoreId, LiveHostDisposer } from "../../../types/livehost.shared.types.js";
-import type { LiveHostStore, LiveHostStoreCreateOptions, LiveHostStoreEntry } from "../../../types/livehost.services.types.js";
-import { create_livehost } from "../../locus/locus.core.js";
+import type { LiveMap } from "../../../types/livemap.types.js";
+import type { Locus } from "../../../types/locus.core.types.js";
+import type { LocusActionPayloads, LocusConnectionContext, LocusSocketLike } from "../../../types/locus.protocol.types.js";
+import type { LocusResult, LocusDisposer } from "../../../types/locus.shared.types.js";
+import type { LiveHostStore, LiveHostStoreCreateOptions, LiveHostStoreEntry, LiveHostStoreId } from "../../../types/livehost.services.types.js";
+import { create_locus } from "../../locus/locus.core.js";
 
 // Application-owned lookup key; it is intentionally independent of logicalMapId.
 type RuntimeStoreLookupKey = LiveHostStoreId;
 
-function ok<T>(value: T): LiveHostResult<T> {
+function ok<T>(value: T): LocusResult<T> {
   return { ok: true, value };
 }
 
-function fail(message: string, code: string): LiveHostResult<never> {
+function fail(message: string, code: string): LocusResult<never> {
   return { ok: false, error: { message, code } };
 }
 
 export function create_livehost_store(): LiveHostStore {
-  const hosts = new Map<RuntimeStoreLookupKey, LiveHost>();
+  const hosts = new Map<RuntimeStoreLookupKey, Locus>();
 
   function has(storeKey: RuntimeStoreLookupKey): boolean {
     return hosts.has(storeKey);
   }
 
-  function get(storeKey: RuntimeStoreLookupKey): LiveHost | undefined {
+  function get(storeKey: RuntimeStoreLookupKey): Locus | undefined {
     return hosts.get(storeKey);
   }
 
   function create<
     TState extends JsonValue | undefined = JsonValue | undefined,
-    TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
-  >(storeKey: RuntimeStoreLookupKey, options: LiveHostStoreCreateOptions<TState, TActions> = {}): LiveHostResult<LiveHost<TState, TActions>> {
+    TActions extends LocusActionPayloads = LocusActionPayloads,
+  >(storeKey: RuntimeStoreLookupKey, options: LiveHostStoreCreateOptions<TState, TActions> = {}): LocusResult<Locus<LiveMap<TState>, TActions>> {
     if (hosts.has(storeKey)) {
       return fail(`LiveHost store entry already exists: ${storeKey}`, "LIVEHOST_STORE_DUPLICATE_ID");
     }
 
-    const host = create_livehost<TState, TActions>(options);
-    hosts.set(storeKey, host as unknown as LiveHost);
+    const host = create_locus<TState, TActions>(options);
+    hosts.set(storeKey, host as unknown as Locus);
     return ok(host);
   }
 
   function set<
     TState extends JsonValue | undefined = JsonValue | undefined,
-    TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
-  >(storeKey: RuntimeStoreLookupKey, host: LiveHost<TState, TActions>): LiveHostResult<LiveHost<TState, TActions>> {
+    TActions extends LocusActionPayloads = LocusActionPayloads,
+  >(storeKey: RuntimeStoreLookupKey, host: Locus<LiveMap<TState>, TActions>): LocusResult<Locus<LiveMap<TState>, TActions>> {
     if (hosts.has(storeKey)) {
       return fail(`LiveHost store entry already exists: ${storeKey}`, "LIVEHOST_STORE_DUPLICATE_ID");
     }
 
-    hosts.set(storeKey, host as unknown as LiveHost);
+    hosts.set(storeKey, host as unknown as Locus);
     return ok(host);
   }
 
@@ -64,9 +65,9 @@ export function create_livehost_store(): LiveHostStore {
 
   function connect(
     storeKey: RuntimeStoreLookupKey,
-    socket: LiveHostSocketLike,
-    context?: LiveHostConnectionContext,
-  ): LiveHostResult<LiveHostDisposer> {
+    socket: LocusSocketLike,
+    context?: LocusConnectionContext,
+  ): LocusResult<LocusDisposer> {
     const host = hosts.get(storeKey);
     if (!host) {
       return fail(`Unknown LiveHost store entry: ${storeKey}`, "LIVEHOST_STORE_UNKNOWN_ID");

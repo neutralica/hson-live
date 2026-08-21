@@ -3,7 +3,7 @@ import type {
   LiveTraceDetailValue,
   LiveTraceEvent,
   LiveTraceSink,
-} from "../../types/livehost.types.js";
+} from "../../types/locus.types.js";
 
 const SAFE_TEXT_KEYS = new Set([
   "action",

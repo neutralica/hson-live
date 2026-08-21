@@ -5,14 +5,14 @@ import {
   hson,
 } from "hson-live";
 import {
-  create_livehost,
-  create_livehost_authority_registry,
-  create_livehost_store,
-  create_persistent_livehost,
-  type LiveHost,
-  type LiveHostSocketLike,
-} from "hson-live/livehost";
-import type { JsonValue } from "hson-live/types";
+  create_locus,
+  create_persistent_locus,
+  type Locus,
+  type LocusSocketLike,
+} from "hson-live/locus";
+import { create_livehost_authority_registry } from "../src/api/livehost/services/livehost.authority-registry.ts";
+import { create_livehost_store } from "../src/api/livehost/services/livehost.store.ts";
+import type { JsonValue, LiveMap } from "hson-live/types";
 
 let checks = 0;
 let sequence = Promise.resolve();
@@ -36,7 +36,7 @@ function deferred<T = void>() {
 }
 
 function socket_fixture(): Readonly<{
-  socket: LiveHostSocketLike;
+  socket: LocusSocketLike;
   message(raw: string): void;
   close(): void;
   sent: readonly string[];
@@ -68,7 +68,7 @@ function socket_fixture(): Readonly<{
 }
 
 type TestState = Record<string, JsonValue>;
-type TestHost = LiveHost<TestState>;
+type TestHost = Locus<LiveMap<TestState>>;
 
 function registry(
   options: Partial<Parameters<typeof create_livehost_authority_registry<TestHost>>[0]> = {},
@@ -83,7 +83,7 @@ function registry(
     schedule: () => () => {},
     create(key) {
       creations += 1;
-      return create_livehost<TestState>({ state: { key }, logicalMapId: key });
+      return create_locus<TestState>({ state: { key }, logicalMapId: key });
     },
     ...options,
   });
@@ -95,7 +95,7 @@ function registry(
 }
 
 check("new authorities expose a non-sensitive idle activity snapshot", () => {
-  const host = create_livehost({ state: { value: 0 } });
+  const host = create_locus({ state: { value: 0 } });
   assert.deepEqual(host.activity.snapshot().blockers, []);
   assert.equal(host.activity.snapshot().state, "idle");
   host.dispose();
@@ -116,7 +116,7 @@ check("basic store lookup key remains independent from a hosted logical map ID",
 });
 
 check("transport attachment and exact listener disposal drive connection activity", () => {
-  const host = create_livehost({ state: {} });
+  const host = create_locus({ state: {} });
   const socket = socket_fixture();
   const connection = host.connect(socket.socket);
   assert.equal(host.activity.snapshot().connectionCount, 1);
@@ -128,7 +128,7 @@ check("transport attachment and exact listener disposal drive connection activit
 
 check("detached resumable sessions remain activity until grace expiry", () => {
   let expiry: (() => void) | undefined;
-  const host = create_livehost({
+  const host = create_locus({
     state: {},
     sessions: {
       graceMs: 100,
@@ -152,7 +152,7 @@ check("detached resumable sessions remain activity until grace expiry", () => {
 
 check("an asynchronous action blocks quiescence through its terminal outcome", async () => {
   const gate = deferred<void>();
-  const host = create_livehost({
+  const host = create_locus({
     state: {},
     actions: { slow: async () => { await gate.promise; } },
   });
@@ -166,7 +166,7 @@ check("an asynchronous action blocks quiescence through its terminal outcome", a
 });
 
 check("a recovery plan blocks quiescence until completion or disposal", () => {
-  const host = create_livehost({ state: { value: 1 }, logicalMapId: "recovery-lifecycle" });
+  const host = create_locus({ state: { value: 1 }, logicalMapId: "recovery-lifecycle" });
   const plan = host.recovery.plan({ logicalMapId: host.stream.logicalMapId });
   assert.equal(host.activity.snapshot().recoveryCount, 1);
   if (plan.outcome !== "reject") plan.dispose();
@@ -221,7 +221,7 @@ check("concurrent same-key acquisition deduplicates one asynchronous creation", 
     create: async (key) => {
       creations += 1;
       await gate.promise;
-      return create_livehost<TestState>({ state: {}, logicalMapId: key });
+      return create_locus<TestState>({ state: {}, logicalMapId: key });
     },
   });
   const first = fixture.value.acquire("same");
@@ -242,7 +242,7 @@ check("failed creation releases capacity and a later retry may succeed", async (
     create(key) {
       attempts += 1;
       if (attempts === 1) throw new Error("first failure");
-      return create_livehost<TestState>({ state: {}, logicalMapId: key });
+      return create_locus<TestState>({ state: {}, logicalMapId: key });
     },
   });
   assert.equal((await fixture.value.acquire("retry")).ok, false);
@@ -301,7 +301,7 @@ check("two application-owned registries isolate equal keys and disposal", async 
 check("registry acquisition key remains independent from hosted logical map identity", async () => {
   const fixture = registry({
     create(acquisitionKey) {
-      return create_livehost<TestState>({
+      return create_locus<TestState>({
         state: { acquisitionKey },
         logicalMapId: "canonical-map",
       });
@@ -365,7 +365,7 @@ check("persistent append and checkpoint work are reported as authority activity"
   };
   const map = hson.liveMap.fromHson(`<main @000002001/>`);
   if (map.mode !== "element") throw new Error("expected element map");
-  const host = await create_persistent_livehost({
+  const host = await create_persistent_locus({
     map,
         persistence: adapter,
     logicalMapId: "persistent-activity",
@@ -381,7 +381,7 @@ check("persistent append and checkpoint work are reported as authority activity"
 
 check("activity observers stop cleanly and authority-only lifecycle creates no DOM", () => {
   const before = Reflect.get(globalThis, "document");
-  const host = create_livehost({ state: {} });
+  const host = create_locus({ state: {} });
   let changes = 0;
   const stop = host.activity.on_change(() => { changes += 1; });
   const socket = socket_fixture();

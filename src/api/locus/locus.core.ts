@@ -1,161 +1,159 @@
-// livehost/core.ts
+// locus/core.ts
 
 import type { JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap, LiveMapAnyOp, LiveMapAuthority, LiveMapCommit } from "../../types/livemap.types.js";
 import type {
-  LiveHost,
-  LiveHostForMap,
-  LiveHostActionContextForMap,
-  LiveHostActionAuthorizationContext,
-  LiveHostActionDelivery,
-  LiveHostActionOrigin,
-  LiveHostActionPayloads,
-  LiveHostActionTerminalOutcome,
-  LiveHostActionsForMap,
-  LiveHostClientActionMessage,
-  LiveHostClientActionResult,
-  LiveHostClientRecoverMessage,
-  LiveHostClientSessionAttachMessage,
-  LiveHostCanonicalCommit,
-  LiveHostConnection,
-  LiveHostConnectionContext,
-  LiveHostDisposer,
-  LiveHostOptions,
-  ExistingMapLiveHostOptions,
-  ProjectedLiveHostOptions,
-  LiveHostMapValue,
-  LiveHostMutationDraft,
-  LiveHostSchemaDecoder,
-  LiveHostSchemaResult,
-  LiveHostSeq,
-  LiveHostServerMessage,
-  LiveHostSessionId,
-  LiveHostSocketLike,
-  LiveHostSnapshotCapabilities,
-  LiveHostSnapshotEncodingSelection,
-  LiveHostValidator,
-} from "../../types/livehost.types.js";
-import { decode_livehost_message, encode_livehost_message, is_livehost_json_value } from "./locus.protocol.js";
-import { make_livehost_sync_manager } from "./locus.sync.js";
-import { make_livehost_canonical_stream_runtime } from "./locus.history.js";
+  Locus,
+  LocusActionContext,
+  LocusActionAuthorizationContext,
+  LocusActionDelivery,
+  LocusActionOrigin,
+  LocusActionPayloads,
+  LocusActionTerminalOutcome,
+  LocusActions,
+  LocusClientActionMessage,
+  LocusClientActionResult,
+  LocusClientRecoverMessage,
+  LocusClientSessionAttachMessage,
+  LocusCanonicalCommit,
+  LocusConnection,
+  LocusConnectionContext,
+  LocusDisposer,
+  LocusOptions,
+  ProjectedLocusOptions,
+  LocusMapValue,
+  LocusMutationDraft,
+  LocusSchemaDecoder,
+  LocusSchemaResult,
+  LocusSeq,
+  LocusServerMessage,
+  LocusSessionId,
+  LocusSocketLike,
+  LocusSnapshotCapabilities,
+  LocusSnapshotEncodingSelection,
+  LocusValidator,
+} from "../../types/locus.types.js";
+import { decode_locus_message, encode_locus_message, is_locus_json_value } from "./locus.protocol.js";
+import { make_locus_sync_manager } from "./locus.sync.js";
+import { make_locus_canonical_stream_runtime } from "./locus.history.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
 import { livemap_projected_propagation } from "../livemap/livemap.projected-propagation.js";
 import { encode_projected_value_transport } from "../livemap/livemap.transport.js";
 import { materialize_projected_value } from "../../core/projected-value-materialization.js";
 import { parse_json } from "../transform/parsers/parse-json.js";
 import {
-  make_livehost_recovery_planner_internal,
+  make_locus_recovery_planner_internal,
 } from "./locus.recovery.js";
-import type { LiveHostDocumentSnapshotEncoding } from "./locus.document-snapshot.js";
-import { LiveHostRecoveryError } from "./locus.error.js";
-import { LiveHostPersistenceError } from "./locus.persistence.error.js";
+import type { LocusDocumentSnapshotEncoding } from "./locus.document-snapshot.js";
+import { LocusRecoveryError } from "./locus.error.js";
+import { LocusPersistenceError } from "./locus.persistence.error.js";
 import {
-  make_livehost_exclusive_authority,
-  LiveHostAuthorityError,
-  type LiveHostAuthorityEvent,
-  type LiveHostAuthorityGate,
+  make_locus_exclusive_authority,
+  LocusAuthorityError,
+  type LocusAuthorityEvent,
+  type LocusAuthorityGate,
 } from "./locus.authority.js";
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
-import { make_livehost_session_manager } from "./locus.session.js";
-import { make_livehost_action_dedupe_store } from "./locus.actions.js";
-import { resolve_livehost_document_action } from "./locus.document-actions.js";
+import { make_locus_session_manager } from "./locus.session.js";
+import { make_locus_action_dedupe_store } from "./locus.actions.js";
+import { resolve_locus_document_action } from "./locus.document-actions.js";
 import {
   create_live_trace_context,
-  type LiveHostCommitCausation,
+  type LocusCommitCausation,
   type LiveTraceContext,
   type LiveTraceSpan,
 } from "./locus.trace.js";
 import {
-  make_livehost_activity_controller,
-  register_livehost_activity_controller,
+  make_locus_activity_controller,
+  register_locus_activity_controller,
 } from "./locus.activity.js";
 
-let livehost_session_inc = 0;
-let livehost_trace_inc = 0;
+let locus_session_inc = 0;
+let locus_trace_inc = 0;
 const locusMapAuthorities = new WeakMap<object, object>();
-const exclusiveLocusAuthorities = new WeakMap<object, ReturnType<typeof make_livehost_exclusive_authority>>();
+const exclusiveLocusAuthorities = new WeakMap<object, ReturnType<typeof make_locus_exclusive_authority>>();
 
-const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
-const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
-const VIEW_STATE_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "view-state" });
+const DIRECT_ACTION_ORIGIN: LocusActionOrigin = Object.freeze({ kind: "direct" });
+const HSON_SNAPSHOT_ENCODING: LocusDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
+const VIEW_STATE_SNAPSHOT_ENCODING: LocusDocumentSnapshotEncoding = Object.freeze({ format: "view-state" });
 
-type LiveHostConnectionRecoveryState =
+type LocusConnectionRecoveryState =
   | Readonly<{ phase: "awaiting-recovery" }>
   | Readonly<{
     phase: "recovering";
     requestId: string;
-    snapshotEncoding: LiveHostDocumentSnapshotEncoding;
+    snapshotEncoding: LocusDocumentSnapshotEncoding;
     capabilitySignature: string;
   }>
   | Readonly<{
     phase: "caught-up";
     requestId: string;
-    snapshotEncoding: LiveHostDocumentSnapshotEncoding;
+    snapshotEncoding: LocusDocumentSnapshotEncoding;
     capabilitySignature: string;
   }>
   | Readonly<{ phase: "failed" }>;
 
 /**
  * Private application boundary for the semantic callbacks supplied to one-map
- * LiveHost. The authority runtime owns admission, ordering, delivery, and
+ * Locus. The authority runtime owns admission, ordering, delivery, and
  * canonical mutation; these callbacks retain application-defined meaning.
  */
-type LiveHostApplicationCallbacks<
+type LocusApplicationCallbacks<
   TMap extends LiveMapAuthority,
-  TActions extends LiveHostActionPayloads,
+  TActions extends LocusActionPayloads,
 > = Readonly<{
-  actions: Partial<LiveHostActionsForMap<TActions, TMap>>;
-  authorizeAction: ExistingMapLiveHostOptions<TMap, TActions>["authorizeAction"];
+  actions: Partial<LocusActions<TActions, TMap>>;
+  authorizeAction: LocusOptions<TMap, TActions>["authorizeAction"];
 }>;
 
-class LiveHostConnectionRecoveryError extends Error {
+class LocusConnectionRecoveryError extends Error {
   public constructor(
     public readonly code: string,
     message: string,
   ) {
     super(message);
-    this.name = "LiveHostConnectionRecoveryError";
+    this.name = "LocusConnectionRecoveryError";
   }
 }
 
 function select_snapshot_encoding(
-  capabilities: LiveHostSnapshotCapabilities | undefined,
+  capabilities: LocusSnapshotCapabilities | undefined,
   documentMode: boolean,
-): LiveHostDocumentSnapshotEncoding {
+): LocusDocumentSnapshotEncoding {
   return documentMode && capabilities?.viewState === true
     ? VIEW_STATE_SNAPSHOT_ENCODING
     : HSON_SNAPSHOT_ENCODING;
 }
 
-function snapshot_capability_signature(capabilities: LiveHostSnapshotCapabilities | undefined): string {
+function snapshot_capability_signature(capabilities: LocusSnapshotCapabilities | undefined): string {
   return capabilities === undefined
     ? "absent"
     : capabilities.viewState === true ? "hson:view-state" : "hson";
 }
 
 function snapshot_encoding_equal(
-  left: LiveHostSnapshotEncodingSelection,
-  right: LiveHostSnapshotEncodingSelection,
+  left: LocusSnapshotEncodingSelection,
+  right: LocusSnapshotEncodingSelection,
 ): boolean {
   return left.format === right.format;
 }
 
-function make_livehost_session_id(): LiveHostSessionId {
-  livehost_session_inc += 1;
-  return `lhs-${Date.now().toString(36)}-${livehost_session_inc.toString(36)}`;
+function make_locus_session_id(): LocusSessionId {
+  locus_session_inc += 1;
+  return `locus-session-${Date.now().toString(36)}-${locus_session_inc.toString(36)}`;
 }
 
-function make_livehost_trace_id(): string {
-  livehost_trace_inc += 1;
-  return `lht-${Date.now().toString(36)}-${livehost_trace_inc.toString(36)}`;
+function make_locus_trace_id(): string {
+  locus_trace_inc += 1;
+  return `locus-trace-${Date.now().toString(36)}-${locus_trace_inc.toString(36)}`;
 }
 
-function resolve_session_id(option: LiveHostOptions["sessionId"]): LiveHostSessionId {
+function resolve_session_id(option: LocusOptions<LiveMapAuthority>["sessionId"]): LocusSessionId {
   if (typeof option === "function") return option();
-  return option ?? make_livehost_session_id();
+  return option ?? make_locus_session_id();
 }
 
-function is_schema_result<TValue>(value: unknown): value is LiveHostSchemaResult<TValue> {
+function is_schema_result<TValue>(value: unknown): value is LocusSchemaResult<TValue> {
   return typeof value === "object"
     && value !== null
     && "ok" in value
@@ -163,9 +161,9 @@ function is_schema_result<TValue>(value: unknown): value is LiveHostSchemaResult
 }
 
 function decode_with_schema<TValue>(
-  schema: LiveHostValidator<TValue> | LiveHostSchemaDecoder<TValue> | undefined,
+  schema: LocusValidator<TValue> | LocusSchemaDecoder<TValue> | undefined,
   value: unknown,
-): LiveHostSchemaResult<TValue> {
+): LocusSchemaResult<TValue> {
   if (!schema) return { ok: true, value: value as TValue };
 
   const result = schema(value);
@@ -174,12 +172,12 @@ function decode_with_schema<TValue>(
 
   return {
     ok: false,
-    issues: ["Value failed LiveHost schema validation."],
+    issues: ["Value failed Locus schema validation."],
   };
 }
 
 function schema_error_message(issues: readonly string[]): string {
-  return issues.length ? issues.join("; ") : "Value failed LiveHost schema validation.";
+  return issues.length ? issues.join("; ") : "Value failed Locus schema validation.";
 }
 
 function safe_error_code(cause: unknown, fallback: string): string {
@@ -207,75 +205,75 @@ function clone_action_payload(value: JsonValue | undefined, frozen: boolean): Js
   return value === undefined ? undefined : clone_action_value(value, frozen);
 }
 
-export function create_livehost<
+export function create_locus<
   TState extends JsonValue | undefined = JsonValue | undefined,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options?: ProjectedLiveHostOptions<TState, TActions>): LiveHost<TState, TActions>;
-export function create_livehost<
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options?: ProjectedLocusOptions<TState, TActions>): Locus<LiveMap<TState>, TActions>;
+export function create_locus<
   TMap extends LiveMapAuthority,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
->(options: ExistingMapLiveHostOptions<TMap, TActions>): LiveHostForMap<TMap, TActions>;
-export function create_livehost(
+  TActions extends LocusActionPayloads = LocusActionPayloads,
+>(options: LocusOptions<TMap, TActions>): Locus<TMap, TActions>;
+export function create_locus(
   input: unknown = {},
 ): unknown {
   if (typeof input === "object" && input !== null && "persistence" in input) {
-    throw new LiveHostPersistenceError(
-      "LIVEHOST_PERSISTENCE_REQUIRES_EXCLUSIVE",
-      "LiveHost persistence requires the asynchronous persistent-host constructor.",
+    throw new LocusPersistenceError(
+      "LOCUS_PERSISTENCE_REQUIRES_EXCLUSIVE",
+      "Locus persistence requires the asynchronous persistent-Locus constructor.",
     );
   }
-  const options = input as ProjectedLiveHostOptions | ExistingMapLiveHostOptions<LiveMapAuthority>;
+  const options = input as ProjectedLocusOptions | LocusOptions<LiveMapAuthority>;
   if ("map" in options && options.map !== undefined) {
     if ("state" in options) {
-      throw new TypeError("LiveHost options state and map are mutually exclusive.");
+      throw new TypeError("Locus options state and map are mutually exclusive.");
     }
-    return create_livehost_for_map(options.map, options);
+    return create_locus_for_map(options.map, options);
   }
   const stateResult = decode_with_schema(options.schema?.state, options.state ?? {});
   const initialState: JsonValue = (stateResult.ok ? stateResult.value : options.state) ?? {};
   const classified = make_classified_livemap(parse_json(initialState));
   if (classified.mode !== "data-object" && classified.mode !== "data-array") {
-    throw new Error(`LiveHost projected state produced unexpected root mode ${classified.mode}.`);
+    throw new Error(`Locus projected state produced unexpected root mode ${classified.mode}.`);
   }
   const map: LiveMap = classified;
   const { state: _state, ...shared } = options;
-  return create_livehost_for_map(map, { ...shared, map });
+  return create_locus_for_map(map, { ...shared, map });
 }
 
 /** Internal construction seam used by focused gate and failure tests. */
-export function create_livehost_internal<
+export function create_locus_internal<
   TMap extends LiveMapAuthority,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: ExistingMapLiveHostOptions<TMap, TActions>,
+  options: LocusOptions<TMap, TActions>,
   internal: Readonly<{
-    authorityGate?: LiveHostAuthorityGate<TMap>;
+    authorityGate?: LocusAuthorityGate<TMap>;
     afterAuthorityGate?: (transition: PreparedLiveMapTransition) => void;
     beforeAcceptedCommitIngestion?: () => void;
-    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LiveHostCanonicalCommit[] }>;
+    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LocusCanonicalCommit[] }>;
   }> = {},
-): LiveHostForMap<TMap, TActions> {
-  return create_livehost_for_map(options.map, options, internal);
+): Locus<TMap, TActions> {
+  return create_locus_for_map(options.map, options, internal);
 }
 
-function create_livehost_for_map<
+function create_locus_for_map<
   TMap extends LiveMapAuthority,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
   map: TMap,
-  options: ExistingMapLiveHostOptions<TMap, TActions>,
+  options: LocusOptions<TMap, TActions>,
   internal: Readonly<{
-    authorityGate?: LiveHostAuthorityGate<TMap>;
+    authorityGate?: LocusAuthorityGate<TMap>;
     afterAuthorityGate?: (transition: PreparedLiveMapTransition) => void;
     beforeAcceptedCommitIngestion?: () => void;
-    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LiveHostCanonicalCommit[] }>;
+    initialHistory?: Readonly<{ baseRevision: number; commits: readonly LocusCanonicalCommit[] }>;
   }> = {},
-): LiveHostForMap<TMap, TActions> {
+): Locus<TMap, TActions> {
   const locusOwner = Object.freeze({});
-  const readonlyMap = map as LiveHostForMap<TMap, TActions>["map"];
-  const activity = make_livehost_activity_controller();
+  const readonlyMap = map as Locus<TMap, TActions>["map"];
+  const activity = make_locus_activity_controller();
   assert_locus_map_available(map);
-  const streamRuntime = make_livehost_canonical_stream_runtime(map, {
+  const streamRuntime = make_locus_canonical_stream_runtime(map, {
     ...(options.logicalMapId !== undefined ? { logicalMapId: options.logicalMapId } : {}),
     ...(options.incarnationId !== undefined ? { incarnationId: options.incarnationId } : {}),
     ...(options.history !== undefined ? { history: options.history } : {}),
@@ -285,8 +283,8 @@ function create_livehost_for_map<
     ...(internal.initialHistory !== undefined ? { initialHistory: internal.initialHistory } : {}),
   });
   const stream = streamRuntime.stream;
-  const recoveryActivityReleases: LiveHostDisposer[] = [];
-  const recovery = make_livehost_recovery_planner_internal(
+  const recoveryActivityReleases: LocusDisposer[] = [];
+  const recovery = make_locus_recovery_planner_internal(
     map,
     stream,
     options.recovery ?? {},
@@ -296,10 +294,10 @@ function create_livehost_for_map<
       else recoveryActivityReleases.pop()?.();
     },
   );
-  const sync = make_livehost_sync_manager(map);
-  const sessions = make_livehost_session_manager(options.sessions);
-  const retainedSessions = new Set<LiveHostSessionId>();
-  const retainedSessionReleases = new Map<LiveHostSessionId, LiveHostDisposer>();
+  const sync = make_locus_sync_manager(map);
+  const sessions = make_locus_session_manager(options.sessions);
+  const retainedSessions = new Set<LocusSessionId>();
+  const retainedSessionReleases = new Map<LocusSessionId, LocusDisposer>();
   const stopSessionActivity = sessions.on_change((event) => {
     if (event.kind === "attached" && !retainedSessions.has(event.session.sessionId)) {
       retainedSessions.add(event.session.sessionId);
@@ -314,25 +312,25 @@ function create_livehost_for_map<
   });
   // Keep application semantics separate from the one-map runtime mechanics below.
   // Reserved document actions deliberately do not enter this callback boundary.
-  const application: LiveHostApplicationCallbacks<TMap, TActions> = Object.freeze({
-    actions: (options.actions ?? {}) as Partial<LiveHostActionsForMap<TActions, TMap>>,
+  const application: LocusApplicationCallbacks<TMap, TActions> = Object.freeze({
+    actions: (options.actions ?? {}) as Partial<LocusActions<TActions, TMap>>,
     get authorizeAction() { return options.authorizeAction; },
   });
   let seq = 0;
-  const actionRequests = make_livehost_action_dedupe_store(
+  const actionRequests = make_locus_action_dedupe_store(
     () => stream.headRev,
     () => seq,
     options.actionDedupe,
   );
-  const connections = new Set<LiveHostDisposer>();
+  const connections = new Set<LocusDisposer>();
   let disposed = false;
   reserve_locus_map(map, locusOwner);
 
-  function trace_authority_event(event: LiveHostAuthorityEvent): void {
+  function trace_authority_event(event: LocusAuthorityEvent): void {
     if (options.trace === undefined) return;
-    const trace = create_live_trace_context(options.trace, make_livehost_trace_id());
+    const trace = create_live_trace_context(options.trace, make_locus_trace_id());
     trace.emit({
-      subsystem: "livehost",
+      subsystem: "locus",
       phase: `authority.${event.phase}`,
       status: event.phase === "gate-failed" || event.phase === "failed" || event.phase === "notification-failed"
         ? "failure"
@@ -352,9 +350,9 @@ function create_livehost_for_map<
     });
   }
 
-  let exclusiveAuthority: ReturnType<typeof make_livehost_exclusive_authority<TMap, LiveHostCommitCausation | undefined>>;
+  let exclusiveAuthority: ReturnType<typeof make_locus_exclusive_authority<TMap, LocusCommitCausation | undefined>>;
   try {
-    exclusiveAuthority = make_livehost_exclusive_authority<TMap, LiveHostCommitCausation | undefined>(map, {
+    exclusiveAuthority = make_locus_exclusive_authority<TMap, LocusCommitCausation | undefined>(map, {
       ...(internal.authorityGate !== undefined ? { gate: internal.authorityGate } : {}),
       ...(internal.afterAuthorityGate !== undefined ? { afterGate: internal.afterAuthorityGate } : {}),
       accepted(commit, notificationFailureCount, _source, causation): void {
@@ -385,28 +383,28 @@ function create_livehost_for_map<
     throw cause;
   }
 
-  function next_seq(): LiveHostSeq {
+  function next_seq(): LocusSeq {
     seq += 1;
     return seq;
   }
 
   function action_context(
-    origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
-    causation?: LiveHostCommitCausation,
+    origin: LocusActionOrigin,
+    emitEvent: LocusActionContext<TMap>["emit_event"],
+    causation?: LocusCommitCausation,
   ): Readonly<{
-    context: LiveHostActionContextForMap<TMap>;
+    context: LocusActionContext<TMap>;
     finish: () => Promise<void> | undefined;
   }> {
     let open = true;
     const pending: Promise<LiveMapCommit<LiveMapAnyOp>>[] = [];
-    const context: LiveHostActionContextForMap<TMap> = Object.freeze({
+    const context: LocusActionContext<TMap> = Object.freeze({
       map: readonlyMap,
-      mutate(mutation: (draft: LiveHostMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) {
+      mutate(mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) {
         if (!open) {
-          return Promise.reject(new LiveHostAuthorityError(
-            "LIVEHOST_AUTHORITY_CLOSED",
-            "LiveHost action mutation context is expired.",
+          return Promise.reject(new LocusAuthorityError(
+            "LOCUS_AUTHORITY_CLOSED",
+            "Locus action mutation context is expired.",
           ));
         }
         const operation = exclusiveAuthority.mutate(
@@ -435,15 +433,15 @@ function create_livehost_for_map<
   }
 
   function make_action_trace(
-    message: LiveHostClientActionMessage<TActions>,
-    origin: LiveHostActionOrigin,
+    message: LocusClientActionMessage<TActions>,
+    origin: LocusActionOrigin,
     envelopeAccepted = false,
   ): LiveTraceContext | undefined {
     const sink = options.trace;
     if (sink === undefined) return undefined;
-    const trace = create_live_trace_context(sink, make_livehost_trace_id());
+    const trace = create_live_trace_context(sink, make_locus_trace_id());
     trace.emit({
-      subsystem: "livehost",
+      subsystem: "locus",
       phase: "action.received",
       status: "event",
       details: () => ({
@@ -467,7 +465,7 @@ function create_livehost_for_map<
       });
     }
     trace.emit({
-      subsystem: "livehost",
+      subsystem: "locus",
       phase: "session.resolve",
       status: "success",
       details: () => ({
@@ -479,10 +477,10 @@ function create_livehost_for_map<
   }
 
   function action_causation(
-    message: LiveHostClientActionMessage<TActions>,
-    origin: LiveHostActionOrigin,
+    message: LocusClientActionMessage<TActions>,
+    origin: LocusActionOrigin,
     trace: LiveTraceContext | undefined,
-  ): LiveHostCommitCausation | undefined {
+  ): LocusCommitCausation | undefined {
     if (trace === undefined) return undefined;
     return Object.freeze({
       sourceTraceId: trace.traceId,
@@ -527,43 +525,43 @@ function create_livehost_for_map<
   }
 
   function validate_action(
-    message: LiveHostClientActionMessage<TActions>,
+    message: LocusClientActionMessage<TActions>,
     trace?: LiveTraceContext,
     parentSpanId?: string,
-    causation?: LiveHostCommitCausation,
+    causation?: LocusCommitCausation,
   ):
-    | Readonly<{ ok: true; handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]>; payload: JsonValue | undefined }>
-    | Readonly<{ ok: false; code: "LIVEHOST_ACTION_UNKNOWN" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID"; message: string }> {
+    | Readonly<{ ok: true; handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>; payload: JsonValue | undefined }>
+    | Readonly<{ ok: false; code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID"; message: string }> {
     const lookupSpan = trace?.beginSpan(
-      "livehost",
+      "locus",
       "action.lookup",
       parentSpanId,
       () => ({ action: message.name }),
     );
-    const documentAction = resolve_livehost_document_action(map, message.name, message.payload);
+    const documentAction = resolve_locus_document_action(map, message.name, message.payload);
     if (documentAction.kind === "unavailable") {
-      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_ACTION_UNAVAILABLE" }));
-      return { ok: false, code: "LIVEHOST_ACTION_UNAVAILABLE", message: documentAction.message };
+      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_ACTION_UNAVAILABLE" }));
+      return { ok: false, code: "LOCUS_ACTION_UNAVAILABLE", message: documentAction.message };
     }
     const configuredHandler = application.actions[message.name];
     if (documentAction.kind === "not-document-action" && !configuredHandler) {
-      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_UNKNOWN_ACTION" }));
-      return { ok: false, code: "LIVEHOST_ACTION_UNKNOWN", message: `Unknown LiveHost action: ${message.name}` };
+      lookupSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_UNKNOWN_ACTION" }));
+      return { ok: false, code: "LOCUS_ACTION_UNKNOWN", message: `Unknown Locus action: ${message.name}` };
     }
     lookupSpan?.success(() => ({ action: message.name }));
 
     const validationSpan = trace?.beginSpan(
-      "livehost",
+      "locus",
       "payload.validation",
       parentSpanId,
       () => ({ action: message.name, payloadPresent: message.payload !== undefined }),
     );
     if (documentAction.kind === "invalid") {
-      validationSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_SCHEMA_INVALID_PAYLOAD", issueCount: 1 }));
-      return { ok: false, code: "LIVEHOST_ACTION_INVALID", message: documentAction.message };
+      validationSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_SCHEMA_INVALID_PAYLOAD", issueCount: 1 }));
+      return { ok: false, code: "LOCUS_ACTION_INVALID", message: documentAction.message };
     }
     if (documentAction.kind === "ready") {
-      const handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]> = async (context) => {
+      const handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]> = async (context) => {
         await context.mutate((draft) => documentAction.execute(draft as unknown as TMap));
       };
       validationSpan?.success(() => ({ action: message.name, schemaConfigured: true }));
@@ -571,57 +569,57 @@ function create_livehost_for_map<
     }
     const handler = configuredHandler;
     if (!handler) {
-      throw new Error("LiveHost action resolution lost its configured handler.");
+      throw new Error("Locus action resolution lost its configured handler.");
     }
     const actionSchema = options.schema?.actions?.[message.name];
-    let payloadResult: LiveHostSchemaResult<JsonValue | undefined>;
+    let payloadResult: LocusSchemaResult<JsonValue | undefined>;
     try {
       payloadResult = decode_with_schema(actionSchema?.payload, message.payload);
     } catch (cause) {
-      validationSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+      validationSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
       throw cause;
     }
     if (!payloadResult.ok) {
       validationSpan?.failure(() => ({
         action: message.name,
-        errorCode: "LIVEHOST_SCHEMA_INVALID_PAYLOAD",
+        errorCode: "LOCUS_SCHEMA_INVALID_PAYLOAD",
         issueCount: payloadResult.issues.length,
       }));
-      return { ok: false, code: "LIVEHOST_ACTION_INVALID", message: schema_error_message(payloadResult.issues) };
+      return { ok: false, code: "LOCUS_ACTION_INVALID", message: schema_error_message(payloadResult.issues) };
     }
     validationSpan?.success(() => ({ action: message.name, schemaConfigured: actionSchema?.payload !== undefined }));
     return { ok: true, handler, payload: payloadResult.value };
   }
 
   function public_action_error_code(
-    code: "LIVEHOST_ACTION_UNKNOWN" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_ACTION_INVALID",
-  ): "LIVEHOST_UNKNOWN_ACTION" | "LIVEHOST_ACTION_UNAVAILABLE" | "LIVEHOST_SCHEMA_INVALID_PAYLOAD" {
-    if (code === "LIVEHOST_ACTION_UNKNOWN") return "LIVEHOST_UNKNOWN_ACTION";
-    if (code === "LIVEHOST_ACTION_UNAVAILABLE") return "LIVEHOST_ACTION_UNAVAILABLE";
-    return "LIVEHOST_SCHEMA_INVALID_PAYLOAD";
+    code: "LOCUS_ACTION_UNKNOWN" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_ACTION_INVALID",
+  ): "LOCUS_UNKNOWN_ACTION" | "LOCUS_ACTION_UNAVAILABLE" | "LOCUS_SCHEMA_INVALID_PAYLOAD" {
+    if (code === "LOCUS_ACTION_UNKNOWN") return "LOCUS_UNKNOWN_ACTION";
+    if (code === "LOCUS_ACTION_UNAVAILABLE") return "LOCUS_ACTION_UNAVAILABLE";
+    return "LOCUS_SCHEMA_INVALID_PAYLOAD";
   }
 
   type AuthorizationResult =
     | Readonly<{ ok: true; payload: JsonValue | undefined }>
     | Readonly<{
       ok: false;
-      code: "LIVEHOST_ACTION_FORBIDDEN" | "LIVEHOST_ACTION_AUTHORIZATION_FAILED";
+      code: "LOCUS_ACTION_FORBIDDEN" | "LOCUS_ACTION_AUTHORIZATION_FAILED";
       message: string;
       cause?: unknown;
     }>;
 
   function authorize_validated_action(
-    message: LiveHostClientActionMessage<TActions>,
+    message: LocusClientActionMessage<TActions>,
     payload: JsonValue | undefined,
-    origin: Extract<LiveHostActionOrigin, { kind: "session" }>,
+    origin: Extract<LocusActionOrigin, { kind: "session" }>,
     trace?: LiveTraceContext,
     parentSpanId?: string,
-    connectionContext?: LiveHostConnectionContext,
+    connectionContext?: LocusConnectionContext,
   ): AuthorizationResult | Promise<AuthorizationResult> {
     const authorizer = application.authorizeAction;
     if (authorizer === undefined) {
       trace?.emit({
-        subsystem: "livehost",
+        subsystem: "locus",
         phase: "action.authorization",
         status: "skip",
         ...(parentSpanId !== undefined ? { parentSpanId } : {}),
@@ -631,7 +629,7 @@ function create_livehost_for_map<
     }
 
     const authorizationSpan = trace?.beginSpan(
-      "livehost",
+      "locus",
       "action.authorization",
       parentSpanId,
       () => ({ action: message.name }),
@@ -649,19 +647,19 @@ function create_livehost_for_map<
       logicalMapId: stream.logicalMapId,
       incarnationId: stream.incarnationId,
       ...(connectionContext === undefined ? {} : { connection: connectionContext }),
-    }) as LiveHostActionAuthorizationContext<TActions>;
+    }) as LocusActionAuthorizationContext<TActions>;
 
     function finish(decision: boolean): AuthorizationResult {
       if (!decision) {
         authorizationSpan?.failure(() => ({
           action: message.name,
           outcome: "denied",
-          errorCode: "LIVEHOST_ACTION_FORBIDDEN",
+          errorCode: "LOCUS_ACTION_FORBIDDEN",
         }));
         return {
           ok: false,
-          code: "LIVEHOST_ACTION_FORBIDDEN",
-          message: "LiveHost action is not authorized.",
+          code: "LOCUS_ACTION_FORBIDDEN",
+          message: "Locus action is not authorized.",
         };
       }
       authorizationSpan?.success(() => ({ action: message.name, outcome: "allowed" }));
@@ -672,12 +670,12 @@ function create_livehost_for_map<
       authorizationSpan?.failure(() => ({
         action: message.name,
         outcome: "failed",
-        errorCode: "LIVEHOST_ACTION_AUTHORIZATION_FAILED",
+        errorCode: "LOCUS_ACTION_AUTHORIZATION_FAILED",
       }));
       return {
         ok: false,
-        code: "LIVEHOST_ACTION_AUTHORIZATION_FAILED",
-        message: "LiveHost action authorization failed.",
+        code: "LOCUS_ACTION_AUTHORIZATION_FAILED",
+        message: "Locus action authorization failed.",
         cause,
       };
     }
@@ -693,18 +691,18 @@ function create_livehost_for_map<
   }
 
   async function execute_validated_action(
-    message: LiveHostClientActionMessage<TActions>,
-    handler: NonNullable<Partial<LiveHostActionsForMap<TActions, TMap>>[keyof TActions & string]>,
+    message: LocusClientActionMessage<TActions>,
+    handler: NonNullable<Partial<LocusActions<TActions, TMap>>[keyof TActions & string]>,
     payload: JsonValue | undefined,
-    origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+    origin: LocusActionOrigin,
+    emitEvent: LocusActionContext<TMap>["emit_event"],
     trace?: LiveTraceContext,
     parentSpanId?: string,
-    causation?: LiveHostCommitCausation,
-  ): Promise<LiveHostActionTerminalOutcome> {
+    causation?: LocusCommitCausation,
+  ): Promise<LocusActionTerminalOutcome> {
     const previousRev = stream.headRev;
     const handlerSpan = trace?.beginSpan(
-      "livehost",
+      "locus",
       "handler.execute",
       parentSpanId,
       () => ({ action: message.name, origin: origin.kind }),
@@ -714,10 +712,10 @@ function create_livehost_for_map<
       const result = await handler(scope.context, payload as never, message);
       const tracked = scope.finish();
       if (tracked !== undefined) await tracked;
-      if (result !== undefined && !is_livehost_json_value(result)) {
+      if (result !== undefined && !is_locus_json_value(result)) {
         handlerSpan?.failure(() => ({
           action: message.name,
-          errorCode: "LIVEHOST_ACTION_OUTCOME_NORMALIZATION_FAILED",
+          errorCode: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
         }));
         trace_state_boundary(trace, parentSpanId, previousRev);
         return Object.freeze({
@@ -725,8 +723,8 @@ function create_livehost_for_map<
           seq,
           completionRev: stream.headRev,
           error: Object.freeze({
-            message: "LiveHost action result could not be normalized for transport.",
-            code: "LIVEHOST_ACTION_OUTCOME_NORMALIZATION_FAILED",
+            message: "Locus action result could not be normalized for transport.",
+            code: "LOCUS_ACTION_OUTCOME_NORMALIZATION_FAILED",
           }),
         });
       }
@@ -745,7 +743,7 @@ function create_livehost_for_map<
       } catch (trackedCause) {
         cause = trackedCause;
       }
-      const causeCode = safe_error_code(cause, "LIVEHOST_ACTION_FAILED");
+      const causeCode = safe_error_code(cause, "LOCUS_ACTION_FAILED");
       handlerSpan?.failure(() => ({ action: message.name, errorCode: causeCode }));
       trace_state_boundary(trace, parentSpanId, previousRev);
       return Object.freeze({
@@ -753,7 +751,7 @@ function create_livehost_for_map<
         seq,
         completionRev: stream.headRev,
         error: Object.freeze({
-          message: cause instanceof Error ? cause.message : "LiveHost action failed.",
+          message: cause instanceof Error ? cause.message : "Locus action failed.",
           code: causeCode,
         }),
       });
@@ -762,11 +760,11 @@ function create_livehost_for_map<
 
   function action_response(
     id: string,
-    outcome: LiveHostActionTerminalOutcome,
+    outcome: LocusActionTerminalOutcome,
     requestId?: string,
-    delivery?: LiveHostActionDelivery,
+    delivery?: LocusActionDelivery,
     attemptId?: string,
-  ): LiveHostClientActionResult {
+  ): LocusClientActionResult {
     if (outcome.state === "succeeded") {
       return {
         type: "ack",
@@ -794,20 +792,20 @@ function create_livehost_for_map<
   }
 
   async function dispatch_action_scoped_internal(
-    message: LiveHostClientActionMessage<TActions>,
-    origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+    message: LocusClientActionMessage<TActions>,
+    origin: LocusActionOrigin,
+    emitEvent: LocusActionContext<TMap>["emit_event"],
     trace?: LiveTraceContext,
-  ): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
+  ): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
     const causation = action_causation(message, origin, trace);
     const actionSpan = trace?.beginSpan(
-      "livehost",
+      "locus",
       "action.execute",
       undefined,
       () => ({ action: message.name, origin: origin.kind }),
     );
     if (disposed) {
-      actionSpan?.failure(() => ({ action: message.name, errorCode: "LIVEHOST_HOST_DISPOSED" }));
+      actionSpan?.failure(() => ({ action: message.name, errorCode: "LOCUS_DISPOSED" }));
       return {
         type: "error",
         id: message.id,
@@ -815,8 +813,8 @@ function create_livehost_for_map<
         seq,
         completionRev: stream.headRev,
         error: {
-          message: "LiveHost is disposed.",
-          code: "LIVEHOST_HOST_DISPOSED",
+          message: "Locus is disposed.",
+          code: "LOCUS_DISPOSED",
         },
       };
     }
@@ -824,7 +822,7 @@ function create_livehost_for_map<
       try {
         return validate_action(message, trace, actionSpan?.spanId, causation);
       } catch (cause) {
-        actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+        actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
         throw cause;
       }
     })();
@@ -889,20 +887,20 @@ function create_livehost_for_map<
       details: () => ({
         action: message.name,
         responseType: response.type,
-        ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+        ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
       }),
     });
     if (response.type === "ack") actionSpan?.success(() => ({ action: message.name, responseType: response.type }));
-    else actionSpan?.failure(() => ({ action: message.name, responseType: response.type, errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" }));
+    else actionSpan?.failure(() => ({ action: message.name, responseType: response.type, errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" }));
     return response;
   }
 
   async function dispatch_action_scoped(
-    message: LiveHostClientActionMessage<TActions>,
-    origin: LiveHostActionOrigin,
-    emitEvent: LiveHostActionContextForMap<TMap>["emit_event"],
+    message: LocusClientActionMessage<TActions>,
+    origin: LocusActionOrigin,
+    emitEvent: LocusActionContext<TMap>["emit_event"],
     trace?: LiveTraceContext,
-  ): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
+  ): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
     const release = activity.acquire("action");
     try {
       return await dispatch_action_scoped_internal(message, origin, emitEvent, trace);
@@ -911,28 +909,28 @@ function create_livehost_for_map<
     }
   }
 
-  function dispatch_action(message: LiveHostClientActionMessage<TActions>): Promise<LiveHostServerMessage<LiveHostMapValue<TMap>>> {
+  function dispatch_action(message: LocusClientActionMessage<TActions>): Promise<LocusServerMessage<LocusMapValue<TMap>>> {
     if (exclusiveAuthority.failed) {
-      return Promise.reject(new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost authority is terminally failed.",
+      return Promise.reject(new LocusAuthorityError(
+        "LOCUS_AUTHORITY_TERMINAL",
+        "Locus authority is terminally failed.",
       ));
     }
     const trace = make_action_trace(message, DIRECT_ACTION_ORIGIN);
     return dispatch_action_scoped(message, DIRECT_ACTION_ORIGIN, () => false, trace);
   }
 
-  function inert_connection(): LiveHostConnection {
+  function inert_connection(): LocusConnection {
     const disconnect = () => { };
     return Object.assign(disconnect, {
       emit_event(_event: string, _payload: JsonValue): void { },
     });
   }
 
-  function connect(socket: LiveHostSocketLike, connectionContext?: LiveHostConnectionContext): LiveHostConnection {
+  function connect(socket: LocusSocketLike, connectionContext?: LocusConnectionContext): LocusConnection {
     if (disposed || exclusiveAuthority.failed) return inert_connection();
     const releaseConnectionActivity = activity.acquire("connection");
-    const attachedContext: LiveHostConnectionContext | undefined = connectionContext === undefined
+    const attachedContext: LocusConnectionContext | undefined = connectionContext === undefined
       ? undefined
       : Object.freeze({
           ...(connectionContext.principalId === undefined
@@ -942,17 +940,17 @@ function create_livehost_for_map<
             ? { attachment: connectionContext.attachment }
             : {}),
         });
-    const disposers: LiveHostDisposer[] = [];
+    const disposers: LocusDisposer[] = [];
     let transportOpen = true;
     let fenced = false;
-    let sessionId: LiveHostSessionId | undefined;
+    let sessionId: LocusSessionId | undefined;
     let connectionEpoch: number | undefined;
     let sessionResumable: boolean | undefined;
-    let stopRecoveryChannel: LiveHostDisposer | undefined;
-    let recoveryState: LiveHostConnectionRecoveryState = Object.freeze({ phase: "awaiting-recovery" });
+    let stopRecoveryChannel: LocusDisposer | undefined;
+    let recoveryState: LocusConnectionRecoveryState = Object.freeze({ phase: "awaiting-recovery" });
 
-    function raw_send(message: LiveHostServerMessage): void {
-      if (transportOpen) socket.send(encode_livehost_message(message));
+    function raw_send(message: LocusServerMessage): void {
+      if (transportOpen) socket.send(encode_locus_message(message));
     }
 
     function authoritative(): boolean {
@@ -963,11 +961,11 @@ function create_livehost_for_map<
         && sessions.is_active(sessionId, connectionEpoch);
     }
 
-    function send_without_record(message: LiveHostServerMessage): void {
+    function send_without_record(message: LocusServerMessage): void {
       if (authoritative()) raw_send(message);
     }
 
-    function send(message: LiveHostServerMessage): void {
+    function send(message: LocusServerMessage): void {
       if (!authoritative()) return;
       raw_send(message);
     }
@@ -978,9 +976,9 @@ function create_livehost_for_map<
       stop?.();
     }
 
-    function begin_recovery(message: LiveHostClientRecoverMessage): Readonly<{
-      encoding: LiveHostDocumentSnapshotEncoding;
-      acknowledgment?: LiveHostSnapshotEncodingSelection;
+    function begin_recovery(message: LocusClientRecoverMessage): Readonly<{
+      encoding: LocusDocumentSnapshotEncoding;
+      acknowledgment?: LocusSnapshotEncodingSelection;
     }> {
       const signature = snapshot_capability_signature(message.snapshotCapabilities);
       const selected = select_snapshot_encoding(
@@ -990,34 +988,34 @@ function create_livehost_for_map<
       if (recoveryState.phase === "recovering") {
         if (recoveryState.capabilitySignature !== signature
           || !snapshot_encoding_equal(recoveryState.snapshotEncoding, selected)) {
-          throw new LiveHostRecoveryError(
-            "LIVEHOST_RECOVERY_NEGOTIATION_FAILED",
-            "LiveHost snapshot capabilities cannot change during one connection.",
+          throw new LocusRecoveryError(
+            "LOCUS_RECOVERY_NEGOTIATION_FAILED",
+            "Locus snapshot capabilities cannot change during one connection.",
           );
         }
-        throw new LiveHostConnectionRecoveryError(
-          "LIVEHOST_RECOVERY_IN_PROGRESS",
-          "LiveHost recovery is already in progress on this connection.",
+        throw new LocusConnectionRecoveryError(
+          "LOCUS_RECOVERY_IN_PROGRESS",
+          "Locus recovery is already in progress on this connection.",
         );
       }
       if (recoveryState.phase === "failed") {
-        throw new LiveHostConnectionRecoveryError(
-          "LIVEHOST_RECOVERY_LIFECYCLE_INVALID",
-          "LiveHost recovery cannot restart on a failed connection.",
+        throw new LocusConnectionRecoveryError(
+          "LOCUS_RECOVERY_LIFECYCLE_INVALID",
+          "Locus recovery cannot restart on a failed connection.",
         );
       }
       if (recoveryState.phase === "caught-up"
         && (recoveryState.capabilitySignature !== signature
           || !snapshot_encoding_equal(recoveryState.snapshotEncoding, selected))) {
-        throw new LiveHostRecoveryError(
-          "LIVEHOST_RECOVERY_NEGOTIATION_FAILED",
-          "LiveHost snapshot capabilities cannot change during one connection.",
+        throw new LocusRecoveryError(
+          "LOCUS_RECOVERY_NEGOTIATION_FAILED",
+          "Locus snapshot capabilities cannot change during one connection.",
         );
       }
       if (recoveryState.phase === "caught-up" && recoveryState.requestId === message.id) {
-        throw new LiveHostConnectionRecoveryError(
-          "LIVEHOST_RECOVERY_COMPLETED",
-          "LiveHost recovery request is already completed on this connection.",
+        throw new LocusConnectionRecoveryError(
+          "LOCUS_RECOVERY_COMPLETED",
+          "Locus recovery request is already completed on this connection.",
         );
       }
       const encoding = recoveryState.phase === "caught-up"
@@ -1043,29 +1041,29 @@ function create_livehost_for_map<
       }
     }
 
-    function send_recovery(message: LiveHostServerMessage, requestId: string): void {
+    function send_recovery(message: LocusServerMessage, requestId: string): void {
       if (recoveryState.phase !== "recovering"
         || recoveryState.requestId !== requestId
         || !authoritative()) {
-        throw new LiveHostConnectionRecoveryError(
-          "LIVEHOST_RECOVERY_INTERRUPTED",
-          "LiveHost recovery was interrupted before completion.",
+        throw new LocusConnectionRecoveryError(
+          "LOCUS_RECOVERY_INTERRUPTED",
+          "Locus recovery was interrupted before completion.",
         );
       }
       raw_send(message);
       if (recoveryState.phase !== "recovering"
         || recoveryState.requestId !== requestId
         || !authoritative()) {
-        throw new LiveHostConnectionRecoveryError(
-          "LIVEHOST_RECOVERY_INTERRUPTED",
-          "LiveHost recovery was interrupted before completion.",
+        throw new LocusConnectionRecoveryError(
+          "LOCUS_RECOVERY_INTERRUPTED",
+          "Locus recovery was interrupted before completion.",
         );
       }
     }
 
-    function fence_attachment(fencedSessionId: LiveHostSessionId, epoch: number): void {
+    function fence_attachment(fencedSessionId: LocusSessionId, epoch: number): void {
       if (sessionId !== fencedSessionId || connectionEpoch !== epoch || fenced) return;
-      raw_send({ type: "session-fenced", sessionId: fencedSessionId, epoch, code: "LIVEHOST_SESSION_ATTACHMENT_FENCED" });
+      raw_send({ type: "session-fenced", sessionId: fencedSessionId, epoch, code: "LOCUS_SESSION_ATTACHMENT_FENCED" });
       fenced = true;
       recoveryState = Object.freeze({ phase: "failed" });
       dispose_recovery_channel();
@@ -1073,7 +1071,7 @@ function create_livehost_for_map<
 
     const attachment = Object.freeze({ fence: fence_attachment });
 
-    function session_subscription_count(id: LiveHostSessionId): number {
+    function session_subscription_count(id: LocusSessionId): number {
       return sync.debug_sessions().find((item) => item.sessionId === id)?.paths.length ?? 0;
     }
 
@@ -1107,19 +1105,19 @@ function create_livehost_for_map<
       return true;
     }
 
-    function reject_session(id: string, code: Extract<LiveHostServerMessage, { type: "session-rejected" }>["code"], message: string): void {
+    function reject_session(id: string, code: Extract<LocusServerMessage, { type: "session-rejected" }>["code"], message: string): void {
       raw_send({ type: "session-rejected", id, code, message });
     }
 
     function create_resumable_session(id: string): void {
       if (sessionId !== undefined) {
-        reject_session(id, "LIVEHOST_SESSION_NOT_ATTACHED", "This transport already owns a LiveHost session.");
+        reject_session(id, "LOCUS_SESSION_NOT_ATTACHED", "This transport already owns a Locus session.");
         return;
       }
       const nextSessionId = resolve_session_id(options.sessionId);
       const added = sync.add_session(nextSessionId, send);
       if (!added.ok) {
-        reject_session(id, "LIVEHOST_SESSION_NOT_ATTACHED", added.error.message);
+        reject_session(id, "LOCUS_SESSION_NOT_ATTACHED", added.error.message);
         return;
       }
       const created = sessions.create(
@@ -1132,7 +1130,7 @@ function create_livehost_for_map<
       );
       if (!created.ok || !created.value.credential) {
         sync.remove_session(nextSessionId);
-        reject_session(id, "LIVEHOST_SESSION_NOT_ATTACHED", "LiveHost could not create a resumable session.");
+        reject_session(id, "LOCUS_SESSION_NOT_ATTACHED", "Locus could not create a resumable session.");
         return;
       }
       sessionId = created.value.sessionId;
@@ -1141,16 +1139,16 @@ function create_livehost_for_map<
       raw_send({ type: "session-created", id, sessionId, credential: created.value.credential, epoch: connectionEpoch });
     }
 
-    function reattach_session(message: LiveHostClientSessionAttachMessage): void {
+    function reattach_session(message: LocusClientSessionAttachMessage): void {
       if (sessionId !== undefined) {
-        reject_session(message.id, "LIVEHOST_SESSION_NOT_ATTACHED", "This transport already owns a LiveHost session.");
+        reject_session(message.id, "LOCUS_SESSION_NOT_ATTACHED", "This transport already owns a Locus session.");
         return;
       }
       const attached = sessions.reattach(message.credential, attachment, attachedContext);
       if (!attached.ok) {
         reject_session(
           message.id,
-          (attached.error.code ?? "LIVEHOST_SESSION_CREDENTIAL_UNKNOWN") as Extract<LiveHostServerMessage, { type: "session-rejected" }>["code"],
+          (attached.error.code ?? "LOCUS_SESSION_CREDENTIAL_UNKNOWN") as Extract<LocusServerMessage, { type: "session-rejected" }>["code"],
           attached.error.message,
         );
         return;
@@ -1160,7 +1158,7 @@ function create_livehost_for_map<
       sessionResumable = attached.value.resumable;
       const rebound = sync.attach_session(sessionId, send);
       if (!rebound.ok) {
-        reject_session(message.id, "LIVEHOST_SESSION_NOT_ATTACHED", rebound.error.message);
+        reject_session(message.id, "LOCUS_SESSION_NOT_ATTACHED", rebound.error.message);
         return;
       }
       raw_send({ type: "session-attached", id: message.id, sessionId, epoch: connectionEpoch });
@@ -1169,8 +1167,8 @@ function create_livehost_for_map<
     function recovery_error(id: string, cause: unknown, trace?: LiveTraceContext, startedAt?: number): void {
       const code = typeof cause === "object" && cause !== null && "code" in cause && typeof cause.code === "string"
         ? cause.code
-        : "LIVEHOST_RECOVERY_TRANSPORT_FAILED";
-      const message = cause instanceof Error ? cause.message : "LiveHost recovery transport failed.";
+        : "LOCUS_RECOVERY_TRANSPORT_FAILED";
+      const message = cause instanceof Error ? cause.message : "Locus recovery transport failed.";
       trace?.emit({
         subsystem: "transport",
         phase: "recovery.transport",
@@ -1178,7 +1176,7 @@ function create_livehost_for_map<
         details: () => ({ requestId: id, outcome: "send-failed", errorCode: code }),
       });
       trace?.emit({
-        subsystem: "livehost",
+        subsystem: "locus",
         phase: "recovery.complete",
         status: "failure",
         ...(startedAt !== undefined ? { durationMs: Math.max(0, Date.now() - startedAt) } : {}),
@@ -1192,8 +1190,8 @@ function create_livehost_for_map<
     }
 
     async function handle_deduped_action(
-      message: LiveHostClientActionMessage<TActions>,
-      origin: Extract<LiveHostActionOrigin, { kind: "session" }>,
+      message: LocusClientActionMessage<TActions>,
+      origin: Extract<LocusActionOrigin, { kind: "session" }>,
       trace?: LiveTraceContext,
     ): Promise<void> {
       if (!message.requestId || !message.clientId) {
@@ -1212,7 +1210,7 @@ function create_livehost_for_map<
           details: () => ({
             action: message.name,
             responseType: response.type,
-            ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+            ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
           }),
         });
 
@@ -1224,7 +1222,7 @@ function create_livehost_for_map<
       }
 
       const actionSpan = trace?.beginSpan(
-        "livehost",
+        "locus",
         "action.execute",
         undefined,
         () => ({ action: message.name, origin: origin.kind }),
@@ -1234,7 +1232,7 @@ function create_livehost_for_map<
         try {
           return validate_action(message, trace, actionSpan?.spanId, causation);
         } catch (cause) {
-          actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LIVEHOST_SCHEMA_DECODER_FAILED") }));
+          actionSpan?.failure(() => ({ action: message.name, errorCode: safe_error_code(cause, "LOCUS_SCHEMA_DECODER_FAILED") }));
           throw cause;
         }
       })();
@@ -1242,7 +1240,7 @@ function create_livehost_for_map<
       if (!validated.ok) {
         const code = public_action_error_code(validated.code);
 
-        const response: LiveHostClientActionResult = {
+        const response: LocusClientActionResult = {
           type: "error",
           id: message.id,
           ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
@@ -1283,7 +1281,7 @@ function create_livehost_for_map<
         ? await authorization
         : authorization;
       if (!authorized.ok) {
-        const response: LiveHostClientActionResult = {
+        const response: LocusClientActionResult = {
           type: "error",
           id: message.id,
           ...(message.requestId !== undefined ? { requestId: message.requestId } : {}),
@@ -1332,7 +1330,7 @@ function create_livehost_for_map<
 
       if (!result.ok) {
         trace?.emit({
-          subsystem: "livehost",
+          subsystem: "locus",
           phase: "action.dedupe",
           status: "failure",
           ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
@@ -1346,7 +1344,7 @@ function create_livehost_for_map<
             errorCode: result.code,
           }),
         });
-        const response: LiveHostClientActionResult = {
+        const response: LocusClientActionResult = {
           type: "error",
           id: message.id,
           requestId: message.requestId,
@@ -1376,7 +1374,7 @@ function create_livehost_for_map<
       }
 
       trace?.emit({
-        subsystem: "livehost",
+        subsystem: "locus",
         phase: "action.dedupe",
         status: result.delivery === "executed" ? "success" : "skip",
         ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
@@ -1408,14 +1406,14 @@ function create_livehost_for_map<
           action: message.name,
           responseType: response.type,
           delivery: result.delivery,
-          ...(response.type === "error" ? { errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED" } : {}),
+          ...(response.type === "error" ? { errorCode: response.error.code ?? "LOCUS_ACTION_FAILED" } : {}),
         }),
       });
 
       if (result.delivery === "executed" && response.type === "ack") {
         sync.sync_all(response.seq);
         trace?.emit({
-          subsystem: "livehost",
+          subsystem: "locus",
           phase: "subscription.publication",
           status: "success",
           ...(actionSpan !== undefined ? { parentSpanId: actionSpan.spanId } : {}),
@@ -1433,20 +1431,20 @@ function create_livehost_for_map<
           action: message.name,
           responseType: response.type,
           delivery: result.delivery,
-          errorCode: response.error.code ?? "LIVEHOST_ACTION_FAILED",
+          errorCode: response.error.code ?? "LOCUS_ACTION_FAILED",
         }));
       }
     }
 
-    function handle_recover(message: LiveHostClientRecoverMessage): void {
+    function handle_recover(message: LocusClientRecoverMessage): void {
       if (!sessionId || connectionEpoch === undefined || !authoritative()) return;
       const startedAt = Date.now();
       const trace = options.trace === undefined
         ? undefined
-        : create_live_trace_context(options.trace, `lht-recovery-${message.id}-${stream.headRev}`);
+        : create_live_trace_context(options.trace, `locus-recovery-${message.id}-${stream.headRev}`);
       const history = stream.history.debug();
       trace?.emit({
-        subsystem: "livehost",
+        subsystem: "locus",
         phase: "recovery.request",
         status: "event",
         details: () => ({
@@ -1508,7 +1506,7 @@ function create_livehost_for_map<
             details: () => ({ requestId: message.id, strategy: "rejected", messageCount: 1, commitCount: 0, snapshotPresent: false, outcome: "sent" }),
           });
           trace?.emit({
-            subsystem: "livehost",
+            subsystem: "locus",
             phase: "recovery.complete",
             status: "failure",
             durationMs: Math.max(0, Date.now() - startedAt),
@@ -1521,8 +1519,8 @@ function create_livehost_for_map<
       }
       let channelActive = true;
       let liveReady = false;
-      const pendingLive: LiveHostCanonicalCommit[] = [];
-      let stopLive: LiveHostDisposer = () => { };
+      const pendingLive: LocusCanonicalCommit[] = [];
+      let stopLive: LocusDisposer = () => { };
       stopRecoveryChannel = () => {
         if (!channelActive) return;
         channelActive = false;
@@ -1590,7 +1588,7 @@ function create_livehost_for_map<
           }),
         });
         trace?.emit({
-          subsystem: "livehost",
+          subsystem: "locus",
           phase: "recovery.complete",
           status: "success",
           durationMs: Math.max(0, Date.now() - startedAt),
@@ -1610,7 +1608,7 @@ function create_livehost_for_map<
     }
 
     async function handle_message(raw: string): Promise<void> {
-      const decoded = decode_livehost_message<TActions>(raw);
+      const decoded = decode_locus_message<TActions>(raw);
       if (!decoded.ok) {
         if (!fenced) raw_send({ type: "error", seq, error: decoded.error });
         return;
@@ -1632,7 +1630,7 @@ function create_livehost_for_map<
         const endedEpoch = connectionEpoch;
         const ended = sessions.goodbye(endedSessionId, endedEpoch);
         if (!ended.ok) {
-          reject_session(message.id, (ended.error.code ?? "LIVEHOST_SESSION_ALREADY_GONE") as Extract<LiveHostServerMessage, { type: "session-rejected" }>["code"], ended.error.message);
+          reject_session(message.id, (ended.error.code ?? "LOCUS_SESSION_ALREADY_GONE") as Extract<LocusServerMessage, { type: "session-rejected" }>["code"], ended.error.message);
           return;
         }
         dispose_recovery_channel();
@@ -1646,7 +1644,7 @@ function create_livehost_for_map<
             type: "error",
             seq,
             error: {
-              code: "LIVEHOST_DOCUMENT_RECOVERY_REQUIRED",
+              code: "LOCUS_DOCUMENT_RECOVERY_REQUIRED",
               message: "Document mirrors initialize through canonical recovery.",
             },
           });
@@ -1673,7 +1671,7 @@ function create_livehost_for_map<
       if (message.type === "action") {
         const capturedSessionId = sessionId;
         const capturedEpoch = connectionEpoch;
-        const origin: LiveHostActionOrigin = Object.freeze({
+        const origin: LocusActionOrigin = Object.freeze({
           kind: "session",
           sessionId: capturedSessionId,
           epoch: capturedEpoch,
@@ -1695,7 +1693,7 @@ function create_livehost_for_map<
       }
     }
 
-    let stopMessage: LiveHostDisposer | void;
+    let stopMessage: LocusDisposer | void;
     try {
       stopMessage = socket.onMessage((raw) => { void handle_message(raw); });
     } catch (error) {
@@ -1718,7 +1716,7 @@ function create_livehost_for_map<
       connections.delete(shutdown_for_host);
     }
 
-    let stopClose: LiveHostDisposer | void;
+    let stopClose: LocusDisposer | void;
     try {
       stopClose = socket.onClose(detach_transport);
     } catch (error) {
@@ -1770,48 +1768,48 @@ function create_livehost_for_map<
     dispatch_action,
     connect,
     dispose,
-    mutate: async (mutation: (draft: LiveHostMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) => {
+    mutate: async (mutation: (draft: LocusMutationDraft<TMap>) => LiveMapCommit<LiveMapAnyOp>) => {
       const release = activity.acquire("mutation");
       try {
         return await exclusiveAuthority.mutate(
           mutation as unknown as (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-          "host",
+          "locus",
         );
       } finally {
         release();
       }
     },
   };
-  register_livehost_activity_controller(locus, activity);
-  exclusiveLocusAuthorities.set(locus, exclusiveAuthority as ReturnType<typeof make_livehost_exclusive_authority>);
+  register_locus_activity_controller(locus, activity);
+  exclusiveLocusAuthorities.set(locus, exclusiveAuthority as ReturnType<typeof make_locus_exclusive_authority>);
   return locus;
 }
 
 /** @internal Run a non-mutation barrier in one exclusive Locus FIFO. */
-export function run_livehost_exclusive_task<TResult>(
+export function run_locus_exclusive_task<TResult>(
   locus: object,
   operation: () => TResult | Promise<TResult>,
 ): Promise<TResult> {
   const authority = exclusiveLocusAuthorities.get(locus);
   if (authority === undefined) {
-    return Promise.reject(new LiveHostAuthorityError(
-      "LIVEHOST_AUTHORITY_CLOSED",
-      "LiveHost does not expose ordered authority.",
+    return Promise.reject(new LocusAuthorityError(
+      "LOCUS_AUTHORITY_CLOSED",
+      "Locus does not expose ordered authority.",
     ));
   }
   return authority.runExclusive(operation);
 }
 
 /** @internal Wait until exclusive Locus management has been safely released. */
-export function wait_livehost_exclusive_closed(locus: object): Promise<void> {
+export function wait_locus_exclusive_closed(locus: object): Promise<void> {
   return exclusiveLocusAuthorities.get(locus)?.closed ?? Promise.resolve();
 }
 
 function reserve_locus_map(map: object, owner: object): void {
   if (locusMapAuthorities.has(map)) {
-    throw new LiveHostAuthorityError(
-      "LIVEHOST_AUTHORITY_ALREADY_MANAGED",
-      "LiveMap already belongs to another LiveHost authority.",
+    throw new LocusAuthorityError(
+      "LOCUS_AUTHORITY_ALREADY_MANAGED",
+      "LiveMap already belongs to another Locus authority.",
     );
   }
   locusMapAuthorities.set(map, owner);
@@ -1819,9 +1817,9 @@ function reserve_locus_map(map: object, owner: object): void {
 
 function assert_locus_map_available(map: object): void {
   if (locusMapAuthorities.has(map)) {
-    throw new LiveHostAuthorityError(
-      "LIVEHOST_AUTHORITY_ALREADY_MANAGED",
-      "LiveMap already belongs to another LiveHost authority.",
+    throw new LocusAuthorityError(
+      "LOCUS_AUTHORITY_ALREADY_MANAGED",
+      "LiveMap already belongs to another Locus authority.",
     );
   }
 }
@@ -1849,7 +1847,7 @@ function hello_snapshot(map: LiveMapAuthority): Readonly<{
   }
   const propagation = livemap_projected_propagation(map);
   if (propagation === undefined) {
-    throw new Error("LiveHost projected hello requires a carrier propagation capability.");
+    throw new Error("Locus projected hello requires a carrier propagation capability.");
   }
   const projected = propagation.read([]);
   if (projected === undefined) return Object.freeze({ snapshot: undefined });

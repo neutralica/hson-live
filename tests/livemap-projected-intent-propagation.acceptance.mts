@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson } from "../src/hson.ts";
-import { create_livehost } from "../src/api/livehost/livehost.core.ts";
+import { create_locus } from "../src/api/locus/locus.core.ts";
 import { link_livemap } from "../src/api/livemap/livemap.link.ts";
 import { make_livemap_store_api } from "../src/api/livemap/livemap.store.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
@@ -152,16 +152,16 @@ check("exact no-op move suppresses feeds and stores", () => {
   assert.deepEqual([feeds, stores], [0, 0]);
 });
 
-await check_async("LiveHost history retains rename intent", async () => {
-  const host = create_livehost({ state: { source: 1 } });
+await check_async("Locus history retains rename intent", async () => {
+  const host = create_locus({ state: { source: 1 } });
   await host.mutate((draft) => draft.at([]).object.renameKey("source", "destination"));
   const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "rename");
   host.dispose();
 });
 
-await check_async("LiveHost history retains move intent", async () => {
-  const host = create_livehost({ state: { items: [1, 2] } });
+await check_async("Locus history retains move intent", async () => {
+  const host = create_locus({ state: { items: [1, 2] } });
   await host.mutate((draft) => draft.at(["items"]).array.move(0, 1));
   const op = host.stream.history.replay_after(0)?.[0]?.ops[0];
   assert.equal(op !== undefined && "kind" in op ? op.kind : undefined, "move");

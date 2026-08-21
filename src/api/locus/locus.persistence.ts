@@ -4,46 +4,46 @@ import type {
   LiveMapCommit,
 } from "../../types/livemap.types.js";
 import type {
-  LiveHostForMap,
-} from "../../types/livehost.core.types.js";
-import type { LiveHostActionPayloads } from "../../types/livehost.protocol.types.js";
+  Locus,
+} from "../../types/locus.core.types.js";
+import type { LocusActionPayloads } from "../../types/locus.protocol.types.js";
 import type {
-  LiveHostPersistenceAdapter,
-  LiveHostPersistedCommit,
-  LiveHostPersistedDocumentCheckpoint,
-  LiveHostPersistedMapState,
-  PersistentDocumentLiveHostOptions,
-  PersistentLiveHostForMap,
-} from "../../types/livehost.persistence.types.js";
-import type { LiveHostCanonicalCommit } from "../../types/livehost.representation.types.js";
-import type { LiveHostDisposer } from "../../types/livehost.shared.types.js";
-import type { LiveTraceSink } from "../../types/livehost.trace.types.js";
+  LocusPersistenceAdapter,
+  LocusPersistedCommit,
+  LocusPersistedDocumentCheckpoint,
+  LocusPersistedMapState,
+  PersistentDocumentLocusOptions,
+  PersistentLocus,
+} from "../../types/locus.persistence.types.js";
+import type { LocusCanonicalCommit } from "../../types/locus.representation.types.js";
+import type { LocusDisposer } from "../../types/locus.shared.types.js";
+import type { LiveTraceSink } from "../../types/live.trace.types.js";
 import {
-  create_livehost_internal,
-  run_livehost_exclusive_task,
-  wait_livehost_exclusive_closed,
+  create_locus_internal,
+  run_locus_exclusive_task,
+  wait_locus_exclusive_closed,
 } from "./locus.core.js";
-import { make_livehost_canonical_commit } from "./locus.history.js";
+import { make_locus_canonical_commit } from "./locus.history.js";
 import {
-  decode_livehost_canonical_commit,
-  replay_livehost_document_commit,
+  decode_locus_canonical_commit,
+  replay_locus_document_commit,
 } from "./locus.protocol.js";
 import { create_live_trace_context } from "./locus.trace.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
 } from "../livemap/livemap.document.view-state-codec.js";
-import { LiveHostPersistenceError } from "./locus.persistence.error.js";
+import { LocusPersistenceError } from "./locus.persistence.error.js";
 import { make_classified_livemap } from "../livemap/livemap.core.js";
-import { acquire_livehost_internal_activity } from "./locus.activity.js";
+import { acquire_locus_internal_activity } from "./locus.activity.js";
 import type { PreparedLiveMapTransition } from "../livemap/livemap.authority.js";
-export { LiveHostPersistenceError } from "./locus.persistence.error.js";
+export { LocusPersistenceError } from "./locus.persistence.error.js";
 
-type PersistentHostInternals = Readonly<{ authorityHost: object }>;
+type PersistentLocusInternals = Readonly<{ authorityLocus: object }>;
 /** Shared one-map persistence tracing contract for residency services. */
 export type PersistenceTraceOptions = Readonly<{ trace?: LiveTraceSink }>;
 
-const persistentHostInternals = new WeakMap<object, PersistentHostInternals>();
+const persistentLocusInternals = new WeakMap<object, PersistentLocusInternals>();
 let persistenceTraceIncrement = 0;
 
 /** @internal */
@@ -57,16 +57,16 @@ export function persistence_trace(
   persistenceTraceIncrement += 1;
   const trace = create_live_trace_context(
     options.trace,
-    `lht-persistence-${persistenceTraceIncrement.toString(36)}`,
+    `locus-persistence-${persistenceTraceIncrement.toString(36)}`,
   );
-  trace.emit({ subsystem: "livehost", phase: `persistence.${phase}`, status, details: () => details });
+  trace.emit({ subsystem: "locus", phase: `persistence.${phase}`, status, details: () => details });
 }
 
 function document_checkpoint(
   map: DocumentLiveMap,
   logicalMapId: string,
   incarnationId: string,
-): LiveHostPersistedDocumentCheckpoint {
+): LocusPersistedDocumentCheckpoint {
   const capture = map.capture({ identity: "preserve-metadata" });
   return Object.freeze({
     logicalMapId,
@@ -83,18 +83,18 @@ function persisted_commit(
   logicalMapId: string,
   incarnationId: string,
   commit: LiveMapCommit<LiveMapAnyOp>,
-): LiveHostPersistedCommit {
+): LocusPersistedCommit {
   return Object.freeze({
     logicalMapId,
     incarnationId,
     mapKind: "document",
-    commit: make_livehost_canonical_commit(map, commit, logicalMapId, incarnationId, commit.prevRev),
+    commit: make_locus_canonical_commit(map, commit, logicalMapId, incarnationId, commit.prevRev),
   });
 }
 
 function make_persistence_gate(
   map: DocumentLiveMap,
-  adapter: LiveHostPersistenceAdapter,
+  adapter: LocusPersistenceAdapter,
   identity: () => Readonly<{ logicalMapId: string; incarnationId: string }>,
   options: PersistenceTraceOptions,
   authority: () => object | undefined,
@@ -102,7 +102,7 @@ function make_persistence_gate(
   return async ({ commit }) => {
     const release = authority() === undefined
       ? () => {}
-      : acquire_livehost_internal_activity(authority() as object, "persistence");
+      : acquire_locus_internal_activity(authority() as object, "persistence");
     const current = identity();
     const record = persisted_commit(map, current.logicalMapId, current.incarnationId, commit);
     persistence_trace(options, "append.started", "event", {
@@ -119,11 +119,11 @@ function make_persistence_gate(
         mapKind: "document",
         prevRev: commit.prevRev,
         rev: commit.rev,
-        errorCode: "LIVEHOST_PERSISTENCE_APPEND_FAILED",
+        errorCode: "LOCUS_PERSISTENCE_APPEND_FAILED",
       });
-      throw new LiveHostPersistenceError(
-        "LIVEHOST_PERSISTENCE_APPEND_FAILED",
-        "LiveHost could not durably append the prepared commit.",
+      throw new LocusPersistenceError(
+        "LOCUS_PERSISTENCE_APPEND_FAILED",
+        "Locus could not durably append the prepared commit.",
         { cause },
       );
     } finally {
@@ -138,18 +138,18 @@ function make_persistence_gate(
   };
 }
 
-function persistent_host_view<TMap extends DocumentLiveMap, TActions extends LiveHostActionPayloads>(
-  authorityHost: LiveHostForMap<TMap, TActions>,
+function persistent_locus_view<TMap extends DocumentLiveMap, TActions extends LocusActionPayloads>(
+  authorityLocus: Locus<TMap, TActions>,
   map: TMap,
-  adapter: LiveHostPersistenceAdapter,
+  adapter: LocusPersistenceAdapter,
   options: PersistenceTraceOptions,
-): PersistentLiveHostForMap<TMap, TActions> {
-  const checkpoint = (): Promise<void> => run_livehost_exclusive_task(authorityHost, async () => {
-    const release = acquire_livehost_internal_activity(authorityHost, "persistence");
+): PersistentLocus<TMap, TActions> {
+  const checkpoint = (): Promise<void> => run_locus_exclusive_task(authorityLocus, async () => {
+    const release = acquire_locus_internal_activity(authorityLocus, "persistence");
     const record = document_checkpoint(
       map,
-      authorityHost.stream.logicalMapId,
-      authorityHost.stream.incarnationId,
+      authorityLocus.stream.logicalMapId,
+      authorityLocus.stream.incarnationId,
     );
     persistence_trace(options, "checkpoint.started", "event", {
       logicalMapId: record.logicalMapId,
@@ -163,11 +163,11 @@ function persistent_host_view<TMap extends DocumentLiveMap, TActions extends Liv
         logicalMapId: record.logicalMapId,
         mapKind: record.mapKind,
         revision: record.rev,
-        errorCode: "LIVEHOST_PERSISTENCE_CHECKPOINT_FAILED",
+        errorCode: "LOCUS_PERSISTENCE_CHECKPOINT_FAILED",
       });
-      throw new LiveHostPersistenceError(
-        "LIVEHOST_PERSISTENCE_CHECKPOINT_FAILED",
-        "LiveHost could not replace its persisted checkpoint.",
+      throw new LocusPersistenceError(
+        "LOCUS_PERSISTENCE_CHECKPOINT_FAILED",
+        "Locus could not replace its persisted checkpoint.",
         { cause },
       );
     } finally {
@@ -180,53 +180,53 @@ function persistent_host_view<TMap extends DocumentLiveMap, TActions extends Liv
     });
   });
 
-  const host = Object.freeze({ ...authorityHost, checkpoint });
-  persistentHostInternals.set(host, { authorityHost });
-  return host;
+  const locus = Object.freeze({ ...authorityLocus, checkpoint });
+  persistentLocusInternals.set(locus, { authorityLocus });
+  return locus;
 }
 
 /** Create a document authority only after its exact initial checkpoint is durable. */
-export async function create_persistent_livehost<
+export async function create_persistent_locus<
   TMap extends DocumentLiveMap,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: PersistentDocumentLiveHostOptions<TMap, TActions>,
-): Promise<PersistentLiveHostForMap<TMap, TActions>> {
-  return create_persistent_livehost_internal(options);
+  options: PersistentDocumentLocusOptions<TMap, TActions>,
+): Promise<PersistentLocus<TMap, TActions>> {
+  return create_persistent_locus_internal(options);
 }
 
 /** @internal Synthetic post-append failure seam for authority invariant tests. */
-export async function create_persistent_livehost_internal<
+export async function create_persistent_locus_internal<
   TMap extends DocumentLiveMap,
-  TActions extends LiveHostActionPayloads = LiveHostActionPayloads,
+  TActions extends LocusActionPayloads = LocusActionPayloads,
 >(
-  options: PersistentDocumentLiveHostOptions<TMap, TActions>,
+  options: PersistentDocumentLocusOptions<TMap, TActions>,
   internal: Readonly<{
     afterDurableAppend?: (transition: PreparedLiveMapTransition) => void;
   }> = {},
-): Promise<PersistentLiveHostForMap<TMap, TActions>> {
+): Promise<PersistentLocus<TMap, TActions>> {
   if (options.map.mode !== "element" && options.map.mode !== "fragment") {
-    throw new LiveHostPersistenceError(
-      "LIVEHOST_PERSISTENCE_MAP_KIND_UNSUPPORTED",
-      "LiveHost persistence currently supports document maps only.",
+    throw new LocusPersistenceError(
+      "LOCUS_PERSISTENCE_MAP_KIND_UNSUPPORTED",
+      "Locus persistence currently supports document maps only.",
     );
   }
 
   let identity: Readonly<{ logicalMapId: string; incarnationId: string }> | undefined;
-  let activityHost: object | undefined;
-  const authorityHost = create_livehost_internal(options, {
+  let activityLocus: object | undefined;
+  const authorityLocus = create_locus_internal(options, {
     authorityGate: make_persistence_gate(options.map, options.persistence, () => {
-      if (identity === undefined) throw new Error("Persistent LiveHost identity is unavailable.");
+      if (identity === undefined) throw new Error("Persistent Locus identity is unavailable.");
       return identity;
-    }, options, () => activityHost),
+    }, options, () => activityLocus),
     ...(internal.afterDurableAppend === undefined
       ? {}
       : { afterAuthorityGate: internal.afterDurableAppend }),
-  }) as LiveHostForMap<TMap, TActions>;
-  activityHost = authorityHost;
+  }) as Locus<TMap, TActions>;
+  activityLocus = authorityLocus;
   identity = Object.freeze({
-    logicalMapId: authorityHost.stream.logicalMapId,
-    incarnationId: authorityHost.stream.incarnationId,
+    logicalMapId: authorityLocus.stream.logicalMapId,
+    incarnationId: authorityLocus.stream.incarnationId,
   });
 
   const checkpoint = document_checkpoint(options.map, identity.logicalMapId, identity.incarnationId);
@@ -238,17 +238,17 @@ export async function create_persistent_livehost_internal<
   try {
     await options.persistence.replaceCheckpoint(checkpoint);
   } catch (cause) {
-    authorityHost.dispose();
-    await wait_livehost_exclusive_closed(authorityHost);
+    authorityLocus.dispose();
+    await wait_locus_exclusive_closed(authorityLocus);
     persistence_trace(options, "initialization.failed", "failure", {
       logicalMapId: identity.logicalMapId,
       mapKind: checkpoint.mapKind,
       revision: checkpoint.rev,
-      errorCode: "LIVEHOST_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
+      errorCode: "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
     });
-    throw new LiveHostPersistenceError(
-      "LIVEHOST_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
-      "LiveHost initial persisted checkpoint could not be stored.",
+    throw new LocusPersistenceError(
+      "LOCUS_PERSISTENCE_INITIAL_CHECKPOINT_FAILED",
+      "Locus initial persisted checkpoint could not be stored.",
       { cause },
     );
   }
@@ -257,7 +257,7 @@ export async function create_persistent_livehost_internal<
     mapKind: checkpoint.mapKind,
     revision: checkpoint.rev,
   });
-  return persistent_host_view(authorityHost, options.map, options.persistence, options);
+  return persistent_locus_view(authorityLocus, options.map, options.persistence, options);
 }
 
 function exact_keys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -272,16 +272,16 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 type ValidatedPersistentState = Readonly<{
-  checkpoint: LiveHostPersistedDocumentCheckpoint;
-  commits: readonly LiveHostPersistedCommit[];
-  canonicalCommits: readonly LiveHostCanonicalCommit[];
+  checkpoint: LocusPersistedDocumentCheckpoint;
+  commits: readonly LocusPersistedCommit[];
+  canonicalCommits: readonly LocusCanonicalCommit[];
   map: DocumentLiveMap;
 }>;
 
-function invalid_state(cause?: unknown): LiveHostPersistenceError {
-  return new LiveHostPersistenceError(
-    "LIVEHOST_PERSISTED_STATE_INVALID",
-    "LiveHost persisted state is invalid.",
+function invalid_state(cause?: unknown): LocusPersistenceError {
+  return new LocusPersistenceError(
+    "LOCUS_PERSISTED_STATE_INVALID",
+    "Locus persisted state is invalid.",
     cause === undefined ? undefined : { cause },
   );
 }
@@ -311,7 +311,7 @@ function validate_persisted_state(
       || snapshot.format !== "view-state"
       || typeof snapshot.payload !== "string") throw invalid_state();
 
-    const checkpoint = checkpointValue as unknown as LiveHostPersistedDocumentCheckpoint;
+    const checkpoint = checkpointValue as unknown as LocusPersistedDocumentCheckpoint;
     const capture = decode_view_state_snapshot(checkpoint.snapshot);
     if (capture.rev !== checkpoint.rev || capture.mode !== checkpoint.mode) throw invalid_state();
     const map = make_classified_livemap(capture.root);
@@ -319,8 +319,8 @@ function validate_persisted_state(
     map.restore(capture, { identity: "preserve-metadata" });
 
     if (!Array.isArray(state.commits)) throw invalid_state();
-    const commits: LiveHostPersistedCommit[] = [];
-    const canonicalCommits: LiveHostCanonicalCommit[] = [];
+    const commits: LocusPersistedCommit[] = [];
+    const canonicalCommits: LocusCanonicalCommit[] = [];
     let expectedPrevRev = checkpoint.rev;
     for (const item of state.commits) {
       const persisted = record(item);
@@ -330,15 +330,15 @@ function validate_persisted_state(
       if (persisted.logicalMapId !== checkpoint.logicalMapId
         || persisted.incarnationId !== checkpoint.incarnationId
         || persisted.mapKind !== "document") throw invalid_state();
-      const decoded = decode_livehost_canonical_commit(persisted.commit);
+      const decoded = decode_locus_canonical_commit(persisted.commit);
       if (decoded === undefined
         || decoded.logicalMapId !== checkpoint.logicalMapId
         || decoded.incarnationId !== checkpoint.incarnationId
         || decoded.mode !== checkpoint.mode
         || decoded.prevRev !== expectedPrevRev
         || decoded.rev !== expectedPrevRev + 1) throw invalid_state();
-      const applied = replay_livehost_document_commit(map, decoded);
-      const canonical = make_livehost_canonical_commit(
+      const applied = replay_locus_document_commit(map, decoded);
+      const canonical = make_locus_canonical_commit(
         map,
         applied,
         checkpoint.logicalMapId,
@@ -363,49 +363,49 @@ function validate_persisted_state(
       map,
     });
   } catch (cause) {
-    if (cause instanceof LiveHostPersistenceError) throw cause;
+    if (cause instanceof LocusPersistenceError) throw cause;
     throw invalid_state(cause);
   }
 }
 
 /** @internal Rebuild one persistent authority from one validated persisted state. */
-export async function restore_persistent_livehost(
+export async function restore_persistent_locus(
   logicalMapId: string,
-  state: LiveHostPersistedMapState,
-  adapter: LiveHostPersistenceAdapter,
+  state: LocusPersistedMapState,
+  adapter: LocusPersistenceAdapter,
   traceOptions: PersistenceTraceOptions = {},
-): Promise<PersistentLiveHostForMap> {
+): Promise<PersistentLocus> {
   const validated = validate_persisted_state(logicalMapId, state);
   let identity: Readonly<{ logicalMapId: string; incarnationId: string }> | undefined;
-  let activityHost: object | undefined;
-  const options: PersistentDocumentLiveHostOptions = {
+  let activityLocus: object | undefined;
+  const options: PersistentDocumentLocusOptions = {
     map: validated.map,
     persistence: adapter,
     logicalMapId: validated.checkpoint.logicalMapId,
     incarnationId: validated.checkpoint.incarnationId,
     ...(traceOptions.trace !== undefined ? { trace: traceOptions.trace } : {}),
   };
-  const authorityHost = create_livehost_internal(options, {
+  const authorityLocus = create_locus_internal(options, {
     authorityGate: make_persistence_gate(validated.map, adapter, () => {
-      if (identity === undefined) throw new Error("Restored persistent LiveHost identity is unavailable.");
+      if (identity === undefined) throw new Error("Restored persistent Locus identity is unavailable.");
       return identity;
-    }, options, () => activityHost),
+    }, options, () => activityLocus),
     initialHistory: {
       baseRevision: validated.checkpoint.rev,
       commits: validated.canonicalCommits,
     },
-  }) as LiveHostForMap<DocumentLiveMap>;
-  activityHost = authorityHost;
+  }) as Locus<DocumentLiveMap>;
+  activityLocus = authorityLocus;
   identity = Object.freeze({
-    logicalMapId: authorityHost.stream.logicalMapId,
-    incarnationId: authorityHost.stream.incarnationId,
+    logicalMapId: authorityLocus.stream.logicalMapId,
+    incarnationId: authorityLocus.stream.incarnationId,
   });
-  return persistent_host_view(authorityHost, validated.map, adapter, options);
+  return persistent_locus_view(authorityLocus, validated.map, adapter, options);
 }
 
 /** @internal Destroy one persistent authority and wait for managed authority release. */
-export async function unload_persistent_livehost(host: PersistentLiveHostForMap): Promise<void> {
-  const internals = persistentHostInternals.get(host);
-  host.dispose();
-  if (internals !== undefined) await wait_livehost_exclusive_closed(internals.authorityHost);
+export async function unload_persistent_locus(locus: PersistentLocus): Promise<void> {
+  const internals = persistentLocusInternals.get(locus);
+  locus.dispose();
+  if (internals !== undefined) await wait_locus_exclusive_closed(internals.authorityLocus);
 }

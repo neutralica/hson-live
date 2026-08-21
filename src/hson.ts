@@ -9,10 +9,7 @@ import { hsonCalc } from "./api/transform/hson-calc.js";
 import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
 import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
 import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
-import {
-  hsonLiveHost,
-  liveHost,
-} from "./api/livehost/livehost.facade.js";
+import { hsonLocus } from "./api/locus/locus.facade.js";
 import { hsonReflect } from "./api/reflect/reflect.facade.js";
 import { hsonInspect } from "./api/liveinspect/liveinspect.facade.js";
 import type {
@@ -23,7 +20,7 @@ import type { HsonNode, JsonValue } from "./core/types.js";
 import type { OutputConstructor_2 } from "./types/constructor.types.js";
 
 export {
-  hsonLiveHost,
+  hsonLocus,
   hsonLiveMap,
   hsonLiveTree,
   hsonReflect,
@@ -31,7 +28,6 @@ export {
   hsonString,
   hsonNumber,
   hsonCalc,
-  liveHost,
 };
 export {
   TransformError,
@@ -60,7 +56,7 @@ export interface HsonFacade {
   fromUntrustedHtml: (input: string | Element) => OutputConstructor_2;
   liveMap: typeof hsonLiveMapBrowser;
   liveTree: typeof hsonLiveTree;
-  liveHost: typeof hsonLiveHost;
+  locus: typeof hsonLocus;
   reflect: typeof hsonReflect;
   inspect: typeof hsonInspect;
 }
@@ -77,7 +73,7 @@ export const hson: HsonFacade = {
   // available as `hsonLiveMap`.
   liveMap: hsonLiveMapBrowser,
   liveTree: hsonLiveTree,
-  liveHost: hsonLiveHost,
+  locus: hsonLocus,
 
   reflect: hsonReflect,
   inspect: hsonInspect,

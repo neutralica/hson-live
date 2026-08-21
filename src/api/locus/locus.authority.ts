@@ -4,9 +4,9 @@ import {
   type PreparedLiveMapTransition,
 } from "../livemap/livemap.authority.js";
 
-export type LiveHostAuthorityMutationSource = "host" | "action" | "document-action" | "link" | "checkpoint";
+export type LocusAuthorityMutationSource = "locus" | "action" | "document-action" | "link" | "checkpoint";
 
-export type LiveHostAuthorityGateInput<TMap extends object> = Readonly<{
+export type LocusAuthorityGateInput<TMap extends object> = Readonly<{
   map: TMap;
   transition: PreparedLiveMapTransition;
   commit: LiveMapCommit<LiveMapAnyOp>;
@@ -14,31 +14,31 @@ export type LiveHostAuthorityGateInput<TMap extends object> = Readonly<{
   nextRevision: number;
 }>;
 
-export type LiveHostAuthorityGate<TMap extends object> = (
-  input: LiveHostAuthorityGateInput<TMap>,
+export type LocusAuthorityGate<TMap extends object> = (
+  input: LocusAuthorityGateInput<TMap>,
 ) => void | Promise<void>;
 
-export type LiveHostAuthorityErrorCode =
-  | "LIVEHOST_AUTHORITY_ALREADY_MANAGED"
-  | "LIVEHOST_AUTHORITY_CLOSED"
-  | "LIVEHOST_AUTHORITY_GATE_REJECTED"
-  | "LIVEHOST_AUTHORITY_TERMINAL"
-  | "LIVEHOST_AUTHORITY_ACCEPTED_INGESTION_FAILED";
+export type LocusAuthorityErrorCode =
+  | "LOCUS_AUTHORITY_ALREADY_MANAGED"
+  | "LOCUS_AUTHORITY_CLOSED"
+  | "LOCUS_AUTHORITY_GATE_REJECTED"
+  | "LOCUS_AUTHORITY_TERMINAL"
+  | "LOCUS_AUTHORITY_ACCEPTED_INGESTION_FAILED";
 
-export class LiveHostAuthorityError extends Error {
+export class LocusAuthorityError extends Error {
   constructor(
-    readonly code: LiveHostAuthorityErrorCode,
+    readonly code: LocusAuthorityErrorCode,
     message: string,
     options?: ErrorOptions,
   ) {
     super(message, options);
-    this.name = "LiveHostAuthorityError";
+    this.name = "LocusAuthorityError";
   }
 }
 
-export type LiveHostAuthorityEvent = Readonly<{
+export type LocusAuthorityEvent = Readonly<{
   phase: "enqueued" | "prepared" | "gate-started" | "gate-completed" | "gate-failed" | "accepted" | "notification-failed" | "failed" | "released";
-  source: LiveHostAuthorityMutationSource;
+  source: LocusAuthorityMutationSource;
   queueDepth: number;
   baseRevision?: number;
   nextRevision?: number;
@@ -46,10 +46,10 @@ export type LiveHostAuthorityEvent = Readonly<{
   errorCode?: string;
 }>;
 
-export type LiveHostExclusiveAuthority<TMap extends object, TContext = undefined> = Readonly<{
+export type LocusExclusiveAuthority<TMap extends object, TContext = undefined> = Readonly<{
   mutate: (
     mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-    source?: LiveHostAuthorityMutationSource,
+    source?: LocusAuthorityMutationSource,
     context?: TContext,
   ) => Promise<LiveMapCommit<LiveMapAnyOp>>;
   runExclusive: <TResult>(operation: () => TResult | Promise<TResult>) => Promise<TResult>;
@@ -61,7 +61,7 @@ export type LiveHostExclusiveAuthority<TMap extends object, TContext = undefined
 type MutationQueueTask<TMap extends object, TContext> = {
   kind: "mutation";
   mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>;
-  source: LiveHostAuthorityMutationSource;
+  source: LocusAuthorityMutationSource;
   context: TContext | undefined;
   resolve: (commit: LiveMapCommit<LiveMapAnyOp>) => void;
   reject: (cause: unknown) => void;
@@ -76,23 +76,23 @@ type BarrierQueueTask<TResult = unknown> = {
 
 type QueueTask<TMap extends object, TContext> = MutationQueueTask<TMap, TContext> | BarrierQueueTask;
 
-/** One host-scoped FIFO authority queue with one future durability gate. */
-export function make_livehost_exclusive_authority<TMap extends object, TContext = undefined>(
+/** One Locus-scoped FIFO authority queue with one future durability gate. */
+export function make_locus_exclusive_authority<TMap extends object, TContext = undefined>(
   map: TMap,
   options: Readonly<{
-    gate?: LiveHostAuthorityGate<TMap>;
+    gate?: LocusAuthorityGate<TMap>;
     accepted: (
       commit: LiveMapCommit<LiveMapAnyOp>,
       notificationFailureCount: number,
-      source: LiveHostAuthorityMutationSource,
+      source: LocusAuthorityMutationSource,
       context: TContext | undefined,
     ) => void;
-    event?: (event: LiveHostAuthorityEvent) => void;
+    event?: (event: LocusAuthorityEvent) => void;
     afterGate?: (transition: PreparedLiveMapTransition) => void;
     released?: () => void;
-    terminal?: (error: LiveHostAuthorityError) => void;
+    terminal?: (error: LocusAuthorityError) => void;
   }>,
-): LiveHostExclusiveAuthority<TMap, TContext> {
+): LocusExclusiveAuthority<TMap, TContext> {
   const staged = get_livemap_staged_authority(map);
   const owner = Object.freeze({});
   const queue: QueueTask<TMap, TContext>[] = [];
@@ -101,20 +101,20 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
   let resolveClosed: (() => void) | undefined;
   const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
 
-  const emit = (event: LiveHostAuthorityEvent): void => {
+  const emit = (event: LocusAuthorityEvent): void => {
     try { options.event?.(event); } catch { /* Diagnostics never own authority. */ }
   };
 
-  function terminal(cause: unknown): LiveHostAuthorityError {
+  function terminal(cause: unknown): LocusAuthorityError {
     state = "failed";
-    const error = cause instanceof LiveHostAuthorityError
+    const error = cause instanceof LocusAuthorityError
       ? cause
-      : new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost authority entered a terminal state.",
+      : new LocusAuthorityError(
+        "LOCUS_AUTHORITY_TERMINAL",
+        "Locus authority entered a terminal state.",
         { cause },
       );
-    emit({ phase: "failed", source: "host", queueDepth: queue.length, errorCode: error.code });
+    emit({ phase: "failed", source: "locus", queueDepth: queue.length, errorCode: error.code });
     while (queue.length > 0) queue.shift()?.reject(error);
     try { options.terminal?.(error); } catch { /* Terminal fencing is best effort and cannot restore authority. */ }
     return error;
@@ -126,7 +126,7 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     state = "closed";
     resolveClosed?.();
     options.released?.();
-    emit({ phase: "released", source: "host", queueDepth: 0 });
+    emit({ phase: "released", source: "locus", queueDepth: 0 });
   }
 
   async function run_mutation(task: MutationQueueTask<TMap, TContext>): Promise<void> {
@@ -162,9 +162,9 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
           }
         } catch (cause) {
           staged.discard(transition);
-          const error = structured_gate_error(cause) ?? new LiveHostAuthorityError(
-              "LIVEHOST_AUTHORITY_GATE_REJECTED",
-              "LiveHost authority gate rejected the prepared transition.",
+          const error = structured_gate_error(cause) ?? new LocusAuthorityError(
+              "LOCUS_AUTHORITY_GATE_REJECTED",
+              "Locus authority gate rejected the prepared transition.",
               { cause },
             );
           emit({ phase: "gate-failed", source: task.source, queueDepth: queue.length, errorCode: error.code });
@@ -200,9 +200,9 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
           );
         }
       } catch (cause) {
-        const error = new LiveHostAuthorityError(
-          "LIVEHOST_AUTHORITY_ACCEPTED_INGESTION_FAILED",
-          "LiveHost accepted a transition but could not ingest its commit.",
+        const error = new LocusAuthorityError(
+          "LOCUS_AUTHORITY_ACCEPTED_INGESTION_FAILED",
+          "Locus accepted a transition but could not ingest its commit.",
           { cause },
         );
         task.reject(terminal(error));
@@ -261,19 +261,19 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
 
   function mutate(
     mutation: (draft: TMap) => LiveMapCommit<LiveMapAnyOp>,
-    source: LiveHostAuthorityMutationSource = "host",
+    source: LocusAuthorityMutationSource = "locus",
     context?: TContext,
   ): Promise<LiveMapCommit<LiveMapAnyOp>> {
     if (state === "failed") {
-      return Promise.reject(new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost authority is terminally failed.",
+      return Promise.reject(new LocusAuthorityError(
+        "LOCUS_AUTHORITY_TERMINAL",
+        "Locus authority is terminally failed.",
       ));
     }
     if (state !== "open") {
-      return Promise.reject(new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost authority is closed.",
+      return Promise.reject(new LocusAuthorityError(
+        "LOCUS_AUTHORITY_CLOSED",
+        "Locus authority is closed.",
       ));
     }
     return new Promise((resolve, reject) => {
@@ -285,15 +285,15 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
 
   function runExclusive<TResult>(operation: () => TResult | Promise<TResult>): Promise<TResult> {
     if (state === "failed") {
-      return Promise.reject(new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_TERMINAL",
-        "LiveHost authority is terminally failed.",
+      return Promise.reject(new LocusAuthorityError(
+        "LOCUS_AUTHORITY_TERMINAL",
+        "Locus authority is terminally failed.",
       ));
     }
     if (state !== "open") {
-      return Promise.reject(new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost authority is closed.",
+      return Promise.reject(new LocusAuthorityError(
+        "LOCUS_AUTHORITY_CLOSED",
+        "Locus authority is closed.",
       ));
     }
     return new Promise<TResult>((resolve, reject) => {
@@ -313,9 +313,9 @@ export function make_livehost_exclusive_authority<TMap extends object, TContext 
     dispose(): void {
       if (state === "closed" || state === "closing") return;
       state = "closing";
-      const error = new LiveHostAuthorityError(
-        "LIVEHOST_AUTHORITY_CLOSED",
-        "LiveHost authority is closing.",
+      const error = new LocusAuthorityError(
+        "LOCUS_AUTHORITY_CLOSED",
+        "Locus authority is closing.",
       );
       while (queue.length > 0) queue.shift()?.reject(error);
       release_if_idle();
@@ -328,7 +328,7 @@ function structured_gate_error(cause: unknown): (Error & Readonly<{ code: string
   return cause instanceof Error
     && "code" in cause
     && typeof cause.code === "string"
-    && cause.code.startsWith("LIVEHOST_")
+    && cause.code.startsWith("LOCUS_")
     ? cause as Error & Readonly<{ code: string }>
     : undefined;
 }

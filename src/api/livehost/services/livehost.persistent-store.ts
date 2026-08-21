@@ -2,45 +2,45 @@ import type {
   DocumentLiveMap,
 } from "../../../types/livemap.types.js";
 import type {
-  LiveHostActionPayloads,
-  LiveHostConnectionContext,
-  LiveHostSocketLike,
-} from "../../../types/livehost.protocol.types.js";
+  LocusActionPayloads,
+  LocusConnectionContext,
+  LocusSocketLike,
+} from "../../../types/locus.protocol.types.js";
 import type {
-  LiveHostPersistenceAdapter,
-  PersistentDocumentLiveHostOptions,
-  PersistentLiveHostForMap,
-} from "../../../types/livehost.persistence.types.js";
-import type { LiveHostPersistentStore, LiveHostPersistentStoreEntry } from "../../../types/livehost.services.types.js";
-import type { LiveHostDisposer, LiveHostLogicalMapId, LiveHostResult, LiveHostStoreId } from "../../../types/livehost.shared.types.js";
+  LocusPersistenceAdapter,
+  PersistentDocumentLocusOptions,
+  PersistentLocus,
+} from "../../../types/locus.persistence.types.js";
+import type { LiveHostPersistentStore, LiveHostPersistentStoreEntry, LiveHostStoreId } from "../../../types/livehost.services.types.js";
+import type { LocusDisposer, LocusLogicalMapId, LocusResult } from "../../../types/locus.shared.types.js";
 import {
-  create_persistent_livehost,
-  LiveHostPersistenceError,
+  create_persistent_locus,
+  LocusPersistenceError,
   persistence_trace,
-  restore_persistent_livehost,
+  restore_persistent_locus,
   type PersistenceTraceOptions,
-  unload_persistent_livehost,
+  unload_persistent_locus,
 } from "../../locus/locus.persistence.js";
 
 // Persistent residency and adapter lookup are both keyed by this map identity.
-type PersistentStoreKey = LiveHostLogicalMapId;
-function ok<T>(value: T): LiveHostResult<T> {
+type PersistentStoreKey = LocusLogicalMapId;
+function ok<T>(value: T): LocusResult<T> {
   return Object.freeze({ ok: true, value });
 }
 
-function fail<T = never>(message: string, code: string): LiveHostResult<T> {
+function fail<T = never>(message: string, code: string): LocusResult<T> {
   return Object.freeze({ ok: false, error: Object.freeze({ message, code }) });
 }
 
 /** Async document-only registry with coalesced persistence misses. */
 export function create_livehost_persistent_store(
-  adapter: LiveHostPersistenceAdapter,
+  adapter: LocusPersistenceAdapter,
   options: PersistenceTraceOptions = {},
 ): LiveHostPersistentStore {
-  const hosts = new Map<PersistentStoreKey, PersistentLiveHostForMap>();
-  const inflight = new Map<PersistentStoreKey, Promise<PersistentLiveHostForMap | undefined>>();
+  const hosts = new Map<PersistentStoreKey, PersistentLocus>();
+  const inflight = new Map<PersistentStoreKey, Promise<PersistentLocus | undefined>>();
 
-  async function get_or_load(logicalMapId: PersistentStoreKey): Promise<PersistentLiveHostForMap | undefined> {
+  async function get_or_load(logicalMapId: PersistentStoreKey): Promise<PersistentLocus | undefined> {
     const resident = hosts.get(logicalMapId);
     if (resident !== undefined) return resident;
     const existing = inflight.get(logicalMapId);
@@ -60,12 +60,12 @@ export function create_livehost_persistent_store(
           });
           return undefined;
         }
-        const host = await restore_persistent_livehost(logicalMapId, state, adapter, options);
+        const host = await restore_persistent_locus(logicalMapId, state, adapter, options);
         if (hosts.has(logicalMapId)) {
-          await unload_persistent_livehost(host);
-          throw new LiveHostPersistenceError(
-            "LIVEHOST_PERSISTENCE_REGISTRY_CONFLICT",
-            "LiveHost registry changed while persisted state was loading.",
+          await unload_persistent_locus(host);
+          throw new LocusPersistenceError(
+            "LOCUS_PERSISTENCE_REGISTRY_CONFLICT",
+            "Locus registry changed while persisted state was loading.",
           );
         }
         hosts.set(logicalMapId, host);
@@ -82,11 +82,11 @@ export function create_livehost_persistent_store(
         });
         return host;
       } catch (cause) {
-        const failure = cause instanceof LiveHostPersistenceError
+        const failure = cause instanceof LocusPersistenceError
           ? cause
-          : new LiveHostPersistenceError(
-            "LIVEHOST_PERSISTENCE_LOAD_FAILED",
-            "LiveHost persisted state could not be loaded.",
+          : new LocusPersistenceError(
+            "LOCUS_PERSISTENCE_LOAD_FAILED",
+            "Locus persisted state could not be loaded.",
             { cause },
           );
         persistence_trace(options, "load.failed", "failure", {
@@ -108,38 +108,38 @@ export function create_livehost_persistent_store(
   return Object.freeze({
     has: (id: LiveHostStoreId) => hosts.has(id),
     get: (id: LiveHostStoreId) => hosts.get(id),
-    async create<TMap extends DocumentLiveMap, TActions extends LiveHostActionPayloads = LiveHostActionPayloads>(
+    async create<TMap extends DocumentLiveMap, TActions extends LocusActionPayloads = LocusActionPayloads>(
       id: LiveHostStoreId,
-      options: Omit<PersistentDocumentLiveHostOptions<TMap, TActions>, "logicalMapId" | "persistence">,
-    ): Promise<LiveHostResult<PersistentLiveHostForMap<TMap, TActions>>> {
+      options: Omit<PersistentDocumentLocusOptions<TMap, TActions>, "logicalMapId" | "persistence">,
+    ): Promise<LocusResult<PersistentLocus<TMap, TActions>>> {
       const logicalMapId: PersistentStoreKey = id;
       if (hosts.has(logicalMapId) || inflight.has(logicalMapId)) {
-        return fail("LiveHost persistent store entry already exists.", "LIVEHOST_PERSISTENCE_REGISTRY_CONFLICT");
+        return fail("LiveHost persistent store entry already exists.", "LOCUS_PERSISTENCE_REGISTRY_CONFLICT");
       }
-      const creating = create_persistent_livehost({ ...options, logicalMapId, persistence: adapter });
-      const storedCreating = creating as unknown as Promise<PersistentLiveHostForMap | undefined>;
+      const creating = create_persistent_locus({ ...options, logicalMapId, persistence: adapter });
+      const storedCreating = creating as unknown as Promise<PersistentLocus | undefined>;
       inflight.set(logicalMapId, storedCreating);
       try {
         const host = await creating;
-        hosts.set(logicalMapId, host as unknown as PersistentLiveHostForMap);
+        hosts.set(logicalMapId, host as unknown as PersistentLocus);
         return ok(host);
       } catch (cause) {
         return fail(
           cause instanceof Error ? cause.message : "LiveHost persistent store creation failed.",
-          cause instanceof LiveHostPersistenceError ? cause.code : "LIVEHOST_PERSISTENCE_LOAD_FAILED",
+          cause instanceof LocusPersistenceError ? cause.code : "LOCUS_PERSISTENCE_LOAD_FAILED",
         );
       } finally {
         if (inflight.get(logicalMapId) === storedCreating) inflight.delete(logicalMapId);
       }
     },
-    async load(id: LiveHostStoreId): Promise<LiveHostResult<PersistentLiveHostForMap | undefined>> {
+    async load(id: LiveHostStoreId): Promise<LocusResult<PersistentLocus | undefined>> {
       try {
         const logicalMapId: PersistentStoreKey = id;
         return ok(await get_or_load(logicalMapId));
       } catch (cause) {
         return fail(
-          cause instanceof Error ? cause.message : "LiveHost persisted state could not be loaded.",
-          cause instanceof LiveHostPersistenceError ? cause.code : "LIVEHOST_PERSISTENCE_LOAD_FAILED",
+          cause instanceof Error ? cause.message : "Locus persisted state could not be loaded.",
+          cause instanceof LocusPersistenceError ? cause.code : "LOCUS_PERSISTENCE_LOAD_FAILED",
         );
       }
     },
@@ -148,7 +148,7 @@ export function create_livehost_persistent_store(
       const host = hosts.get(logicalMapId);
       if (host === undefined) return false;
       hosts.delete(logicalMapId);
-      const unloading = unload_persistent_livehost(host).then(() => undefined);
+      const unloading = unload_persistent_locus(host).then(() => undefined);
       inflight.set(logicalMapId, unloading);
       try {
         await unloading;
@@ -162,9 +162,9 @@ export function create_livehost_persistent_store(
     },
     async connect(
       id: LiveHostStoreId,
-      socket: LiveHostSocketLike,
-      context?: LiveHostConnectionContext,
-    ): Promise<LiveHostResult<LiveHostDisposer>> {
+      socket: LocusSocketLike,
+      context?: LocusConnectionContext,
+    ): Promise<LocusResult<LocusDisposer>> {
       try {
         const logicalMapId: PersistentStoreKey = id;
         const loaded = await get_or_load(logicalMapId);
@@ -173,8 +173,8 @@ export function create_livehost_persistent_store(
           : ok(loaded.connect(socket, context));
       } catch (cause) {
         return fail(
-          cause instanceof Error ? cause.message : "LiveHost persisted state could not be loaded.",
-          cause instanceof LiveHostPersistenceError ? cause.code : "LIVEHOST_PERSISTENCE_LOAD_FAILED",
+          cause instanceof Error ? cause.message : "Locus persisted state could not be loaded.",
+          cause instanceof LocusPersistenceError ? cause.code : "LOCUS_PERSISTENCE_LOAD_FAILED",
         );
       }
     },

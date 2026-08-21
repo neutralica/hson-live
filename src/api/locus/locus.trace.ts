@@ -4,11 +4,11 @@ import type {
   LiveTraceSink,
   LiveTraceStatus,
   LiveTraceSubsystem,
-} from "../../types/livehost.types.js";
+} from "../../types/locus.types.js";
 import type { LiveMapRootMode } from "../../types/livemap.types.js";
 
-/** Host-local, operation-scoped causation carried from an action to its commit. */
-export type LiveHostCommitCausation = Readonly<{
+/** Locus-local, operation-scoped causation carried from an action to its commit. */
+export type LocusCommitCausation = Readonly<{
   sourceTraceId: string;
   requestId?: string;
   attemptId?: string;
@@ -49,7 +49,7 @@ export type LiveTraceContext = Readonly<{
   ) => LiveTraceSpan;
 }>;
 
-/** Create one host-local causal trace. Sequence numbers begin at one. */
+/** Create one Locus-local causal trace. Sequence numbers begin at one. */
 export function create_live_trace_context(
   sink: LiveTraceSink,
   traceId: string,

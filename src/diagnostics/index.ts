@@ -35,7 +35,7 @@ export type {
   LiveTraceSink,
   LiveTraceStatus,
   LiveTraceSubsystem,
-} from "../types/livehost.types.js";
+} from "../types/locus.types.js";
 export {
   reflect_document_for_runtime_test as _reflect_document_for_runtime_test,
   create_livetree_for_runtime_test as _create_livetree_for_runtime_test,

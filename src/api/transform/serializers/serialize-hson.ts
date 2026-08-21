@@ -556,7 +556,7 @@ export function serialize_hson(
   return serialize_hson_with_ownership(root, inputOptions, false);
 }
 
-/** @internal LiveMap/LiveHost ownership evidence for a root-owned text fragment. */
+/** @internal LiveMap/Locus ownership evidence for a root-owned text fragment. */
 export function serialize_hson_owned_element_text_fragment(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},

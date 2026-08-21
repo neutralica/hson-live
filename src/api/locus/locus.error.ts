@@ -1,55 +1,55 @@
-import type { LiveHostRecoveryRuntimeErrorCode } from "../../types/livehost.types.js";
+import type { LocusRecoveryRuntimeErrorCode } from "../../types/locus.types.js";
 
-export class LiveHostDisconnectedError extends Error {
-  readonly code = "LIVEHOST_DISCONNECTED" as const;
+export class LocusDisconnectedError extends Error {
+  readonly code = "LOCUS_DISCONNECTED" as const;
 
   constructor() {
-    super("LiveHost client disconnected before the action completed.");
-    this.name = "LiveHostDisconnectedError";
+    super("Locus client disconnected before the action completed.");
+    this.name = "LocusDisconnectedError";
   }
 }
 
-export class LiveHostRecoveryError extends Error {
-  readonly code: LiveHostRecoveryRuntimeErrorCode;
+export class LocusRecoveryError extends Error {
+  readonly code: LocusRecoveryRuntimeErrorCode;
   readonly cause?: unknown;
 
-  constructor(code: LiveHostRecoveryRuntimeErrorCode, message: string, cause?: unknown) {
+  constructor(code: LocusRecoveryRuntimeErrorCode, message: string, cause?: unknown) {
     super(message);
-    this.name = "LiveHostRecoveryError";
+    this.name = "LocusRecoveryError";
     this.code = code;
     if (cause !== undefined) this.cause = cause;
   }
 }
 
-export class LiveHostClientRecoveryError extends Error {
+export class LocusClientRecoveryError extends Error {
   readonly code: string;
   readonly cause?: unknown;
 
   constructor(code: string, message: string, cause?: unknown) {
     super(message);
-    this.name = "LiveHostClientRecoveryError";
+    this.name = "LocusClientRecoveryError";
     this.code = code;
     if (cause !== undefined) this.cause = cause;
   }
 }
 
-export class LiveHostClientSessionError extends Error {
+export class LocusClientSessionError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string) {
     super(message);
-    this.name = "LiveHostClientSessionError";
+    this.name = "LocusClientSessionError";
     this.code = code;
   }
 }
 
-export class LiveHostDuplicateActionIdError extends Error {
-  readonly code = "LIVEHOST_DUPLICATE_ACTION_ID" as const;
+export class LocusDuplicateActionIdError extends Error {
+  readonly code = "LOCUS_DUPLICATE_ACTION_ID" as const;
   readonly actionId: string;
 
   constructor(actionId: string) {
-    super(`LiveHost action ID is already pending: ${actionId}`);
-    this.name = "LiveHostDuplicateActionIdError";
+    super(`Locus action ID is already pending: ${actionId}`);
+    this.name = "LocusDuplicateActionIdError";
     this.actionId = actionId;
   }
 }

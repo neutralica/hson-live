@@ -1,7 +1,7 @@
 // @hson-live-external-test
 import assert from "node:assert/strict";
 import { hson, validate_document_path } from "../src/index.ts";
-import { decode_livehost_canonical_commit } from "../src/api/livehost/livehost.protocol.ts";
+import { decode_locus_canonical_commit } from "../src/api/locus/locus.protocol.ts";
 import { prepare_document_graph_operation } from "../src/api/livemap/livemap.document.mutation.ts";
 import {
   canonicalize_document_request_target,
@@ -216,12 +216,12 @@ check("canonical target normalizer rejects the request union QUID branch", () =>
   );
 });
 
-check("current LiveHost canonical decoder rejects QUID-only targets", () => {
-  assert.equal(decode_livehost_canonical_commit(canonicalEnvelope({ kind: "quid", quid: Q1 })), undefined);
+check("current Locus canonical decoder rejects QUID-only targets", () => {
+  assert.equal(decode_locus_canonical_commit(canonicalEnvelope({ kind: "quid", quid: Q1 })), undefined);
 });
 
-check("current LiveHost canonical decoder accepts path targets", () => {
-  const decoded = decode_livehost_canonical_commit(canonicalEnvelope({ kind: "path", path: [] }));
+check("current Locus canonical decoder accepts path targets", () => {
+  const decoded = decode_locus_canonical_commit(canonicalEnvelope({ kind: "path", path: [] }));
   assert.equal(field(decoded?.ops[0], "domain"), "graph");
 });
 

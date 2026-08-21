@@ -7,9 +7,9 @@ import { collect_hson_node_quid_claims, read_hson_node_quid } from "../src/core/
 import { resolve_value_node } from "../src/api/livemap/livemap.editor.ts";
 import { livemap_projected_identity_accounting } from "../src/api/livemap/livemap.projected.identity.ts";
 import { set_livemap_projected_quid_candidate_source_for_tests } from "../src/api/livemap/livemap.projected.identity-handle.ts";
-import { make_livehost_canonical_stream } from "../src/api/livehost/livehost.history.ts";
-import { make_livehost_recovery_planner } from "../src/api/livehost/livehost.recovery.ts";
-import { decode_livehost_canonical_commit } from "../src/api/livehost/livehost.protocol.ts";
+import { make_locus_canonical_stream } from "../src/api/locus/locus.history.ts";
+import { make_locus_recovery_planner } from "../src/api/locus/locus.recovery.ts";
+import { decode_locus_canonical_commit } from "../src/api/locus/locus.protocol.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
 import { acquire_document_identity, acquire_projected_identity } from "./helpers/livemap-identity-internal.mts";
 
@@ -24,7 +24,7 @@ const quidAt = (owner: ReturnType<typeof map>, path: readonly (string | number)[
 
 check("durable exact capture preserves projected container metadata", () => { const a = map({ x: {} }); acquire_projected_identity(a, ["x"]); const b = map({ x: {} }); b.restore(a.capture()); assert.equal(quidAt(b, ["x"]), quidAt(a, ["x"])); });
 check("identity stripping removes projected QUID metadata", () => { const a = map({ x: {} }); acquire_projected_identity(a, ["x"]); assert.equal(collect_hson_node_quid_claims(a.capture({ identity: "strip" }).root).length, 0); });
-check("copied durable bytes create fresh local handle scope", () => { const a = map({ x: {} }); const h = acquire_projected_identity(a, ["x"]); const b = map({ x: {} }); b.restore(structuredClone(a.capture())); assert.equal(h.active, true); assert.equal(acquire_projected_identity(b, ["x"]).active, true); });
+check("copied durable bytes create fresh local handle scope", () => { const a = map({ x: {} }); const h = acquire_projected_identity(a, ["x"]); const source = a.capture(); const copied = { ...structuredClone(source), root: structuredClone(source.root) }; const b = map({ x: {} }); b.restore(copied); assert.equal(h.active, true); assert.equal(acquire_projected_identity(b, ["x"]).active, true); });
 check("registration replay uses the recorded QUID", () => { const a = map({ x: {} }); let commit: unknown; a.commits.observe((e) => { if (e.kind === "commit") commit = e.commit; }); acquire_projected_identity(a, ["x"]); const b = map({ x: {} }); b.replay(commit as never); assert.equal(quidAt(b, ["x"]), quidAt(a, ["x"])); });
 check("registration replay never calls the allocator", () => { const a = map({ x: {} }); let commit: unknown; a.commits.observe((e) => { if (e.kind === "commit") commit = e.commit; }); acquire_projected_identity(a, ["x"]); const b = map({ x: {} }); set_livemap_projected_quid_candidate_source_for_tests(b, () => { throw new Error("minted"); }); b.replay(commit as never); assert.equal(b.rev, 1); });
 check("malformed replay rejects atomically", () => { const b = map({ x: {} }); assert.throws(() => b.replay({ changed: true, prevRev: 0, rev: 1, ops: [{ domain: "graph", op: "ensure-quid", target: { kind: "path", path: ["x"], projected: true }, quid: "bad" }] } as never)); assert.equal(b.rev, 0); });
@@ -44,14 +44,14 @@ check("ordinary projected mutations never allocate identity", () => { const a = 
 check("internal document identity acquisition remains unchanged", () => { const doc = hson.liveMap.fromHson("<main/>"); if (doc.mode !== "element") throw new Error("fixture"); const h = acquire_document_identity(doc.document, { kind: "path", path: [] }); assert.equal(h.snap()?.$_tag, "main"); });
 check("raw QUID bytes expose no projected handle constructor", () => { const a = map({}); acquire_projected_identity(a, []); assert.equal(Reflect.get(a, "fromQuid"), undefined); assert.equal(Reflect.get(a, "byQuid"), undefined); });
 check("metadata-only acquisition leaves exact projected payload unchanged", () => { const a = map({ x: {} }); const before = a.capture().payload; acquire_projected_identity(a, ["x"]); assert.equal(a.capture().payload, before); });
-check("LiveHost history carries projected path-authoritative registration", () => { const a = map({ x: {} }); const stream = make_livehost_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "history" }); acquire_projected_identity(a, ["x"]); const commit = stream.history.replay_after(0)?.[0]; assert.deepEqual(commit?.ops[0], { domain: "graph", op: "ensure-quid", target: { kind: "path", path: ["x"], projected: true }, quid: quidAt(a, ["x"]) }); assert.equal(commit?.format, undefined); });
-check("LiveHost decoder admits recorded projected registration without a transport version change", () => { const a = map({ x: [] }); const stream = make_livehost_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "decode" }); acquire_projected_identity(a, ["x"]); const wire = structuredClone(stream.history.replay_after(0)?.[0]); const decoded = decode_livehost_canonical_commit(wire); assert.deepEqual(decoded?.ops, wire?.ops); });
-check("LiveHost HSON recovery preserves projected container metadata as fresh local identity", () => {
+check("Locus history carries projected path-authoritative registration", () => { const a = map({ x: {} }); const stream = make_locus_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "history" }); acquire_projected_identity(a, ["x"]); const commit = stream.history.replay_after(0)?.[0]; assert.deepEqual(commit?.ops[0], { domain: "graph", op: "ensure-quid", target: { kind: "path", path: ["x"], projected: true }, quid: quidAt(a, ["x"]) }); assert.equal(commit?.format, undefined); });
+check("Locus decoder admits recorded projected registration without a transport version change", () => { const a = map({ x: [] }); const stream = make_locus_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "decode" }); acquire_projected_identity(a, ["x"]); const wire = structuredClone(stream.history.replay_after(0)?.[0]); const decoded = decode_locus_canonical_commit(wire); assert.deepEqual(decoded?.ops, wire?.ops); });
+check("Locus HSON recovery preserves projected container metadata as fresh local identity", () => {
   const a = map({ x: {}, y: [] });
   const objectQuid = (acquire_projected_identity(a, ["x"]), quidAt(a, ["x"]));
   const arrayQuid = (acquire_projected_identity(a, ["y"]), quidAt(a, ["y"]));
-  const stream = make_livehost_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "snapshot" });
-  const plan = make_livehost_recovery_planner(a, stream).plan({ logicalMapId: stream.logicalMapId });
+  const stream = make_locus_canonical_stream(a, { logicalMapId: "unit-11", incarnationId: "snapshot" });
+  const plan = make_locus_recovery_planner(a, stream).plan({ logicalMapId: stream.logicalMapId });
   if (plan.outcome !== "snapshot" || !("hson" in plan.body)) throw new Error("expected HSON snapshot");
   const b = hson.liveMap.fromNode(parse_hson(plan.body.hson));
   if (b.mode === "element" || b.mode === "fragment") throw new Error("expected projected snapshot");

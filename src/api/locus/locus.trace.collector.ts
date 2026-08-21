@@ -2,7 +2,7 @@ import type {
   LiveTraceCollector,
   LiveTraceCollectorOptions,
   LiveTraceEvent,
-} from "../../types/livehost.types.js";
+} from "../../types/locus.types.js";
 
 /** Create bounded newest-event storage. Overflow evicts the oldest event. */
 export function create_live_trace_collector(

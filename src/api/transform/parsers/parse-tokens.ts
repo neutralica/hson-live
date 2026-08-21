@@ -15,7 +15,7 @@ import type { HsonSemanticPrimitive } from "../../../core/types.js";
 import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
 
 export type ParseTokensOptions = Readonly<{
-    /** Internal LiveMap/LiveHost compatibility for persisted document fragments. */
+    /** Internal LiveMap/Locus compatibility for persisted document fragments. */
     allowTopLevelTextFragment?: boolean;
 }>;
 
