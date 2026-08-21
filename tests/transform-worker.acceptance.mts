@@ -289,4 +289,11 @@ check("Worker-safe authored diagnostics retain portable codes and related positi
   }
 });
 
+const workerShaRepresentation = hsonTransform.fromHson(`<worker @000000001 "ready"/>`).toHson();
+assert.equal(
+  await workerShaRepresentation.sha256(),
+  "47eebceca8428b19a36dc1ae429cddb1da2de7eda05ddb3bbfad81bd8a1659c3",
+);
+checks += 1;
+process.stdout.write(`ok ${checks} - Worker-safe Transform hashes exact HSON output with WebCrypto\n`);
 process.stdout.write(`# ${checks} DOM-free transform facade checks passed\n`);

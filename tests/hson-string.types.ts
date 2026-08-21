@@ -36,6 +36,13 @@ const compact: HsonString = hsonTransform.fromNode(node).toHson().noBreak().seri
 const withoutQuids: HsonString = hsonTransform.fromNode(node).toHson().noQuid().serialize();
 const html = hsonTransform.fromNode(node).toHtml().serialize();
 const json = hsonTransform.fromNode(node).toJson().serialize();
+const hsonHash: Promise<string> = hsonTransform.fromNode(node).toHson().sha256();
+const htmlHash: Promise<string> = hsonTransform.fromNode(node).toHtml().sha256();
+const jsonHash: Promise<string> = hsonTransform.fromNode(node).toJson().sha256();
+const dynamicHash: Promise<string> = dynamicSerializer.sha256();
+
+// @ts-expect-error Canonical graph terminals do not represent emitted bytes.
+hsonTransform.fromNode(node).toNode().sha256();
 const ordinary: string = direct;
 
 // @ts-expect-error Arrays are not ordinary HSON string inputs.
@@ -109,3 +116,7 @@ void withoutQuids;
 void invalidHtml;
 void invalidJson;
 void ordinary;
+void hsonHash;
+void htmlHash;
+void jsonHash;
+void dynamicHash;

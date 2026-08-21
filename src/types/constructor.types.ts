@@ -407,9 +407,10 @@ export interface HsonOptionsConstructor_3 {
  ***************/
 export interface SerializeConstructor_4 {
   serialize(): string;
+  sha256(): Promise<string>;
 }
 
-export interface HsonSerializeConstructor_4 {
+export interface HsonSerializeConstructor_4 extends SerializeConstructor_4 {
   serialize(): HsonString;
 }
 

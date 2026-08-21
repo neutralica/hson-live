@@ -53,40 +53,60 @@ function serialize_render(context: TransformFrameRender<TransformOutputRenderFor
   }
 }
 
+async function sha256Serialized(serialized: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined || typeof subtle.digest !== "function") {
+    throw new Error("SHA-256 hashing requires WebCrypto SubtleCrypto support.");
+  }
+  let digest: ArrayBuffer;
+  try {
+    digest = await subtle.digest("SHA-256", new TextEncoder().encode(serialized));
+  } catch (cause) {
+    throw new Error("SHA-256 hashing requires WebCrypto SHA-256 support.", { cause });
+  }
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
 export function construct_hson_render_4(
   context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
 ): TransformHsonSerialize {
+  const serialize = () => {
+    const origin = context.frame.meta?.origin;
+    const parserOwnsRoot = origin === "json"
+      || origin === "html"
+      || origin === "html-sanitized-from-node";
+    const node = parserOwnsRoot && context.frame.node.$_tag === ROOT_TAG
+      ? detach_hson_root_value(context.frame.node)
+      : context.frame.node;
+    return serialize_hson(node, {
+      noBreak: context.frame.options?.noBreak ?? false,
+      noQuid: context.frame.options?.noQuid ?? false,
+    });
+  };
   return {
-    serialize: () => {
-      const origin = context.frame.meta?.origin;
-      const parserOwnsRoot = origin === "json"
-        || origin === "html"
-        || origin === "html-sanitized-from-node";
-      const node = parserOwnsRoot && context.frame.node.$_tag === ROOT_TAG
-        ? detach_hson_root_value(context.frame.node)
-        : context.frame.node;
-      return serialize_hson(node, {
-        noBreak: context.frame.options?.noBreak ?? false,
-        noQuid: context.frame.options?.noQuid ?? false,
-      });
-    },
+    serialize,
+    sha256: () => sha256Serialized(serialize()),
   };
 }
 
 export function construct_html_render_4(
   context: TransformFrameRender<(typeof $RENDER)["HTML"]>,
 ): TransformSerialize {
+  const serialize = () => serialize_render(context);
   return {
-    serialize: () => serialize_render(context),
+    serialize,
+    sha256: () => sha256Serialized(serialize()),
   };
 }
 
 export function construct_json_render_4(
   context: TransformFrameRender<(typeof $RENDER)["JSON"]>,
 ): TransformJsonValue {
+  const serialize = () => serialize_render(context);
   return {
-    serialize: () => serialize_render(context),
+    serialize,
+    sha256: () => sha256Serialized(serialize()),
     value: () => {
       if (context.frame.json === undefined) {
         throw new Error("value(): frame is missing JSON data");

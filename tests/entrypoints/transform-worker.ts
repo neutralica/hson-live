@@ -11,6 +11,7 @@ void hsonLocus;
 void assertCanonicalClosure;
 void hsonTransform.fromHson(`<worker <ready true>>`).toNode();
 void hsonTransform.fromJson({ ready: true }).toHson().serialize();
+void hsonTransform.fromJson({ ready: true }).toHson().sha256();
 const universalCircuit: UniversalCircuitVerificationResult = verify_universal_circuit({
   entry: "json",
   source: '{"ready":true}',

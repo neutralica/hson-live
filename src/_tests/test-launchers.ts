@@ -130,6 +130,16 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
+      id: "transform.sha256",
+      subject: "Transform",
+      displayName: "Transform serialized SHA-256",
+      packageScript: "test:transform-sha256",
+      repositoryModule: "tests/transform-sha256.acceptance.mts",
+      runtime: "node",
+      executableChecks: 21,
+      collections: ["serialization", "sha256", "webcrypto", "public-api", "externally-discoverable"],
+    }),
+    launcher({
       id: "transform.json-ingress",
       subject: "Transform",
       displayName: "Detached JSON ingress and root metadata",

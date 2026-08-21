@@ -124,6 +124,7 @@
     "test:locus-public-contract": "node tests/locus-public-contract.acceptance.mjs",
     "test:root-compatibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/root-compatibility.acceptance.mts",
     "test:transform-worker": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-worker.acceptance.mts",
+    "test:transform-sha256": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-sha256.acceptance.mts",
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
     "test:livetree-livemap-attrs-convergence": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-livemap-attrs-convergence.acceptance.mts",
     "test:livetree-quid-eligibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-quid-eligibility.acceptance.mts",

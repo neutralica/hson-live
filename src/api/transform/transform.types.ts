@@ -40,9 +40,10 @@ export interface TransformFrameRender<K extends TransformRenderFormat> {
 
 export interface TransformSerialize {
   serialize(): string;
+  sha256(): Promise<string>;
 }
 
-export interface TransformHsonSerialize {
+export interface TransformHsonSerialize extends TransformSerialize {
   serialize(): HsonString;
 }
 

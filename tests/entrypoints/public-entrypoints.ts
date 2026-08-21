@@ -771,6 +771,12 @@ hsonSubpath.transform.string`<main/>`;
 hsonSubpathTransform.string`<main/>`;
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
 const inferredJsonText = transformSubpath.fromNode(node).toJson().serialize();
+const inferredHsonHash: Promise<string> = transformSubpath.fromNode(node).toHson().sha256();
+const inferredHtmlHash: Promise<string> = transformSubpath.fromNode(node).toHtml().sha256();
+const inferredJsonHash: Promise<string> = transformSubpath.fromNode(node).toJson().sha256();
+const inferredDynamicHash: Promise<string> = genericSerializer.sha256();
+// @ts-expect-error Canonical graph terminals do not represent emitted bytes.
+transformSubpath.fromNode(node).toNode().sha256();
 const hsonText: HsonString = inferredHsonText;
 const normalizedHson: HsonString = inferredNormalizedHson;
 const namedNormalizedHson: HsonString = inferredNamedHson;
@@ -792,6 +798,10 @@ const transformAdmittedNumber: TransformHsonNumber = admittedNumber;
 const ordinaryNumber: number = admittedNumber;
 const repeatedAdmittedNumber: HsonNumber = hsonNumber(admittedNumber);
 const admittedSemanticNumber: HsonSemanticPrimitive = admittedNumber;
+void inferredHsonHash;
+void inferredHtmlHash;
+void inferredJsonHash;
+void inferredDynamicHash;
 
 // @ts-expect-error Admitted semantic numeric positions require HsonNumber proof.
 const invalidSemanticNumber: HsonSemanticPrimitive = arbitraryNumber;
