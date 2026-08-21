@@ -128,10 +128,19 @@ export function create_livehost_locus_registry_internal<
 ): InternalRegistry<TAuthority> {
   const maxAuthorities = positive_integer(options.maxLoci, "maxLoci");
   const idleMs = nonnegative_finite(options.idleMs, "idleMs");
-  const sweepIntervalMs = positive_integer(
-    options.sweepIntervalMs ?? Math.max(1, Math.min(30_000, idleMs || 1_000)),
-    "sweepIntervalMs",
-  );
+  const automaticSweep = options.automaticSweep ?? true;
+  if (typeof automaticSweep !== "boolean") {
+    throw new Error("LiveHost Locus registry automaticSweep must be boolean.");
+  }
+  if (!automaticSweep && options.sweepIntervalMs !== undefined) {
+    throw new Error("LiveHost Locus registry automaticSweep false cannot specify sweepIntervalMs.");
+  }
+  const sweepIntervalMs = automaticSweep
+    ? positive_integer(
+      options.sweepIntervalMs ?? Math.max(1, Math.min(30_000, idleMs || 1_000)),
+      "sweepIntervalMs",
+    )
+    : undefined;
   const now = runtime.now ?? (() => performance.now());
   const schedule = runtime.schedule ?? default_schedule;
   const event = (value: RegistryEvent): void => {
@@ -169,7 +178,7 @@ export function create_livehost_locus_registry_internal<
   }
 
   function schedule_sweep(): void {
-    if (state !== "accepting" || stopSweep !== undefined) return;
+    if (!automaticSweep || sweepIntervalMs === undefined || state !== "accepting" || stopSweep !== undefined) return;
     stopSweep = schedule(sweepIntervalMs, () => {
       stopSweep = undefined;
       void sweep().finally(schedule_sweep);

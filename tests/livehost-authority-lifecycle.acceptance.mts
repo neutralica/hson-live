@@ -10,6 +10,7 @@ import {
   type Locus,
   type LocusSocketLike,
 } from "hson-live/locus";
+import { create_livehost_locus_registry } from "hson-live/livehost";
 import { create_livehost_locus_registry_internal } from "../src/api/livehost/services/livehost.authority-registry.ts";
 import { create_livehost_store } from "../src/api/livehost/services/livehost.store.ts";
 import type { JsonValue, LiveMap } from "hson-live/types";
@@ -101,6 +102,63 @@ check("new authorities expose a non-sensitive idle activity snapshot", () => {
   assert.equal(host.activity.snapshot().state, "idle");
   host.dispose();
   assert.equal(host.activity.snapshot().state, "disposed");
+});
+
+check("automatic sweep defaults to enabled and can be disabled without changing explicit eviction", async () => {
+  const scheduled: number[] = [];
+  const make = (automaticSweep?: boolean, sweepIntervalMs?: number) => create_livehost_locus_registry_internal<TestHost>({
+    maxLoci: 1,
+    idleMs: 100,
+    ...(automaticSweep === undefined ? {} : { automaticSweep }),
+    ...(sweepIntervalMs === undefined ? {} : { sweepIntervalMs }),
+    create(key) { return create_locus<TestState>({ state: { key }, logicalMapId: key }); },
+  }, {
+    schedule(delayMs) {
+      scheduled.push(delayMs);
+      return () => {};
+    },
+  });
+  const defaultRegistry = make();
+  const enabledRegistry = make(true, 25);
+  const disabledRegistry = make(false);
+  assert.deepEqual(scheduled, [100, 25]);
+  assert.throws(
+    () => make(false, 25),
+    /automaticSweep false cannot specify sweepIntervalMs/,
+  );
+  const acquired = await disabledRegistry.acquire("manual");
+  assert.equal(acquired.ok, true);
+  if (acquired.ok) acquired.value.release();
+  assert.equal((await disabledRegistry.evict("manual")).status, "evicted");
+  await defaultRegistry.dispose();
+  await enabledRegistry.dispose();
+  await disabledRegistry.dispose();
+});
+
+check("public registry automaticSweep controls only periodic eviction scheduling", async () => {
+  const automatic = create_livehost_locus_registry<TestHost>({
+    maxLoci: 1,
+    idleMs: 10,
+    automaticSweep: true,
+    sweepIntervalMs: 10,
+    create(key) { return create_locus<TestState>({ state: { key }, logicalMapId: key }); },
+  });
+  const manual = create_livehost_locus_registry<TestHost>({
+    maxLoci: 1,
+    idleMs: 10,
+    automaticSweep: false,
+    create(key) { return create_locus<TestState>({ state: { key }, logicalMapId: key }); },
+  });
+  const automaticLease = await automatic.acquire("automatic");
+  const manualLease = await manual.acquire("manual");
+  if (automaticLease.ok) automaticLease.value.release();
+  if (manualLease.ok) manualLease.value.release();
+  await new Promise<void>((resolve) => setTimeout(resolve, 40));
+  assert.equal(automatic.has("automatic"), false);
+  assert.equal(manual.has("manual"), true);
+  assert.equal((await manual.evict("manual")).status, "evicted");
+  await automatic.dispose();
+  await manual.dispose();
 });
 
 check("basic store lookup key remains independent from a hosted logical map ID", () => {

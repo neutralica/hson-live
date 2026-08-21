@@ -212,6 +212,11 @@ const publicRegistryOptions: LiveHostLocusRegistryOptions = {
   idleMs: 100,
   create: () => managedLocus,
 };
+const manuallySweptRegistryOptions: LiveHostLocusRegistryOptions = {
+  ...publicRegistryOptions,
+  automaticSweep: false,
+};
+void manuallySweptRegistryOptions;
 const privateClockRegistryOptions: LiveHostLocusRegistryOptions = {
   ...publicRegistryOptions,
   // @ts-expect-error Deterministic clocks are an internal runtime/testing seam.

@@ -93,6 +93,7 @@ export type LiveHostLocusEvictionResult =
 export type LiveHostLocusRegistryOptions<TLocus extends ManagedLocus = Locus> = Readonly<{
   maxLoci: number;
   idleMs: number;
+  automaticSweep?: boolean;
   sweepIntervalMs?: number;
   create(key: string): TLocus | Promise<TLocus>;
   dispose?(locus: TLocus): void | Promise<void>;
