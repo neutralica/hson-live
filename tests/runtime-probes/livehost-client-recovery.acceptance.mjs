@@ -166,7 +166,7 @@ await check("protocol rejects legacy value snapshots and malformed HSON envelope
   for (const snapshot of invalidSnapshots) {
     const decoded = decode_livehost_server_message(JSON.stringify({ ...base, snapshot }));
     assert.equal(decoded.ok, false);
-    assert.match(decoded.ok ? "" : decoded.error.message, /Malformed LiveHost recovery snapshot message/);
+    assert.match(decoded.ok ? "" : decoded.error.message, /Malformed LiveHost recovery snapshot (?:message|envelope)/);
   }
 });
 
@@ -577,9 +577,9 @@ await check("already-current recovery rejects when the installed mirror revision
   assert.equal(fixture.client.recovery.status, "failed");
 });
 
-await check("client rejects unsupported snapshot negotiation acknowledgments", async () => {
+await check("client rejects removed-version and unsupported snapshot acknowledgments", async () => {
   for (const [label, snapshotEncoding, expectedCode] of [
-    ["unsupported-version", { format: "view-state", formatVersion: 1 }, "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED"],
+    ["removed-version", { format: "view-state", formatVersion: 2 }, "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID"],
     ["unsupported-format", { format: "future-format" }, "LIVEHOST_SNAPSHOT_NEGOTIATION_INVALID"],
     ["missing-acknowledgment", undefined, "LIVEHOST_SNAPSHOT_NEGOTIATION_MISSING"],
   ]) {
@@ -675,7 +675,7 @@ await check("client rejects a second plan, duplicate snapshot, and duplicate cau
 await check("client rejects mismatched snapshot formats and out-of-order replay without applying twice", async () => {
   for (const [label, snapshotEncoding, snapshot] of [
     ["ack-hson-body-view-state", { format: "hson" }, { logicalMapId: "ack-hson-body-view-state", incarnationId: "new", rev: 0, mode: "data-object", format: "view-state", payload: "<invalid>" }],
-    ["ack-view-state-body-hson", { format: "view-state", formatVersion: 2 }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
+    ["ack-view-state-body-hson", { format: "view-state" }, { logicalMapId: "ack-view-state-body-hson", incarnationId: "new", rev: 0, mode: "data-object", hson: compact_hson({ value: 1 }) }],
   ]) {
     const fixture = begin_scripted_projected_recovery(label);
     fixture.pair.push_server({ type: "recovery-plan", id: fixture.id, sessionId: "s", logicalMapId: label, incarnationId: "new", headRev: 0, outcome: "snapshot", reason: "incarnation_mismatch", snapshotEncoding });

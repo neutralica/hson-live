@@ -110,7 +110,7 @@ check("view-state LiveHost snapshots retain exact metadata", () => {
   const snapshot = encode_livehost_document_snapshot(
     { logicalMapId: "unit7-view", incarnationId: "inc-view" },
     source.capture(),
-    { format: "view-state", formatVersion: 2 },
+    { format: "view-state" },
   );
   const decoded = decode_livehost_document_snapshot(snapshot);
   assert.equal(canonical_hson_graph_equal(decoded.root, source.root()), true);

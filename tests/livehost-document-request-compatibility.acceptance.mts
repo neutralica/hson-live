@@ -9,12 +9,8 @@ import { resolve_livehost_document_action } from "../src/api/livehost/livehost.d
 import { make_livehost_action_dedupe_store } from "../src/api/livehost/livehost.actions.ts";
 import {
   decode_livehost_canonical_commit,
-  decode_livehost_canonical_commit_compat,
-  decode_livehost_client_server_message,
   decode_livehost_server_message,
-  replay_livehost_document_commit_compat,
 } from "../src/api/livehost/livehost.protocol.ts";
-import { LiveMapReplayInputError } from "../src/api/livemap/livemap.error.ts";
 import type {
   ElementLiveMap,
   LiveMapAuthority,
@@ -127,65 +123,13 @@ check("strict canonical decoder rejects a QUID-only target", () => {
   assert.equal(decode_livehost_canonical_commit(legacyEnvelope([legacySet(Q1)])), undefined);
 });
 
-check("bounded compatibility decoder retains legacy input for exact-base lowering", () => {
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([legacySet(Q1)]));
-  assert.equal(field(decoded?.ops[0], "domain"), "graph");
-});
-
-check("legacy translation produces a path-authoritative LiveMap commit", () => {
-  const map = element(`<main @${Q1}/>`);
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([legacySet(Q1)]));
-  if (decoded === undefined) throw new Error("Expected compatibility commit");
-  const applied = replay_livehost_document_commit_compat(map, decoded);
-  assert.deepEqual(operationTarget(applied.ops[0]), { kind: "path", path: [], witness: { quid: Q1 } });
-});
-
-check("legacy translation uses each exact staged base", () => {
-  const map = element(`<main <a @${Q1}/> <b @${Q2}/>/>`);
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([
-    { domain: "graph", op: "move-content", target: { kind: "path", path: [0] }, from: 0, to: 1 },
-    legacySet(Q1, "moved"),
-  ]));
-  if (decoded === undefined) throw new Error("Expected compatibility commit");
-  const applied = replay_livehost_document_commit_compat(map, decoded);
-  assert.deepEqual(targetField(applied.ops[1], "path"), [0, 1]);
-});
-
-check("unresolved legacy target rejects without changing the base", () => {
-  const map = element(`<main/>`);
-  const before = map.capture();
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([legacySet(Q1)]));
-  if (decoded === undefined) throw new Error("Expected compatibility commit");
-  assert.throws(() => replay_livehost_document_commit_compat(map, decoded));
-  assert.deepEqual(map.capture(), before);
-});
-
-check("incompatible legacy base mode rejects explicitly", () => {
-  const map = element(`<main @${Q1}/>`);
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([legacySet(Q1)], "fragment"));
-  if (decoded === undefined) throw new Error("Expected compatibility commit");
-  assert.throws(
-    () => replay_livehost_document_commit_compat(map, decoded),
-    (error: unknown) => error instanceof LiveMapReplayInputError,
-  );
-});
-
-check("public current server decoder rejects legacy QUID canonical input", () => {
+check("the current server decoder rejects QUID-only canonical input", () => {
   const decoded = decode_livehost_server_message(JSON.stringify({
     type: "commit",
     id: "strict",
     commit: legacyEnvelope([legacySet(Q1)]),
   }));
   assert.equal(decoded.ok, false);
-});
-
-check("internal compatibility client decoder admits bounded legacy input", () => {
-  const decoded = decode_livehost_client_server_message(JSON.stringify({
-    type: "commit",
-    id: "compat",
-    commit: legacyEnvelope([legacySet(Q1)]),
-  }));
-  assert.equal(decoded.ok, true);
 });
 
 check("LiveHost path action publishes a canonical path target", async () => {
@@ -352,7 +296,7 @@ check("recovery tail generated after the cut contains path targets", async () =>
   host.dispose();
 });
 
-check("persistence load lowers a legacy tail from its exact checkpoint base", async () => {
+check("persistence load rejects a QUID-only canonical tail", async () => {
   const adapter = new CapturingPersistenceAdapter();
   const original = element(`<main @${Q1}/>`);
   const initial = await create_persistent_livehost({
@@ -375,11 +319,7 @@ check("persistence load lowers a legacy tail from its exact checkpoint base", as
   }));
   const store = create_livehost_persistent_store(adapter);
   const loaded = await store.load("unit-5-host");
-  if (!loaded.ok || loaded.value === undefined) throw new Error("Expected restored persistent host");
-  const restored = loaded.value;
-  assert.equal(restored.map.document.attrs.get({ kind: "path", path: [] }, "id"), "legacy");
-  assert.equal(targetField(restored.stream.history.replay_after(0)?.[0]?.ops[0], "kind"), "path");
-  await store.unload("unit-5-host");
+  assert.equal(loaded.ok, false);
 });
 
 check("new persistence append stores a path target", async () => {
@@ -417,17 +357,6 @@ check("Unit 5 adds no canonical protocol version field", async () => {
   assert.deepEqual(Object.keys(commit ?? {}).sort(), [
     "incarnationId", "logicalMapId", "mode", "ops", "prevRev", "rev",
   ]);
-  host.dispose();
-});
-
-check("compatibility translation is never exposed as a new QUID-only history record", () => {
-  const map = element(`<main @${Q1}/>`);
-  const decoded = decode_livehost_canonical_commit_compat(legacyEnvelope([legacySet(Q1)]));
-  if (decoded === undefined) throw new Error("Expected compatibility commit");
-  const applied = replay_livehost_document_commit_compat(map, decoded);
-  const host = hson.liveHost.create({ map, logicalMapId: "normalized-legacy" });
-  assert.equal(targetField(applied.ops[0], "kind"), "path");
-  assert.equal(host.stream.history.debug().retainedCommitCount, 0);
   host.dispose();
 });
 

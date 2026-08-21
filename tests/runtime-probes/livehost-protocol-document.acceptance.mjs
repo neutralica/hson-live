@@ -2,7 +2,6 @@ import { emit_hson_live_test_completion } from "../launcher-completion.mjs";
 import assert from "node:assert/strict";
 import { decode_livehost_message, decode_livehost_server_message, hson } from "../../src/index.ts";
 import { encode_livehost_graph_content } from "../../src/api/livehost/livehost.graph-content-codec.ts";
-import { decode_livehost_canonical_commit_compat } from "../../src/api/livehost/livehost.protocol.ts";
 
 let checks = 0;
 
@@ -117,7 +116,7 @@ check("document commits decode only current canonical path targets", () => {
   assert.equal(valid.value.commit.ops[0].domain, "graph");
 });
 
-check("legacy QUID recovery input is isolated behind the compatibility decoder", () => {
+check("QUID-only canonical recovery input rejects", () => {
   const legacy = commit("fragment", [{
     domain: "graph",
     op: "replace-attrs",
@@ -131,8 +130,6 @@ check("legacy QUID recovery input is isolated behind the compatibility decoder",
     commit: legacy,
   }));
   assert.equal(decoded.ok, false);
-  const compatibility = decode_livehost_canonical_commit_compat(legacy);
-  assert.equal(compatibility?.ops[0]?.op, "replace-attrs");
 });
 
 check("replace-root requires canonical same-mode HSON and persisted identity", () => {
@@ -224,27 +221,39 @@ check("snapshot envelopes require one stable map mode", () => {
     }));
     assert.equal(decoded.ok, true);
   }
+  const viewState = decode_livehost_server_message(JSON.stringify({
+    type: "recovery-snapshot",
+    id: "view-state-snapshot",
+    snapshot: {
+      logicalMapId: "map",
+      incarnationId: "inc",
+      rev: 0,
+      mode: "element",
+      format: "view-state",
+      payload: "payload",
+    },
+  }));
+  assert.equal(viewState.ok, true);
 });
 
-check("recovery capability advertisements are strict and normalized", () => {
+check("recovery capability advertisements are strict and generation-free", () => {
   const valid = decode_livehost_message(JSON.stringify({
     type: "recover",
     id: "recover-capabilities",
     logicalMapId: "map",
-    snapshotCapabilities: { hson: true, viewStateVersions: [9, 1] },
+    snapshotCapabilities: { hson: true, viewState: true },
   }));
   assert.equal(valid.ok, true);
   assert.deepEqual(valid.ok && valid.value.snapshotCapabilities, {
     hson: true,
-    viewStateVersions: [1, 9],
+    viewState: true,
   });
 
   const malformed = [
     false,
     { hson: false },
-    { hson: true, viewStateVersions: "1" },
-    { hson: true, viewStateVersions: [0] },
-    { hson: true, viewStateVersions: [1, 1] },
+    { hson: true, viewState: false },
+    { hson: true, viewStateVersions: [2] },
     { hson: true, extra: true },
   ];
   for (const snapshotCapabilities of malformed) {
@@ -259,7 +268,7 @@ check("recovery capability advertisements are strict and normalized", () => {
   }
 });
 
-check("recovery plans carry bounded snapshot encoding acknowledgments", () => {
+check("recovery plans carry generation-free snapshot encoding acknowledgments", () => {
   const common = {
     type: "recovery-plan",
     id: "plan",
@@ -271,16 +280,14 @@ check("recovery plans carry bounded snapshot encoding acknowledgments", () => {
   };
   for (const snapshotEncoding of [
     { format: "hson" },
-    { format: "view-state", formatVersion: 1 },
-    { format: "view-state", formatVersion: 99 },
+    { format: "view-state" },
   ]) {
     const decoded = decode_livehost_server_message(JSON.stringify({ ...common, snapshotEncoding }));
     assert.equal(decoded.ok, true);
   }
   for (const snapshotEncoding of [
     { format: "unknown" },
-    { format: "view-state" },
-    { format: "view-state", formatVersion: 0 },
+    { format: "view-state", formatVersion: 2 },
     { format: "hson", formatVersion: 1 },
   ]) {
     const decoded = decode_livehost_server_message(JSON.stringify({ ...common, snapshotEncoding }));

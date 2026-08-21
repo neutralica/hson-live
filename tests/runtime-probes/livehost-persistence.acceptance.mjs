@@ -389,7 +389,7 @@ await check("creation and load for one ID share one deterministic in-flight host
   await store.unload("creation-race");
 });
 
-await check("restored authority serves legacy HSON modern view-state and replay recovery", async () => {
+await check("restored authority serves HSON, view-state, and replay recovery", async () => {
   const adapter = new MemoryPersistenceAdapter();
   const store = create_livehost_persistent_store(adapter);
   const created = await store.create("recovery-after-load", { map: element() });
@@ -401,8 +401,8 @@ await check("restored authority serves legacy HSON modern view-state and replay 
   const loaded = (await store.load("recovery-after-load")).value;
 
   for (const [id, capabilities] of [
-    ["legacy", undefined],
-    ["modern", { hson: true, viewStateVersions: [2] }],
+    ["hson", undefined],
+    ["view-state", { hson: true, viewState: true }],
   ]) {
     const pair = socket_pair();
     loaded.connect(pair.server);
@@ -428,7 +428,7 @@ await check("restored authority serves legacy HSON modern view-state and replay 
     logicalMapId: loaded.stream.logicalMapId,
     incarnationId: loaded.stream.incarnationId,
     lastAppliedRev: 1,
-    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
+    snapshotCapabilities: { hson: true, viewState: true },
   }));
   assert.equal(replayPair.serverSent.find((message) => message.type === "recovery-plan")?.outcome, "replay");
   assert.deepEqual(replayPair.serverSent.filter((message) => message.type === "recovery-commit").map((message) => message.commit.rev), [2]);

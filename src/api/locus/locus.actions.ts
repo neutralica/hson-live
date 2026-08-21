@@ -155,7 +155,7 @@ export function make_livehost_action_dedupe_store(
   currentSeq: () => number,
   options: LiveHostActionDedupeOptions = {},
 ): LiveHostActionDedupeStore {
-  const namespace = options.namespace ?? "livehost-action-v1";
+  const namespace = options.namespace ?? "livehost-action";
   const maxTerminalRecords = bound(options.maxTerminalRecords, DEFAULT_MAX_TERMINAL_RECORDS, "maxTerminalRecords");
   const maxTerminalBytes = bound(options.maxTerminalBytes, DEFAULT_MAX_TERMINAL_BYTES, "maxTerminalBytes");
   const terminalRetentionMs = bound(options.terminalRetentionMs, DEFAULT_TERMINAL_RETENTION_MS, "terminalRetentionMs");

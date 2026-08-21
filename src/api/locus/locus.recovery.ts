@@ -99,15 +99,11 @@ type TracedLiveHostRecoveryPlanner = LiveHostRecoveryPlanner & Readonly<{
 
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
 
-/**
- * The established public planner type remains legacy-only. Connection-selected
- * envelopes retain the same internal recovery-item shape for the single Locus
- * transport loop.
- */
+/** Keep the public planner and connection-selected snapshot body on one current envelope. */
 function recovery_plan_snapshot_view(
   snapshot: LiveHostOutboundDocumentSnapshotEnvelope,
 ): LiveHostSnapshotEnvelope {
-  return snapshot as LiveHostSnapshotEnvelope;
+  return snapshot;
 }
 
 /**

@@ -36,9 +36,8 @@ check("exact graph payload round-trips nested nodes, typed attributes, structure
   if (!is_Node(decoded)) throw new Error("Expected node");
   assert.equal(canonical_hson_graph_equal(decoded, source), true);
   assert.notEqual(decoded, source);
-  assert.deepEqual(Object.keys(encoded).sort(), ["format", "formatVersion", "payload"]);
+  assert.deepEqual(Object.keys(encoded).sort(), ["format", "payload"]);
   assert.equal(encoded.format, "hson-graph");
-  assert.equal(encoded.formatVersion, 2);
   assert.equal(JSON.stringify(encoded).includes("$_tag"), false);
   assert.match(encoded.payload, /000000001/);
 });
@@ -63,25 +62,25 @@ check("fragment and empty-fragment roots retain exact structure", () => {
   }
 });
 
-check("strict envelopes reject missing, extra, unknown-version, and malformed HSON fields", () => {
+check("strict envelopes reject missing, extra, removed-version, and malformed HSON fields", () => {
   expect_rejection(
-    { format: "hson-graph", formatVersion: 2 },
+    { format: "hson-graph" },
     "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
   );
   expect_rejection(
-    { format: "hson-graph", formatVersion: 2, payload: "", extra: true },
+    { format: "hson-graph", payload: "", extra: true },
     "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
   );
   expect_rejection(
-    { format: "hson-graph", formatVersion: 1, payload: "" },
-    "LIVEHOST_GRAPH_CONTENT_VERSION_UNSUPPORTED",
+    { format: "hson-graph", formatVersion: 2, payload: "" },
+    "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",
   );
   expect_rejection(
-    { format: "hson-graph", formatVersion: 2, payload: "<broken" },
+    { format: "hson-graph", payload: "<broken" },
     "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID",
   );
   expect_rejection(
-    { format: "hson-graph", formatVersion: 2, payload: "<main @0000000000000001/>" },
+    { format: "hson-graph", payload: "<main @0000000000000001/>" },
     "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID",
   );
 });

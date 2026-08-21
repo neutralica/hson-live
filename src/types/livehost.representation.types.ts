@@ -11,7 +11,6 @@ import type {
   LiveMapDocumentAttrs,
   LiveMapDocumentContent,
   LiveMapDocumentCommitTarget,
-  LiveMapDocumentTarget,
   LiveMapGraphOp,
   LiveMapProjectedGraphEnsureQuidOp,
   LiveMapAnyOp,
@@ -58,10 +57,9 @@ export type LiveHostWireValue =
   | Readonly<{ present: false }>
   | Readonly<{ present: true; value: JsonValue }>;
 
-/** Versioned exact HSON-backed representation used for graph content at LiveHost boundaries. */
+/** Exact HSON-backed representation used for graph content at LiveHost boundaries. */
 export type LiveHostEncodedGraphContent = Readonly<{
   format: "hson-graph";
-  formatVersion: 2;
   payload: string;
 }>;
 
@@ -118,11 +116,6 @@ export type LiveHostEncodedGraphReplaceRootOp = Omit<
   Extract<LiveMapGraphOp, { op: "replace-root" }>,
   "root"
 > & Readonly<{ root: LiveHostEncodedGraphContent }>;
-
-/** Bounded compatibility target for pre-path-authority LiveHost wire data. */
-export type LiveHostDocumentWireTarget =
-  | LiveMapDocumentCommitTarget
-  | Extract<LiveMapDocumentTarget, { kind: "quid" }>;
 
 type WithLiveHostCanonicalDocumentTarget<TOperation> = TOperation extends Readonly<{ target: unknown }>
   ? Omit<TOperation, "target"> & Readonly<{ target: LiveMapDocumentCommitTarget }>
@@ -212,19 +205,23 @@ export type LiveHostCanonicalStream<
   on_commit: (listener: LiveHostCanonicalCommitListener) => LiveHostDisposer;
 }>;
 
-export type LiveHostSnapshotEnvelope = Readonly<{
+type LiveHostSnapshotCommonFields = Readonly<{
   logicalMapId: LiveHostLogicalMapId;
   incarnationId: LiveHostIncarnationId;
   rev: number;
   mode: LiveMapRootMode;
-  hson: string;
 }>;
+
+export type LiveHostSnapshotEnvelope = LiveHostSnapshotCommonFields & (
+  | Readonly<{ hson: string }>
+  | Readonly<{ format: "view-state"; payload: string }>
+);
 
 export type LiveHostSnapshotCapabilities = Readonly<{
   hson: true;
-  viewStateVersions?: readonly number[];
+  viewState?: true;
 }>;
 
 export type LiveHostSnapshotEncodingSelection =
   | Readonly<{ format: "hson" }>
-  | Readonly<{ format: "view-state"; formatVersion: number }>;
+  | Readonly<{ format: "view-state" }>;

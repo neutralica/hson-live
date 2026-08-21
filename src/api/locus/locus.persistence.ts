@@ -25,8 +25,8 @@ import {
 } from "./locus.core.js";
 import { make_livehost_canonical_commit } from "./locus.history.js";
 import {
-  decode_livehost_canonical_commit_compat,
-  replay_livehost_document_commit_compat,
+  decode_livehost_canonical_commit,
+  replay_livehost_document_commit,
 } from "./locus.protocol.js";
 import { create_live_trace_context } from "./locus.trace.js";
 import {
@@ -330,14 +330,14 @@ function validate_persisted_state(
       if (persisted.logicalMapId !== checkpoint.logicalMapId
         || persisted.incarnationId !== checkpoint.incarnationId
         || persisted.mapKind !== "document") throw invalid_state();
-      const decoded = decode_livehost_canonical_commit_compat(persisted.commit);
+      const decoded = decode_livehost_canonical_commit(persisted.commit);
       if (decoded === undefined
         || decoded.logicalMapId !== checkpoint.logicalMapId
         || decoded.incarnationId !== checkpoint.incarnationId
         || decoded.mode !== checkpoint.mode
         || decoded.prevRev !== expectedPrevRev
         || decoded.rev !== expectedPrevRev + 1) throw invalid_state();
-      const applied = replay_livehost_document_commit_compat(map, decoded);
+      const applied = replay_livehost_document_commit(map, decoded);
       const canonical = make_livehost_canonical_commit(
         map,
         applied,

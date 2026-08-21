@@ -77,10 +77,7 @@ const exclusiveLocusAuthorities = new WeakMap<object, ReturnType<typeof make_liv
 
 const DIRECT_ACTION_ORIGIN: LiveHostActionOrigin = Object.freeze({ kind: "direct" });
 const HSON_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "hson" });
-const VIEW_STATE_V2_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({
-  format: "view-state",
-  formatVersion: 2,
-});
+const VIEW_STATE_SNAPSHOT_ENCODING: LiveHostDocumentSnapshotEncoding = Object.freeze({ format: "view-state" });
 
 type LiveHostConnectionRecoveryState =
   | Readonly<{ phase: "awaiting-recovery" }>
@@ -125,24 +122,22 @@ function select_snapshot_encoding(
   capabilities: LiveHostSnapshotCapabilities | undefined,
   documentMode: boolean,
 ): LiveHostDocumentSnapshotEncoding {
-  return documentMode && capabilities?.viewStateVersions?.includes(2) === true
-    ? VIEW_STATE_V2_SNAPSHOT_ENCODING
+  return documentMode && capabilities?.viewState === true
+    ? VIEW_STATE_SNAPSHOT_ENCODING
     : HSON_SNAPSHOT_ENCODING;
 }
 
 function snapshot_capability_signature(capabilities: LiveHostSnapshotCapabilities | undefined): string {
   return capabilities === undefined
     ? "absent"
-    : `hson:${capabilities.viewStateVersions?.join(",") ?? ""}`;
+    : capabilities.viewState === true ? "hson:view-state" : "hson";
 }
 
 function snapshot_encoding_equal(
   left: LiveHostSnapshotEncodingSelection,
   right: LiveHostSnapshotEncodingSelection,
 ): boolean {
-  return left.format === right.format
-    && (left.format !== "view-state"
-      || (right.format === "view-state" && left.formatVersion === right.formatVersion));
+  return left.format === right.format;
 }
 
 function make_livehost_session_id(): LiveHostSessionId {
@@ -1604,9 +1599,6 @@ function create_livehost_for_map<
             strategy,
             targetRev: completion.caughtUp.throughRev,
             snapshotFormat: negotiation.encoding.format,
-            ...(negotiation.encoding.format === "view-state"
-              ? { snapshotFormatVersion: negotiation.encoding.formatVersion }
-              : {}),
             outcome: "synchronized",
           }),
         });

@@ -121,7 +121,7 @@ function begin_scripted_snapshot_recovery(map, logicalMapId, incarnationId, head
     headRev,
     outcome: "snapshot",
     reason: "incarnation_mismatch",
-    snapshotEncoding: { format: "view-state", formatVersion: 2 },
+    snapshotEncoding: { format: "view-state" },
   }));
   return { pair, client, promise, requestId: request.id };
 }
@@ -329,7 +329,7 @@ await check("fragment snapshot recovery reconstructs fragment mode without JSON 
   const messages = pair.serverSent.map(JSON.parse);
   const plan = messages.find((message) => message.type === "recovery-plan");
   const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
-  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state" });
   assert.equal(snapshot?.mode, "fragment");
   assert.equal(snapshot?.format, "view-state");
   assert.equal("formatVersion" in snapshot, false);
@@ -360,14 +360,10 @@ await check("an old client without capabilities receives the established HSON sn
   assert.equal(canonical_hson_graph_equal(recovered.capture().root, authority.capture().root), true);
 });
 
-await check("HSON-only and unsupported future view-state advertisements select HSON explicitly", async () => {
+await check("HSON-only capability advertisements select HSON explicitly", async () => {
   const authority = element(`<main @000000040/>`);
   const host = hson.liveHost.create({ map: authority, logicalMapId: "hson-capability-selection" });
-  for (const [id, capabilities] of [
-    ["hson-only", { hson: true }],
-    ["empty-view-state", { hson: true, viewStateVersions: [] }],
-    ["future-view-state", { hson: true, viewStateVersions: [99] }],
-  ]) {
+  for (const [id, capabilities] of [["hson-only", { hson: true }]]) {
     const { messages, disconnectHost } = raw_recovery(host, id, capabilities);
     const plan = messages.find((message) => message.type === "recovery-plan");
     const snapshot = messages.find((message) => message.type === "recovery-snapshot")?.snapshot;
@@ -393,7 +389,7 @@ await check("snapshot capabilities cannot change during one connection", async (
     type: "recover",
     id: "changed-selection",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
+    snapshotCapabilities: { hson: true, viewState: true },
   }));
   const messages = pair.serverSent.map(JSON.parse);
   assert.deepEqual(
@@ -418,14 +414,14 @@ await check("concurrent recovery is rejected without a second material sequence"
       type: "recover",
       id: "concurrent-recovery",
       logicalMapId: host.stream.logicalMapId,
-      snapshotCapabilities: { hson: true, viewStateVersions: [2] },
+      snapshotCapabilities: { hson: true, viewState: true },
     }));
   });
   pair.client.send(JSON.stringify({
     type: "recover",
     id: "first-recovery",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
+    snapshotCapabilities: { hson: true, viewState: true },
   }));
   const messages = pair.serverSent.map(JSON.parse);
   assert.equal(messages.filter((message) => message.type === "recovery-plan").length, 1);
@@ -446,7 +442,7 @@ await check("completed request IDs reject while a new same-capability resync rem
     type: "recover",
     id: "completed-request",
     logicalMapId: host.stream.logicalMapId,
-    snapshotCapabilities: { hson: true, viewStateVersions: [2] },
+    snapshotCapabilities: { hson: true, viewState: true },
   };
   pair.client.send(JSON.stringify(request));
   pair.client.send(JSON.stringify(request));
@@ -467,10 +463,8 @@ await check("malformed snapshot capability advertisements reject without documen
   const host = hson.liveHost.create({ map: authority, logicalMapId: "malformed-capabilities" });
   const malformed = [
     true,
-    { hson: true, viewStateVersions: "1" },
-    { hson: true, viewStateVersions: [1.5] },
-    { hson: true, viewStateVersions: [-1] },
-    { hson: true, viewStateVersions: [1, 1] },
+    { hson: true, viewState: false },
+    { hson: true, viewStateVersions: [2] },
     { hson: true, unexpected: true },
   ];
   for (const [index, snapshotCapabilities] of malformed.entries()) {
@@ -498,7 +492,7 @@ await check("view-state negotiation is acknowledged for replay-only recovery", a
   assert.equal((await client.recovery.recover()).strategy, "replay");
   const messages = pair.serverSent.map(JSON.parse);
   const plan = messages.find((message) => message.type === "recovery-plan");
-  assert.deepEqual(plan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
+  assert.deepEqual(plan.snapshotEncoding, { format: "view-state" });
   assert.equal(messages.some((message) => message.type === "recovery-snapshot"), false);
   assert.equal(messages.filter((message) => message.type === "recovery-commit").length, 1);
   assert.equal(client.map.rev, authority.rev);
@@ -519,7 +513,7 @@ await check("snapshot negotiation is isolated across simultaneous connections an
   const modernSnapshot = modernMessages.find((message) => message.type === "recovery-snapshot")?.snapshot;
   assert.equal("snapshotEncoding" in oldPlan, false);
   assert.equal(typeof oldSnapshot.hson, "string");
-  assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state", formatVersion: 2 });
+  assert.deepEqual(modernPlan.snapshotEncoding, { format: "view-state" });
   assert.equal(modernSnapshot.format, "view-state");
   assert.equal(canonical_hson_graph_equal(modernConnection.client.map.capture().root, authority.capture().root), true);
   const oldRecovered = hson.liveMap.fromHson(oldSnapshot.hson);

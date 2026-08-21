@@ -221,7 +221,9 @@ function validate_graph_limits(
   visit(value, 0);
 }
 
-function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHostSnapshotEnvelope {
+type LiveHostBootstrapSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { hson: string }>;
+
+function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHostBootstrapSnapshotEnvelope {
   return Object.freeze({
     logicalMapId: bootstrap.logicalMapId,
     incarnationId: bootstrap.incarnationId,
@@ -240,12 +242,15 @@ function snapshot_from_bootstrap(bootstrap: LiveHostBootstrapPackageV1): LiveHos
  */
 function with_livehost_bootstrap_snapshot<T>(
   authority: LiveHostBootstrapAuthority,
-  useSnapshot: (snapshot: LiveHostSnapshotEnvelope) => T,
+  useSnapshot: (snapshot: LiveHostBootstrapSnapshotEnvelope) => T,
 ): T {
   let plan;
   try {
     plan = authority.recovery.plan({ logicalMapId: authority.stream.logicalMapId });
     if (plan.outcome !== "snapshot") {
+      throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
+    }
+    if (!("hson" in plan.body)) {
       throw new Error("A bootstrap capture did not produce the required canonical HSON snapshot.");
     }
     return useSnapshot(plan.body);
@@ -262,7 +267,7 @@ type LiveHostBootstrapRoutingIngredients = Readonly<{
 
 /** The only construction point that combines authority state with delivery metadata. */
 function assemble_livehost_bootstrap(
-  snapshot: LiveHostSnapshotEnvelope,
+  snapshot: LiveHostBootstrapSnapshotEnvelope,
   routing: LiveHostBootstrapRoutingIngredients,
 ): LiveHostBootstrapPackageV1 {
   return Object.freeze({
@@ -283,7 +288,7 @@ function assemble_livehost_bootstrap(
 }
 
 function map_from_snapshot(
-  snapshot: LiveHostSnapshotEnvelope,
+  snapshot: LiveHostBootstrapSnapshotEnvelope,
   options: LiveHostBootstrapCodecOptions,
 ): ClassifiedLiveMap {
   let root;

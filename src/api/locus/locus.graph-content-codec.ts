@@ -11,11 +11,9 @@ import {
 import { ViewStateSnapshotCodecError } from "../livemap/livemap.document.view-state-codec.error.js";
 
 const FORMAT = "hson-graph" as const;
-const FORMAT_VERSION = 2 as const;
 
 export type LiveHostGraphContentCodecErrorCode =
   | "LIVEHOST_GRAPH_CONTENT_FORMAT_UNKNOWN"
-  | "LIVEHOST_GRAPH_CONTENT_VERSION_UNSUPPORTED"
   | "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID"
   | "LIVEHOST_GRAPH_CONTENT_PAYLOAD_INVALID"
   | "LIVEHOST_GRAPH_CONTENT_GRAPH_INVALID";
@@ -38,7 +36,6 @@ export function encode_livehost_graph_content(
   try {
     return Object.freeze({
       format: FORMAT,
-      formatVersion: FORMAT_VERSION,
       payload: encode_exact_hson_value(content),
     });
   } catch (cause) {
@@ -60,13 +57,7 @@ export function decode_livehost_graph_content(
       "LiveHost graph content format is unknown.",
     );
   }
-  if (record.formatVersion !== FORMAT_VERSION) {
-    throw graph_error(
-      "LIVEHOST_GRAPH_CONTENT_VERSION_UNSUPPORTED",
-      "LiveHost graph content format version is unsupported.",
-    );
-  }
-  require_exact_keys(record, ["format", "formatVersion", "payload"]);
+  require_exact_keys(record, ["format", "payload"]);
   if (typeof record.payload !== "string") {
     throw graph_error(
       "LIVEHOST_GRAPH_CONTENT_ENVELOPE_INVALID",

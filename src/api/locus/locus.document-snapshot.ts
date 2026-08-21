@@ -6,7 +6,6 @@ import type {
   LiveHostServerRecoverySnapshotMessage,
 } from "../../types/livehost.protocol.types.js";
 import type { LiveHostSnapshotEnvelope } from "../../types/livehost.representation.types.js";
-import type { LiveHostCanonicalCommitCompatibility } from "./locus.protocol.js";
 import {
   decode_view_state_snapshot,
   encode_view_state_snapshot,
@@ -17,66 +16,37 @@ import { parse_hson } from "../transform/parsers/parse-hson.js";
 import { serialize_hson_owned_element_text_fragment } from "../transform/serializers/serialize-hson.js";
 import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
 
-/** @internal Common outer recovery fields shared by both accepted snapshot bodies. */
+/** @internal Common outer recovery fields shared by both snapshot bodies. */
 export type LiveHostSnapshotCommonFields = Pick<
   LiveHostSnapshotEnvelope,
   "logicalMapId" | "incarnationId" | "rev" | "mode"
 >;
 
-/** @internal The established ordinary-HSON snapshot body and compatibility shape. */
-export type LiveHostHsonSnapshotEnvelope = LiveHostSnapshotEnvelope;
+/** @internal Ordinary-HSON snapshot body. */
+export type LiveHostHsonSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { hson: string }>;
 
-/** @internal Incoming exact document-state snapshot body. */
-export type LiveHostViewStateSnapshotEnvelope = LiveHostSnapshotCommonFields & Readonly<{
-  format: "view-state";
-  payload: string;
-}>;
+/** @internal Exact document-state snapshot body. */
+export type LiveHostViewStateSnapshotEnvelope = Extract<LiveHostSnapshotEnvelope, { format: "view-state" }>;
 
 /** @internal Fully validated incoming snapshot representation. */
 export type LiveHostValidatedSnapshotEnvelope =
-  | LiveHostHsonSnapshotEnvelope
-  | LiveHostViewStateSnapshotEnvelope;
+  LiveHostSnapshotEnvelope;
 
 /** Closed host-side document snapshot wire selection. */
 export type LiveHostDocumentSnapshotEncoding =
   | Readonly<{ format: "hson" }>
-  | Readonly<{ format: "view-state"; formatVersion: 2 }>;
+  | Readonly<{ format: "view-state" }>;
 
 /** @internal Outbound document snapshot body selected from one capture. */
 export type LiveHostOutboundDocumentSnapshotEnvelope =
   | LiveHostHsonSnapshotEnvelope
   | LiveHostViewStateSnapshotEnvelope;
 
-/** @internal Client-side decoded recovery message for either accepted document snapshot format. */
-export type LiveHostDecodedServerRecoverySnapshotMessage = Readonly<{
-  type: "recovery-snapshot";
-  id: string;
-  snapshot: LiveHostValidatedSnapshotEnvelope;
-}>;
-
-/** @internal Legacy commit input remains isolated from the public canonical message type. */
-export type LiveHostDecodedServerRecoveryCommitMessage = Omit<
-  LiveHostServerRecoveryCommitMessage,
-  "commit"
-> & Readonly<{ commit: LiveHostCanonicalCommitCompatibility }>;
-
-/** @internal Legacy live-tail input remains isolated until exact-base lowering. */
-export type LiveHostDecodedServerCanonicalCommitMessage = Omit<
-  LiveHostServerCanonicalCommitMessage,
-  "commit"
-> & Readonly<{ commit: LiveHostCanonicalCommitCompatibility }>;
-
-/** @internal Server messages accepted by the client-side transport decoder. */
-export type LiveHostDecodedServerMessage =
-  | Exclude<
-      LiveHostServerMessage,
-      LiveHostServerRecoverySnapshotMessage
-      | LiveHostServerRecoveryCommitMessage
-      | LiveHostServerCanonicalCommitMessage
-    >
-  | LiveHostDecodedServerRecoverySnapshotMessage
-  | LiveHostDecodedServerRecoveryCommitMessage
-  | LiveHostDecodedServerCanonicalCommitMessage;
+/** @internal Current decoded server-message aliases. */
+export type LiveHostDecodedServerRecoverySnapshotMessage = LiveHostServerRecoverySnapshotMessage;
+export type LiveHostDecodedServerRecoveryCommitMessage = LiveHostServerRecoveryCommitMessage;
+export type LiveHostDecodedServerCanonicalCommitMessage = LiveHostServerCanonicalCommitMessage;
+export type LiveHostDecodedServerMessage = LiveHostServerMessage;
 
 /** @internal */
 export type LiveHostDocumentSnapshotDecodeErrorCode =
@@ -120,9 +90,7 @@ function is_view_state_encoding(value: unknown): value is Extract<
     && value !== null
     && "format" in value
     && value.format === "view-state"
-    && "formatVersion" in value
-    && value.formatVersion === 2
-    && Object.keys(value).length === 2;
+    && Object.keys(value).length === 1;
 }
 
 function is_hson_encoding(value: unknown): value is Extract<

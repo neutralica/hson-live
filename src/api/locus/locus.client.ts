@@ -19,6 +19,7 @@ import type {
   LiveHostActionPayloads,
   LiveHostActionRequestId,
   LiveHostActionStatusId,
+  LiveHostCanonicalCommit,
   LiveHostClient,
   LiveHostClientForMap,
   LiveHostClientActionMessage,
@@ -60,10 +61,9 @@ import {
   LiveHostDuplicateActionIdError,
 } from "./locus.error.js";
 import {
-  decode_livehost_client_server_message,
-  replay_livehost_document_commit_compat,
+  decode_livehost_server_message,
+  replay_livehost_document_commit,
   is_livehost_json_value,
-  type LiveHostCanonicalCommitCompatibility,
 } from "./locus.protocol.js";
 import {
   encode_livehost_graph_content,
@@ -84,7 +84,7 @@ let nextActionStatusId = 0;
 
 const CLIENT_SNAPSHOT_CAPABILITIES: LiveHostSnapshotCapabilities = Object.freeze({
   hson: true,
-  viewStateVersions: Object.freeze([2]),
+  viewState: true,
 });
 
 function make_reload_safe_id(prefix: string): string {
@@ -144,7 +144,7 @@ function encode_client_message<TActions extends LiveHostActionPayloads>(message:
   } catch {
     // Preserve the established asynchronous structured action rejection path
     // without ever falling back to a raw node-shaped wire payload.
-    encodedContent = { format: "hson-graph", formatVersion: 2, payload: "" } as const;
+    encodedContent = { format: "hson-graph", payload: "" } as const;
   }
   return JSON.stringify({
     ...message,
@@ -220,7 +220,7 @@ function reject_pending_action_statuses(
 }
 
 function projected_identity_replay(
-  commit: LiveHostCanonicalCommitCompatibility,
+  commit: LiveHostCanonicalCommit,
   prevRev: number,
 ): LiveMapGraphCommit<LiveMapProjectedGraphEnsureQuidOp> | undefined {
   const operations: LiveMapProjectedGraphEnsureQuidOp[] = [];
@@ -398,19 +398,15 @@ export function create_livehost_client<
       );
       return false;
     }
-    if (selected.format === "view-state"
-      && !CLIENT_SNAPSHOT_CAPABILITIES.viewStateVersions?.includes(selected.formatVersion)) {
+    if (selected.format === "view-state" && CLIENT_SNAPSHOT_CAPABILITIES.viewState !== true) {
       fail_recovery(
         "LIVEHOST_SNAPSHOT_NEGOTIATION_UNSUPPORTED",
-        "LiveHost selected an unsupported view-state snapshot version.",
+        "LiveHost selected an unsupported view-state snapshot format.",
       );
       return false;
     }
     if (negotiatedSnapshotEncoding !== undefined
-      && (negotiatedSnapshotEncoding.format !== selected.format
-        || (selected.format === "view-state"
-          && (negotiatedSnapshotEncoding.format !== "view-state"
-            || negotiatedSnapshotEncoding.formatVersion !== selected.formatVersion)))) {
+      && negotiatedSnapshotEncoding.format !== selected.format) {
       fail_recovery(
         "LIVEHOST_SNAPSHOT_NEGOTIATION_CHANGED",
         "LiveHost changed the selected snapshot encoding during one connection.",
@@ -421,7 +417,7 @@ export function create_livehost_client<
     return true;
   }
 
-  function apply_commit(commit: LiveHostCanonicalCommitCompatibility, phase: "body" | "tail" | "live"): void {
+  function apply_commit(commit: LiveHostCanonicalCommit, phase: "body" | "tail" | "live"): void {
     if (recoveryStatus === "failed" || recoveryStatus === "disposed") return;
     const logicalMapId = options.recovery?.logicalMapId;
     if (!logicalMapId || commit.logicalMapId !== logicalMapId || commit.incarnationId !== incarnationId) {
@@ -459,7 +455,7 @@ export function create_livehost_client<
     const localRevBefore = map.rev;
     try {
       const applied = map.mode === "element" || map.mode === "fragment"
-        ? replay_livehost_document_commit_compat(map, commit)
+        ? replay_livehost_document_commit(map, commit)
         : projected_identity_replay(commit, localRevBefore) !== undefined
           ? map.replay(projected_identity_replay(commit, localRevBefore)!)
         : commit.format === "structural-json"
@@ -787,7 +783,7 @@ export function create_livehost_client<
   function install_recovery_messages(): void {
     if (stopRecoveryMessages || recoveryDisposed) return;
     stopRecoveryMessages = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_client_server_message(raw);
+      const decoded = decode_livehost_server_message(raw);
       if (!decoded.ok) {
         if (recoveryStatus === "recovering" || recoveryStatus === "caught_up") {
           fail_recovery(
@@ -858,8 +854,8 @@ export function create_livehost_client<
     if (message.type === "ack" || message.type === "error") {
       seq = message.seq;
       if (!message.id) return;
-      const legacyAttempts = pendingActionAttemptsByRequest.get(message.id);
-      const routeId = message.attemptId ?? (pendingActions.has(message.id) ? message.id : legacyAttempts?.[0] ?? message.id);
+      const requestAttempts = pendingActionAttemptsByRequest.get(message.id);
+      const routeId = message.attemptId ?? (pendingActions.has(message.id) ? message.id : requestAttempts?.[0] ?? message.id);
       const actions = pendingActions.get(routeId);
       const action = actions?.shift();
       if (!action) return;
@@ -887,7 +883,7 @@ export function create_livehost_client<
       }
     }
     const stopMessage = options.socket.onMessage((raw) => {
-      const decoded = decode_livehost_client_server_message(raw);
+      const decoded = decode_livehost_server_message(raw);
       if (!decoded.ok || is_recovery_message(decoded.value)) return;
       handle_server_message(decoded.value);
     });
