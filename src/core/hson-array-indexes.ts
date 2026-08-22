@@ -1,5 +1,9 @@
 import { ARR_TAG, HSON_META_INDEX, II_TAG } from "./constants.js";
 import { is_Node } from "./node-guards.js";
+import {
+  enumerable_own_data_array_items,
+  own_enumerable_data_property,
+} from "./node-storage.js";
 import type { HsonNode, Primitive } from "./types.js";
 
 export type HsonArrayIndexAnalysis =
@@ -11,7 +15,25 @@ export type HsonArrayIndexAnalysis =
   | Readonly<{
       valid: false;
       reason: string;
-    }>;
+  }>;
+
+function is_required_node_record(
+  value: unknown,
+): value is HsonNode & Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  const tag = Object.getOwnPropertyDescriptor(value, "$_tag");
+  const content = Object.getOwnPropertyDescriptor(value, "$_content");
+  return tag !== undefined
+    && tag.enumerable === true
+    && Object.hasOwn(tag, "value")
+    && typeof tag.value === "string"
+    && content !== undefined
+    && content.enumerable === true
+    && Object.hasOwn(content, "value")
+    && Array.isArray(content.value);
+}
 
 /**
  * Validate one explicit `_hson_arr` wrapper sequence and derive its canonical
@@ -97,7 +119,34 @@ export function normalize_hson_array_index_order(
   const active = new WeakSet<object>();
   const complete = new WeakMap<object, HsonNode>();
 
-  const visit = (node: HsonNode, path: string): HsonNode => {
+  const fail = (path: string, message: string): never => {
+    throw new Error(`[HSON array indexes] ${message} in ${where} at ${path || "/"}`);
+  };
+
+  const visit = (value: unknown, path: string): HsonNode => {
+    if (!is_required_node_record(value)) {
+      return fail(path, "node must be a plain object with enumerable own data $_tag and $_content fields");
+    }
+    const tagProperty = own_enumerable_data_property(value, "$_tag");
+    if (tagProperty === undefined || !tagProperty.present || typeof tagProperty.value !== "string") {
+      return fail(path, "node must carry $_tag as an enumerable own data property with a valid string value");
+    }
+    const tag = tagProperty.value;
+    const contentProperty = own_enumerable_data_property(value, "$_content");
+    if (contentProperty === undefined || !contentProperty.present || !Array.isArray(contentProperty.value)) {
+      return fail(`${path}/${tag}`, "node must carry an array $_content");
+    }
+    const contentItems = enumerable_own_data_array_items(contentProperty.value);
+    if (contentItems === undefined) {
+      return fail(`${path}/${tag}`, "node must carry dense enumerable own data items in $_content");
+    }
+    const attrsProperty = own_enumerable_data_property(value, "$_attrs");
+    const metaProperty = own_enumerable_data_property(value, "$_meta");
+    if (attrsProperty === undefined || metaProperty === undefined) {
+      return fail(`${path}/${tag}`, "optional node fields must be enumerable own data properties when present");
+    }
+
+    const node = value;
     if (active.has(node)) {
       throw new Error(`[HSON array indexes] cycle detected in ${where} at ${path}`);
     }
@@ -106,18 +155,20 @@ export function normalize_hson_array_index_order(
 
     active.add(node);
     let changed = false;
-    let content = node.$_content.map((child, position) => {
-      if (!is_Node(child)) return child;
-      const normalized = visit(child, `${path}/${node.$_tag}/$_content[${position}]`);
+    let content: Array<HsonNode | Primitive> = contentItems.map((child, position) => {
+      if (child === null || typeof child === "string" || typeof child === "number" || typeof child === "boolean") {
+        return child;
+      }
+      const normalized = visit(child, `${path}/${tag}/$_content[${position}]`);
       if (normalized !== child) changed = true;
       return normalized;
     });
 
-    if (node.$_tag === ARR_TAG) {
+    if (tag === ARR_TAG) {
       const analysis = analyze_hson_array_indexes(content);
       if (!analysis.valid) {
         throw new Error(
-          `[HSON array indexes] ${analysis.reason} in ${where} at ${path}/${node.$_tag}`,
+          `[HSON array indexes] ${analysis.reason} in ${where} at ${path}/${tag}`,
         );
       }
       if (analysis.reordered) {
@@ -126,7 +177,12 @@ export function normalize_hson_array_index_order(
       }
     }
 
-    const result = changed ? { ...node, $_content: content } : node;
+    let result = node;
+    if (changed) {
+      result = { $_tag: tag, $_content: content };
+      if (attrsProperty.present) Reflect.set(result, "$_attrs", attrsProperty.value);
+      if (metaProperty.present) Reflect.set(result, "$_meta", metaProperty.value);
+    }
     active.delete(node);
     complete.set(node, result);
     return result;

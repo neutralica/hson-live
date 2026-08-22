@@ -15,6 +15,7 @@ import { ROOT_TAG } from "../../../core/constants.js";
 import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
 import { admit_projected_value } from "../../../core/projected-value-admission.js";
 import { materialize_projected_value } from "../../../core/projected-value-materialization.js";
+import { sha256_text } from "../sha256.js";
 
 /**
  * HSON pipeline, stage 4: finalize the selected output.
@@ -53,20 +54,6 @@ function serialize_render(context: TransformFrameRender<TransformOutputRenderFor
   }
 }
 
-async function sha256Serialized(serialized: string): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
-  if (subtle === undefined || typeof subtle.digest !== "function") {
-    throw new Error("SHA-256 hashing requires WebCrypto SubtleCrypto support.");
-  }
-  let digest: ArrayBuffer;
-  try {
-    digest = await subtle.digest("SHA-256", new TextEncoder().encode(serialized));
-  } catch (cause) {
-    throw new Error("SHA-256 hashing requires WebCrypto SHA-256 support.", { cause });
-  }
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 /** HSON output is serialization-only; graph access belongs to source `.toNode()`. */
 export function construct_hson_render_4(
   context: TransformFrameRender<(typeof $RENDER)["HSON"]>,
@@ -86,7 +73,7 @@ export function construct_hson_render_4(
   };
   return {
     serialize,
-    sha256: () => sha256Serialized(serialize()),
+    sha256: () => sha256_text(serialize()),
   };
 }
 
@@ -96,7 +83,7 @@ export function construct_html_render_4(
   const serialize = () => serialize_render(context);
   return {
     serialize,
-    sha256: () => sha256Serialized(serialize()),
+    sha256: () => sha256_text(serialize()),
   };
 }
 
@@ -106,7 +93,7 @@ export function construct_json_render_4(
   const serialize = () => serialize_render(context);
   return {
     serialize,
-    sha256: () => sha256Serialized(serialize()),
+    sha256: () => sha256_text(serialize()),
     value: () => {
       if (context.frame.json === undefined) {
         throw new Error("value(): frame is missing JSON data");

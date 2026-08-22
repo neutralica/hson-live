@@ -15,6 +15,11 @@ import { is_Node } from "./node-guards.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 import { hsonNumber } from "./hson-number.js";
+import {
+  enumerable_own_data_array_items,
+  enumerable_own_data_entries,
+  own_enumerable_data_property,
+} from "./node-storage.js";
 
 function is_plain_record(value: unknown): value is Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
@@ -38,7 +43,9 @@ function optional_record(
   field: "$_attrs" | "$_meta",
   where: string,
   path: string,
-): Record<string, unknown> | undefined {
+): Readonly<{
+  entries: readonly (readonly [string, unknown])[];
+}> | undefined {
   if (value === undefined) return undefined;
   if (Array.isArray(value)) {
     if (value.length === 0) return undefined;
@@ -47,7 +54,11 @@ function optional_record(
   if (!is_plain_record(value)) {
     return fail(where, path, `${field} must be a plain object when present`);
   }
-  return Object.keys(value).length === 0 ? undefined : value;
+  const entries = enumerable_own_data_entries(value);
+  if (entries === undefined) {
+    return fail(where, path, `${field} entries must be enumerable own data properties`);
+  }
+  return entries.length === 0 && field === "$_attrs" ? undefined : { entries };
 }
 
 /**
@@ -75,34 +86,52 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
     const existing = complete.get(value);
     if (existing) return existing;
 
-    const tag = value.$_tag;
-    if (typeof tag !== "string") return fail(where, path, "node has invalid $_tag");
-    if (!Array.isArray(value.$_content)) {
+    const tagProperty = own_enumerable_data_property(value, "$_tag");
+    if (tagProperty === undefined || !tagProperty.present || typeof tagProperty.value !== "string") {
+      return fail(where, path, "node must carry $_tag as an enumerable own data property with a valid string value");
+    }
+    const tag = tagProperty.value;
+    const contentProperty = own_enumerable_data_property(value, "$_content");
+    if (contentProperty === undefined || !contentProperty.present || !Array.isArray(contentProperty.value)) {
       return fail(where, `${path}/${tag}`, "node must carry an array $_content");
+    }
+    const contentItems = enumerable_own_data_array_items(contentProperty.value);
+    if (contentItems === undefined) {
+      return fail(where, `${path}/${tag}`, "node must carry dense enumerable own data items in $_content");
     }
 
     const here = `${path}/${tag}`;
     active.set(value, here);
     const result: HsonNode = { $_tag: tag, $_content: [] };
 
-    const hasMeta = Object.hasOwn(value, "$_meta");
-    if (tag === ROOT_TAG && hasMeta && Array.isArray(value.$_meta)) {
+    const metaProperty = own_enumerable_data_property(value, "$_meta");
+    if (metaProperty === undefined) {
+      return fail(where, here, "$_meta must be an enumerable own data property when present");
+    }
+    const hasMeta = metaProperty.present;
+    const metaValue = metaProperty.present ? metaProperty.value : undefined;
+    if (tag === ROOT_TAG && hasMeta && Array.isArray(metaValue)) {
       return fail(where, here, "$_meta must be a plain object when present");
     }
     const meta = hasMeta
-      ? optional_record(value.$_meta, "$_meta", where, here)
+      ? optional_record(metaValue, "$_meta", where, here)
       : undefined;
     if (hasMeta && meta === undefined) changed = true;
-    if (meta) result.$_meta = Object.fromEntries(Object.entries(meta)) as HsonMeta;
+    if (meta) result.$_meta = Object.fromEntries(meta.entries) as HsonMeta;
 
-    const hasAttrs = Object.hasOwn(value, "$_attrs");
+    const attrsProperty = own_enumerable_data_property(value, "$_attrs");
+    if (attrsProperty === undefined) {
+      return fail(where, here, "$_attrs must be an enumerable own data property when present");
+    }
+    const hasAttrs = attrsProperty.present;
+    const attrsValue = attrsProperty.present ? attrsProperty.value : undefined;
     const attrs = hasAttrs
-      ? optional_record(value.$_attrs, "$_attrs", where, here)
+      ? optional_record(attrsValue, "$_attrs", where, here)
       : undefined;
     if (hasAttrs && attrs === undefined) changed = true;
     if (attrs) {
       const entries: Array<[string, HsonAttrs[string]]> = [];
-      for (const [key, item] of Object.entries(attrs)) {
+      for (const [key, item] of attrs.entries) {
         if (item === undefined) {
           changed = true;
           continue;
@@ -143,13 +172,14 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
         : !EVERY_VSN.includes(tag)
           ? requiredMode
           : undefined;
-    let content = value.$_content.map((child, index) => {
+    let content: Array<HsonNode | Primitive> = contentItems.map((child, index) => {
       if (is_plain_record(child)) {
         return visit(child, `${here}/$_content[${index}]`, tag, childRequiredMode);
       }
-      return tag === VAL_TAG && typeof child === "number"
-        ? hsonNumber(child)
-        : child;
+      if (!is_primitive(child)) {
+        return fail(where, `${here}/$_content[${index}]`, "content item must be a node or HSON primitive");
+      }
+      return tag === VAL_TAG && typeof child === "number" ? hsonNumber(child) : child;
     });
     if (tag === ARR_TAG) {
       const analysis = analyze_hson_array_indexes(content);

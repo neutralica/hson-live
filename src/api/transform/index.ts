@@ -11,10 +11,12 @@ export {
   hsonCalc,
 } from "./hson-calc.js";
 export type {
+  BinaryDecodeOptions,
   HsonString,
   HsonTransformSource,
   OutputConstructor_2,
   TransformFrameOptions,
+  TransformBinarySerialize,
   TransformHsonOptions,
   TransformHsonSerialize,
   TransformJsonValue,

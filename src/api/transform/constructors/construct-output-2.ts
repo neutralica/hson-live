@@ -9,6 +9,11 @@ import type {
   TransformFrameRender,
   TransformOutput,
 } from "../transform.types.js";
+import { serialize_binary } from "../binary/binary-codec.js";
+import { sha256_bytes } from "../sha256.js";
+import { ROOT_TAG } from "../../../core/constants.js";
+import { detach_hson_root_value } from "../utils/node-utils/detach-hson-root-value.js";
+import { is_Node } from "../../../core/node-guards.js";
 
 type TransformHtmlSanitizer = (html: string) => TransformFrame["node"];
 let transformHtmlSanitizer: TransformHtmlSanitizer | undefined;
@@ -43,6 +48,24 @@ export function construct_output_2(frame: TransformFrame): TransformOutput {
     return {
       toNode() {
         return currentFrame.node;
+      },
+
+      toBinary() {
+        const origin = currentFrame.meta?.origin;
+        const parserOwnsRoot = origin === "json"
+          || origin === "html"
+          || origin === "html-sanitized-from-node";
+        const retainedBinaryNode = currentFrame.meta?.binaryNode;
+        const node = is_Node(retainedBinaryNode)
+          ? retainedBinaryNode
+          : parserOwnsRoot && currentFrame.node.$_tag === ROOT_TAG
+            ? detach_hson_root_value(currentFrame.node)
+            : currentFrame.node;
+        const bytes = serialize_binary(node);
+        return {
+          serialize: () => bytes.slice(),
+          sha256: () => sha256_bytes(bytes),
+        };
       },
 
       toHson() {
@@ -92,12 +115,14 @@ export function construct_output_2(frame: TransformFrame): TransformOutput {
           );
         }
         const sanitizedNode = transformHtmlSanitizer(rawHtml);
+        const retainedMeta = { ...currentFrame.meta };
+        delete retainedMeta.binaryNode;
 
         const nextFrame: TransformFrame = {
           input: rawHtml,
           node: sanitizedNode,
           meta: {
-            ...currentFrame.meta,
+            ...retainedMeta,
             origin: "html-sanitized-from-node",
             sanitized: true,
             unsafePipeline: false,

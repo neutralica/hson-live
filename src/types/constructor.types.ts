@@ -5,7 +5,7 @@ import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
 import { HsonNode } from "../core/types.js";
 import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
-import type { HsonString } from "../api/transform/transform.types.js";
+import type { HsonString, TransformBinarySerialize } from "../api/transform/transform.types.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.
@@ -277,6 +277,7 @@ export interface SourceConstructor_1 {
 export interface OutputConstructor_2 {
   /** Return the canonical normalized graph without serializing and reparsing. */
   toNode(): HsonNode;
+  toBinary(): TransformBinarySerialize;
   toJson(): OptionsConstructor_3<(typeof $RENDER)["JSON"]> & JsonValueConstructor_4;
   toHson(): HsonOptionsConstructor_3 & HsonSerializeConstructor_4;
   toHtml(): OptionsConstructor_3<(typeof $RENDER)["HTML"]> & SerializeConstructor_4;

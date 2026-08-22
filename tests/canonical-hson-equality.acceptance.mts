@@ -155,6 +155,48 @@ check("structured style is record-ordered while raw style strings remain exact",
   assert.equal(canonical_hson_graph_equal(raw_style_document("color:red"), raw_style_document("color: red")), false);
 });
 
+check("typed style equality preserves unit ownership and exact string values", () => {
+  const styled = (width: unknown): HsonNode => {
+    const attrs: NonNullable<HsonNode["$_attrs"]> = {};
+    Reflect.set(attrs, "style", { width });
+    return document(node("div", [], attrs));
+  };
+  const absent = styled({ value: 2 });
+  const ownUndefined = styled({ value: 2, unit: undefined });
+  const empty = styled({ value: 2, unit: "" });
+  const pixels = styled({ value: 2, unit: "px" });
+
+  for (const graph of [absent, ownUndefined, empty, pixels]) {
+    assert.doesNotThrow(() => assert_invariants(graph, "typed style equality"));
+  }
+  assert.equal(canonical_hson_graph_equal(absent, ownUndefined), false);
+  assert.equal(canonical_hson_graph_equal(ownUndefined, empty), false);
+  assert.equal(canonical_hson_graph_equal(empty, pixels), false);
+  assert.equal(canonical_hson_graph_equal(ownUndefined, styled({ value: 2, unit: undefined })), true);
+});
+
+check("attr and metadata equality ignores descriptor flags and symbol decoration", () => {
+  const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
+  Object.defineProperty(attrs, "id", {
+    configurable: false,
+    enumerable: true,
+    value: "x",
+    writable: false,
+  });
+  Reflect.set(attrs, Symbol("nonsemantic"), "left-only");
+  const meta: NonNullable<HsonNode["$_meta"]> = Object.create(null);
+  Object.defineProperty(meta, "quid", {
+    configurable: false,
+    enumerable: true,
+    value: "000000001",
+    writable: false,
+  });
+  const fixed = document(node("div", [], attrs, meta));
+  const ordinary = document(node("div", [], { id: "x" }, { quid: "000000001" }));
+  assert.doesNotThrow(() => assert_invariants(fixed, "fixed attr/meta descriptors"));
+  assert.equal(canonical_hson_graph_equal(fixed, ordinary), true);
+});
+
 check("ordered object-property content is not treated as an unordered record", () => {
   const property = (name: string, value: string): HsonNode => node(name, [node("_hson_obj", [node("_hson_str", [value])])]);
   const left = node("_hson_root", [node("_hson_obj", [property("a", "1"), property("b", "2")])]);
@@ -180,6 +222,10 @@ check("strict equality distinguishes absent optional fields from present empty f
   assert.equal(canonical_hson_graph_equal(absent, emptyMeta), false);
   assert.equal(canonical_hson_graph_difference(absent, emptyAttrs)?.kind, "attribute-presence");
   assert.equal(canonical_hson_graph_difference(absent, emptyMeta)?.kind, "metadata-presence");
+
+  const admittedEmptyMeta = hsonTransform.fromNode(emptyMeta).toNode();
+  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, emptyMeta), true);
+  assert.equal(canonical_hson_graph_equal(admittedEmptyMeta, absent), false);
 });
 
 check("candidate admission removes empty attributes and direct invariant admission rejects them", () => {

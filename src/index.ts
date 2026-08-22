@@ -1,6 +1,10 @@
 // index.ts
 
 export { hson, hsonCalc, hsonLocus, hsonNumber, hsonString, type HsonFacade } from "./hson.js";
+export type {
+    BinaryDecodeOptions,
+    TransformBinarySerialize,
+} from "./api/transform/transform.types.js";
 export {
     TransformError,
     is_transform_error,

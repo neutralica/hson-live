@@ -74,6 +74,28 @@ HSON numeric values. Shared acyclic references are allowed; HSON serialization
 emits each occurrence by value and does not preserve JavaScript reference
 identity.
 
+Structured inline-style entries are enumerable own data properties. A typed
+declaration leaf requires an enumerable own data property `value`; its optional
+`unit`, when present, is likewise an enumerable own data property. Inherited,
+accessor-backed, and non-enumerable semantic fields reject without invoking a
+getter. Writable and configurable descriptor flags are not graph semantics.
+The three value states `unit` absent, own-present `undefined`, and own-present
+string remain distinct canonical states.
+
+The optional `$_attrs` and `$_meta` fields, when present, and every string-keyed
+entry within their record values are likewise enumerable own data properties.
+Accessor-backed, non-enumerable, or custom-prototype record state rejects before
+any getter can run. Symbol properties and writable/configurable descriptor flags
+are not graph semantics. `$_meta: {}` remains a canonical presence distinction;
+`$_attrs: {}` remains noncanonical and must be omitted.
+
+Every canonical node stores `$_tag` and `$_content` as required enumerable own
+data properties. `$_content` is a dense array whose semantic slots are
+enumerable own data properties. Inherited, accessor-backed, hidden, or sparse
+required storage rejects without executing user code. Canonical node objects
+use `Object.prototype` or `null`; writable/configurable flags and symbol
+decorations remain outside graph meaning.
+
 Element and object structural modes apply recursively to their full branches.
 Contradictory wrappers, cross-mode ordinary children, empty retained
 `_hson_elem` nodes, and direct ordinary children beneath `_hson_ii` reject at

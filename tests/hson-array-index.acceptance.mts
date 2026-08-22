@@ -357,7 +357,6 @@ check("exact graph decoding canonicalizes valid permutations and rejects malform
   assert.notEqual(encode_exact_hson_value(decoded), payload);
   const locusDecoded = decode_locus_graph_content({
     format: "hson-graph",
-    formatVersion: 2,
     payload,
   });
   assert.ok(is_Node(locusDecoded));

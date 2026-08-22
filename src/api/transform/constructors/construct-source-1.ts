@@ -194,6 +194,9 @@ export function construct_source_1(
         toNode(): HsonNode {
           return getFrame().node;
         },
+        toBinary() {
+          return getOutput().toBinary();
+        },
         toHson() {
           return getOutput().toHson();
         },
@@ -233,6 +236,7 @@ export function construct_source_1(
           origin: "node",
           unsafePipeline: pipelineOptions.unsafe,
           sanitized: false,
+          binaryNode: input,
         },
       };
 

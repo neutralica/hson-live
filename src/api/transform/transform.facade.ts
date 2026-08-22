@@ -1,6 +1,7 @@
 import type { HsonNode, JsonValue } from "../../core/types.js";
 import {
   transform_from_hson,
+  transform_from_binary,
   transform_from_json,
   transform_from_node,
   transform_from_trusted_html,
@@ -8,6 +9,7 @@ import {
 } from "./transform.universal.js";
 import type {
   HsonString,
+  BinaryDecodeOptions,
   HsonTransformSource,
   OutputConstructor_2,
   TransformOutput,
@@ -21,6 +23,7 @@ export interface HsonTransformFacade {
   number(value: unknown): HsonNumber;
   calc(calculate: () => unknown): HsonNumber;
   fromHson(input: string): HsonTransformSource;
+  fromBinary(input: Uint8Array, options?: BinaryDecodeOptions): TransformOutput;
   fromJson(input: string | JsonValue): TransformOutput;
   fromNode(node: HsonNode): TransformOutput;
   fromTrustedHtml(input: string): OutputConstructor_2;
@@ -38,6 +41,7 @@ export const hsonTransform: HsonTransformFacade = Object.freeze({
   number: hsonNumber,
   calc: hsonCalc,
   fromHson: transform_from_hson,
+  fromBinary: transform_from_binary,
   fromJson: transform_from_json,
   fromNode: transform_from_node,
   fromTrustedHtml: transform_from_trusted_html,

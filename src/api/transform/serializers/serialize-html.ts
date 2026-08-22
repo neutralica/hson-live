@@ -354,9 +354,10 @@ export function serialize_xml(node: HsonNode | Primitive | undefined): string {
  */
 export function serialize_html(node: HsonNode | Primitive): string {
 
-  if (is_Node(node)) {
+  if (typeof node === "object" && node !== null) {
     // Serialization validates canonical value and placement only. Duplicate
     // valid claims remain cold data and are emitted faithfully.
+    assert_invariants(node, "serialize_html");
     collect_hson_node_quid_claims(node);
   }
   const clone = clone_node(node);

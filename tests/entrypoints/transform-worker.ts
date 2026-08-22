@@ -1,4 +1,5 @@
 import { hsonTransform } from "hson-live/transform";
+import type { BinaryDecodeOptions, TransformBinarySerialize } from "hson-live/transform";
 import {
   verify_universal_circuit,
   type UniversalCircuitVerificationResult,
@@ -12,6 +13,11 @@ void assertCanonicalClosure;
 void hsonTransform.fromHson(`<worker <ready true>>`).toNode();
 void hsonTransform.fromJson({ ready: true }).toHson().serialize();
 void hsonTransform.fromJson({ ready: true }).toHson().sha256();
+const workerBinary: TransformBinarySerialize = hsonTransform.fromJson({ ready: true }).toBinary();
+const workerBinaryBytes: Uint8Array = workerBinary.serialize();
+const workerBinaryOptions: BinaryDecodeOptions = { maxBytes: 1_048_576 };
+void workerBinary.sha256();
+void hsonTransform.fromBinary(workerBinaryBytes, workerBinaryOptions).toNode();
 const universalCircuit: UniversalCircuitVerificationResult = verify_universal_circuit({
   entry: "json",
   source: '{"ready":true}',

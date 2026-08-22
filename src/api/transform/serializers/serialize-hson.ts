@@ -513,6 +513,7 @@ function serialize_hson_with_ownership(
   inputOptions: HsonSerializeInputOptions = {},
   ownedElementTextFragment = false,
 ): HsonString {
+  assert_invariants(root, "serialize_hson");
   if (!is_Node(root)) {
     _throw_transform_err(
       "serialize-hson: root must be a HsonNode",
@@ -533,7 +534,6 @@ function serialize_hson_with_ownership(
     );
   }
 
-  assert_invariants(root, "serialize_hson");
   // Egress is a cold canonical boundary: validate every supplied identity,
   // while deliberately allowing equal valid claims on distinct graph nodes.
   collect_hson_node_quid_claims(root);

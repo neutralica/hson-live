@@ -11,6 +11,7 @@ import {
   STR_TAG,
   VAL_TAG,
   HSON_META_QUID,
+  HSON_META_INDEX,
   HSON_META_MARKUP_PREFIX,
   HSON_META_TRANSIT_PREFIX,
   _TRANSIT_PREFIX,
@@ -28,6 +29,12 @@ import {
 } from "./hson-metadata.js";
 import { analyze_hson_array_indexes } from "./hson-array-indexes.js";
 import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
+import {
+  enumerable_own_data_array_items,
+  enumerable_own_data_entries,
+  has_inherited_property,
+  own_enumerable_data_property,
+} from "./node-storage.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
 
 type DevCfg = { throwOnFirst?: boolean };
@@ -395,13 +402,20 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
       throw new Error(`[NEW-only] node must be a plain object in ${where} at ${frame.path || "/"}`);
     }
 
-    const tag = node.$_tag;
-    if (typeof tag !== "string") {
+    const tagProperty = own_enumerable_data_property(node, "$_tag");
+    if (tagProperty === undefined || !tagProperty.present || typeof tagProperty.value !== "string") {
       throw new Error(`[NEW-only] node has invalid $_tag in ${where}`);
     }
+    const tag = tagProperty.value;
 
-    if (!Array.isArray(node.$_content)) {
+    const contentProperty = own_enumerable_data_property(node, "$_content");
+    if (contentProperty === undefined || !contentProperty.present || !Array.isArray(contentProperty.value)) {
       throw new Error(`[NEW-only] node <${tag}> must carry an array $_content in ${where}`);
+    }
+    const content = contentProperty.value;
+    const contentItems = enumerable_own_data_array_items(content);
+    if (contentItems === undefined) {
+      throw new Error(`[NEW-only] node <${tag}> must carry dense enumerable own data items in $_content in ${where}`);
     }
     const here = `${frame.path}/${tag}`;
     const origin = active.get(node);
@@ -412,10 +426,18 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
     active.set(node, here);
     stack.push({ kind: "leave", value: node });
 
-    const hasMeta = Object.hasOwn(node, "$_meta");
-    const hasAttrs = Object.hasOwn(node, "$_attrs");
-    const metaValue = node.$_meta;
-    const attrsValue = node.$_attrs;
+    const metaProperty = own_enumerable_data_property(node, "$_meta");
+    const attrsProperty = own_enumerable_data_property(node, "$_attrs");
+    if (metaProperty === undefined) {
+      throw new Error(`[NEW-only] $_meta must be an enumerable own data property when present in ${where} at <${tag}>`);
+    }
+    if (attrsProperty === undefined) {
+      throw new Error(`[NEW-only] $_attrs must be an enumerable own data property when present in ${where} at <${tag}>`);
+    }
+    const hasMeta = metaProperty.present;
+    const hasAttrs = attrsProperty.present;
+    const metaValue = metaProperty.present ? metaProperty.value : undefined;
+    const attrsValue = attrsProperty.present ? attrsProperty.value : undefined;
 
     if (hasMeta && !is_plain_record(metaValue)) {
       throw new Error(`[NEW-only] $_meta must be a plain object when present in ${where} at <${tag}>`);
@@ -426,14 +448,29 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
 
     const meta = is_plain_record(metaValue) ? metaValue : undefined;
     const attrs = is_plain_record(attrsValue) ? attrsValue : undefined;
+    const metaEntries = meta === undefined ? [] : enumerable_own_data_entries(meta);
+    const attrsEntries = attrs === undefined ? [] : enumerable_own_data_entries(attrs);
 
-    if (meta && ("attrs" in meta || "flags" in meta)) {
+    if (metaEntries === undefined) {
+      throw new Error(`[NEW-only] $_meta entries must be enumerable own data properties in ${where} at <${tag}>`);
+    }
+    if (attrsEntries === undefined) {
+      throw new Error(`[NEW-only] $_attrs entries must be enumerable own data properties in ${where} at <${tag}>`);
+    }
+    if (meta && (
+      has_inherited_property(meta, HSON_META_QUID)
+      || has_inherited_property(meta, HSON_META_INDEX)
+    )) {
+      throw new Error(`[NEW-only] $_meta must not inherit canonical metadata fields in ${where} at <${tag}>`);
+    }
+
+    if (metaEntries.some(([key]) => key === "attrs" || key === "flags")) {
       throw new Error(`[NEW-only] old-shaped meta in ${where} at <${tag ?? "?"}>
   Found $_meta.attrs or $_meta.flags`);
     }
 
-    if (meta && typeof tag === "string") {
-      for (const [key, value] of Object.entries(meta)) {
+    if (typeof tag === "string") {
+      for (const [key, value] of metaEntries) {
         const policy = hson_metadata_policy(tag, key);
         if (policy.valid && !policy.definition.validateValue(value)) {
           throw new Error(`[NEW-only] invalid metadata value for "${key}" in ${where} at <${tag}>`);
@@ -441,25 +478,22 @@ export function assertNewShapeQuick(n: unknown, where: string): void {
       }
     }
 
-    if (attrs) {
-      for (const [key, value] of Object.entries(attrs)) {
-        const validPrimitive = value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-        const validStyle = key === "style" && is_valid_inline_style(value);
-        if (!validPrimitive && !validStyle) {
-          throw new Error(`[NEW-only] malformed attribute value for "${key}" in ${where} at <${tag}>`);
-        }
+    for (const [key, value] of attrsEntries) {
+      const validPrimitive = value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+      const validStyle = key === "style" && is_valid_inline_style(value);
+      if (!validPrimitive && !validStyle) {
+        throw new Error(`[NEW-only] malformed attribute value for "${key}" in ${where} at <${tag}>`);
       }
     }
 
-    if (tag && isVSN(tag) && attrs && Object.keys(attrs).length) {
-      _throw_transform_err(` VSN <${tag}> with $_attrs :  ${where}`, "assertNewShapeQuick", JSON.stringify(n));
+    if (tag && isVSN(tag) && attrsEntries.length) {
+      _throw_transform_err(` VSN <${tag}> with $_attrs :  ${where}`, "assertNewShapeQuick");
     }
 
-    const content = node.$_content;
     if (tag === STR_TAG || tag === VAL_TAG) continue;
 
-    for (let index = content.length - 1; index >= 0; index--) {
-      const child = content[index];
+    for (let index = contentItems.length - 1; index >= 0; index--) {
+      const child = contentItems[index];
       if (typeof child === "object" && child !== null) {
         stack.push({ kind: "enter", value: child, path: `${here}/$_content[${index}]` });
       }

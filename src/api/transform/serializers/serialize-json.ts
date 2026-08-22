@@ -80,6 +80,7 @@ export function serialize_json($node: HsonNode): string {
  * graph admission and text emission; it is never exposed as caller JSON.
  */
 function ordered_json_value_from_node($node: HsonNode): OrderedProjectedValue {
+    assert_invariants($node, "serialize_json");
     collect_hson_node_quid_claims($node);
     const clone = collapse_redundant_roots(clone_node($node));
     assert_invariants(clone, "serialize_json");
@@ -218,6 +219,7 @@ export function serialize_json_value(value: JsonValue, depth = 0): string {
 export function json_value_from_node($node: HsonNode): JsonValue {
     // JSON projection is still a canonical HsonNode egress boundary even
     // though projected application JSON intentionally omits node identity.
+    assert_invariants($node, "serialize_json");
     collect_hson_node_quid_claims($node);
     const clone = collapse_redundant_roots(clone_node($node))
     assert_invariants(clone, 'serialize_json')

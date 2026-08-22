@@ -14,6 +14,7 @@ import { hsonReflect } from "./api/reflect/reflect.facade.js";
 import { hsonInspect } from "./api/liveinspect/liveinspect.facade.js";
 import type {
   HsonTransformSource,
+  BinaryDecodeOptions,
   TransformOutput,
 } from "./api/transform/transform.types.js";
 import type { HsonNode, JsonValue } from "./core/types.js";
@@ -39,6 +40,10 @@ export type {
   TransformErrorRelated,
   TransformErrorSource,
 } from "./core/errors.js";
+export type {
+  BinaryDecodeOptions,
+  TransformBinarySerialize,
+} from "./api/transform/transform.types.js";
 
 /**
  * Complete browser/full-ecosystem convenience facade.
@@ -50,6 +55,7 @@ export type {
 export interface HsonFacade {
   transform: typeof hsonTransform;
   fromHson: (input: string) => HsonTransformSource;
+  fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
   fromJson: (input: string | JsonValue) => TransformOutput;
   fromNode: (node: HsonNode) => TransformOutput;
   fromTrustedHtml: (input: string | Element) => OutputConstructor_2;
@@ -64,6 +70,7 @@ export interface HsonFacade {
 export const hson: HsonFacade = {
   transform: hsonTransform,
   fromHson: hsonTransform.fromHson,
+  fromBinary: hsonTransform.fromBinary,
   fromJson: hsonTransform.fromJson,
   fromNode: hsonTransform.fromNode,
   fromTrustedHtml: transform_from_trusted_html,

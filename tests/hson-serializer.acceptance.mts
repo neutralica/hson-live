@@ -12,11 +12,14 @@ import { parse_json } from "../src/api/transform/parsers/parse-json.ts";
 import { tokenize_hson } from "../src/api/transform/parsers/tokenize-hson.ts";
 import { assert_invariants } from "../src/core/assert-invariants.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import { normalize_hson_array_index_order } from "../src/core/hson-array-indexes.ts";
 import { EVERY_VSN, VSN_TAGS } from "../src/core/constants.ts";
 import {
   serialize_hson,
   serialize_hson_owned_element_text_fragment,
 } from "../src/api/transform/serializers/serialize-hson.ts";
+import { serialize_html } from "../src/api/transform/serializers/serialize-html.ts";
+import { serialize_json } from "../src/api/transform/serializers/serialize-json.ts";
 import { detach_hson_root_value } from "../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import { get_node_by_quid } from "../src/api/livetree/quid/data-quid.ts";
 import { TOKEN_KIND } from "../src/api/transform/token.types.ts";
@@ -103,6 +106,32 @@ function elementWithAttrs(attrs: NonNullable<HsonNode["$_attrs"]>): HsonNode {
     $_tag: "_hson_elem",
     $_content: [{ $_tag: "tag", $_attrs: attrs, $_content: [] }],
   };
+}
+
+function elementWithTypedStyle(value: unknown): HsonNode {
+  const style: Record<string, unknown> = { width: value };
+  const attrs: NonNullable<HsonNode["$_attrs"]> = {};
+  Reflect.set(attrs, "style", style);
+  return elementWithAttrs(attrs);
+}
+
+function elementWithMeta(meta: NonNullable<HsonNode["$_meta"]>): HsonNode {
+  return {
+    $_tag: "_hson_elem",
+    $_content: [{ $_tag: "tag", $_meta: meta, $_content: [] }],
+  };
+}
+
+function assertEveryNodeBoundaryRejects(node: HsonNode): void {
+  for (const boundary of [
+    () => assert_invariants(node, "descriptor-safe boundary"),
+    () => serialize_hson(node),
+    () => serialize_html(node),
+    () => serialize_json(node),
+    () => hsonTransform.fromNode(node).toNode(),
+  ]) {
+    assert.throws(boundary);
+  }
 }
 
 function onlyElement(node: HsonNode): HsonNode {
@@ -647,6 +676,467 @@ check("structured style serialization remains normalized and string-valued", () 
   assert.equal(wire, `<tag style="color: red; margin-top: 2; width: 2px"/>`);
   const reparsedTag = parse(wire).$_content[0] as HsonNode;
   assert.deepEqual(reparsedTag.$_attrs?.style, { color: "red", marginTop: "2", width: "2px" });
+});
+
+check("typed style admission preserves all ordinary own unit states", () => {
+  const cases = [
+    [{ value: 2 }, false, undefined, `<tag style="width: 2"/>`],
+    [{ value: 2, unit: undefined }, true, undefined, `<tag style="width: 2"/>`],
+    [{ value: 2, unit: "px" }, true, "px", `<tag style="width: 2px"/>`],
+    [{ value: 2, unit: "" }, true, "", `<tag style="width: 2"/>`],
+  ] as const;
+
+  for (const [typed, hasUnit, expectedUnit, expectedWire] of cases) {
+    const source = elementWithTypedStyle(typed);
+    assert.doesNotThrow(() => assert_invariants(source, "typed style own-data admission"));
+    assert.equal(readable(source), expectedWire);
+
+    const detached = hsonTransform.fromNode(source).toNode();
+    const style = onlyElement(detached).$_attrs?.style;
+    const width = style?.width;
+    assert.equal(typeof width, "object");
+    assert.notEqual(width, null);
+    if (typeof width !== "object" || width === null) throw new Error("missing detached typed style");
+    assert.equal(Object.hasOwn(width, "value"), true);
+    assert.equal(Reflect.get(width, "value"), 2);
+    assert.equal(Object.hasOwn(width, "unit"), hasUnit);
+    assert.equal(Reflect.get(width, "unit"), expectedUnit);
+  }
+
+  const fixedDescriptors = Object.defineProperties({}, {
+    value: { configurable: false, enumerable: true, value: 2, writable: false },
+    unit: { configurable: false, enumerable: true, value: "px", writable: false },
+  });
+  const symbolDecorated = { value: 2, [Symbol("nonsemantic")]: "ignored" };
+  assert.doesNotThrow(() => assert_invariants(elementWithTypedStyle(fixedDescriptors), "typed style descriptor flags"));
+  assert.doesNotThrow(() => assert_invariants(elementWithTypedStyle(symbolDecorated), "typed style symbol decoration"));
+});
+
+check("typed style rejects inherited semantic fields", () => {
+  function rejectsWithPollutedPrototype(key: "value" | "unit", leaf: Record<string, unknown>, inherited: unknown): boolean {
+    const previous = Object.getOwnPropertyDescriptor(Object.prototype, key);
+    let rejected = false;
+    Object.defineProperty(Object.prototype, key, {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: inherited,
+    });
+    try {
+      try {
+        assert_invariants(elementWithTypedStyle(leaf), `typed style inherited ${key}`);
+      } catch {
+        rejected = true;
+      }
+    } finally {
+      Reflect.deleteProperty(Object.prototype, key);
+      if (previous !== undefined) Object.defineProperty(Object.prototype, key, previous);
+    }
+    return rejected;
+  }
+
+  assert.equal(rejectsWithPollutedPrototype("value", {}, 2), true);
+  assert.equal(rejectsWithPollutedPrototype("unit", { value: 2 }, "px"), true);
+});
+
+check("typed style rejects accessors without invoking them", () => {
+  let getterCalls = 0;
+  const throwingValue = Object.defineProperty({}, "value", {
+    enumerable: true,
+    get(): never {
+      getterCalls += 1;
+      throw new Error("typed value getter must not run");
+    },
+  });
+  const changingUnit = Object.defineProperties({ value: 2 }, {
+    unit: {
+      enumerable: true,
+      get(): string {
+        getterCalls += 1;
+        return getterCalls % 2 === 0 ? "px" : "rem";
+      },
+    },
+  });
+  const setterOnly = Object.defineProperty({}, "value", {
+    enumerable: true,
+    set(_value: unknown): void {
+      getterCalls += 1;
+    },
+  });
+  const styleEntryAccessor = Object.defineProperty({}, "width", {
+    enumerable: true,
+    get(): never {
+      getterCalls += 1;
+      throw new Error("style entry getter must not run");
+    },
+  });
+
+  for (const candidate of [throwingValue, changingUnit, setterOnly]) {
+    assert.throws(
+      () => assert_invariants(elementWithTypedStyle(candidate), "typed style accessor rejection"),
+      /malformed attribute value/,
+    );
+  }
+  const accessorAttrs: NonNullable<HsonNode["$_attrs"]> = {};
+  Reflect.set(accessorAttrs, "style", styleEntryAccessor);
+  assert.throws(
+    () => assert_invariants(elementWithAttrs(accessorAttrs), "style entry accessor rejection"),
+    /malformed attribute value/,
+  );
+  assert.equal(getterCalls, 0);
+});
+
+check("typed style rejects hidden semantic fields and malformed ordinary shapes", () => {
+  const hiddenValue = Object.defineProperty({}, "value", { enumerable: false, value: 2 });
+  const hiddenUnit = Object.defineProperty({ value: 2 }, "unit", { enumerable: false, value: "px" });
+  const malformed = [
+    hiddenValue,
+    hiddenUnit,
+    {},
+    { value: undefined },
+    { value: true },
+    { value: Number.NaN },
+    { value: 2, unit: 1 },
+    { value: 2, extra: undefined },
+  ];
+  for (const candidate of malformed) {
+    assert.throws(
+      () => assert_invariants(elementWithTypedStyle(candidate), "typed style malformed shape"),
+      /malformed attribute value/,
+    );
+  }
+});
+
+check("attribute accessors reject at every canonical boundary without invocation", () => {
+  let calls = 0;
+  const throwing: NonNullable<HsonNode["$_attrs"]> = {};
+  Object.defineProperty(throwing, "id", {
+    enumerable: true,
+    get(): never {
+      calls += 1;
+      throw new Error("attribute getter must not run");
+    },
+  });
+  const changing: NonNullable<HsonNode["$_attrs"]> = {};
+  Object.defineProperty(changing, "id", {
+    enumerable: true,
+    get(): string {
+      calls += 1;
+      return calls % 2 === 0 ? "second" : "first";
+    },
+  });
+  const setterOnly: NonNullable<HsonNode["$_attrs"]> = {};
+  Object.defineProperty(setterOnly, "id", {
+    enumerable: true,
+    set(_value: string): void {
+      calls += 1;
+    },
+  });
+
+  for (const attrs of [throwing, changing, setterOnly]) {
+    assertEveryNodeBoundaryRejects(elementWithAttrs(attrs));
+  }
+
+  const containerAccessor = elementWithAttrs({ id: "unused" });
+  const element = onlyElement(containerAccessor);
+  Reflect.deleteProperty(element, "$_attrs");
+  Object.defineProperty(element, "$_attrs", {
+    enumerable: true,
+    get(): never {
+      calls += 1;
+      throw new Error("attribute-container getter must not run");
+    },
+  });
+  assertEveryNodeBoundaryRejects(containerAccessor);
+  assert.equal(calls, 0);
+});
+
+check("metadata accessors reject at every canonical boundary without invocation", () => {
+  let calls = 0;
+  const accessorMeta: NonNullable<HsonNode["$_meta"]> = {};
+  Object.defineProperty(accessorMeta, "quid", {
+    enumerable: true,
+    get(): never {
+      calls += 1;
+      throw new Error("metadata getter must not run");
+    },
+  });
+  assertEveryNodeBoundaryRejects(elementWithMeta(accessorMeta));
+
+  const containerAccessor = elementWithMeta({ quid: "000000001" });
+  const element = onlyElement(containerAccessor);
+  Reflect.deleteProperty(element, "$_meta");
+  Object.defineProperty(element, "$_meta", {
+    enumerable: true,
+    get(): never {
+      calls += 1;
+      throw new Error("metadata-container getter must not run");
+    },
+  });
+  assertEveryNodeBoundaryRejects(containerAccessor);
+  assert.equal(calls, 0);
+});
+
+check("required node fields reject accessors at every canonical boundary without invocation", () => {
+  let calls = 0;
+  const candidates: HsonNode[] = [];
+
+  for (const descriptor of [
+    {
+      enumerable: true,
+      get(): never {
+        calls += 1;
+        throw new Error("tag getter must not run");
+      },
+    },
+    {
+      enumerable: true,
+      get(): string {
+        calls += 1;
+        return calls % 2 === 0 ? "second" : "first";
+      },
+    },
+    {
+      enumerable: true,
+      set(_value: string): void {
+        calls += 1;
+      },
+    },
+  ]) {
+    candidates.push(Object.defineProperty({ $_tag: "tag", $_content: [] }, "$_tag", descriptor));
+  }
+
+  for (const descriptor of [
+    {
+      enumerable: true,
+      get(): never {
+        calls += 1;
+        throw new Error("content getter must not run");
+      },
+    },
+    {
+      enumerable: true,
+      get(): HsonNode["$_content"] {
+        calls += 1;
+        return calls % 2 === 0 ? [] : [{ $_tag: "child", $_content: [] }];
+      },
+    },
+    {
+      enumerable: true,
+      set(_value: HsonNode["$_content"]): void {
+        calls += 1;
+      },
+    },
+  ]) {
+    candidates.push(Object.defineProperty({ $_tag: "tag", $_content: [] }, "$_content", descriptor));
+  }
+
+  for (const candidate of candidates) {
+    assertEveryNodeBoundaryRejects(candidate);
+    assert.throws(() => normalize_hson_array_index_order(candidate, "required-field descriptor rejection"));
+  }
+  assert.equal(calls, 0);
+});
+
+check("required node fields reject inherited and hidden semantic storage", () => {
+  const hiddenTag = Object.defineProperty({ $_tag: "tag", $_content: [] }, "$_tag", {
+    enumerable: false,
+    value: "tag",
+  });
+  const hiddenContent = Object.defineProperty({ $_tag: "tag", $_content: [] }, "$_content", {
+    enumerable: false,
+    value: [],
+  });
+  assertEveryNodeBoundaryRejects(hiddenTag);
+  assertEveryNodeBoundaryRejects(hiddenContent);
+  assert.throws(() => normalize_hson_array_index_order(hiddenTag, "hidden tag"));
+  assert.throws(() => normalize_hson_array_index_order(hiddenContent, "hidden content"));
+
+  for (const [field, value] of [
+    ["$_tag", "tag"],
+    ["$_content", []],
+  ] as const) {
+    const previous = Object.getOwnPropertyDescriptor(Object.prototype, field);
+    const candidate: HsonNode = { $_tag: "tag", $_content: [] };
+    Reflect.deleteProperty(candidate, field);
+    Object.defineProperty(Object.prototype, field, {
+      configurable: true,
+      enumerable: true,
+      value,
+    });
+    try {
+      assertEveryNodeBoundaryRejects(candidate);
+      assert.throws(() => normalize_hson_array_index_order(candidate, `inherited ${field}`));
+    } finally {
+      Reflect.deleteProperty(Object.prototype, field);
+      if (previous !== undefined) Object.defineProperty(Object.prototype, field, previous);
+    }
+  }
+});
+
+check("content arrays reject accessor, inherited, sparse, and hidden slots without invocation", () => {
+  let calls = 0;
+  const accessorItems: HsonNode["$_content"][] = [
+    Object.defineProperty(["unused"], "0", {
+      enumerable: true,
+      get(): never {
+        calls += 1;
+        throw new Error("content item getter must not run");
+      },
+    }),
+    Object.defineProperty(["unused"], "0", {
+      enumerable: true,
+      set(_value: unknown): void {
+        calls += 1;
+      },
+    }),
+    Object.defineProperty(["unused"], "0", {
+      enumerable: false,
+      value: "hidden",
+    }),
+  ];
+  for (const content of accessorItems) {
+    const candidate: HsonNode = { $_tag: "_hson_str", $_content: content };
+    assertEveryNodeBoundaryRejects(candidate);
+    assert.throws(() => normalize_hson_array_index_order(candidate, "content slot descriptor rejection"));
+  }
+
+  const sparse = new Array(1);
+  const sparseNode: HsonNode = { $_tag: "_hson_str", $_content: sparse };
+  assertEveryNodeBoundaryRejects(sparseNode);
+  assert.throws(() => normalize_hson_array_index_order(sparseNode, "sparse content"));
+
+  const previous = Object.getOwnPropertyDescriptor(Array.prototype, "0");
+  Object.defineProperty(Array.prototype, "0", {
+    configurable: true,
+    enumerable: true,
+    value: "inherited",
+    writable: true,
+  });
+  try {
+    const inheritedSlot: HsonNode = { $_tag: "_hson_str", $_content: new Array(1) };
+    assertEveryNodeBoundaryRejects(inheritedSlot);
+    assert.throws(() => normalize_hson_array_index_order(inheritedSlot, "inherited content slot"));
+  } finally {
+    Reflect.deleteProperty(Array.prototype, "0");
+    if (previous !== undefined) Object.defineProperty(Array.prototype, "0", previous);
+  }
+  assert.equal(calls, 0);
+});
+
+check("required node descriptor flags, null prototypes, and symbols are nonsemantic", () => {
+  const fixed: HsonNode = { $_tag: "_hson_str", $_content: ["text"] };
+  Object.defineProperties(fixed, {
+    $_tag: { configurable: false, enumerable: true, value: "_hson_str", writable: false },
+    $_content: { configurable: false, enumerable: true, value: ["text"], writable: false },
+  });
+  Reflect.set(fixed, Symbol("nonsemantic"), "ignored");
+  const nullPrototype = Object.assign(Object.create(null), {
+    $_tag: "_hson_str",
+    $_content: ["text"],
+  });
+  assert.doesNotThrow(() => assert_invariants(fixed, "fixed required descriptors"));
+  assert.doesNotThrow(() => assert_invariants(nullPrototype, "null-prototype node"));
+  assert.equal(canonical_hson_graph_equal(fixed, nullPrototype), true);
+  assert.equal(serialize_hson(fixed), `"text"`);
+  assert.equal(serialize_hson(nullPrototype), `"text"`);
+  assert.equal(canonical_hson_graph_equal(hsonTransform.fromNode(fixed).toNode(), nullPrototype), true);
+
+  const customPrototype = Object.assign(Object.create({ decoration: true }), {
+    $_tag: "_hson_str",
+    $_content: ["text"],
+  });
+  assert.throws(() => assert_invariants(customPrototype, "custom node prototype"), /plain object/);
+});
+
+check("attribute and metadata records reject hidden or inherited semantic state", () => {
+  const hiddenAttrs: NonNullable<HsonNode["$_attrs"]> = {};
+  Object.defineProperty(hiddenAttrs, "id", { enumerable: false, value: "x" });
+  assert.throws(() => assert_invariants(elementWithAttrs(hiddenAttrs), "hidden attrs"));
+
+  const hiddenMeta: NonNullable<HsonNode["$_meta"]> = {};
+  Object.defineProperty(hiddenMeta, "quid", { enumerable: false, value: "000000001" });
+  assert.throws(() => assert_invariants(elementWithMeta(hiddenMeta), "hidden metadata"));
+
+  const inheritedAttrs: NonNullable<HsonNode["$_attrs"]> = Object.create({ id: "x" });
+  assert.throws(() => assert_invariants(elementWithAttrs(inheritedAttrs), "inherited attrs"));
+
+  const previousQuid = Object.getOwnPropertyDescriptor(Object.prototype, "quid");
+  let inheritedMetaRejected = false;
+  Object.defineProperty(Object.prototype, "quid", {
+    configurable: true,
+    enumerable: false,
+    value: "000000001",
+  });
+  try {
+    try {
+      assert_invariants(elementWithMeta({}), "inherited metadata");
+    } catch {
+      inheritedMetaRejected = true;
+    }
+  } finally {
+    Reflect.deleteProperty(Object.prototype, "quid");
+    if (previousQuid !== undefined) Object.defineProperty(Object.prototype, "quid", previousQuid);
+  }
+  assert.equal(inheritedMetaRejected, true);
+});
+
+check("ordinary attrs and metadata preserve portable data semantics", () => {
+  const attrs: NonNullable<HsonNode["$_attrs"]> = Object.create(null);
+  Object.defineProperties(attrs, {
+    id: { configurable: false, enumerable: true, value: "x", writable: false },
+    style: {
+      configurable: false,
+      enumerable: true,
+      value: { width: { value: 2, unit: "px" } },
+      writable: false,
+    },
+  });
+  Reflect.set(attrs, Symbol("nonsemantic"), "ignored");
+
+  const meta: NonNullable<HsonNode["$_meta"]> = Object.create(null);
+  Object.defineProperty(meta, "quid", {
+    configurable: false,
+    enumerable: true,
+    value: "000000001",
+    writable: false,
+  });
+  Reflect.set(meta, Symbol("nonsemantic"), "ignored");
+
+  const graph = elementWithAttrs(attrs);
+  onlyElement(graph).$_meta = meta;
+  assert.doesNotThrow(() => assert_invariants(graph, "portable attr/meta records"));
+  assert.equal(readable(graph), `<tag @000000001 id="x" style="width: 2px"/>`);
+  assert.match(serialize_html(graph), /id="x"/);
+  assert.match(serialize_json(graph), /"quid": "000000001"/);
+
+  const detached = hsonTransform.fromNode(graph).toNode();
+  const detachedElement = onlyElement(detached);
+  assert.equal(detachedElement.$_attrs?.id, "x");
+  const detachedWidth = detachedElement.$_attrs?.style?.width;
+  assert.equal(typeof detachedWidth, "object");
+  if (typeof detachedWidth !== "object" || detachedWidth === null) throw new Error("missing detached width");
+  assert.equal(Object.hasOwn(detachedWidth, "unit"), true);
+  assert.equal(Reflect.get(detachedWidth, "unit"), "px");
+  assert.equal(detachedElement.$_meta?.quid, "000000001");
+
+  const array = hson.fromHson(`«1»`).toNode();
+  const item = array.$_content[0];
+  if (typeof item !== "object" || item === null) throw new Error("missing canonical array item");
+  const index = item.$_meta?.index;
+  assert.equal(index, "0");
+  if (item.$_meta === undefined) throw new Error("missing canonical array index metadata");
+  Object.defineProperty(item.$_meta, "index", {
+    configurable: false,
+    enumerable: true,
+    value: index,
+    writable: false,
+  });
+  assert.doesNotThrow(() => assert_invariants(array, "fixed array-index metadata"));
+  assert.equal(hsonTransform.fromNode(array).toHson().noBreak().serialize(), `«1»`);
+
+  assert.doesNotThrow(() => assert_invariants({ $_tag: "_hson_str", $_meta: {}, $_content: ["m"] }, "present-empty metadata"));
+  assert.throws(() => assert_invariants(elementWithAttrs({}), "empty attrs"), /empty \$_attrs/);
 });
 
 check("ordinary HTML serialization uses textual primitives and typed inline CSS leaves", () => {

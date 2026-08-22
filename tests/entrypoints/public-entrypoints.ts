@@ -13,12 +13,14 @@ import {
   read_transform_error_details,
   type HsonString,
   type HsonNumber as TransformHsonNumber,
+  type BinaryDecodeOptions,
   type TransformErrorDetails,
   type TransformErrorRelated,
   type TransformErrorSource,
   type TransformOutputRenderFormat,
   type TransformRender,
   type TransformSerialize,
+  type TransformBinarySerialize,
 } from "hson-live/transform";
 import {
   TransformError as HsonSubpathTransformError,
@@ -753,6 +755,7 @@ declare const node: HsonNode;
 declare const arbitrary: string;
 declare const arbitraryNumber: number;
 declare const genericSerializer: TransformSerialize;
+declare const binaryDecodeOptions: BinaryDecodeOptions;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
 const inferredNormalizedHson = hson.transform.string(arbitrary);
@@ -774,6 +777,15 @@ const inferredJsonText = transformSubpath.fromNode(node).toJson().serialize();
 const inferredHsonHash: Promise<string> = transformSubpath.fromNode(node).toHson().sha256();
 const inferredHtmlHash: Promise<string> = transformSubpath.fromNode(node).toHtml().sha256();
 const inferredJsonHash: Promise<string> = transformSubpath.fromNode(node).toJson().sha256();
+const inferredBinary: TransformBinarySerialize = transformSubpath.fromNode(node).toBinary();
+const inferredBinaryBytes: Uint8Array = inferredBinary.serialize();
+const inferredBinaryHash: Promise<string> = inferredBinary.sha256();
+transformSubpath.fromBinary(inferredBinaryBytes, binaryDecodeOptions).toNode();
+hson.fromBinary(inferredBinaryBytes, { maxBytes: 1, maxGraphDepth: 1, maxGraphNodes: 1 }).toNode();
+// @ts-expect-error Binary HSON admits Uint8Array only, not ArrayBuffer.
+transformSubpath.fromBinary(new ArrayBuffer(0));
+// @ts-expect-error Binary decode options require numeric limits.
+transformSubpath.fromBinary(inferredBinaryBytes, { maxBytes: "1" });
 const inferredDynamicHash: Promise<string> = genericSerializer.sha256();
 // @ts-expect-error Canonical graph terminals do not represent emitted bytes.
 transformSubpath.fromNode(node).toNode().sha256();
@@ -801,6 +813,7 @@ const admittedSemanticNumber: HsonSemanticPrimitive = admittedNumber;
 void inferredHsonHash;
 void inferredHtmlHash;
 void inferredJsonHash;
+void inferredBinaryHash;
 void inferredDynamicHash;
 
 // @ts-expect-error Admitted semantic numeric positions require HsonNumber proof.

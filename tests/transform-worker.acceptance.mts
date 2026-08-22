@@ -29,12 +29,13 @@ function walk(node: HsonNode, visit: (current: HsonNode) => void): void {
   }
 }
 
-check("the transform facade exposes its three leaf admissions and five synchronous constructors", () => {
+check("the transform facade exposes its three leaf admissions and six synchronous constructors", () => {
   assert.deepEqual(Object.keys(hsonTransform), [
     "string",
     "number",
     "calc",
     "fromHson",
+    "fromBinary",
     "fromJson",
     "fromNode",
     "fromTrustedHtml",

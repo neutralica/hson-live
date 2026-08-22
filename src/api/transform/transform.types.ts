@@ -1,6 +1,12 @@
 import type { $RENDER } from "../../core/constants.js";
 import type { HsonNode, JsonValue } from "../../core/types.js";
 
+export interface BinaryDecodeOptions {
+  readonly maxBytes?: number;
+  readonly maxGraphDepth?: number;
+  readonly maxGraphNodes?: number;
+}
+
 declare const HSON_STRING_BRAND: unique symbol;
 
 /**
@@ -43,6 +49,11 @@ export interface TransformSerialize {
   sha256(): Promise<string>;
 }
 
+export interface TransformBinarySerialize {
+  serialize(): Uint8Array;
+  sha256(): Promise<string>;
+}
+
 export interface TransformHsonSerialize extends TransformSerialize {
   serialize(): HsonString;
 }
@@ -76,6 +87,7 @@ export type TransformRender<K extends TransformOutputRenderFormat> =
  */
 export interface TransformOutput {
   toNode(): HsonNode;
+  toBinary(): TransformBinarySerialize;
   toJson(): TransformOutputOptions<(typeof $RENDER)["JSON"]> & TransformJsonValue;
   toHson(): TransformHsonOptions & TransformHsonSerialize;
   toHtml(): TransformOutputOptions<(typeof $RENDER)["HTML"]> & TransformSerialize;
