@@ -162,7 +162,8 @@ await check("owners sharing one schema enforce and mutate independently", () => 
 await check("restore retains and enforces the permanent schema", () => {
   const map = hson.liveMap.fromJson({ count: 0 }).schema.use(State);
   const before = map.capture();
-  assert.throws(() => map.restore({ rev: 7, value: { count: "wrong" } } as never), LiveMapSchemaError);
+  const invalid = hson.liveMap.fromJson({ count: "wrong" }).capture();
+  assert.throws(() => map.restore({ ...invalid, rev: 7, root: invalid.root }), LiveMapSchemaError);
   assert.equal(map.schema.get(), State);
   assert.deepEqual(map.capture(), before);
 });

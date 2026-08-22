@@ -556,4 +556,4 @@ check("activity observers stop cleanly and Locus-only lifecycle creates no DOM",
 
 await sequence;
 process.stdout.write(`1..${checks}\n`);
-emit_hson_live_test_completion("livehost.locus-lifecycle", checks, checks, 0);
+emit_hson_live_test_completion("livehost.authority-lifecycle", checks, checks, 0);
