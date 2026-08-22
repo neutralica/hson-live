@@ -136,8 +136,18 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-sha256",
       repositoryModule: "tests/transform-sha256.acceptance.mts",
       runtime: "node",
-      executableChecks: 21,
+      executableChecks: 23,
       collections: ["serialization", "sha256", "webcrypto", "public-api", "externally-discoverable"],
+    }),
+    launcher({
+      id: "transform.representation-sha-worker",
+      subject: "Transform",
+      displayName: "Representation SHA-256 actual Worker parity",
+      packageScript: "test:representation-sha-worker",
+      repositoryModule: "tests/representation-sha-worker.acceptance.mts",
+      runtime: "node",
+      executableChecks: 4,
+      collections: ["serialization", "sha256", "worker", "runtime-parity", "public-api", "externally-discoverable"],
     }),
     launcher({
       id: "transform.binary-hson-vectors",
@@ -256,7 +266,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:universal-circuit-verification",
       repositoryModule: "tests/universal-circuit-verification.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
+      executableChecks: 25,
       collections: ["diagnostics", "circuit", "universal", "worker", "externally-discoverable"],
     }),
     launcher({

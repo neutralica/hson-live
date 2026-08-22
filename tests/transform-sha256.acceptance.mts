@@ -16,6 +16,10 @@ function sha256Oracle(serialized: string): string {
   return createHash("sha256").update(new TextEncoder().encode(serialized)).digest("hex");
 }
 
+function sha256BytesOracle(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
 const HSON_CAFE = `<note "café">`;
 const JSON_CAFE = `{\n  "note": "café"\n}`;
 const HTML_CAFE = `<_hson_obj>\n<note><_hson_obj>\n<_hson_str>&quot;caf\\u00e9&quot;</_hson_str>\n</_hson_obj></note>\n</_hson_obj>`;
@@ -57,6 +61,17 @@ await check("the same graph can have distinct HSON JSON and HTML hashes", async 
   const source = hsonTransform.fromJson({ note: "café" });
   const hashes = await Promise.all([source.toHson().sha256(), source.toJson().sha256(), source.toHtml().sha256()]);
   assert.equal(new Set(hashes).size, 3);
+});
+
+await check("one graph's representation hashes remain scoped to all four emitted byte lanes", async () => {
+  const source = hsonTransform.fromJson({ note: "café", values: [-0, true] });
+  const hashes = await Promise.all([
+    source.toHson().sha256(),
+    source.toJson().sha256(),
+    source.toHtml().sha256(),
+    source.toBinary().sha256(),
+  ]);
+  assert.equal(new Set(hashes).size, 4);
 });
 
 await check("HSON options change the hash only through changed emitted bytes", async () => {
@@ -145,6 +160,20 @@ await check("the Worker fixture has the shared checked-in HSON digest", async ()
 await check("JSON direct-integer property order follows its serializer output", async () => {
   const representation = hsonTransform.fromJson({ "10": "ten", "2": "two", "1": "one" }).toJson();
   assert.equal(await representation.sha256(), sha256Oracle(representation.serialize()));
+});
+
+await check("Binary typed-style SHA hashes its exact checked-in bytes", async () => {
+  const binary = hsonTransform.fromNode({
+    $_tag: "_hson_elem",
+    $_content: [{
+      $_tag: "main",
+      $_content: [],
+      $_attrs: { style: { width: { value: 2, unit: "px" } } },
+    }],
+  }).toBinary();
+  const bytes = binary.serialize();
+  assert.equal(sha256BytesOracle(bytes), "bf6ee5169dcc2ee5af4b09a195f074227e226b239f9057f4e3e577a17ae546e4");
+  assert.equal(await binary.sha256(), sha256BytesOracle(bytes));
 });
 
 await check("a missing WebCrypto subtle capability rejects clearly", async () => {

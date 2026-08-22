@@ -2,10 +2,13 @@
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import { hsonTransform } from "../src/api/transform/index.ts";
+import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
+import type { HsonNode } from "../src/core/types.ts";
 import {
   verify_universal_circuit,
   type UniversalCircuitProgress,
 } from "../src/diagnostics/verify-universal-circuit.ts";
+import { universalCircuitBoundary } from "./circuit-test-helpers.mts";
 
 const LAUNCHER = "diagnostics.universal-circuit-verification";
 const JSON_SOURCE = '{"alpha":1,"beta":[true,"worker"]}';
@@ -16,6 +19,29 @@ function check(name: string, run: () => void): void {
   run();
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+async function check_async(name: string, run: () => void | Promise<void>): Promise<void> {
+  await run();
+  checks += 1;
+  process.stdout.write(`ok ${checks} - ${name}\n`);
+}
+
+function representationSha(format: "hson" | "json" | "html", node: HsonNode): Promise<string> {
+  const source = hsonTransform.fromNode(node);
+  if (format === "hson") return source.toHson().sha256();
+  if (format === "json") return source.toJson().sha256();
+  return source.toHtml().sha256();
+}
+
+async function assertRepresentationCircuitWitness(format: "hson" | "json" | "html"): Promise<void> {
+  const graph0 = universalCircuitBoundary.parse("json", JSON_SOURCE);
+  const representation0 = universalCircuitBoundary.serialize(format, graph0);
+  const graph1 = universalCircuitBoundary.parse(format, representation0);
+  assert.equal(canonical_hson_graph_equal(graph0, graph1), true);
+  const representation1 = universalCircuitBoundary.serialize(format, graph1);
+  assert.equal(representation1, representation0);
+  assert.equal(await representationSha(format, graph1), await representationSha(format, graph0));
 }
 
 function verified(entry: "hson" | "json" | "html", source: string) {
@@ -175,6 +201,18 @@ check("the facade result and nested evidence are immutable", () => {
   assert.equal(Object.isFrozen(result.operationCounts), true);
 });
 
-assert.equal(checks, 22);
+await check_async("HSON circuit retains exact output with a SHA witness", () => {
+  return assertRepresentationCircuitWitness("hson");
+});
+
+await check_async("JSON circuit retains exact output with a SHA witness", () => {
+  return assertRepresentationCircuitWitness("json");
+});
+
+await check_async("HTML circuit retains exact output with a SHA witness", () => {
+  return assertRepresentationCircuitWitness("html");
+});
+
+assert.equal(checks, 25);
 process.stdout.write(`# ${checks} universal circuit verification checks passed\n`);
 emit_hson_live_test_completion(LAUNCHER, checks, checks, 0);

@@ -125,6 +125,7 @@
     "test:root-compatibility": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/root-compatibility.acceptance.mts",
     "test:transform-worker": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-worker.acceptance.mts",
     "test:transform-sha256": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/transform-sha256.acceptance.mts",
+    "test:representation-sha-worker": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/representation-sha-worker.acceptance.mts",
     "test:binary-hson-vectors": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/binary-hson.acceptance.mts",
     "test:binary-hson-rejection": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/binary-hson-rejection.acceptance.mts",
     "test:livetree-attrs": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livetree-attrs.acceptance.mts",
