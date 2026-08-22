@@ -429,22 +429,122 @@ function make_connection(
   maxBufferedAmount: number,
   onBackpressure: () => void,
 ): LiveHostConnection {
+  type PendingWrite = Readonly<{ data: string | Uint8Array; bytes: number }>;
+
+  const queued: PendingWrite[] = [];
+  let queuedBytes = 0;
+  let inFlight = 0;
+  let closed = false;
+  let drainTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const clear_drain_timer = (): void => {
+    if (drainTimer === undefined) return;
+    clearTimeout(drainTimer);
+    drainTimer = undefined;
+  };
+
+  const release_queue = (): void => {
+    clear_drain_timer();
+    queued.length = 0;
+    queuedBytes = 0;
+    inFlight = 0;
+  };
+
+  const reject_backpressure = (): void => {
+    if (closed) return;
+    closed = true;
+    release_queue();
+    onBackpressure();
+    websocket.close(1013, "LiveHost transport backpressure limit exceeded.");
+  };
+
+  const queue_limit = (candidateBytes: number): number => {
+    let largest = candidateBytes;
+    for (const pending of queued) largest = Math.max(largest, pending.bytes);
+    return maxBufferedAmount + largest;
+  };
+
+  let flush = (): void => undefined;
+  const transmit = (pending: PendingWrite): void => {
+    if (closed || websocket.readyState !== websocket.OPEN) return;
+    inFlight += 1;
+    try {
+      websocket.send(pending.data, (error) => {
+        if (closed) return;
+        inFlight = Math.max(0, inFlight - 1);
+        if (error != null) {
+          closed = true;
+          release_queue();
+          websocket.close(1011, "LiveHost connection send failed.");
+          return;
+        }
+        flush();
+      });
+    } catch {
+      inFlight = Math.max(0, inFlight - 1);
+      closed = true;
+      release_queue();
+      websocket.close(1011, "LiveHost connection send failed.");
+    }
+  };
+
+  const schedule_flush = (): void => {
+    if (drainTimer !== undefined || closed) return;
+    drainTimer = setTimeout(() => {
+      drainTimer = undefined;
+      flush();
+    }, 1);
+    drainTimer.unref?.();
+  };
+
+  flush = (): void => {
+    if (closed || queued.length === 0) return;
+    if (websocket.readyState !== websocket.OPEN) {
+      release_queue();
+      return;
+    }
+    if (websocket.bufferedAmount > maxBufferedAmount) {
+      schedule_flush();
+      return;
+    }
+    while (!closed && queued.length > 0 && websocket.bufferedAmount <= maxBufferedAmount) {
+      const pending = queued.shift();
+      if (pending === undefined) return;
+      queuedBytes -= pending.bytes;
+      transmit(pending);
+    }
+    if (!closed && queued.length > 0) schedule_flush();
+  };
+
+  websocket.once("close", () => {
+    closed = true;
+    release_queue();
+  });
+
   return Object.freeze({
     send(data: string | Uint8Array) {
-      if (websocket.readyState !== websocket.OPEN) return;
-      if (websocket.bufferedAmount > maxBufferedAmount) {
-        onBackpressure();
-        websocket.close(1013, "LiveHost transport backpressure limit exceeded.");
+      if (closed || websocket.readyState !== websocket.OPEN) return;
+      const pending = Object.freeze({ data, bytes: Buffer.byteLength(data) });
+      if (queued.length > 0 || websocket.bufferedAmount > maxBufferedAmount) {
+        if (inFlight === 0 && queued.length === 0) {
+          reject_backpressure();
+          return;
+        }
+        if (queuedBytes + pending.bytes > queue_limit(pending.bytes)) {
+          reject_backpressure();
+          return;
+        }
+        queued.push(pending);
+        queuedBytes += pending.bytes;
+        flush();
         return;
       }
-      try {
-        websocket.send(data);
-      } catch {
-        websocket.close(1011, "LiveHost connection send failed.");
-      }
+      transmit(pending);
     },
     close(code?: number, reason?: string) {
-      if (websocket.readyState === websocket.CLOSED) return;
+      if (closed || websocket.readyState === websocket.CLOSED) return;
+      closed = true;
+      release_queue();
       websocket.close(code, reason);
     },
     onMessage(listener: (data: string | Uint8Array) => void) {
