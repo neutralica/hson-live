@@ -61,7 +61,7 @@ export {
     type DocumentReflectStatus,
 } from "./api/reflect/reflect.document.js";
 export * from "./api/reflect/reflect.document.error.js";
-export { create_live_inspector } from "./api/liveinspect/liveinspect.js";
+export { create_live_inspector } from "./api/inspect/liveinspect.js";
 export {
     LIVE_INSPECTOR_DISPOSED_ERROR_CODE,
     LIVE_INSPECTOR_DUPLICATE_ARRAY_KEY_ERROR_CODE,
@@ -79,8 +79,8 @@ export {
     LIVE_INSPECTOR_UNSUPPORTED_SERIALIZATION_ERROR_CODE,
     LIVE_INSPECTOR_UNSUPPORTED_SOURCE_ERROR_CODE,
     LiveInspectorError,
-} from "./api/liveinspect/liveinspect.error.js";
-export type { LiveInspectorErrorCode } from "./api/liveinspect/liveinspect.error.js";
+} from "./api/inspect/liveinspect.error.js";
+export type { LiveInspectorErrorCode } from "./api/inspect/liveinspect.error.js";
 export {
     COLLECTION_REFLECT_BRANCH_ATTACHED_ERROR_CODE,
     COLLECTION_REFLECT_DISPOSED_ERROR_CODE,

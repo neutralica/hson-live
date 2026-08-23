@@ -2,7 +2,7 @@ import type { JsonValue } from "../core/types.js";
 import type { LiveTree } from "../api/livetree/livetree.js";
 import type { LiveMap, LiveMapDisposer, LiveMapPathHandle, LivePath } from "./livemap.types.js";
 import type { CollectionReflectKey } from "./reflect.types.js";
-import type { LiveInspectorError } from "../api/liveinspect/liveinspect.error.js";
+import type { LiveInspectorError } from "../api/inspect/liveinspect.error.js";
 
 export type LiveInspectorSource = LiveInspectorMapSource | LiveMapPathHandle;
 export type LiveInspectorStatus = "initializing" | "ready" | "replacing" | "failed" | "disposed";

@@ -11,7 +11,7 @@ import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
 import { hsonLiveTree } from "./api/livetree/livetree.facade.js";
 import { hsonLocus } from "./api/locus/locus.facade.js";
 import { hsonReflect } from "./api/reflect/reflect.facade.js";
-import { hsonInspect } from "./api/liveinspect/liveinspect.facade.js";
+import { hsonInspect } from "./api/inspect/liveinspect.facade.js";
 import type {
   HsonTransformSource,
   BinaryDecodeOptions,
