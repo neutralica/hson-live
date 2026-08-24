@@ -1,51 +1,36 @@
+
 #### hson-live / hson.terminalgothic.com
 
 # hson-live
 ## Transform API
-Updated: 2026-07-31
 
-Transform source constructors remain exposed directly on `hson`:
+
+
+The `hson.transform` namespace is also exported as `hsonTransform`.
 
 ```ts
-hson.fromUntrustedHtml(input)
-hson.fromTrustedHtml(input)
+hson.fromUntrustedHtml(input)   // destructive sanitization applied
+hson.fromTrustedHtml(input)     // accepted and parsed as-is
 hson.fromJson(input)
 hson.fromHson(input)
-hson.fromNode(node)
+hson.fromNode(node)             // accepts HsonNodes (in JSON)
 ```
 
-Candidate normalization and admission are organized on the existing Transform namespace:
+`hson.transform` exposes validation helpers for HsonNumber and HsonString admission..
 
 ```ts
-hson.transform.string(source)
-hson.transform.number(candidate)
-hson.transform.calc(() => calculation())
+hson.transform.string(source): HsonString                
+hson.transform.number(candidate): HsonNumber
+hson.transform.calc(() => calculation()): HsonNumber
 ```
 
-The same leaf implementations are available as the named exports `hsonString`, `hsonNumber`, and `hsonCalc`.
+The same implementations are also available as the named exports `hsonString`, `hsonNumber`, and `hsonCalc`.
 
-Every constructor normalizes to a canonical node graph and supports two kinds of terminal operation:
+Every constructor method parses and normalizes input to HSON's canonical node graph.
 
-1. Choose a source format.
-2. Call `.toNode()` for the canonical `HsonNode`, or choose an output format.
-3. Optionally attach formatting flags to that output.
-4. Finalize with `serialize()`, or JSON's in-memory `value()` terminal.
+## HsonString
 
-HSON text has a direct parsing path instead:
-
-```ts
-const node = hson.fromHson(source).toNode();
-```
-
-Canonical graph access always uses `.toNode()`. HSON input can still be canonically reserialized with `.toHson().serialize()`.
-
-Use this API when the goal is serialized HTML, JSON, HSON, or a structured JSON or HSON value. Use `hson.liveTree.*` when the goal is a mutable `LiveTree`.
-
----
-
-## Normalized HSON String
-
-`hson.transform.string(source)` parses HSON source and returns its normalized official serialization as an `HsonString`:
+`hson.transform.string(source)` parses HSON input and returns its canonicalized serialization as an `HsonString`:
 
 ```ts
 import { hson, hsonString } from "hson-live";
@@ -60,9 +45,9 @@ const tagged: HsonString = hsonString`
 `;
 ```
 
-The equivalent named producer is exported as `hsonString(source)` from both `hson-live` and `hson-live/transform`. `hson.transform.string` references that same function. The named Transform export imports only the HSON parser, serializer, and their required canonical graph boundaries; it does not initialize browser, LiveTree, LiveMap, or LiveHost surfaces.
+The named Transform export imports only the HSON parser, serializer, and their required canonical graph boundaries; it does not initialize other formats' parsers, nor LiveTree, LiveMap, or LiveHost surfaces.
 
-The named `hsonString` export also accepts a standard JavaScript or TypeScript tagged template with no substitutions:
+The named `hsonString` export accepts a standard JavaScript or TypeScript tagged template with no substitutions:
 
 ```ts
 const view = hsonString`<main/>`;
@@ -79,15 +64,15 @@ Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy o
 
 The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default HSON options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonString` brand only after successful serialization.
 
-The result is a TypeScript-branded primitive string, not a security, authentication, sanitization, or trust check. The compile-time brand is normally lost across untyped transport or storage. A receiver should treat transported text as `string`; it may pass that text through `hson.transform.string()` again when it needs a branded, normalized value.
+The return is a HsonString, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage. A receiver should treat external text as `string`; internally it may pass that text through `hson.transform.string()` again to return a branded, normalized value within that runtime.
 
-`hson.transform.string()` always reparses and serializes, including when its argument is already an `HsonString`. It exposes no formatting options and uses default serializer behavior, including QUID preservation.
+`hson.transform.string()` always parses and reserializes to canonical syntax and whitespace, including when its argument is already an `HsonString`. It offers no formatting options and uses default serializer behavior, including QUID preservation.
 
 ---
 
 ## Numeric admission
 
-`hson.transform.number(candidate)` and the equivalent named export `hsonNumber(candidate)` admit unknown values to the universal HSON numeric domain. They require a primitive, finite JavaScript number, perform no coercion, preserve negative zero, and return `HsonNumber`:
+`hson.transform.number(candidate)` and the equivalent named export `hsonNumber(candidate)` admit unknown values to HSON's numeric domain. They require a primitive, finite JavaScript number, perform no coercion, preserve negative zero, and return `HsonNumber`:
 
 ```ts
 import { hson } from "hson-live";
@@ -111,12 +96,9 @@ Use `hson-live/number` when dependency weight matters. That entrypoint reaches o
 
 ---
 
-## Intermediate Model
+## HsonNodes - the Intermediate Model
 
-All supported sources normalize to the same internal graph type:
-`HsonNode`.
-
-The current internal node fields are:
+All supported sources parse to `HsonNode`, HSON's graph type.
 
 ```ts
 type HsonNode = {
@@ -127,13 +109,7 @@ type HsonNode = {
 };
 ```
 
-Do not confuse these field names with VSN tag string values. Tags such as
-`_hson_root`, `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_ii`, `_hson_str`, and `_hson_val` remain tag
-values stored in `node.$_tag`.
-
----
-
-## Source Constructors
+## Step 1: Source Constructor
 
 ### `hson.fromUntrustedHtml(input: string | Element)`
 
@@ -151,24 +127,25 @@ This is the default choice for user-authored or third-party HTML. QUID identity 
 
 ### `hson.fromTrustedHtml(input: string | Element)`
 
-Parses trusted HTML through the unsafe/raw HTML path.
+Parses trusted raw HTML. Use only for developer-authored or otherwise trusted markup.
+
+- Accepts a string or an existing `Element`.
 
 - No sanitization is applied.
-- Accepts a string or an existing `Element`.
 - A supplied `Element` is the source root, not an `innerHTML` snapshot.
 - SVG markup is allowed on this path.
 
-String and Element inputs that represent the same element normalize to canonically equal graphs. An Element has already crossed a lossy DOM boundary: duplicate source attributes may have collapsed, HTML casing is normalized, namespace information is whatever the DOM exposes, and original quoting, whitespace, and lexical spelling cannot be recovered. Direct trusted Element parsing does not stringify and reparse the Element. The untrusted browser path may serialize the complete source root only to cross the DOMPurify security boundary before canonical parsing.
+Normalization is lossy: duplicate attributes may be collapsed, HTML casing normalized, and original quote symbols, whitespace, and lexical spelling cannot be recovered. Trusted Elements are parsed directly. String and Element inputs that represent the same element normalize to canonically equal graphs.
 
-For raw HTML strings, ordinary attribute names compare case-insensitively for duplicate detection. The last ordinary value wins, repeated `class` declarations merge unique tokens in encounter order, and duplicate `hson:*` metadata declarations reject. Canonical-valid colonized ordinary names are carried reversibly through the XML-backed browser parser and admitted under their original semantic name. Invalid names and authored private parser-transit names reject. `data--attrmap`, like every `data-*` spelling, is ordinary application data.
+For raw HTML strings, ordinary attribute names compare case-insensitively for duplicate detection; the last ordinary value wins. Duplicate `hson:*` metadata declarations reject.
 
-Use only for developer-authored or otherwise trusted markup.
+Repeated `class` declarations merge unique tokens in the order encountered. Canonical-valid colonized ordinary names are carried reversibly through the XML-backed browser parser and admitted under their original semantic name. Invalid names and authored private parser-transit names reject. 
 
 ### `hson.fromJson(input: string | JsonValue)`
 
 Parses JSON data into HSON nodes.
 
-- Accepts a JSON string or an already parsed JSON value.
+- Accepts a JSON string or a parsed JSON value.
 - Does not sanitize.
 - Detaches caller-owned records and arrays before normalization. Parsing never   mutates the supplied value or retains mutable aliases into canonical graph   state.
 - Metadata on an explicit `_hson_root` is invalid and rejects; it is not   ignored or filtered. An empty runtime `_hson_root` remains a separate   runtime-carrier exception outside direct HSON-text serialization.
@@ -178,14 +155,10 @@ Parses JSON data into HSON nodes.
 
 ### `hson.fromHson(input: string)`
 
-Parses HSON text into HSON nodes.
-
-Authored names are bare or single-quoted. Double quotes delimit string values; backticks have no HSON syntax role. For example:
-
 ```ts
 const source = `
 <
-  'major problem here:' ""
+  unquotedName ""
   'ordinary quoted name' "value"
 >
 `;
@@ -193,61 +166,51 @@ const source = `
 const node = hson.fromHson(source).toNode();
 ```
 
-Inside a single-quoted HSON name, write an apostrophe as `\'`. A JavaScript template literal must preserve that HSON backslash, for example ``const source = `<'don\\'t' 1>`;``. Legacy backtick-delimited names reject.
+Parses HSON text into HsonNodes.
 
 - Does not sanitize.
-- The parser internally creates one `_hson_root` attachment carrier.
 - `.toNode()` returns exactly its one semantic child and never returns   `_hson_root`. Meaningful `_hson_elem`, `_hson_obj`, `_hson_arr`, `_hson_str`,   and `_hson_val` nodes remain intact.
-- Bare quoted strings, finite numbers, booleans, and `null` are complete HSON   values. HSON numeric values use JSON number syntax and admit only finite   JavaScript numbers: a leading plus is forbidden, while an exponent plus is   allowed (for example, `1e+3`). Empty, whitespace-only, and comment-only   source rejects.
-- `.toJson()`, `.toHson()`, `.toHtml()`, and `.sanitizeBEWARE()` remain   available for conversion and canonical reserialization.
-
+- Bare quoted strings, finite numbers, booleans, and `null` are valid HSON values. 
+- HSON serializes numeric values unquoted and use JSON number syntax and admit only finite   JavaScript numbers: a leading plus is forbidden, while an exponent plus is allowed (for example, `1e+3`). 
 ### `hson.fromNode(node: HsonNode)`
 
-Starts the transform pipeline from an existing HSON node graph.
+Parses and validates an external HsonNode graph .
 
 - Does not sanitize.
-- Normalizes permissive graph spellings without mutating the caller. If no   normalization is needed the original graph reference is retained.
-- Treats the supplied node as a detached semantic value: an unowned   scalar-only `_hson_obj` or `_hson_elem` carrier collapses to its scalar,   while owned carriers and arrays remain structural.
 
 ---
 
-## Output Selection
+## Step 2: Output Constructor
 
-All transform sources return a common normalized-source surface with:
+All transform source constructors return a common surface:
 
 ```ts
-.toNode()
-.toHtml()
-.toJson()
-.toHson()
-.sanitizeBEWARE()
+.toHtml()           // returns an HTML string
+.toJson()           // returns a JSON object or string
+.toHson()           // returns an HSON string
+.toNode()           // returns the underlying HsonNode graph (in JSON)
+.sanitizeBEWARE()   // destructive sanitizer for external non-HTML input
 ```
-
-`.toNode()` directly returns the normalized canonical graph. It does not serialize to HSON and parse that text again. `fromNode(node)` returns the admitted graph, which remains the original reference when normalization made no change. HSON source is the specific exception at the attachment boundary: its cached frame stores and repeatedly returns the exact detached semantic child of the internal parser root.
 
 ### `.toHtml()`
 
-Chooses HTML output.
+Selects HTML output.
 
 - `serialize()` returns an HTML string.
 - No in-memory HTML parse terminal is exposed.
-- Serializer-owned reserved carriers are emitted only where the HTML wire   needs them to preserve object/element mode, detached scalars, or exact text   item boundaries. Reserved tags are lowered before ordinary element parsing.
-- Detached typed scalars use `_hson_obj → _hson_val`; `_hson_elem` may detach   only an `_hson_str` text leaf and never admits `_hson_val` content.
 
 ### `.toJson()`
 
-Chooses JSON output.
+Selects JSON output.
 
-- `serialize()` returns a JSON string.
-- `value()` returns a detached in-memory `JsonValue` projection directly,   without a textual serialization/parse round trip.
-- JSON text emission uses `-0` for negative zero; `value()` retains the same   runtime identity.
-- `serialize()` emits object properties directly from canonical `_hson_obj`   content order. It does not route integer-like keys through ordinary object   enumeration or sort them.
+- `serialize()` returns a JSON string with key order canonicalized
+- `value()` returns an in-memory `JsonValue` directly
 
-JSON roundtrips serialize as plain JSON values, not raw internal HSON node shapes, except where a node shape is intentionally represented by the format.
+The raw HsonNode data type is also represented in JSON. Serialized keys beginning with the reserved prefix`$_` indicate raw HsonNode data, serialized via `toNode()` rather than `toJson()`
 
 ### `.toHson()`
 
-Chooses HSON output.
+Selects HSON output.
 
 - `serialize()` returns `HsonString`, a primitive HSON string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
