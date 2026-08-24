@@ -91,6 +91,8 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
+    "pack:consumer": "node ../hson-demo2/scripts/certified-package.mjs pack",
+    "certify:consumer": "node ../hson-demo2/scripts/certified-package.mjs certify",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",

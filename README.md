@@ -641,3 +641,10 @@ hson-live is licensed under the Public Parity License 7.0.
 See `LICENSE` for details.
 
 © 2026 terminal_gothic. All rights reserved except as granted under the Public Parity License 7.0.
+# Consumer certification convenience
+
+`npm run build` remains a library-only TypeScript build and never executes the LiveDemo application corpus.
+When the sibling hson-demo2 and hson-deploy workspaces are available, `npm run pack:consumer` invokes the
+application-owned certified package flow and `npm run certify:consumer` invokes its full certification boundary.
+These are convenience wrappers; hson-live does not own explorer assembly, application test policy, or release
+packaging.
