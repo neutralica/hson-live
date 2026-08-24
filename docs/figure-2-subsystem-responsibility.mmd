@@ -1,0 +1,12 @@
+flowchart TB
+    Transform["Transform"] -->|owns| TransformResponsibilities["Source-representation admission<br/>Representation normalization<br/>Canonical-graph serialization"]
+
+    LiveMap["LiveMap"] -->|owns| LiveMapResponsibilities["Canonical graph state<br/>Revisioned mutation<br/>Authoritative graph-change emission"]
+
+    Reflection["Reflection"] -->|coordinates| ReflectionResponsibilities["Canonical-change-to-runtime projection<br/>Authoritative-state-to-runtime correspondence"]
+
+    LiveTree["LiveTree"] -->|owns| LiveTreeResponsibilities["Graph-state realization<br/>DOM, CSS, events, and runtime projection"]
+
+    Locus["Locus"] -->|governs around one LiveMap| LocusResponsibilities["Exclusive authority boundary<br/>Ordering and authorization<br/>Sessions, recovery, and publication"]
+
+    LiveHost["LiveHost"] -->|provides| LiveHostResponsibilities["Application/runtime hosting boundary<br/>Routing and optional residency infrastructure<br/>No canonical graph authority"]
