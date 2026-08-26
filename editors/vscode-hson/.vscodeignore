@@ -1,0 +1,11 @@
+.test-dist/**
+.vscode-test/**
+.vscode/**
+.gitignore
+src/**
+scripts/**
+tests/**
+tsconfig.json
+node_modules/**
+package-lock.json
+hson-language.vsix

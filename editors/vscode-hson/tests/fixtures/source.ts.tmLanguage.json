@@ -1,0 +1,35 @@
+{
+  "name": "Minimal TypeScript test host",
+  "scopeName": "source.ts",
+  "patterns": [
+    {
+      "name": "comment.line.double-slash.ts",
+      "begin": "//",
+      "end": "(?=\\r?$)"
+    },
+    {
+      "name": "string.quoted.double.ts",
+      "begin": "\"",
+      "end": "\"|(?=\\r?$)",
+      "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.ts" }]
+    },
+    {
+      "name": "string.template.ts",
+      "begin": "`",
+      "end": "(?<!\\\\)`",
+      "patterns": [{ "match": "\\\\`", "name": "constant.character.escape.ts" }]
+    },
+    {
+      "name": "keyword.control.ts",
+      "match": "\\b(?:const|export|import|from)\\b"
+    },
+    {
+      "name": "variable.other.readwrite.ts",
+      "match": "[A-Za-z_$][A-Za-z0-9_$]*"
+    },
+    {
+      "name": "constant.numeric.ts",
+      "match": "\\b[0-9]+\\b"
+    }
+  ]
+}

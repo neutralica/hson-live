@@ -1,0 +1,170 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "HSON",
+  "scopeName": "source.hson",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#data-strings" },
+    { "include": "#quoted-names" },
+    { "include": "#unquoted-attribute-values" },
+    { "include": "#reserved-names" },
+    { "include": "#quids" },
+    { "include": "#numbers" },
+    { "include": "#primitives" },
+    { "include": "#attribute-names" },
+    { "include": "#names" },
+    { "include": "#structural-punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.hson",
+          "begin": "//",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.comment.hson" }
+          },
+          "end": "(?=\\r?$)"
+        }
+      ]
+    },
+    "data-strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.hson",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.hson" }
+          },
+          "end": "\"|(?=\\r?$)",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.hson" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.hson",
+              "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})"
+            },
+            {
+              "name": "invalid.illegal.escape.hson",
+              "match": "\\\\(?:u[0-9A-Fa-f]{0,3}(?![0-9A-Fa-f])|.)"
+            }
+          ]
+        }
+      ]
+    },
+    "quoted-names": {
+      "patterns": [
+        {
+          "name": "entity.name.type.quoted.hson",
+          "begin": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.hson" }
+          },
+          "end": "'|(?=\\r?$)",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.hson" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.hson",
+              "match": "\\\\(?:['\\\\bfnrt]|u[0-9A-Fa-f]{4})"
+            },
+            {
+              "name": "invalid.illegal.escape.hson",
+              "match": "\\\\(?:u[0-9A-Fa-f]{0,3}(?![0-9A-Fa-f])|.)"
+            }
+          ]
+        }
+      ]
+    },
+    "unquoted-attribute-values": {
+      "patterns": [
+        {
+          "name": "string.unquoted.attribute-value.hson",
+          "match": "(?<==)[ \\t]*(?!//)(?:/(?!>)|[^ \\t\\r\\n<>\\[\\]«»\"])+"
+        }
+      ]
+    },
+    "reserved-names": {
+      "patterns": [
+        {
+          "name": "support.type.internal.reserved-name.hson",
+          "match": "(?<![A-Za-z0-9:._-])_hson_[A-Za-z0-9:._-]*(?![A-Za-z0-9:._-])"
+        }
+      ]
+    },
+    "quids": {
+      "patterns": [
+        {
+          "name": "constant.other.quid.hson",
+          "match": "@[0-9abcdefghjkmnpqrstvwxyz]{9}(?![A-Za-z0-9])"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hson",
+          "match": "(?<![A-Za-z0-9:._-])-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?(?![A-Za-z0-9:._-])"
+        }
+      ]
+    },
+    "primitives": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.hson",
+          "match": "(?<![A-Za-z0-9:._-])(?:true|false)(?![A-Za-z0-9:._-])"
+        },
+        {
+          "name": "constant.language.null.hson",
+          "match": "(?<![A-Za-z0-9:._-])null(?![A-Za-z0-9:._-])"
+        }
+      ]
+    },
+    "attribute-names": {
+      "patterns": [
+        {
+          "name": "entity.other.attribute-name.hson",
+          "match": "[A-Za-z_:][A-Za-z0-9:._-]*(?=[ \\t]*=)"
+        }
+      ]
+    },
+    "names": {
+      "patterns": [
+        {
+          "name": "entity.name.type.hson",
+          "match": "[A-Za-z_:][A-Za-z0-9:._-]*"
+        }
+      ]
+    },
+    "structural-punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.definition.tag.begin.hson",
+          "match": "<"
+        },
+        {
+          "name": "punctuation.definition.tag.end.hson",
+          "match": "/>|>"
+        },
+        {
+          "name": "punctuation.section.array.begin.hson",
+          "match": "\\[|«"
+        },
+        {
+          "name": "punctuation.section.array.end.hson",
+          "match": "\\]|»"
+        },
+        {
+          "name": "punctuation.separator.sequence.hson",
+          "match": ","
+        },
+        {
+          "name": "keyword.operator.assignment.hson",
+          "match": "="
+        }
+      ]
+    }
+  }
+}

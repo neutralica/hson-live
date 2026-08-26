@@ -113,6 +113,29 @@ export function read_embedded_hson_body(source: EmbeddedHsonSource): string {
   return source.hostText.slice(source.bodyRange.start, source.bodyRange.end);
 }
 
+/** Return the smallest Unicode-safe visible range at one UTF-16 source offset. */
+export function source_point_range_at(
+  sourceText: string,
+  index: number,
+): HostSourceRange | undefined {
+  if (!isOffset(index) || index > sourceText.length) return undefined;
+  if (index === sourceText.length) return Object.freeze({ start: index, end: index });
+  const current = sourceText.charCodeAt(index);
+  const next = sourceText.charCodeAt(index + 1);
+  const previous = sourceText.charCodeAt(index - 1);
+  const isHighSurrogate = current >= 0xD800 && current <= 0xDBFF;
+  const isLowSurrogate = current >= 0xDC00 && current <= 0xDFFF;
+  const nextIsLowSurrogate = next >= 0xDC00 && next <= 0xDFFF;
+  const previousIsHighSurrogate = previous >= 0xD800 && previous <= 0xDBFF;
+  if (isHighSurrogate && nextIsLowSurrogate) {
+    return Object.freeze({ start: index, end: index + 2 });
+  }
+  if (isLowSurrogate && previousIsHighSurrogate) {
+    return Object.freeze({ start: index - 1, end: index + 1 });
+  }
+  return Object.freeze({ start: index, end: index + 1 });
+}
+
 function buildLineStarts(hostText: string): readonly number[] {
   const starts = [0];
   let offset = 0;

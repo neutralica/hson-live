@@ -188,6 +188,7 @@ export function discover_hson_tagged_templates(
   const visit = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node)
       && ts.isIdentifier(node.tag)
+      && (node.flags & ts.NodeFlags.OptionalChain) === 0
       && node.typeArguments === undefined) {
       const symbol = checker.getSymbolAtLocation(node.tag);
       const relevantRange = nodeRange(node, sourceFile);

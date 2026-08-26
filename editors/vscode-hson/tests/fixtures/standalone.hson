@@ -1,0 +1,21 @@
+// standalone lexical coverage
+<profile <
+  bareName "Ada\nLovelace"
+  escaped "\" \\ \/ \b \f \n \r \t \u0041"
+  'quoted name' "value // not a comment"
+  'don\'t' true
+  'back\\slash' -12.5
+  'line\nname' 2
+  'unicode\u03A9' null
+  values [0,-0,12.5,1e3,false,]
+  canonical «1,<nested "object">,»
+>>
+<main @000000001 class="card" href=foo//bar disabled
+  <h1 "Hello"/>
+/>
+<_hson_obj 1>
+"incomplete string
+'incomplete quoted name
+<incomplete [1, 2
+"bad \q escape"
+`legacy backtick name`

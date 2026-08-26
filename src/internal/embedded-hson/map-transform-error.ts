@@ -5,6 +5,7 @@ import {
 import {
   create_host_source_locator,
   read_embedded_hson_body,
+  source_point_range_at,
   validate_embedded_hson_source,
   type EmbeddedHsonSourceInvalidReason,
   type HostSourcePosition,
@@ -88,24 +89,6 @@ function sourceWarnings(
   return Object.freeze([]);
 }
 
-function visiblePointRange(sourceText: string, index: number): HostSourceRange {
-  if (index === sourceText.length) return Object.freeze({ start: index, end: index });
-  const current = sourceText.charCodeAt(index);
-  const next = sourceText.charCodeAt(index + 1);
-  const previous = sourceText.charCodeAt(index - 1);
-  const isHighSurrogate = current >= 0xD800 && current <= 0xDBFF;
-  const isLowSurrogate = current >= 0xDC00 && current <= 0xDFFF;
-  const nextIsLowSurrogate = next >= 0xDC00 && next <= 0xDFFF;
-  const previousIsHighSurrogate = previous >= 0xD800 && previous <= 0xDBFF;
-  if (isHighSurrogate && nextIsLowSurrogate) {
-    return Object.freeze({ start: index, end: index + 2 });
-  }
-  if (isLowSurrogate && previousIsHighSurrogate) {
-    return Object.freeze({ start: index - 1, end: index + 1 });
-  }
-  return Object.freeze({ start: index, end: index + 1 });
-}
-
 function mapPoint(
   sourceText: string,
   bodyStart: number,
@@ -126,7 +109,10 @@ function mapPoint(
     return Object.freeze({ status: "unmapped", reason: "source-index-invalid", warnings });
   }
 
-  const relativeRange = visiblePointRange(sourceText, source.index);
+  const relativeRange = source_point_range_at(sourceText, source.index);
+  if (relativeRange === undefined) {
+    return Object.freeze({ status: "unmapped", reason: "source-index-invalid", warnings });
+  }
   const range = Object.freeze({
     start: bodyStart + relativeRange.start,
     end: bodyStart + relativeRange.end,
