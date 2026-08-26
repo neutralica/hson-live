@@ -13,7 +13,6 @@ import {
   structuralJsonRejectedCases,
 } from "./json-transports.mts";
 import type {
-  CorpusAssertionCounts,
   CorpusCounts,
   CorpusFamilyDefinition,
   MaterializedCorpusCase,
@@ -63,36 +62,4 @@ export const corpusCounts: CorpusCounts = Object.freeze({
   totalConcreteDescriptors: materializedCorpusCases.length,
   uniqueAuthoredSources: new Set(authoredSources).size,
   declaredSourceReuse: materializedCorpusCases.filter((entry) => entry.declaredSourceReuse !== undefined).length,
-});
-
-export function acceptedAssertionWeight(entry: MaterializedCorpusCase): number {
-  if (entry.disposition !== "accept") return 0;
-  const negativeZeroPaths = entry.negativeZeroPaths?.length ?? 0;
-  switch (entry.classification) {
-    case "literal-accepted-authored-hson":
-    case "materialized-accepted-family-case":
-      return 6 + negativeZeroPaths * 2;
-    case "graph-ingress-accepted-transport":
-      return 10 + negativeZeroPaths * 4;
-    case "structural-json-transport":
-      return 8 + negativeZeroPaths * 2;
-    case "structural-html-transport":
-      return 7 + negativeZeroPaths * 2;
-    case "diagnostic-circuit-regression":
-      return 4;
-    default:
-      return 0;
-  }
-}
-
-export const CORPUS_INTEGRITY_ASSERTION_COUNT = 24;
-
-export const corpusAssertionCounts: CorpusAssertionCounts = Object.freeze({
-  acceptedAssertions: materializedCorpusCases.reduce((sum, entry) => sum + acceptedAssertionWeight(entry), 0),
-  rejectedAssertions: materializedCorpusCases.filter((entry) => entry.disposition === "reject").length * 9,
-  integrityAssertions: CORPUS_INTEGRITY_ASSERTION_COUNT,
-  totalAssertions:
-    materializedCorpusCases.reduce((sum, entry) => sum + acceptedAssertionWeight(entry), 0)
-    + materializedCorpusCases.filter((entry) => entry.disposition === "reject").length * 9
-    + CORPUS_INTEGRITY_ASSERTION_COUNT,
 });

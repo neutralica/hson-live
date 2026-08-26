@@ -16,12 +16,6 @@ SUMMARY
     "totalConcreteDescriptors": 370,
     "uniqueAuthoredSources": 273,
     "declaredSourceReuse": 0
-  },
-  "assertions": {
-    "acceptedAssertions": 1089,
-    "rejectedAssertions": 1764,
-    "integrityAssertions": 24,
-    "totalAssertions": 2877
   }
 }
 

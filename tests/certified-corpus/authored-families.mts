@@ -55,8 +55,7 @@ const quotedStringAcceptedCases: readonly AcceptedCorpusCase[] = [
 export const quotedStringAcceptedFamily: AcceptedFamilyDefinition = {
   id: "family.accept.quoted-string-json-escapes",
   claim: "Quoted strings accept every JSON escape branch and settled Unicode boundary.",
-  classification: "transparent-accepted-family", variedDimension: "quoted-string escape spelling",
-  expectedExpansionCount: quotedStringAcceptedCases.length, cases: quotedStringAcceptedCases,
+  classification: "transparent-accepted-family", variedDimension: "quoted-string escape spelling", cases: quotedStringAcceptedCases,
 };
 
 function acceptedNameCase(id: string, spelling: string, decoded: string, expectedHson: string): AcceptedCorpusCase {
@@ -103,8 +102,7 @@ const quotedNameAcceptedCases: readonly AcceptedCorpusCase[] = [
 export const quotedNameAcceptedFamily: AcceptedFamilyDefinition = {
   id: "family.accept.quoted-name-escapes",
   claim: "Single-quoted property keys accept every settled escape branch and representative Unicode boundaries.",
-  classification: "transparent-accepted-family", variedDimension: "quoted-name escape spelling",
-  expectedExpansionCount: quotedNameAcceptedCases.length, cases: quotedNameAcceptedCases,
+  classification: "transparent-accepted-family", variedDimension: "quoted-name escape spelling", cases: quotedNameAcceptedCases,
 };
 
 function tokenError(code: string, index: number, line = 1, column = index + 1) {
@@ -139,8 +137,7 @@ const malformedQuotedCases: readonly RejectedCorpusCase[] = [
 ] as const;
 export const malformedQuotedStringFamily: RejectedFamilyDefinition = {
   id: "family.reject.quoted-string-malformed-escapes", claim: "Malformed and unsupported quoted-string escapes reject.",
-  classification: "transparent-rejected-family", variedDimension: "malformed quoted-string escape spelling",
-  expectedExpansionCount: malformedQuotedCases.length, cases: malformedQuotedCases,
+  classification: "transparent-rejected-family", variedDimension: "malformed quoted-string escape spelling", cases: malformedQuotedCases,
 };
 
 const malformedNameSpellings = [
@@ -161,8 +158,7 @@ const malformedNameCases: readonly RejectedCorpusCase[] = [
 ] as const;
 export const malformedQuotedNameFamily: RejectedFamilyDefinition = {
   id: "family.reject.quoted-name-malformed-escapes", claim: "Malformed and unsupported quoted-name escapes reject.",
-  classification: "transparent-rejected-family", variedDimension: "malformed quoted-name escape spelling",
-  expectedExpansionCount: malformedNameCases.length, cases: malformedNameCases,
+  classification: "transparent-rejected-family", variedDimension: "malformed quoted-name escape spelling", cases: malformedNameCases,
 };
 
 function rawControlCases(family: "quoted-string" | "quoted-name"): readonly RejectedCorpusCase[] {
@@ -187,11 +183,11 @@ const rawQuotedControlCases = rawControlCases("quoted-string");
 const rawQuotedNameControlCases = rawControlCases("quoted-name");
 export const rawQuotedControlFamily: RejectedFamilyDefinition = {
   id: "family.reject.quoted-string-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a quoted string.",
-  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", expectedExpansionCount: 32, cases: rawQuotedControlCases,
+  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", cases: rawQuotedControlCases,
 };
 export const rawQuotedNameControlFamily: RejectedFamilyDefinition = {
   id: "family.reject.quoted-name-raw-c0", claim: "Every raw U+0000–U+001F control rejects inside a single-quoted name.",
-  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", expectedExpansionCount: 32, cases: rawQuotedNameControlCases,
+  classification: "transparent-rejected-family", variedDimension: "raw C0 code point", cases: rawQuotedNameControlCases,
 };
 
 const unsupportedWhitespaceCodePoints = [
@@ -212,8 +208,7 @@ const unsupportedWhitespaceCases: readonly RejectedCorpusCase[] = unsupportedWhi
 });
 export const unsupportedWhitespaceFamily: RejectedFamilyDefinition = {
   id: "family.reject.unsupported-whitespace", claim: "Whitespace outside SPACE, HT, LF, and CR rejects.",
-  classification: "transparent-rejected-family", variedDimension: "unsupported whitespace code point",
-  expectedExpansionCount: unsupportedWhitespaceCases.length, cases: unsupportedWhitespaceCases,
+  classification: "transparent-rejected-family", variedDimension: "unsupported whitespace code point", cases: unsupportedWhitespaceCases,
 };
 
 export const authoredAcceptedFamilies = [quotedStringAcceptedFamily, quotedNameAcceptedFamily] as const;

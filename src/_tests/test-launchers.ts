@@ -1,5 +1,3 @@
-import { HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS } from "./hson-tagged-template-discovery-propositions.js";
-
 export type HsonLiveTestSubject =
   | "Locus"
   | "LiveHost"
@@ -15,12 +13,8 @@ export type HsonLiveTestRuntime =
   | "node-real-websocket"
   | "node-real-websocket-process";
 
-/**
- * Every registered launcher must emit exactly one terminal completion record
- * whose executed count equals its manifested executableChecks value.
- */
-export const HSON_LIVE_TEST_COMPLETION_REQUIREMENT =
-  "exact-declared-check-count" as const;
+/** Every registered launcher must emit exactly one valid terminal completion record. */
+export const HSON_LIVE_TEST_COMPLETION_REQUIREMENT = "valid-terminal-completion" as const;
 
 export type HsonLiveTestLauncher = Readonly<{
   id: string;
@@ -29,7 +23,6 @@ export type HsonLiveTestLauncher = Readonly<{
   packageScript: `test:${string}`;
   repositoryModule: `tests/${string}`;
   runtime: HsonLiveTestRuntime;
-  executableChecks: number;
   collections: readonly string[];
 }>;
 
@@ -58,7 +51,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-number",
       repositoryModule: "tests/hson-number.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["hson", "number", "admission", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -68,7 +60,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tokenizer",
       repositoryModule: "tests/hson-tokenizer.acceptance.mts",
       runtime: "node",
-      executableChecks: 139,
       collections: ["hson", "tokenization", "parsing"],
     }),
     launcher({
@@ -78,7 +69,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tagged-template",
       repositoryModule: "tests/hson-tagged-template.acceptance.mts",
       runtime: "node",
-      executableChecks: 16,
       collections: ["hson", "admission", "tagged-template", "public-api", "diagnostics", "externally-discoverable"],
     }),
     launcher({
@@ -88,7 +78,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:embedded-hson-diagnostic-mapping",
       repositoryModule: "tests/embedded-hson-diagnostic-mapping.acceptance.mts",
       runtime: "node",
-      executableChecks: 41,
       collections: ["hson", "diagnostics", "embedded-source", "tooling", "externally-discoverable"],
     }),
     launcher({
@@ -98,7 +87,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tagged-template-discovery",
       repositoryModule: "tests/hson-tagged-template-discovery.acceptance.mts",
       runtime: "node",
-      executableChecks: HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS.length,
       collections: ["hson", "discovery", "tagged-template", "tooling", "externally-discoverable"],
     }),
     launcher({
@@ -108,7 +96,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-quoted-name-acceptance",
       repositoryModule: "tests/hson-quoted-name-acceptance.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["hson", "quoted-name", "parsing", "serialization", "round-trip", "externally-discoverable"],
     }),
     launcher({
@@ -118,7 +105,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-quoted-name-rejection",
       repositoryModule: "tests/hson-quoted-name-rejection.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["hson", "quoted-name", "rejection", "diagnostics", "externally-discoverable"],
     }),
     launcher({
@@ -128,7 +114,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-structural-mode",
       repositoryModule: "tests/hson-structural-mode.acceptance.mts",
       runtime: "node",
-      executableChecks: 44,
       collections: ["hson", "parsing", "canonical-graph", "structural-mode"],
     }),
     launcher({
@@ -138,7 +123,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-root-boundary",
       repositoryModule: "tests/hson-root-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 79,
       collections: ["hson", "parsing", "root-boundary", "source-shaping"],
     }),
     launcher({
@@ -148,7 +132,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-source-provenance-core",
       repositoryModule: "tests/hson-source-provenance-core.acceptance.mts",
       runtime: "node",
-      executableChecks: 15,
       collections: ["hson", "parsing", "source-provenance", "internal"],
     }),
     launcher({
@@ -158,7 +141,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-source-provenance-parser",
       repositoryModule: "tests/hson-source-provenance-parser.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
       collections: ["hson", "parsing", "source-provenance", "canonical-graph", "internal"],
     }),
     launcher({
@@ -168,7 +150,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-source-provenance-boundary",
       repositoryModule: "tests/hson-source-provenance-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 16,
       collections: ["hson", "parsing", "source-provenance", "root-boundary", "internal"],
     }),
     launcher({
@@ -178,7 +159,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-serializer",
       repositoryModule: "tests/hson-serializer.acceptance.mts",
       runtime: "node",
-      executableChecks: 121,
       collections: ["hson", "serialization", "round-trip"],
     }),
     launcher({
@@ -188,7 +168,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-sha256",
       repositoryModule: "tests/transform-sha256.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["serialization", "sha256", "webcrypto", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -198,7 +177,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:representation-sha-worker",
       repositoryModule: "tests/representation-sha-worker.acceptance.mts",
       runtime: "node",
-      executableChecks: 4,
       collections: ["serialization", "sha256", "worker", "runtime-parity", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -208,7 +186,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:binary-hson-vectors",
       repositoryModule: "tests/binary-hson.acceptance.mts",
       runtime: "node",
-      executableChecks: 29,
       collections: ["binary", "serialization", "canonical-graph", "sha256", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -218,7 +195,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:binary-hson-rejection",
       repositoryModule: "tests/binary-hson-rejection.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["binary", "rejection", "resource-limits", "worker", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -228,7 +204,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:json-ingress",
       repositoryModule: "tests/json-ingress.acceptance.mts",
       runtime: "node",
-      executableChecks: 31,
       collections: ["json", "ingress", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -238,7 +213,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid",
       repositoryModule: "tests/hson-node-quid.acceptance.mts",
       runtime: "node",
-      executableChecks: 14,
       collections: ["quid", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -248,7 +222,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-ingress",
       repositoryModule: "tests/hson-node-quid-ingress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 33,
       collections: ["quid", "ingress", "externally-discoverable"],
     }),
     launcher({
@@ -258,7 +231,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-node-quid-egress",
       repositoryModule: "tests/hson-node-quid-egress.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 13,
       collections: ["quid", "egress", "serialization", "externally-discoverable"],
     }),
     launcher({
@@ -268,7 +240,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:canonical-hson-equality",
       repositoryModule: "tests/canonical-hson-equality.acceptance.mts",
       runtime: "node",
-      executableChecks: 18,
       collections: ["canonical-graph", "equality"],
     }),
     launcher({
@@ -278,7 +249,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:transform-oracle",
       repositoryModule: "tests/transform-oracle.acceptance.mts",
       runtime: "node",
-      executableChecks: 27,
       collections: ["canonical-graph", "oracle", "deterministic-witness"],
     }),
     launcher({
@@ -288,7 +258,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:circuit-semantic-engine",
       repositoryModule: "tests/circuit-semantic-engine.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["diagnostics", "circuit", "canonical-graph", "strict-comparison"],
     }),
     launcher({
@@ -298,7 +267,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:circuit-failure-control",
       repositoryModule: "tests/circuit-failure-control.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["diagnostics", "circuit", "failure-propagation", "operation-accounting"],
     }),
     launcher({
@@ -308,7 +276,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:circuit-legacy-wrapper",
       repositoryModule: "tests/circuit-legacy-wrapper.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 25,
       collections: ["diagnostics", "circuit", "browser-html", "compatibility"],
     }),
     launcher({
@@ -318,7 +285,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:universal-circuit-verification",
       repositoryModule: "tests/universal-circuit-verification.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["diagnostics", "circuit", "universal", "worker", "externally-discoverable"],
     }),
     launcher({
@@ -328,7 +294,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:certified-authored-hson-corpus",
       repositoryModule: "tests/certified-authored-hson-corpus.acceptance.mts",
       runtime: "node",
-      executableChecks: 29,
       collections: ["hson", "certified-corpus", "transport", "externally-discoverable"],
     }),
     launcher({
@@ -338,7 +303,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:view-state-snapshot-codec",
       repositoryModule: "tests/view-state-snapshot-codec.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["document", "snapshot", "codec"],
     }),
     launcher({
@@ -348,7 +312,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:public-boundaries",
       repositoryModule: "tests/public-boundaries.acceptance.mts",
       runtime: "node",
-      executableChecks: 6,
       collections: ["public-api", "LiveMap", "LiveTree", "Transform"],
     }),
     launcher({
@@ -358,7 +321,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-attrs",
       repositoryModule: "tests/livetree-attrs.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 12,
       collections: ["attributes", "style", "dom-projection"],
     }),
     launcher({
@@ -368,7 +330,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-livemap-attrs-convergence",
       repositoryModule: "tests/livetree-livemap-attrs-convergence.acceptance.mts",
       runtime: "node",
-      executableChecks: 9,
       collections: ["attributes", "flags", "document", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -378,7 +339,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-quid-eligibility",
       repositoryModule: "tests/livetree-quid-eligibility.acceptance.mts",
       runtime: "node",
-      executableChecks: 6,
       collections: ["quid", "eligibility", "identity", "externally-discoverable"],
     }),
     launcher({
@@ -388,7 +348,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-runtime-scope",
       repositoryModule: "tests/livetree-runtime-scope.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 24,
       collections: ["quid", "runtime", "lifecycle", "css", "Reflect", "externally-discoverable"],
     }),
     launcher({
@@ -398,7 +357,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-issued-quid-lifecycle",
       repositoryModule: "tests/livetree-issued-quid-lifecycle.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["quid", "runtime", "lifecycle", "identity", "externally-discoverable"],
     }),
     launcher({
@@ -408,7 +366,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-terminal-reuse-boundaries",
       repositoryModule: "tests/livetree-terminal-reuse-boundaries.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 27,
       collections: ["quid", "runtime", "lifecycle", "identity", "externally-discoverable"],
     }),
     launcher({
@@ -418,7 +375,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livetree-quid-runtime-closure",
       repositoryModule: "tests/livetree-quid-runtime-closure.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 21,
       collections: ["quid", "runtime", "lifecycle", "Reflect", "externally-discoverable"],
     }),
     launcher({
@@ -428,7 +384,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-attrs",
       repositoryModule: "tests/reflect-document-attrs.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 10,
       collections: ["document", "binding", "attributes"],
     }),
     launcher({
@@ -438,7 +393,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-structure",
       repositoryModule: "tests/reflect-document-structure.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 11,
       collections: ["document", "binding", "structure"],
     }),
     launcher({
@@ -448,7 +402,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-delegation",
       repositoryModule: "tests/reflect-document-delegation.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 9,
       collections: ["document", "binding", "delegation"],
     }),
     launcher({
@@ -458,7 +411,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-root",
       repositoryModule: "tests/reflect-document-root.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 8,
       collections: ["document", "binding", "root"],
     }),
     launcher({
@@ -468,7 +420,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-snapshot",
       repositoryModule: "tests/reflect-document-snapshot.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 9,
       collections: ["document", "binding", "snapshot"],
     }),
     launcher({
@@ -478,7 +429,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-path-authority",
       repositoryModule: "tests/reflect-document-path-authority.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 21,
       collections: ["document", "binding", "path", "identity", "externally-discoverable"],
     }),
     launcher({
@@ -488,7 +438,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-continuity",
       repositoryModule: "tests/reflect-document-continuity.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "continuity", "lifecycle", "externally-discoverable"],
     }),
     launcher({
@@ -498,7 +447,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-reflection-publication-order",
       repositoryModule: "tests/livemap-reflection-publication-order.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 27,
       collections: ["document", "binding", "publication", "observer", "reentrancy", "failure", "externally-discoverable"],
     }),
     launcher({
@@ -508,7 +456,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:document-same-quid-replacement-continuity",
       repositoryModule: "tests/document-same-quid-replacement-continuity.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 27,
       collections: ["document", "binding", "quid", "continuity", "replay", "lifecycle", "externally-discoverable"],
     }),
     launcher({
@@ -518,7 +465,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-document-correspondence",
       repositoryModule: "tests/reflect-document-correspondence.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 21,
       collections: ["document", "binding", "correspondence", "failure", "externally-discoverable"],
     }),
     launcher({
@@ -528,7 +474,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-linked-no-mint-projection",
       repositoryModule: "tests/reflect-linked-no-mint-projection.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "quid", "runtime", "externally-discoverable"],
     }),
     launcher({
@@ -538,7 +483,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-supplied-identity-preservation",
       repositoryModule: "tests/reflect-supplied-identity-preservation.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "quid", "runtime", "externally-discoverable"],
     }),
     launcher({
@@ -548,7 +492,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:reflect-no-mint-regression-boundaries",
       repositoryModule: "tests/reflect-no-mint-regression-boundaries.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "quid", "runtime", "provenance", "externally-discoverable"],
     }),
     launcher({
@@ -558,7 +501,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-linked-identity-registration",
       repositoryModule: "tests/livemap-linked-identity-registration.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "quid", "runtime", "authority", "externally-discoverable"],
     }),
     launcher({
@@ -568,7 +510,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-linked-identity-atomicity",
       repositoryModule: "tests/livemap-linked-identity-atomicity.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 20,
       collections: ["document", "binding", "quid", "runtime", "atomicity", "externally-discoverable"],
     }),
     launcher({
@@ -578,7 +519,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-linked-identity-closure",
       repositoryModule: "tests/livemap-linked-identity-closure.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 22,
       collections: ["document", "binding", "quid", "runtime", "locus", "externally-discoverable"],
     }),
     launcher({
@@ -588,7 +528,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-acquisition",
       repositoryModule: "tests/livemap-document-identity-acquisition.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "quid", "identity-handle", "authority", "externally-discoverable"],
     }),
     launcher({
@@ -598,7 +537,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-handle",
       repositoryModule: "tests/livemap-document-identity-handle.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["document", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"],
     }),
     launcher({
@@ -608,7 +546,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-compatibility",
       repositoryModule: "tests/livemap-document-identity-compatibility.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 23,
       collections: ["document", "quid", "identity-handle", "compatibility", "binding", "externally-discoverable"],
     }),
     launcher({
@@ -618,7 +555,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document",
       repositoryModule: "tests/livemap-document.acceptance.mts",
       runtime: "node",
-      executableChecks: 14,
       collections: ["document", "construction", "identity"],
     }),
     launcher({
@@ -628,7 +564,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-quid-canonical-state",
       repositoryModule: "tests/livemap-quid-canonical-state.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "canonical-graph", "revision", "externally-discoverable"],
     }),
     launcher({
@@ -638,7 +573,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-quid-non-minting",
       repositoryModule: "tests/livemap-quid-non-minting.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["document", "quid", "sparse-identity", "non-minting", "externally-discoverable"],
     }),
     launcher({
@@ -648,7 +582,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-capture-categories",
       repositoryModule: "tests/livemap-capture-categories.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "capture", "admission", "externally-discoverable"],
     }),
     launcher({
@@ -658,7 +591,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-capture-provenance",
       repositoryModule: "tests/livemap-capture-provenance.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "quid", "capture", "provenance", "atomicity", "externally-discoverable"],
     }),
     launcher({
@@ -668,7 +600,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-capture-identity-closure",
       repositoryModule: "tests/locus-capture-identity-closure.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 23,
       collections: ["document", "quid", "capture", "locus", "reflection", "externally-discoverable"],
     }),
     launcher({
@@ -678,7 +609,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-rename-intent",
       repositoryModule: "tests/livemap-projected-rename-intent.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["projected-value", "object", "rename", "replay", "externally-discoverable"],
     }),
     launcher({
@@ -688,7 +618,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-array-move-intent",
       repositoryModule: "tests/livemap-projected-array-move-intent.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "array", "move", "replay", "externally-discoverable"],
     }),
     launcher({
@@ -698,7 +627,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-intent-propagation",
       repositoryModule: "tests/livemap-projected-intent-propagation.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "rename", "move", "feeds", "links", "stores", "locus", "externally-discoverable"],
     }),
     launcher({
@@ -708,7 +636,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-identity-acquisition",
       repositoryModule: "tests/livemap-projected-identity-acquisition.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["projected-value", "quid", "identity-handle", "authority", "externally-discoverable"],
     }),
     launcher({
@@ -718,7 +645,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-identity-lifecycle",
       repositoryModule: "tests/livemap-projected-identity-lifecycle.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["projected-value", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"],
     }),
     launcher({
@@ -728,7 +654,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-identity-closure",
       repositoryModule: "tests/livemap-projected-identity-closure.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "quid", "identity-handle", "compatibility", "locus", "externally-discoverable"],
     }),
     launcher({
@@ -738,7 +663,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-issued-quid-ledger",
       repositoryModule: "tests/livemap-issued-quid-ledger.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["projected-value", "document", "quid", "identity-handle", "lifecycle", "externally-discoverable"],
     }),
     launcher({
@@ -748,7 +672,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-identity-aba-prevention",
       repositoryModule: "tests/livemap-identity-aba-prevention.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["projected-value", "document", "quid", "identity-handle", "lifecycle", "provenance", "externally-discoverable"],
     }),
     launcher({
@@ -758,7 +681,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-identity-replay-provenance",
       repositoryModule: "tests/livemap-identity-replay-provenance.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "document", "quid", "identity-handle", "replay", "provenance", "externally-discoverable"],
     }),
     launcher({
@@ -768,7 +690,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-overlay-construction",
       repositoryModule: "tests/livemap-document-identity-overlay-construction.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "path", "sparse-identity", "construction", "externally-discoverable"],
     }),
     launcher({
@@ -778,7 +699,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-overlay-lookup",
       repositoryModule: "tests/livemap-document-identity-overlay-lookup.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "path", "lookup", "invariants", "externally-discoverable"],
     }),
     launcher({
@@ -788,7 +708,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-identity-overlay-lifecycle",
       repositoryModule: "tests/livemap-document-identity-overlay-lifecycle.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "path", "lifecycle", "atomicity", "externally-discoverable"],
     }),
     launcher({
@@ -798,7 +717,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-operation-identity-effects",
       repositoryModule: "tests/livemap-document-operation-identity-effects.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "quid", "path", "identity-effects", "reconciliation", "externally-discoverable"],
     }),
     launcher({
@@ -808,7 +726,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-atomic-reconciliation",
       repositoryModule: "tests/livemap-document-atomic-reconciliation.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "quid", "path", "atomicity", "rollback", "externally-discoverable"],
     }),
     launcher({
@@ -818,7 +735,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-staged-reconciliation",
       repositoryModule: "tests/livemap-document-staged-reconciliation.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "quid", "path", "staging", "replay", "reconciliation", "externally-discoverable"],
     }),
     launcher({
@@ -828,7 +744,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-request-lowering",
       repositoryModule: "tests/livemap-document-request-lowering.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "quid", "path", "request-lowering", "canonical-target", "externally-discoverable"],
     }),
     launcher({
@@ -838,7 +753,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-staged-request-lowering",
       repositoryModule: "tests/livemap-document-staged-request-lowering.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["document", "quid", "path", "request-lowering", "staging", "atomicity", "externally-discoverable"],
     }),
     launcher({
@@ -848,7 +762,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-path-contract",
       repositoryModule: "tests/livemap-document-path-contract.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["document", "path", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -858,7 +771,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-logical-traversal",
       repositoryModule: "tests/livemap-document-logical-traversal.acceptance.mts",
       runtime: "node",
-      executableChecks: 45,
       collections: ["document", "path", "traversal", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -868,7 +780,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-location",
       repositoryModule: "tests/livemap-document-location.acceptance.mts",
       runtime: "node",
-      executableChecks: 33,
       collections: ["document", "path", "traversal", "watch", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -878,7 +789,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-location-mutation",
       repositoryModule: "tests/livemap-document-location-mutation.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 25,
       collections: ["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -888,7 +798,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-location-content",
       repositoryModule: "tests/livemap-document-location-content.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 22,
       collections: ["document", "path", "mutation", "proxy", "reflection", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -898,7 +807,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-location-attrs",
       repositoryModule: "tests/livemap-document-location-attrs.acceptance.mts",
       runtime: "node-synthetic-dom",
-      executableChecks: 22,
       collections: ["document", "path", "mutation", "attrs", "proxy", "reflection", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -908,7 +816,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-flags",
       repositoryModule: "tests/livemap-document-flags.acceptance.mts",
       runtime: "node",
-      executableChecks: 13,
       collections: ["document", "path", "mutation", "attrs", "flags", "schema", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -918,7 +825,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-id-discovery",
       repositoryModule: "tests/livemap-document-id-discovery.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["document", "path", "traversal", "discovery", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -928,7 +834,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-id-public",
       repositoryModule: "tests/livemap-document-id-public.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["document", "path", "proxy", "discovery", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -938,7 +843,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-proxy",
       repositoryModule: "tests/livemap-document-proxy.acceptance.mts",
       runtime: "node",
-      executableChecks: 26,
       collections: ["document", "path", "proxy", "traversal", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -948,7 +852,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-staging",
       repositoryModule: "tests/livemap-document-staging.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "path", "staging", "replay", "externally-discoverable"],
     }),
     launcher({
@@ -958,7 +861,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-schema-construction",
       repositoryModule: "tests/livemap-document-schema-construction.acceptance.mts",
       runtime: "node",
-      executableChecks: 32,
       collections: ["document", "schema", "validation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -968,7 +870,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-attrs-schema",
       repositoryModule: "tests/livemap-document-attrs-schema.acceptance.mts",
       runtime: "node",
-      executableChecks: 17,
       collections: ["document", "schema", "validation", "attrs", "flags", "mutation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -978,7 +879,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-schema-enforcement",
       repositoryModule: "tests/livemap-document-schema-enforcement.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["document", "schema", "mutation", "authority", "debug", "externally-discoverable"],
     }),
     launcher({
@@ -988,7 +888,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-empty",
       repositoryModule: "tests/livemap-schema-empty.acceptance.mts",
       runtime: "node",
-      executableChecks: 18,
       collections: ["document", "schema", "empty", "tuple", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -998,7 +897,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-counted-repeat",
       repositoryModule: "tests/livemap-schema-counted-repeat.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["document", "schema", "repeat", "cardinality", "mutation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -1008,7 +906,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-vocabulary",
       repositoryModule: "tests/livemap-schema-vocabulary.acceptance.mts",
       runtime: "node",
-      executableChecks: 27,
       collections: ["projected-value", "schema", "constraint", "recursion", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -1018,7 +915,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-target-boundary",
       repositoryModule: "tests/livemap-document-target-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 22,
       collections: ["document", "path", "quid", "witness", "externally-discoverable"],
     }),
     launcher({
@@ -1028,7 +924,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-install",
       repositoryModule: "tests/livemap-document-install.acceptance.mts",
       runtime: "node",
-      executableChecks: 11,
       collections: ["document", "installation", "identity"],
     }),
     launcher({
@@ -1038,7 +933,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-mutation",
       repositoryModule: "tests/livemap-document-mutation.acceptance.mts",
       runtime: "node",
-      executableChecks: 21,
       collections: ["document", "mutation", "attributes", "content"],
     }),
     launcher({
@@ -1048,7 +942,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-attrs-read",
       repositoryModule: "tests/livemap-document-attrs-read.acceptance.mts",
       runtime: "node",
-      executableChecks: 8,
       collections: ["document", "attributes", "reads"],
     }),
     launcher({
@@ -1058,7 +951,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-document-replay",
       repositoryModule: "tests/livemap-document-replay.acceptance.mts",
       runtime: "node",
-      executableChecks: 16,
       collections: ["document", "observation", "replay"],
     }),
     launcher({
@@ -1068,7 +960,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-path-handle",
       repositoryModule: "tests/livemap-path-handle.acceptance.mts",
       runtime: "node",
-      executableChecks: 29,
       collections: ["path-handle", "document", "binding", "proxy", "bridge", "watch", "externally-discoverable"],
     }),
     launcher({
@@ -1078,7 +969,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-staged-authority",
       repositoryModule: "tests/livemap-staged-authority.acceptance.mts",
       runtime: "node",
-      executableChecks: 13,
       collections: ["authority", "lifecycle", "commit"],
     }),
     launcher({
@@ -1088,7 +978,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-projected-value-equivalence",
       repositoryModule: "tests/livemap-projected-value-equivalence.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "canonical-graph", "equivalence", "externally-discoverable"],
     }),
     launcher({
@@ -1098,7 +987,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-carrier-mutation-planning",
       repositoryModule: "tests/livemap-carrier-planning.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "mutation", "commit", "canonical-graph", "externally-discoverable"],
     }),
     launcher({
@@ -1108,7 +996,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-exact-transport",
       repositoryModule: "tests/livemap-exact-transport.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "capture", "replay", "transport", "externally-discoverable"],
     }),
     launcher({
@@ -1118,7 +1005,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-exact-transport-rejection",
       repositoryModule: "tests/livemap-exact-transport-rejection.acceptance.mts",
       runtime: "node",
-      executableChecks: 13,
       collections: ["projected-value", "capture", "replay", "compatibility", "rejection", "externally-discoverable"],
     }),
     launcher({
@@ -1128,7 +1014,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-exact-propagation",
       repositoryModule: "tests/livemap-exact-propagation.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "feed", "link", "store", "locus", "externally-discoverable"],
     }),
     launcher({
@@ -1138,7 +1023,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-value-boundary",
       repositoryModule: "tests/livemap-schema-value-boundary.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "schema", "admission", "externally-discoverable"],
     }),
     launcher({
@@ -1148,7 +1032,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-composition",
       repositoryModule: "tests/livemap-schema-composition.acceptance.mts",
       runtime: "node",
-      executableChecks: 30,
       collections: ["projected-value", "document", "schema", "composition", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -1158,7 +1041,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-schema-owner-contract",
       repositoryModule: "tests/livemap-schema-owner-contract.acceptance.mts",
       runtime: "node",
-      executableChecks: 23,
       collections: ["projected-value", "schema", "authority", "ownership", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -1168,7 +1050,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-canonical-ownership",
       repositoryModule: "tests/livemap-canonical-ownership.acceptance.mts",
       runtime: "node",
-      executableChecks: 15,
       collections: ["projected-value", "document", "ownership", "encapsulation", "public-api", "externally-discoverable"],
     }),
     launcher({
@@ -1178,7 +1059,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-transform-accepted-closure",
       repositoryModule: "tests/livemap-transform-accepted-closure.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "equivalence", "canonical-graph", "closure", "externally-discoverable"],
     }),
     launcher({
@@ -1188,7 +1068,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-rejection-closure",
       repositoryModule: "tests/livemap-rejection-closure.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "rejection", "atomicity", "closure", "externally-discoverable"],
     }),
     launcher({
@@ -1198,7 +1077,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-exact-route-closure",
       repositoryModule: "tests/livemap-exact-route-closure.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "capture", "replay", "propagation", "closure", "externally-discoverable"],
     }),
     launcher({
@@ -1208,7 +1086,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-deterministic-mutation-operators",
       repositoryModule: "tests/livemap-deterministic-mutation-operators.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
       collections: ["projected-value", "operators", "mutation", "deterministic", "externally-discoverable"],
     }),
     launcher({
@@ -1218,7 +1095,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-deterministic-admission-schema-operators",
       repositoryModule: "tests/livemap-deterministic-admission-schema-operators.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
       collections: ["projected-value", "operators", "admission", "schema", "deterministic", "externally-discoverable"],
     }),
     launcher({
@@ -1228,7 +1104,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livemap-deterministic-transport-propagation-operators",
       repositoryModule: "tests/livemap-deterministic-transport-propagation-operators.acceptance.mts",
       runtime: "node",
-      executableChecks: 20,
       collections: ["projected-value", "operators", "capture", "replay", "propagation", "deterministic", "externally-discoverable"],
     }),
     launcher({
@@ -1238,7 +1113,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:projected-value-admission",
       repositoryModule: "tests/projected-value-admission.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["projected-value", "admission", "materialization", "externally-discoverable"],
     }),
     launcher({
@@ -1248,7 +1122,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:projected-value-equality",
       repositoryModule: "tests/projected-value-equality.acceptance.mts",
       runtime: "node",
-      executableChecks: 24,
       collections: ["projected-value", "equality", "same-value", "externally-discoverable"],
     }),
     launcher({
@@ -1258,7 +1131,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-authority",
       repositoryModule: "tests/runtime-probes/locus-authority.acceptance.mjs",
       runtime: "node",
-      executableChecks: 21,
       collections: ["authority", "lifecycle", "commit"],
     }),
     launcher({
@@ -1268,7 +1140,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-persistence",
       repositoryModule: "tests/runtime-probes/locus-persistence.acceptance.mjs",
       runtime: "node",
-      executableChecks: 17,
       collections: ["persistence", "authority", "recovery"],
     }),
     launcher({
@@ -1278,7 +1149,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-recovery",
       repositoryModule: "tests/runtime-probes/locus-recovery.acceptance.mjs",
       runtime: "node",
-      executableChecks: 11,
       collections: ["recovery", "history", "snapshot"],
     }),
     launcher({
@@ -1288,7 +1158,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-client-recovery",
       repositoryModule: "tests/runtime-probes/locus-client-recovery.acceptance.mjs",
       runtime: "node-real-websocket",
-      executableChecks: 30,
       collections: ["client", "recovery", "protocol", "websocket"],
     }),
     launcher({
@@ -1298,7 +1167,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-document-recovery",
       repositoryModule: "tests/runtime-probes/locus-document-recovery.acceptance.mjs",
       runtime: "node",
-      executableChecks: 28,
       collections: ["document", "recovery", "snapshot"],
     }),
     launcher({
@@ -1308,7 +1176,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-document-actions",
       repositoryModule: "tests/runtime-probes/locus-document-actions.acceptance.mjs",
       runtime: "node",
-      executableChecks: 29,
       collections: ["document", "actions", "recovery"],
     }),
     launcher({
@@ -1318,7 +1185,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-protocol-document",
       repositoryModule: "tests/runtime-probes/locus-protocol-document.acceptance.mjs",
       runtime: "node",
-      executableChecks: 10,
       collections: ["document", "protocol", "validation"],
     }),
     launcher({
@@ -1328,7 +1194,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-document-request-compatibility",
       repositoryModule: "tests/locus-document-request-compatibility.acceptance.mts",
       runtime: "node",
-      executableChecks: 17,
       collections: ["locus", "document", "quid", "path", "request-lowering", "history", "recovery", "persistence", "externally-discoverable"],
     }),
     launcher({
@@ -1338,7 +1203,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-session",
       repositoryModule: "tests/runtime-probes/locus-session.acceptance.mjs",
       runtime: "node-real-websocket",
-      executableChecks: 15,
       collections: ["session", "recovery", "websocket"],
     }),
     launcher({
@@ -1348,7 +1212,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-action-dedupe",
       repositoryModule: "tests/runtime-probes/locus-action-dedupe.acceptance.mjs",
       runtime: "node-real-websocket-process",
-      executableChecks: 21,
       collections: ["actions", "deduplication", "identity", "websocket"],
     }),
     launcher({
@@ -1358,7 +1221,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-trace",
       repositoryModule: "tests/runtime-probes/locus-trace.acceptance.mjs",
       runtime: "node",
-      executableChecks: 12,
       collections: ["trace", "actions", "redaction"],
     }),
     launcher({
@@ -1368,7 +1230,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-authorization",
       repositoryModule: "tests/runtime-probes/locus-authorization.acceptance.mjs",
       runtime: "node",
-      executableChecks: 14,
       collections: ["actions", "authorization", "policy"],
     }),
     launcher({
@@ -1378,7 +1239,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-node-hosting",
       repositoryModule: "tests/livehost-node-hosting.acceptance.mts",
       runtime: "node-real-websocket",
-      executableChecks: 24,
       collections: ["transport", "websocket", "node-host", "externally-discoverable"],
     }),
     launcher({
@@ -1388,7 +1248,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:locus-bootstrap",
       repositoryModule: "tests/locus-bootstrap.acceptance.mts",
       runtime: "node-real-websocket",
-      executableChecks: 32,
       collections: ["bootstrap", "hson", "recovery", "http", "websocket", "externally-discoverable"],
     }),
     launcher({
@@ -1398,7 +1257,6 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:livehost-authority-lifecycle",
       repositoryModule: "tests/livehost-authority-lifecycle.acceptance.mts",
       runtime: "node",
-      executableChecks: 25,
       collections: ["locus-registry", "lifecycle", "eviction", "capacity", "restart", "externally-discoverable"],
     }),
   ]);

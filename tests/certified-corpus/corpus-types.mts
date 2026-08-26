@@ -83,7 +83,6 @@ export type AcceptedFamilyDefinition = Readonly<{
   claim: string;
   classification: "transparent-accepted-family";
   variedDimension: string;
-  expectedExpansionCount: number;
   cases: readonly AcceptedCorpusCase[];
 }>;
 
@@ -92,7 +91,6 @@ export type RejectedFamilyDefinition = Readonly<{
   claim: string;
   classification: "transparent-rejected-family";
   variedDimension: string;
-  expectedExpansionCount: number;
   cases: readonly RejectedCorpusCase[];
 }>;
 
@@ -112,11 +110,4 @@ export type CorpusCounts = Readonly<{
   totalConcreteDescriptors: number;
   uniqueAuthoredSources: number;
   declaredSourceReuse: number;
-}>;
-
-export type CorpusAssertionCounts = Readonly<{
-  acceptedAssertions: number;
-  rejectedAssertions: number;
-  integrityAssertions: number;
-  totalAssertions: number;
 }>;

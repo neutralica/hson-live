@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { corpusAssertionCounts, corpusCounts, materializedCorpusCases } from "./corpus-manifest.mts";
+import { corpusCounts, materializedCorpusCases } from "./corpus-manifest.mts";
 import type { MaterializedCorpusCase } from "./corpus-types.mts";
 
 export const CORPUS_REVIEW_ARTIFACT = join(
@@ -99,7 +99,7 @@ export function renderCorpusReviewArtifact(): string {
     "CERTIFIED AUTHORED-HSON CORPUS — FULLY MATERIALIZED REVIEW",
     "",
     "SUMMARY",
-    JSON.stringify({ counts: corpusCounts, assertions: corpusAssertionCounts }, null, 2),
+    JSON.stringify({ counts: corpusCounts }, null, 2),
     "",
     "TRANSPORT INVENTORY",
     ...transports.map((id) => "- " + id),

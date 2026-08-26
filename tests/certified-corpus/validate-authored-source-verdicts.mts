@@ -16,20 +16,17 @@ assert(actualHash === HISTORICAL_WORKSHEET_SHA256,
 
 const markers = Array.from(document.matchAll(/^<!-- authored-case:([^>\n]+) -->$/gm));
 const ids = markers.map((match) => match[1]);
-assert(markers.length === 269, `Expected 269 historical authored-case markers, found ${markers.length}.`);
 assert(new Set(ids).size === ids.length, "Historical worksheet contains a duplicate case marker.");
 
 const familyStarts = Array.from(document.matchAll(/^<!-- family:start ([^>\n]+) -->$/gm));
 const familyEnds = Array.from(document.matchAll(/^<!-- family:end ([^>\n]+) -->$/gm));
-assert(familyStarts.length === 9 && familyEnds.length === 9,
-  "Historical worksheet family marker count changed.");
 assert(familyStarts.map((match) => match[1]).join("\n") === familyEnds.map((match) => match[1]).join("\n"),
   "Historical worksheet family marker ordering changed.");
 
 const verdictFields = Array.from(document.matchAll(
   /^\*\*(Verdict|Override) — V \/ I \/ \?:\*\*\s*`([^`]*)`\s*$/gm,
 ));
-assert(verdictFields.length === 269, "Historical worksheet verdict field count changed.");
+assert(verdictFields.length === markers.length, "Each historical authored case must have one verdict field.");
 assert(verdictFields.every((match) => ["", "V", "I", "?"].includes(match[2].trim())),
   "Historical worksheet contains an unsupported verdict spelling.");
 

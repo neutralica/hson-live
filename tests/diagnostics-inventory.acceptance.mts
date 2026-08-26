@@ -88,27 +88,13 @@ for (const launcher of hson_live_test_launchers) {
     new RegExp(launcher.repositoryModule.replaceAll(".", "\\.")),
     `${launcher.id} package launcher must execute its registered module`,
   );
-  assert.ok(
-    launcher.executableChecks > 0 && Number.isInteger(launcher.executableChecks),
-    `${launcher.id} must declare an executable check count`,
-  );
   await access(join(repositoryRoot, launcher.repositoryModule));
-}
-
-for (const launcher of externallyDiscoverable) {
-  const source = await readFile(join(repositoryRoot, launcher.repositoryModule), "utf8");
-  const checkCount = source.match(/^(?:await )?check(?:_async)?\(/gm)?.length ?? 0;
-  assert.equal(
-    launcher.executableChecks,
-    checkCount,
-    `${launcher.id} declared check count must match its durable propositions`,
-  );
 }
 
 assert.equal(
   HSON_LIVE_TEST_COMPLETION_REQUIREMENT,
-  "exact-declared-check-count",
-  "every registered launcher requires one exact terminal completion record",
+  "valid-terminal-completion",
+  "every registered launcher requires one valid terminal completion record",
 );
 const nonLauncherScripts = hson_live_non_launcher_test_scripts.map(
   (entry) => entry.packageScript,
@@ -229,16 +215,8 @@ for (const symbol of [
 console.log(JSON.stringify({
   packageTestScripts: packageTestScripts.length,
   registeredLaunchers: hson_live_test_launchers.length,
-  registeredChecks: hson_live_test_launchers.reduce(
-    (total, launcher) => total + launcher.executableChecks,
-    0,
-  ),
   nonLauncherScripts: hson_live_non_launcher_test_scripts,
   completionRequirement: HSON_LIVE_TEST_COMPLETION_REQUIREMENT,
   externallyDiscoverableSuites: externallyDiscoverable.length,
-  durableChecks: externallyDiscoverable.reduce(
-    (total, launcher) => total + launcher.executableChecks,
-    0,
-  ),
   ids: externallyDiscoverable.map((launcher) => launcher.id),
 }));

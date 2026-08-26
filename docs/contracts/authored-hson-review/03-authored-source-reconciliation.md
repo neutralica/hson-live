@@ -8,7 +8,7 @@ The completed worksheet remains immutable historical input; current syntax comes
 
 - Historical worksheet SHA-256: `df17f7de1e9452754b9ab1ddc4d80fdfc82c473f1323ce91a72f9a46ec79db7c`
 - Quoted-name amendment SHA-256: `861a7578e08092a4556099fd4f1e7d7f739fac60678ba063e23295632dbd9c57`
-- Corpus review fingerprint: `0de1c77af2848552d2ca843a72099abdfcaf9773a1364e1fb8ff1c91411daa15`
+- Corpus review fingerprint: `73ba69bef1c48a23506a0984167e8d3ad4c1644c0d0737fa461256ed02789314`
 - Historical authored descriptors: 269
 - Active authored descriptors: 273
 

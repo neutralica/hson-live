@@ -7,7 +7,7 @@
     "worksheetSha256": "df17f7de1e9452754b9ab1ddc4d80fdfc82c473f1323ce91a72f9a46ec79db7c",
     "amendmentPath": "docs/contracts/authored-hson-review/05-quoted-name-delimiter-amendment.md",
     "amendmentSha256": "861a7578e08092a4556099fd4f1e7d7f739fac60678ba063e23295632dbd9c57",
-    "corpusReviewFingerprint": "0de1c77af2848552d2ca843a72099abdfcaf9773a1364e1fb8ff1c91411daa15"
+    "corpusReviewFingerprint": "73ba69bef1c48a23506a0984167e8d3ad4c1644c0d0737fa461256ed02789314"
   },
   "activeAuthoredDescriptorCount": 273,
   "historicalAuthoredDescriptorCount": 269,
@@ -1443,7 +1443,7 @@
       "currentProposal": "valid",
       "agreesWithProposal": true,
       "amendmentApplied": false,
-      "source": "<main @0000000000000001/>",
+      "source": "<main @000000001/>",
       "claim": "An element QUID remains supported."
     },
     {
@@ -4666,7 +4666,7 @@
       "currentProposal": "invalid",
       "agreesWithProposal": true,
       "amendmentApplied": false,
-      "source": "<a @0000000000000001 1>",
+      "source": "<a @000000001 1>",
       "claim": "Object-property QUIDs do not exist in authored HSON."
     },
     {
@@ -4744,7 +4744,7 @@
       "currentProposal": "invalid",
       "agreesWithProposal": true,
       "amendmentApplied": false,
-      "source": "<e @0000000000000001 @0000000000000002/>",
+      "source": "<e @000000001 @000000002/>",
       "claim": "An element cannot declare two QUIDs."
     },
     {
