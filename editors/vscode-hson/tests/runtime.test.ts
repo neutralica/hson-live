@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { TransformError } from "../../../src/core/errors.js";
 import {
   DIAGNOSTIC_SOURCE,
-  SUBSTITUTION_DIAGNOSTIC_CODE,
   produce_document_diagnostics,
   transform_error_to_standalone_diagnostic,
   type DocumentDiagnosticSpec,
@@ -99,45 +98,45 @@ check("standalone astral point spans the complete surrogate pair", () => {
   });
 });
 
-const officialImport = 'import { hsonString } from "hson-live";';
+const officialImport = 'import { hson } from "hson-live";';
 
 check("valid direct official template has no diagnostics", () => {
-  const text = `${officialImport}\nconst page = hsonString\`<main\n  <h1 "Hello">\n>\`;`;
+  const text = `${officialImport}\nconst page = hson\`<main\n  <h1 "Hello">\n>\`;`;
   assert.deepEqual(diagnose(text, "typescript", "/workspace/page.ts"), []);
 });
 
 check("malformed direct template maps to the exact host range", () => {
-  const text = `${officialImport}\nconst page = hsonString\`+1\`;`;
+  const text = `${officialImport}\nconst page = hson\`+1\`;`;
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "+");
 });
 
 check("official import aliases are diagnosed semantically", () => {
-  const text = 'import { hsonString as markup } from "hson-live";\nconst page = markup\`01\`;';
+  const text = 'import { hson as markup } from "hson-live";\nconst page = markup\`01\`;';
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "1");
 });
 
 check("shadowed, wrong-package, and local same-name tags are excluded", () => {
-  const shadowed = `${officialImport}\nfunction f(hsonString: typeof String.raw) { hsonString\`+1\`; }`;
-  const wrong = 'import { hsonString } from "other";\nhsonString\`+1\`;';
-  const local = "const hsonString = String.raw; hsonString`+1`;";
+  const shadowed = `${officialImport}\nfunction f(hson: typeof String.raw) { hson\`+1\`; }`;
+  const wrong = 'import { hson } from "other";\nhson\`+1\`;';
+  const local = "const hson = String.raw; hson`+1`;";
   assert.deepEqual(diagnose(shadowed, "typescript", "/workspace/a.ts"), []);
   assert.deepEqual(diagnose(wrong, "typescript", "/workspace/b.ts"), []);
   assert.deepEqual(diagnose(local, "typescript", "/workspace/c.ts"), []);
 });
 
 check("multiple templates produce independent diagnostics", () => {
-  const text = `${officialImport}\nconst a = hsonString\`+1\`;\nconst b = hsonString\`<main\n  <h1 "Hello">\n>\`;\nconst c = hsonString\`01\`;`;
+  const text = `${officialImport}\nconst a = hson\`+1\`;\nconst b = hson\`<main\n  <h1 "Hello">\n>\`;\nconst c = hson\`01\`;`;
   const diagnostics = diagnose(text, "typescript", "/workspace/page.ts");
   assert.equal(diagnostics.length, 2);
   assert.deepEqual(diagnostics.map((item) => text.slice(item.range.start, item.range.end)), ["+", "1"]);
 });
 
 check("embedded CRLF and related evidence map to original host offsets", () => {
-  const text = `${officialImport}\r\nconst page = hsonString\`\r\n<a 1 a 2>\r\n\`;`;
+  const text = `${officialImport}\r\nconst page = hson\`\r\n<a 1 a 2>\r\n\`;`;
   const diagnostic = diagnose(text, "typescript", "/workspace/page.ts")[0];
   assert.ok(diagnostic);
   assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "a");
@@ -149,23 +148,18 @@ check("embedded CRLF and related evidence map to original host offsets", () => {
 });
 
 check("TSX templates near JSX validate without affecting JSX", () => {
-  const valid = `${officialImport}\nconst view = <section>{hsonString\`<main\n  <h1 "Hello">\n>\`}</section>;`;
-  const invalid = `${officialImport}\nconst view = <section>{hsonString\`+1\`}</section>;`;
+  const valid = `${officialImport}\nconst view = <section>{hson\`<main\n  <h1 "Hello">\n>\`}</section>;`;
+  const invalid = `${officialImport}\nconst view = <section>{hson\`+1\`}</section>;`;
   assert.deepEqual(diagnose(valid, "typescriptreact", "/workspace/view.tsx"), []);
   const diagnostic = diagnose(invalid, "typescriptreact", "/workspace/view.tsx")[0];
   assert.ok(diagnostic);
   assert.equal(invalid.slice(diagnostic.range.start, diagnostic.range.end), "+");
 });
 
-check("every substitution receives only the unsupported diagnostic", () => {
-  const text = `${officialImport}\nconst page = hsonString\`not hson \${first} still not \${second}\`;`;
+check("interpolated templates are discovered without speculative diagnostics", () => {
+  const text = `${officialImport}\nconst page = hson\`not hson \${first} still not \${second}\`;`;
   const diagnostics = diagnose(text, "typescript", "/workspace/page.ts");
-  assert.equal(diagnostics.length, 2);
-  assert.ok(diagnostics.every((item) => item.code === SUBSTITUTION_DIAGNOSTIC_CODE));
-  assert.deepEqual(diagnostics.map((item) => text.slice(item.range.start, item.range.end)), [
-    "${first}",
-    "${second}",
-  ]);
+  assert.deepEqual(diagnostics, []);
 });
 
 check("ordinary templates and damaged TypeScript candidates have no HSON diagnostics", () => {
@@ -185,7 +179,7 @@ check("unsupported document kinds and mismatched TS paths fail closed", () => {
 });
 
 check("diagnostic production does not mutate host text", () => {
-  const text = `${officialImport}\nconst page = hsonString\`+1\`;`;
+  const text = `${officialImport}\nconst page = hson\`+1\`;`;
   const before = text;
   diagnose(text, "typescript", "/workspace/page.ts");
   assert.equal(text, before);

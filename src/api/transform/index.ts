@@ -1,5 +1,4 @@
 export { hsonTransform, type HsonTransformFacade } from "./transform.facade.js";
-export { hsonString } from "./hson-string.js";
 export {
   HSON_NUMBER_NONFINITE,
   HSON_NUMBER_TYPE_REQUIRED,

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 
 import { TransformError } from "../src/core/errors.ts";
-import { hsonString } from "../src/hson.ts";
+import { hson } from "../src/hson.ts";
 import {
   discover_hson_tagged_templates,
   type HsonTaggedTemplateDiscoveryResult,
@@ -50,27 +50,26 @@ function captureTransformError(body: () => unknown): TransformError {
   return observed;
 }
 
-check("official root, hson, and transform entrypoints are recognized in source order", () => {
+check("official root and hson entrypoints are recognized in source order", () => {
   const hostText = [
-    'import { hsonString as root } from "hson-live";',
-    'import { hsonString as hson } from "hson-live/hson";',
-    'import { hsonString as transform } from "hson-live/transform";',
-    "root`a`; hson`b`; transform`c`;",
+    'import { hson as root } from "hson-live";',
+    'import { hson as hson } from "hson-live/hson";',
+    "root`a`; hson`b`;",
   ].join("\n");
-  assert.deepEqual(bodySlices(discover(hostText)), ["a", "b", "c"]);
+  assert.deepEqual(bodySlices(discover(hostText)), ["a", "b"]);
 });
 
 check("direct imports and aliases use the exact ImportSpecifier binding", () => {
   const hostText = [
-    'import { hsonString, hsonString as markup } from "hson-live";',
-    "hsonString`direct`; markup`alias`;",
+    'import { hson, hson as markup } from "hson-live";',
+    "hson`direct`; markup`alias`;",
   ].join("\n");
   assert.deepEqual(bodySlices(discover(hostText)), ["direct", "alias"]);
 });
 
 check("function parameter and nested-scope shadowing are excluded", () => {
   const hostText = [
-    'import { hsonString as markup } from "hson-live";',
+    'import { hson as markup } from "hson-live";',
     "markup`outer`;",
     "function example(markup: unknown) { markup`parameter`; }",
     "function nested() { { const markup = String.raw; markup`nested`; } markup`again`; }",
@@ -80,7 +79,7 @@ check("function parameter and nested-scope shadowing are excluded", () => {
 
 check("local, block, loop, and catch bindings shadow only their lexical regions", () => {
   const hostText = [
-    'import { hsonString as markup } from "hson-live";',
+    'import { hson as markup } from "hson-live";',
     "function local() { const markup = String.raw; markup`local`; }",
     "{ let markup = String.raw; markup`block`; }",
     "for (const markup of []) { markup`loop`; }",
@@ -92,50 +91,50 @@ check("local, block, loop, and catch bindings shadow only their lexical regions"
 
 check("unrelated and relative imports never establish official provenance", () => {
   const hostText = [
-    'import { hsonString as wrong } from "other-package";',
-    'import { hsonString as internal } from "../src/hson.js";',
+    'import { hson as wrong } from "other-package";',
+    'import { hson as internal } from "../src/hson.js";',
     "wrong`a`; internal`b`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], unsupported: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
 });
 
 check("namespace, default, type-only, re-export, CommonJS, alias, and wrapper forms are excluded", () => {
   const hostText = [
     'import api from "hson-live";',
     'import * as namespace from "hson-live";',
-    'import type { hsonString as typed } from "hson-live";',
-    'export { hsonString } from "hson-live";',
+    'import type { hson as typed } from "hson-live";',
+    'export { hson } from "hson-live";',
     'const required = require("hson-live");',
-    "const assigned = namespace.hsonString;",
+    "const assigned = namespace.hson;",
     "const wrapper = (value: unknown) => value;",
-    "api`a`; namespace.hsonString`b`; typed`c`; required.hsonString`d`; assigned`e`; wrapper`f`;",
+    "api`a`; namespace.hson`b`; typed`c`; required.hson`d`; assigned`e`; wrapper`f`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], unsupported: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
 });
 
 check("facade, element, parenthesized, non-null, optional, and generic tag forms are excluded", () => {
   const hostText = [
-    'import { hsonString } from "hson-live";',
-    "({ hsonString }).hsonString`property`;",
-    "({ hsonString })[\"hsonString\"]`element`;",
-    "(hsonString)`parenthesized`;",
-    "hsonString!`nonnull`;",
-    "hsonString?.`optional`;",
-    "hsonString<string>`generic`;",
+    'import { hson } from "hson-live";',
+    "({ hson }).hson`property`;",
+    "({ hson })[\"hson\"]`element`;",
+    "(hson)`parenthesized`;",
+    "hson!`nonnull`;",
+    "hson?.`optional`;",
+    "hson<string>`generic`;",
   ].join("\n");
-  assert.deepEqual(discover(hostText), { sources: [], unsupported: [] });
+  assert.deepEqual(discover(hostText), { sources: [], interpolated: [] });
 });
 
 check("empty, one-line, multiline, indented, escaped, and terminal templates preserve exact bodies", () => {
   const hostText = [
-    'import { hsonString as h } from "hson-live";',
+    'import { hson as h } from "hson-live";',
     "h``; h`one`; h`\n  <main>\n`; h`escaped \\\` and \\\\`; h`last`",
   ].join("\n");
   assert.deepEqual(bodySlices(discover(hostText)), ["", "one", "\n  <main>\n", "escaped \\\` and \\\\", "last"]);
 });
 
 check("physical CRLF is retained in exact template and body ranges", () => {
-  const hostText = 'import { hsonString } from "hson-live";\r\nconst x = hsonString`\r\n  <main>\r\n`;';
+  const hostText = 'import { hson } from "hson-live";\r\nconst x = hson`\r\n  <main>\r\n`;';
   const result = discover(hostText);
   assert.deepEqual(bodySlices(result), ["\r\n  <main>\r\n"]);
   const source = result.sources[0];
@@ -145,17 +144,17 @@ check("physical CRLF is retained in exact template and body ranges", () => {
 
 check("TSX with adjacent JSX is supported while non-TS extensions fail closed", () => {
   const hostText = [
-    'import { hsonString } from "hson-live";',
-    "const view = <main>{hsonString`inside`}</main>;",
+    'import { hson } from "hson-live";',
+    "const view = <main>{hson`inside`}</main>;",
   ].join("\n");
   assert.deepEqual(bodySlices(discover(hostText, "/workspace/view.tsx")), ["inside"]);
-  assert.deepEqual(discover(hostText, "/workspace/view.js"), { sources: [], unsupported: [] });
-  assert.deepEqual(discover(hostText, "/workspace/view.mts"), { sources: [], unsupported: [] });
+  assert.deepEqual(discover(hostText, "/workspace/view.js"), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(hostText, "/workspace/view.mts"), { sources: [], interpolated: [] });
 });
 
 check("compiler-host filename identity supports editor-shaped TS and TSX paths", () => {
-  const tsText = 'import { hsonString } from "hson-live";\nhsonString`inside`;';
-  const tsxText = 'import { hsonString } from "hson-live";\nconst view = <main>{hsonString`inside`}</main>;';
+  const tsText = 'import { hson } from "hson-live";\nhson`inside`;';
+  const tsxText = 'import { hson } from "hson-live";\nconst view = <main>{hson`inside`}</main>;';
   const fileNames = [
     "fixture.ts",
     "/Users/example/project/fixture.ts",
@@ -173,22 +172,22 @@ check("compiler-host filename identity supports editor-shaped TS and TSX paths",
 
 check("one and multiple substitutions are classified without becoming HSON sources", () => {
   const hostText = [
-    'import { hsonString as h } from "hson-live";',
+    'import { hson as h } from "hson-live";',
     "h`<main ${value}>`;",
     "h`<pair ${a} ${b}>`;",
   ].join("\n");
   const result = discover(hostText);
   assert.equal(result.sources.length, 0);
-  assert.deepEqual(result.unsupported.map((item) => item.substitutionRanges.length), [1, 2]);
+  assert.deepEqual(result.interpolated.map((item) => item.substitutionRanges.length), [1, 2]);
   assert.deepEqual(
-    result.unsupported.flatMap((item) => item.substitutionRanges.map((range) => hostText.slice(range.start, range.end))),
+    result.interpolated.flatMap((item) => item.substitutionRanges.map((range) => hostText.slice(range.start, range.end))),
     ["${value}", "${a}", "${b}"],
   );
 });
 
 check("nested, multiline, and complex substitution expressions remain opaque exact ranges", () => {
   const hostText = [
-    'import { hsonString as h } from "hson-live";',
+    'import { hson as h } from "hson-live";',
     "h`a ${a + b} b ${fn({ nested: true })} c ${`nested ${template}`} d ${",
     "  condition ? left : right",
     "}`;",
@@ -196,7 +195,7 @@ check("nested, multiline, and complex substitution expressions remain opaque exa
   const result = discover(hostText);
   assert.equal(result.sources.length, 0);
   assert.deepEqual(
-    result.unsupported[0]?.substitutionRanges.map((range) => hostText.slice(range.start, range.end)),
+    result.interpolated[0]?.substitutionRanges.map((range) => hostText.slice(range.start, range.end)),
     ["${a + b}", "${fn({ nested: true })}", "${`nested ${template}`}", "${\n  condition ? left : right\n}"],
   );
 });
@@ -204,26 +203,26 @@ check("nested, multiline, and complex substitution expressions remain opaque exa
 check("an unrelated recoverable parser error does not suppress a valid later template", () => {
   const hostText = [
     "const broken = ;",
-    'import { hsonString } from "hson-live";',
-    "hsonString`valid`;",
+    'import { hson } from "hson-live";',
+    "hson`valid`;",
   ].join("\n");
   assert.deepEqual(bodySlices(discover(hostText)), ["valid"]);
 });
 
 check("parser damage overlapping imports or tagged templates is omitted", () => {
-  const damagedImport = 'import { hsonString as } from "hson-live";\nhsonString`x`;';
-  const damagedTemplate = 'import { hsonString } from "hson-live";\nhsonString`unterminated';
-  assert.deepEqual(discover(damagedImport), { sources: [], unsupported: [] });
-  assert.deepEqual(discover(damagedTemplate), { sources: [], unsupported: [] });
+  const damagedImport = 'import { hson as } from "hson-live";\nhson`x`;';
+  const damagedTemplate = 'import { hson } from "hson-live";\nhson`unterminated';
+  assert.deepEqual(discover(damagedImport), { sources: [], interpolated: [] });
+  assert.deepEqual(discover(damagedTemplate), { sources: [], interpolated: [] });
 });
 
 check("LF integration discovers, parses, and maps primary plus related declaration evidence", () => {
-  const hostText = 'import { hsonString } from "hson-live";\nconst value = hsonString`\n<a 1 a 2>\n`;';
+  const hostText = 'import { hson } from "hson-live";\nconst value = hson`\n<a 1 a 2>\n`;';
   const result = discover(hostText);
   const source = result.sources[0];
   assert.ok(source);
   const body = read_embedded_hson_body(source);
-  const error = captureTransformError(() => hsonString(body));
+  const error = captureTransformError(() => hson(body));
   const mapped = map_transform_error_to_embedded_source(error, source);
   assert.equal(mapped.status, "mapped");
   if (mapped.status !== "mapped") return;
@@ -236,7 +235,7 @@ check("LF integration discovers, parses, and maps primary plus related declarati
 
 check("CRLF integration maps multiple original-host templates independently", () => {
   const hostText = [
-    'import { hsonString as h } from "hson-live";',
+    'import { hson as h } from "hson-live";',
     "const first = h`+1`;",
     "const second = h`01`;",
   ].join("\r\n");
@@ -244,7 +243,7 @@ check("CRLF integration maps multiple original-host templates independently", ()
   assert.deepEqual(bodySlices(result), ["+1", "01"]);
   const source = result.sources[1];
   assert.ok(source);
-  const error = captureTransformError(() => hsonString(read_embedded_hson_body(source)));
+  const error = captureTransformError(() => hson(read_embedded_hson_body(source)));
   const mapped = map_transform_error_to_embedded_source(error, source);
   assert.equal(mapped.status, "mapped");
   if (mapped.status === "mapped") {
@@ -254,11 +253,14 @@ check("CRLF integration maps multiple original-host templates independently", ()
 });
 
 check("substituted discoveries remain segregated from authoritative HSON parsing", () => {
-  const hostText = 'import { hsonString } from "hson-live";\nhsonString`<main ${value}>`;';
+  const hostText = 'import { hson } from "hson-live";\nhson`<main ${value}>`;';
   const result = discover(hostText);
   assert.equal(result.sources.length, 0);
-  assert.equal(result.unsupported.length, 1);
-  assert.equal(result.unsupported[0]?.reason, "substitutions");
+  assert.equal(result.interpolated.length, 1);
+  assert.deepEqual(
+    result.interpolated[0]?.substitutionRanges.map((range) => hostText.slice(range.start, range.end)),
+    ["${value}"],
+  );
 });
 
 assert.equal(

@@ -1,4 +1,4 @@
-import { hsonString } from "../../../src/api/transform/hson-string.js";
+import { hson } from "../../../src/hson.js";
 import {
   read_transform_error_details,
   type TransformErrorDetails,
@@ -13,10 +13,6 @@ import {
 import { map_transform_error_to_embedded_source } from "../../../src/internal/embedded-hson/map-transform-error.js";
 
 export const DIAGNOSTIC_SOURCE = "HSON";
-export const SUBSTITUTION_DIAGNOSTIC_CODE = "HSON_TEMPLATE_SUBSTITUTION_UNSUPPORTED";
-export const SUBSTITUTION_DIAGNOSTIC_MESSAGE =
-  "HSON tagged templates do not currently support substitutions.";
-
 export type SupportedLanguageId = "hson" | "typescript" | "typescriptreact";
 
 export type DocumentDiagnosticInput = Readonly<{
@@ -35,7 +31,7 @@ export type DocumentDiagnosticSpec = Readonly<{
   range: HostSourceRange;
   source: typeof DIAGNOSTIC_SOURCE;
   code?: string;
-  precision: "point" | "eof" | "fallback" | "substitution";
+  precision: "point" | "eof" | "fallback";
   related: readonly RelatedDiagnosticSpec[];
 }>;
 
@@ -104,7 +100,7 @@ export function transform_error_to_standalone_diagnostic(
 
 function validateStandalone(text: string): readonly DocumentDiagnosticSpec[] {
   try {
-    hsonString(text);
+    hson(text);
     return Object.freeze([]);
   } catch (error) {
     const diagnostic = transform_error_to_standalone_diagnostic(error, text);
@@ -118,7 +114,7 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const source of discovery.sources) {
     try {
-      hsonString(read_embedded_hson_body(source));
+      hson(read_embedded_hson_body(source));
     } catch (error) {
       const details = read_transform_error_details(error);
       if (details === undefined) throw error;
@@ -143,18 +139,9 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
       }));
     }
   }
-  for (const unsupported of discovery.unsupported) {
-    for (const range of unsupported.substitutionRanges) {
-      diagnostics.push(Object.freeze({
-        message: SUBSTITUTION_DIAGNOSTIC_MESSAGE,
-        range,
-        source: DIAGNOSTIC_SOURCE,
-        code: SUBSTITUTION_DIAGNOSTIC_CODE,
-        precision: "substitution",
-        related: Object.freeze([]),
-      }));
-    }
-  }
+  // Runtime substitution values are intentionally opaque to the editor. The
+  // discovery result records interpolated templates, but only substitution-free
+  // templates can receive authoritative whole-source parsing here.
   return Object.freeze(diagnostics);
 }
 

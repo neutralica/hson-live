@@ -129,7 +129,7 @@ HsonStringHeader = 48 53 4f 4e 00 48 53 00 01
 the graph grammar. There is no BOM, Unicode normalization, newline conversion,
 or reserialization. The digest function consumes the exact `HsonString` code
 units it receives. Its type is an official-producer contract, not a runtime
-security boundary; callers needing admission start with `hsonString(candidate)`.
+security boundary; callers needing admission start with `hson(candidate)`.
 
 UTF-8 is not used because standard UTF-8 encoders replace isolated surrogate
 code units. UTF-16BE preserves every JavaScript string exactly. A supplementary
@@ -326,7 +326,7 @@ algorithm. Node, browser, and Worker tests must compare the same bytes, raw
 ## 10. Proposed API surface
 
 The smallest coherent public surface belongs in `hson-live/transform`, beside
-`hsonString` and the transform leaf functions. It need not be added to the
+the callable `hson` facade and the transform leaf functions. It need not be added to the
 fluent facade or create a general cryptography namespace.
 
 ```ts

@@ -3,7 +3,7 @@ import {
   transform_from_untrusted_html,
 } from "./api/transform/transform.browser.js";
 import { hsonTransform } from "./api/transform/transform.facade.js";
-import { hsonString } from "./api/transform/hson-string.js";
+import { admit_hson } from "./api/transform/hson-admission.js";
 import { hsonNumber } from "./api/transform/hson-number.js";
 import { hsonCalc } from "./api/transform/hson-calc.js";
 import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
@@ -26,7 +26,6 @@ export {
   hsonLiveTree,
   hsonReflect,
   hsonTransform,
-  hsonString,
   hsonNumber,
   hsonCalc,
 };
@@ -53,21 +52,26 @@ export type {
  * the established source-constructor shortcuts.
  */
 export interface HsonFacade {
-  transform: typeof hsonTransform;
-  fromHson: (input: string) => HsonTransformSource;
-  fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
-  fromJson: (input: string | JsonValue) => TransformOutput;
-  fromNode: (node: HsonNode) => TransformOutput;
-  fromTrustedHtml: (input: string | Element) => OutputConstructor_2;
-  fromUntrustedHtml: (input: string | Element) => OutputConstructor_2;
-  liveMap: typeof hsonLiveMapBrowser;
-  liveTree: typeof hsonLiveTree;
-  locus: typeof hsonLocus;
-  reflect: typeof hsonReflect;
-  inspect: typeof hsonInspect;
+  (source: string): import("./api/transform/transform.types.js").HsonString;
+  (
+    strings: TemplateStringsArray,
+    ...values: readonly (string | number | boolean | null)[]
+  ): import("./api/transform/transform.types.js").HsonString;
+  readonly transform: typeof hsonTransform;
+  readonly fromHson: (input: string) => HsonTransformSource;
+  readonly fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
+  readonly fromJson: (input: string | JsonValue) => TransformOutput;
+  readonly fromNode: (node: HsonNode) => TransformOutput;
+  readonly fromTrustedHtml: (input: string | Element) => OutputConstructor_2;
+  readonly fromUntrustedHtml: (input: string | Element) => OutputConstructor_2;
+  readonly liveMap: typeof hsonLiveMapBrowser;
+  readonly liveTree: typeof hsonLiveTree;
+  readonly locus: typeof hsonLocus;
+  readonly reflect: typeof hsonReflect;
+  readonly inspect: typeof hsonInspect;
 }
 
-export const hson: HsonFacade = {
+export const hson: HsonFacade = Object.freeze(Object.assign(admit_hson, {
   transform: hsonTransform,
   fromHson: hsonTransform.fromHson,
   fromBinary: hsonTransform.fromBinary,
@@ -84,4 +88,4 @@ export const hson: HsonFacade = {
 
   reflect: hsonReflect,
   inspect: hsonInspect,
-};
+}));

@@ -1,6 +1,6 @@
-import {hsonString} from "./src/api/transform/hson-string.js"
+import {hson} from "./src/hson.js"
 
 
-const broken = hsonString`
+const broken = hson`
   <<<<<<<<<<<<<<<<
 `;

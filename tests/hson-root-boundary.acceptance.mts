@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { hson, hsonString } from "../src/hson.ts";
+import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import { construct_source_1 } from "../src/api/transform/constructors/construct-source-1.ts";
 import { parse_hson } from "../src/api/transform/parsers/parse-hson.ts";
@@ -49,7 +49,7 @@ function assertBare(
   assert.equal(Object.is(value.$_content[0], payload), true);
   assert.notEqual(value.$_tag, "_hson_root");
   assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical);
-  assert.equal(hsonString(source), canonical);
+  assert.equal(hson(source), canonical);
   assert.equal(canonical_hson_graph_equal(publicNode(canonical), value), true);
 }
 
@@ -161,7 +161,7 @@ check("empty guillemet array detaches as _hson_arr", () => {
 
 check("empty bracket array detaches as _hson_arr and canonicalizes to guillemets", () => {
   assert.deepEqual(publicNode(`[]`), node("_hson_arr"));
-  assert.equal(hsonString(`[]`), `«»`);
+  assert.equal(hson(`[]`), `«»`);
 });
 
 check("primitive array detaches with canonical indexed membership", () => {
@@ -419,29 +419,29 @@ check("detached semantic nodes retain no observable parent pointer", () => {
   assert.equal(Object.hasOwn(value, "$_parent"), false);
 });
 
-check("hson.transform.string and hsonString remain the same branded producer function", () => {
-  assert.equal(hson.transform.string, hsonString);
-  assert.equal(typeof hsonString(`42`), "string");
+check("hson.transform.string and hson remain the same branded producer function", () => {
+  assert.equal(hson.transform.string, hson);
+  assert.equal(typeof hson(`42`), "string");
 });
 
-check("hsonString canonicalizes every bare primitive category", () => {
+check("hson canonicalizes every bare primitive category", () => {
   assert.deepEqual(
-    [`"x"`, `0`, `-0`, `true`, `false`, `null`].map(hsonString),
+    [`"x"`, `0`, `-0`, `true`, `false`, `null`].map(hson),
     [`"x"`, `0`, `-0`, `true`, `false`, `null`],
   );
 });
 
-check("hsonString canonicalizes tagged HSON after exact root detachment", () => {
-  assert.equal(hsonString(`<a/><b/>`), `<a/>\n<b/>`);
+check("hson canonicalizes tagged HSON after exact root detachment", () => {
+  assert.equal(hson(`<a/><b/>`), `<a/>\n<b/>`);
 });
 
-check("hsonString rejects empty source before branding", () => {
-  assert.throws(() => hsonString(``), /has no semantic value/);
+check("hson rejects empty source before branding", () => {
+  assert.throws(() => hson(``), /has no semantic value/);
 });
 
 check("repeated HSON canonicalization is stable", () => {
-  const first = hsonString(`<p "first"<em "middle"/>"last"/>`);
-  assert.equal(hsonString(first), first);
+  const first = hson(`<p "first"<em "middle"/>"last"/>`);
+  assert.equal(hson(first), first);
 });
 
 check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => {

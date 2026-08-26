@@ -24,49 +24,95 @@ hson.transform.number(candidate): HsonNumber
 hson.transform.calc(() => calculation()): HsonNumber
 ```
 
-The same implementations are also available as the named exports `hsonString`, `hsonNumber`, and `hsonCalc`.
+Numeric admission is also available through the named exports `hsonNumber` and `hsonCalc`. Textual HSON admission uses the callable `hson` facade.
 
 Every constructor method parses and normalizes input to HSON's canonical node graph.
 
 ## HsonString
 
-`hson.transform.string(source)` parses HSON input and returns its canonicalized serialization as an `HsonString`:
+`hson(source)` validates and canonicalizes existing authored HSON source text.
+
+`` hson`...` `` authors HSON inline. Literal template segments are HSON source;
+primitive substitutions are encoded according to their JavaScript types before
+the completed HSON is validated and canonicalized.
 
 ```ts
-import { hson, hsonString } from "hson-live";
+import { hson } from "hson-live";
 import type { HsonString } from "hson-live/transform";
 
-const normalized: HsonString = hson.transform.string(
+const normalized: HsonString = hson(
   `<p "first"<em "middle"/>"last"/>`,
 );
 
-const tagged: HsonString = hsonString`
+const tagged: HsonString = hson`
   <p "first"<em "middle"/>"last"/>
 `;
 ```
 
-The named Transform export imports only the HSON parser, serializer, and their required canonical graph boundaries; it does not initialize other formats' parsers, nor LiveTree, LiveMap, or LiveHost surfaces.
-
-The named `hsonString` export accepts a standard JavaScript or TypeScript tagged template with no substitutions:
+The ordinary callable form accepts `string` only. It does not accept JavaScript
+primitive values directly: typed primitive admission belongs exclusively to
+tagged-template substitutions.
 
 ```ts
-const view = hsonString`<main/>`;
+const numberSource = hson("37");
+const stringSource = hson('"37"');
+
+const numberValue = hson`${37}`;
+const stringValue = hson`${"37"}`;
 ```
 
-The Transform facade methods remain ordinary string-call APIs; tagged-template admission is intentionally exposed only through the named `hsonString` export.
+The supported substitution values are primitive JavaScript `string`, `number`,
+`boolean`, and `null`. Strings always become HSON string data; finite numbers
+retain the numeric policy (including `-0`); booleans and null become their HSON
+literals. Arrays, objects, nodes, functions, `undefined`, bigint, and symbols
+reject rather than stringify or splice source.
 
-The tag passes its single raw template segment to the same parser, root detachment, canonical graph admission, default serializer, and branding path as the ordinary call. Raw input keeps HSON in charge of escapes such as `\\`, `\"`, `\'`, `\b`, `\f`, `\n`, `\r`, `\t`, and `\uXXXX`; JavaScript's cooked template value is not used.
-The result remains a primitive branded `HsonString`, and canonicalization is identical to `hsonString(source)`.
+```ts
+hson`${37}`       === hson("37")
+hson`${true}`     === hson("true")
+hson`${null}`     === hson("null")
 
-Template substitutions are unsupported and reject with a structured Transform admission error before any segment concatenation or HSON parsing. JavaScript still evaluates every `${...}` expression before it invokes the tag. The `${` sequence and backticks belong to JavaScript template grammar: use an HSON Unicode escape such as `\u0024` for a dollar sign that would otherwise begin a substitution, and `\u0060` for U+0060 where that HSON escape is valid. Escaping a host backtick leaves a backslash followed by a backtick in the raw segment; that is not a supported HSON escape and is deliberately left for the ordinary HSON parser to reject.
+hson`${"37"}`     === hson('"37"')
+hson`${"true"}`   === hson('"true"')
+```
+
+JavaScript ordinary and tagged templates deliberately differ:
+
+```ts
+hson(`${"37"}`)   // HSON number 37
+hson`${"37"}`     // HSON string "37"
+```
+
+In the first form JavaScript constructs the ordinary argument string `37`
+before calling `hson`. In the second, the tag receives the original JavaScript
+string value and encodes it as HSON string data. There is no parse-success
+fallback and no structural/source interpolation.
+
+Raw template segments keep HSON in charge of escapes. The complete reconstructed
+source passes through the same parser, exact root detachment, canonical graph
+admission, default serializer, and `HsonString` branding path as `hson(source)`.
 
 Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy of the host file. In particular, JavaScript normalizes physical CRLF template line terminators to LF. Static diagnostics that need original-file offsets must map against the original host source text rather than this runtime string.
 
 The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default HSON options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonString` brand only after successful serialization.
 
-The return is a HsonString, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage. A receiver should treat external text as `string`; internally it may pass that text through `hson.transform.string()` again to return a branded, normalized value within that runtime.
+The return is a HsonString, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage. A receiver should treat external text as `string`; internally it may pass that text through `hson()` again to return a branded, normalized value within that runtime.
 
 `hson.transform.string()` always parses and reserializes to canonical syntax and whitespace, including when its argument is already an `HsonString`. It offers no formatting options and uses default serializer behavior, including QUID preservation.
+
+`hson.transform.string` and `hsonTransform.string` remain ordinary source-only
+Transform leaves. They share the callable `hson` implementation at runtime but
+do not expose the tagged overload in their Transform facade types.
+
+HSON string values use double quotes. Single quotes delimit authored HSON names;
+they are not an alternate string-value spelling. JavaScript double quotes,
+single quotes, and backticks around an ordinary `hson(source)` argument are only
+host-language delimiters and do not change the HSON source text received.
+
+Naming follow-up: `HsonString` brands canonical serialized HSON text, while
+`HsonNumber` brands an admitted primitive number. These names use different
+semantic axes; a later public-surface audit may consider `HsonText`, primitive
+organization, and `HsonNumber` placement. This migration does not rename either.
 
 ---
 

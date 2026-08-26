@@ -14,7 +14,7 @@ import type {
   OutputConstructor_2,
   TransformOutput,
 } from "./transform.types.js";
-import { hsonString } from "./hson-string.js";
+import { admit_hson } from "./hson-admission.js";
 import { hsonNumber, type HsonNumber } from "./hson-number.js";
 import { hsonCalc } from "./hson-calc.js";
 
@@ -37,7 +37,7 @@ export interface HsonTransformFacade {
  * parser. The complete `hson` umbrella retains browser-node overloads.
  */
 export const hsonTransform: HsonTransformFacade = Object.freeze({
-  string: hsonString,
+  string: admit_hson,
   number: hsonNumber,
   calc: hsonCalc,
   fromHson: transform_from_hson,

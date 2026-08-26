@@ -1,5 +1,5 @@
-import {hsonString} from "./src/api/transform/hson-string.js"
-import {hsonString as markup} from "./src/api/transform/hson-string.js"
+import {hson} from "./src/hson.js"
+import {hson as markup} from "./src/hson.js"
 
 // ------------------------------------------------------------
 // 1. VALID DIRECT TEMPLATE
@@ -9,7 +9,7 @@ import {hsonString as markup} from "./src/api/transform/hson-string.js"
 // - NO HSON diagnostic
 // ------------------------------------------------------------
 
-const valid = hsonString`
+const valid = hson`
   <main
     id="application"
 
@@ -43,7 +43,7 @@ const valid = hsonString`
 // - authoritative HSON error squiggle
 // ------------------------------------------------------------
 
-const broken = hsonString`
+const broken = hson`
   <main
     <section
       <h2 "Something is wrong"
@@ -61,7 +61,7 @@ const broken = hsonString`
 // - probably ordinary TypeScript template-string coloring
 // - BUT still an HSON diagnostic
 //
-// TextMate only recognizes the literal spelling "hsonString".
+// TextMate only recognizes the literal spelling "hson".
 // Pass 2 semantic discovery knows `markup` is the real import.
 // ------------------------------------------------------------
 
@@ -79,8 +79,8 @@ const aliasedBroken = markup`
 // because this local parameter shadows the imported binding.
 // ------------------------------------------------------------
 
-function shadowTest(hsonString: (strings: TemplateStringsArray) => string) {
-  return hsonString`
+function shadowTest(hson: (strings: TemplateStringsArray) => string) {
+  return hson`
     this is not being treated as HSON by semantic discovery
   `;
 }
@@ -113,7 +113,7 @@ const ordinary = `
 
 const title = "Dynamic title";
 
-const interpolated = hsonString`
+const interpolated = hson`
   <main
     h1 ${title} asdfa 
 `;
@@ -125,7 +125,7 @@ const interpolated = hsonString`
 // Should exercise HSON-specific lexical coloring.
 // ------------------------------------------------------------
 
-const lexical = hsonString`
+const lexical = hson`
   <main
     'quoted name'="value"
     apostrophe='can\'t'

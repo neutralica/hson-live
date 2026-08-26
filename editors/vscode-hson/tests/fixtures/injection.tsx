@@ -1,3 +1,3 @@
-import { hsonString } from "hson-live";
+import { hson } from "hson-live";
 
-export const view = <main>{hsonString`<section enabled/>`}</main>;
+export const view = <main>{hson`<section enabled/>`}</main>;

@@ -1,5 +1,5 @@
 export const HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS = Object.freeze([
-  "official root, hson, and transform entrypoints are recognized in source order",
+  "official root and hson entrypoints are recognized in source order",
   "direct imports and aliases use the exact ImportSpecifier binding",
   "function parameter and nested-scope shadowing are excluded",
   "local, block, loop, and catch bindings shadow only their lexical regions",

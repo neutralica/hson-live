@@ -1,7 +1,7 @@
 {
   "name": "hson-language",
   "displayName": "HSON Language",
-  "description": "Syntax highlighting and authoritative diagnostics for HSON files and supported hsonString tagged templates.",
+  "description": "Syntax highlighting and authoritative diagnostics for HSON files and supported hson tagged templates.",
   "version": "0.1.0",
   "publisher": "terminal-gothic",
   "license": "SEE LICENSE IN LICENSE",

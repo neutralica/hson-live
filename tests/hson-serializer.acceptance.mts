@@ -1,7 +1,7 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 
-import { hson, hsonString } from "../src/hson.ts";
+import { hson } from "../src/hson.ts";
 import { hsonTransform } from "../src/api/transform/index.ts";
 import {
   assertCanonicalClosure,
@@ -151,8 +151,8 @@ check("official HSON serialization remains an exact primitive string", () => {
 
 check("hson.transform.string returns canonical valid HSON as a primitive string", () => {
   const normalized = hson.transform.string(`<panel "ready"/>`);
-  const named = hsonString(`<panel "ready"/>`);
-  assert.equal(hson.transform.string, hsonString);
+  const named = hson(`<panel "ready"/>`);
+  assert.equal(hson.transform.string, hson);
   assert.equal(typeof normalized, "string");
   assert.equal(normalized, `<panel "ready"/>`);
   assert.equal(named, normalized);

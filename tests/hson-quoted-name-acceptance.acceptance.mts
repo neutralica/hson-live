@@ -2,7 +2,7 @@
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import assert from "node:assert/strict";
 
-import { hson, hsonString } from "../src/hson.ts";
+import { hson } from "../src/hson.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
@@ -164,7 +164,7 @@ check("ordinary quoted names embed directly in a JavaScript template literal", (
 check("host and HSON escaping layer once when a template-literal name contains an apostrophe", () => {
   const source = `<'don\\'t' 1>`;
   assert.equal(firstPropertyName(source), "don't");
-  assert.equal(hsonString(source), "<'don\\'t' 1>");
+  assert.equal(hson(source), "<'don\\'t' 1>");
 });
 
 process.stdout.write(`# ${checks} quoted-name acceptance checks passed\n`);

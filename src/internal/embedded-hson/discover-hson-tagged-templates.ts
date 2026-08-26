@@ -9,11 +9,9 @@ import {
 const supportedPackageSpecifiers: ReadonlySet<string> = new Set([
   "hson-live",
   "hson-live/hson",
-  "hson-live/transform",
 ]);
 
-export type UnsupportedEmbeddedHsonTemplate = Readonly<{
-  reason: "substitutions";
+export type InterpolatedEmbeddedHsonTemplate = Readonly<{
   fileName: string;
   hostText: string;
   tagRange: HostSourceRange;
@@ -24,7 +22,7 @@ export type UnsupportedEmbeddedHsonTemplate = Readonly<{
 
 export type HsonTaggedTemplateDiscoveryResult = Readonly<{
   sources: readonly EmbeddedHsonSource[];
-  unsupported: readonly UnsupportedEmbeddedHsonTemplate[];
+  interpolated: readonly InterpolatedEmbeddedHsonTemplate[];
 }>;
 
 function createProgram(fileName: string, hostText: string): ts.Program {
@@ -111,7 +109,7 @@ function readSupportedImportSymbols(
     for (const element of bindings.elements) {
       if (element.isTypeOnly) continue;
       const importedName = element.propertyName?.text ?? element.name.text;
-      if (importedName !== "hsonString") continue;
+      if (importedName !== "hson") continue;
       const symbol = checker.getSymbolAtLocation(element.name);
       if (symbol !== undefined) symbols.add(symbol);
     }
@@ -159,14 +157,14 @@ function readSubstitutionRanges(
   return Object.freeze(ranges);
 }
 
-/** Discover direct official hsonString tags in one original in-memory TS/TSX source. */
+/** Discover direct official hson tags in one original in-memory TS/TSX source. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,
 ): HsonTaggedTemplateDiscoveryResult {
   const empty = (): HsonTaggedTemplateDiscoveryResult => Object.freeze({
     sources: Object.freeze([]),
-    unsupported: Object.freeze([]),
+    interpolated: Object.freeze([]),
   });
   if (typeof fileName !== "string"
     || typeof hostText !== "string"
@@ -184,7 +182,7 @@ export function discover_hson_tagged_templates(
   if (importSymbols.size === 0) return empty();
 
   const sources: EmbeddedHsonSource[] = [];
-  const unsupported: UnsupportedEmbeddedHsonTemplate[] = [];
+  const interpolated: InterpolatedEmbeddedHsonTemplate[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node)
       && ts.isIdentifier(node.tag)
@@ -214,8 +212,7 @@ export function discover_hson_tagged_templates(
           } else {
             const substitutionRanges = readSubstitutionRanges(node.template, hostText, sourceFile);
             if (substitutionRanges !== undefined) {
-              unsupported.push(Object.freeze({
-                reason: "substitutions",
+              interpolated.push(Object.freeze({
                 fileName,
                 hostText,
                 tagRange: validated.tagRange,
@@ -233,6 +230,6 @@ export function discover_hson_tagged_templates(
   visit(sourceFile);
   return Object.freeze({
     sources: Object.freeze(sources),
-    unsupported: Object.freeze(unsupported),
+    interpolated: Object.freeze(interpolated),
   });
 }

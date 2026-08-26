@@ -43,13 +43,9 @@ export async function run(): Promise<void> {
   assert.equal(smoke.uri.scheme, "file");
   assert.equal(smoke.fileName, smokePath);
   await vscode.window.showTextDocument(smoke);
-  const smokeDiagnostics = await diagnosticsFor(smoke.uri, 2);
-  assert.equal(smokeDiagnostics.length, 2);
-  assert.ok(smokeDiagnostics.some((diagnostic) =>
-    diagnostic.code === "HSON_TEMPLATE_SUBSTITUTION_UNSUPPORTED"
-    && smoke.getText(diagnostic.range) === '${"hello"}'));
-  assert.ok(smokeDiagnostics.some((diagnostic) =>
-    diagnostic.code !== "HSON_TEMPLATE_SUBSTITUTION_UNSUPPORTED"
-    && diagnostic.range.start.line >= 8
-    && diagnostic.range.end.line <= 10));
+  const smokeDiagnostics = await diagnosticsFor(smoke.uri, 1);
+  assert.equal(smokeDiagnostics.length, 1);
+  assert.ok(smokeDiagnostics[0]
+    && smokeDiagnostics[0].range.start.line >= 8
+    && smokeDiagnostics[0].range.end.line <= 10);
 }

@@ -1,13 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "HSON in direct hsonString tagged templates",
+  "name": "HSON in direct hson tagged templates",
   "scopeName": "source.hson.template.injection",
   "injectionSelector": "L:source.ts -comment -string, L:source.tsx -comment -string",
   "patterns": [
     {
       "name": "meta.tagged-template.hson",
       "contentName": "meta.embedded.block.hson",
-      "begin": "(?<![A-Za-z0-9_$.])\\b(hsonString)([ \\t]*)(`)",
+      "begin": "(?<![A-Za-z0-9_$.])\\b(hson)([ \\t]*)(`)",
       "beginCaptures": {
         "1": { "name": "support.function.tagged-template.hson" },
         "3": { "name": "punctuation.definition.string.template.begin.ts" }

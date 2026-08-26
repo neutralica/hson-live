@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { hsonTransform } from "../../src/api/transform/index.ts";
-import { hsonString } from "../../src/api/transform/hson-string.ts";
+import { hson } from "../../src/hson.ts";
 import { detach_hson_root_value } from "../../src/api/transform/utils/node-utils/detach-hson-root-value.ts";
 import {
   canonical_hson_graph_difference,
@@ -115,11 +115,11 @@ function runAcceptedAuthored(entry: AcceptedCorpusCase, atomic: AtomicAssertions
   atomic.ok(actual !== undefined, entry.id + ": admission");
   atomic.equal(strictEqual(actual, entry.expectedGraph), true, entry.id + ": strict expected graph");
   atomic.equal(entry.source, before, entry.id + ": input nonmutation");
-  const hson = transform.toHson().serialize();
-  atomic.equal(hson, entry.expectedOutputs.hson, entry.id + ": exact canonical HSON");
-  const reparsed = hsonTransform.fromHson(hson).toNode();
+  const serializedHson = transform.toHson().serialize();
+  atomic.equal(serializedHson, entry.expectedOutputs.hson, entry.id + ": exact canonical HSON");
+  const reparsed = hsonTransform.fromHson(serializedHson).toNode();
   atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": HSON reparse");
-  atomic.equal(hsonString(hson), hson, entry.id + ": canonical HsonString idempotence");
+  atomic.equal(hson(serializedHson), serializedHson, entry.id + ": canonical HsonString idempotence");
   assertNegativeZeroPaths(atomic, entry, actual, "authored HSON admission");
   assertNegativeZeroPaths(atomic, entry, reparsed, "canonical HSON reparse");
 }
