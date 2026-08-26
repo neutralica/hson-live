@@ -1,3 +1,5 @@
+import { HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS } from "./hson-tagged-template-discovery-propositions.js";
+
 export type HsonLiveTestSubject =
   | "Locus"
   | "LiveHost"
@@ -96,7 +98,7 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-tagged-template-discovery",
       repositoryModule: "tests/hson-tagged-template-discovery.acceptance.mts",
       runtime: "node",
-      executableChecks: 17,
+      executableChecks: HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS.length,
       collections: ["hson", "discovery", "tagged-template", "tooling", "externally-discoverable"],
     }),
     launcher({

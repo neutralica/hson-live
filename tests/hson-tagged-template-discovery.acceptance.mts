@@ -10,10 +10,19 @@ import {
 } from "../src/internal/embedded-hson/discover-hson-tagged-templates.ts";
 import { read_embedded_hson_body } from "../src/internal/embedded-hson/embedded-hson-source.ts";
 import { map_transform_error_to_embedded_source } from "../src/internal/embedded-hson/map-transform-error.ts";
+import {
+  HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS,
+  type HsonTaggedTemplateDiscoveryProposition,
+} from "../src/_tests/hson-tagged-template-discovery-propositions.ts";
 
 let checks = 0;
 
-function check(name: string, body: () => void): void {
+function check(name: HsonTaggedTemplateDiscoveryProposition, body: () => void): void {
+  assert.equal(
+    name,
+    HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS[checks],
+    "tagged-template discovery propositions must execute once in canonical inventory order",
+  );
   body();
   checks += 1;
   process.stdout.write(`ok ${checks} - ${name}\n`);
@@ -251,5 +260,11 @@ check("substituted discoveries remain segregated from authoritative HSON parsing
   assert.equal(result.unsupported.length, 1);
   assert.equal(result.unsupported[0]?.reason, "substitutions");
 });
+
+assert.equal(
+  checks,
+  HSON_TAGGED_TEMPLATE_DISCOVERY_PROPOSITIONS.length,
+  "every tagged-template discovery proposition must execute exactly once",
+);
 
 emit_hson_live_test_completion("transform.hson-tagged-template-discovery", checks, checks, 0);
