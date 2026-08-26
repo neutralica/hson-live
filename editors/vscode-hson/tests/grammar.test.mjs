@@ -79,7 +79,7 @@ assert.ok(has(standalone, "[", "punctuation.section.array.begin.hson"));
 assert.ok(has(standalone, "«", "punctuation.section.array.begin.hson"));
 assert.ok(has(standalone, "class", "entity.other.attribute-name.hson"));
 assert.ok(hasScope(standalone, "constant.other.quid.hson"));
-assert.ok(hasScope(standalone, "support.type.internal.reserved-name.hson"));
+assert.ok(hasScope(standalone, "invalid.illegal.reserved-name.hson"));
 assert.ok(has(standalone, "foo//bar", "string.unquoted.attribute-value.hson"));
 assert.ok(!has(standalone, "//bar", "comment.line.double-slash.hson"));
 assert.ok(hasScope(standalone, "invalid.illegal.escape.hson"));

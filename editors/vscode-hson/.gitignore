@@ -3,6 +3,3 @@ node_modules/
 .vscode-test/
 .vscode/
 *.vsix
-
-!dist/
-!dist/**

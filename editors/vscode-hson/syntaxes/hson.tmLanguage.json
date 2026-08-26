@@ -89,7 +89,7 @@
     "reserved-names": {
       "patterns": [
         {
-          "name": "support.type.internal.reserved-name.hson",
+          "name": "invalid.illegal.reserved-name.hson",
           "match": "(?<![A-Za-z0-9:._-])_hson_[A-Za-z0-9:._-]*(?![A-Za-z0-9:._-])"
         }
       ]
