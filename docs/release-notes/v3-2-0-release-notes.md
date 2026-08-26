@@ -25,11 +25,11 @@ truthful and deterministic.
 
 - Preserved canonical HSON QUID syntax as `@<quid>`.
 
-### HSON strings and normalization
+### Canonical HSON and normalization
 
-- Added the Transform-owned `HsonString` branded primitive type.
+- Added the Transform-owned `HsonCanonical` branded primitive type.
 
-- HSON-specific serialization paths now return `HsonString`, including:
+- HSON-specific serialization paths now return `HsonCanonical`, including:
 
   - direct HSON serialization;
   - default readable output;
@@ -40,22 +40,15 @@ truthful and deterministic.
 - Kept HTML, JSON, dynamic-format, transport, persistence, diagnostic, CSS, and
   DOM serialization typed as ordinary `string`.
 
-- Added `hson.transform.string(source)`; textual admission is now canonically
-  exposed through the callable `hson(source)` facade.
-
-- Both string producers parse, normalize, validate, and officially reserialize
-  HSON source before returning `HsonString`.
-
-- `hson.transform.string` and `hson` share the same implementation and function
-  identity.
-
-- Added the callable/taggable root and `hson-live/hson` `hson` export.
+- Added the tagged root and `hson-live/hson` `hson` export. The final pre-epoch
+  surface authors HSON only through `` hson`...` ``; runtime text admission is
+  owned separately by `hson.fromHson(source)`.
 
 - Retained a single trusted brand assertion at the successful official HSON
   serializer boundary.
 
 - Added compile-time tests for format-specific return types, brand provenance,
-  public entrypoints, and rejection of arbitrary strings as `HsonString`.
+  public entrypoints, and rejection of arbitrary strings as `HsonCanonical`.
 
 ### Canonical graph closure
 
@@ -182,7 +175,7 @@ truthful and deterministic.
   QUIDs, unsupported metadata, and metadata placed on ineligible nodes.
 
 - Preserved readable and compact serialization behavior without changing
-  output bytes solely for the introduction of `HsonString`.
+  output bytes solely for the introduction of `HsonCanonical`.
 
 ### Testing and diagnostics
 
@@ -220,11 +213,11 @@ truthful and deterministic.
   projection, Transform API, QUID identity, LiveTree, LiveMap, LiveHost,
   persistence, and lifecycle documentation.
 
-- Documented `HsonString` as a TypeScript-only branded primitive produced by
+- Documented `HsonCanonical` as a TypeScript-only branded primitive produced by
   official HSON serialization.
 
-- Documented that `hson.transform.string()` and `hson()` normalize source spelling
-  and are not security, authentication, or cross-process trust mechanisms.
+- Documented that `HsonCanonical` serialization is not a security,
+  authentication, or cross-process trust mechanism.
 
 - Removed the former implication that the `data-_` prefix belongs to HSON
   system metadata.

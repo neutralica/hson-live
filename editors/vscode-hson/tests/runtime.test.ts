@@ -164,15 +164,15 @@ check("interpolated templates are discovered without speculative diagnostics", (
 
 check("ordinary templates and damaged TypeScript candidates have no HSON diagnostics", () => {
   const ordinary = "const value = `+1`;";
-  const damaged = `${officialImport}\nhsonString\`unterminated`;
-  const optional = `${officialImport}\nhsonString?.\`+1\`;`;
+  const damaged = `${officialImport}\notherTag\`unterminated`;
+  const optional = `${officialImport}\notherTag?.\`+1\`;`;
   assert.deepEqual(diagnose(ordinary, "typescript", "/workspace/a.ts"), []);
   assert.deepEqual(diagnose(damaged, "typescript", "/workspace/b.ts"), []);
   assert.deepEqual(diagnose(optional, "typescript", "/workspace/c.ts"), []);
 });
 
 check("unsupported document kinds and mismatched TS paths fail closed", () => {
-  const source = `${officialImport}\nhsonString\`+1\`;`;
+  const source = `${officialImport}\notherTag\`+1\`;`;
   assert.deepEqual(diagnose(source, "javascript", "/workspace/a.js"), []);
   assert.deepEqual(diagnose(source, "typescript", "/workspace/a.js"), []);
   assert.deepEqual(diagnose(source, "typescriptreact", "/workspace/a.ts"), []);

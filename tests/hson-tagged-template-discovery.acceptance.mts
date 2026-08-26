@@ -28,6 +28,10 @@ function check(name: HsonTaggedTemplateDiscoveryProposition, body: () => void): 
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
+function validateHson(source: string): void {
+  hson.fromHson(source).toNode();
+}
+
 function discover(
   hostText: string,
   fileName = "/workspace/fixture.ts",
@@ -222,7 +226,7 @@ check("LF integration discovers, parses, and maps primary plus related declarati
   const source = result.sources[0];
   assert.ok(source);
   const body = read_embedded_hson_body(source);
-  const error = captureTransformError(() => hson(body));
+  const error = captureTransformError(() => validateHson(body));
   const mapped = map_transform_error_to_embedded_source(error, source);
   assert.equal(mapped.status, "mapped");
   if (mapped.status !== "mapped") return;
@@ -243,7 +247,7 @@ check("CRLF integration maps multiple original-host templates independently", ()
   assert.deepEqual(bodySlices(result), ["+1", "01"]);
   const source = result.sources[1];
   assert.ok(source);
-  const error = captureTransformError(() => hson(read_embedded_hson_body(source)));
+  const error = captureTransformError(() => validateHson(read_embedded_hson_body(source)));
   const mapped = map_transform_error_to_embedded_source(error, source);
   assert.equal(mapped.status, "mapped");
   if (mapped.status === "mapped") {

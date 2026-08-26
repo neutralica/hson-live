@@ -22,6 +22,10 @@ import type {
 } from "./corpus-types.mts";
 import { obj, property, val } from "./graph-expectations.mts";
 
+function canonicalize(source: string): string {
+  return hson.fromHson(source).toHson().serialize();
+}
+
 class AtomicAssertions {
   count = 0;
 
@@ -119,7 +123,7 @@ function runAcceptedAuthored(entry: AcceptedCorpusCase, atomic: AtomicAssertions
   atomic.equal(serializedHson, entry.expectedOutputs.hson, entry.id + ": exact canonical HSON");
   const reparsed = hsonTransform.fromHson(serializedHson).toNode();
   atomic.equal(strictEqual(reparsed, entry.expectedGraph), true, entry.id + ": HSON reparse");
-  atomic.equal(hson(serializedHson), serializedHson, entry.id + ": canonical HsonString idempotence");
+  atomic.equal(canonicalize(serializedHson), serializedHson, entry.id + ": canonical HsonCanonical idempotence");
   assertNegativeZeroPaths(atomic, entry, actual, "authored HSON admission");
   assertNegativeZeroPaths(atomic, entry, reparsed, "canonical HSON reparse");
 }

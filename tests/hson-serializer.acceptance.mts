@@ -38,6 +38,10 @@ function parse(source: string): HsonNode {
   return hson.fromHson(source).toNode();
 }
 
+function canonicalize(source: string): string {
+  return hson.fromHson(source).toHson().serialize();
+}
+
 function readable(node: HsonNode): string {
   return hson.fromNode(node).toHson().serialize();
 }
@@ -149,25 +153,24 @@ check("official HSON serialization remains an exact primitive string", () => {
   assert.deepEqual(parse(fluent), node);
 });
 
-check("hson.transform.string returns canonical valid HSON as a primitive string", () => {
-  const normalized = hson.transform.string(`<panel "ready"/>`);
-  const named = hson(`<panel "ready"/>`);
-  assert.equal(hson.transform.string, hson);
+check("canonicalize returns canonical valid HSON as a primitive string", () => {
+  const normalized = canonicalize(`<panel "ready"/>`);
+  const named = canonicalize(`<panel "ready"/>`);
   assert.equal(typeof normalized, "string");
   assert.equal(normalized, `<panel "ready"/>`);
   assert.equal(named, normalized);
 });
 
-check("hson.transform.string normalizes irregular and compact source to default readable output", () => {
-  assert.equal(hson.transform.string(`<tag count=2/>`), `<tag count="2"/>`);
+check("canonicalize normalizes irregular and compact source to default readable output", () => {
+  assert.equal(canonicalize(`<tag count=2/>`), `<tag count="2"/>`);
   assert.equal(
-    hson.transform.string(`<p "first"<em "middle"/>"last"/>`),
+    canonicalize(`<p "first"<em "middle"/>"last"/>`),
     `<p\n  "first"\n  <em "middle"/>\n  "last"\n/>`,
   );
 });
 
-check("hson.transform.string preserves canonical QUID metadata through default serialization", () => {
-  const normalized = hson.transform.string(
+check("canonicalize preserves canonical QUID metadata through default serialization", () => {
+  const normalized = canonicalize(
     `<panel class="x" @d1r6x8qwc hidden "Content"/>`,
   );
   assert.equal(
@@ -177,20 +180,20 @@ check("hson.transform.string preserves canonical QUID metadata through default s
   assert.equal(onlyElement(parse(normalized)).$_meta?.["quid"], "d1r6x8qwc");
 });
 
-check("hson.transform.string preserves negative zero and empty element/object modes", () => {
-  const negativeZero = hson.transform.string(`<value -0>`);
+check("canonicalize preserves negative zero and empty element/object modes", () => {
+  const negativeZero = canonicalize(`<value -0>`);
   const negativeZeroNode = parse(negativeZero);
   const negativeZeroLeaf = (((negativeZeroNode.$_content[0] as HsonNode)
     .$_content[0] as HsonNode).$_content[0] as HsonNode);
   assert.equal(negativeZero, `<value -0>`);
   assert.equal(Object.is(negativeZeroLeaf.$_content[0], -0), true);
-  assert.equal(hson.transform.string(`<tag/>`), `<tag/>`);
-  assert.equal(hson.transform.string(`<>`), `<>`);
+  assert.equal(canonicalize(`<tag/>`), `<tag/>`);
+  assert.equal(canonicalize(`<>`), `<>`);
 });
 
 check("authored exponent alternatives canonicalize while invalid signs and zeroes never normalize", () => {
   assert.deepEqual(
-    ["1E3", "1e+3", "1e-3", "-0"].map(hson.transform.string),
+    ["1E3", "1e+3", "1e-3", "-0"].map(canonicalize),
     ["1000", "1000", "0.001", "-0"],
   );
   for (const [source, code] of [
@@ -198,28 +201,28 @@ check("authored exponent alternatives canonicalize while invalid signs and zeroe
     ["+1", "HSON_NUMBER_LEADING_PLUS"],
   ] as const) {
     assert.throws(
-      () => hson.transform.string(source),
+      () => canonicalize(source),
       (cause) => cause instanceof TransformError && cause.code === code,
     );
   }
 });
 
-check("hson.transform.string is idempotent and reparses to the first canonical graph", () => {
+check("canonicalize is idempotent and reparses to the first canonical graph", () => {
   const source = `<p id="x" "first"<em "middle"/>"last"/>`;
   const firstGraph = parse(source);
-  const normalized = hson.transform.string(source);
-  assert.equal(hson.transform.string(normalized), normalized);
+  const normalized = canonicalize(source);
+  assert.equal(canonicalize(normalized), normalized);
   assert.equal(canonical_hson_graph_equal(parse(normalized), firstGraph), true);
 });
 
-check("hson.transform.string retains existing syntax, name, metadata, and number rejection", () => {
-  assert.throws(() => hson.transform.string(`<tag "unterminated/>`), /unterminated/i);
-  assert.throws(() => hson.transform.string(`<tag bad^name="x"/>`), /unexpected (?:character|token)|invalid/i);
+check("canonicalize retains existing syntax, name, metadata, and number rejection", () => {
+  assert.throws(() => canonicalize(`<tag "unterminated/>`), /unterminated/i);
+  assert.throws(() => canonicalize(`<tag bad^name="x"/>`), /unexpected (?:character|token)|invalid/i);
   assert.throws(
-    () => hson.transform.string(`<_hson_obj @000000000>`),
+    () => canonicalize(`<_hson_obj @000000000>`),
     /persisted QUID|metadata|_hson_obj/i,
   );
-  assert.throws(() => hson.transform.string(`<value NaN>`), /invariant|number|NaN/i);
+  assert.throws(() => canonicalize(`<value NaN>`), /invariant|number|NaN/i);
 });
 
 check("@quid parses into metadata and serializes immediately after the tag", () => {

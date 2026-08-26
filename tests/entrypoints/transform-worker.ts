@@ -4,7 +4,7 @@ import {
   verify_universal_circuit,
   type UniversalCircuitVerificationResult,
 } from "hson-live/diagnostics/universal-circuit";
-import { hsonCalc, hsonNumber, type HsonNumber } from "hson-live/number";
+import { hsonCalc, type HsonNumber } from "hson-live/number";
 import { hsonLocus } from "hson-live/locus";
 import { assertCanonicalClosure } from "hson-live/diagnostics/transform-test-oracle";
 
@@ -29,6 +29,6 @@ void hsonTransform.fromNode({
 }).toJson().value();
 void hsonTransform.fromTrustedHtml(`<worker ready></worker>`).toNode();
 void hsonTransform.fromUntrustedHtml(`<worker ready onclick="bad()"></worker>`).toNode();
-const workerNumber: HsonNumber = hsonNumber(-0);
+const workerNumber: HsonNumber = hsonCalc(-0);
 const workerCalculation: HsonNumber = hsonCalc(() => workerNumber);
 void workerCalculation;

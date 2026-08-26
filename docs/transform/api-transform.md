@@ -16,49 +16,50 @@ hson.fromHson(input)
 hson.fromNode(node)             // accepts HsonNodes (in JSON)
 ```
 
-`hson.transform` exposes validation helpers for HsonNumber and HsonString admission..
+`hson.transform` exposes synchronous numeric admission through `calc`.
 
 ```ts
-hson.transform.string(source): HsonString                
-hson.transform.number(candidate): HsonNumber
-hson.transform.calc(() => calculation()): HsonNumber
+hson.transform.calc(number): HsonNumber
+hson.transform.calc(() => number): HsonNumber
 ```
 
-Numeric admission is also available through the named exports `hsonNumber` and `hsonCalc`. Textual HSON admission uses the callable `hson` facade.
+The same numeric operation is exported as `hsonCalc`. Runtime authored-HSON text is admitted by `fromHson`.
 
 Every constructor method parses and normalizes input to HSON's canonical node graph.
 
-## HsonString
+## HsonCanonical
 
-`hson(source)` validates and canonicalizes existing authored HSON source text.
-
-`` hson`...` `` authors HSON inline. Literal template segments are HSON source;
+`` hson`...` `` authors canonical HSON inline. Literal template segments are HSON source;
 primitive substitutions are encoded according to their JavaScript types before
 the completed HSON is validated and canonicalized.
 
 ```ts
 import { hson } from "hson-live";
-import type { HsonString } from "hson-live/transform";
+import type { HsonCanonical } from "hson-live/transform";
 
-const normalized: HsonString = hson(
-  `<p "first"<em "middle"/>"last"/>`,
-);
-
-const tagged: HsonString = hson`
+const authored: HsonCanonical = hson`
   <p "first"<em "middle"/>"last"/>
 `;
 ```
 
-The ordinary callable form accepts `string` only. It does not accept JavaScript
-primitive values directly: typed primitive admission belongs exclusively to
-tagged-template substitutions.
+The public visual grammar is deliberately small:
+
+```text
+hson`...`    author canonical HSON
+hson.*       access hson-live subsystems
+hson(...)    unsupported
+```
+
+Literal source and interpolated JavaScript data remain distinct:
 
 ```ts
-const numberSource = hson("37");
-const stringSource = hson('"37"');
+hson`37`          // authored HSON number
+hson`"37"`        // authored HSON string
+hson`<foo/>`      // authored HSON element
 
-const numberValue = hson`${37}`;
-const stringValue = hson`${"37"}`;
+hson`${37}`       // JavaScript number -> HSON number
+hson`${"37"}`     // JavaScript string -> HSON string
+hson`${true}`     // JavaScript boolean -> HSON boolean
 ```
 
 The supported substitution values are primitive JavaScript `string`, `number`,
@@ -67,76 +68,60 @@ retain the numeric policy (including `-0`); booleans and null become their HSON
 literals. Arrays, objects, nodes, functions, `undefined`, bigint, and symbols
 reject rather than stringify or splice source.
 
-```ts
-hson`${37}`       === hson("37")
-hson`${true}`     === hson("true")
-hson`${null}`     === hson("null")
-
-hson`${"37"}`     === hson('"37"')
-hson`${"true"}`   === hson('"true"')
-```
-
-JavaScript ordinary and tagged templates deliberately differ:
-
-```ts
-hson(`${"37"}`)   // HSON number 37
-hson`${"37"}`     // HSON string "37"
-```
-
-In the first form JavaScript constructs the ordinary argument string `37`
-before calling `hson`. In the second, the tag receives the original JavaScript
-string value and encodes it as HSON string data. There is no parse-success
-fallback and no structural/source interpolation.
+There is no parse-success fallback and no structural/source interpolation.
 
 Raw template segments keep HSON in charge of escapes. The complete reconstructed
 source passes through the same parser, exact root detachment, canonical graph
-admission, default serializer, and `HsonString` branding path as `hson(source)`.
+admission, default serializer, and `HsonCanonical` branding path.
 
 Runtime `TemplateStringsArray.raw` must not be treated as a byte-for-byte copy of the host file. In particular, JavaScript normalizes physical CRLF template line terminators to LF. Static diagnostics that need original-file offsets must map against the original host source text rather than this runtime string.
 
-The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default HSON options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonString` brand only after successful serialization.
+The returned spelling may differ from the source because the method reparses the source into canonical `HsonNode` state and serializes that graph with the default HSON options. It does not preserve original formatting, whitespace, line breaks, quoting, shorthand, comments, or other source-level spelling. Invalid input throws the existing parser, normalization, or invariant error. Internally the function parses one `_hson_root`, detaches its exact one semantic child, serializes that non-root node, and applies the `HsonCanonical` brand only after successful serialization.
 
-The return is a HsonString, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage. A receiver should treat external text as `string`; internally it may pass that text through `hson()` again to return a branded, normalized value within that runtime.
+The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does not imply sanitization, authentication, or trust. The compile-time brand is lost across untyped transport or storage.
 
-`hson.transform.string()` always parses and reserializes to canonical syntax and whitespace, including when its argument is already an `HsonString`. It offers no formatting options and uses default serializer behavior, including QUID preservation.
+Runtime text containing arbitrary authored HSON is a separate operation:
 
-`hson.transform.string` and `hsonTransform.string` remain ordinary source-only
-Transform leaves. They share the callable `hson` implementation at runtime but
-do not expose the tagged overload in their Transform facade types.
+```ts
+const source: string = getTextAtRuntime();
+const canonical: HsonCanonical = hson
+  .fromHson(source)
+  .toHson()
+  .serialize();
+```
+
+Use `.toNode()` when validation is needed without serialized output. `fromHson`
+truthfully owns runtime source admission; interpolation would encode `source` as
+HSON string data.
 
 HSON string values use double quotes. Single quotes delimit authored HSON names;
 they are not an alternate string-value spelling. JavaScript double quotes,
-single quotes, and backticks around an ordinary `hson(source)` argument are only
-host-language delimiters and do not change the HSON source text received.
-
-Naming follow-up: `HsonString` brands canonical serialized HSON text, while
-`HsonNumber` brands an admitted primitive number. These names use different
-semantic axes; a later public-surface audit may consider `HsonText`, primitive
-organization, and `HsonNumber` placement. This migration does not rename either.
+single quotes delimit authored names rather than string values.
 
 ---
 
 ## Numeric admission
 
-`hson.transform.number(candidate)` and the equivalent named export `hsonNumber(candidate)` admit unknown values to HSON's numeric domain. They require a primitive, finite JavaScript number, perform no coercion, preserve negative zero, and return `HsonNumber`:
+`hson.transform.calc(value)` and the equivalent named export `hsonCalc(value)`
+admit either an already-computed number or one synchronous calculation. Both
+paths require a primitive finite number, perform no coercion, preserve negative
+zero, and return `HsonNumber`:
 
 ```ts
 import { hson } from "hson-live";
-import { hsonNumber, type HsonNumber } from "hson-live/number";
+import { hsonCalc, type HsonNumber } from "hson-live/number";
 
-const count: HsonNumber = hsonNumber(42);
-const negativeZero: HsonNumber = hson.transform.number(-0);
+const count: HsonNumber = hsonCalc(42);
+const negativeZero: HsonNumber = hson.transform.calc(-0);
+const total: HsonNumber = hsonCalc(() => 6 * 7);
 ```
 
 `HsonNumber` is compile-time proof of completed universal numeric admission. At runtime it is an ordinary JavaScript number with no wrapper or brand metadata. It does not prove mathematical correctness, integer status, positivity, or a schema-specific range. Serialization and transport carry an ordinary number and erase the proof; decoded data must pass through numeric admission again.
 
-`hson.transform.calc(calculate)` and the equivalent named export `hsonCalc(calculate)` execute one synchronous callback exactly once and pass only its returned result through `hsonNumber`. They do not validate intermediate arithmetic or claim that a calculation is correct. Callback failures propagate unchanged. A Promise result is not awaited and is rejected as an object rather than a number.
-
-```ts
-import { hsonCalc, type HsonNumber } from "hson-live/number";
-
-const total: HsonNumber = hsonCalc(() => 6 * 7);
-```
+The callback form executes exactly once with no arguments. Callback failures
+propagate unchanged. A Promise result is not awaited and is rejected as a
+non-number. `calc` validates the result; it does not claim mathematical or
+schema-specific correctness.
 
 Use `hson-live/number` when dependency weight matters. That entrypoint reaches only the numeric leaf implementation and portable structured-error support; it does not import the full `hson` or Transform facades. The root and Transform barrels also re-export the same function objects for namespace and established entrypoint parity.
 
@@ -258,7 +243,7 @@ The raw HsonNode data type is also represented in JSON. Serialized keys beginnin
 
 Selects HSON output.
 
-- `serialize()` returns `HsonString`, a primitive HSON string.
+- `serialize()` returns `HsonCanonical`, a primitive HSON string.
 - Use the source constructor's `.toNode()` terminal for the canonical graph.
 - HSON text is produced lazily by `serialize()`, after HSON options have been   accumulated. The source graph is not cloned or mutated.
 - Every admitted HSON-serializable semantic value is emitted without literal structural   VSN names, raw metadata containers, or array-index metadata. Parsing that   output, detaching the parser root, and comparing canonically reconstructs the   original graph. Object-member metadata is outside this domain and rejects.   `noQuid()` applies the same rule after removing only eligible element QUID   metadata from the expected projection; it cannot legalize object metadata.
@@ -267,15 +252,15 @@ Selects HSON output.
 - Direct or fluent HSON serialization of any caller-supplied `_hson_root`   rejects before layout and QUID options. Parser-owned JSON/HTML roots and the   HSON parser root are explicitly detached by their source pipeline first.
 - `fromNode()` treats its input as a detached semantic value. Redundant detached   scalar `_hson_obj`/`_hson_elem` carriers normalize to their scalar before   output, while owned object-member carriers, element text clusters, and arrays   remain intact. Direct serialization rejects a detached carrier that bypassed   admission.
 
-### `HsonString`
+### `HsonCanonical`
 
-`HsonString` is a TypeScript-only branded primitive string returned by official HSON serialization APIs. Import it as a type from `hson-live/transform`.
+`HsonCanonical` is a TypeScript-only branded primitive string returned by official HSON serialization APIs. Import it as a type from `hson-live/transform`.
 
-It is assignable to `string`, but an arbitrary `string` is not assignable to `HsonString`. The brand records compile-time producer provenance only: it adds no runtime marker, wrapper, prefix, property, or other change to the serialized text. It is not a security, trust, validation-token, sanitization, authentication, or cryptographic guarantee.
+It is assignable to `string`, but an arbitrary `string` is not assignable to `HsonCanonical`. The brand records compile-time producer provenance only: it adds no runtime marker, wrapper, prefix, property, or other change to the serialized text. It is not a security, trust, validation-token, sanitization, authentication, or cryptographic guarantee.
 
 Transport and persistence boundaries such as HTTP, WebSocket, JSON, storage, environment variables, process boundaries, and third-party APIs typed as plain strings normally erase the brand. Receivers accept transported HSON text as an ordinary `string` and parse it normally. Parsing arbitrary text produces canonical `HsonNode` graph state after success; it does not brand the input text.
 
-Readable, compact (`noBreak`), and `noQuid` HSON serialization all return `HsonString`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable HSON-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonString`.
+Readable, compact (`noBreak`), and `noQuid` HSON serialization all return `HsonCanonical`. The type does not imply that those options produce identical bytes, preserve source spelling, whitespace, quoting, comments, or formatting, or preserve JavaScript object identity for shared references. Graph carriers outside the serializable HSON-text domain, including every empty or populated `_hson_root`, remain rejected and therefore do not produce an `HsonCanonical`.
 
 ### `.sanitizeBEWARE()`
 
@@ -349,7 +334,7 @@ Returns a string for the chosen output:
 
 - after `.toHtml()` - HTML string
 - after `.toJson()` - JSON string
-- after `.toHson()` - `HsonString`
+- after `.toHson()` - `HsonCanonical`
 
 ### `.value()`
 

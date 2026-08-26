@@ -1,7 +1,6 @@
 import {
   hson,
   hsonCalc,
-  hsonNumber,
   type HsonNumber,
 } from "hson-live";
 import {
@@ -9,7 +8,7 @@ import {
   hsonTransform as transformSubpath,
   is_transform_error,
   read_transform_error_details,
-  type HsonString,
+  type HsonCanonical,
   type HsonNumber as TransformHsonNumber,
   type BinaryDecodeOptions,
   type TransformErrorDetails,
@@ -25,12 +24,6 @@ import {
   hson as hsonSubpath,
   hsonTransform as hsonSubpathTransform,
 } from "hson-live/hson";
-// @ts-expect-error The retired top-level admission name is not exported.
-import { hsonString as removedRootHsonString } from "hson-live";
-// @ts-expect-error Transform retains .string but has no top-level hsonString export.
-import { hsonString as removedTransformHsonString } from "hson-live/transform";
-// @ts-expect-error The hson subpath exports the callable hson name only.
-import { hsonString as removedHsonSubpathString } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
 // @ts-expect-error Canonical-node debug handles are no longer public types.
 type RemovedLiveMapDebugApi = import("hson-live/types").LiveMapDebugApi;
@@ -40,17 +33,18 @@ type RemovedLiveMapNodeHandle = import("hson-live/livemap").LiveMapNodeHandle;
 type PrivateInternalLiveMapRoot = typeof import("hson-live/livemap").internal_livemap_root;
 import {
   hsonCalc as narrowHsonCalc,
-  hsonNumber as narrowHsonNumber,
   type HsonNumber as NarrowHsonNumber,
 } from "hson-live/number";
-// @ts-expect-error string is a Transform namespace method, not a bare package export.
-import { string as bareHsonString } from "hson-live";
+// @ts-expect-error Direct numeric admission was consolidated under hsonCalc.
+import { hsonNumber as removedRootHsonNumber } from "hson-live";
+// @ts-expect-error The numeric subpath exposes hsonCalc only.
+import { hsonNumber as removedNarrowHsonNumber } from "hson-live/number";
 // @ts-expect-error The private brand symbol is not a Transform export.
-import type { HSON_STRING_BRAND } from "hson-live/transform";
+import type { HSON_CANONICAL_BRAND } from "hson-live/transform";
 // @ts-expect-error The private number brand symbol is not exported.
 import type { HSON_NUMBER_BRAND } from "hson-live/transform";
-// @ts-expect-error HsonString is intentionally not exported from the package root.
-import type { HsonString as RootHsonString } from "hson-live";
+// @ts-expect-error HsonCanonical is intentionally not exported from the package root.
+import type { HsonCanonical as RootHsonCanonical } from "hson-live";
 import {
   ContentManager,
   LIVETREE_LINKED_IDENTITY_REQUIRED_ERROR_CODE,
@@ -248,7 +242,6 @@ void make_livemap_core;
 void get_livemap_quid;
 void ensure_livemap_quid;
 void construct_tree;
-void bareHsonString;
 void (0 as unknown as LiveMapDocumentSchema);
 
 // @ts-expect-error The separate document authoring namespace was hard-removed.
@@ -761,21 +754,24 @@ declare const genericSerializer: TransformSerialize;
 declare const binaryDecodeOptions: BinaryDecodeOptions;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
-const inferredNormalizedHson = hson.transform.string(arbitrary);
-const inferredNamedHson = hson(arbitrary);
-const inferredRootTaggedHson: HsonString = hson`<main/>`;
-const inferredHsonSubpathTaggedHson: HsonString = hsonSubpath`<main/>`;
-const inferredTaggedNumber: HsonString = hson`${37}`;
-const inferredTaggedString: HsonString = hson`${"37"}`;
-const inferredTaggedBoolean: HsonString = hson`${true}`;
-const inferredTaggedNull: HsonString = hson`${null}`;
-// @ts-expect-error Ordinary callable admission accepts source strings only.
+const inferredNormalizedHson = hson.transform.fromHson(arbitrary).toHson().serialize();
+const inferredRootTaggedHson: HsonCanonical = hson`<main/>`;
+const inferredHsonSubpathTaggedHson: HsonCanonical = hsonSubpath`<main/>`;
+const inferredTaggedNumber: HsonCanonical = hson`${37}`;
+const inferredTaggedString: HsonCanonical = hson`${"37"}`;
+const inferredTaggedBoolean: HsonCanonical = hson`${true}`;
+const inferredTaggedNull: HsonCanonical = hson`${null}`;
+// @ts-expect-error Ordinary source-string calls are unsupported.
+hson("<foo/>");
+// @ts-expect-error Ordinary source-string calls are unsupported.
+hson("37");
+// @ts-expect-error Ordinary calls are unsupported.
 hson(37);
-// @ts-expect-error Ordinary callable admission accepts source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson(true);
-// @ts-expect-error Ordinary callable admission accepts source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson(null);
-// @ts-expect-error Ordinary callable admission accepts source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
 hson`${undefined}`;
@@ -789,14 +785,14 @@ hson`${{}}`;
 hson`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
 hson`${() => {}}`;
-// @ts-expect-error Tagged admission is not part of the root Transform facade API.
-hson.transform.string`<main/>`;
-// @ts-expect-error Tagged admission is not part of the Transform subpath facade API.
-transformSubpath.string`<main/>`;
-// @ts-expect-error Tagged admission is not part of the hson subpath facade API.
-hsonSubpath.transform.string`<main/>`;
-// @ts-expect-error Tagged admission is not part of the named Transform facade API.
-hsonSubpathTransform.string`<main/>`;
+// @ts-expect-error Transform textual admission has no .string surface.
+hson.transform.string;
+// @ts-expect-error Transform textual admission has no .string surface.
+transformSubpath.string;
+// @ts-expect-error Transform textual admission has no .string surface.
+hsonSubpathTransform.string;
+// @ts-expect-error HSON finalizers serialize; they do not stringify.
+transformSubpath.fromNode(node).toHson().string();
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
 const inferredJsonText = transformSubpath.fromNode(node).toJson().serialize();
 const inferredHsonHash: Promise<string> = transformSubpath.fromNode(node).toHson().sha256();
@@ -814,25 +810,23 @@ transformSubpath.fromBinary(inferredBinaryBytes, { maxBytes: "1" });
 const inferredDynamicHash: Promise<string> = genericSerializer.sha256();
 // @ts-expect-error Canonical graph terminals do not represent emitted bytes.
 transformSubpath.fromNode(node).toNode().sha256();
-const hsonText: HsonString = inferredHsonText;
-const normalizedHson: HsonString = inferredNormalizedHson;
-const namedNormalizedHson: HsonString = inferredNamedHson;
-const repeatedNormalizedHson: HsonString = hson.transform.string(normalizedHson);
-const repeatedNamedNormalizedHson: HsonString = hson(namedNormalizedHson);
-const readableHson: HsonString = transformSubpath.fromNode(node).toHson().serialize();
-const compactHson: HsonString =
+const hsonText: HsonCanonical = inferredHsonText;
+const normalizedHson: HsonCanonical = inferredNormalizedHson;
+const repeatedNormalizedHson: HsonCanonical = hson.fromHson(normalizedHson).toHson().serialize();
+const readableHson: HsonCanonical = transformSubpath.fromNode(node).toHson().serialize();
+const compactHson: HsonCanonical =
   transformSubpath.fromNode(node).toHson().noBreak().serialize();
-const noQuidHson: HsonString =
+const noQuidHson: HsonCanonical =
   transformSubpath.fromNode(node).toHson().noQuid().serialize();
 const ordinaryText: string = hsonText;
-const inferredNamespaceNumber = hson.transform.number(arbitraryNumber);
-const inferredNamedNumber = hsonNumber(arbitraryNumber);
+const inferredNamespaceNumber = hson.transform.calc(arbitraryNumber);
+const inferredNamedNumber = hsonCalc(arbitraryNumber);
 const inferredNamespaceCalc = hson.transform.calc(() => arbitraryNumber);
 const inferredNamedCalc = hsonCalc(() => arbitraryNumber);
 const admittedNumber: HsonNumber = inferredNamedNumber;
 const transformAdmittedNumber: TransformHsonNumber = admittedNumber;
 const ordinaryNumber: number = admittedNumber;
-const repeatedAdmittedNumber: HsonNumber = hsonNumber(admittedNumber);
+const repeatedAdmittedNumber: HsonNumber = hsonCalc(admittedNumber);
 const admittedSemanticNumber: HsonSemanticPrimitive = admittedNumber;
 void inferredHsonHash;
 void inferredHtmlHash;
@@ -842,7 +836,7 @@ void inferredDynamicHash;
 
 // @ts-expect-error Admitted semantic numeric positions require HsonNumber proof.
 const invalidSemanticNumber: HsonSemanticPrimitive = arbitraryNumber;
-const narrowAdmittedNumber: NarrowHsonNumber = narrowHsonNumber(arbitraryNumber);
+const narrowAdmittedNumber: NarrowHsonNumber = narrowHsonCalc(arbitraryNumber);
 const narrowCalculatedNumber: NarrowHsonNumber = narrowHsonCalc(() => arbitraryNumber);
 const candidateNode: HsonNode = { $_tag: "_hson_val", $_content: [arbitraryNumber] };
 hson.fromJson(arbitraryNumber);
@@ -857,33 +851,24 @@ const invalidOperationalNumber: HsonNumber = operationalCommit.rev;
 const invalidAdmittedNumber: HsonNumber = arbitraryNumber;
 
 // @ts-expect-error Ordinary strings are not official HSON serializer output.
-const invalidHson: HsonString = arbitrary;
+const invalidHson: HsonCanonical = arbitrary;
 // @ts-expect-error HTML output remains a plain string.
-const invalidHtmlHson: HsonString = inferredHtmlText;
+const invalidHtmlHson: HsonCanonical = inferredHtmlText;
 // @ts-expect-error JSON output remains a plain string.
-const invalidJsonHson: HsonString = inferredJsonText;
+const invalidJsonHson: HsonCanonical = inferredJsonText;
 
 transformSubpath.fromHson(arbitrary).toNode();
 transformSubpath.fromHson(hsonText).toNode();
 
-type HsonFinalizerReturnsHsonString = Expect<
-  Equal<typeof inferredHsonText, HsonString>
+type HsonFinalizerReturnsHsonCanonical = Expect<
+  Equal<typeof inferredHsonText, HsonCanonical>
 >;
-type HsonStringMethodReturnsHsonString = Expect<
-  Equal<typeof inferredNormalizedHson, HsonString>
->;
-type HsonStringMethodAcceptsString = Expect<
-  Equal<Parameters<typeof hson.transform.string>[0], string>
->;
-type NamedHsonStringReturnsHsonString = Expect<
-  Equal<typeof inferredNamedHson, HsonString>
->;
-type NamedHsonStringAcceptsString = Expect<
-  Equal<Parameters<typeof hson.transform.string>[0], string>
+type HsonCanonicalMethodReturnsHsonCanonical = Expect<
+  Equal<typeof inferredNormalizedHson, HsonCanonical>
 >;
 type RootHasNoUnsafeHsonConstructor = Expect<
   Equal<
-    "asHsonString" | "brandHson" | "unsafeHsonString" extends keyof typeof hson
+    "asHsonCanonical" | "brandHson" | "unsafeHsonCanonical" extends keyof typeof hson
       ? true
       : false,
     false
@@ -891,6 +876,9 @@ type RootHasNoUnsafeHsonConstructor = Expect<
 >;
 type RootHasNoTransformAdmissionMethods = Expect<
   Equal<Extract<"string" | "number" | "calc", keyof typeof hson>, never>
+>;
+type TransformHasNoNumberMethod = Expect<
+  Equal<Extract<"number", keyof typeof hson.transform>, never>
 >;
 type HtmlFinalizerReturnsString = Expect<
   Equal<typeof inferredHtmlText, string>
@@ -917,10 +905,10 @@ type NamedCalcReturnsHsonNumber = Expect<
   Equal<typeof inferredNamedCalc, HsonNumber>
 >;
 type NumberCandidateIsWelcoming = Expect<
-  Equal<Parameters<typeof hson.transform.number>[0], unknown>
+  Equal<Parameters<typeof hson.transform.calc>[0], number | (() => number)>
 >;
 type CalcCallbackIsFriendly = Expect<
-  Equal<Parameters<typeof hsonCalc>[0], () => unknown>
+  Equal<Parameters<typeof hsonCalc>[0], number | (() => number)>
 >;
 
 void readableHson;
@@ -940,12 +928,13 @@ void invalidAdmittedNumber;
 void repeatedNormalizedHson;
 void inferredRootTaggedHson;
 void inferredHsonSubpathTaggedHson;
-void repeatedNamedNormalizedHson;
 void invalidHson;
 void invalidHtmlHson;
 void invalidJsonHson;
-declare const rootHsonString: RootHsonString;
-void rootHsonString;
+void removedRootHsonNumber;
+void removedNarrowHsonNumber;
+declare const rootHsonCanonical: RootHsonCanonical;
+void rootHsonCanonical;
 
 type PublicTypes = LiveTreeLifecycleResult | LiveMapCommit | LiveMapPathHandle | LiveMapDocumentIdentityHandle;
 declare const publicTypes: PublicTypes;

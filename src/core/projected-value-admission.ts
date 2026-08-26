@@ -1,4 +1,4 @@
-import { hsonNumber } from "./hson-number.js";
+import { admit_hson_number } from "./hson-number.js";
 import {
   ordered_projected_array,
   ordered_projected_object,
@@ -62,7 +62,7 @@ export function admit_projected_value(
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
     if (typeof value === "number") {
       try {
-        return hsonNumber(value);
+        return admit_hson_number(value);
       } catch (cause) {
         throw new ProjectedValueAdmissionError(
           "NONFINITE_NUMBER",

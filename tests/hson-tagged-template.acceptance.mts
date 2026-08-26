@@ -25,49 +25,52 @@ function captureTransformError(body: () => unknown): TransformError {
   return observed;
 }
 
+function canonicalize(source: string): string {
+  return hson.fromHson(source).toHson().serialize();
+}
+
 check("ordinary JavaScript delimiters admit identical HSON source", () => {
-  assert.equal(hson("37"), "37");
-  assert.equal(hson('37'), hson("37"));
-  assert.equal(hson(`37`), hson("37"));
+  assert.equal(canonicalize("37"), "37");
+  assert.equal(canonicalize('37'), canonicalize("37"));
+  assert.equal(canonicalize(`37`), canonicalize("37"));
 });
 
 check("ordinary source admission preserves primitive and structural roots", () => {
-  assert.equal(hson("true"), "true");
-  assert.equal(hson("false"), "false");
-  assert.equal(hson("null"), "null");
-  assert.equal(hson('"hello"'), '"hello"');
-  assert.equal(hson("<foo/>"), "<foo/>");
+  assert.equal(canonicalize("true"), "true");
+  assert.equal(canonicalize("false"), "false");
+  assert.equal(canonicalize("null"), "null");
+  assert.equal(canonicalize('"hello"'), '"hello"');
+  assert.equal(canonicalize("<foo/>"), "<foo/>");
 });
 
 check("ordinary bare strings and single-quoted values remain invalid HSON source", () => {
-  assert.throws(() => hson("hello"), /unexpected bare token/);
-  assert.throws(() => hson("'single quotes wrong'"), /use double quotes only/);
+  assert.throws(() => canonicalize("hello"), /unexpected bare token/);
+  assert.throws(() => canonicalize("'single quotes wrong'"), /use double quotes only/);
 });
 
-check("ordinary callable admission rejects direct primitive values", () => {
-  for (const value of [37, true, null, {}]) {
+check("ordinary calls reject strings and primitive values defensively", () => {
+  for (const value of ["37", "<foo/>", 37, true, null, {}]) {
     const error = captureTransformError(() => (hson as any)(value));
     assert.equal(error.operation, "hson");
-    assert.equal(error.code, "HSON_SOURCE_TYPE_REQUIRED");
-    assert.equal(error.stage, "source-admission");
+    assert.equal(error.code, "HSON_TAGGED_TEMPLATE_REQUIRED");
+    assert.equal(error.stage, "template-admission");
   }
 });
 
-check("callable facade retains transform identity and subsystem properties", () => {
+check("tag facade retains subsystem properties without Transform source aliases", () => {
   assert.equal(hson.transform, hsonTransform);
-  assert.equal(hson.transform.string, hson);
-  assert.equal(hsonTransform.string, hson);
+  assert.equal("string" in hson.transform, false);
   assert.equal(typeof hson.liveMap, "object");
   assert.equal(typeof hson.liveTree, "object");
   assert.equal(typeof hson.locus, "object");
 });
 
 check("number interpolation matches number source", () => {
-  assert.equal(hson`${37}`, hson("37"));
+  assert.equal(hson`${37}`, canonicalize("37"));
 });
 
 check("negative-zero interpolation preserves its canonical spelling", () => {
-  assert.equal(hson`${-0}`, hson("-0"));
+  assert.equal(hson`${-0}`, canonicalize("-0"));
   assert.equal(hson`${-0}`, "-0");
 });
 
@@ -79,18 +82,18 @@ check("non-finite interpolated numbers use authoritative numeric admission", () 
 });
 
 check("boolean interpolation matches boolean source", () => {
-  assert.equal(hson`${true}`, hson("true"));
-  assert.equal(hson`${false}`, hson("false"));
+  assert.equal(hson`${true}`, canonicalize("true"));
+  assert.equal(hson`${false}`, canonicalize("false"));
 });
 
 check("null interpolation matches null source", () => {
-  assert.equal(hson`${null}`, hson("null"));
+  assert.equal(hson`${null}`, canonicalize("null"));
 });
 
 check("string interpolation matches double-quoted HSON string source", () => {
-  assert.equal(hson`${"37"}`, hson('"37"'));
-  assert.equal(hson`${"true"}`, hson('"true"'));
-  assert.equal(hson`${"hello"}`, hson('"hello"'));
+  assert.equal(hson`${"37"}`, canonicalize('"37"'));
+  assert.equal(hson`${"true"}`, canonicalize('"true"'));
+  assert.equal(hson`${"hello"}`, canonicalize('"hello"'));
 });
 
 check("empty string interpolation produces an empty HSON string", () => {
@@ -115,17 +118,17 @@ check("dollar-brace and backticks remain ordinary string data", () => {
 check("multiple primitive substitutions reconstruct one complete HSON source", () => {
   assert.equal(
     hson`«${37}, ${"37"}, ${true}, ${false}, ${null}»`,
-    hson(`«37,"37",true,false,null»`),
+    canonicalize(`«37,"37",true,false,null»`),
   );
 });
 
 check("HSON-looking interpolated strings remain string data", () => {
   const value = `<foo "evil"/>`;
-  const brandedFragment = hson(value);
+  const brandedFragment = canonicalize(value);
   assert.equal(hson`${value}`, JSON.stringify(value));
   assert.equal(hson`${brandedFragment}`, JSON.stringify(value));
-  assert.equal(hson(value), `<foo "evil"/>`);
-  assert.notEqual(hson`${value}`, hson(value));
+  assert.equal(canonicalize(value), `<foo "evil"/>`);
+  assert.notEqual(hson`${value}`, canonicalize(value));
 });
 
 check("HSON-looking strings cannot acquire structure inside a tag", () => {
@@ -134,15 +137,15 @@ check("HSON-looking strings cannot acquire structure inside a tag", () => {
 });
 
 check("ordinary template coercion and tagged interpolation differ deliberately", () => {
-  assert.equal(hson(`${"37"}`), hson("37"));
-  assert.equal(hson(`${"37"}`), "37");
+  assert.equal(canonicalize(`${"37"}`), canonicalize("37"));
+  assert.equal(canonicalize(`${"37"}`), "37");
   assert.equal(hson`${"37"}`, '"37"');
-  assert.notEqual(hson(`${"37"}`), hson`${"37"}`);
+  assert.notEqual(canonicalize(`${"37"}`), hson`${"37"}`);
 });
 
 check("raw tagged HSON escapes remain parser-owned", () => {
   const source = String.raw`<text "\"\\\/\b\f\n\r\t\u0041"/>`;
-  assert.equal(hson`<text "\"\\\/\b\f\n\r\t\u0041"/>`, hson(source));
+  assert.equal(hson`<text "\"\\\/\b\f\n\r\t\u0041"/>`, canonicalize(source));
 });
 
 check("final whole-source parsing rejects an invalid interpolation placement", () => {
@@ -176,7 +179,7 @@ check("unsupported objects are not stringified", () => {
 });
 
 check("empty tagged source retains the ordinary parser diagnostic", () => {
-  const ordinary = captureTransformError(() => hson(""));
+  const ordinary = captureTransformError(() => canonicalize(""));
   const tagged = captureTransformError(() => hson``);
   assert.equal(tagged.code, ordinary.code);
   assert.equal(tagged.stage, ordinary.stage);

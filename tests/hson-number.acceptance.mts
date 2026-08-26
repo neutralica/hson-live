@@ -2,17 +2,12 @@
 import assert from "node:assert/strict";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 import {
-  HSON_CALC_FUNCTION_REQUIRED,
   HSON_NUMBER_NONFINITE,
   HSON_NUMBER_TYPE_REQUIRED,
   hson,
   hsonCalc,
-  hsonNumber,
 } from "../src/index.ts";
-import {
-  hsonCalc as narrowHsonCalc,
-  hsonNumber as narrowHsonNumber,
-} from "../src/number.ts";
+import { hsonCalc as narrowHsonCalc } from "../src/number.ts";
 import { canonical_hson_graph_equal } from "../src/core/canonical-hson-equal.ts";
 import { read_transform_error_details } from "../src/core/errors.ts";
 import { coerce } from "../src/api/transform/utils/primitive-utils/coerce-string.utils.ts";
@@ -37,6 +32,14 @@ function error_details(fn: () => unknown): { operation: unknown; code: unknown }
     };
   }
   assert.fail("expected a structured HSON admission error");
+}
+
+function runtimeCalc(value: unknown): unknown {
+  return Reflect.apply(hsonCalc, undefined, [value]);
+}
+
+function runtimeNamespaceCalc(value: unknown): unknown {
+  return Reflect.apply(hson.transform.calc, hson.transform, [value]);
 }
 
 function first_number(value: unknown): number | undefined {
@@ -85,31 +88,29 @@ const wrongTypes: readonly unknown[] = [
   undefined,
   {},
   [],
-  () => 1,
   Symbol("one"),
 ];
 
 check("namespace methods are the named leaf functions", () => {
-  assert.equal(hson.transform.number, hsonNumber);
   assert.equal(hson.transform.calc, hsonCalc);
-  assert.equal(narrowHsonNumber, hsonNumber);
   assert.equal(narrowHsonCalc, hsonCalc);
+  assert.equal("number" in hson.transform, false);
   assert.equal("string" in hson, false);
   assert.equal("number" in hson, false);
   assert.equal("calc" in hson, false);
 });
 
-check("hsonNumber accepts every representative finite numeric class", () => {
-  for (const value of accepted) assert.equal(hsonNumber(value), value);
+check("hsonCalc accepts every representative finite numeric class", () => {
+  for (const value of accepted) assert.equal(hsonCalc(value), value);
 });
 
-check("hson.transform.number accepts every representative finite numeric class", () => {
-  for (const value of accepted) assert.equal(hson.transform.number(value), value);
+check("hson.transform.calc accepts every representative finite numeric class", () => {
+  for (const value of accepted) assert.equal(hson.transform.calc(value), value);
 });
 
-check("both number surfaces preserve negative zero exactly", () => {
-  assert.equal(Object.is(hsonNumber(-0), -0), true);
-  assert.equal(Object.is(hson.transform.number(-0), -0), true);
+check("both calc surfaces preserve a directly admitted negative zero exactly", () => {
+  assert.equal(Object.is(hsonCalc(-0), -0), true);
+  assert.equal(Object.is(hson.transform.calc(-0), -0), true);
 });
 
 check("authored HSON accepts every settled JSON-number lexical branch", () => {
@@ -191,37 +192,37 @@ check("authored numeric rejection is deterministic and does not mutate input", (
   assert.equal(coerce("+1"), "+1");
 });
 
-check("hsonNumber rejects nonfinite numbers with one stable identity", () => {
+check("hsonCalc rejects nonfinite numbers with one stable identity", () => {
   for (const value of [NaN, Infinity, -Infinity]) {
-    assert.deepEqual(error_details(() => hsonNumber(value)), {
-      operation: "hson.transform.number",
+    assert.deepEqual(error_details(() => runtimeCalc(value)), {
+      operation: "hson.transform.calc",
       code: HSON_NUMBER_NONFINITE,
     });
   }
 });
 
-check("hsonNumber rejects every non-number runtime class without coercion", () => {
+check("hsonCalc rejects every non-number runtime class without coercion", () => {
   for (const value of wrongTypes) {
-    assert.deepEqual(error_details(() => hsonNumber(value)), {
-      operation: "hson.transform.number",
+    assert.deepEqual(error_details(() => runtimeCalc(value)), {
+      operation: "hson.transform.calc",
       code: HSON_NUMBER_TYPE_REQUIRED,
     });
   }
 });
 
-check("namespace number rejection matches named-export operation and codes", () => {
+check("namespace calc rejection matches named-export operation and codes", () => {
   for (const value of [NaN, Infinity, -Infinity, ...wrongTypes]) {
     assert.deepEqual(
-      error_details(() => hson.transform.number(value)),
-      error_details(() => hsonNumber(value)),
+      error_details(() => runtimeNamespaceCalc(value)),
+      error_details(() => runtimeCalc(value)),
     );
   }
 });
 
 check("repeated and cross-surface admission is stable", () => {
-  const first = hson.transform.number(42);
-  assert.equal(hsonNumber(first), first);
-  assert.equal(hson.transform.number(hsonNumber(first)), first);
+  const first = hson.transform.calc(42);
+  assert.equal(hsonCalc(first), first);
+  assert.equal(hson.transform.calc(hsonCalc(first)), first);
 });
 
 check("hsonCalc executes an expression callback exactly once with zero arguments", () => {
@@ -250,25 +251,25 @@ check("both calc surfaces preserve a returned negative zero", () => {
 });
 
 check("both calc surfaces accept an already admitted HsonNumber", () => {
-  const admitted = hsonNumber(Number.MIN_VALUE);
+  const admitted = hsonCalc(Number.MIN_VALUE);
   assert.equal(hsonCalc(() => admitted), admitted);
   assert.equal(hson.transform.calc(() => admitted), admitted);
 });
 
-check("calc result-domain failures use hsonNumber operation and codes", () => {
+check("direct and callback calc failures use the same operation and codes", () => {
   const candidates: readonly unknown[] = [NaN, Infinity, -Infinity, "1", undefined, Promise.resolve(1)];
   for (const candidate of candidates) {
-    const direct = error_details(() => hsonNumber(candidate));
-    assert.deepEqual(error_details(() => hsonCalc(() => candidate)), direct);
-    assert.deepEqual(error_details(() => hson.transform.calc(() => candidate)), direct);
+    const direct = error_details(() => runtimeCalc(candidate));
+    assert.deepEqual(error_details(() => runtimeCalc(() => candidate)), direct);
+    assert.deepEqual(error_details(() => runtimeNamespaceCalc(() => candidate)), direct);
   }
 });
 
-check("non-callable calc inputs use the dedicated structured identity", () => {
-  for (const candidate of [42, null, {}, Promise.resolve(1)]) {
+check("unsupported direct calc inputs use the numeric structured identity", () => {
+  for (const candidate of [null, {}, new Number(1), Promise.resolve(1)]) {
     const named = error_details(() => Reflect.apply(hsonCalc, undefined, [candidate]));
     const namespace = error_details(() => Reflect.apply(hson.transform.calc, undefined, [candidate]));
-    assert.deepEqual(named, { operation: "hson.transform.calc", code: HSON_CALC_FUNCTION_REQUIRED });
+    assert.deepEqual(named, { operation: "hson.transform.calc", code: HSON_NUMBER_TYPE_REQUIRED });
     assert.deepEqual(namespace, named);
   }
 });
@@ -293,8 +294,8 @@ check("a callback-thrown non-Error value propagates unchanged", () => {
 
 check("Promise results are rejected synchronously and are not awaited", () => {
   const promise = Promise.resolve(42);
-  assert.deepEqual(error_details(() => hsonCalc(() => promise)), {
-    operation: "hson.transform.number",
+  assert.deepEqual(error_details(() => runtimeCalc(() => promise)), {
+    operation: "hson.transform.calc",
     code: HSON_NUMBER_TYPE_REQUIRED,
   });
 });
@@ -313,7 +314,7 @@ check("authored HSON, JSON values, and raw nodes share finite admission", () => 
       () => hson.fromNode({ $_tag: "_hson_val", $_content: [value] }).toNode(),
     ]) {
       assert.deepEqual(error_details(admit), {
-        operation: "hson.transform.number",
+        operation: "hson.number-admission",
         code: HSON_NUMBER_NONFINITE,
       });
     }
@@ -321,10 +322,10 @@ check("authored HSON, JSON values, and raw nodes share finite admission", () => 
 });
 
 check("transport carries ordinary numbers and requires fresh admission proof", () => {
-  const admitted = hsonNumber(42);
+  const admitted = hsonCalc(42);
   const decoded: unknown = JSON.parse(JSON.stringify(admitted));
   assert.equal(typeof decoded, "number");
-  assert.equal(hsonNumber(decoded), admitted);
+  assert.equal(runtimeCalc(decoded), admitted);
 });
 
 process.stdout.write(`# ${checks} HSON numeric admission checks passed\n`);

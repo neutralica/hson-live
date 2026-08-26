@@ -19,6 +19,10 @@ function parse(source: string): HsonNode {
   return hson.fromHson(source).toNode();
 }
 
+function canonicalize(source: string): string {
+  return hson.fromHson(source).toHson().serialize();
+}
+
 function compact(source: string): string {
   return hson.fromNode(parse(source)).toHson().noBreak().serialize();
 }
@@ -164,7 +168,7 @@ check("ordinary quoted names embed directly in a JavaScript template literal", (
 check("host and HSON escaping layer once when a template-literal name contains an apostrophe", () => {
   const source = `<'don\\'t' 1>`;
   assert.equal(firstPropertyName(source), "don't");
-  assert.equal(hson(source), "<'don\\'t' 1>");
+  assert.equal(canonicalize(source), "<'don\\'t' 1>");
 });
 
 process.stdout.write(`# ${checks} quoted-name acceptance checks passed\n`);

@@ -1,4 +1,4 @@
-import { hsonNumber } from "./hson-number.js";
+import { admit_hson_number } from "./hson-number.js";
 import type { Primitive } from "./types.js";
 
 const ORDERED_PROJECTED_OBJECT: unique symbol = Symbol("hson.ordered-projected-object");
@@ -71,7 +71,7 @@ export function assert_ordered_projected_value(value: unknown): asserts value is
   const visit = (candidate: unknown): void => {
     if (candidate === null || typeof candidate === "string" || typeof candidate === "boolean") return;
     if (typeof candidate === "number") {
-      hsonNumber(candidate);
+      admit_hson_number(candidate);
       return;
     }
     if (typeof candidate !== "object") {

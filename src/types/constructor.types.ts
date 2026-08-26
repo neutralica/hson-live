@@ -5,7 +5,7 @@ import { $HSON_FRAME, $RENDER, } from "../core/constants.js";
 import { HsonNode } from "../core/types.js";
 import { JsonValue } from "../core/types.js";
 import { LiveTree } from "../api/livetree/livetree.js";
-import type { HsonString, TransformBinarySerialize } from "../api/transform/transform.types.js";
+import type { HsonCanonical, TransformBinarySerialize } from "../api/transform/transform.types.js";
 
 /**
  * Controls per-call HTML sanitization for `fromHtml(...)`.
@@ -412,7 +412,7 @@ export interface SerializeConstructor_4 {
 }
 
 export interface HsonSerializeConstructor_4 extends SerializeConstructor_4 {
-  serialize(): HsonString;
+  serialize(): HsonCanonical;
 }
 
 export interface JsonValueConstructor_4 extends SerializeConstructor_4 {

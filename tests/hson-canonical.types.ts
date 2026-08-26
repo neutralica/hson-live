@@ -3,7 +3,7 @@ import { serialize_hson } from "../src/api/transform/serializers/serialize-hson.
 import { hsonTransform } from "../src/api/transform/transform.facade.js";
 import { hson } from "../src/hson.js";
 import type {
-  HsonString,
+  HsonCanonical,
   TransformSerialize,
 } from "../src/api/transform/transform.types.js";
 
@@ -18,25 +18,19 @@ declare const node: HsonNode;
 declare const arbitrary: string;
 declare const dynamicSerializer: TransformSerialize;
 
-const direct: HsonString = serialize_hson(node);
-const normalized = hson.transform.string(arbitrary);
-const directlyNormalized: HsonString = hson(arbitrary);
-const directlyTagged: HsonString = hson`<main/>`;
-const taggedNumber: HsonString = hson`${42}`;
-const taggedString: HsonString = hson`${"42"}`;
-const taggedBoolean: HsonString = hson`${true}`;
-const taggedNull: HsonString = hson`${null}`;
-const branded: HsonString = normalized;
-const repeated: HsonString = hson.transform.string(branded);
-const directlyRepeated: HsonString = hson(directlyNormalized);
-const bareString: HsonString = hson(`"value"`);
-const bareNumber: HsonString = hson("42");
-const bareBoolean: HsonString = hson("true");
-const bareNull: HsonString = hson("null");
-const fluent: HsonString = hsonTransform.fromNode(node).toHson().serialize();
-const readable: HsonString = hsonTransform.fromNode(node).toHson().serialize();
-const compact: HsonString = hsonTransform.fromNode(node).toHson().noBreak().serialize();
-const withoutQuids: HsonString = hsonTransform.fromNode(node).toHson().noQuid().serialize();
+const direct: HsonCanonical = serialize_hson(node);
+const normalized: HsonCanonical = hsonTransform.fromHson(arbitrary).toHson().serialize();
+const directlyTagged: HsonCanonical = hson`<main/>`;
+const taggedNumber: HsonCanonical = hson`${42}`;
+const taggedString: HsonCanonical = hson`${"42"}`;
+const taggedBoolean: HsonCanonical = hson`${true}`;
+const taggedNull: HsonCanonical = hson`${null}`;
+const branded: HsonCanonical = normalized;
+const repeated: HsonCanonical = hsonTransform.fromHson(branded).toHson().serialize();
+const fluent: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
+const readable: HsonCanonical = hsonTransform.fromNode(node).toHson().serialize();
+const compact: HsonCanonical = hsonTransform.fromNode(node).toHson().noBreak().serialize();
+const withoutQuids: HsonCanonical = hsonTransform.fromNode(node).toHson().noQuid().serialize();
 const html = hsonTransform.fromNode(node).toHtml().serialize();
 const json = hsonTransform.fromNode(node).toJson().serialize();
 const hsonHash: Promise<string> = hsonTransform.fromNode(node).toHson().sha256();
@@ -48,17 +42,21 @@ const dynamicHash: Promise<string> = dynamicSerializer.sha256();
 hsonTransform.fromNode(node).toNode().sha256();
 const ordinary: string = direct;
 
-// @ts-expect-error Arrays are not ordinary HSON string inputs.
+// @ts-expect-error Ordinary calls are unsupported, including source arrays.
 hson(["<main/>"]);
-// @ts-expect-error Template-like objects are not ordinary HSON string inputs.
+// @ts-expect-error Template-like objects are not genuine tagged-template input.
 hson({ raw: ["<main/>"] });
-// @ts-expect-error Ordinary calls admit source strings only.
+// @ts-expect-error Ordinary source-string calls are unsupported.
+hson("<main/>");
+// @ts-expect-error Ordinary source-string calls are unsupported.
+hson("37");
+// @ts-expect-error Ordinary calls are unsupported.
 hson(42);
-// @ts-expect-error Ordinary calls admit source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson(true);
-// @ts-expect-error Ordinary calls admit source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson(null);
-// @ts-expect-error Ordinary calls admit source strings only.
+// @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
 hson`${undefined}`;
@@ -72,19 +70,19 @@ hson`${{}}`;
 hson`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
 hson`${() => {}}`;
-// @ts-expect-error Facade aliases retain the same input boundary.
-hson.transform.string(["<main/>"]);
-// @ts-expect-error Transform leaves remain ordinary source-call APIs.
-hson.transform.string`<main/>`;
-// @ts-expect-error Transform leaves remain ordinary source-call APIs.
-hsonTransform.string`<main/>`;
+// @ts-expect-error The Transform source-admission .string surface is removed.
+hson.transform.string;
+// @ts-expect-error The named Transform source-admission .string surface is removed.
+hsonTransform.string;
+// @ts-expect-error HSON finalizers serialize; they do not stringify.
+hsonTransform.fromNode(node).toHson().string();
 
 // @ts-expect-error Ordinary strings have no official-serializer provenance.
-const invalid: HsonString = arbitrary;
+const invalid: HsonCanonical = arbitrary;
 // @ts-expect-error HTML serialization does not carry HSON provenance.
-const invalidHtml: HsonString = html;
+const invalidHtml: HsonCanonical = html;
 // @ts-expect-error JSON serialization does not carry HSON provenance.
-const invalidJson: HsonString = json;
+const invalidJson: HsonCanonical = json;
 
 function acceptsString(value: string): void {
   void value;
@@ -94,26 +92,23 @@ acceptsString(direct);
 hsonTransform.fromHson(direct).toNode();
 hsonTransform.fromHson(arbitrary).toNode();
 
-type HsonStringProducerReturnsExactlyHsonString = Expect<
-  Equal<typeof normalized, HsonString>
+type HsonCanonicalProducerReturnsExactlyHsonCanonical = Expect<
+  Equal<typeof normalized, HsonCanonical>
 >;
-type HsonStringProducerAcceptsOrdinaryString = Expect<
-  Equal<Parameters<typeof hson.transform.string>[0], string>
->;
-type CallableHsonReturnsExactlyHsonString = Expect<
-  Equal<ReturnType<typeof hson>, HsonString>
+type CallableHsonReturnsExactlyHsonCanonical = Expect<
+  Equal<ReturnType<typeof hson>, HsonCanonical>
 >;
 type CallableHsonTaggedValuesArePrimitive = Expect<
   Equal<Parameters<typeof hson>[1], string | number | boolean | null>
 >;
 type NoUnsafeHsonCast = Expect<
-  Equal<"asHsonString" extends keyof typeof hson ? true : false, false>
+  Equal<"asHsonCanonical" extends keyof typeof hson ? true : false, false>
 >;
 type NoUnsafeHsonBrandHelper = Expect<
   Equal<"brandHson" extends keyof typeof hson ? true : false, false>
 >;
-type NoUnsafeHsonStringHelper = Expect<
-  Equal<"unsafeHsonString" extends keyof typeof hson ? true : false, false>
+type NoUnsafeHsonCanonicalHelper = Expect<
+  Equal<"unsafeHsonCanonical" extends keyof typeof hson ? true : false, false>
 >;
 
 type HtmlRemainsString = Expect<Equal<typeof html, string>>;
@@ -127,16 +122,11 @@ type ParserInputRemainsString = Expect<
 
 void fluent;
 void repeated;
-void directlyRepeated;
 void directlyTagged;
 void taggedNumber;
 void taggedString;
 void taggedBoolean;
 void taggedNull;
-void bareString;
-void bareNumber;
-void bareBoolean;
-void bareNull;
 void readable;
 void compact;
 void withoutQuids;

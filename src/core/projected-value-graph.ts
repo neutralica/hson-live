@@ -9,7 +9,7 @@ import {
   VAL_TAG,
 } from "./constants.js";
 import { CREATE_NODE } from "./factories.js";
-import { hsonNumber } from "./hson-number.js";
+import { admit_hson_number } from "./hson-number.js";
 import { is_Node } from "./node-guards.js";
 import {
   assert_ordered_projected_value,
@@ -25,7 +25,7 @@ export function projected_value_to_hson_node(value: OrderedProjectedValue): Hson
   assert_ordered_projected_value(value);
   if (typeof value === "string") return value_node(STR_TAG, [value]);
   if (value === null || typeof value === "number" || typeof value === "boolean") {
-    const primitive = typeof value === "number" ? hsonNumber(value) : value;
+    const primitive = typeof value === "number" ? admit_hson_number(value) : value;
     return value_node(VAL_TAG, [primitive]);
   }
   if (Array.isArray(value)) {
@@ -116,7 +116,7 @@ export function projected_value_from_hson_node(node: HsonNode): OrderedProjected
     if (node.$_content.length !== 1 || is_Node(value)) {
       throw new TypeError("Projected _hson_val must contain exactly one primitive.");
     }
-    if (typeof value === "number") return hsonNumber(value);
+    if (typeof value === "number") return admit_hson_number(value);
     if (value === null || typeof value === "boolean") return value;
     throw new TypeError("Projected _hson_val must contain number, boolean, or null.");
   }

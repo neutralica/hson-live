@@ -15,14 +15,11 @@ export type HsonNumber = number & {
 
 export const HSON_NUMBER_TYPE_REQUIRED = "HSON_NUMBER_TYPE_REQUIRED" as const;
 export const HSON_NUMBER_NONFINITE = "HSON_NUMBER_NONFINITE" as const;
-export const HSON_CALC_FUNCTION_REQUIRED = "HSON_CALC_FUNCTION_REQUIRED" as const;
-
-/** Admit one primitive finite number without coercion or normalization. */
-export function hsonNumber(value: unknown): HsonNumber {
+function admitHsonNumber(value: unknown, operation: string): HsonNumber {
   if (typeof value !== "number") {
     _throw_transform_err(
       `HSON numbers must be primitive JavaScript numbers; received ${typeof value}`,
-      "hson.transform.number",
+      operation,
       undefined,
       undefined,
       { code: HSON_NUMBER_TYPE_REQUIRED },
@@ -31,29 +28,23 @@ export function hsonNumber(value: unknown): HsonNumber {
   if (!Number.isFinite(value)) {
     _throw_transform_err(
       `invalid HSON number ${String(value)}; numbers must be finite`,
-      "hson.transform.number",
+      operation,
       undefined,
       undefined,
       { code: HSON_NUMBER_NONFINITE },
     );
   }
-
-  // This is the sole brand-establishing point, immediately after validation.
   return value as HsonNumber;
 }
 
-/** Execute one synchronous calculation and admit only its returned result. */
-export function hsonCalc(calculate: () => unknown): HsonNumber;
-export function hsonCalc(calculate: unknown): HsonNumber {
-  if (typeof calculate !== "function") {
-    _throw_transform_err(
-      `hson.transform.calc() requires a callable function; received ${typeof calculate}`,
-      "hson.transform.calc",
-      undefined,
-      undefined,
-      { code: HSON_CALC_FUNCTION_REQUIRED },
-    );
-  }
+/** Admit one primitive finite number without coercion or normalization. */
+export function admit_hson_number(value: unknown): HsonNumber {
+  return admitHsonNumber(value, "hson.number-admission");
+}
 
-  return hsonNumber(calculate());
+/** Admit a finite number, or execute one synchronous calculation and admit its result. */
+export function hsonCalc(value: number | (() => number)): HsonNumber;
+export function hsonCalc(value: unknown): HsonNumber {
+  const calculated: unknown = typeof value === "function" ? value() : value;
+  return admitHsonNumber(calculated, "hson.transform.calc");
 }

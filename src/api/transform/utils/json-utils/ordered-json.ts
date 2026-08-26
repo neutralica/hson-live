@@ -3,7 +3,7 @@ import {
   TransformError,
   type TransformErrorSource,
 } from "../../../../core/errors.js";
-import { hsonNumber } from "../../../../core/hson-number.js";
+import { admit_hson_number } from "../../../../core/hson-number.js";
 import {
   is_ordered_projected_object,
   ordered_projected_array,
@@ -106,7 +106,7 @@ export function parse_ordered_json_text(source: string): OrderedProjectedValue {
     const match = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(source.slice(index));
     if (match === null) return fail("invalid JSON number");
     index += match[0].length;
-    return hsonNumber(Number(match[0]));
+    return admit_hson_number(Number(match[0]));
   };
 
   const parseArray = (path: string): readonly OrderedProjectedValue[] => {

@@ -22,7 +22,7 @@ import { serialize_style } from "../utils/attrs-utils/serialize-style.js";
 import { serialize_hson_tag_name } from "../utils/hson-utils/hson-tag-helpers.js";
 import { serialize_primitive_hson } from "../utils/primitive-utils/serialize-primitive.utils.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
-import type { HsonString } from "../transform.types.js";
+import type { HsonCanonical } from "../transform.types.js";
 
 type ParentCluster = typeof OBJ_TAG | typeof ELEM_TAG | typeof ARR_TAG;
 type HsonLayout = "readable" | "compact";
@@ -512,7 +512,7 @@ function serialize_hson_with_ownership(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
   ownedElementTextFragment = false,
-): HsonString {
+): HsonCanonical {
   assert_invariants(root, "serialize_hson");
   if (!is_Node(root)) {
     _throw_transform_err(
@@ -545,14 +545,14 @@ function serialize_hson_with_ownership(
     },
     guard: cycleGuard(),
   };
-  return emitNode(root, 0, undefined, ctx).trim() as HsonString;
+  return emitNode(root, 0, undefined, ctx).trim() as HsonCanonical;
 }
 
 /** Serialize an ordinary detached semantic value; malformed carriers reject. */
 export function serialize_hson(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-): HsonString {
+): HsonCanonical {
   return serialize_hson_with_ownership(root, inputOptions, false);
 }
 
@@ -560,6 +560,6 @@ export function serialize_hson(
 export function serialize_hson_owned_element_text_fragment(
   root: HsonNode,
   inputOptions: HsonSerializeInputOptions = {},
-): HsonString {
+): HsonCanonical {
   return serialize_hson_with_ownership(root, inputOptions, true);
 }

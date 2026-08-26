@@ -100,7 +100,7 @@ export function transform_error_to_standalone_diagnostic(
 
 function validateStandalone(text: string): readonly DocumentDiagnosticSpec[] {
   try {
-    hson(text);
+    hson.fromHson(text).toNode();
     return Object.freeze([]);
   } catch (error) {
     const diagnostic = transform_error_to_standalone_diagnostic(error, text);
@@ -114,7 +114,7 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const source of discovery.sources) {
     try {
-      hson(read_embedded_hson_body(source));
+      hson.fromHson(read_embedded_hson_body(source)).toNode();
     } catch (error) {
       const details = read_transform_error_details(error);
       if (details === undefined) throw error;

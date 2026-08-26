@@ -4,7 +4,6 @@ import {
 } from "./api/transform/transform.browser.js";
 import { hsonTransform } from "./api/transform/transform.facade.js";
 import { admit_hson } from "./api/transform/hson-admission.js";
-import { hsonNumber } from "./api/transform/hson-number.js";
 import { hsonCalc } from "./api/transform/hson-calc.js";
 import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
 import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
@@ -26,7 +25,6 @@ export {
   hsonLiveTree,
   hsonReflect,
   hsonTransform,
-  hsonNumber,
   hsonCalc,
 };
 export {
@@ -52,11 +50,10 @@ export type {
  * the established source-constructor shortcuts.
  */
 export interface HsonFacade {
-  (source: string): import("./api/transform/transform.types.js").HsonString;
   (
     strings: TemplateStringsArray,
     ...values: readonly (string | number | boolean | null)[]
-  ): import("./api/transform/transform.types.js").HsonString;
+  ): import("./api/transform/transform.types.js").HsonCanonical;
   readonly transform: typeof hsonTransform;
   readonly fromHson: (input: string) => HsonTransformSource;
   readonly fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;

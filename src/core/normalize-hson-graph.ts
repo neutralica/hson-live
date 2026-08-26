@@ -14,7 +14,7 @@ import { classify_ordinary_hson_structure } from "./hson-structural-mode.js";
 import { is_Node } from "./node-guards.js";
 import { canonical_inline_style } from "./inline-style.js";
 import type { HsonAttrs, HsonMeta, HsonNode, Primitive } from "./types.js";
-import { hsonNumber } from "./hson-number.js";
+import { admit_hson_number } from "./hson-number.js";
 import {
   enumerable_own_data_array_items,
   enumerable_own_data_entries,
@@ -179,7 +179,7 @@ export function normalize_hson_graph(input: HsonNode, where: string): HsonNode {
       if (!is_primitive(child)) {
         return fail(where, `${here}/$_content[${index}]`, "content item must be a node or HSON primitive");
       }
-      return tag === VAL_TAG && typeof child === "number" ? hsonNumber(child) : child;
+      return tag === VAL_TAG && typeof child === "number" ? admit_hson_number(child) : child;
     });
     if (tag === ARR_TAG) {
       const analysis = analyze_hson_array_indexes(content);

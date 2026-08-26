@@ -522,7 +522,7 @@ export function parse_json(input: string | JsonValue): HsonNode {
         }
     } else {
         // Runtime-value admission retains its established structured failures
-        // (notably hson.transform.number / HSON_NUMBER_NONFINITE). Only JSON
+        // (notably hson.number-admission / HSON_NUMBER_NONFINITE). Only JSON
         // text syntax failures belong to the parse-json wrapper above.
         try {
             parsed = admit_projected_value(input);

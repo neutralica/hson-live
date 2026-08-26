@@ -26,6 +26,10 @@ function check(name: string, body: () => void): void {
   process.stdout.write(`ok ${checks} - ${name}\n`);
 }
 
+function validateHson(source: string): void {
+  hson.fromHson(source).toNode();
+}
+
 function descriptorFor(
   hostText: string,
   body: string,
@@ -184,13 +188,13 @@ check("invalid host offsets do not map", () => {
 check("a real HSON point maps at the body start", () => {
   const hostText = "const value = hson`+1`;";
   const source = descriptorFor(hostText, "+1");
-  const error = captureTransformError(() => hson("+1"));
+  const error = captureTransformError(() => validateHson("+1"));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.deepEqual(mapped.range, { start: source.bodyRange.start, end: source.bodyRange.start + 1 });
 });
 
 check("a real HSON point maps in the body middle", () => {
-  const error = captureTransformError(() => hson("01"));
+  const error = captureTransformError(() => validateHson("01"));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, simple));
   assert.deepEqual(mapped.range, { start: simple.bodyRange.start + 1, end: simple.bodyRange.end });
 });
@@ -219,7 +223,7 @@ check("EOF receives an explicit zero-width range", () => {
 check("a real empty-source error maps to empty-body EOF", () => {
   const hostText = "const value = hson``;";
   const source = descriptorFor(hostText, "");
-  const error = captureTransformError(() => hson(""));
+  const error = captureTransformError(() => validateHson(""));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.equal(mapped.precision, "eof");
   assert.equal(mapped.range.start, mapped.range.end);
@@ -279,7 +283,7 @@ check("an indented multiline host maps body offsets to host coordinates", () => 
   const body = "<a 1\n a 2>";
   const hostText = `function f() {\n  return hson\`${body}\`;\n}`;
   const source = descriptorFor(hostText, body);
-  const error = captureTransformError(() => hson(body));
+  const error = captureTransformError(() => validateHson(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.deepEqual(mapped.start, { offset: source.bodyRange.start + 6, line: 3, column: 2 });
 });
@@ -288,8 +292,8 @@ check("multiple descriptors independently reference one host file", () => {
   const hostText = "const a = hson`+1`;\nconst b = hson`01`;";
   const first = descriptorFor(hostText, "+1");
   const second = descriptorFor(hostText, "01", first.templateRange.end);
-  const firstError = captureTransformError(() => hson("+1"));
-  const secondError = captureTransformError(() => hson("01"));
+  const firstError = captureTransformError(() => validateHson("+1"));
+  const secondError = captureTransformError(() => validateHson("01"));
   assert.equal(expectMapped(map_transform_error_to_embedded_source(firstError, first)).start.line, 1);
   assert.equal(expectMapped(map_transform_error_to_embedded_source(secondError, second)).start.line, 2);
 });
@@ -298,7 +302,7 @@ check("ordinary malformed authored HSON preserves exact index mapping", () => {
   const body = "<a 1b 2>";
   const hostText = `const value = hson\`${body}\`;`;
   const source = descriptorFor(hostText, body);
-  const error = captureTransformError(() => hson(body));
+  const error = captureTransformError(() => validateHson(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.equal(error.code, "HSON_NUMBER_TRAILING_JUNK");
   assert.equal(mapped.range.start, source.bodyRange.start + 3);
@@ -308,7 +312,7 @@ check("duplicate declaration diagnostics map primary and related evidence", () =
   const body = "<a 1 a 2>";
   const hostText = `const value = hson\`${body}\`;`;
   const source = descriptorFor(hostText, body);
-  const error = captureTransformError(() => hson(body));
+  const error = captureTransformError(() => validateHson(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.equal(mapped.range.start, source.bodyRange.start + 5);
   assert.equal(mapped.related[0]?.role, "first-declaration");
@@ -415,7 +419,7 @@ check("physical CRLF survives exact slicing, parsing, and host mapping", () => {
   const hostText = `const value = hson\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   assert.equal(read_embedded_hson_body(source), body);
-  const error = captureTransformError(() => hson(read_embedded_hson_body(source)));
+  const error = captureTransformError(() => validateHson(read_embedded_hson_body(source)));
   assert.deepEqual(error.source, { index: 7, line: 2, column: 2 });
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
   assert.deepEqual(mapped.start, { offset: source.bodyRange.start + 7, line: 2, column: 2 });
@@ -423,7 +427,7 @@ check("physical CRLF survives exact slicing, parsing, and host mapping", () => {
 
 check("an invalid descriptor produces no fabricated source range", () => {
   const mapping = map_transform_error_to_embedded_source(
-    captureTransformError(() => hson("01")),
+    captureTransformError(() => validateHson("01")),
     { ...simple, bodyRange: { start: -1, end: 2 } },
   );
   assert.deepEqual(mapping, {

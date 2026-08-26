@@ -2,7 +2,7 @@
 
 import type { HsonSemanticPrimitive } from "../../../../core/types.js";
 import { _throw_transform_err } from "../sys-utils/throw-transform-err.utils.js";
-import { hsonNumber } from "../../../../core/hson-number.js";
+import { admit_hson_number } from "../../../../core/hson-number.js";
 
 const HSON_NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
 
@@ -51,7 +51,7 @@ export function coerce(value: string): HsonSemanticPrimitive {
 
   
     if (HSON_NUMBER_LITERAL.test(trimmed)) {
-        return hsonNumber(Number(trimmed));
+        return admit_hson_number(Number(trimmed));
     }
 
     /* 4. if all else fails, it's a plain, unquoted string */

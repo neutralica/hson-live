@@ -7,17 +7,18 @@ export interface BinaryDecodeOptions {
   readonly maxGraphNodes?: number;
 }
 
-declare const HSON_STRING_BRAND: unique symbol;
+declare const HSON_CANONICAL_BRAND: unique symbol;
 
 /**
- * A primitive string produced by an official HSON serializer after successful
- * canonical graph validation and serialization.
+ * A JavaScript string whose contents are valid canonical serialized HSON.
+ * It may represent any valid detached canonical HSON value, including a
+ * primitive, object, element, array, or fragment.
  *
  * This TypeScript-only brand has no runtime marker and is not a trust or
  * security guarantee.
  */
-export type HsonString = string & {
-  readonly [HSON_STRING_BRAND]: true;
+export type HsonCanonical = string & {
+  readonly [HSON_CANONICAL_BRAND]: true;
 };
 
 export type TransformRenderFormat = (typeof $RENDER)[keyof typeof $RENDER];
@@ -55,7 +56,7 @@ export interface TransformBinarySerialize {
 }
 
 export interface TransformHsonSerialize extends TransformSerialize {
-  serialize(): HsonString;
+  serialize(): HsonCanonical;
 }
 
 export interface TransformJsonValue extends TransformSerialize {

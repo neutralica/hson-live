@@ -233,7 +233,7 @@ Existing LiveTree handles can conceptually survive rekeying because they hold ex
 | Format/path | Current QUID behavior | Identity implication |
 |---|---|---|
 | Authored HSON parse | Preserved if valid; absent stays absent; malformed rejected; cold duplicate allowed | Admits externally supplied strings into canonical metadata. |
-| HSON serialization / `HsonString` | Preserved as `@quid` by default | Observable serialized representation. |
+| HSON serialization / `HsonCanonical` | Preserved as `@quid` by default | Observable serialized representation. |
 | HSON `noQuid` | Omitted from output | Explicit transient/authoring escape hatch; it does not mutate the graph. |
 | HSON compact / no-break modes | Preserved unless `noQuid` | Layout options do not change identity semantics. |
 | Structural HTML | Preserved as `hson:quid` | Round-trippable metadata. |

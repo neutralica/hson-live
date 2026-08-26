@@ -31,6 +31,10 @@ function publicNode(source: string): HsonNode {
   return hson.fromHson(source).toNode();
 }
 
+function canonicalize(source: string): string {
+  return hson.fromHson(source).toHson().serialize();
+}
+
 function assertBare(
   source: string,
   tag: "_hson_str" | "_hson_val",
@@ -49,7 +53,7 @@ function assertBare(
   assert.equal(Object.is(value.$_content[0], payload), true);
   assert.notEqual(value.$_tag, "_hson_root");
   assert.equal(hson.fromHson(source).toHson().noBreak().serialize(), canonical);
-  assert.equal(hson(source), canonical);
+  assert.equal(canonicalize(source), canonical);
   assert.equal(canonical_hson_graph_equal(publicNode(canonical), value), true);
 }
 
@@ -161,7 +165,7 @@ check("empty guillemet array detaches as _hson_arr", () => {
 
 check("empty bracket array detaches as _hson_arr and canonicalizes to guillemets", () => {
   assert.deepEqual(publicNode(`[]`), node("_hson_arr"));
-  assert.equal(hson(`[]`), `«»`);
+  assert.equal(canonicalize(`[]`), `«»`);
 });
 
 check("primitive array detaches with canonical indexed membership", () => {
@@ -419,29 +423,28 @@ check("detached semantic nodes retain no observable parent pointer", () => {
   assert.equal(Object.hasOwn(value, "$_parent"), false);
 });
 
-check("hson.transform.string and hson remain the same branded producer function", () => {
-  assert.equal(hson.transform.string, hson);
-  assert.equal(typeof hson(`42`), "string");
+check("runtime source canonicalization remains owned by fromHson", () => {
+  assert.equal(typeof canonicalize(`42`), "string");
 });
 
 check("hson canonicalizes every bare primitive category", () => {
   assert.deepEqual(
-    [`"x"`, `0`, `-0`, `true`, `false`, `null`].map(hson),
+    [`"x"`, `0`, `-0`, `true`, `false`, `null`].map(canonicalize),
     [`"x"`, `0`, `-0`, `true`, `false`, `null`],
   );
 });
 
 check("hson canonicalizes tagged HSON after exact root detachment", () => {
-  assert.equal(hson(`<a/><b/>`), `<a/>\n<b/>`);
+  assert.equal(canonicalize(`<a/><b/>`), `<a/>\n<b/>`);
 });
 
 check("hson rejects empty source before branding", () => {
-  assert.throws(() => hson(``), /has no semantic value/);
+  assert.throws(() => canonicalize(``), /has no semantic value/);
 });
 
 check("repeated HSON canonicalization is stable", () => {
-  const first = hson(`<p "first"<em "middle"/>"last"/>`);
-  assert.equal(hson(first), first);
+  const first = canonicalize(`<p "first"<em "middle"/>"last"/>`);
+  assert.equal(canonicalize(first), first);
 });
 
 check("Unit 1 mixed-mode rejection and uniform grouping remain enforced", () => {

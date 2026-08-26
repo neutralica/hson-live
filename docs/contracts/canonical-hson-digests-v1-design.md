@@ -9,7 +9,7 @@ This design keeps two identities separate:
 
 ```text
 admitted canonical HSON graph -> canonical graph encoding v1 -> SHA-256
-HsonString                    -> canonical text encoding v1  -> SHA-256
+HsonCanonical                -> canonical text encoding v1  -> SHA-256
 ```
 
 The strict comparator and the certified corpus remain authoritative. A digest
@@ -116,20 +116,21 @@ Top-level attribute values of `undefined` are not admitted. No other values,
 generic arrays, dates, maps, symbols, functions, bigint values, or prototypes
 are part of v1.
 
-## 3. Canonical HsonString byte grammar v1
+## 3. Canonical HSON text byte grammar v1
 
 ```text
-HsonStringEncodingV1 = HsonStringHeader String EOF
+HsonCanonicalEncodingV1 = HsonCanonicalHeader String EOF
 
-HsonStringHeader = 48 53 4f 4e 00 48 53 00 01
+HsonCanonicalHeader = 48 53 4f 4e 00 48 53 00 01
                    H  S  O  N NUL H  S NUL v1
 ```
 
 `String` is the same `u32` code-unit count plus UTF-16BE representation used by
 the graph grammar. There is no BOM, Unicode normalization, newline conversion,
-or reserialization. The digest function consumes the exact `HsonString` code
+or reserialization. The digest function consumes the exact `HsonCanonical` code
 units it receives. Its type is an official-producer contract, not a runtime
-security boundary; callers needing admission start with `hson(candidate)`.
+security boundary; callers needing runtime source admission start with
+`hson.fromHson(candidate).toHson().serialize()`.
 
 UTF-8 is not used because standard UTF-8 encoders replace isolated surrogate
 code units. UTF-16BE preserves every JavaScript string exactly. A supplementary
@@ -179,7 +180,7 @@ hson:cg:v1:sha256:<64 lowercase hexadecimal digits>
 hson:hs:v1:sha256:<64 lowercase hexadecimal digits>
 ```
 
-`cg` means canonical graph and `hs` means canonical `HsonString`. The exact
+`cg` means canonical graph and `hs` means `HsonCanonical` text. The exact
 runtime validators are:
 
 ```text
@@ -210,7 +211,7 @@ SHA-256                     079e05a05afb447d5fe33cdb9310dd5756bd8bb32f158edd77a6
 identifier                 hson:cg:v1:sha256:079e05a05afb447d5fe33cdb9310dd5756bd8bb32f158edd77a6d7dc69301703
 ```
 
-Canonical `HsonString` `-0`:
+Canonical HSON text for `-0`:
 
 ```text
 text header                 48534f4e0048530001
@@ -331,24 +332,24 @@ fluent facade or create a general cryptography namespace.
 
 ```ts
 export type CanonicalHsonGraphDigest = string & { /* private brand */ };
-export type CanonicalHsonStringDigest = string & { /* private brand */ };
+export type CanonicalHsonDigest = string & { /* private brand */ };
 
 export function encode_canonical_hson_graph_v1(graph: HsonNode): Uint8Array;
 export function digest_canonical_hson_graph_v1(
   graph: HsonNode,
 ): Promise<CanonicalHsonGraphDigest>;
 
-export function encode_hson_string_v1(value: HsonString): Uint8Array;
+export function encode_hson_canonical_v1(value: HsonCanonical): Uint8Array;
 export function digest_hson_string_v1(
-  value: HsonString,
-): Promise<CanonicalHsonStringDigest>;
+  value: HsonCanonical,
+): Promise<CanonicalHsonDigest>;
 
 export function is_canonical_hson_graph_digest_v1(
   value: unknown,
 ): value is CanonicalHsonGraphDigest;
 export function is_canonical_hson_string_digest_v1(
   value: unknown,
-): value is CanonicalHsonStringDigest;
+): value is CanonicalHsonDigest;
 
 export const CANONICAL_HSON_GRAPH_ENCODING_VERSION: 1;
 export const CANONICAL_HSON_STRING_ENCODING_VERSION: 1;
@@ -360,17 +361,17 @@ bytes. Digest formatting remains internal; the two public validators cover
 persistence/input validation without providing a misleading “parse and trust”
 operation. Brands prevent accidental graph/text digest interchange at compile
 time but are not security claims. The graph encoder validates without
-normalizing and returns a fresh `Uint8Array`. The HsonString encoder performs no
+normalizing and returns a fresh `Uint8Array`. The HsonCanonical encoder performs no
 parse or canonicalization.
 
 These names follow the repository rule for exported functions (`snake_case`),
 types (`PascalCase`), and constants (`FORTRAN_CASE`). They also follow the
 existing `canonical_hson_graph_*` identity vocabulary.
 
-## 11. HsonString and graph/text relationship
+## 11. HsonCanonical and graph/text relationship
 
 For default, nonprojecting serialization, strictly equal serializable graphs
-must produce identical `HsonString` output. The converse is false today:
+must produce identical `HsonCanonical` output. The converse is false today:
 
 - `_hson_root` is admitted but cannot serialize as authored HSON;
 - absent `$_meta` and present empty `$_meta` are strictly different, but empty
@@ -379,12 +380,12 @@ must produce identical `HsonString` output. The converse is false today:
 - some admitted ordinary attribute primitive values are not accepted by the
   HSON serializer;
 - `noQuid` deliberately projects graph identity before producing its default
-  formatted `HsonString`.
+  formatted `HsonCanonical`.
 
-Thus graph equality does not globally imply the existence of an HsonString, and
+Thus graph equality does not globally imply the existence of an `HsonCanonical`, and
 text-digest equality does not imply graph-digest equality. When default
 ordinary serialization exists and performs no projection, equal graphs must
-produce identical canonical text. `noBreak` output is outside the HsonString
+produce identical canonical text. `noBreak` output is outside the HsonCanonical
 domain regardless of semantic equality.
 
 ## 12. Future reported-check decomposition
@@ -399,7 +400,7 @@ reported checks. Counts are contract checks, not hidden atomic assertion totals.
 | Graph encoding: attributes, metadata, style, optional presence | 22 |
 | Graph known answers: primitive and Unicode vectors | 20 |
 | Graph known answers: structural and identity-difference vectors | 16 |
-| HsonString encoding and known-answer digests | 22 |
+| HsonCanonical encoding and known-answer digests | 22 |
 | Digest identifiers, brands, API types, and runtime rejection | 20 |
 | Admission, malformed graphs, overflow, nonfinite, and nonmutation | 22 |
 | Node/Web Crypto runtime parity | 18 |
@@ -459,10 +460,10 @@ or fingerprint changes are required merely to add digest tests.
 
 ## 15. Confirmed prerequisites and current contradictions
 
-### A. `noBreak` is branded as HsonString
+### A. `noBreak` is branded as HsonCanonical
 
 Current declarations and implementation type every HSON serialization as
-`HsonString`, including:
+`HsonCanonical`, including:
 
 ```ts
 hsonTransform.fromNode(node).toHson().noBreak().serialize()
@@ -471,7 +472,7 @@ serialize_hson(node, { noBreak: true })
 
 The compile fixture explicitly asserts that assignment. This contradicts the
 confirmed contract that `noBreak` is valid HSON text but must not be an
-`HsonString`.
+`HsonCanonical`.
 Affected owners are `transform.types.ts`, `constructor.types.ts`,
 `serialize-hson.ts`, both option constructors/finalizers, and their type
 fixtures. Before text digest APIs ship, any path with `noBreak: true` must return
@@ -554,7 +555,7 @@ src/api/transform/serializers/serialize-hson.ts  # option-sensitive overloads
 src/api/transform/constructors/construct-options-3.ts
 src/api/transform/constructors/construct-render-4.ts
 src/api/transform/index.ts                       # public digest exports
-tests/hson-string.types.ts
+tests/hson-canonical.types.ts
 tests/entrypoints/public-entrypoints.ts
 tests/entrypoints/transform-worker.ts
 src/_tests/test-launchers.ts
@@ -562,21 +563,21 @@ package.json
 ```
 
 The root umbrella export is not required for v1. `hson-live/transform` is the
-narrow existing home for `HsonString` and transform leaf functions. No
+narrow existing home for `HsonCanonical` and transform leaf functions. No
 `hson-demo2` change is expected except optional consumer parity coverage; a
 fingerprint-only update is not an independently meaningful demo change.
 
 ## 17. Recommended implementation sequence
 
 1. Correct and test non-finite ordinary-attribute invariant admission.
-2. Correct option-sensitive HsonString return types and compile fixtures.
+2. Correct option-sensitive HsonCanonical return types and compile fixtures.
 3. Freeze the vector manifest after independent OpenSSL review.
 4. Implement the synchronous UTF-16BE writer and graph encoder.
 5. Add primitive, structure, ordering, presence, nonmutation, and rejection
    suites.
 6. Implement the narrow asynchronous Web Crypto SHA-256 adapter.
 7. Add branded identifiers and exact runtime validators.
-8. Implement HsonString encoding/digest without reparsing.
+8. Implement HsonCanonical encoding/digest without reparsing.
 9. Add Node, browser, and Worker known-answer parity suites.
 10. Add the seven corpus-property shards without changing corpus descriptors.
 11. Register launchers, update derived fingerprints/counts, and run the full
