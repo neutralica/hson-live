@@ -7,6 +7,7 @@ import { parse_tokens, type ParseTokensOptions } from "./parse-tokens.js";
 import { tokenize_hson } from "./tokenize-hson.js";
 import { scan_ingested_hson_node_quids } from "../utils/hson-utils/quid-ingress.js";
 import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.utils.js";
+import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
 
 /**
@@ -28,7 +29,16 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
  * @see assert_invariants
  */
 export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonNode {
-    const newTokens = tokenize_hson(str);
+    return parse_hson_attached(str, options);
+}
+
+/** Shared private pipeline used by authored parsing and provenance capture. */
+export function parse_hson_attached(
+    str: string,
+    options: ParseTokensOptions = {},
+    provenance?: HsonSourceProvenanceBuilder,
+): HsonNode {
+    const newTokens = tokenize_hson(str, 0, provenance);
     if (newTokens.length === 0) {
         _throw_transform_err(
             "empty, whitespace-only, or comment-only HSON source has no semantic value",
@@ -42,7 +52,7 @@ export function parse_hson(str: string, options: ParseTokensOptions = {}): HsonN
             },
         );
     }
-    const newNode = parse_tokens(newTokens, options)
+    const newNode = parse_tokens(newTokens, options, provenance)
     scan_ingested_hson_node_quids(newNode, "parse_hson");
     assert_invariants(newNode, 'parse hson');
     return newNode;

@@ -13,6 +13,7 @@ import { _throw_transform_err } from "../utils/sys-utils/throw-transform-err.uti
 import { is_string } from "../../../core/value-guards.js";
 import type { HsonSemanticPrimitive } from "../../../core/types.js";
 import { assign_ingested_hson_node_quid } from "../utils/hson-utils/quid-ingress.js";
+import type { HsonSourceProvenanceBuilder } from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
 export type ParseTokensOptions = Readonly<{
     /** Internal LiveMap/Locus compatibility for persisted document fragments. */
@@ -88,7 +89,11 @@ export const make_leaf = (v: HsonSemanticPrimitive): HsonNode =>
  * @see tokenize_hson
  * @see make_leaf
  */
-export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {}): HsonNode {
+export function parse_tokens(
+    tokens: Tokens[],
+    options: ParseTokensOptions = {},
+    provenance?: HsonSourceProvenanceBuilder,
+): HsonNode {
     const nodes: HsonNode[] = [];
     const topCloseKinds: CloseKind[] = [];
     const topPositions: Position[] = [];
@@ -136,6 +141,12 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
     function isTokenArrOpen(t: Tokens | null | undefined): t is TokenArrayOpen {
         return !!t && t.kind === TOKEN_KIND.ARR_OPEN;
     }
+    function parsedLeaf(token: TokenText): HsonNode {
+        const prim = token.quoted ? JSON.parse(token.raw) : coerce(token.raw);
+        const node = make_leaf(prim);
+        provenance?.bindScalar(node, token);
+        return node;
+    }
     function readTag(): { node: HsonNode; closeKind: CloseKind; open: TokenOpen } {
         // NOTE: _take() returning any is sketchy; narrow immediately.
         const tok = _take();
@@ -146,6 +157,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
 
         const { attrs, meta } = split_attrs_meta(open.rawAttrs);
         const node = CREATE_NODE({ $_tag: open.tag, $_meta: meta });
+        provenance?.bindTagStart(node, open);
         if (open.quid !== undefined) {
             assign_ingested_hson_node_quid(node, open.quid.value, "parse_tokens");
         }
@@ -169,7 +181,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             open: TokenOpen;
         }>> = [];
         let sawNestedArray = false;
-        let sawEmptyObject = false;
+        let sawEmptyObject: TokenEmptyObj | undefined;
 
         // --- gather children
         while (ix < N) {
@@ -183,8 +195,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
 
             //  empty object "<>"
             if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
-                _take(TOKEN_KIND.EMPTY_OBJ);
-                sawEmptyObject = true;
+                sawEmptyObject = _take(TOKEN_KIND.EMPTY_OBJ);
                 continue;
             }
 
@@ -212,8 +223,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             //  nested text → primitive leaf
             if (isTokenText(t)) {
                 const tt = _take(TOKEN_KIND.TEXT);
-                const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
-                kids.push(make_leaf(prim));
+                kids.push(parsedLeaf(tt));
                 continue;
             }
 
@@ -225,6 +235,7 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             _throw_transform_err(`missing CLOSE for <${open.tag}>`, "parse_tokens");
         }
         const closeKind: CloseKind = sawClose.close;
+        provenance?.bindTagEnd(node, open, sawClose);
 
         if (!isVSN) {
             const incompatible = ordinaryChildClosers.find((child) => child.closeKind !== closeKind);
@@ -252,7 +263,9 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         if (open.tag === ROOT_TAG) {
             //  explicit "<>" under root => single empty _hson_obj cluster
             if (sawEmptyObject) {
-                node.$_content = [CREATE_NODE({ $_tag: OBJ_TAG })];
+                const empty = CREATE_NODE({ $_tag: OBJ_TAG });
+                provenance?.bindEmptyObject(empty, sawEmptyObject);
+                node.$_content = [empty];
                 return { node, closeKind, open };
             }
 
@@ -260,7 +273,9 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                 node.$_content = kids; // passthrough array cluster
             } else if (kids.length > 0) {
                 const clusterTag = (closeKind === CLOSE_KIND.elem) ? ELEM_TAG : OBJ_TAG;
-                node.$_content = [CREATE_NODE({ $_tag: clusterTag, $_content: kids })];
+                const cluster = CREATE_NODE({ $_tag: clusterTag, $_content: kids });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
             } else {
                 node.$_content = [];
             }
@@ -284,10 +299,12 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             if (kids.length === 1 && (kids[0].$_tag === OBJ_TAG || kids[0].$_tag === ARR_TAG)) {
                 node.$_content = [kids[0]]; // passthrough a single cluster
             } else {
-                node.$_content = [CREATE_NODE({
+                const cluster = CREATE_NODE({
                     $_tag: OBJ_TAG,
                     $_content: kids as NodeContent
-                })];
+                });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
             }
 
             // Guardrail: object mode must yield a single _hson_obj/_hson_arr
@@ -302,10 +319,12 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             } else if (kids.length === 1 && kids[0].$_tag === ELEM_TAG) {
                 node.$_content = kids as NodeContent; // already clustered
             } else {
-                node.$_content = [CREATE_NODE({
+                const cluster = CREATE_NODE({
                     $_tag: ELEM_TAG,
                     $_content: kids as NodeContent
-                })];
+                });
+                provenance?.bindSynthetic(cluster, kids);
+                node.$_content = [cluster];
             }
 
             // Guardrail: element mode must yield a single _hson_elem
@@ -329,24 +348,28 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         }
         const items: HsonNode[] = [];
         let idx = 0;
+        let arrClose: TokenArrayClose | undefined;
 
         while (ix < N) {
             const t = _peek(); if (!t) break;
-            if (t.kind === TOKEN_KIND.ARR_CLOSE) { _take(); break; }
+            if (t.kind === TOKEN_KIND.ARR_CLOSE) {
+                arrClose = _take(TOKEN_KIND.ARR_CLOSE);
+                break;
+            }
 
             let childNode: HsonNode;
 
             if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
 
-                _take();
+                const empty = _take(TOKEN_KIND.EMPTY_OBJ);
                 // build an empty object *item*
                 childNode = CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] });
+                provenance?.bindEmptyObject(childNode, empty);
 
             } else if (t.kind === TOKEN_KIND.TEXT) {
                 // FIX: keep primitives inside the array (do NOT push to outer "nodes")
                 const tt = _take() as TokenText;
-                const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
-                childNode = make_leaf(prim); // ← was: nodes.push(...); continue;
+                childNode = parsedLeaf(tt); // ← was: nodes.push(...); continue;
 
             } else if (t.kind === TOKEN_KIND.OPEN) {
                 const child = readTag();
@@ -366,15 +389,18 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
                 _throw_transform_err(`unexpected ${t.kind} in array`, "parse_tokens");
             }
 
-            items.push((CREATE_NODE({
+            const item = CREATE_NODE({
                 $_tag: II_TAG,
                 $_meta: { [HSON_META_INDEX]: String(idx) },
                 $_content: [childNode],
-            })));
+            });
+            provenance?.bindArrayItem(item, childNode);
+            items.push(item);
             idx++;
         }
 
         const node = CREATE_NODE({ $_tag: ARR_TAG, $_content: items });
+        if (arrClose !== undefined) provenance?.bindArray(node, arrOpen, arrClose);
         if (arrOpen.quid !== undefined) {
             assign_ingested_hson_node_quid(node, arrOpen.quid.value, "parse_tokens");
         }
@@ -402,14 +428,15 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         if (t.kind === TOKEN_KIND.EMPTY_OBJ) {
             const empty = _take(TOKEN_KIND.EMPTY_OBJ);
             topPositions.push(empty.pos);
-            nodes.push(CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] }));
+            const node = CREATE_NODE({ $_tag: OBJ_TAG, $_content: [] });
+            provenance?.bindEmptyObject(node, empty);
+            nodes.push(node);
             topCloseKinds.push("obj");
             continue;
         }
         if (t.kind === TOKEN_KIND.TEXT) {
             const tt = _take(TOKEN_KIND.TEXT);
-            const prim = tt.quoted ? JSON.parse(tt.raw) : coerce(tt.raw);
-            nodes.push(make_leaf(prim));
+            nodes.push(parsedLeaf(tt));
             topCloseKinds.push("elem");
             topPositions.push(tt.pos);
             continue;
@@ -443,9 +470,11 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
         // 2) single standard tag → wrap according to its closer
         if (kids.length === 1 && typeof kids[0].$_tag === "string" && !kids[0].$_tag.startsWith(HSON_SYS_PREFIX)) {
             const mode = topCloseKinds[0] === CLOSE_KIND.obj ? OBJ_TAG : ELEM_TAG; // CHANGED
+            const cluster = CREATE_NODE({ $_tag: mode, $_content: [kids[0]] });
+            provenance?.bindSynthetic(cluster, kids);
             return CREATE_NODE({
                 $_tag: ROOT_TAG,
-                $_content: [CREATE_NODE({ $_tag: mode, $_content: [kids[0]] })],
+                $_content: [cluster],
             });
         }
 
@@ -512,9 +541,11 @@ export function parse_tokens(tokens: Tokens[], options: ParseTokensOptions = {})
             );
         }
 
+        const cluster = CREATE_NODE({ $_tag: ELEM_TAG, $_content: kids });
+        provenance?.bindSynthetic(cluster, kids);
         return CREATE_NODE({
             $_tag: ROOT_TAG,
-            $_content: [CREATE_NODE({ $_tag: ELEM_TAG, $_content: kids })],
+            $_content: [cluster],
         });
     }
 

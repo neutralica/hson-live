@@ -16,6 +16,10 @@ import {
   is_hson_bare_name_start,
 } from "../../../core/hson-name.js";
 import { assert_authored_hson_source_name } from "../utils/hson-utils/hson-source-name.js";
+import type {
+  HsonSourceLexicalCollector,
+  HsonTokenSourceEvidence,
+} from "../../../internal/hson-source-provenance/hson-source-provenance.js";
 
 const MAX_NESTING = 75;
 const NUMBER_LITERAL = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
@@ -37,7 +41,11 @@ function isUnsupportedWhitespace(value: string): boolean {
  * through this scanner without slicing or rebasing the source. Each complete
  * angle construct is closer-classified before its body is lowered.
  */
-export function tokenize_hson(hson: string, depth = 0): Tokens[] {
+export function tokenize_hson(
+  hson: string,
+  depth = 0,
+  collector?: HsonSourceLexicalCollector,
+): Tokens[] {
   if (depth < 0 || depth >= MAX_NESTING) {
     _throw_transform_err(
       `stopping potentially infinite loop (depth must be between 0 and ${MAX_NESTING - 1})`,
@@ -45,7 +53,7 @@ export function tokenize_hson(hson: string, depth = 0): Tokens[] {
     );
   }
 
-  return new HsonScanner(hson, depth).scan();
+  return new HsonScanner(hson, depth, collector).scan();
 }
 
 class HsonScanner {
@@ -57,7 +65,17 @@ class HsonScanner {
   public constructor(
     private readonly source: string,
     private readonly initialDepth: number,
+    private readonly collector?: HsonSourceLexicalCollector,
   ) {}
+
+  private emit<TToken extends Tokens>(token: TToken): TToken {
+    this.tokens.push(token);
+    return token;
+  }
+
+  private recordToken(token: Tokens, evidence: HsonTokenSourceEvidence): void {
+    this.collector?.recordToken(token, evidence);
+  }
 
   public scan(): Tokens[] {
     while (true) {
@@ -71,7 +89,11 @@ class HsonScanner {
         this.scanArray(this.initialDepth);
       } else if (ch === `"`) {
         const pos = this.position();
-        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+        const raw = this.scanContentString();
+        const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+        });
       } else if (ch === "'") {
         this.fail(
           `unsupported quote delimiter (use double quotes only)`,
@@ -106,7 +128,10 @@ class HsonScanner {
           );
         }
         this.assertFiniteNumberLiteral(raw, pos);
-        this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+        const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+        });
       }
     }
   }
@@ -135,7 +160,14 @@ class HsonScanner {
     // Preserve the compact empty-object token used by existing parser APIs.
     if (this.peek() === ">") {
       this.consumeExpected(">");
-      this.tokens.push(CREATE_EMPTY_OBJ_TOKEN("<>", undefined, openPos));
+      const token = this.emit(CREATE_EMPTY_OBJ_TOKEN("<>", undefined, openPos));
+      if (this.collector !== undefined) this.recordToken(token, {
+        roles: {
+          coverage: { start: openPos.index, end: this.index },
+          open: { start: openPos.index, end: openPos.index + 1 },
+          close: { start: this.index - 1, end: this.index },
+        },
+      });
       return;
     }
 
@@ -164,11 +196,19 @@ class HsonScanner {
       }
     }
 
-    this.tokens.push(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos, quid));
+    const objectOpen = this.emit(CREATE_OPEN_TOKEN(OBJ_TAG, [], openPos, quid));
+    if (this.collector !== undefined) this.recordToken(objectOpen, {
+      roles: { open: { start: openPos.index, end: openPos.index + 1 } },
+      coverageStart: openPos.index,
+    });
     if (this.peek() === ">") {
       const closePos = this.position();
       this.consumeExpected(">");
-      this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+      const token = this.emit(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+      if (this.collector !== undefined) this.recordToken(token, {
+        roles: { close: { start: closePos.index, end: closePos.index + 1 } },
+        coverageEnd: closePos.index + 1,
+      });
       return;
     }
 
@@ -212,6 +252,7 @@ class HsonScanner {
       const name = this.peek() === "'"
         ? this.scanQuotedName()
         : this.scanBareName("object member name");
+      const nameEnd = this.index;
       assert_authored_hson_source_name(name, namePos);
       const first = declarations.get(name);
       if (first !== undefined) {
@@ -243,16 +284,29 @@ class HsonScanner {
         );
       }
 
-      this.tokens.push(CREATE_OPEN_TOKEN(name, [], namePos));
+      const memberOpen = this.emit(CREATE_OPEN_TOKEN(name, [], namePos));
+      if (this.collector !== undefined) this.recordToken(memberOpen, {
+        roles: { name: { start: namePos.index, end: nameEnd } },
+        coverageStart: namePos.index,
+      });
       this.scanObjectMemberValue(depth + 1, name);
-      this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, this.previousPosition()));
+      const memberEnd = this.index;
+      const memberClose = this.emit(CREATE_END_TOKEN(CLOSE_KIND.obj, this.previousPosition()));
+      if (this.collector !== undefined) this.recordToken(memberClose, {
+        roles: {},
+        coverageEnd: memberEnd,
+      });
 
       const separated = this.skipTrivia();
       if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
       if (this.peek() === ">") {
         const closePos = this.position();
         this.consumeExpected(">");
-        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+        const token = this.emit(CREATE_END_TOKEN(CLOSE_KIND.obj, closePos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { close: { start: closePos.index, end: closePos.index + 1 } },
+          coverageEnd: closePos.index + 1,
+        });
         return;
       }
       if (this.peek() === ",") {
@@ -273,7 +327,11 @@ class HsonScanner {
     const ch = this.peek();
     if (ch === `"`) {
       const pos = this.position();
-      this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      const raw = this.scanContentString();
+      const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+      if (this.collector !== undefined) this.recordToken(token, {
+        roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+      });
       return;
     }
     if (ch === "<") {
@@ -321,7 +379,10 @@ class HsonScanner {
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
-    this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+    const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
+    if (this.collector !== undefined) this.recordToken(token, {
+      roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+    });
   }
 
   /** Existing named element syntax, selected only after a matching `/>`. */
@@ -337,6 +398,7 @@ class HsonScanner {
     const tag = this.peek() === "'"
       ? this.scanQuotedName()
       : this.scanBareName("tag name");
+    const tagEnd = this.index;
     if (tag.length === 0) {
       this.fail(`element name must not decode to the empty string`, tagPos, "HSON_ELEMENT_NAME_REQUIRED");
     }
@@ -350,7 +412,14 @@ class HsonScanner {
 
     const emitOpen = (): void => {
       if (openEmitted) return;
-      this.tokens.push(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
+      const token = this.emit(CREATE_OPEN_TOKEN(tag, attrs, openPos, quid));
+      if (this.collector !== undefined) this.recordToken(token, {
+        roles: {
+          name: { start: tagPos.index, end: tagEnd },
+          open: { start: openPos.index, end: openPos.index + 1 },
+        },
+        coverageStart: openPos.index,
+      });
       openEmitted = true;
     };
 
@@ -363,7 +432,11 @@ class HsonScanner {
         const closePos = this.position();
         this.consumeExpected("/");
         this.consumeExpected(">");
-        this.tokens.push(CREATE_END_TOKEN(CLOSE_KIND.elem, closePos));
+        const token = this.emit(CREATE_END_TOKEN(CLOSE_KIND.elem, closePos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { close: { start: closePos.index, end: closePos.index + 2 } },
+          coverageEnd: closePos.index + 2,
+        });
         return;
       }
 
@@ -428,6 +501,10 @@ class HsonScanner {
         }
 
         const attr = { name, start: namePos, end: nameEnd };
+        this.collector?.recordAttribute(attr, {
+          coverage: { start: namePos.index, end: nameEnd.index + 1 },
+          name: { start: namePos.index, end: nameEnd.index + 1 },
+        });
         this.assertUniqueAttribute(attrDeclarations, attr);
         attrs.push(attr);
         continue;
@@ -458,7 +535,11 @@ class HsonScanner {
         const valuePos = this.position();
         contentStarted = true;
         emitOpen();
-        this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, valuePos));
+        const raw = this.scanContentString();
+        const token = this.emit(CREATE_TEXT_TOKEN(raw, true, valuePos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { coverage: { start: valuePos.index, end: this.index }, value: { start: valuePos.index, end: this.index } },
+        });
         continue;
       }
 
@@ -540,7 +621,11 @@ class HsonScanner {
         );
       }
     }
-    this.tokens.push(CREATE_ARR_OPEN_TOKEN(symbol, openPos, quid));
+    const arrayOpen = this.emit(CREATE_ARR_OPEN_TOKEN(symbol, openPos, quid));
+    if (this.collector !== undefined) this.recordToken(arrayOpen, {
+      roles: { open: { start: openPos.index, end: openPos.index + 1 } },
+      coverageStart: openPos.index,
+    });
 
     let expectItem = true;
     let sawItem = false;
@@ -553,7 +638,11 @@ class HsonScanner {
       if (this.peek() === closer) {
         const closePos = this.position();
         this.consumeExpected(closer);
-        this.tokens.push(CREATE_ARR_CLOSE_TOKEN(symbol, closePos));
+        const token = this.emit(CREATE_ARR_CLOSE_TOKEN(symbol, closePos));
+        if (this.collector !== undefined) this.recordToken(token, {
+          roles: { close: { start: closePos.index, end: closePos.index + 1 } },
+          coverageEnd: closePos.index + 1,
+        });
         return;
       }
 
@@ -608,7 +697,11 @@ class HsonScanner {
 
     if (ch === `"`) {
       const pos = this.position();
-      this.tokens.push(CREATE_TEXT_TOKEN(this.scanContentString(), true, pos));
+      const raw = this.scanContentString();
+      const token = this.emit(CREATE_TEXT_TOKEN(raw, true, pos));
+      if (this.collector !== undefined) this.recordToken(token, {
+        roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+      });
       return;
     }
 
@@ -633,7 +726,10 @@ class HsonScanner {
       );
     }
     this.assertFiniteNumberLiteral(raw, pos);
-    this.tokens.push(CREATE_TEXT_TOKEN(raw, undefined, pos));
+    const token = this.emit(CREATE_TEXT_TOKEN(raw, undefined, pos));
+    if (this.collector !== undefined) this.recordToken(token, {
+      roles: { coverage: { start: pos.index, end: this.index }, value: { start: pos.index, end: this.index } },
+    });
   }
 
   private scanAttributeValue(name: string, start: Position): RawAttr {
@@ -656,8 +752,15 @@ class HsonScanner {
     }
 
     if (this.peek() === `"`) {
+      const valueStart = this.position();
       const { text, end } = this.scanAttributeString(name);
-      return { name, value: { text, quoted: true }, start, end };
+      const attr = { name, value: { text, quoted: true }, start, end };
+      this.collector?.recordAttribute(attr, {
+        coverage: { start: start.index, end: end.index + 1 },
+        name: { start: start.index, end: start.index + name.length },
+        value: { start: valueStart.index, end: end.index + 1 },
+      });
+      return attr;
     }
 
     const valueStart = this.position();
@@ -683,7 +786,13 @@ class HsonScanner {
       );
     }
 
-    return { name, value: { text, quoted: false }, start, end };
+    const attr = { name, value: { text, quoted: false }, start, end };
+    this.collector?.recordAttribute(attr, {
+      coverage: { start: start.index, end: end.index + 1 },
+      name: { start: start.index, end: start.index + name.length },
+      value: { start: valueStart.index, end: end.index + 1 },
+    });
+    return attr;
   }
 
   /** Return a complete strict JSON-compatible string literal. */
