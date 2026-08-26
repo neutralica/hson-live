@@ -144,6 +144,24 @@ check("TSX with adjacent JSX is supported while non-TS extensions fail closed", 
   assert.deepEqual(discover(hostText, "/workspace/view.mts"), { sources: [], unsupported: [] });
 });
 
+check("compiler-host filename identity supports editor-shaped TS and TSX paths", () => {
+  const tsText = 'import { hsonString } from "hson-live";\nhsonString`inside`;';
+  const tsxText = 'import { hsonString } from "hson-live";\nconst view = <main>{hsonString`inside`}</main>;';
+  const fileNames = [
+    "fixture.ts",
+    "/Users/example/project/fixture.ts",
+    "/Users/example/project with spaces/fixture.ts",
+    new URL("file:///Users/example/project/fixture.ts").pathname,
+  ];
+  for (const fileName of fileNames) {
+    assert.deepEqual(bodySlices(discover(tsText, fileName)), ["inside"], fileName);
+  }
+  assert.deepEqual(
+    bodySlices(discover(tsxText, "/Users/example/project with spaces/view.tsx")),
+    ["inside"],
+  );
+});
+
 check("one and multiple substitutions are classified without becoming HSON sources", () => {
   const hostText = [
     'import { hsonString as h } from "hson-live";',

@@ -15,7 +15,9 @@ try {
   await runTests({
     extensionDevelopmentPath: resolve(here, "../.."),
     extensionTestsPath: resolve(here, "../../.test-dist/integration.cjs"),
-    version: "1.95.3",
+    ...(process.env.HSON_VSCODE_EXECUTABLE === undefined
+      ? { version: "1.95.3" }
+      : { vscodeExecutablePath: process.env.HSON_VSCODE_EXECUTABLE }),
     launchArgs: [
       "--disable-extensions",
       `--user-data-dir=${userDataDir}`,

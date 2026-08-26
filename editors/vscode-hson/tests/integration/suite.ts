@@ -36,4 +36,20 @@ export async function run(): Promise<void> {
   const aliasDiagnostics = await diagnosticsFor(alias.uri, 1);
   assert.equal(aliasDiagnostics.length, 1);
   assert.equal(alias.getText(aliasDiagnostics[0]?.range), "+");
+
+  const smokePath = join(__dirname, "..", "tests", "fixtures", "diagnostics-smoke.ts");
+  const smoke = await vscode.workspace.openTextDocument(vscode.Uri.file(smokePath));
+  assert.equal(smoke.languageId, "typescript");
+  assert.equal(smoke.uri.scheme, "file");
+  assert.equal(smoke.fileName, smokePath);
+  await vscode.window.showTextDocument(smoke);
+  const smokeDiagnostics = await diagnosticsFor(smoke.uri, 2);
+  assert.equal(smokeDiagnostics.length, 2);
+  assert.ok(smokeDiagnostics.some((diagnostic) =>
+    diagnostic.code === "HSON_TEMPLATE_SUBSTITUTION_UNSUPPORTED"
+    && smoke.getText(diagnostic.range) === '${"hello"}'));
+  assert.ok(smokeDiagnostics.some((diagnostic) =>
+    diagnostic.code !== "HSON_TEMPLATE_SUBSTITUTION_UNSUPPORTED"
+    && diagnostic.range.start.line >= 8
+    && diagnostic.range.end.line <= 10));
 }
