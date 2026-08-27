@@ -217,6 +217,7 @@
     "test:livemap-exact-transport-rejection": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-exact-transport-rejection.acceptance.mts",
     "test:livemap-exact-propagation": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-exact-propagation.acceptance.mts",
     "test:livemap-schema-value-boundary": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-schema-value-boundary.acceptance.mts",
+    "test:livemap-projected-schema-source-lowering": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/projected-schema-source-lowering.acceptance.mts",
     "test:livemap-transform-accepted-closure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-transform-accepted-closure.acceptance.mts",
     "test:livemap-rejection-closure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-rejection-closure.acceptance.mts",
     "test:livemap-exact-route-closure": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livemap-exact-route-closure.acceptance.mts",

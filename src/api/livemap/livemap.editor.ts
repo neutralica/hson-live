@@ -24,6 +24,18 @@ import {
 } from "../../core/projected-value-graph.js";
 
 /**
+ * Internal physical witness for one projected path.  This intentionally stays
+ * out of the public LiveMap surface: consumers should continue to use logical
+ * projected paths, while internal bridges can reuse the editor's canonical
+ * wrapper traversal.
+ */
+export type InternalProjectedHsonLocation = Readonly<{
+  wrapperPath: readonly number[];
+  valuePath: readonly number[];
+  scalarValuePath?: readonly number[];
+}>;
+
+/**
  * Parent resolution for a projected LiveMap path.
  *
  * `parent` is the value node that owns the final path segment. For the first
@@ -75,6 +87,52 @@ export function resolve_value_node(root: HsonNode, path: LivePath): HsonNode | u
   const wrapper = resolve_wrapper_node(root, path);
   if (wrapper === undefined) return undefined;
   return unwrap_value_payload(wrapper);
+}
+
+/**
+ * Resolve one projected path through the same wrapper rules as the editor,
+ * retaining physical canonical paths for internal location/provenance work.
+ */
+export function resolve_projected_hson_location(
+  root: HsonNode,
+  path: LivePath,
+): InternalProjectedHsonLocation | undefined {
+  let current = root;
+  let wrapperPath: readonly number[] = [];
+
+  for (const part of path) {
+    const payload = unwrap_value_payload(current);
+    if (payload === undefined) return undefined;
+    const childIndex = child_wrapper_index(payload, part);
+    if (childIndex === undefined) return undefined;
+    wrapperPath = [
+      ...wrapperPath,
+      ...payload_path_from_wrapper(current),
+      ...transparent_value_path(payload),
+      childIndex,
+    ];
+    const child = payload.$_content[childIndex];
+    if (!is_Node(child)) return undefined;
+    current = child;
+  }
+
+  const payload = unwrap_value_payload(current);
+  if (payload === undefined) return undefined;
+  const valuePath = [
+    ...wrapperPath,
+    ...payload_path_from_wrapper(current),
+    ...transparent_value_path(payload),
+  ];
+  const value = value_at_transparent_path(payload);
+  if (value === undefined) return undefined;
+  const scalarValuePath = value.$_tag === STR_TAG || value.$_tag === VAL_TAG
+    ? [...valuePath, 0]
+    : undefined;
+  return Object.freeze({
+    wrapperPath: Object.freeze(wrapperPath),
+    valuePath: Object.freeze(valuePath),
+    ...(scalarValuePath === undefined ? {} : { scalarValuePath: Object.freeze(scalarValuePath) }),
+  });
 }
 
 /**
@@ -412,6 +470,21 @@ function find_child_wrapper(parentValueNode: HsonNode, part: LivePathPart): Hson
   return undefined;
 }
 
+function child_wrapper_index(parentValueNode: HsonNode, part: LivePathPart): number | undefined {
+  if (parentValueNode.$_tag === OBJ_TAG && typeof part === "string") {
+    const index = parentValueNode.$_content.findIndex((child) => is_Node(child) && child.$_tag === part);
+    return index < 0 ? undefined : index;
+  }
+
+  if (parentValueNode.$_tag === ARR_TAG && typeof part === "number") {
+    if (!Number.isInteger(part) || part < 0) return undefined;
+    const child = parentValueNode.$_content[part];
+    return is_Node(child) && child.$_tag === II_TAG ? part : undefined;
+  }
+
+  return undefined;
+}
+
 /**
  * Convert a wrapper node to its value payload.
  *
@@ -424,6 +497,10 @@ function unwrap_value_payload(wrapper: HsonNode): HsonNode | undefined {
   const [first] = wrapper.$_content;
   if (!is_Node(first)) return undefined;
   return first;
+}
+
+function payload_path_from_wrapper(wrapper: HsonNode): readonly number[] {
+  return is_value_node(wrapper) ? [] : [0];
 }
 
 /**
@@ -448,6 +525,27 @@ function unwrap_transparent_object_payload(node: HsonNode): HsonNode | undefined
   }
 
   return undefined;
+}
+
+/** Return the physical child indexes skipped by projected scalar normalization. */
+function transparent_value_path(node: HsonNode): readonly number[] {
+  const indexes: number[] = [];
+  let current = node;
+  for (;;) {
+    const transparent = unwrap_transparent_object_payload(current);
+    if (transparent === undefined) return indexes;
+    indexes.push(0);
+    current = transparent;
+  }
+}
+
+function value_at_transparent_path(node: HsonNode): HsonNode | undefined {
+  let current = node;
+  for (;;) {
+    const transparent = unwrap_transparent_object_payload(current);
+    if (transparent === undefined) return current;
+    current = transparent;
+  }
 }
 
 /**

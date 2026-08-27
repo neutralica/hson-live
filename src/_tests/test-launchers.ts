@@ -153,6 +153,15 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["hson", "parsing", "source-provenance", "root-boundary", "internal"],
     }),
     launcher({
+      id: "livemap.projected-schema-source-lowering",
+      subject: "LiveMap",
+      displayName: "Projected Schema authored-source lowering",
+      packageScript: "test:livemap-projected-schema-source-lowering",
+      repositoryModule: "tests/projected-schema-source-lowering.acceptance.mts",
+      runtime: "node",
+      collections: ["livemap", "schema", "source-provenance", "projected-path", "internal"],
+    }),
+    launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
       displayName: "HSON serializer",
