@@ -25,6 +25,31 @@ import {
   hsonTransform as hsonSubpathTransform,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
+// D1 tooling is private, including its capability-origin and lifecycle helpers.
+// @ts-expect-error The D1 wire protocol is not a public value.
+import { TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION } from "hson-live";
+// @ts-expect-error The runtime host is not a public API.
+import { TrustedSchemaDiagnosticRuntime } from "hson-live/hson";
+// @ts-expect-error Process supervision is not a library facade.
+import { TrustedSchemaNodeSupervisor } from "hson-live/diagnostics";
+// @ts-expect-error The development registry remains private.
+import { register_trusted_schema_for_development } from "hson-live/livemap";
+// @ts-expect-error Capability ownership checks are not public Schema APIs.
+import { is_owned_projected_schema } from "hson-live/livemap";
+// @ts-expect-error Authored lifecycle capture is not a public tag.
+import { capture_trusted_schema_template } from "hson-live/transform";
+// @ts-expect-error Protocol requests are not public types.
+import type { TrustedSchemaRequest } from "hson-live/types";
+// @ts-expect-error Association handles/evidence are private.
+import type { TrustedSchemaAssociationEvidence } from "hson-live/types";
+// @ts-expect-error Diagnostic sidecars are private.
+import type { TrustedSchemaDiagnostic } from "hson-live/types";
+// @ts-expect-error Schema registrations and their origin evidence are private.
+import type { TrustedSchemaDevRegistration } from "hson-live/types";
+// @ts-expect-error Direct map/application captures are private.
+import type { TrustedSchemaApplication } from "hson-live/types";
+// @ts-expect-error No D1 package subpath exists.
+import type { TrustedSchemaResponse } from "hson-live/internal/trusted-schema-diagnostics/protocol";
 // @ts-expect-error Canonical-node debug handles are no longer public types.
 type RemovedLiveMapDebugApi = import("hson-live/types").LiveMapDebugApi;
 // @ts-expect-error Canonical-node handles are no longer public types.

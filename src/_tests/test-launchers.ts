@@ -162,6 +162,15 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["livemap", "schema", "source-provenance", "projected-path", "internal"],
     }),
     launcher({
+      id: "livemap.document-schema-source-lowering",
+      subject: "LiveMap",
+      displayName: "Document Schema authored-source lowering",
+      packageScript: "test:livemap-document-schema-source-lowering",
+      repositoryModule: "tests/document-schema-source-lowering.acceptance.mts",
+      runtime: "node",
+      collections: ["livemap", "schema", "source-provenance", "document", "internal"],
+    }),
+    launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
       displayName: "HSON serializer",

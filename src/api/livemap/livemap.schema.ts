@@ -613,6 +613,11 @@ type LiveMapSchemaDraft = Readonly<{
 const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
 const DEFINED_PROJECTED_NODES = new WeakMap<object, LiveMapSchemaNode>();
 const COMPILED_PROJECTED_TOKENS = new WeakMap<object, LiveMapSchemaNode>();
+
+/** Private capability-origin check; intentionally absent from public barrels. */
+export function is_owned_projected_schema(value: unknown): value is LiveMapProjectedSchema {
+  return typeof value === "object" && value !== null && DEFINED_PROJECTED_NODES.has(value);
+}
 // CHANGED: public schema rules retain "*" paths, while private matcher paths
 // use distinct sentinels that cannot collide with a real property named "*".
 const PUBLIC_WILDCARD_PATH_PART = "*";
