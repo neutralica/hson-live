@@ -5,7 +5,7 @@ import { hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/high
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
 import { start_diagnostics, type DiagnosticDocument, type DiagnosticHost } from "../src/diagnostics.js";
 import { HSON } from "../../../src/hson-authoring.js";
-import { hson_authoring_marker_parts, hsonAuthoringMarker } from "../src/authoring-marker.js";
+import { hson_identity_marker_parts, hsonIdentityMarkers } from "../src/authoring-marker.js";
 
 async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -15,7 +15,12 @@ async function run(): Promise<void> {
   const tokens = (text: string, fileName = "/workspace/baseline.ts") => hson_highlights(grammar, fileName, text);
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
   const nameToken = (text: string) => tokens(text).some(token => text.slice(token.range.start, token.range.end) === "thing" && token.scopes.includes("entity.name.type.hson"));
-  const markers = (text: string) => hson_authoring_marker_parts("/workspace/baseline.ts", text);
+  const markers = (text: string) => hson_identity_marker_parts("/workspace/baseline.ts", text);
+  const referenceParts = (text: string, spelling: "HSON" | "hson", start = text.lastIndexOf(spelling)) =>
+    markers(text).filter(part => part.range.start >= start && part.range.end <= start + spelling.length);
+  const expectedMarker = (spelling: "HSON" | "hson") => hsonIdentityMarkers
+    .filter(marker => marker.publicName === spelling)
+    .map(marker => ({ text: marker.letter, colorId: marker.colorId, strength: marker.strength }));
 
   check("official narrow /hson binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>'))));
   check("official root binding is a grammar-backed island", () => assert.ok(nameToken(source('<thing 1>', "HSON", "HSON", "hson-live"))));
@@ -23,11 +28,15 @@ async function run(): Promise<void> {
     assert.ok(nameToken(source('<thing 1>', "HSON as author", "author")));
     assert.equal(diagnose(source('+1', "HSON as author", "author")).length, 1);
   });
-  check("literal official HSON tag has four exact branded letter ranges", () => {
+  check("literal official HSON tag has four exact soft letter ranges", () => {
     const text = source('<thing 1>');
-    assert.deepEqual(markers(text).map(part => ({
-      text: text.slice(part.range.start, part.range.end), colorId: part.colorId,
-    })), hsonAuthoringMarker.map(marker => ({ text: marker.letter, colorId: marker.colorId })));
+    const start = text.lastIndexOf('HSON');
+    const parts = referenceParts(text, 'HSON', start);
+    assert.deepEqual(parts.map(part => ({
+      text: text.slice(part.range.start, part.range.end), colorId: part.colorId, strength: part.strength,
+    })), expectedMarker('HSON'));
+    assert.deepEqual(parts.map(part => part.range), [0, 1, 2, 3].map(index => ({ start: start + index, end: start + index + 1 })));
+    assert.ok(parts.every((part, index) => index === 0 || parts[index - 1]!.range.end <= part.range.start));
   });
   check("root HSON tag receives the same branded marker", () => {
     assert.equal(markers(source('<thing 1>', "HSON", "HSON", "hson-live")).length, 4);
@@ -44,9 +53,40 @@ async function run(): Promise<void> {
     assert.deepEqual(tokens(text), []); assert.deepEqual(markers(text), []); assert.deepEqual(diagnose(text), []);
   });
   check("wrong package is excluded", () => { const text = source('<thing !!!', "HSON", "HSON", "other"); assert.deepEqual(tokens(text), []); assert.deepEqual(markers(text), []); assert.deepEqual(diagnose(text), []); });
-  check("lowercase aggregate and ordinary HSON references have no marker", () => {
-    const text = 'import { HSON, hson } from "hson-live"; const a=hson; const b=HSON;';
-    assert.deepEqual(markers(text), []);
+  check("official imports and re-exports remain ordinary presentation", () => {
+    assert.deepEqual(markers('import { HSON, hson } from "hson-live";'), []);
+    assert.deepEqual(markers('import { HSON } from "hson-live/hson";'), []);
+    assert.deepEqual(markers('import { HSON as authored } from "hson-live/hson";'), []);
+    assert.deepEqual(markers('import { hson as library } from "hson-live";'), []);
+    assert.deepEqual(markers('export { HSON, hson } from "hson-live";'), []);
+    assert.deepEqual(markers('import { HSON, hson } from "hson-live"; export { HSON, hson };'), []);
+    assert.deepEqual(markers('import { HSON } from "hson-live"; export default HSON;'), []);
+  });
+  check("official bare and member-root references receive family markers", () => {
+    const text = 'import { HSON, hson } from "hson-live"; void HSON; void hson; HSON.validate(x,y); hson.fromBinary(x); hson.liveMap;';
+    assert.equal(markers(text).length, 20);
+    assert.deepEqual(referenceParts(text, 'HSON', text.indexOf('HSON', text.indexOf(';') + 1)).map(part => part.strength), ['soft', 'soft', 'soft', 'soft']);
+    const hsonStart = text.indexOf('hson', text.indexOf(';') + 1);
+    const lower = referenceParts(text, 'hson', hsonStart);
+    assert.deepEqual(lower.map(part => ({ text: text.slice(part.range.start, part.range.end), colorId: part.colorId, strength: part.strength })), expectedMarker('hson'));
+    assert.deepEqual(lower.map(part => part.range), [0, 1, 2, 3].map(index => ({ start: hsonStart + index, end: hsonStart + index + 1 })));
+  });
+  check("aliases stay ordinary while alias-tag body semantics remain recognized", () => {
+    const upper = source('<thing 1>', 'HSON as authored', 'authored');
+    const lower = 'import { hson as library } from "hson-live"; library.liveMap;';
+    assert.deepEqual(markers(upper), []); assert.ok(nameToken(upper)); assert.deepEqual(markers(lower), []);
+  });
+  check("fake, wrong-package, shadowed, and property-name lookalikes stay ordinary", () => {
+    const cases = [
+      'const hson={}; hson.fromBinary;',
+      'const HSON=String.raw; HSON`x`;',
+      'import { hson } from "other"; hson.liveMap;',
+      'import { HSON } from "other"; HSON.validate(x,y);',
+      'import { hson, HSON } from "hson-live"; function f(hson:any,HSON:any){ hson.liveMap; HSON.validate(x,y); }',
+      'const obj={HSON:1,hson:2}; obj.HSON; obj.hson;',
+      'const text="HSON hson"; // HSON hson',
+    ];
+    for (const text of cases) assert.deepEqual(markers(text), []);
   });
   check("wrappers and copied tag functions do not acquire authority", () => {
     const text = 'import { HSON } from "hson-live/hson"; const copy=HSON; const wrap=(...x:any[])=>HSON(...x); copy`+1`; wrap`+1`;';
@@ -85,12 +125,16 @@ async function run(): Promise<void> {
     assert.equal(manifest.capabilities.untrustedWorkspaces.supported, 'limited');
     assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes, hsonTokenScopes);
     assert.equal(manifest.contributes.grammars.length, 1, 'no spelling-only injection');
-    assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), hsonAuthoringMarker.map(marker => marker.colorId));
+    assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), hsonIdentityMarkers.map(marker => marker.colorId));
     assert.deepEqual(manifest.contributes.colors.map((color: { defaults: object }) => color.defaults), [
-      { dark: '#74A7D8', light: '#356A9A', highContrast: '#66B3FF', highContrastLight: '#005FB8' },
-      { dark: '#D2B45F', light: '#786422', highContrast: '#FFD166', highContrastLight: '#8A6200' },
-      { dark: '#D789AE', light: '#8E4768', highContrast: '#FF80BF', highContrastLight: '#B0005A' },
-      { dark: '#78B996', light: '#3E7256', highContrast: '#6EE7A8', highContrastLight: '#147A3D' },
+      { dark: '#55A7E3', light: '#0D6FAE', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
+      { dark: '#E7C34D', light: '#806A00', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
+      { dark: '#E97A9A', light: '#B82E61', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
+      { dark: '#59BA82', light: '#147A45', highContrast: '#6BD092', highContrastLight: '#096A36' },
+      { dark: '#55A7E3DB', light: '#0D6FAEE0', highContrast: '#6CB8F0EB', highContrastLight: '#005F9EEB' },
+      { dark: '#E7C34DDB', light: '#806A00E0', highContrast: '#F5D35DEB', highContrastLight: '#6F5C00EB' },
+      { dark: '#E97A9ADB', light: '#B82E61E0', highContrast: '#F58AA8EB', highContrastLight: '#A51F50EB' },
+      { dark: '#59BA82DB', light: '#147A45E0', highContrast: '#6BD092EB', highContrastLight: '#096A36EB' },
     ]);
   });
   check("interpolation preserves literal highlighting and excludes expressions", () => {

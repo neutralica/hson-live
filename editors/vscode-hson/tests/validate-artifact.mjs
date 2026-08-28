@@ -17,6 +17,7 @@ assert.equal(coreGrammar.scopeName, "source.hson");
 assert.equal(manifest.contributes.grammars.length, 1, "spelling-only injection must not bypass binding discovery");
 assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));
 assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
+  "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",
   "hson.authoringMarker.h", "hson.authoringMarker.s", "hson.authoringMarker.o", "hson.authoringMarker.n",
 ]);
 assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);

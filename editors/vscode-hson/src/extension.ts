@@ -15,7 +15,7 @@ import {
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
-import { hson_authoring_marker_parts, hsonAuthoringMarker } from "./authoring-marker.js";
+import { hson_identity_marker_parts, hsonIdentityMarkers } from "./authoring-marker.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -101,15 +101,15 @@ export function activate(context: vscode.ExtensionContext): void {
         return builder.build();
       },
     }, legend));
-  // Exact H/S/O/N brand colors are presentation-only. Binding discovery is the
-  // authority; decoration never participates in parsing or admission.
-  const markerDecorations = new Map(hsonAuthoringMarker.map(marker => [marker.colorId,
+  // Exact h/s/o/n and H/S/O/N identity colors are presentation-only. Binding
+  // discovery is the authority; decoration never participates in admission.
+  const markerDecorations = new Map(hsonIdentityMarkers.map(marker => [marker.colorId,
     vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(marker.colorId) })]));
   const presentMarkers = (editor: vscode.TextEditor): void => {
     const document = editor.document;
     const parts = document.languageId === "typescript" || document.languageId === "typescriptreact"
-      ? hson_authoring_marker_parts(document.fileName, document.getText()) : [];
-    for (const marker of hsonAuthoringMarker) {
+      ? hson_identity_marker_parts(document.fileName, document.getText()) : [];
+    for (const marker of hsonIdentityMarkers) {
       const decoration = markerDecorations.get(marker.colorId);
       if (decoration === undefined) continue;
       editor.setDecorations(decoration, parts.filter(part => part.colorId === marker.colorId).map(part =>

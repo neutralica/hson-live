@@ -123,6 +123,54 @@ export function read_supported_hson_import_symbols(
   return symbols;
 }
 
+export type HsonBindingReference = Readonly<{
+  publicName: "HSON" | "hson";
+  range: HostSourceRange;
+}>;
+
+function isImportOrExportPosition(node: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {
+    if (ts.isImportDeclaration(current) || ts.isExportDeclaration(current) || ts.isExportAssignment(current)) return true;
+    if (ts.isSourceFile(current)) return false;
+  }
+  return false;
+}
+
+/** Discover literal usage references to official public HSON-live bindings. */
+export function discover_hson_binding_references(
+  fileName: string,
+  hostText: string,
+): readonly HsonBindingReference[] {
+  if (typeof fileName !== "string" || typeof hostText !== "string" || !/\.tsx?$/.test(fileName)) {
+    return Object.freeze([]);
+  }
+  const program = create_hson_source_program(fileName, hostText);
+  const sourceFile = program.getSourceFile(fileName);
+  if (sourceFile === undefined) return Object.freeze([]);
+  const diagnostics = program.getSyntacticDiagnostics(sourceFile);
+  if (diagnostics.some(diagnostic => diagnostic.start === undefined)) return Object.freeze([]);
+  const checker = program.getTypeChecker();
+  const symbols = {
+    HSON: read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "HSON"),
+    hson: read_supported_hson_import_symbols(sourceFile, checker, diagnostics, "hson"),
+  } as const;
+  const result: HsonBindingReference[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)
+      && (node.text === "HSON" || node.text === "hson")
+      && !isImportOrExportPosition(node)
+      && !hasOverlappingDiagnostic(diagnostics, nodeRange(node, sourceFile))) {
+      const symbol = checker.getSymbolAtLocation(node);
+      if (symbol !== undefined && symbols[node.text].has(symbol)) {
+        result.push(Object.freeze({ publicName: node.text, range: nodeRange(node, sourceFile) }));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return Object.freeze(result.sort((left, right) => left.range.start - right.range.start));
+}
+
 function validateTemplateDescriptor(
   fileName: string,
   hostText: string,

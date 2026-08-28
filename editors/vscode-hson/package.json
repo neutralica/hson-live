@@ -72,24 +72,44 @@
     ],
     "colors": [
       {
+        "id": "hson.libraryMarker.h",
+        "description": "HSON library facade marker: h (strong blue).",
+        "defaults": { "dark": "#55A7E3", "light": "#0D6FAE", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
+      },
+      {
+        "id": "hson.libraryMarker.s",
+        "description": "HSON library facade marker: s (strong yellow).",
+        "defaults": { "dark": "#E7C34D", "light": "#806A00", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
+      },
+      {
+        "id": "hson.libraryMarker.o",
+        "description": "HSON library facade marker: o (strong pink).",
+        "defaults": { "dark": "#E97A9A", "light": "#B82E61", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
+      },
+      {
+        "id": "hson.libraryMarker.n",
+        "description": "HSON library facade marker: n (strong green).",
+        "defaults": { "dark": "#59BA82", "light": "#147A45", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
+      },
+      {
         "id": "hson.authoringMarker.h",
-        "description": "HSON authoring marker: H (blue).",
-        "defaults": { "dark": "#74A7D8", "light": "#356A9A", "highContrast": "#66B3FF", "highContrastLight": "#005FB8" }
+        "description": "HSON notation marker: H (soft blue).",
+        "defaults": { "dark": "#55A7E3DB", "light": "#0D6FAEE0", "highContrast": "#6CB8F0EB", "highContrastLight": "#005F9EEB" }
       },
       {
         "id": "hson.authoringMarker.s",
-        "description": "HSON authoring marker: S (yellow).",
-        "defaults": { "dark": "#D2B45F", "light": "#786422", "highContrast": "#FFD166", "highContrastLight": "#8A6200" }
+        "description": "HSON notation marker: S (soft yellow).",
+        "defaults": { "dark": "#E7C34DDB", "light": "#806A00E0", "highContrast": "#F5D35DEB", "highContrastLight": "#6F5C00EB" }
       },
       {
         "id": "hson.authoringMarker.o",
-        "description": "HSON authoring marker: O (pink).",
-        "defaults": { "dark": "#D789AE", "light": "#8E4768", "highContrast": "#FF80BF", "highContrastLight": "#B0005A" }
+        "description": "HSON notation marker: O (soft pink).",
+        "defaults": { "dark": "#E97A9ADB", "light": "#B82E61E0", "highContrast": "#F58AA8EB", "highContrastLight": "#A51F50EB" }
       },
       {
         "id": "hson.authoringMarker.n",
-        "description": "HSON authoring marker: N (green).",
-        "defaults": { "dark": "#78B996", "light": "#3E7256", "highContrast": "#6EE7A8", "highContrastLight": "#147A3D" }
+        "description": "HSON notation marker: N (soft green).",
+        "defaults": { "dark": "#59BA82DB", "light": "#147A45E0", "highContrast": "#6BD092EB", "highContrastLight": "#096A36EB" }
       }
     ],
     "semanticTokenTypes": [

@@ -15,32 +15,38 @@ not contributed. Invalid HSON and literal segments around interpolation are stil
 highlighted. Neither highlighting nor secure diagnostics requires Schema, a
 trusted provider, Workspace Trust, completion, or application execution.
 
-At the JavaScript/TypeScript authoring boundary, a binding-recognized literal
-`HSON` tag carries a four-letter marker: H is blue, S is yellow, O is pink, and
-N is green. Renamed official imports retain normal recognized-tag presentation;
-the extension does not map arbitrary alias letters onto that marker. Local,
-shadowed, wrong-package, copied, and otherwise unrelated names receive no marker.
-Standalone `.hson` files do not invent one. All ordinary HSON body syntax remains
-controlled by the active syntax theme.
+Literal usage references to the official `hson` facade carry strong blue, yellow,
+pink, and green family colors; literal usage references to official `HSON` use
+the same hues with softer opacity. This includes bare references, member roots,
+validation calls, and `HSON` tagged templates. Import/export declarations and
+renamed imports retain ordinary host-theme presentation. Local, shadowed,
+wrong-package, property-name, and otherwise unrelated lookalikes receive no
+marker. Standalone `.hson` files do not invent one. All ordinary HSON body syntax
+remains controlled by the active syntax theme.
 
-The marker uses appearance-aware editor color IDs. Users may override them in
-`workbench.colorCustomizations` without editing the extension:
+The identity markers use appearance-aware editor color IDs. Users may override
+either strength in `workbench.colorCustomizations` without editing the extension:
 
 ```json
 {
   "workbench.colorCustomizations": {
-    "hson.authoringMarker.h": "#74A7D8",
-    "hson.authoringMarker.s": "#D2B45F",
-    "hson.authoringMarker.o": "#D789AE",
-    "hson.authoringMarker.n": "#78B996"
+    "hson.libraryMarker.h": "#55A7E3",
+    "hson.libraryMarker.s": "#E7C34D",
+    "hson.libraryMarker.o": "#E97A9A",
+    "hson.libraryMarker.n": "#59BA82",
+    "hson.authoringMarker.h": "#55A7E3DB",
+    "hson.authoringMarker.s": "#E7C34DDB",
+    "hson.authoringMarker.o": "#E97A9ADB",
+    "hson.authoringMarker.n": "#59BA82DB"
   }
 }
 ```
 
-Dark defaults are `#74A7D8`, `#D2B45F`, `#D789AE`, and `#78B996`;
-light defaults are `#356A9A`, `#786422`, `#8E4768`, and `#3E7256`.
-They are deliberately softer than strong syntax foregrounds so the marker stays
-subordinate to the authored HSON body. High-contrast themes use brighter variants.
+Dark strong defaults are `#55A7E3`, `#E7C34D`, `#E97A9A`, and `#59BA82`;
+light strong defaults are `#0D6FAE`, `#806A00`, `#B82E61`, and `#147A45`.
+The corresponding `HSON` colors use those same RGB hues at 86% dark or 88%
+light opacity, keeping notation quieter than the library facade. High-contrast
+themes use brighter hues and approximately 92% opacity for the soft form.
 
 Syntax diagnostics analyze only open in-memory documents. In the default secure
 mode the extension does not load a project or execute workspace code. It does

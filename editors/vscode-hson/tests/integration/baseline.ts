@@ -15,6 +15,16 @@ export async function run(): Promise<void> {
   for (let n = 0; n < 100 && !extension.isActive; n++) await pause();
   assert.equal(extension.isActive, true);
   assert.equal(vscode.workspace.isTrusted, process.env.HSON_BASELINE_RESTRICTED !== "1");
+  const markerColors = extension.packageJSON.contributes.colors;
+  assert.deepEqual(markerColors.map((color: { id: string }) => color.id), [
+    "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",
+    "hson.authoringMarker.h", "hson.authoringMarker.s", "hson.authoringMarker.o", "hson.authoringMarker.n",
+  ]);
+  assert.ok(markerColors.every((color: { defaults: object }) =>
+    ["dark", "light", "highContrast", "highContrastLight"].every(key => key in color.defaults)));
+  const override = { "hson.libraryMarker.h": "#123456", "hson.authoringMarker.h": "#123456CC" };
+  await vscode.workspace.getConfiguration("workbench").update("colorCustomizations", override, vscode.ConfigurationTarget.Global);
+  assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override);
   const syntax = await vscode.commands.executeCommand("_workbench.captureSyntaxTokens", doc.uri);
   const grammarHighlighted = JSON.stringify(syntax).includes("entity.name.type.hson");
   const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
@@ -22,7 +32,7 @@ export async function run(): Promise<void> {
   const semanticHighlighted = !!semantic?.data.length && !!legend?.tokenTypes.some(type => type.startsWith("hson"));
   const diagnostics = () => vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "HSON");
   const edit = async (body: string) => {
-    const text = doc.getText(), start = text.indexOf("HSON`") + 5, end = text.lastIndexOf("`");
+    const text = doc.getText(), start = text.indexOf("HSON`") + 5, end = text.indexOf("`", start);
     const change = new vscode.WorkspaceEdit();
     change.replace(doc.uri, new vscode.Range(doc.positionAt(start), doc.positionAt(end)), body);
     assert.equal(await vscode.workspace.applyEdit(change), true);
