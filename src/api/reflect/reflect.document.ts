@@ -867,7 +867,10 @@ export function reflect_document_in_runtime(
     );
     currentStatus = "replacing";
     try {
-      apply_document_structural_transaction(convergence.structural);
+      apply_document_structural_transaction(convergence.structural, () => {
+        prune_removed_registrations(convergence.structural.finalNodes);
+        rebuild_correspondence();
+      });
     } catch (cause) {
       prune_removed_registrations(convergence.structural.finalNodes);
       throw new DocumentReflectError(
@@ -885,8 +888,6 @@ export function reflect_document_in_runtime(
         "Compatible root convergence was interrupted before correspondence publication.",
       );
     }
-    prune_removed_registrations(convergence.structural.finalNodes);
-    rebuild_correspondence();
     for (const registration of registrations) validate_bound_registration(registration);
     currentRevision = targetRevision;
     updatesApplied += 1;
@@ -984,13 +985,14 @@ export function reflect_document_in_runtime(
         },
       );
       try {
-        apply_document_structural_transaction(plan);
+        apply_document_structural_transaction(plan, () => {
+          reconcile_correspondence_incrementally(commit.ops);
+        });
         identityReservation?.apply();
       } catch (cause) {
         prune_removed_registrations(plan.finalNodes);
         throw cause;
       }
-      reconcile_correspondence_incrementally(commit.ops);
       for (const claim of identityReservation?.apply() ?? []) {
         refresh_registration_at_path(claim.path);
       }

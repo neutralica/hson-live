@@ -100,11 +100,11 @@ export function make_canvas_api<TTree extends LiveTree>(
       return tree;
     }
 
-    canvas.width = display.bitmapWidth;
-    canvas.height = display.bitmapHeight;
-
     tree.attrs.set("width", String(display.bitmapWidth));
     tree.attrs.set("height", String(display.bitmapHeight));
+
+    canvas.width = display.bitmapWidth;
+    canvas.height = display.bitmapHeight;
 
     if (opts?.scaleContext !== false) {
       const ctx = canvas.getContext("2d");

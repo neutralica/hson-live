@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { hson, LiveMapSchemaError, validate_document_path } from "../src/index.ts";
 import { is_Node } from "../src/core/node-guards.ts";
 import type { HsonNode } from "../src/core/types.ts";
+import type { LiveInputBridgeTarget } from "../src/types/bridge.types.ts";
 import type { ElementLiveMap, LiveMapCommitObservation } from "../src/types/livemap.types.ts";
 import { hsonReflect } from "../src/api/reflect/reflect.facade.ts";
 import {
@@ -12,10 +13,69 @@ import {
 } from "../src/api/reflect/reflect.document.error.ts";
 import { create_livetree } from "../src/api/livetree/creation/create-livetree.ts";
 import { project_livetree } from "../src/api/livetree/creation/project-live-tree.ts";
-import { get_el_for_node } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { get_el_for_node, link_node_to_el } from "../src/api/livetree/utils/node-map-helpers.ts";
+import { bind_livetree_input_value, value_to_text } from "../src/api/livemap/livemap.bridge-bindings.ts";
 import { FakeElement, FakeText, install_fake_document } from "./helpers/fake-document.mts";
 
 install_fake_document();
+
+class FakeInputElement extends FakeElement {
+  value = "";
+  checked = false;
+  readonly listeners = new Map<string, Set<EventListener>>();
+
+  public constructor(tagName = "input") { super(tagName); }
+
+  addEventListener(name: string, listener: EventListener): void {
+    const listeners = this.listeners.get(name) ?? new Set<EventListener>();
+    listeners.add(listener);
+    this.listeners.set(name, listeners);
+  }
+
+  removeEventListener(name: string, listener: EventListener): void {
+    this.listeners.get(name)?.delete(listener);
+  }
+}
+
+class FakeTextAreaElement extends FakeInputElement {
+  public constructor() { super("textarea"); }
+}
+
+class FakeSelectElement extends FakeInputElement {
+  multiple = true;
+  options: Array<{ value: string; selected: boolean }> = [];
+  selectedOptions: Array<{ value: string; selected: boolean }> = [];
+
+  public constructor() { super("select"); }
+}
+
+class FakeCanvasElement extends FakeElement {
+  private bitmapWidth = 300;
+  private bitmapHeight = 150;
+  readonly effects: string[] = [];
+  readonly context = {
+    setTransform: (a: number): void => { this.effects.push(`transform:${a}`); },
+  };
+
+  public constructor() { super("canvas"); }
+
+  get width(): number { return this.bitmapWidth; }
+  set width(value: number) { this.bitmapWidth = value; this.effects.push(`width:${value}`); }
+  get height(): number { return this.bitmapHeight; }
+  set height(value: number) { this.bitmapHeight = value; this.effects.push(`height:${value}`); }
+  getBoundingClientRect(): { width: number; height: number } { return { width: 100, height: 50 }; }
+  getContext(kind: string): typeof this.context | null { return kind === "2d" ? this.context : null; }
+  override setAttribute(name: string, value: string): void {
+    super.setAttribute(name, value);
+    this.effects.push(`attr:${name}:${value}`);
+  }
+}
+
+Reflect.set(globalThis, "HTMLInputElement", FakeInputElement);
+Reflect.set(globalThis, "HTMLTextAreaElement", FakeTextAreaElement);
+Reflect.set(globalThis, "HTMLSelectElement", FakeSelectElement);
+Reflect.set(globalThis, "HTMLCanvasElement", FakeCanvasElement);
+Reflect.set(globalThis, "EventTarget", FakeElement);
 
 let checks = 0;
 function check(name: string, fn: () => void): void {
@@ -50,6 +110,12 @@ function projected_element(source: string): HsonNode {
 
 function mount(root: HsonNode): FakeElement {
   return project_livetree(root) as unknown as FakeElement;
+}
+
+function link_bound_element(node: HsonNode, element: FakeElement): void {
+  const quid = node.$_meta?.quid;
+  if (quid !== undefined) element.setAttribute("hson:quid", quid);
+  link_node_to_el(node, element as unknown as Element);
 }
 
 check("bound text.set delegates one replacement while preserving element content", () => {
@@ -222,6 +288,142 @@ check("bound flags delegate canonically, validate schema, and do not mint QUIDs"
   binding.tree.flags.clear("selected");
   assert.equal(map.at([]).flags.has("selected"), false);
   assert.equal(rootDom.getAttribute("selected"), null);
+  binding.dispose();
+});
+
+check("standalone form state remains local while bound form state delegates before DOM realization", () => {
+  const standaloneNode = projected_element(`<input/>`);
+  const standalone = create_livetree(standaloneNode);
+  const standaloneDom = new FakeInputElement();
+  link_node_to_el(standaloneNode, standaloneDom as unknown as Element);
+  standalone.form.setValue("local").form.setChecked(true);
+  assert.deepEqual(standaloneNode.$_attrs, { checked: true, value: "local" });
+  assert.equal(standaloneDom.value, "local");
+  assert.equal(standaloneDom.checked, true);
+
+  const standaloneSelectNode = projected_element(`<select/>`);
+  const standaloneSelect = create_livetree(standaloneSelectNode);
+  const standaloneSelectDom = new FakeSelectElement();
+  standaloneSelectDom.options = [
+    { value: "left", selected: false },
+    { value: "right", selected: false },
+  ];
+  link_node_to_el(standaloneSelectNode, standaloneSelectDom as unknown as Element);
+  standaloneSelect.form.setSelected(["right"]);
+  assert.deepEqual(standaloneSelectNode.$_attrs, { value: "right", values: ["right"] });
+  assert.deepEqual(standaloneSelectDom.options.map((option) => option.selected), [false, true]);
+
+  const map = element(`<input @000000518/>`);
+  const binding = hsonReflect(map);
+  const dom = new FakeInputElement();
+  link_bound_element(binding.tree.node, dom);
+  const before = map.rev;
+  binding.tree.form.setValue("canonical").form.setChecked(true);
+  assert.equal(map.rev, before + 2);
+  assert.equal(map.document.attrs.get(path(), "value"), "canonical");
+  assert.equal(map.document.attrs.get(path(), "checked"), true);
+  assert.equal(dom.value, "canonical");
+  assert.equal(dom.checked, true);
+  binding.dispose();
+});
+
+check("bound form rejection preserves graph and DOM, including unsupported selected arrays", () => {
+  const ValueSchema = hson.liveMap.schema.define((s) => s.input(s.attrs.exact({
+    value: s.string.constrain("fixed", (value) => value === "before"),
+  })));
+  const map = element(`<input @000000519 value="before"/>`).schema.use(ValueSchema);
+  const binding = hsonReflect(map);
+  const dom = new FakeInputElement();
+  dom.value = "before";
+  link_bound_element(binding.tree.node, dom);
+  assert.throws(() => binding.tree.form.setValue("after"), LiveMapSchemaError);
+  assert.equal(map.document.attrs.get(path(), "value"), "before");
+  assert.equal(binding.tree.node.$_attrs?.value, "before");
+  assert.equal(dom.value, "before");
+  binding.dispose();
+
+  const selectedMap = element(`<select @000000520 value="before"/>`);
+  const selectedBinding = hsonReflect(selectedMap);
+  const selectedDom = new FakeSelectElement();
+  selectedDom.value = "before";
+  selectedDom.options = [{ value: "before", selected: true }, { value: "after", selected: false }];
+  link_bound_element(selectedBinding.tree.node, selectedDom);
+  const selectedBefore = structuredClone(selectedBinding.tree.node);
+  assert.throws(() => selectedBinding.tree.form.setSelected(["after"]), DocumentReflectError);
+  assert.deepEqual(selectedBinding.tree.node, selectedBefore);
+  assert.equal(selectedMap.document.attrs.get(path(), "value"), "before");
+  assert.deepEqual(selectedDom.options.map((option) => option.selected), [true, false]);
+  selectedBinding.dispose();
+});
+
+check("form bridge destinations inherit bound document authority", () => {
+  const map = element(`<input @000000521/>`);
+  const binding = hsonReflect(map);
+  const dom = new FakeInputElement();
+  link_bound_element(binding.tree.node, dom);
+  const source = hson.liveMap.fromJson({ value: "bridged" });
+  const target: LiveInputBridgeTarget = {
+    form: {
+      getValue: () => binding.tree.form.getValue(),
+      setValue: (value, options) => binding.tree.form.setValue(value_to_text(value), options),
+    },
+    listen: binding.tree.listen,
+  };
+  const bridge = bind_livetree_input_value(target, source.at(["value"]));
+  assert.equal(map.document.attrs.get(path(), "value"), "bridged");
+  assert.equal(binding.tree.node.$_attrs?.value, "bridged");
+  assert.equal(dom.value, "bridged");
+  bridge.dispose();
+  binding.dispose();
+});
+
+check("canvas display matching accepts canonical sizing before property and context realization", () => {
+  const standaloneNode = projected_element(`<canvas/>`);
+  const standalone = create_livetree(standaloneNode);
+  const standaloneDom = new FakeCanvasElement();
+  link_node_to_el(standaloneNode, standaloneDom as unknown as Element);
+  standalone.canvas.display.match({ dpr: 2 });
+  assert.deepEqual(standaloneNode.$_attrs, { height: "100", width: "200" });
+  assert.equal(standaloneDom.width, 200);
+  assert.equal(standaloneDom.height, 100);
+  assert.deepEqual(standaloneDom.effects, [
+    "attr:width:200", "attr:height:100", "attr:width:200",
+    "width:200", "height:100", "transform:2",
+  ]);
+
+  const map = element(`<canvas @000000522/>`);
+  const binding = hsonReflect(map);
+  const dom = new FakeCanvasElement();
+  link_bound_element(binding.tree.node, dom);
+  dom.effects.length = 0;
+  binding.tree.canvas.display.match({ dpr: 2 });
+  assert.equal(map.document.attrs.get(path(), "width"), "200");
+  assert.equal(map.document.attrs.get(path(), "height"), "100");
+  assert.deepEqual(dom.effects, [
+    "attr:width:200", "attr:height:100", "attr:width:200",
+    "width:200", "height:100", "transform:2",
+  ]);
+  binding.dispose();
+});
+
+check("rejected bound canvas sizing leaves canonical graph and canvas properties unchanged", () => {
+  const CanvasSchema = hson.liveMap.schema.define((s) => s.canvas(s.attrs.exact({
+    width: s.string.constrain("fixed width", (value) => value === "10"),
+    height: s.string,
+  })));
+  const map = element(`<canvas @000000523 width="10" height="10"/>`).schema.use(CanvasSchema);
+  const binding = hsonReflect(map);
+  const dom = new FakeCanvasElement();
+  link_bound_element(binding.tree.node, dom);
+  dom.effects.length = 0;
+  const before = structuredClone(binding.tree.node);
+  assert.throws(() => binding.tree.canvas.display.match({ dpr: 2 }), LiveMapSchemaError);
+  assert.deepEqual(binding.tree.node, before);
+  assert.equal(map.document.attrs.get(path(), "width"), "10");
+  assert.equal(map.document.attrs.get(path(), "height"), "10");
+  assert.equal(dom.width, 300);
+  assert.equal(dom.height, 150);
+  assert.deepEqual(dom.effects, []);
   binding.dispose();
 });
 

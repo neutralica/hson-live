@@ -12,7 +12,10 @@ import { CREATE_NODE } from "../../../core/factories.js";
 import { LiveTree } from "../livetree.js";
 import { LiveFormApi } from "../../../types/livetree-internals.types.js";
 import { ensure_node_attrs } from "../../../core/node-storage.js";
-import { delegate_document_text_mutation_if_bound } from "../lifecycle/document-binding-state.js";
+import {
+  delegate_document_text_mutation_if_bound,
+  document_binding_for_node,
+} from "../lifecycle/document-binding-state.js";
 
 /**
  * Options for form state writers that mirror to the DOM when available.
@@ -145,8 +148,13 @@ export function get_node_text_content(node: HsonNode): string {
  * @returns void.
  */
 export function set_form_value(node: HsonNode, value: string, opts?: SetNodeFormOpts): void {
-  const attrs = ensure_attrs(node);
-  attrs.value = value;
+  const binding = document_binding_for_node(node);
+  if (binding === undefined) {
+    const attrs = ensure_attrs(node);
+    attrs.value = value;
+  } else {
+    binding.delegateAttrs({ kind: "set", name: "value", value });
+  }
 
   const el = form_el_for_node(node);
   if (!el) {
@@ -189,8 +197,13 @@ export function get_form_value(node: HsonNode): string {
  * @returns void.
  */
 export function set_input_checked(node: HsonNode, checked: boolean, opts?: SetNodeFormOpts): void {
-  const attrs = ensure_attrs(node);
-  attrs.checked = checked;
+  const binding = document_binding_for_node(node);
+  if (binding === undefined) {
+    const attrs = ensure_attrs(node);
+    attrs.checked = checked;
+  } else {
+    binding.delegateAttrs({ kind: "set", name: "checked", value: checked });
+  }
 
   const el = form_el_for_node(node);
   if (!el) {
@@ -239,6 +252,11 @@ export function set_input_selected(
   selected: string | readonly string[],
   opts?: SetNodeFormOpts,
 ): void {
+  const binding = document_binding_for_node(node);
+  if (binding !== undefined) {
+    binding.rejectStructuralMutation("form.setSelected");
+  }
+
   const attrs = ensure_attrs(node);
 
   const isMany = Array.isArray(selected);

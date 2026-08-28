@@ -218,7 +218,10 @@ export function plan_document_root_structural_transaction(
 }
 
 /** Apply one fully validated structural plan through explicit internal graph/DOM machinery. */
-export function apply_document_structural_transaction(plan: DocumentStructuralPlan): void {
+export function apply_document_structural_transaction(
+  plan: DocumentStructuralPlan,
+  beforeDomRealization?: () => void,
+): void {
   const transfers: LiveTreeQuidLineageTransfer[] = plan.lineageTransfers.map((transfer) => (
     preflight_livetree_quid_lineage_transfer(
       transfer.quid,
@@ -238,6 +241,7 @@ export function apply_document_structural_transaction(plan: DocumentStructuralPl
   }
   admit_livetree_quid_graph_preserving_absence(plan.root.node, plan.runtime);
   index_subtree_ownership(plan.root.node);
+  beforeDomRealization?.();
 
   for (const owner of plan.affectedOwners) reconcile_owner_dom(owner, plan.runtime);
 }

@@ -216,6 +216,11 @@ check("structural DOM failure preserves canonical commit and fails observer-side
   assert.equal(binding.status, "failed");
   assert.equal(binding.failure?.code, DOCUMENT_REFLECT_STRUCTURAL_UPDATE_FAILED_ERROR_CODE);
   assert.equal(binding.sourceRevision, 0);
+  const reachableIncoming = raw_node(binding.tree.node, [0, 1]);
+  const incomingTree = create_livetree(reachableIncoming).adoptRoots(binding.tree.hostRootNode());
+  assert.throws(() => incomingTree.attrs.set("bypass", "blocked"), DocumentReflectError);
+  assert.equal(reachableIncoming.$_attrs?.bypass, undefined);
+  assert.equal(map.document.attrs.get(path(0, 1), "bypass"), undefined);
   assert.throws(() => binding.tree.empty(), DocumentReflectError);
   binding.dispose();
 });
