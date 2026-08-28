@@ -161,6 +161,33 @@ export function activate(context: vscode.ExtensionContext): void {
     clients.clear(); files.clear(); staleProviders.clear();
     controller.refresh();
   };
+  // Manual invocation only: no punctuation-trigger spam or expression ownership.
+  context.subscriptions.push(vscode.languages.registerCompletionItemProvider(["typescript", "typescriptreact"], {
+    async provideCompletionItems(document, position, token) {
+      const folder = vscode.workspace.getWorkspaceFolder(document.uri);
+      if (folder === undefined || !vscode.workspace.isTrusted || !vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", document.uri).get<boolean>("enabled", false)) return [];
+      const key = folder.uri.toString();
+      const client = clients.get(key);
+      if (client === undefined || staleProviders.has(key)) return [];
+      const snapshot = adaptDocument(document);
+      const current = () => !token.isCancellationRequested && document.version === snapshot.version && clients.get(key) === client
+        && !staleProviders.has(key) && vscode.workspace.isTrusted && vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", document.uri).get<boolean>("enabled", false);
+      const result = await client.complete(snapshot, document.offsetAt(position), current);
+      if (!current() || result.completion?.range === undefined) return [];
+      const started = performance.now();
+      const range = new vscode.Range(document.positionAt(result.completion.range.start), document.positionAt(result.completion.range.end));
+      const items = result.completion.items.map(spec => {
+        const item = new vscode.CompletionItem(spec.label, spec.kind === "literal" ? vscode.CompletionItemKind.Value : spec.kind === "tag" ? vscode.CompletionItemKind.Class : vscode.CompletionItemKind.Property);
+        item.range = range;
+        item.insertText = spec.snippet ? new vscode.SnippetString(spec.insertText) : spec.insertText;
+        item.detail = `HSON Schema: ${spec.detail}`;
+        item.sortText = spec.sortText;
+        return item;
+      });
+      output.appendLine(JSON.stringify({ completion: true, ...result.measurement, ...result.completion.timings, itemConstructionMs: performance.now() - started }));
+      return items;
+    },
+  }));
   const watcher = vscode.workspace.createFileSystemWatcher("**/*.{js,mjs,cjs,ts,mts,cts}");
   const changed = (uri: vscode.Uri): void => {
     for (const [key, client] of clients) {

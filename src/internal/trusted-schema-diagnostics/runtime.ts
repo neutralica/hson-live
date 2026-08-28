@@ -15,6 +15,7 @@ import { is_owned_trusted_schema, is_trusted_schema_runtime } from "./runtime-or
 import { TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION, type TrustedSchemaDiagnostic, type TrustedSchemaRequest, type TrustedSchemaResponse } from "./protocol.js";
 import { reset_interpolation_captures, read_interpolation_captures, type InterpolationCapture } from "./interpolation-capture.js";
 import { map_interpolation_range } from "./interpolation-source.js";
+import { query_schema_completion } from "../schema-completion/query.js";
 
 export class TrustedSchemaDiagnosticRuntime {
   readonly #generation: number;
@@ -41,6 +42,7 @@ export class TrustedSchemaDiagnosticRuntime {
     if (request.type === "associate-source") return this.associateSource(request);
     if (request.type === "dispose") { if (request.associationId !== undefined) { this.#associations.delete(request.associationId); this.#direct.delete(request.associationId); } return this.reply(request, "disposed"); }
     if (request.type === "validate") return this.validate(request);
+    if (request.type === "complete") return this.complete(request);
     return this.error(request, "PROTOCOL_MISMATCH", "Unrecognized trusted Schema diagnostics request.");
   }
 
@@ -224,6 +226,24 @@ export class TrustedSchemaDiagnosticRuntime {
     return Object.freeze({ ...this.reply(request, "result"), result: Object.freeze({ status: issues.length === 0 ? "VALID" : "INVALID", diagnostics: Object.freeze(diagnostics), timings: Object.freeze({ parseMs, validateMs, lowerMs: performance.now() - lowerStart }) }) });
   }
 
-  private reply(request: TrustedSchemaRequest, type: TrustedSchemaResponse["type"]): TrustedSchemaResponse { return Object.freeze({ protocolVersion: TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION, requestId: request.requestId, runtimeGeneration: this.#generation, type }); }
+  private reply(request: TrustedSchemaRequest, type: TrustedSchemaResponse["type"]): TrustedSchemaResponse { return Object.freeze({ protocolVersion: TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION, completionVersion: 1, requestId: request.requestId, runtimeGeneration: this.#generation, type }); }
+
+  private complete(request: Extract<TrustedSchemaRequest, { type: "complete" }>): TrustedSchemaResponse {
+    const direct = this.#direct.get(request.associationId);
+    if (direct === undefined || !same_direct_source(direct.evidence, request.directSource)
+      || direct.evidence.templateRevision !== request.templateRevision || direct.evidence.documentRevision !== request.candidateRevision
+      || direct.schemaId !== request.schemaId || this.#schemas.get(request.schemaId) !== direct.schema
+      || direct.lifecycle?.isCurrent?.() === false) return this.error(request, "ASSOCIATION_UNAVAILABLE", "No current completion contract.");
+    const interpolation = direct.evidence.interpolation;
+    const interpolationCurrent = (): boolean => {
+      if (interpolation === undefined) return true;
+      const captures = read_interpolation_captures().filter(c => c.site.templateId === interpolation.templateId && c.site.sourceRevision === interpolation.sourceRevision);
+      return captures.length === 1 && captures[0].evaluationId === interpolation.evaluationId && captures[0].source === request.source;
+    };
+    if (!interpolationCurrent()) return this.error(request, "ASSOCIATION_UNAVAILABLE", "No current interpolation evidence.");
+    const completion = query_schema_completion(direct.schema, request.source, request.cursor, request.unknownRanges);
+    if (direct.lifecycle?.isCurrent?.() === false || !interpolationCurrent()) return this.error(request, "ASSOCIATION_UNAVAILABLE", "Completion contract retired.");
+    return { ...this.reply(request, "completed"), completion };
+  }
   private error(request: TrustedSchemaRequest, error: NonNullable<TrustedSchemaResponse["error"]>, message: string): TrustedSchemaResponse { return Object.freeze({ ...this.reply(request, "error"), error, message }); }
 }

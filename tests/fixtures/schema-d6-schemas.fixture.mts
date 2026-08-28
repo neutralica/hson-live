@@ -1,0 +1,10 @@
+import { hson } from "../../src/hson.ts";
+import type { LiveMapProjectedSchema } from "../../src/api/livemap/livemap.schema.ts";
+export { hson };
+export const UserSchema = hson.liveMap.schema.define(s => s.object.exact({ name: s.string, role: s.literal('user', 'admin'), enabled: s.boolean.optional }));
+export const DocumentSchema = hson.liveMap.schema.define(s => s.div(s.attrs({ id: s.string, hidden: s.flag.optional }), s.repeat(s.button(s.empty))));
+export const TaggedSchema = hson.liveMap.schema.define(s => s.tagged('kind', { a: s.object({ alpha: s.number }), b: s.object({ beta: s.string }) }));
+export let RecursiveSchema: LiveMapProjectedSchema;
+RecursiveSchema = hson.liveMap.schema.define(s => s.object({ name: s.string, child: s.recurse(() => RecursiveSchema).optional }));
+export const LargeSchema = hson.liveMap.schema.define(s => s.object({ next: s.string }));
+export const trustedSchemas = { user: UserSchema, document: DocumentSchema, tagged: TaggedSchema, recurse: RecursiveSchema, large: LargeSchema };

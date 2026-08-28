@@ -3,7 +3,8 @@
 This extension provides syntax highlighting and authoritative parser diagnostics
 for standalone `.hson` files, supported `HSON` tagged templates, and statically
 recoverable strings passed to official `fromHson` boundaries in TypeScript and
-TSX.
+TSX. In trusted Schema mode, `HSON` templates also support bounded structural
+completion.
 
 The tagged-template injection intentionally recognizes only the exact direct tag
 spelling `HSON`. Import aliases and facade/property forms are left to the
@@ -26,6 +27,23 @@ complete authored escape. Dynamic templates, concatenation, helper results,
 imports, properties, `let`/`var`, and runtime file/network input remain
 runtime-only. Recognition follows official import binding identity; unrelated
 methods that merely share the name `fromHson` are ignored.
+
+## Trusted Schema completion (D6)
+
+Use **Trigger Suggest** inside `HSON` template literal segments for declared
+members, finite literals, document tags, attrs, flags, and known child positions.
+Completions come from the **actual current runtime Schema**, require Workspace
+Trust plus trusted Schema diagnostics enablement, and become available after
+that runtime has warmed up. Completion never starts or reloads the provider.
+Required declarations sort first; missing values use blank snippet placeholders,
+not invented defaults. Arbitrary constraints remain validation-only.
+
+Multiple governing contracts, stale runtime-dependent values, ambiguous branches,
+or syntax that cannot establish a cursor slot may temporarily give no completion.
+`${...}` remains ordinary TypeScript expression editing. D6 is manual-invocation
+only and deliberately does **not** provide Schema completion in ordinary
+`fromHson(...)` strings/templates: use `HSON` for rich interactive authoring,
+and `fromHson` when you already have HSON source.
 
 ## Trusted Schema diagnostics (D2, opt in)
 

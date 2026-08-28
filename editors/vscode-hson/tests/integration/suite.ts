@@ -2,6 +2,15 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 
 import * as vscode from "vscode";
+const completionCommandTimes: number[] = [];
+
+async function schemaCompletions(document: vscode.TextDocument, offset: number): Promise<vscode.CompletionItem[]> {
+  const started = performance.now();
+  const result = await vscode.commands.executeCommand<vscode.CompletionList>('vscode.executeCompletionItemProvider', document.uri, document.positionAt(offset));
+  const items = result?.items.filter(item => item.detail?.startsWith('HSON Schema:')) ?? [];
+  if (items.length) completionCommandTimes.push(performance.now()-started);
+  return items;
+}
 
 async function diagnosticsFor(
   uri: vscode.Uri,
@@ -39,6 +48,10 @@ export async function run(): Promise<void> {
     await new Promise(resolve=>setTimeout(resolve,700));
     assert.equal(vscode.languages.getDiagnostics(interpolated.uri).filter(d=>d.source?.startsWith("HSON")).length,0);
     assert.equal(Buffer.from(await vscode.workspace.fs.readFile(marker)).toString(),before);
+    const completion = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, 'completion-user.ts')));
+    assert.deepEqual(await schemaCompletions(completion, completion.getText().indexOf('< >')+2), []);
+    assert.equal(Buffer.from(await vscode.workspace.fs.readFile(marker)).toString(),before);
+    process.stdout.write('ok - real VS Code D6 Restricted Mode: no Schema completion and no provider execution\n');
     process.stdout.write("ok - real VS Code D5 Restricted Mode executes no provider and makes no runtime validity claim\n");
     return;
   }
@@ -206,5 +219,61 @@ export async function run(): Promise<void> {
   assert.equal(runtimeDiagnostics(repeated).length,0,'repeated equal evaluations fail closed');
   await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
   process.stdout.write('ok - real VS Code D5: actual interpolation, expression mismatch, edit retirement, fresh runtime value, trust off, literal/admission errors, D3 flow, repeated ambiguity\n');
+
+  const completion = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, 'completion-user.ts')));
+  await vscode.window.showTextDocument(completion);
+  assert.deepEqual(await schemaCompletions(completion, completion.getText().indexOf('< >')+2), []);
+  await config.update('enabled', true, vscode.ConfigurationTarget.Workspace);
+  const waitCompletion = async (doc: vscode.TextDocument, offset: number, label: string) => {
+    const deadline = Date.now()+10_000;
+    let items: vscode.CompletionItem[] = [];
+    while (Date.now()<deadline) { items = await schemaCompletions(doc,offset); if(items.some(i=>i.label===label)) return items; await new Promise(resolve=>setTimeout(resolve,50)); }
+    assert.fail(`Missing D6 ${label}: ${JSON.stringify(items)}`);
+  };
+  let entries = await waitCompletion(completion, completion.getText().indexOf('< >')+2, 'name');
+  const name = entries.find(i=>i.label==='name')!;
+  assert.ok(name.insertText instanceof vscode.SnippetString);
+  assert.equal(name.insertText.value, 'name ${1}');
+  assert.ok(name.sortText! < entries.find(i=>i.label==='enabled')!.sortText!);
+  const editBody = async (doc: vscode.TextDocument, marked: string) => {
+    const text = doc.getText(), start = text.indexOf('HSON`')+5, end = text.indexOf('`',start);
+    const edit = new vscode.WorkspaceEdit(); edit.replace(doc.uri,new vscode.Range(doc.positionAt(start),doc.positionAt(end)),marked.replace('|',''));
+    await vscode.workspace.applyEdit(edit);
+    return start+marked.indexOf('|');
+  };
+  let cursor = await editBody(completion, '<role |>');
+  entries = await waitCompletion(completion,cursor,'"user"');
+  assert.deepEqual(entries.map(i=>i.label).sort(), ['"admin"','"user"']);
+  cursor = await editBody(completion, '<name "Ada" |>');
+  entries = await waitCompletion(completion,cursor,'role');
+  assert.ok(!entries.some(i=>i.label==='name'));
+  cursor = await editBody(completion, '<name ${val|ue} role "user">');
+  assert.deepEqual(await schemaCompletions(completion,cursor), []);
+  const elementCompletion = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'completion-element.ts')));
+  await vscode.window.showTextDocument(elementCompletion);
+  entries = await waitCompletion(elementCompletion,elementCompletion.getText().indexOf(' />')+1,'hidden');
+  assert.equal(entries.find(i=>i.label==='hidden')?.insertText, 'hidden');
+  assert.ok(entries.some(i=>i.label==='id'));
+  cursor = await editBody(elementCompletion,'<div < |/>/>');
+  entries = await waitCompletion(elementCompletion,cursor,'button');
+  assert.equal(entries.find(i=>i.label==='button')?.insertText,'button');
+  const natural = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'map-user.ts')));
+  cursor = await editBody(natural,'<user < |>>');
+  entries = await waitCompletion(natural,cursor,'age');
+  assert.ok(!natural.getText().includes('HSON.validate'));
+  assert.ok(entries.some(i=>i.label==='age'));
+  const slow = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'completion-slow.ts')));
+  const pending = schemaCompletions(slow,slow.getText().indexOf('< >')+2);
+  const entered = vscode.Uri.file(join(workspace,'completion-entered.txt'));
+  const deadline = Date.now()+3000;
+  let observed = false;
+  while (Date.now()<deadline) { try { await vscode.workspace.fs.stat(entered); observed=true; break; } catch { await new Promise(resolve=>setTimeout(resolve,10)); } }
+  assert.ok(observed,'actual trusted recurse entered before generation retirement');
+  await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
+  assert.deepEqual(await pending, [], 'retired generation never publishes delayed completion');
+  assert.deepEqual(await schemaCompletions(elementCompletion,cursor), []);
+  process.stdout.write('ok - real VS Code D6: manual member/snippet/order, finite literals, attrs/flags, child tags, incomplete edit, source filtering update, expression exclusion, disablement, delayed-generation retirement, natural D3 completion\n');
+  completionCommandTimes.sort((a,b)=>a-b);
+  process.stdout.write('# D6 real VS Code completion command ms '+JSON.stringify({samples:completionCommandTimes.length,p50:completionCommandTimes[Math.floor(completionCommandTimes.length/2)],max:completionCommandTimes.at(-1)})+'\n');
 
 }

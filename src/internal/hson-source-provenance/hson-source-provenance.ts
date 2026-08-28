@@ -35,6 +35,8 @@ export type HsonTokenSourceEvidence = Readonly<{
 }>;
 
 export interface HsonSourceLexicalCollector {
+  /** Private observation only; completion may stop scanning at a proven grammar slot. */
+  completionSlot?(kind: "member" | "value" | "tag" | "header" | "child" | "attribute-value", range: HsonSourceRange): void;
   recordToken(token: Tokens, evidence: HsonTokenSourceEvidence): void;
   recordAttribute(attr: RawAttr, roles: AttributeRoles): void;
 }

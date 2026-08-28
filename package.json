@@ -89,6 +89,11 @@
     }
   },
   "scripts": {
+    "test:hson-completion-context": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-completion-context.acceptance.mts",
+    "test:schema-projected-completion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-projected-completion.acceptance.mts",
+    "test:schema-document-completion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-document-completion.acceptance.mts",
+    "test:schema-editor-completion": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-editor-completion.acceptance.mts",
+    "test:schema-completion-performance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-completion-performance.acceptance.mts",
     "test:hson-d5-mapping": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-d5-mapping.acceptance.mts",
     "test:trusted-d5-capture": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/trusted-d5-capture.acceptance.mts",
     "test:schema-d5-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d5-editor.acceptance.mts",

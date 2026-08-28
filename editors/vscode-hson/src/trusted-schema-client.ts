@@ -11,6 +11,13 @@ import { discover_hson_tagged_templates } from "../../../src/internal/embedded-h
 import { interpolation_site, map_interpolation_range } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
 import { source_point_range_at } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { pathToFileURL } from "node:url";
+import { completion_source } from "./completion-source.js";
+import type { SchemaCompletionResult } from "../../../src/internal/schema-completion/query.js";
+
+export type EditorCompletionResult = Readonly<{
+  status: SchemaStatus; completion?: SchemaCompletionResult;
+  measurement?: Readonly<{ discoveryMs: number; roundTripMs: number; endToEndMs: number }>;
+}>;
 
 export type SchemaStatus = "off" | "waiting" | "current-valid" | "current-invalid" | "stale" | "ambiguous" | "unavailable" | "runtime-failed";
 export type D2Measurement = Readonly<{
@@ -30,6 +37,8 @@ export class TrustedSchemaClient {
   readonly #options: SchemaClientOptions;
   #load: Promise<TrustedSchemaResponse> | undefined;
   #loadedGeneration: number | undefined;
+  #completionLoaded: TrustedSchemaResponse | undefined;
+  readonly #completionTickets = new Map<string, number>();
   #revision = 0;
   #bindings: readonly TrustedSchemaBindingRegistration[] = [];
   #lifecycleModules: readonly string[] = [];
@@ -40,6 +49,7 @@ export class TrustedSchemaClient {
   dispose(): void { this.supervisor.dispose(); }
   invalidate(): void { this.supervisor.terminate(); this.#load = undefined; this.#documentVersions.clear(); this.#retiredDocuments.clear(); }
   invalidateDocument(document: DiagnosticDocument): void {
+    this.#completionTickets.set(document.uri, (this.#completionTickets.get(document.uri) ?? 0) + 1);
     if (this.#documentVersions.has(document.uri) || discover_hson_tagged_templates(document.fileName, document.text).interpolated.length > 0) {
       this.#retiredDocuments.add(document.uri);
     }
@@ -74,6 +84,7 @@ export class TrustedSchemaClient {
       const loaded = await this.#load;
       if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
       if (loaded.type !== "loaded") return failure(loaded);
+      this.#completionLoaded = loaded;
       message = loaded.loadFailure;
       const observed = templates.length === 0 ? undefined : await this.supervisor.request({ type: "captures", moduleUrl: pathToFileURL(document.fileName).href });
       if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
@@ -162,6 +173,60 @@ export class TrustedSchemaClient {
     } catch (error) {
       return { status: "runtime-failed", diagnostics: [], message: error instanceof Error ? error.message : "Trusted Schema runtime failed." };
     }
+  }
+
+  async complete(document: DiagnosticDocument, offset: number, current: () => boolean): Promise<EditorCompletionResult> {
+    const started = performance.now();
+    if (!this.#options.trust.enabled || !this.#options.trust.workspaceTrusted) return { status: "off" };
+    const ticket = (this.#completionTickets.get(document.uri) ?? 0) + 1;
+    this.#completionTickets.set(document.uri, ticket);
+    const generation = this.supervisor.activeGeneration;
+    const loaded = this.#completionLoaded;
+    // Completion never starts/restarts a process or loads workspace code.
+    if (generation === undefined || loaded?.runtimeGeneration !== generation || loaded.completionVersion !== 1) return { status: "waiting" };
+    const live = () => current() && this.#completionTickets.get(document.uri) === ticket && this.supervisor.activeGeneration === generation;
+    if (!live()) return { status: "stale" };
+    const associations = discover_schema_validation_sources(document.fileName, document.text).filter(a => completion_source(a, offset) !== undefined);
+    if (associations.length !== 1) return { status: associations.length > 1 ? "ambiguous" : "unavailable" };
+    const association = associations[0];
+    let registration = loaded.bindings?.find(r => same_schema_source_binding(r.binding, association.binding));
+    if (registration === undefined) return { status: "unavailable" };
+    const lifecycles = association.mapFlow === undefined ? [] : (loaded.associations ?? []).filter(r => same_map_flow(r.mapFlow, association.mapFlow)
+      && r.binding !== undefined && same_schema_source_binding(r.binding, association.binding) && r.correspondence === "direct" && r.validationAttempted === true);
+    if (association.mapFlow !== undefined && lifecycles.length !== 1) return { status: lifecycles.length > 1 ? "ambiguous" : "unavailable" };
+    const lifecycle = lifecycles[0];
+    if (lifecycle !== undefined) registration = loaded.bindings?.find(r => r.schemaId === lifecycle.schemaId && same_schema_source_binding(r.binding, association.binding));
+    if (registration === undefined) return { status: "unavailable" };
+    const discoveryMs = performance.now() - started;
+    const requestStarted = performance.now();
+    let associationId: string | undefined;
+    try {
+      const observed = association.interpolation === undefined || this.#retiredDocuments.has(document.uri) ? undefined
+        : await this.supervisor.request({ type: "captures", moduleUrl: pathToFileURL(document.fileName).href });
+      if (!live()) return { status: "stale" };
+      if (observed !== undefined && observed.type !== "captured") return { status: "unavailable" };
+      const captures = (observed?.captures ?? []).filter(c => c.site.templateId === association.interpolation?.templateId && c.site.sourceRevision === association.interpolation?.sourceRevision);
+      if (captures.length > 1) return { status: "ambiguous" };
+      const capture = captures[0]?.canonical === undefined ? undefined : captures[0];
+      const candidate = completion_source(association, offset, capture);
+      if (candidate === undefined) return { status: "unavailable" };
+      const associationRevision = ++this.#revision;
+      associationId = `${association.callId}@completion:${document.version}:${associationRevision}`;
+      const directSource: TrustedSchemaDirectSource = { templateId: association.templateId, callId: association.callId, binding: association.binding,
+        mapFlow: association.mapFlow, documentRevision: document.version, templateRevision: document.version, associationRevision,
+        interpolation: capture === undefined ? undefined : { templateId: capture.site.templateId, sourceRevision: capture.site.sourceRevision, evaluationId: capture.evaluationId } };
+      const associated = await this.supervisor.request({ type: "associate-source", associationId, lifecycleId: lifecycle?.associationId, schemaId: registration.schemaId, directSource });
+      if (!live()) return { status: "stale" };
+      if (associated.type !== "associated") return { status: failure(associated).status };
+      const response = await this.supervisor.request({ type: "complete", associationId, schemaId: registration.schemaId, directSource,
+        templateRevision: document.version, candidateRevision: document.version, source: candidate.source, cursor: candidate.cursor, unknownRanges: candidate.unknownRanges });
+      if (!live()) return { status: "stale" };
+      const completion = response.completion;
+      const range = completion?.range === undefined ? undefined : candidate.map(completion.range);
+      if (response.type !== "completed" || completion === undefined || range === undefined) return { status: "unavailable" };
+      return { status: "current-valid", completion: { ...completion, range }, measurement: { discoveryMs, roundTripMs: performance.now() - requestStarted, endToEndMs: performance.now() - started } };
+    } catch { return { status: live() ? "runtime-failed" : "stale" }; }
+    finally { if (associationId !== undefined && this.supervisor.activeGeneration === generation) await this.supervisor.request({ type: "dispose", associationId }).catch(() => {}); }
   }
 }
 function failure(response: TrustedSchemaResponse): SchemaClientResult {

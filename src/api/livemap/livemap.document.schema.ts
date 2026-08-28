@@ -142,6 +142,8 @@ type DocumentElementNode = Readonly<{
 export type InternalDocumentAttrRule = Readonly<{
   optional: boolean;
   flag: boolean;
+  /** Existing compiled declarative authority; never a predicate-based generator. */
+  valueSchema?: import("./livemap.schema.js").LiveMapSchemaNode;
   validate: (value: unknown) => LiveMapSchemaValidation;
 }>;
 

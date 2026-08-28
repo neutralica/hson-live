@@ -77,9 +77,22 @@ class HsonScanner {
     this.collector?.recordToken(token, evidence);
   }
 
+  private completionSlot(kind: Parameters<NonNullable<HsonSourceLexicalCollector["completionSlot"]>>[0], start?: number): void {
+    if (this.collector?.completionSlot === undefined) return;
+    if (start !== undefined) {
+      this.collector.completionSlot(kind, { start, end: this.index });
+      return;
+    }
+    // Only trivia at a grammar boundary, never comments or guessed token text.
+    let boundary = this.index;
+    while (boundary > 0 && isHsonTrivia(this.source[boundary - 1])) boundary--;
+    this.collector.completionSlot(kind, { start: boundary, end: this.index });
+  }
+
   public scan(): Tokens[] {
     while (true) {
       this.skipTrivia();
+      this.completionSlot("value");
       if (this.atEnd()) return this.tokens;
 
       const ch = this.peek();
@@ -157,6 +170,7 @@ class HsonScanner {
 
   /** Lower `name value` object members to the existing canonical token shape. */
   private scanObjectAfterOpen(openPos: Position, depth: number): void {
+    this.completionSlot("member");
     // Preserve the compact empty-object token used by existing parser APIs.
     if (this.peek() === ">") {
       this.consumeExpected(">");
@@ -172,6 +186,7 @@ class HsonScanner {
     }
 
     this.skipTrivia();
+    this.completionSlot("member");
     if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
     let quid: { value: string; start: Position; end: Position } | undefined;
@@ -215,6 +230,7 @@ class HsonScanner {
     const declarations = new Map<string, Position>();
     while (true) {
       const namePos = this.position();
+      this.completionSlot("member");
       if (this.peek() === ",") {
         this.fail(`object members do not use commas`, namePos, "HSON_OBJECT_COMMA_FORBIDDEN");
       }
@@ -253,6 +269,7 @@ class HsonScanner {
         ? this.scanQuotedName()
         : this.scanBareName("object member name");
       const nameEnd = this.index;
+      this.completionSlot("member", namePos.index);
       assert_authored_hson_source_name(name, namePos);
       const first = declarations.get(name);
       if (first !== undefined) {
@@ -266,6 +283,7 @@ class HsonScanner {
       declarations.set(name, namePos);
 
       const separatedFromValue = this.skipTrivia();
+      if (separatedFromValue) this.completionSlot("value");
       if (this.atEnd() || this.peek() === ">") {
         this.fail(`object member "${name}" is missing its value`, namePos, "missing-object-member-value");
       }
@@ -298,6 +316,7 @@ class HsonScanner {
       });
 
       const separated = this.skipTrivia();
+      if (separated) this.completionSlot("member");
       if (this.atEnd()) this.fail(`unterminated object`, openPos, "HSON_CONTAINER_UNTERMINATED");
       if (this.peek() === ">") {
         const closePos = this.position();
@@ -388,6 +407,7 @@ class HsonScanner {
   /** Existing named element syntax, selected only after a matching `/>`. */
   private scanElementAfterOpen(openPos: Position, depth: number): void {
     this.skipTrivia();
+    this.completionSlot("tag");
     if (this.atEnd()) this.fail(`unterminated angle construct`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
     if (this.startsWith("/>")) {
@@ -399,6 +419,7 @@ class HsonScanner {
       ? this.scanQuotedName()
       : this.scanBareName("tag name");
     const tagEnd = this.index;
+    this.completionSlot("tag", tagPos.index);
     if (tag.length === 0) {
       this.fail(`element name must not decode to the empty string`, tagPos, "HSON_ELEMENT_NAME_REQUIRED");
     }
@@ -425,6 +446,7 @@ class HsonScanner {
 
     while (true) {
       this.skipTrivia();
+      this.completionSlot(contentStarted ? "child" : "header");
       if (this.atEnd()) this.fail(`unterminated tag <${tag}>`, openPos, "HSON_CONTAINER_UNTERMINATED");
 
       if (this.startsWith("/>")) {
@@ -474,6 +496,7 @@ class HsonScanner {
       if (is_hson_bare_name_start(ch)) {
         const namePos = this.position();
         const name = this.scanBareName("attribute or flag");
+        if (!contentStarted) this.completionSlot("header", namePos.index);
         const nameEnd = this.previousPosition();
         assert_authored_hson_source_name(name, namePos);
 
@@ -631,6 +654,7 @@ class HsonScanner {
     let sawItem = false;
     while (true) {
       this.skipTrivia();
+      if (expectItem) this.completionSlot("value");
       if (this.atEnd()) {
         this.fail(`unterminated ${opener}${closer} array`, openPos, "HSON_CONTAINER_UNTERMINATED");
       }
@@ -735,6 +759,7 @@ class HsonScanner {
   private scanAttributeValue(name: string, start: Position): RawAttr {
     this.consumeExpected("=");
     this.skipTrivia();
+    this.completionSlot("attribute-value");
     if (this.atEnd() || this.startsWith("/>") || this.peek() === ">") {
       this.fail(`missing attribute value for "${name}"`, start, "HSON_ELEMENT_ATTRIBUTE_VALUE_INVALID");
     }

@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,11 +20,22 @@ await mkdir(restrictedExtensionsDir);
 await mkdir(workspaceDir);
 const hsonPath = resolve(here, "../../../../dist/hson.js");
 const contracts = `import { hson } from ${JSON.stringify(pathToFileURL(hsonPath).href)};
+import { writeFileSync } from "node:fs";
 export { hson };
 export const UserSchema = hson.liveMap.schema.define(s => s.object({ user: s.object({ age: s.number }) }));
-export const trustedSchemas = { runtimeHandle: UserSchema };
+export const CompletionSchema = hson.liveMap.schema.define(s => s.object.exact({ name: s.string, role: s.literal("user", "admin"), enabled: s.boolean.optional }));
+export const ElementSchema = hson.liveMap.schema.define(s => s.div(s.attrs({ id: s.string, hidden: s.flag.optional }), s.repeat(s.button(s.empty))));
+export const SlowSchema = hson.liveMap.schema.define(s => s.recurse(() => {
+  writeFileSync(new URL("./completion-entered.txt", import.meta.url), "entered");
+  const until=Date.now()+400; while(Date.now()<until) {};
+  return s.object({ late: s.string });
+}));
+export const trustedSchemas = { runtimeHandle: UserSchema, completion: CompletionSchema, element: ElementSchema, slow: SlowSchema };
 `;
 await writeFile(join(workspaceDir, "contracts.mjs"), contracts);
+for (const [file, schema, body] of [["completion-user.ts", "CompletionSchema", "< >"], ["completion-element.ts", "ElementSchema", "<div />"], ["completion-slow.ts", "SlowSchema", "< >"]]) {
+  await writeFile(join(workspaceDir, file), `import { HSON } from "hson-live/hson"; import { ${schema} } from "./contracts.mjs"; const value=1; const source=HSON\`${body}\`; HSON.validate(${schema},source);`);
+}
 const d3Source = 'import { HSON } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = HSON`<user <age "37">>`;\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
 await writeFile(join(workspaceDir, "map-user.ts"), d3Source);
 const d4Source = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nconst source = "<user <age \\x2237\\x22>>";\nconst map = hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);\n';
@@ -54,7 +65,7 @@ import { instrument_trusted_schema_map_sources } from ${JSON.stringify(instrumen
 const marker=new URL("./provider-count.txt",import.meta.url);
 await writeFile(marker,String(Number(await readFile(marker,"utf8").catch(()=>"0"))+1));
 const contractsUrl = new URL("./contracts.mjs", import.meta.url).href;
-export const trustedSchemaBindings = [{ schemaId: "runtimeHandle", binding: { moduleUrl: contractsUrl, exportName: "UserSchema" } }];
+export const trustedSchemaBindings = Object.entries({ runtimeHandle: "UserSchema", completion: "CompletionSchema", element: "ElementSchema", slow: "SlowSchema" }).map(([schemaId, exportName]) => ({ schemaId, binding: { moduleUrl: contractsUrl, exportName } }));
 const source = ${JSON.stringify(d3Source)};
 const cases = [
   [${JSON.stringify(join(workspaceDir, "map-user.ts"))}, source],
@@ -91,6 +102,17 @@ try {
     ],
     extensionTestsEnv: { HSON_D2_TEST_WORKSPACE: workspaceDir, HSON_D2_TEST_HSON: hsonPath },
   });
+  const measurements = [];
+  for (const entry of await readdir(join(userDataDir, 'logs'), { recursive: true })) {
+    if (!entry.includes('output_logging') || !entry.endsWith('.log')) continue;
+    for (const line of (await readFile(join(userDataDir, 'logs', entry), 'utf8')).split('\n')) {
+      try { const record = JSON.parse(line.slice(line.indexOf('{'))); if (record.completion) measurements.push(record); } catch {}
+    }
+  }
+  if (measurements.length) {
+    const values = measurements.map(m => m.itemConstructionMs).sort((a,b)=>a-b);
+    console.log('# D6 real VS Code item construction ms ' + JSON.stringify({samples: values.length, p50: values[Math.floor(values.length/2)], max: values.at(-1)}));
+  }
   const executable = process.env.HSON_VSCODE_EXECUTABLE ?? await downloadAndUnzipVSCode("1.95.3");
   const restrictedArgs = [
     "--no-sandbox", "--disable-gpu-sandbox", "--disable-updates", "--skip-welcome", "--skip-release-notes",

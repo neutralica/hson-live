@@ -231,6 +231,26 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:hson-d5-mapping", repositoryModule: "tests/hson-d5-mapping.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
     }),
     launcher({
+      id: "hson-completion-context", subject: "Transform", displayName: "D6 authoritative cursor context",
+      packageScript: "test:hson-completion-context", repositoryModule: "tests/hson-completion-context.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-projected-completion", subject: "LiveMap", displayName: "D6 projected Schema completion",
+      packageScript: "test:schema-projected-completion", repositoryModule: "tests/schema-projected-completion.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-document-completion", subject: "LiveMap", displayName: "D6 document Schema completion",
+      packageScript: "test:schema-document-completion", repositoryModule: "tests/schema-document-completion.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-editor-completion", subject: "LiveMap", displayName: "D6 trusted editor completion",
+      packageScript: "test:schema-editor-completion", repositoryModule: "tests/schema-editor-completion.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-completion-performance", subject: "LiveMap", displayName: "D6 warmed completion performance",
+      packageScript: "test:schema-completion-performance", repositoryModule: "tests/schema-completion-performance.acceptance.mts", runtime: "node", collections: ["schema", "performance", "internal"],
+    }),
+    launcher({
       id: "trusted-d5-capture", subject: "Transform", displayName: "D5 trusted interpolation capture",
       packageScript: "test:trusted-d5-capture", repositoryModule: "tests/trusted-d5-capture.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
     }),

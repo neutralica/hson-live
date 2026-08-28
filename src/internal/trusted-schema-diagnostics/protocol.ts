@@ -84,6 +84,12 @@ export type TrustedSchemaDiagnostic = Readonly<{
 }>;
 
 export type TrustedSchemaRequest =
+  | Readonly<{
+      type: "complete"; protocolVersion: number; requestId: string; runtimeGeneration: number;
+      associationId: string; schemaId: string; templateRevision: number; candidateRevision: number;
+      source: string; cursor: number; directSource: TrustedSchemaDirectSource;
+      unknownRanges?: readonly Readonly<{ start: number; end: number }>[];
+    }>
   | Readonly<{ type: "captures"; protocolVersion: number; requestId: string; runtimeGeneration: number; moduleUrl: string }>
   | Readonly<{ type: "handshake"; protocolVersion: number; requestId: string; runtimeGeneration: number }>
   | Readonly<{
@@ -126,12 +132,14 @@ export type TrustedSchemaRequest =
   | Readonly<{ type: "dispose" | "shutdown" | "ping"; protocolVersion: number; requestId: string; runtimeGeneration: number; associationId?: string }>;
 
 export type TrustedSchemaResponse = Readonly<{
+  completionVersion?: 1;
+  completion?: import("../schema-completion/query.js").SchemaCompletionResult;
   captures?: readonly import("./interpolation-capture.js").InterpolationCapture[];
   loadFailure?: string;
   protocolVersion: number;
   requestId: string;
   runtimeGeneration: number;
-  type: "ready" | "loaded" | "captured" | "associated" | "result" | "disposed" | "pong" | "error";
+  type: "ready" | "loaded" | "captured" | "associated" | "result" | "completed" | "disposed" | "pong" | "error";
   error?: "PROTOCOL_MISMATCH" | "RUNTIME_MISMATCH" | "MODULE_LOAD_FAILED" | "ASSOCIATION_UNAVAILABLE" | "AMBIGUOUS_REGISTRATION" | "VALIDATION_THROW";
   message?: string;
   schemaIds?: readonly string[];

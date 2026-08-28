@@ -577,7 +577,7 @@ type KnownDocumentTagBuilders = Readonly<{
 /** Direct stateless toolkit supplied only to `schema.define(s => ...)`. */
 export type LiveMapSchemaBuilder = LiveMapSchemaOperators & KnownDocumentTagBuilders;
 
-type LiveMapSchemaNode = Readonly<{
+export type LiveMapSchemaNode = Readonly<{
   kind: LiveMapSchemaKind;
   optional: boolean;
   nullable: boolean;
@@ -614,6 +614,11 @@ type LiveMapSchemaDraft = Readonly<{
 const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
 const DEFINED_PROJECTED_NODES = new WeakMap<object, LiveMapSchemaNode>();
 const COMPILED_PROJECTED_TOKENS = new WeakMap<object, LiveMapSchemaNode>();
+
+/** Private tooling authority; absent from package barrels and public Schema objects. */
+export function read_defined_projected_schema_node(schema: object): LiveMapSchemaNode | undefined {
+  return DEFINED_PROJECTED_NODES.get(schema);
+}
 
 /** Private capability-origin check; intentionally absent from public barrels. */
 export function is_owned_projected_schema(value: unknown): value is LiveMapProjectedSchema {
@@ -701,6 +706,7 @@ function make_attrs_schema(shape: InternalLiveMapAttrsShape, exact: boolean): In
     const rule: InternalDocumentAttrRule = Object.freeze({
       optional: node.optional,
       flag: false,
+      valueSchema: node,
       validate: (value) => {
         const admitted = decode_public_attr_value(name, value);
         if (admitted === undefined) {
