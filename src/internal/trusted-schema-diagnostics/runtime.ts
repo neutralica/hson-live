@@ -3,7 +3,7 @@ import { type LiveMapSchemaIssue } from "../../api/livemap/livemap.schema.js";
 import { validate_schema_hson_graph } from "../schema-hson-validation/validate-schema-hson-graph.js";
 import { is_projected_value_hson_node } from "../../core/projected-value-graph.js";
 import { classify_live_root_mode } from "../../api/livemap/livemap.document.js";
-import { same_direct_source, same_schema_source_binding, valid_schema_source_binding } from "./source-binding.js";
+import { same_direct_source, same_map_flow, same_schema_source_binding, valid_schema_source_binding } from "./source-binding.js";
 import { read_schema_issue_presentation } from "./issue-presentation.js";
 import type { TrustedSchemaBindingRegistration, TrustedSchemaDirectSource, TrustedSchemaRootMode } from "./protocol.js";
 import { resolve_document_schema_issue_source } from "../document-schema-source-lowering/document-schema-source-lowering.js";
@@ -20,7 +20,7 @@ export class TrustedSchemaDiagnosticRuntime {
   readonly #proposals = new Map<string, TrustedSchemaAttachment>();
   readonly #associations = new Map<string, TrustedSchemaAttachment>();
   readonly #bindings: TrustedSchemaBindingRegistration[] = [];
-  readonly #direct = new Map<string, Readonly<{ schema: object; schemaId: string; evidence: TrustedSchemaDirectSource }>>();
+  readonly #direct = new Map<string, Readonly<{ schema: object; schemaId: string; evidence: TrustedSchemaDirectSource; lifecycle?: TrustedSchemaAttachment }>>();
   #loadAttempted = false;
 
   constructor(generation: number) { this.#generation = generation; }
@@ -84,13 +84,24 @@ export class TrustedSchemaDiagnosticRuntime {
           if (owner[record.binding.exportName] !== schemas.get(record.schemaId)) return this.error(request, "RUNTIME_MISMATCH", "Source export differs from registered Schema object.");
         }
       }
+      const resolvedAttachments: TrustedSchemaAttachment[] = [];
       for (const proposal of attachments) {
-        if (!is_trusted_schema_runtime(proposal.origin) || schemas.get(proposal.evidence.schemaId) !== proposal.schema) return this.error(request, "RUNTIME_MISMATCH", "Application Schema identity does not match its declared runtime capability.");
+        if (!is_trusted_schema_runtime(proposal.origin)) return this.error(request, "RUNTIME_MISMATCH", "Application runtime identity differs.");
+        if (proposal.evidence.mapFlow !== undefined && proposal.evidence.binding !== undefined) {
+          // D3 does not register Schemas: match the attempted object to D2's
+          // already verified registrations and source binding, never its name.
+          const registration = bindings.find(record => same_schema_source_binding(record.binding, proposal.evidence.binding!) && schemas.get(record.schemaId) === proposal.schema);
+          if (registration === undefined) continue;
+          resolvedAttachments.push({ ...proposal, evidence: Object.freeze({ ...proposal.evidence, schemaId: registration.schemaId }) });
+        } else {
+          if (schemas.get(proposal.evidence.schemaId) !== proposal.schema) return this.error(request, "RUNTIME_MISMATCH", "Application Schema identity does not match its declared runtime capability.");
+          resolvedAttachments.push(proposal);
+        }
       }
       for (const [id, schema] of schemas) this.#schemas.set(id, schema);
       this.#bindings.push(...bindings.map(record => Object.freeze({ schemaId: record.schemaId, binding: Object.freeze({ ...record.binding }) })));
-      for (const proposal of attachments) this.#proposals.set(proposal.evidence.associationId, proposal);
-      return Object.freeze({ ...this.reply(request, "loaded"), schemaIds: Object.freeze([...this.#schemas.keys()]), bindings: Object.freeze(bindings), associations: Object.freeze(attachments.map((record) => record.evidence)) });
+      for (const proposal of resolvedAttachments) this.#proposals.set(proposal.evidence.associationId, proposal);
+      return Object.freeze({ ...this.reply(request, "loaded"), schemaIds: Object.freeze([...this.#schemas.keys()]), bindings: Object.freeze(bindings), associations: Object.freeze(resolvedAttachments.map((record) => record.evidence)) });
     } catch (cause) {
       consume_trusted_schema_development_registrations();
       consume_trusted_schema_attachments();
@@ -115,7 +126,21 @@ export class TrustedSchemaDiagnosticRuntime {
     if (objects.size > 1) return this.error(request, "AMBIGUOUS_REGISTRATION", "Source binding maps to different Schema objects.");
     const schema = this.#schemas.get(request.schemaId);
     if (schema === undefined || !matches.some(record => record.schemaId === request.schemaId)) return this.error(request, "ASSOCIATION_UNAVAILABLE", "No current registered source binding.");
-    this.#direct.set(request.associationId, { schema, schemaId: request.schemaId, evidence: Object.freeze({ ...request.directSource, binding: Object.freeze({ ...request.directSource.binding }) }) });
+    const lifecycle = request.lifecycleId === undefined ? undefined : this.#proposals.get(request.lifecycleId);
+    if (request.directSource.mapFlow !== undefined || request.lifecycleId !== undefined) {
+      const proposals = [...this.#proposals.values()].filter(proposal => same_map_flow(proposal.evidence.mapFlow, request.directSource.mapFlow)
+        && proposal.evidence.binding !== undefined && same_schema_source_binding(proposal.evidence.binding, request.directSource.binding)
+        && proposal.evidence.correspondence === "direct" && proposal.evidence.validationAttempted === true);
+      if (proposals.length > 1) return this.error(request, "AMBIGUOUS_REGISTRATION", "Multiple runtime applications occupy this source relationship.");
+      if (lifecycle === undefined || request.directSource.mapFlow === undefined || lifecycle.schema !== schema
+        || request.directSource.templateId !== request.directSource.mapFlow.templateId || request.directSource.callId !== request.directSource.mapFlow.callId
+        || !same_map_flow(lifecycle.evidence.mapFlow, request.directSource.mapFlow)
+        || lifecycle.evidence.binding === undefined || !same_schema_source_binding(lifecycle.evidence.binding, request.directSource.binding)
+        || lifecycle.evidence.correspondence !== "direct" || lifecycle.evidence.validationAttempted !== true || lifecycle.isCurrent?.() === false) {
+        return this.error(request, "ASSOCIATION_UNAVAILABLE", "No current source-bound map validation attempt.");
+      }
+    }
+    this.#direct.set(request.associationId, { schema, lifecycle, schemaId: request.schemaId, evidence: Object.freeze({ ...request.directSource, mapFlow: request.directSource.mapFlow === undefined ? undefined : Object.freeze({ ...request.directSource.mapFlow }), binding: Object.freeze({ ...request.directSource.binding }) }) });
     return this.reply(request, "associated");
   }
 
@@ -124,14 +149,16 @@ export class TrustedSchemaDiagnosticRuntime {
     const direct = this.#direct.get(request.associationId);
     const validDirect = direct !== undefined && request.directSource !== undefined && same_direct_source(direct.evidence, request.directSource)
       && direct.evidence.templateRevision === request.templateRevision && direct.evidence.documentRevision === request.candidateRevision
+      && (direct.lifecycle === undefined || direct.lifecycle.isCurrent?.() !== false)
       && direct.schemaId === request.schemaId && this.#schemas.get(request.schemaId) === direct.schema;
     const validLifecycle = request.directSource === undefined && association !== undefined && association.evidence.templateRevision === request.templateRevision && association.evidence.schemaId === request.schemaId && this.#schemas.get(request.schemaId) === association.schema;
     if (!validDirect && !validLifecycle) return Object.freeze({ ...this.reply(request, "result"), result: { status: "ASSOCIATION_UNAVAILABLE" as const, diagnostics: Object.freeze([]) } });
     const schema = validDirect ? direct!.schema : association!.schema;
     let rootMode: TrustedSchemaRootMode = validDirect ? "projected" : association!.evidence.rootMode;
+    const fromHson = validDirect && direct!.lifecycle !== undefined;
     const parseStart = performance.now();
     let parsed: ReturnType<typeof parse_hson_with_provenance>;
-    try { parsed = parse_hson_with_provenance(request.source, { allowTopLevelTextFragment: !validDirect && rootMode === "fragment" }); }
+    try { parsed = parse_hson_with_provenance(request.source, { allowTopLevelTextFragment: fromHson || (!validDirect && rootMode === "fragment") }); }
     catch (cause) { return Object.freeze({ ...this.reply(request, "result"), result: { status: "CANDIDATE_INVALID" as const, diagnostics: Object.freeze([]), timings: { parseMs: performance.now() - parseStart, validateMs: 0, lowerMs: 0 } }, message: cause instanceof Error ? cause.message : "Candidate HSON is invalid." }); }
     const parseMs = performance.now() - parseStart;
     if (validDirect && !is_projected_value_hson_node(parsed.value)) {
@@ -143,6 +170,7 @@ export class TrustedSchemaDiagnosticRuntime {
     try {
       issues = validate_schema_hson_graph(schema, parsed.value).issues;
     } catch (cause) { return this.error(request, "VALIDATION_THROW", cause instanceof Error ? cause.message : "Schema validation threw unexpectedly."); }
+    if (validDirect && direct!.lifecycle?.isCurrent?.() === false) return Object.freeze({ ...this.reply(request, "result"), result: { status: "ASSOCIATION_UNAVAILABLE" as const, diagnostics: Object.freeze([]) } });
     const validateMs = performance.now() - validateStart;
     const lowerStart = performance.now();
     const diagnostics: TrustedSchemaDiagnostic[] = issues.map((issue) => {

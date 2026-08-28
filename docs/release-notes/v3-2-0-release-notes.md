@@ -1,3 +1,6 @@
+> Historical release record: lowercase tagged authoring was subsequently
+> hard-migrated to `HSON`; `/hson` now exports the narrow authoring facade.
+
 ## 3.2.0 — 2026-07-30
 
 HSON 3.2 substantially tightens canonical graph behavior, replaces the former

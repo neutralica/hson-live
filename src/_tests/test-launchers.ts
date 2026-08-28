@@ -175,6 +175,10 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:schema-hson-graph", repositoryModule: "tests/schema-hson-graph.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),
     launcher({
+      id: "hson-authoring-discovery", subject: "Transform", displayName: "HSON authoring binding migration",
+      packageScript: "test:hson-authoring-discovery", repositoryModule: "tests/hson-authoring-discovery.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "public-boundary"],
+    }),
+    launcher({
       id: "schema-hson-public", subject: "LiveMap", displayName: "HSON Schema public facade boundaries",
       packageScript: "test:schema-hson-public", repositoryModule: "tests/schema-hson-public.acceptance.mts", runtime: "node", collections: ["schema", "public-boundary"],
     }),
@@ -193,6 +197,18 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
     launcher({
       id: "schema-d2-presentation", subject: "LiveMap", displayName: "D2 Schema diagnostic presentation",
       packageScript: "test:schema-d2-presentation", repositoryModule: "tests/schema-d2-presentation.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d3-discovery", subject: "LiveMap", displayName: "D3 natural source association discovery",
+      packageScript: "test:schema-d3-discovery", repositoryModule: "tests/schema-d3-discovery.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d3-runtime", subject: "LiveMap", displayName: "D3 map lifecycle authority",
+      packageScript: "test:schema-d3-runtime", repositoryModule: "tests/schema-d3-runtime.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d3-editor", subject: "LiveMap", displayName: "D3 map flow editor diagnostics",
+      packageScript: "test:schema-d3-editor", repositoryModule: "tests/schema-d3-editor.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),
     launcher({
       id: "trusted-schema-d1", subject: "LiveMap", displayName: "D1 trusted Schema runtime authority",
@@ -1332,6 +1348,10 @@ readonly HsonLiveNonLauncherTestScript[] = Object.freeze([
   Object.freeze({
     packageScript: "test:locus-public-contract",
     reason: "Built-package export certification; not an externally selectable semantic launcher.",
+  }),
+  Object.freeze({
+    packageScript: "test:hson-authoring-package",
+    reason: "Built-package tree-shaking certification using the editor bundler; not a semantic launcher.",
   }),
   Object.freeze({
     packageScript: "test:root-compatibility",

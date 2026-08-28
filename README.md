@@ -528,14 +528,42 @@ Browser and Worker-facing parts of the package do not import the Node host.
 
 ## Imports and environment boundaries
 
+Author canonical HSON through the narrow authoring entrypoint:
+
+```ts
+import { HSON, type HsonCanonical } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+
+const UserSchema = hsonLiveMap.schema.define(s => s.object({ age: s.number }));
+const source: HsonCanonical = HSON`<age 37>`;
+const map = hsonLiveMap.fromHson(source);
+map.schema.use(UserSchema);
+```
+
+For standalone validation, `HSON.validate(UserSchema, source)` returns the same
+canonical string or throws the existing structured Schema error. The legitimate
+`hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate` entrances remain
+available and share that exact implementation. Natural map governance needs no
+redundant standalone validation for trusted editor diagnostics.
+
+`HSON` is the notation/authoring facility. Lowercase `hson` is a noncallable
+aggregate; the retired lowercase tag has no compatibility alias. `/hson` exports
+authoring, not the aggregate or subsystem facades. `HsonCanonical` is the same
+type exported from `/transform`, not a Schema certificate.
+
 The root package is the umbrella entrypoint:
 
 ```ts
-import { hson } from "hson-live";
+import { HSON, hson } from "hson-live";
 import type { LiveMap } from "hson-live/livemap";
 import type { LiveTree } from "hson-live/livetree";
 import type { Locus } from "hson-live/locus";
 ```
+
+The root also exports the existing `hsonTransform`, `hsonLiveMap`, `hsonLiveTree`,
+`hsonLocus`, `hsonReflect`, `hsonInspect`, and `hsonCalc` facade objects/functions.
+Use dedicated subsystem subpaths when their package boundary matters. Root
+convenience imports are not a promise of a narrow authoring bundle.
 
 Locus’s environment-neutral network surface is available from:
 

@@ -94,3 +94,84 @@ remain ordered carriers all the way into the authoritative validator; only
 constraint callbacks materialize JavaScript values. Direct D2 candidates use
 ordinary canonical parsing. D1 lifecycle fragments retain their explicit parse
 context. Neither path retries interpretations to find one a Schema accepts.
+
+## D3 natural map association
+
+D3 discovers the bounded `HSON` → `fromHson` → `map.schema.use` relationship.
+Discovery alone is **not** authority. The existing trusted registration provider
+must supply source-bound D1 lifecycle captures; an old unbound D1 capture or a
+Schema-only registration cannot attest to an arbitrary application's map.
+Without matching lifecycle evidence the editor reports association unavailable.
+It does not import an open application file to try to obtain that evidence.
+
+`instrument_trusted_schema_map_sources(fileName, source, helperModuleUrl)` is a
+private, explicit provider build step. It returns a diagnostic copy of the
+original source, replacing only recognized tag, constructor, and attachment
+call sites with `source-lifecycle.ts` calls. It does not execute code, install a
+loader, register Schemas, rewrite `schema.define`, or alter production output.
+The configured provider chooses which copy to execute through the existing D1
+load path. Keep that provider focused on safe diagnostic setup: copied code,
+including mutations and other statements, really executes with project trust.
+Preserve the source module's import resolution when building the copy. The
+integration fixture in `editors/vscode-hson/tests/integration/run.mjs` demonstrates
+an explicit provider using a separate Schema module and original source text.
+These helpers have no package exports and are not a new public validation API.
+
+The private session checks the actual official tag and constructor identities,
+uses D1's exact `TemplateStringsArray` capture, and constructs the actual map via
+D1. The canonical equality guard only checks the already-selected occurrence;
+it never searches for an occurrence by text. A WeakMap connects the actual map
+to its D1 application. The original intervening mutations execute on that map.
+D1 records each attempt before attachment can reject. As in the original D1
+helper, the diagnostic copy retains rejection evidence and can collect further
+independent attempts; it is not an assertion about application control flow.
+
+Supported relationships are local `const` declarations in one module/function
+body, parentheses, bounded identifier-only canonical/map/Schema aliases,
+named relative Schema imports, and inline substitution-free templates inside
+`fromHson`. Attachment uses are standalone expression statements in that same
+body. Conditional/return/expression attachment flow, arbitrary helpers,
+interpolations, transformations and equality recovery remain unsupported.
+Both `hson.liveMap` and the dedicated `hsonLiveMap` facade are recognized by
+compiler binding identity on their actual public entrypoints.
+
+Each relationship has module, template, construction and use-site identities,
+plus a hash of **all source outside that candidate's body**. Other template
+bodies still participate in that relationship's context. A candidate-body edit
+creates a fresh revision-bound request and validates its new source; changing
+construction, use, binding, surrounding code, or another template invalidates
+old lifecycle matching. Normalized offsets keep use/construction identities
+stable when only the candidate body grows. Runtime generations and the D2
+publication tickets continue to guard every asynchronous stage. Source modules
+with lifecycle evidence join the existing provider-change invalidation set.
+
+The runtime resolves the attempted Schema object through D2's existing verified
+bindings. It requires a unique matching proposal, actual direct correspondence,
+and a validating initial attempt. Same-object idempotence and rejected Schema
+replacement do not revalidate the graph, so they add no authoring authority.
+A rejected initial attempt does validate and remains diagnosable. Later attempts
+after an initial failure can independently validate other registered Schemas.
+Map revisions are checked at association and before/after candidate validation.
+Mutate-then-revert cannot restore attribution. Each map remains independent.
+
+D3 uses the exact `fromHson` parse boundary (`allowTopLevelTextFragment: true`)
+for the current candidate. It then uses the same ordered graph validator and
+C1/C2 lowering as D1/D2, with actual current root classification. A quoted text
+root is therefore a document fragment at this map boundary; standalone
+`schema.validate` retains ordinary canonical interpretation. No alternate parse
+is attempted to make a Schema succeed.
+
+The VS Code client uses the same supervisor, trust/enablement gates, revisions,
+diagnostic collection and presentation. Related information names the relevant
+`map.schema.use` call. No primary squiggle is placed there for invalid HSON.
+
+## Uppercase authoring migration
+
+Authoring discovery recognizes `HSON` from the root or `/hson`, including renamed
+imports. Standalone associations recognize `HSON.validate` and both existing
+LiveMap Schema validation entrances. The narrow authoring entrypoint no longer
+exports the lowercase aggregate or subsystem facades. Aggregate construction
+uses root `hson`; dedicated construction uses root or `/livemap` `hsonLiveMap`.
+D3 captures the exact `HSON` object. D1 runtime origin registration still uses
+the existing noncallable aggregate `hson` from the configured `hson.js` module;
+this private runtime requirement does not enter the public authoring graph.

@@ -1,16 +1,16 @@
-import { hson } from "hson-live";
+import { HSON, hson } from "hson-live";
 
-const valid = hson`
+const valid = HSON`
   <main
     <h1 "Hello">
   >
 `;
 
-const broken = hson`
+const broken = HSON`
   <<<<<<<<<<<<<<<<<<
 `;
 
-const substitution = hson`
+const substitution = HSON`
   <main ${"hello"}>
 `;
 

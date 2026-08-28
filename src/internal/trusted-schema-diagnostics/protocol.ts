@@ -15,17 +15,28 @@ export type TrustedSchemaBindingRegistration = Readonly<{
   schemaId: string;
   binding: TrustedSchemaSourceBinding;
 }>;
+export type TrustedSchemaMapFlow = Readonly<{
+  moduleUrl: string;
+  contextRevision: string;
+  templateId: string;
+  constructionId: string;
+  callId: string;
+}>;
 export type TrustedSchemaDirectSource = Readonly<{
   templateId: string;
   callId: string;
   documentRevision: number;
   templateRevision: number;
   associationRevision: number;
+  mapFlow?: TrustedSchemaMapFlow;
   binding: TrustedSchemaSourceBinding;
 }>;
 
 export type TrustedSchemaRootMode = "projected" | "element" | "fragment";
 export type TrustedSchemaAssociationEvidence = Readonly<{
+  mapFlow?: TrustedSchemaMapFlow;
+  binding?: TrustedSchemaSourceBinding;
+  validationAttempted?: boolean;
   associationId: string;
   applicationId: string;
   schemaId: string;
@@ -93,6 +104,7 @@ export type TrustedSchemaRequest =
       runtimeGeneration: number;
       associationId: string;
       schemaId: string;
+      lifecycleId?: string;
       directSource: TrustedSchemaDirectSource;
     }>
   | Readonly<{

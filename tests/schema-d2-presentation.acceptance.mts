@@ -3,14 +3,14 @@ import { present_schema_diagnostic, schema_diagnostic_message } from "../editors
 import { discover_schema_validation_sources } from "../src/internal/trusted-schema-diagnostics/discover-validation-sources.ts";
 import type { TrustedSchemaDiagnostic } from "../src/internal/trusted-schema-diagnostics/protocol.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
-const text = 'import { hson } from "hson-live"; import { UserSchema } from "./schema.js"; const user = hson`<age "37">`; hson.liveMap.schema.validate(UserSchema, user);';
+const text = 'import { HSON } from "hson-live"; import { UserSchema } from "./schema.js"; const user = HSON`<age "37">`; HSON.validate(UserSchema, user);';
 const association = discover_schema_validation_sources("/project/user.ts", text)[0]!;
 let checks = 0;
 const check = (name: string, run: () => void) => { run(); console.log(`ok ${++checks} - ${name}`); };
 const issue = (overrides: Partial<TrustedSchemaDiagnostic> = {}): TrustedSchemaDiagnostic => ({ code: "TYPE_MISMATCH", path: ["age"], expected: "number", received: "string", range: { precision: "exact", start: 5, end: 9 }, ...overrides });
 check("primitive type wording", () => assert.equal(schema_diagnostic_message(issue()), 'Expected `age` to be a number, but this value is an HSON string.'));
 check("primary exact slice is authored token", () => { const spec = present_schema_diagnostic(issue(), association); assert.equal(text.slice(spec.range.start, spec.range.end), '"37"'); assert.equal(spec.precision, "exact"); });
-check("validation call is related, not primary", () => { const spec = present_schema_diagnostic(issue(), association); assert.equal(text.slice(spec.related[0]!.range.start, spec.related[0]!.range.end), 'hson.liveMap.schema.validate(UserSchema, user)'); });
+check("validation call is related, not primary", () => { const spec = present_schema_diagnostic(issue(), association); assert.equal(text.slice(spec.related[0]!.range.start, spec.related[0]!.range.end), 'HSON.validate(UserSchema, user)'); });
 check("Schema label distinguishes contracts", () => assert.match(present_schema_diagnostic(issue(), association).message, /^\[UserSchema\]/));
 check("missing member wording", () => assert.equal(schema_diagnostic_message(issue({ code: "MISSING_REQUIRED" })), 'Required `age` is missing.'));
 check("missing member explicitly anchored", () => { const spec = present_schema_diagnostic(issue({ code: "MISSING_REQUIRED", range: { precision: "anchor", start: 9, end: 10 } }), association); assert.equal(spec.precision, "anchor"); assert.match(spec.message, /Anchored to existing source/); assert.equal(text.slice(spec.range.start, spec.range.end), '>'); });

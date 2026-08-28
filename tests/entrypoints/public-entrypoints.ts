@@ -1,5 +1,10 @@
 import {
+  HSON,
   hson,
+  hsonTransform,
+  hsonLiveMap,
+  hsonLiveTree,
+  hsonInspect,
   hsonCalc,
   type HsonNumber,
 } from "hson-live";
@@ -21,8 +26,8 @@ import {
 } from "hson-live/transform";
 import {
   TransformError as HsonSubpathTransformError,
-  hson as hsonSubpath,
-  hsonTransform as hsonSubpathTransform,
+  HSON as HsonSubpath,
+  type HsonCanonical as AuthoringCanonical,
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
 // D1 tooling is private, including its capability-origin and lifecycle helpers.
@@ -33,8 +38,8 @@ import { validate_schema_hson_graph } from "hson-live/livemap";
 // @ts-expect-error Direct-source associations are private tooling.
 import type { TrustedSchemaDirectSource } from "hson-live/types";
 const standaloneSchema = hson.liveMap.schema.define(s => s.number);
-const standaloneCanonical: HsonCanonical = hson.liveMap.schema.validate(standaloneSchema, hson`37`);
-const narrowStandaloneCanonical: HsonCanonical = hsonSubpath.liveMap.schema.validate(standaloneSchema, standaloneCanonical);
+const standaloneCanonical: HsonCanonical = HSON.validate(standaloneSchema, HSON`37`);
+const narrowStandaloneCanonical: HsonCanonical = HsonSubpath.validate(standaloneSchema, standaloneCanonical);
 // @ts-expect-error Arbitrary strings are not branded HsonCanonical.
 hson.liveMap.schema.validate(standaloneSchema, "37");
 // @ts-expect-error No aliases are approved.
@@ -794,12 +799,12 @@ declare const binaryDecodeOptions: BinaryDecodeOptions;
 
 const inferredHsonText = transformSubpath.fromNode(node).toHson().serialize();
 const inferredNormalizedHson = hson.transform.fromHson(arbitrary).toHson().serialize();
-const inferredRootTaggedHson: HsonCanonical = hson`<main/>`;
-const inferredHsonSubpathTaggedHson: HsonCanonical = hsonSubpath`<main/>`;
-const inferredTaggedNumber: HsonCanonical = hson`${37}`;
-const inferredTaggedString: HsonCanonical = hson`${"37"}`;
-const inferredTaggedBoolean: HsonCanonical = hson`${true}`;
-const inferredTaggedNull: HsonCanonical = hson`${null}`;
+const inferredRootTaggedHson: HsonCanonical = HSON`<main/>`;
+const inferredHsonSubpathTaggedHson: HsonCanonical = HsonSubpath`<main/>`;
+const inferredTaggedNumber: HsonCanonical = HSON`${37}`;
+const inferredTaggedString: HsonCanonical = HSON`${"37"}`;
+const inferredTaggedBoolean: HsonCanonical = HSON`${true}`;
+const inferredTaggedNull: HsonCanonical = HSON`${null}`;
 // @ts-expect-error Ordinary source-string calls are unsupported.
 hson("<foo/>");
 // @ts-expect-error Ordinary source-string calls are unsupported.
@@ -813,23 +818,23 @@ hson(null);
 // @ts-expect-error Ordinary calls are unsupported.
 hson({});
 // @ts-expect-error Tagged substitutions exclude undefined.
-hson`${undefined}`;
+HSON`${undefined}`;
 // @ts-expect-error Tagged substitutions exclude bigint.
-hson`${1n}`;
+HSON`${1n}`;
 // @ts-expect-error Tagged substitutions exclude symbol.
-hson`${Symbol()}`;
+HSON`${Symbol()}`;
 // @ts-expect-error Tagged substitutions exclude objects.
-hson`${{}}`;
+HSON`${{}}`;
 // @ts-expect-error Tagged substitutions exclude arrays.
-hson`${[]}`;
+HSON`${[]}`;
 // @ts-expect-error Tagged substitutions exclude functions.
-hson`${() => {}}`;
+HSON`${() => {}}`;
 // @ts-expect-error Transform textual admission has no .string surface.
 hson.transform.string;
 // @ts-expect-error Transform textual admission has no .string surface.
 transformSubpath.string;
-// @ts-expect-error Transform textual admission has no .string surface.
-hsonSubpathTransform.string;
+// @ts-expect-error The authoring facade exposes no Transform subsystem.
+HsonSubpath.transform;
 // @ts-expect-error HSON finalizers serialize; they do not stringify.
 transformSubpath.fromNode(node).toHson().string();
 const inferredHtmlText = transformSubpath.fromNode(node).toHtml().serialize();
@@ -1041,3 +1046,20 @@ readonlyDocumentMap.at([]);
 declare const structurallyFabricatedProjectedLocation: Pick<LiveMapPathHandle<string>, "snap" | "watch" | "feed">;
 // TypeScript remains structural here; runtime authenticity rejects this unsupported fabrication.
 bindingTree.bind.path(structurallyFabricatedProjectedLocation, () => undefined);
+
+// Uppercase authoring is the only callable facade; /hson is a narrow boundary.
+// @ts-expect-error Retired lowercase tag has no compatibility call signature.
+hson`<retired/>`;
+// @ts-expect-error The narrow authoring entrypoint does not export the aggregate.
+import { hson as retiredSubpathAggregate } from "hson-live/hson";
+// @ts-expect-error Subsystems use their own entrypoints or the package root.
+import { hsonLiveMap as retiredAuthoringMap } from "hson-live/hson";
+// @ts-expect-error Canonical input is required at every validation entrance.
+HSON.validate(standaloneSchema, "37");
+const authoredTypeIdentity: AuthoringCanonical = standaloneCanonical;
+const originalTypeIdentity: HsonCanonical = authoredTypeIdentity;
+const sameRootMapType: typeof mapSubpath = hsonLiveMap;
+const sameRootTreeType: typeof treeSubpath = hsonLiveTree;
+const sameRootTransformType: typeof transformSubpath = hsonTransform;
+const sameRootInspectType: typeof hson.inspect = hsonInspect;
+void [originalTypeIdentity, sameRootMapType, sameRootTreeType, sameRootTransformType, sameRootInspectType];

@@ -44,7 +44,7 @@ function reconstructTaggedSource(
   if (strings.raw.length !== substitutions.length + 1) {
     _throw_transform_err(
       "invalid HSON tagged-template segment/substitution arity",
-      "hson",
+      "HSON",
       undefined,
       undefined,
       {
@@ -63,7 +63,7 @@ function reconstructTaggedSource(
       && typeof value !== "boolean") {
       _throw_transform_err(
         `HSON tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`,
-        "hson",
+        "HSON",
         undefined,
         undefined,
         {
@@ -95,8 +95,8 @@ export function admit_hson(
 ): HsonCanonical {
   if (!isTemplateStringsArray(source)) {
     _throw_transform_err(
-      "hson must be used as a tagged template: hson`...`",
-      "hson",
+      "HSON must be used as a tagged template: HSON`...`",
+      "HSON",
       undefined,
       undefined,
       { code: HSON_TAGGED_TEMPLATE_REQUIRED, stage: "template-admission" },

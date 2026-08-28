@@ -1,11 +1,11 @@
 # HSON Language for VS Code
 
 This extension provides syntax highlighting and authoritative parser diagnostics
-for standalone `.hson` files and supported `hson` tagged templates in
+for standalone `.hson` files and supported `HSON` tagged templates in
 TypeScript and TSX.
 
 The tagged-template injection intentionally recognizes only the exact direct tag
-spelling `hson`. Import aliases and facade/property forms are left to the
+spelling `HSON`. Import aliases and facade/property forms are left to the
 semantic diagnostics layer. Highlighting is lexical presentation, not HSON
 validation: an official aliased import can receive parser diagnostics while
 retaining ordinary TypeScript template coloring.
@@ -36,11 +36,14 @@ export const trustedSchemas = { userContract: UserSchema };
 ```
 
 ```ts
-import { hson } from "hson-live";
+import { HSON } from "hson-live/hson";
 import { UserSchema } from "./schema.js";
-const user = hson`<user <age "37">>`;
-hson.liveMap.schema.validate(UserSchema, user);
+const user = HSON`<user <age "37">>`;
+HSON.validate(UserSchema, user);
 ```
+
+The existing `hsonLiveMap.schema.validate` and `hson.liveMap.schema.validate`
+entrances also remain supported, using their official subsystem/root imports.
 
 The earlier `"37"` receives: “Expected `age` to be a number, but this value is
 an HSON string.” Fixing it to `37` updates the diagnostics while still unsaved.
@@ -65,7 +68,7 @@ configures an explicit Node loader for development TypeScript modules. No
 runtime entry, registry, or protocol is added to package exports.
 
 The source import must resolve to the registered module URL. Initial discovery
-supports relative named imports, renamed root `hson` imports, local `const`
+supports relative named imports, renamed official `HSON` imports, local `const`
 Schema bindings with explicit private registration metadata, parentheses, and
 acyclic identifier-only `const` aliases (at most 32 hops). Canonical declarations
 must precede their use in the same module/function-body statement domain.
@@ -105,9 +108,9 @@ lifecycle evidence, not an assumption that the map was not mutated.
 5. Open a `.ts` file containing the malformed direct and aliased forms:
 
    ```ts
-   import { hson, hson as markup } from "hson-live";
+   import { HSON, HSON as markup } from "hson-live/hson";
 
-   const direct = hson`
+   const direct = HSON`
      <main
        <broken
    `;
@@ -121,17 +124,49 @@ lifecycle evidence, not an assumption that the map was not mutated.
 6. Replace either body with valid HSON and confirm its squiggle clears:
 
    ```ts
-   const page = hson`
+   const page = HSON`
      <main
        <h1 "Hello">
      >
    `;
    ```
 
-The direct `hson` form receives the Pass 3 TextMate injection coloring.
+The direct `HSON` form receives the Pass 3 TextMate injection coloring.
 The alias may retain ordinary TypeScript template coloring, but both receive the
 same semantic diagnostics because import identity is resolved by the bundled
 TypeScript scanner.
 
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to
 inspect the emitted TextMate scopes.
+
+### Natural LiveMap Schema governance (D3)
+
+With a trusted provider supplying source-bound D1 lifecycle evidence, ordinary
+map-owning code needs no extra standalone validation call:
+
+```ts
+import { HSON } from "hson-live/hson";
+import { hsonLiveMap } from "hson-live/livemap";
+import { UserSchema } from "./schema.js";
+
+const source = HSON`<user <age "37">>`;
+const map = hsonLiveMap.fromHson(source);
+map.schema.use(UserSchema);
+```
+
+The original template receives the current candidate's Schema diagnostics,
+including when initial attachment rejects. Related information identifies the
+use site. Both the dedicated facade above and `hson.liveMap.fromHson` work;
+local immutable aliases and inline templates are supported, but the standalone
+HSON block is the preferred style. Multiple maps retain independent contracts.
+Actual mutation, including mutation followed by restoration, suppresses source
+attribution for that map.
+
+Workspace Trust and explicit enablement are still both required. A Schema-only
+provider does not establish map correspondence: D3 needs the existing D1
+capture path bound to the source sites. The private provider instrumenter and
+its limits are documented in
+[`src/internal/trusted-schema-diagnostics/README.md`](../../src/internal/trusted-schema-diagnostics/README.md#d3-natural-map-association).
+There is no automatic application import, public provenance API, or new
+validation API. The editor makes no claim that application execution reached
+`schema.use`.

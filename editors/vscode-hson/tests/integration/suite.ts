@@ -83,4 +83,30 @@ export async function run(): Promise<void> {
   await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
   await waitSchema(0);
   process.stdout.write("ok - real VS Code D2: default off, enabled exact diagnostic, unsaved correction, revalidation, disable clearing\n");
+  const mapUser = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "map-user.ts")));
+  await vscode.window.showTextDocument(mapUser);
+  const mapDiagnostics = () => vscode.languages.getDiagnostics(mapUser.uri).filter(d => d.source === "HSON Schema");
+  const waitMap = async (count: number): Promise<void> => {
+    const deadline = Date.now() + 10_000;
+    while (mapDiagnostics().length !== count && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+    assert.equal(mapDiagnostics().length, count, "D3 Schema diagnostic count");
+  };
+  assert.equal(mapDiagnostics().length, 0);
+  await config.update("enabled", true, vscode.ConfigurationTarget.Workspace);
+  await waitMap(1);
+  assert.doesNotMatch(mapUser.getText(), /schema\.validate/);
+  const mapDiagnostic = mapDiagnostics()[0]!;
+  assert.equal(mapUser.getText(mapDiagnostic.range), '"37"');
+  assert.match(mapUser.getText(mapDiagnostic.relatedInformation?.[0]?.location.range), /map.schema.use/);
+  const correction = new vscode.WorkspaceEdit(); correction.replace(mapUser.uri, mapDiagnostic.range, "37");
+  await vscode.workspace.applyEdit(correction);
+  await waitMap(0);
+  const original = mapUser.getText();
+  const bad = new vscode.WorkspaceEdit(); bad.replace(mapUser.uri, new vscode.Range(mapUser.positionAt(0), mapUser.positionAt(original.length)), original.replace('age 37', 'age "37"'));
+  await vscode.workspace.applyEdit(bad);
+  await waitMap(1);
+  await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
+  await waitMap(0);
+  process.stdout.write("ok - real VS Code D3: dedicated facade, rejected attachment exact diagnostic, related use site, unsaved correction, revalidation, disable clearing\n");
+
 }

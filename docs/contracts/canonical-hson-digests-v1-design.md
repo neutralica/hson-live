@@ -327,7 +327,7 @@ algorithm. Node, browser, and Worker tests must compare the same bytes, raw
 ## 10. Proposed API surface
 
 The smallest coherent public surface belongs in `hson-live/transform`, beside
-the callable `hson` facade and the transform leaf functions. It need not be added to the
+the aggregate `hson` facade and the transform leaf functions. It need not be added to the
 fluent facade or create a general cryptography namespace.
 
 ```ts

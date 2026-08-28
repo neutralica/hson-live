@@ -27,39 +27,44 @@ The same numeric operation is exported as `hsonCalc`. Runtime authored-HSON text
 
 Every constructor method parses and normalizes input to HSON's canonical node graph.
 
-## HsonCanonical
+## HSON authoring and HsonCanonical
 
-`` hson`...` `` authors canonical HSON inline. Literal template segments are HSON source;
+`` HSON`...` `` authors canonical HSON inline. Literal template segments are HSON source;
 primitive substitutions are encoded according to their JavaScript types before
 the completed HSON is validated and canonicalized.
 
 ```ts
-import { hson } from "hson-live";
-import type { HsonCanonical } from "hson-live/transform";
+import { HSON, type HsonCanonical } from "hson-live/hson";
 
-const authored: HsonCanonical = hson`
+const authored: HsonCanonical = HSON`
   <p "first"<em "middle"/>"last"/>
 `;
 ```
 
+The narrow `/hson` entrypoint exports `HSON` and the same `HsonCanonical` type
+as `/transform`. The root also exports `HSON` for aggregate convenience.
+Lowercase `hson` is a noncallable aggregate object; the old tag has no compatibility alias.
+
 The public visual grammar is deliberately small:
 
 ```text
-hson`...`    author canonical HSON
+HSON`...`    author canonical HSON
 hson.*       access hson-live subsystems
-hson(...)    unsupported
+HSON.validate(schema, canonical)    validate canonical HSON
+HSON(...)    unsupported ordinary source calls
+hson(...)    unsupported; the aggregate is not callable
 ```
 
 Literal source and interpolated JavaScript data remain distinct:
 
 ```ts
-hson`37`          // authored HSON number
-hson`"37"`        // authored HSON string
-hson`<foo/>`      // authored HSON element
+HSON`37`          // authored HSON number
+HSON`"37"`        // authored HSON string
+HSON`<foo/>`      // authored HSON element
 
-hson`${37}`       // JavaScript number -> HSON number
-hson`${"37"}`     // JavaScript string -> HSON string
-hson`${true}`     // JavaScript boolean -> HSON boolean
+HSON`${37}`       // JavaScript number -> HSON number
+HSON`${"37"}`     // JavaScript string -> HSON string
+HSON`${true}`     // JavaScript boolean -> HSON boolean
 ```
 
 The supported substitution values are primitive JavaScript `string`, `number`,
@@ -83,8 +88,10 @@ The return is an `HsonCanonical`, a TypeScript-branded primitive string. It does
 Runtime text containing arbitrary authored HSON is a separate operation:
 
 ```ts
+import { hsonTransform } from "hson-live/transform";
+
 const source: string = getTextAtRuntime();
-const canonical: HsonCanonical = hson
+const canonical: HsonCanonical = hsonTransform
   .fromHson(source)
   .toHson()
   .serialize();
@@ -254,7 +261,7 @@ Selects HSON output.
 
 ### `HsonCanonical`
 
-`HsonCanonical` is a TypeScript-only branded primitive string returned by official HSON serialization APIs. Import it as a type from `hson-live/transform`.
+`HsonCanonical` is a TypeScript-only branded primitive string returned by official HSON serialization APIs. Import it as a type from `hson-live/hson` or `hson-live/transform`.
 
 It is assignable to `string`, but an arbitrary `string` is not assignable to `HsonCanonical`. The brand records compile-time producer provenance only: it adds no runtime marker, wrapper, prefix, property, or other change to the serialized text. It is not a security, trust, validation-token, sanitization, authentication, or cryptographic guarantee.
 

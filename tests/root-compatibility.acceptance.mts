@@ -115,7 +115,7 @@ import {
   is_transform_error as is_transform_subpath_error,
   read_transform_error_details as read_transform_subpath_error_details,
 } from "../src/api/transform/index.ts";
-import { TransformError as HsonSubpathTransformError } from "../src/hson.ts";
+import { TransformError as HsonSubpathTransformError } from "../src/hson-authoring.ts";
 import {
   LiveTreeLinkedIdentityRequiredError as LiveTreeSubpathLinkedIdentityRequiredError,
   LiveTreeQuidReuseError as LiveTreeSubpathQuidReuseError,

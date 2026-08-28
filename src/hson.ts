@@ -3,7 +3,6 @@ import {
   transform_from_untrusted_html,
 } from "./api/transform/transform.browser.js";
 import { hsonTransform } from "./api/transform/transform.facade.js";
-import { admit_hson } from "./api/transform/hson-admission.js";
 import { hsonCalc } from "./api/transform/hson-calc.js";
 import { hsonLiveMap } from "./api/livemap/livemap.facade.js";
 import { hsonLiveMapBrowser } from "./api/livemap/livemap.compat.js";
@@ -26,6 +25,7 @@ export {
   hsonReflect,
   hsonTransform,
   hsonCalc,
+  hsonInspect,
 };
 export {
   TransformError,
@@ -50,10 +50,6 @@ export type {
  * the established source-constructor shortcuts.
  */
 export interface HsonFacade {
-  (
-    strings: TemplateStringsArray,
-    ...values: readonly (string | number | boolean | null)[]
-  ): import("./api/transform/transform.types.js").HsonCanonical;
   readonly transform: typeof hsonTransform;
   readonly fromHson: (input: string) => HsonTransformSource;
   readonly fromBinary: (input: Uint8Array, options?: BinaryDecodeOptions) => TransformOutput;
@@ -68,7 +64,7 @@ export interface HsonFacade {
   readonly inspect: typeof hsonInspect;
 }
 
-export const hson: HsonFacade = Object.freeze(Object.assign(admit_hson, {
+export const hson: HsonFacade = Object.freeze({
   transform: hsonTransform,
   fromHson: hsonTransform.fromHson,
   fromBinary: hsonTransform.fromBinary,
@@ -85,4 +81,4 @@ export const hson: HsonFacade = Object.freeze(Object.assign(admit_hson, {
 
   reflect: hsonReflect,
   inspect: hsonInspect,
-}));
+});

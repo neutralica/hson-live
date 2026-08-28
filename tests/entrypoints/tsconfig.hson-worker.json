@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.livemap-worker.json",
+  "files": ["hson-worker.ts"]
+}

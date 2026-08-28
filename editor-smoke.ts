@@ -1,6 +1,6 @@
-import {hson} from "./src/hson.js"
+import { HSON } from "hson-live/hson"
 
 
-const broken = hson`
+const broken = HSON`
   <<<<<<<<<<<<<<<<
 `;

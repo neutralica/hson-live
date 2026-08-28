@@ -1,9 +1,10 @@
 import { hson } from "../../hson.js";
+import { HSON } from "../../hson-authoring.js";
 import type { HsonCanonical } from "../../api/transform/transform.types.js";
 import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
 import { require_document_root_schema } from "../../api/livemap/livemap.document.schema.js";
 import { is_owned_projected_schema } from "../../api/livemap/livemap.schema.js";
-import type { TrustedSchemaAssociationEvidence } from "./protocol.js";
+import type { TrustedSchemaAssociationEvidence, TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
 
 export type TrustedSchemaTemplate = Readonly<{
   templateId: string;
@@ -21,6 +22,7 @@ export type TrustedSchemaAttachment = Readonly<{
   origin: unknown;
   evidence: TrustedSchemaAssociationEvidence;
   error?: unknown;
+  isCurrent?: () => boolean;
 }>;
 
 const TEMPLATES = new WeakMap<TemplateStringsArray, TrustedSchemaTemplate>();
@@ -38,7 +40,7 @@ export function capture_trusted_schema_template(strings: TemplateStringsArray, .
   if (existing !== undefined) return existing;
   const template = Object.freeze({
     templateId: `template:${++nextTemplate}`, templateRevision: 1,
-    source: strings.raw[0], canonical: hson(strings),
+    source: strings.raw[0], canonical: HSON(strings),
   });
   TEMPLATES.set(strings, template);
   CAPTURED_TEMPLATES.add(template);
@@ -55,7 +57,7 @@ export function construct_trusted_schema_application(template: TrustedSchemaTemp
 }
 
 /** Records the proposal before calling the unchanged, authoritative schema.use. */
-export function attempt_trusted_schema_attachment(application: TrustedSchemaApplication, schemaId: string, schema: object): TrustedSchemaAttachment {
+export function attempt_trusted_schema_attachment(application: TrustedSchemaApplication, schemaId: string, schema: object, source?: Readonly<{ mapFlow: TrustedSchemaMapFlow; binding: TrustedSchemaSourceBinding }>): TrustedSchemaAttachment {
   const constructedRevision = APPLICATIONS.get(application);
   if (constructedRevision === undefined) throw new Error("Unknown D1 direct application.");
   const { map, template } = application;
@@ -63,6 +65,9 @@ export function attempt_trusted_schema_attachment(application: TrustedSchemaAppl
   const rootMode = map.mode === "element" || map.mode === "fragment" ? map.mode : "projected";
   const associationId = `association:${++nextAttempt}`;
   const base: Omit<TrustedSchemaAssociationEvidence, "correspondence" | "attachment"> = {
+    mapFlow: source === undefined ? undefined : Object.freeze({ ...source.mapFlow }),
+    binding: source === undefined ? undefined : Object.freeze({ ...source.binding }),
+    validationAttempted: map.schema.get() === undefined,
     associationId, applicationId: application.applicationId, schemaId, rootMode,
     templateId: template.templateId, templateRevision: template.templateRevision,
     source: template.source, canonical: template.canonical,
@@ -82,7 +87,7 @@ export function attempt_trusted_schema_attachment(application: TrustedSchemaAppl
       map.schema.use(schema);
     }
   } catch (cause) { attachment = "rejected"; error = cause; }
-  const result: TrustedSchemaAttachment = Object.freeze({ schema, origin: hson, error,
+  const result: TrustedSchemaAttachment = Object.freeze({ schema, origin: hson, error, isCurrent: () => map.rev === attemptRevision,
     evidence: Object.freeze({ ...base, attachment,
       correspondence: correspondence === "direct" && map.rev === attemptRevision ? "direct" : "unavailable",
     }),

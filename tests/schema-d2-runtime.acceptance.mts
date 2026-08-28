@@ -51,7 +51,7 @@ await check("document sidecar distinguishes flag and wrong tag", async () => {
 });
 const makeClient = (workspaceTrusted = true, enabled = true) => new TrustedSchemaClient({ trust: { workspaceTrusted, enabled }, moduleUrl, hsonModuleUrl, runtimeEntry, execArgv: ["--loader", "ts-node/esm"], startupDeadlineMs: 5_000 });
 const document = (value = '"37"', schema = "UserSchema", calls = 1) => ({ uri: "file:///project/user.ts", fileName: "/project/user.ts", languageId: "typescript", version: 1,
-  text: `import { hson } from "hson-live"; import { ${schema} } from "${moduleUrl}"; const user = hson\`<user <age ${value}>>\`; ${Array(calls).fill(`hson.liveMap.schema.validate(${schema}, user);`).join('\n')}` });
+  text: `import { HSON } from "hson-live"; import { ${schema} } from "${moduleUrl}"; const user = HSON\`<user <age ${value}>>\`; ${Array(calls).fill(`HSON.validate(${schema}, user);`).join('\n')}` });
 // Use a relative source import whose resolved module is the fixture URL.
 const editorDocument = (value = '"37"') => ({ ...document(value), uri: new URL("./fixtures/editor.ts", import.meta.url).href, fileName: fileURLToPath(new URL("./fixtures/editor.ts", import.meta.url)), text: document(value).text.replace(moduleUrl, "./schema-d2-runtime.fixture.mts") });
 await check("both trust gates prevent spawn for all disabled combinations", async () => { for (const [trust, enabled] of [[false, false], [false, true], [true, false]]) { const c = makeClient(trust, enabled); try { assert.equal((await c.validate(editorDocument(), () => true)).status, "off"); assert.equal(c.supervisor.generation, 0); } finally { c.dispose(); } } });
@@ -60,14 +60,14 @@ try {
   await check("persistent real client discovers maps validates lowers and presents", async () => { const result = await client.validate(editorDocument(), () => true); assert.equal(result.status, "current-invalid", result.message); assert.match(result.diagnostics[0]?.message ?? '', /Expected `age` to be a number, but this value is an HSON string/); });
   await check("multiple validation calls produce independently related diagnostics", async () => {
     const doc = editorDocument();
-    const result = await client.validate({ ...doc, text: doc.text + '\nhson.liveMap.schema.validate(UserSchema, user);' }, () => true);
+    const result = await client.validate({ ...doc, text: doc.text + '\nHSON.validate(UserSchema, user);' }, () => true);
     assert.equal(result.diagnostics.length, 2);
     assert.deepEqual(result.diagnostics[0]?.range, result.diagnostics[1]?.range);
     assert.notDeepEqual(result.diagnostics[0]?.related[0]?.range, result.diagnostics[1]?.related[0]?.range);
   });
   await check("local non-exported source binding reaches explicit private registration", async () => {
     const doc = { uri: "file:///project/local.ts", fileName: "/project/local.ts", languageId: "typescript", version: 1,
-      text: 'import { hson } from "hson-live"; const Local = makeSchema(); const user = hson`"text"`; hson.liveMap.schema.validate(Local, user);' };
+      text: 'import { HSON } from "hson-live"; const Local = makeSchema(); const user = HSON`"text"`; HSON.validate(Local, user);' };
     const result = await client.validate(doc, () => true);
     assert.equal(result.status, "current-invalid", result.message);
     assert.match(result.diagnostics[0]?.message ?? '', /to be a number/);

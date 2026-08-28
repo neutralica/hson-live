@@ -23,8 +23,8 @@
   "types": "./dist/index.d.ts",
   "exports": {
     "./hson": {
-      "types": "./dist/hson.d.ts",
-      "import": "./dist/hson.js"
+      "types": "./dist/hson-authoring.d.ts",
+      "import": "./dist/hson-authoring.js"
     },
     "./transform": {
       "types": "./dist/api/transform/index.d.ts",
@@ -95,8 +95,10 @@
     "certify:consumer": "node ../hson-demo2/scripts/certified-package.mjs certify",
     "check:source": "tsc -p tsconfig.json --noEmit",
     "check:tests": "tsc -p tests/tsconfig.json --noEmit",
-    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
+    "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.hson-worker.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
+    "test:hson-authoring-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-authoring-discovery.acceptance.mts",
+    "test:hson-authoring-package": "node tests/hson-authoring-package.acceptance.mjs",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-source-provenance-core": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-source-provenance-core.acceptance.mts",
     "test:hson-source-provenance-parser": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-source-provenance-parser.acceptance.mts",
@@ -249,7 +251,10 @@
     "test:locus-authorization": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/runtime-probes/locus-authorization.acceptance.mjs",
     "test:livehost-node-hosting": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-node-hosting.acceptance.mts",
     "test:locus-bootstrap": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/locus-bootstrap.acceptance.mts",
-    "test:livehost-authority-lifecycle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-authority-lifecycle.acceptance.mts"
+    "test:livehost-authority-lifecycle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-authority-lifecycle.acceptance.mts",
+    "test:schema-d3-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-discovery.acceptance.mts",
+    "test:schema-d3-runtime": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-runtime.acceptance.mts",
+    "test:schema-d3-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-editor.acceptance.mts"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

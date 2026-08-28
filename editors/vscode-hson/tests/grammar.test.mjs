@@ -87,7 +87,8 @@ assert.ok(has(standalone, "<", "punctuation.definition.tag.begin.hson"));
 
 const injectionSource = await readFile(new URL("./fixtures/injection.ts", import.meta.url), "utf8");
 const injection = await tokenize("source.ts", injectionSource);
-assert.ok(has(injection, "hson", "support.function.tagged-template.hson"));
+assert.ok(!injection.some(token => token.text === "retiredTag" && token.scopes.includes("entity.name.type.hson")));
+assert.ok(has(injection, "HSON", "support.function.tagged-template.hson"));
 assert.ok(has(injection, "main", "entity.name.type.hson"));
 assert.ok(injection.some((token) => token.text === "nested" && token.scopes.includes("meta.embedded.expression.ts")));
 assert.ok(!injection.some((token) => token.text === "nested" && token.scopes.includes("entity.name.type.hson")));
@@ -97,7 +98,7 @@ assert.ok(!injection.some((token) => token.text === "notHson" && token.scopes.in
 assert.ok(!injection.some((token) => token.text === "notHsonEither" && token.scopes.includes("entity.name.type.hson")));
 assert.ok(!injection.some((token) => token.text === "plain" && token.scopes.includes("entity.name.type.hson")));
 
-const crlf = await tokenize("source.ts", "const value = hson`\r\n  <main/>\r\n`;\r\n");
+const crlf = await tokenize("source.ts", "const value = HSON`\r\n  <main/>\r\n`;\r\n");
 assert.ok(has(crlf, "main", "entity.name.type.hson"));
 
 const tsxSource = await readFile(new URL("./fixtures/injection.tsx", import.meta.url), "utf8");

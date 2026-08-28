@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import { discover_schema_validation_sources as discover } from "../src/internal/trusted-schema-diagnostics/discover-validation-sources.ts";
+import { instrument_trusted_schema_map_sources } from "../src/internal/trusted-schema-diagnostics/instrument-map-sources.ts";
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+let checks = 0;
+const pre = 'import { HSON, hson } from "hson-live"; import { UserSchema } from "./schema.js";\n';
+const template = 'const source = HSON`<age "37">`;\n';
+const construct = 'const map = hson.liveMap.fromHson(source);\n';
+const use = 'map.schema.use(UserSchema);';
+const direct = pre + template + construct + use;
+const run = (text: string) => discover('/project/user.ts', text);
+function check(name: string, text: string, count: number) { assert.equal(run(text).filter(s => s.mapFlow).length, count, name); console.log(`ok ${++checks} - ${name}`); }
+check('direct local const flow', direct, 1);
+check('parentheses throughout', pre + 'const source = (HSON`<age "37">`); const map = (hson.liveMap.fromHson)((source)); (map).schema.use((UserSchema));', 1);
+check('canonical immutable aliases', pre + template + 'const a = source; const b = (a);' + construct.replace('(source)', '(b)') + use, 1);
+check('map immutable aliases', pre + template + construct + 'const a = map; const b = (a); b.schema.use(UserSchema);', 1);
+check('Schema aliases reuse named import resolution', pre + template + construct + 'const s = UserSchema; const a = (s); map.schema.use(a);', 1);
+check('inline fromHson authored occurrence', pre + 'const map = hson.liveMap.fromHson(HSON`<age "37">`);' + use, 1);
+check('narrow authoring plus aggregate construction', direct.replace('import { HSON, hson } from "hson-live";', 'import { HSON } from "hson-live/hson"; import { hson } from "hson-live";'), 1);
+check('dedicated livemap import', (pre + 'import { hsonLiveMap } from "hson-live/livemap";' + template + construct + use).replace('hson.liveMap.fromHson', 'hsonLiveMap.fromHson'), 1);
+check('dedicated root import renamed', (pre + 'import { hsonLiveMap as maps } from "hson-live";' + template + construct + use).replace('hson.liveMap.fromHson', 'maps.fromHson'), 1);
+check('renamed hson binding', direct.replace('{ HSON, hson }', '{ HSON as tag, hson as api }').replace('HSON`', 'tag`').replace('hson.liveMap', 'api.liveMap'), 1);
+check('wrong package rejects constructor', pre + 'import { hsonLiveMap } from "fake";' + template + construct.replace('hson.liveMap', 'hsonLiveMap') + use, 0);
+check('root exports dedicated hsonLiveMap', pre + 'import { hsonLiveMap } from "hson-live";' + template + construct.replace('hson.liveMap', 'hsonLiveMap') + use, 1);
+check('local lookalike rejected', pre + template + 'const fake = { fromHson }; const map = fake.fromHson(source);' + use, 0);
+check('shadowed official constructor rejected', pre + 'function f(hson: any) {' + template + construct + use + '}', 0);
+check('mutable HSON binding rejected', direct.replace('const source', 'let source'), 0);
+check('mutable map alias rejected', pre + template + construct + 'let other = map; other.schema.use(UserSchema);', 0);
+check('helper transformed HSON rejected', pre + template + 'const changed = transform(source);' + construct.replace('(source)', '(changed)') + use, 0);
+check('helper returned map rejected', pre + template + 'const map = createMap(source);' + use, 0);
+check('cross-function flow rejected', pre + template + construct + 'function useSchema() {' + use + '}', 0);
+check('interpolation deferred', direct.replace('"37"', '${age}'), 0);
+check('mutable Schema rejected', pre + template + construct + 'let S = UserSchema; map.schema.use(S);', 0);
+check('optional use rejected', direct.replace('.use(', '.use?.('), 0);
+check('two maps retain independent source sites', pre + template + construct + 'const b = hson.liveMap.fromHson(source);' + use + 'b.schema.use(UserSchema);', 2);
+check('bounded map alias depth', pre + template + construct + Array.from({length: 34}, (_, i) => `const a${i} = ${i ? `a${i-1}` : 'map'};`).join('') + 'a33.schema.use(UserSchema);', 0);
+assert.equal(run(pre + template + construct + '(map.schema.use(UserSchema));').length, 1);
+assert.equal(run(pre + template + construct + 'if (enabled) ' + use).length, 0);
+assert.equal(run(pre + template + construct + 'const result = ' + use).length, 0);
+check('standalone plus map are independent', direct + 'hson.liveMap.schema.validate(UserSchema, source);', 1);
+const a = run(direct)[0]!, b = run(direct.replace('"37"', '37000'))[0]!;
+assert.deepEqual(a.mapFlow, b.mapFlow, 'body-only edits retain site context but will validate new candidate');
+assert.notDeepEqual(a.mapFlow, run(direct.replace('const map', '/*edited*/ const map'))[0]!.mapFlow);
+assert.notEqual(run(direct + use)[0]!.callId, run(direct + use)[1]!.callId);
+assert.equal(run(direct + 'hson.liveMap.schema.validate(UserSchema, source);').length, 2);
+const instrumented = instrument_trusted_schema_map_sources('/project/user.ts', direct, './helper.js');
+assert.match(instrumented, /\.construct\(/); assert.match(instrumented, /\.tag\(/); assert.match(instrumented, /\.use\(0, map\)\(UserSchema\)/);
+assert.doesNotMatch(instrumented, /schema\.validate/);
+
+for (const specifier of ['hson-live', 'hson-live/livemap']) {
+  assert.equal(run(pre + `import { hsonLiveMap as maps } from "${specifier}";` + template + 'maps.schema.validate(UserSchema, source);').length, 1);
+}
+assert.deepEqual(run(direct.replace('{ UserSchema }', '{ ActualSchema as UserSchema }'))[0]!.binding, { moduleUrl: 'file:///project/schema.js', exportName: 'ActualSchema' });
+emit_hson_live_test_completion('schema-d3-discovery', checks, checks, 0);

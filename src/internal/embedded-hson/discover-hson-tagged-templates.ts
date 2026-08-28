@@ -93,6 +93,7 @@ export function read_supported_hson_import_symbols(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
   diagnostics: readonly ts.Diagnostic[],
+  facade: "HSON" | "hson" | "hsonLiveMap" = "HSON",
 ): ReadonlySet<ts.Symbol> {
   const symbols = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
@@ -100,7 +101,9 @@ export function read_supported_hson_import_symbols(
       || statement.importClause === undefined
       || statement.importClause.isTypeOnly
       || !ts.isStringLiteral(statement.moduleSpecifier)
-      || !supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
+      || !(facade === "HSON" ? supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
+        : facade === "hson" ? statement.moduleSpecifier.text === "hson-live"
+        : ["hson-live", "hson-live/livemap"].includes(statement.moduleSpecifier.text))
       || hasOverlappingDiagnostic(diagnostics, nodeRange(statement, sourceFile))) {
       continue;
     }
@@ -109,7 +112,7 @@ export function read_supported_hson_import_symbols(
     for (const element of bindings.elements) {
       if (element.isTypeOnly) continue;
       const importedName = element.propertyName?.text ?? element.name.text;
-      if (importedName !== "hson") continue;
+      if (importedName !== facade) continue;
       const symbol = checker.getSymbolAtLocation(element.name);
       if (symbol !== undefined) symbols.add(symbol);
     }
@@ -157,7 +160,7 @@ function readSubstitutionRanges(
   return Object.freeze(ranges);
 }
 
-/** Discover direct official hson tags in one original in-memory TS/TSX source. */
+/** Discover direct official HSON tags in one original in-memory TS/TSX source. */
 export function discover_hson_tagged_templates(
   fileName: string,
   hostText: string,

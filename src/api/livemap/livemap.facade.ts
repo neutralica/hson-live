@@ -2,9 +2,7 @@ import type { HsonNode, JsonValue } from "../../core/types.js";
 import type { ClassifiedLiveMap, LiveMap } from "../../types/livemap.types.js";
 import { hsonTransform } from "../transform/transform.facade.js";
 import { parse_hson } from "../transform/parsers/parse-hson.js";
-import { detach_hson_root_value } from "../transform/utils/node-utils/detach-hson-root-value.js";
-import { validate_schema_hson_graph } from "../../internal/schema-hson-validation/validate-schema-hson-graph.js";
-import { LiveMapSchemaError } from "./livemap.error.js";
+import { validate_canonical_hson } from "../../internal/schema-hson-validation/validate-canonical-hson.js";
 import type { HsonCanonical } from "../transform/transform.types.js";
 import { make_classified_livemap } from "./livemap.core.js";
 import {
@@ -26,16 +24,8 @@ type LiveMapSchemaNamespace = Readonly<{
 
 const schema: LiveMapSchemaNamespace = Object.freeze({
   define: define_livemap_schema,
-  validate,
+  validate: validate_canonical_hson,
 });
-
-function validate(schema: LiveMapSchema, canonical: HsonCanonical): HsonCanonical {
-  if (typeof canonical !== "string") throw new TypeError("validate requires an HsonCanonical string.");
-  const graph = detach_hson_root_value(parse_hson(canonical));
-  const result = validate_schema_hson_graph(schema, graph);
-  if (!result.ok) throw new LiveMapSchemaError("HSON Schema validation failed.", result.issues[0]?.path ?? [], result.issues);
-  return canonical;
-}
 
 function must_data_livemap(map: ClassifiedLiveMap): LiveMap {
   if (map.mode === "data-object" || map.mode === "data-array") return map;

@@ -35,6 +35,6 @@ export function present_schema_diagnostic(issue: TrustedSchemaDiagnostic, associ
     message: `[${association.schemaLabel}] ${schema_diagnostic_message(issue)}${locationNote}`,
     range: precise ? { start: bodyRange.start + start!, end: bodyRange.start + end! } : templateRange,
     precision, source: "HSON", code: issue.code,
-    related: [{ range: association.callRange, message: `Schema requested by this validate call (${association.schemaLabel}).` }],
+    related: [{ range: association.callRange, message: `Schema requested by this ${association.mapFlow === undefined ? "validate" : "map.schema.use"} call (${association.schemaLabel}).` }],
   };
 }

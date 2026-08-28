@@ -1,7 +1,7 @@
 import { performance } from "node:perf_hooks";
 import { TrustedSchemaNodeSupervisor, type TrustedSchemaSupervisorOptions } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import type { TrustedSchemaBindingRegistration, TrustedSchemaDirectSource, TrustedSchemaResponse, TrustedSchemaTiming } from "../../../src/internal/trusted-schema-diagnostics/protocol.js";
-import { same_schema_source_binding } from "../../../src/internal/trusted-schema-diagnostics/source-binding.js";
+import { same_schema_source_binding, same_map_flow } from "../../../src/internal/trusted-schema-diagnostics/source-binding.js";
 import { discover_schema_validation_sources } from "../../../src/internal/trusted-schema-diagnostics/discover-validation-sources.js";
 import { read_embedded_hson_body } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { present_schema_diagnostic } from "./schema-presentation.js";
@@ -10,6 +10,7 @@ import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 
 export type SchemaStatus = "off" | "waiting" | "current-valid" | "current-invalid" | "stale" | "ambiguous" | "unavailable" | "runtime-failed";
 export type D2Measurement = Readonly<{
+  lifecycleMs?: number;
   discoveryMs: number; roundTripMs: number; publicationMs: number; endToEndMs: number;
   stages: readonly TrustedSchemaTiming[];
 }>;
@@ -27,7 +28,8 @@ export class TrustedSchemaClient {
   #loadedGeneration: number | undefined;
   #revision = 0;
   #bindings: readonly TrustedSchemaBindingRegistration[] = [];
-  get schemaModuleUrls(): readonly string[] { return this.#bindings.map(record => record.binding.moduleUrl); }
+  #lifecycleModules: readonly string[] = [];
+  get schemaModuleUrls(): readonly string[] { return [...this.#bindings.map(record => record.binding.moduleUrl), ...this.#lifecycleModules]; }
   constructor(options: SchemaClientOptions) { this.#options = options; this.supervisor = new TrustedSchemaNodeSupervisor(options); }
   dispose(): void { this.supervisor.dispose(); }
   invalidate(): void { this.supervisor.terminate(); this.#load = undefined; }
@@ -37,7 +39,7 @@ export class TrustedSchemaClient {
     const associations = discover_schema_validation_sources(document.fileName, document.text);
     const discoveryMs = performance.now() - started;
     if (associations.length === 0) return { status: "unavailable", diagnostics: [] };
-    let roundTripMs = 0, publicationMs = 0;
+    let roundTripMs = 0, publicationMs = 0, lifecycleMs = 0, checked = 0;
     const stages: TrustedSchemaTiming[] = [];
     const diagnostics: DocumentDiagnosticSpec[] = [];
     let status: SchemaStatus = "current-valid";
@@ -55,18 +57,32 @@ export class TrustedSchemaClient {
       if (loaded.type !== "loaded") return failure(loaded);
       const bindings: readonly TrustedSchemaBindingRegistration[] = loaded.bindings ?? [];
       this.#bindings = bindings;
+      this.#lifecycleModules = (loaded.associations ?? []).flatMap(record => record.mapFlow === undefined ? [] : [record.mapFlow.moduleUrl]);
       for (const association of associations) {
         if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
-        const registration = bindings.find(record => same_schema_source_binding(record.binding, association.binding));
+        let registration = bindings.find(record => same_schema_source_binding(record.binding, association.binding));
         if (registration === undefined) { if (status !== "ambiguous" && status !== "runtime-failed") status = "unavailable"; continue; }
+        const lookupStarted = performance.now();
+        const lifecycleMatches = association.mapFlow === undefined ? [] : (loaded.associations ?? []).filter(record =>
+          same_map_flow(record.mapFlow, association.mapFlow) && record.binding !== undefined && same_schema_source_binding(record.binding, association.binding)
+          && record.correspondence === "direct" && record.validationAttempted === true);
+        lifecycleMs += performance.now() - lookupStarted;
+        if (association.mapFlow !== undefined && lifecycleMatches.length !== 1) {
+          if (lifecycleMatches.length > 1) status = "ambiguous";
+          continue;
+        }
+        const lifecycle = lifecycleMatches[0];
+        if (lifecycle !== undefined) registration = bindings.find(record => record.schemaId === lifecycle.schemaId && same_schema_source_binding(record.binding, association.binding));
+        if (registration === undefined) { status = "unavailable"; continue; }
         const associationRevision = ++this.#revision;
         const associationId = `${association.callId}@${document.version}:${associationRevision}`;
         const directSource: TrustedSchemaDirectSource = {
+          mapFlow: association.mapFlow,
           templateId: association.templateId, callId: association.callId, binding: association.binding,
           documentRevision: document.version, templateRevision: document.version, associationRevision,
         };
         const requestStarted = performance.now();
-        const associated = await this.supervisor.request({ type: "associate-source", associationId, schemaId: registration.schemaId, directSource });
+        const associated = await this.supervisor.request({ type: "associate-source", associationId, lifecycleId: lifecycle?.associationId, schemaId: registration.schemaId, directSource });
         try {
           if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
           if (associated.type !== "associated") {
@@ -84,6 +100,7 @@ export class TrustedSchemaClient {
             message = failed.message; continue;
           }
           if (response.result?.timings) stages.push(response.result.timings);
+          if (response.result?.status === "VALID" || response.result?.status === "INVALID") checked++;
           if (response.result?.status === "INVALID") {
             if (status === "current-valid") status = "current-invalid";
             const publicationStarted = performance.now();
@@ -95,7 +112,8 @@ export class TrustedSchemaClient {
         }
       }
       if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
-      return { status, diagnostics, generation, message, measurement: { discoveryMs, roundTripMs, publicationMs, stages, endToEndMs: performance.now() - started } };
+      if (checked === 0 && status === "current-valid") status = "unavailable";
+      return { status, diagnostics, generation, message, measurement: { lifecycleMs, discoveryMs, roundTripMs, publicationMs, stages, endToEndMs: performance.now() - started } };
     } catch (error) {
       return { status: "runtime-failed", diagnostics: [], message: error instanceof Error ? error.message : "Trusted Schema runtime failed." };
     }

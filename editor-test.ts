@@ -1,5 +1,5 @@
-import {hson} from "./src/hson.js"
-import {hson as markup} from "./src/hson.js"
+import { HSON } from "hson-live/hson"
+import { HSON as markup } from "hson-live/hson"
 
 // ------------------------------------------------------------
 // 1. VALID DIRECT TEMPLATE
@@ -9,7 +9,7 @@ import {hson as markup} from "./src/hson.js"
 // - NO HSON diagnostic
 // ------------------------------------------------------------
 
-const valid = hson`
+const valid = HSON`
   <main
     id="application"
 
@@ -43,7 +43,7 @@ const valid = hson`
 // - authoritative HSON error squiggle
 // ------------------------------------------------------------
 
-const broken = hson`
+const broken = HSON`
   <main
     <section
       <h2 "Something is wrong"
@@ -61,7 +61,7 @@ const broken = hson`
 // - probably ordinary TypeScript template-string coloring
 // - BUT still an HSON diagnostic
 //
-// TextMate only recognizes the literal spelling "hson".
+// TextMate only recognizes the literal spelling "HSON".
 // Pass 2 semantic discovery knows `markup` is the real import.
 // ------------------------------------------------------------
 
@@ -79,8 +79,8 @@ const aliasedBroken = markup`
 // because this local parameter shadows the imported binding.
 // ------------------------------------------------------------
 
-function shadowTest(hson: (strings: TemplateStringsArray) => string) {
-  return hson`
+function shadowTest(HSON: (strings: TemplateStringsArray) => string) {
+  return HSON`
     this is not being treated as HSON by semantic discovery
   `;
 }
@@ -105,15 +105,15 @@ const ordinary = `
 // Current policy:
 // - host `${...}` expression stays TypeScript
 // - extension recognizes this as an HSON-tagged template
-// - exact substitution receives an unsupported-substitution error
+// - interpolated templates receive no speculative Schema diagnostics
 //
-// This is deliberately temporary until whole-value interpolation
-// semantics are implemented.
+// Runtime primitive substitutions are supported; editor substitution capture
+// remains deferred.
 // ------------------------------------------------------------
 
 const title = "Dynamic title";
 
-const interpolated = hson`
+const interpolated = HSON`
   <main
     h1 ${title} asdfa 
 `;
@@ -125,7 +125,7 @@ const interpolated = hson`
 // Should exercise HSON-specific lexical coloring.
 // ------------------------------------------------------------
 
-const lexical = hson`
+const lexical = HSON`
   <main
     'quoted name'="value"
     apostrophe='can\'t'

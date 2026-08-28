@@ -1,3 +1,8 @@
+> Historical D2 implementation record. The subsequent uppercase authoring
+> migration changes the tag to `HSON` and makes `/hson` narrow. `HSON.validate`
+> joins both retained LiveMap validation entrances; D2 architecture is unchanged.
+> See [current authoring contract](../transform/api-transform.md).
+
 # Schema authoring D2
 
 ## Public-surface review (recorded before public source edits)

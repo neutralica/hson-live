@@ -7,6 +7,7 @@ import {
   type TransformErrorDetails,
 } from "../src/core/errors.ts";
 import { hson } from "../src/hson.ts";
+import { HSON } from "../src/hson-authoring.ts";
 import {
   host_source_position_at,
   read_embedded_hson_body,
@@ -35,9 +36,9 @@ function descriptorFor(
   body: string,
   searchFrom = 0,
 ): EmbeddedHsonSource {
-  const tagStart = hostText.indexOf("hson", searchFrom);
+  const tagStart = hostText.indexOf("HSON", searchFrom);
   assert.notEqual(tagStart, -1);
-  const templateStart = hostText.indexOf("`", tagStart + "hson".length);
+  const templateStart = hostText.indexOf("`", tagStart + "HSON".length);
   assert.notEqual(templateStart, -1);
   const bodyStart = templateStart + 1;
   const templateEnd = bodyStart + body.length + 1;
@@ -46,7 +47,7 @@ function descriptorFor(
   const validation = validate_embedded_hson_source({
     fileName: "/workspace/fixture.ts",
     hostText,
-    tagRange: { start: tagStart, end: tagStart + "hson".length },
+    tagRange: { start: tagStart, end: tagStart + "HSON".length },
     templateRange: { start: templateStart, end: templateEnd },
     bodyRange: { start: bodyStart, end: bodyStart + body.length },
   });
@@ -85,11 +86,11 @@ function expectFallback(
   return mapping;
 }
 
-const simpleHost = "const value = hson`01`;";
+const simpleHost = "const value = HSON`01`;";
 const simple = descriptorFor(simpleHost, "01");
 
 check("a zero-width body range is valid and exactly reproducible", () => {
-  const hostText = "const value = hson``;";
+  const hostText = "const value = HSON``;";
   const source = descriptorFor(hostText, "");
   assert.equal(read_embedded_hson_body(source), "");
   assert.equal(source.bodyRange.start, source.bodyRange.end);
@@ -107,7 +108,7 @@ check("a nonempty range beginning at offset zero is valid", () => {
 });
 
 check("a range may end exactly at host EOF", () => {
-  const hostText = "hson`x`";
+  const hostText = "HSON`x`";
   const validation = validate_embedded_hson_source({
     fileName: "fixture.ts",
     hostText,
@@ -186,7 +187,7 @@ check("invalid host offsets do not map", () => {
 });
 
 check("a real HSON point maps at the body start", () => {
-  const hostText = "const value = hson`+1`;";
+  const hostText = "const value = HSON`+1`;";
   const source = descriptorFor(hostText, "+1");
   const error = captureTransformError(() => validate("+1"));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -221,7 +222,7 @@ check("EOF receives an explicit zero-width range", () => {
 });
 
 check("a real empty-source error maps to empty-body EOF", () => {
-  const hostText = "const value = hson``;";
+  const hostText = "const value = HSON``;";
   const source = descriptorFor(hostText, "");
   const error = captureTransformError(() => validate(""));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -230,7 +231,7 @@ check("a real empty-source error maps to empty-body EOF", () => {
 });
 
 check("an astral code point before the error counts as two offsets", () => {
-  const hostText = "const value = hson`😀x`;";
+  const hostText = "const value = HSON`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -243,7 +244,7 @@ check("an astral code point before the error counts as two offsets", () => {
 });
 
 check("a point directly on an astral character spans its surrogate pair", () => {
-  const hostText = "const value = hson`😀x`;";
+  const hostText = "const value = HSON`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -255,7 +256,7 @@ check("a point directly on an astral character spans its surrogate pair", () => 
 });
 
 check("a point on the low surrogate expands backward across its complete pair", () => {
-  const hostText = "const value = hson`😀x`;";
+  const hostText = "const value = HSON`😀x`;";
   const source = descriptorFor(hostText, "😀x");
   const error = syntheticError({
     operation: "synthetic",
@@ -268,7 +269,7 @@ check("a point on the low surrogate expands backward across its complete pair", 
 
 check("an isolated surrogate receives one UTF-16 code unit", () => {
   const body = `\uD83Dx`;
-  const hostText = `const value = hson\`${body}\`;`;
+  const hostText = `const value = HSON\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   const error = syntheticError({
     operation: "synthetic",
@@ -281,7 +282,7 @@ check("an isolated surrogate receives one UTF-16 code unit", () => {
 
 check("an indented multiline host maps body offsets to host coordinates", () => {
   const body = "<a 1\n a 2>";
-  const hostText = `function f() {\n  return hson\`${body}\`;\n}`;
+  const hostText = `function f() {\n  return HSON\`${body}\`;\n}`;
   const source = descriptorFor(hostText, body);
   const error = captureTransformError(() => validate(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -289,7 +290,7 @@ check("an indented multiline host maps body offsets to host coordinates", () => 
 });
 
 check("multiple descriptors independently reference one host file", () => {
-  const hostText = "const a = hson`+1`;\nconst b = hson`01`;";
+  const hostText = "const a = HSON`+1`;\nconst b = HSON`01`;";
   const first = descriptorFor(hostText, "+1");
   const second = descriptorFor(hostText, "01", first.templateRange.end);
   const firstError = captureTransformError(() => validate("+1"));
@@ -300,7 +301,7 @@ check("multiple descriptors independently reference one host file", () => {
 
 check("ordinary malformed authored HSON preserves exact index mapping", () => {
   const body = "<a 1b 2>";
-  const hostText = `const value = hson\`${body}\`;`;
+  const hostText = `const value = HSON\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   const error = captureTransformError(() => validate(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -310,7 +311,7 @@ check("ordinary malformed authored HSON preserves exact index mapping", () => {
 
 check("duplicate declaration diagnostics map primary and related evidence", () => {
   const body = "<a 1 a 2>";
-  const hostText = `const value = hson\`${body}\`;`;
+  const hostText = `const value = HSON\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   const error = captureTransformError(() => validate(body));
   const mapped = expectMapped(map_transform_error_to_embedded_source(error, source));
@@ -325,9 +326,9 @@ check("duplicate declaration diagnostics map primary and related evidence", () =
 
 check("a real source-less Transform error uses an explicit body fallback", () => {
   const value = {};
-  const error = captureTransformError(() => (hson as any)`<a ${value}/>`);
+  const error = captureTransformError(() => (HSON as any)`<a ${value}/>`);
   const body = "<a ${value}/>";
-  const hostText = `const value = hson\`${body}\`;`;
+  const hostText = `const value = HSON\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   const mapped = expectFallback(map_transform_error_to_embedded_source(error, source));
   assert.equal(mapped.reason, "source-missing");
@@ -416,7 +417,7 @@ check("multiple related positions map independently", () => {
 
 check("physical CRLF survives exact slicing, parsing, and host mapping", () => {
   const body = "<a 1\r\n a 2>";
-  const hostText = `const value = hson\`${body}\`;`;
+  const hostText = `const value = HSON\`${body}\`;`;
   const source = descriptorFor(hostText, body);
   assert.equal(read_embedded_hson_body(source), body);
   const error = captureTransformError(() => validate(read_embedded_hson_body(source)));
