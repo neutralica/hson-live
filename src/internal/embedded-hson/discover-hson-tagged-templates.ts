@@ -25,7 +25,7 @@ export type HsonTaggedTemplateDiscoveryResult = Readonly<{
   interpolated: readonly InterpolatedEmbeddedHsonTemplate[];
 }>;
 
-function createProgram(fileName: string, hostText: string): ts.Program {
+export function create_hson_source_program(fileName: string, hostText: string): ts.Program {
   const options: ts.CompilerOptions = {
     jsx: ts.JsxEmit.Preserve,
     module: ts.ModuleKind.ESNext,
@@ -89,7 +89,7 @@ function hasOverlappingDiagnostic(
   return diagnostics.some((diagnostic) => diagnosticOverlapsRange(diagnostic, range));
 }
 
-function readSupportedImportSymbols(
+export function read_supported_hson_import_symbols(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
   diagnostics: readonly ts.Diagnostic[],
@@ -172,13 +172,13 @@ export function discover_hson_tagged_templates(
     return empty();
   }
 
-  const program = createProgram(fileName, hostText);
+  const program = create_hson_source_program(fileName, hostText);
   const sourceFile = program.getSourceFile(fileName);
   if (sourceFile === undefined) return empty();
   const diagnostics = program.getSyntacticDiagnostics(sourceFile);
   if (diagnostics.some((diagnostic) => diagnostic.start === undefined)) return empty();
   const checker = program.getTypeChecker();
-  const importSymbols = readSupportedImportSymbols(sourceFile, checker, diagnostics);
+  const importSymbols = read_supported_hson_import_symbols(sourceFile, checker, diagnostics);
   if (importSymbols.size === 0) return empty();
 
   const sources: EmbeddedHsonSource[] = [];

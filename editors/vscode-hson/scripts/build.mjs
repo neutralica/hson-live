@@ -12,6 +12,8 @@ await build({
   bundle: true,
   external: ["vscode"],
   format: "cjs",
+  define: { "import.meta.url": "__hson_bundle_url" },
+  banner: { js: 'const __hson_bundle_url = require("node:url").pathToFileURL(__filename).href;' },
   platform: "node",
   target: "node20",
   sourcemap: true,

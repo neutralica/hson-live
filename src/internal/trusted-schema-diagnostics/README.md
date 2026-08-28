@@ -52,5 +52,45 @@ execution-boundary tests without exposing a public test hook.
 `npm run test:trusted-schema-d1` contains the end-to-end fixtures, deterministic
 process-boundary checks, public export graph checks, and executed timing probes.
 Negative type imports also live in `tests/entrypoints/public-entrypoints.ts`.
-No VS Code client, arbitrary provenance tracing, automatic Schema instrumentation,
-or interpolated template capture is provided.
+The D2 VS Code client reuses this process supervisor and protocol. Arbitrary
+provenance tracing, automatic Schema instrumentation, and interpolated template
+capture remain out of scope.
+
+## D2 direct-source association
+
+`associate-source` is separate from `associate`: it records a static relationship
+between a template occurrence and a later `validate` call, not execution of
+the application statement and not a map attachment. It includes template/call
+identities, document/template/association revisions, source binding and Schema
+handle; the protocol envelope binds it to one runtime generation. Validation
+requires every identity to match. Disposal removes only that site's association.
+
+Exported `trustedSchemas` gain source mappings only where an actual module export
+is the identical registered object. Handles need not equal variable names. A
+private optional `trustedSchemaBindings` array can connect a registration handle
+to another module's named export:
+
+```js
+export const trustedSchemaBindings = [
+  { schemaId: "userContract", binding: { moduleUrl: new URL("./schema.js", import.meta.url).href, exportName: "UserSchema" } }
+];
+```
+
+Each export mapping is checked against the actual exported object. Private
+development registration accepts an optional fourth argument for a non-exported
+source declaration: `{ moduleUrl, localName, declarationStart }`, where the
+offset is its TypeScript VariableDeclaration start in the source module. This
+is explicit trusted development metadata, not inferred name equality. The hook
+remains private and is imported by filesystem path only in development tooling.
+
+Repeated IDs retain all registrations. Identical objects are idempotent;
+different objects fail load as `AMBIGUOUS_REGISTRATION`. Different IDs mapping
+one source binding to different objects fail association as ambiguous. Multiple
+validation sites referencing one object are not ambiguous and execute separately.
+
+Both D1 and the public boundary use
+`internal/schema-hson-validation/validate-schema-hson-graph.ts`. Projected graphs
+remain ordered carriers all the way into the authoritative validator; only
+constraint callbacks materialize JavaScript values. Direct D2 candidates use
+ordinary canonical parsing. D1 lifecycle fragments retain their explicit parse
+context. Neither path retries interpretations to find one a Schema accepts.

@@ -7,6 +7,13 @@
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Syntax tooling works in Restricted Mode. Trusted Schema diagnostics execute project code only with Workspace Trust and explicit enablement.",
+      "restrictedConfigurations": ["hson.trustedSchemaDiagnostics.enabled", "hson.trustedSchemaDiagnostics.module", "hson.trustedSchemaDiagnostics.hsonModule", "hson.trustedSchemaDiagnostics.runtimeEntry", "hson.trustedSchemaDiagnostics.execArgv"]
+    }
+  },
   "engines": {
     "vscode": "^1.95.0"
   },
@@ -29,6 +36,16 @@
     "package:vsix": "npm run build && vsce package --no-dependencies --out hson-language.vsix"
   },
   "contributes": {
+    "configuration": {
+      "title": "HSON trusted Schema diagnostics",
+      "properties": {
+        "hson.trustedSchemaDiagnostics.enabled": { "type": "boolean", "default": false, "scope": "resource", "description": "Explicitly allow trusted project Schema execution. Also requires Workspace Trust. Not a sandbox." },
+        "hson.trustedSchemaDiagnostics.module": { "type": "string", "default": "", "scope": "resource", "description": "Trusted Schema registration module path relative to the workspace folder. Prefer a Schema-only module, not the application entrypoint." },
+        "hson.trustedSchemaDiagnostics.hsonModule": { "type": "string", "default": "", "scope": "resource", "description": "Path to the project's hson.js facade (same runtime instance as its private D1 entry)." },
+        "hson.trustedSchemaDiagnostics.runtimeEntry": { "type": "string", "default": "", "scope": "resource", "description": "Optional private D1 Node entry path; defaults beside hson.js under internal/trusted-schema-diagnostics." },
+        "hson.trustedSchemaDiagnostics.execArgv": { "type": "array", "items": { "type": "string" }, "default": [], "scope": "resource", "description": "Explicit trusted Node loader arguments, if required by the configured project runtime." }
+      }
+    },
     "languages": [
       {
         "id": "hson",

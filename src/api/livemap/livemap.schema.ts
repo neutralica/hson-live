@@ -1,6 +1,7 @@
 // schema.ts
 
 import type { JsonValue } from "../../core/types.js";
+import { annotate_schema_issue } from "../../internal/trusted-schema-diagnostics/issue-presentation.js";
 import type { CanonicalPublicAttrValue } from "../../core/types.js";
 import type {
   LiveMapSchemaIssueCode,
@@ -1547,12 +1548,14 @@ function validate_constrain_node(node: LiveMapSchemaNode, path: LivePath, value:
 
   if (node.validate(materialize_projected_value(value))) return validation_ok();
 
-  return expected_schema_value_issue(
+  const failed = expected_schema_value_issue(
     node,
     path,
     emit_ordered_json(value),
     "INVALID_CONSTRAINT",
   );
+  for (const issue of failed.issues) annotate_schema_issue(issue, { constraintLabel: node.label });
+  return failed;
 }
 
 function validate_array_node(node: LiveMapSchemaNode, path: LivePath, value: OrderedProjectedValue): LiveMapSchemaValidation {

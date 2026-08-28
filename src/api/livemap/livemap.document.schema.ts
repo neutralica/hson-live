@@ -1,4 +1,5 @@
 import { ELEM_TAG, ROOT_TAG, STR_TAG } from "../../core/constants.js";
+import { annotate_schema_issue, read_schema_issue_presentation } from "../../internal/trusted-schema-diagnostics/issue-presentation.js";
 import { is_Node, is_ordinary_element_node } from "../../core/node-guards.js";
 import type { HsonNode } from "../../core/types.js";
 import { decode_public_attrs } from "../../core/public-attrs.js";
@@ -535,13 +536,13 @@ function validate_item(
   }
   if (schema.tag !== undefined && schema.tag !== value.$_tag) {
     return invalid([
-      issue(
+      annotate_schema_issue(issue(
         "INVALID_LITERAL",
         path,
         `Expected tag ${JSON.stringify(schema.tag)} at ${JSON.stringify(path)}; received ${JSON.stringify(value.$_tag)}.`,
         JSON.stringify(schema.tag),
         JSON.stringify(value.$_tag),
-      ),
+      ), { subject: "tag" }),
     ]);
   }
   const attrsValidation = schema.attrs === undefined
@@ -584,28 +585,28 @@ function validate_attrs(
   for (const [name, rule] of schema.props) {
     if (!Object.prototype.hasOwnProperty.call(attrs, name)) {
       if (!rule.optional) {
-        issues.push(issue(
+        issues.push(annotate_schema_issue(issue(
           "MISSING_REQUIRED",
           path,
           `Required attribute ${JSON.stringify(name)} is missing at ${JSON.stringify(path)}.`,
           rule.flag ? `flag ${JSON.stringify(name)}` : "required attribute",
           "missing",
           name,
-        ));
+        ), rule.flag ? { subject: "flag" } : {}));
       }
       continue;
     }
     const validation = rule.validate(attrs[name]);
     if (!validation.ok) {
       for (const problem of validation.issues) {
-        issues.push(issue(
+        issues.push(annotate_schema_issue(issue(
           problem.code,
           path,
           `Attribute ${JSON.stringify(name)} at ${JSON.stringify(path)} is invalid: ${problem.message}`,
           problem.expected,
           problem.received,
           name,
-        ));
+        ), read_schema_issue_presentation(problem) ?? {}));
       }
     }
   }

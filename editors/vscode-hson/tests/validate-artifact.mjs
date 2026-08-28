@@ -19,7 +19,9 @@ assert.deepEqual(manifest.contributes.grammars[1].injectTo, ["source.ts", "sourc
 assert.match(injectionGrammar.injectionSelector, /source\.ts/);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
 assert.equal(manifest.contributes.commands, undefined);
-assert.equal(manifest.contributes.configuration, undefined);
+assert.equal(manifest.contributes.configuration.properties["hson.trustedSchemaDiagnostics.enabled"].default, false);
+assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
+assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("hson.trustedSchemaDiagnostics.module"));
 assert.ok(manifest.devDependencies.esbuild);
 assert.ok(manifest.devDependencies.typescript);
 

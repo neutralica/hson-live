@@ -26,6 +26,20 @@ import {
 } from "hson-live/hson";
 import type { HsonNode, HsonSemanticPrimitive, JsonValue, Primitive } from "hson-live/types";
 // D1 tooling is private, including its capability-origin and lifecycle helpers.
+// @ts-expect-error Standalone helper is not a public export.
+import { validate } from "hson-live";
+// @ts-expect-error Shared graph authority stays private.
+import { validate_schema_hson_graph } from "hson-live/livemap";
+// @ts-expect-error Direct-source associations are private tooling.
+import type { TrustedSchemaDirectSource } from "hson-live/types";
+const standaloneSchema = hson.liveMap.schema.define(s => s.number);
+const standaloneCanonical: HsonCanonical = hson.liveMap.schema.validate(standaloneSchema, hson`37`);
+const narrowStandaloneCanonical: HsonCanonical = hsonSubpath.liveMap.schema.validate(standaloneSchema, standaloneCanonical);
+// @ts-expect-error Arbitrary strings are not branded HsonCanonical.
+hson.liveMap.schema.validate(standaloneSchema, "37");
+// @ts-expect-error No aliases are approved.
+hson.liveMap.schema.check(standaloneSchema, standaloneCanonical);
+void narrowStandaloneCanonical;
 // @ts-expect-error The D1 wire protocol is not a public value.
 import { TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION } from "hson-live";
 // @ts-expect-error The runtime host is not a public API.

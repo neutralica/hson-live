@@ -31,7 +31,7 @@ export type DocumentDiagnosticSpec = Readonly<{
   range: HostSourceRange;
   source: typeof DIAGNOSTIC_SOURCE;
   code?: string;
-  precision: "point" | "eof" | "fallback";
+  precision: "point" | "eof" | "fallback" | "exact" | "anchor" | "unresolved";
   related: readonly RelatedDiagnosticSpec[];
 }>;
 

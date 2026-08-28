@@ -43,6 +43,7 @@ export class TrustedSchemaInfrastructureError extends Error {
 export class TrustedSchemaNodeSupervisor {
   readonly #options: TrustedSchemaSupervisorOptions & Required<Pick<TrustedSchemaSupervisorOptions, "startupDeadlineMs" | "validationDeadlineMs" | "maxRestarts">>;
   readonly #pending = new Set<(error: Error) => void>();
+  readonly #retired = new Set<(reason: Error) => void>();
   #child: TrustedSchemaRuntimeProcess | undefined;
   #starting: Promise<void> | undefined;
   #generation = 0;
@@ -66,6 +67,7 @@ export class TrustedSchemaNodeSupervisor {
   get restarts(): number { return this.#restarts; }
   get running(): boolean { return this.#child?.connected === true; }
   get output(): Readonly<{ stdout: string; stderr: string }> { return Object.freeze({ stdout: this.#stdout, stderr: this.#stderr }); }
+  onRetired(listener: (reason: Error) => void): () => void { this.#retired.add(listener); return () => this.#retired.delete(listener); }
 
   async start(): Promise<void> {
     this.require_trust();
@@ -140,6 +142,9 @@ export class TrustedSchemaNodeSupervisor {
     const child = this.#child;
     this.#child = undefined;
     for (const fail of [...this.#pending]) fail(reason);
+    if (child !== undefined) for (const listener of this.#retired) {
+      try { listener(reason); } catch { /* Observers cannot prevent process retirement. */ }
+    }
     if (child !== undefined && !child.killed) child.kill("SIGKILL");
   }
   dispose(): void { this.#disposed = true; this.terminate(); }

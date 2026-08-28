@@ -4,6 +4,26 @@
  */
 export const TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION = 1;
 
+/** Explicit registration metadata; never inferred from a handle's spelling. */
+export type TrustedSchemaSourceBinding = Readonly<{
+  moduleUrl: string;
+  exportName?: string;
+  localName?: string;
+  declarationStart?: number;
+}>;
+export type TrustedSchemaBindingRegistration = Readonly<{
+  schemaId: string;
+  binding: TrustedSchemaSourceBinding;
+}>;
+export type TrustedSchemaDirectSource = Readonly<{
+  templateId: string;
+  callId: string;
+  documentRevision: number;
+  templateRevision: number;
+  associationRevision: number;
+  binding: TrustedSchemaSourceBinding;
+}>;
+
 export type TrustedSchemaRootMode = "projected" | "element" | "fragment";
 export type TrustedSchemaAssociationEvidence = Readonly<{
   associationId: string;
@@ -39,6 +59,8 @@ export type TrustedSchemaRange = Readonly<{
 }>;
 
 export type TrustedSchemaDiagnostic = Readonly<{
+  subject?: "tag" | "flag";
+  constraintLabel?: string;
   code: string;
   path: readonly (string | number)[];
   expected?: string;
@@ -65,6 +87,15 @@ export type TrustedSchemaRequest =
       associationId: string;
     }>
   | Readonly<{
+      type: "associate-source";
+      protocolVersion: number;
+      requestId: string;
+      runtimeGeneration: number;
+      associationId: string;
+      schemaId: string;
+      directSource: TrustedSchemaDirectSource;
+    }>
+  | Readonly<{
       type: "validate";
       protocolVersion: number;
       requestId: string;
@@ -74,6 +105,7 @@ export type TrustedSchemaRequest =
       templateRevision: number;
       candidateRevision: number;
       source: string;
+      directSource?: TrustedSchemaDirectSource;
     }>
   | Readonly<{ type: "dispose" | "shutdown" | "ping"; protocolVersion: number; requestId: string; runtimeGeneration: number; associationId?: string }>;
 
@@ -82,9 +114,10 @@ export type TrustedSchemaResponse = Readonly<{
   requestId: string;
   runtimeGeneration: number;
   type: "ready" | "loaded" | "associated" | "result" | "disposed" | "pong" | "error";
-  error?: "PROTOCOL_MISMATCH" | "RUNTIME_MISMATCH" | "MODULE_LOAD_FAILED" | "ASSOCIATION_UNAVAILABLE" | "VALIDATION_THROW";
+  error?: "PROTOCOL_MISMATCH" | "RUNTIME_MISMATCH" | "MODULE_LOAD_FAILED" | "ASSOCIATION_UNAVAILABLE" | "AMBIGUOUS_REGISTRATION" | "VALIDATION_THROW";
   message?: string;
   schemaIds?: readonly string[];
+  bindings?: readonly TrustedSchemaBindingRegistration[];
   associations?: readonly TrustedSchemaAssociationEvidence[];
   result?: Readonly<{
     status: TrustedSchemaDiagnosticStatus;

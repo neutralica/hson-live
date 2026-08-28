@@ -68,8 +68,8 @@ const awaitedTagFamily = await tagFamilyObject;
 const constructedTagFamily = await new Promise((resolve) => resolve(tagFamilyObject));
 const allTagFamilies = await Promise.all([tagFamilyObject, Promise.resolve(tagFamilyObject)]);
 
-check("schema facade exposes only define", () => {
-  assert.deepEqual(Object.keys(hson.liveMap.schema), ["define"]);
+check("schema facade exposes only define and approved validate", () => {
+  assert.deepEqual(Object.keys(hson.liveMap.schema), ["define", "validate"]);
 });
 
 check("define receives one direct frozen toolkit", () => {

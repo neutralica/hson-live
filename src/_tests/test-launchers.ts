@@ -171,6 +171,34 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       collections: ["livemap", "schema", "source-provenance", "document", "internal"],
     }),
     launcher({
+      id: "schema-hson-graph", subject: "LiveMap", displayName: "Authoritative HSON Schema graph validation",
+      packageScript: "test:schema-hson-graph", repositoryModule: "tests/schema-hson-graph.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-hson-public", subject: "LiveMap", displayName: "HSON Schema public facade boundaries",
+      packageScript: "test:schema-hson-public", repositoryModule: "tests/schema-hson-public.acceptance.mts", runtime: "node", collections: ["schema", "public-boundary"],
+    }),
+    launcher({
+      id: "schema-d2-discovery", subject: "LiveMap", displayName: "D2 source association discovery",
+      packageScript: "test:schema-d2-discovery", repositoryModule: "tests/schema-d2-discovery.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d2-runtime", subject: "LiveMap", displayName: "D2 trusted runtime client",
+      packageScript: "test:schema-d2-runtime", repositoryModule: "tests/schema-d2-runtime.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d2-editor", subject: "LiveMap", displayName: "D2 asynchronous editor lifecycle",
+      packageScript: "test:schema-d2-editor", repositoryModule: "tests/schema-d2-editor.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "schema-d2-presentation", subject: "LiveMap", displayName: "D2 Schema diagnostic presentation",
+      packageScript: "test:schema-d2-presentation", repositoryModule: "tests/schema-d2-presentation.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
+      id: "trusted-schema-d1", subject: "LiveMap", displayName: "D1 trusted Schema runtime authority",
+      packageScript: "test:trusted-schema-d1", repositoryModule: "tests/trusted-schema-d1.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
+    }),
+    launcher({
       id: "transform.hson-serializer",
       subject: "Transform",
       displayName: "HSON serializer",
