@@ -4,7 +4,7 @@ import type { TrustedSchemaDirectSource, TrustedSchemaRequest } from "../src/int
 import { discover_schema_validation_sources } from "../src/internal/trusted-schema-diagnostics/discover-validation-sources.ts";
 import { same_map_flow } from "../src/internal/trusted-schema-diagnostics/source-binding.ts";
 import { cases, caseFile } from "./fixtures/schema-d3-cases.mts";
-import { read_embedded_hson_body } from "../src/internal/embedded-hson/embedded-hson-source.ts";
+import { read_authored_hson_source } from "../src/internal/embedded-hson/authored-hson-source.ts";
 import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
 let checks = 0;
 const check = async (name: string, f: () => unknown) => { await f(); console.log(`ok ${++checks} - ${name}`); };
@@ -24,7 +24,7 @@ async function association(name: string, index = 0, body?: string) {
   const associationId = `request:${sequence}`;
   const response = await runtime.handle({ ...envelope, type: 'associate-source', associationId, lifecycleId: proof.associationId, schemaId: proof.schemaId, directSource });
   const request: Extract<TrustedSchemaRequest, { type: 'validate' }> = { ...envelope, type: 'validate', associationId, schemaId: proof.schemaId,
-    templateRevision: 2, candidateRevision: 2, directSource, source: body ?? read_embedded_hson_body(site.source) };
+    templateRevision: 2, candidateRevision: 2, directSource, source: body ?? read_authored_hson_source(site.source) };
   return { response, request, result: await runtime.handle(request) };
 }
 await check('actual natural direct flow constructs one exact map', () => { const e = evidence('direct')[0]!; assert.equal(e.correspondence, 'direct'); assert.equal(e.constructedRevision, e.attemptRevision); assert.ok(e.applicationId); assert.ok(e.templateId); });
@@ -61,4 +61,9 @@ await check('generation change rejects old evidence', async () => { const r = aw
 await check('candidate revision and association disposal checked', async () => { const r = await association('direct'); assert.equal((await runtime.handle({ ...r.request,candidateRevision:3 })).result?.status,'ASSOCIATION_UNAVAILABLE'); await runtime.handle({ ...envelope,type:'dispose',associationId:r.request.associationId }); assert.equal((await runtime.handle(r.request)).result?.status,'ASSOCIATION_UNAVAILABLE'); });
 await check('live mutation after association invalidates lifecycle at validation time', async () => { const r = await association('live'); const fixture = await import('./fixtures/schema-d3-runtime.fixture.mts'); fixture.executed.get('live')!.map!.set(['user','age'], 38); assert.equal((await runtime.handle(r.request)).result?.status,'ASSOCIATION_UNAVAILABLE'); });
 await check('equal occurrences remain distinct and repeated source executions are ambiguous', async () => { const [a,b] = evidence('equal'); assert.notEqual(a!.templateId,b!.templateId); assert.equal(a!.canonical,b!.canonical); assert.equal((await association('repeated')).response.error,'AMBIGUOUS_REGISTRATION'); });
+await check('static string constructs the actual map and preserves rejected proposal', async () => { const e=evidence('staticDirect')[0]!; assert.equal(e.correspondence,'direct'); assert.equal(e.attachment,'rejected'); assert.equal((await association('staticDirect')).result.result?.status,'INVALID'); });
+await check('static JavaScript escapes feed cooked runtime HSON', async () => { const r=await association('staticEscaped'); assert.equal(r.request.source,'<user <age "37">>'); assert.equal(r.result.result?.status,'INVALID'); });
+await check('static mutation and mutate-revert suppress lifecycle', async () => { assert.equal((await association('staticMutated')).response.error,'ASSOCIATION_UNAVAILABLE'); assert.equal((await association('staticReverted')).response.error,'ASSOCIATION_UNAVAILABLE'); });
+await check('static source supports independent maps and Schemas', async () => { assert.equal((await association('staticTwo',0)).result.result?.status,'INVALID'); assert.equal((await association('staticTwo',1)).result.result?.status,'INVALID'); });
+await check('static document fragment and text retain LiveMap root semantics', async () => { assert.equal((await association('staticDocument')).result.result?.status,'INVALID'); assert.equal(evidence('staticFragment')[0]!.rootMode,'fragment'); assert.equal(evidence('staticText')[0]!.rootMode,'fragment'); });
 emit_hson_live_test_completion('schema-d3-runtime',checks,checks,0);

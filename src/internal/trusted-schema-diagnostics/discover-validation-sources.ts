@@ -2,7 +2,9 @@ import ts from "typescript";
 import { createHash } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { create_hson_source_program, read_supported_hson_import_symbols, discover_hson_tagged_templates } from "../embedded-hson/discover-hson-tagged-templates.js";
-import type { EmbeddedHsonSource, HostSourceRange } from "../embedded-hson/embedded-hson-source.js";
+import type { HostSourceRange } from "../embedded-hson/embedded-hson-source.js";
+import { discover_static_from_hson_sources } from "../embedded-hson/discover-static-from-hson-sources.js";
+import { authored_hson_occurrence_range, type AuthoredHsonSource } from "../embedded-hson/authored-hson-source.js";
 import type { TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
 
 export type DiscoveredSchemaValidation = Readonly<{
@@ -13,7 +15,7 @@ export type DiscoveredSchemaValidation = Readonly<{
   mapRange?: HostSourceRange;
   templateId: string;
   callId: string;
-  source: EmbeddedHsonSource;
+  source: AuthoredHsonSource;
   callRange: HostSourceRange;
   schemaRange: HostSourceRange;
   schemaLabel: string;
@@ -41,6 +43,7 @@ function standalone(node: ts.Node): boolean {
 export function discover_schema_validation_sources(fileName: string, text: string): readonly DiscoveredSchemaValidation[] {
   if (!/\.(?:ts|tsx)$/.test(fileName)) return [];
   const templates = discover_hson_tagged_templates(fileName, text).sources;
+  const staticSources = discover_static_from_hson_sources(fileName, text).sources;
   const program = create_hson_source_program(fileName, text);
   const file = program.getSourceFile(fileName);
   if (file === undefined) return [];
@@ -84,7 +87,7 @@ export function discover_schema_validation_sources(fileName: string, text: strin
       || decl.end >= use.getStart(file)) return undefined;
     return decl;
   };
-  const canonical = (expression: ts.Expression, use: ts.Node, seen = new Set<ts.Symbol>(), depth = 0): EmbeddedHsonSource | undefined => {
+  const canonical = (expression: ts.Expression, use: ts.Node, seen = new Set<ts.Symbol>(), depth = 0): AuthoredHsonSource | undefined => {
     if (depth > 32) return undefined;
     const node = strip(expression);
     if (ts.isTaggedTemplateExpression(node)) return templates.find(source => source.tagRange.start === node.tag.getStart(file));
@@ -93,6 +96,8 @@ export function discover_schema_validation_sources(fileName: string, text: strin
     if (decl === undefined || !ts.isVariableDeclaration(decl) || decl.initializer === undefined) return undefined;
     return canonical(decl.initializer, decl, seen, depth + 1);
   };
+  const staticSource = (boundary: ts.CallExpression): AuthoredHsonSource | undefined =>
+    staticSources.find(source => source.callRange.start === boundary.getStart(file) && source.boundary === "livemap");
   const schema = (expression: ts.Expression, use: ts.Node, seen = new Set<ts.Symbol>(), depth = 0): TrustedSchemaSourceBinding | undefined => {
     if (depth > 32) return undefined;
     const node = strip(expression);
@@ -130,7 +135,8 @@ export function discover_schema_validation_sources(fileName: string, text: strin
   };
   // Body edits are new candidates, not new lifecycle sites. Every byte outside
   // the candidate body participates in authority; normalized offsets survive edits.
-  const normalizedOffset = (offset: number): number => offset - templates.filter(t => t.bodyRange.end <= offset).reduce((n, t) => n + t.bodyRange.end - t.bodyRange.start, 0);
+  const authoredBodies = [...templates, ...staticSources].map(source => source.bodyRange);
+  const normalizedOffset = (offset: number): number => offset - authoredBodies.filter(body => body.end <= offset).reduce((n, body) => n + body.end - body.start, 0);
 
   const results: DiscoveredSchemaValidation[] = [];
   const visit = (node: ts.Node): void => {
@@ -139,7 +145,7 @@ export function discover_schema_validation_sources(fileName: string, text: strin
       const source = canonical(node.arguments[1], node);
       const binding = schema(node.arguments[0], node);
       if (source !== undefined && binding !== undefined) results.push({
-        templateId: `${moduleUrl}#template:${source.templateRange.start}`,
+        templateId: `${moduleUrl}#template:${authored_hson_occurrence_range(source).start}`,
         callId: `${moduleUrl}#validate:${node.getStart(file)}`,
         source, binding, callRange: range(node), schemaRange: range(node.arguments[0]), schemaLabel: node.arguments[0].getText(file),
       });
@@ -150,10 +156,11 @@ export function discover_schema_validation_sources(fileName: string, text: strin
       const owner = property(node.expression, "use");
       const map = owner === undefined ? undefined : property(owner, "schema");
       const boundary = map === undefined || !ts.isIdentifier(map) ? undefined : construction(map, node);
-      const source = boundary === undefined ? undefined : canonical(boundary.arguments[0], boundary);
+      const source = boundary === undefined ? undefined : canonical(boundary.arguments[0], boundary) ?? staticSource(boundary);
       const binding = schema(node.arguments[0], node);
       if (boundary !== undefined && source !== undefined && binding !== undefined && map !== undefined && domain(boundary) === domain(node)) {
-        const templateId = `${moduleUrl}#template:${normalizedOffset(source.templateRange.start)}`;
+        const occurrence = authored_hson_occurrence_range(source);
+        const templateId = `${moduleUrl}#template:${normalizedOffset(occurrence.start)}`;
         const callId = `${moduleUrl}#use:${normalizedOffset(node.getStart(file))}`;
         results.push({ source, binding, templateId, callId, callRange: range(node), schemaRange: range(node.arguments[0]), schemaLabel: node.arguments[0].getText(file),
           constructionRange: range(boundary), constructionCalleeRange: range(boundary.expression), useCalleeRange: range(node.expression), mapRange: range(map),

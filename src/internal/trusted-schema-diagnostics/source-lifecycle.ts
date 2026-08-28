@@ -4,7 +4,7 @@ import type { HsonCanonical } from "../../api/transform/transform.types.js";
 import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
 import type { TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
 import { capture_trusted_schema_template, construct_trusted_schema_application, attempt_trusted_schema_attachment,
-  type TrustedSchemaTemplate, type TrustedSchemaApplication } from "./lifecycle-evidence.js";
+  capture_trusted_schema_static_source, construct_trusted_schema_static_application, type TrustedSchemaTemplate, type TrustedSchemaApplication } from "./lifecycle-evidence.js";
 
 type Site = Readonly<{ mapFlow: TrustedSchemaMapFlow; binding: TrustedSchemaSourceBinding }>;
 
@@ -28,8 +28,21 @@ export function create_trusted_schema_source_lifecycle(sites: readonly Site[]) {
       if (constructor !== hsonLiveMap.fromHson) throw new Error("Unsupported LiveMap construction runtime identity.");
       return (canonical: HsonCanonical): ClassifiedLiveMap => {
         const template = templates.get(templateId);
-        if (template === undefined || canonical !== template.canonical) throw new Error("Missing exact authored occurrence capture.");
+        if (template === undefined || template.kind !== "tagged" || canonical !== template.canonical) throw new Error("Missing exact authored occurrence capture.");
         const application = construct_trusted_schema_application(template);
+        applications.set(application.map, { application, constructionId });
+        return application.map;
+      };
+    },
+    constructStatic(templateId: string, constructionId: string, constructor: unknown) {
+      if (constructor !== hsonLiveMap.fromHson) throw new Error("Unsupported LiveMap construction runtime identity.");
+      return (source: string): ClassifiedLiveMap => {
+        if (typeof source !== "string") throw new Error("Static fromHson construction did not receive a string.");
+        const existing = templates.get(templateId);
+        const template = existing === undefined ? capture_trusted_schema_static_source(source) : existing;
+        if (template.kind !== "static" || template.source !== source) throw new Error("Static source occurrence changed during trusted module execution.");
+        templates.set(templateId, template);
+        const application = construct_trusted_schema_static_application(template);
         applications.set(application.map, { application, constructionId });
         return application.map;
       };

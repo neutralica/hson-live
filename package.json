@@ -98,6 +98,8 @@
     "check:entrypoints": "tsc -p tests/entrypoints/tsconfig.public.json && tsc -p tests/entrypoints/tsconfig.hson-worker.json && tsc -p tests/entrypoints/tsconfig.transform-worker.json && tsc -p tests/entrypoints/tsconfig.livemap-worker.json && tsc -p tests/entrypoints/tsconfig.locus-worker.json && tsc -p tests/entrypoints/tsconfig.livehost-node.json && tsc -p tests/entrypoints/tsconfig.livetree-browser.json",
     "check": "npm run check:source && npm run check:tests",
     "test:hson-authoring-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-authoring-discovery.acceptance.mts",
+    "test:static-hson-js-literal-mapping": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/static-hson-js-literal-mapping.acceptance.mts",
+    "test:from-hson-static-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/from-hson-static-discovery.acceptance.mts",
     "test:hson-authoring-package": "node tests/hson-authoring-package.acceptance.mjs",
     "test:hson-tokenizer": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-tokenizer.acceptance.mts",
     "test:hson-source-provenance-core": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-source-provenance-core.acceptance.mts",
@@ -254,7 +256,9 @@
     "test:livehost-authority-lifecycle": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/livehost-authority-lifecycle.acceptance.mts",
     "test:schema-d3-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-discovery.acceptance.mts",
     "test:schema-d3-runtime": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-runtime.acceptance.mts",
-    "test:schema-d3-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-editor.acceptance.mts"
+    "test:schema-d3-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d3-editor.acceptance.mts",
+    "test:schema-d4-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d4-editor.acceptance.mts",
+    "test:schema-d4-performance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d4-performance.acceptance.mts"
   },
   "devDependencies": {
     "@types/dompurify": "^3.2.0",

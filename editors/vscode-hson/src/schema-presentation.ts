@@ -1,6 +1,7 @@
 import type { TrustedSchemaDiagnostic } from "../../../src/internal/trusted-schema-diagnostics/protocol.js";
 import type { DiscoveredSchemaValidation } from "../../../src/internal/trusted-schema-diagnostics/discover-validation-sources.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
+import { authored_hson_occurrence_range, map_authored_hson_range } from "../../../src/internal/embedded-hson/authored-hson-source.js";
 
 export function schema_diagnostic_message(issue: TrustedSchemaDiagnostic): string {
   const name = issue.attributeName ?? issue.path.at(-1);
@@ -24,16 +25,17 @@ export function schema_diagnostic_message(issue: TrustedSchemaDiagnostic): strin
 }
 
 export function present_schema_diagnostic(issue: TrustedSchemaDiagnostic, association: DiscoveredSchemaValidation): DocumentDiagnosticSpec {
-  const { bodyRange, templateRange } = association.source;
+  const occurrenceRange = authored_hson_occurrence_range(association.source);
   const { start, end } = issue.range;
   const precise = issue.range.precision !== "unresolved" && start !== undefined && end !== undefined
-    && Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end >= start && end <= bodyRange.end - bodyRange.start;
-  const precision = precise ? issue.range.precision : "unresolved";
+    && Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end >= start;
+  const mapped = precise ? map_authored_hson_range(association.source, { start, end }) : undefined;
+  const precision = mapped !== undefined ? issue.range.precision : "unresolved";
   const locationNote = precision === "anchor" ? " (Anchored to existing source; required structure is absent.)"
     : precision === "unresolved" ? " (Template-level diagnostic; exact source location unavailable.)" : "";
   return {
     message: `[${association.schemaLabel}] ${schema_diagnostic_message(issue)}${locationNote}`,
-    range: precise ? { start: bodyRange.start + start!, end: bodyRange.start + end! } : templateRange,
+    range: mapped ?? occurrenceRange,
     precision, source: "HSON", code: issue.code,
     related: [{ range: association.callRange, message: `Schema requested by this ${association.mapFlow === undefined ? "validate" : "map.schema.use"} call (${association.schemaLabel}).` }],
   };

@@ -1,4 +1,5 @@
 import { discover_schema_validation_sources } from "./discover-validation-sources.js";
+import { is_static_hson_source } from "../embedded-hson/authored-hson-source.js";
 
 /** Explicit trusted-provider build step, never applied to an editor buffer or
  * installed as a project loader. Only the diagnostic copy is instrumented.
@@ -12,11 +13,11 @@ export function instrument_trusted_schema_map_sources(fileName: string, text: st
   const edits = new Map<number, { end: number; text: string }>();
   for (const [index, site] of associations.entries()) {
     const boundary = site.constructionCalleeRange!;
-    edits.set(site.source.tagRange.start, { end: site.source.tagRange.end,
+    if (!is_static_hson_source(site.source)) edits.set(site.source.tagRange.start, { end: site.source.tagRange.end,
       text: `${name}.tag(${JSON.stringify(site.templateId)}, ${text.slice(site.source.tagRange.start, site.source.tagRange.end)})` });
     // Replace only the callee, leaving nested inline authored templates intact.
     edits.set(boundary.start, { end: boundary.end,
-      text: `${name}.construct(${JSON.stringify(site.templateId)}, ${JSON.stringify(site.mapFlow!.constructionId)}, ${text.slice(boundary.start, boundary.end)})` });
+      text: `${name}.${is_static_hson_source(site.source) ? "constructStatic" : "construct"}(${JSON.stringify(site.templateId)}, ${JSON.stringify(site.mapFlow!.constructionId)}, ${text.slice(boundary.start, boundary.end)})` });
     // Discovery supplies the receiver and argument ranges; no spelling guesses.
     edits.set(site.useCalleeRange!.start, { end: site.useCalleeRange!.end,
       text: `${name}.use(${index}, ${text.slice(site.mapRange!.start, site.mapRange!.end)})` });

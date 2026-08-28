@@ -185,6 +185,74 @@ check("diagnostic production does not mutate host text", () => {
   assert.equal(text, before);
 });
 
+const staticImports = 'import { hson, hsonTransform, hsonLiveMap, hsonLiveTree } from "hson-live";';
+
+check("direct LiveMap fromHson literal receives secure syntax diagnostics", () => {
+  const text = `${staticImports}\nhsonLiveMap.fromHson("+1");`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "+");
+});
+
+check("direct Transform fromHson literal receives secure syntax diagnostics", () => {
+  const text = `${staticImports}\nhsonTransform.fromHson('01').toNode();`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "1");
+});
+
+check("LiveTree fromHson is also an official authored-source boundary", () => {
+  const text = `${staticImports}\nhsonLiveTree.fromHson(\`+1\`);`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "+");
+});
+
+check("LiveMap top-level text semantics differ from Transform semantics", () => {
+  const map = `${staticImports}\nhson.liveMap.fromHson('\"before\" <em/>');`;
+  const transform = `${staticImports}\nhson.fromHson('\"before\" <em/>').toNode();`;
+  assert.deepEqual(diagnose(map, "typescript", "/workspace/map.ts"), []);
+  assert.equal(diagnose(transform, "typescript", "/workspace/transform.ts").length, 1);
+});
+
+check("JavaScript escape diagnostics map to the complete authored escape", () => {
+  const text = `${staticImports}\nhsonLiveMap.fromHson("\\x2b1");`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "\\x2b");
+});
+
+check("cooked end-of-input failures remain inside the literal body", () => {
+  const text = `${staticImports}\nhsonLiveMap.fromHson("\\n<foo");`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic);
+  assert.ok(diagnostic.range.start >= text.indexOf("\\n<foo"));
+  assert.ok(diagnostic.range.end <= text.lastIndexOf('"'));
+});
+
+check("const aliases retain the literal occurrence as diagnostic owner", () => {
+  const text = `${staticImports}\nconst authored = "\\x2b1"; const source = authored; hsonLiveMap.fromHson(source);`;
+  const diagnostic = diagnose(text, "typescript", "/workspace/static.ts")[0];
+  assert.ok(diagnostic); assert.equal(text.slice(diagnostic.range.start, diagnostic.range.end), "\\x2b");
+});
+
+check("dynamic ordinary templates and concatenation remain unavailable", () => {
+  const interpolated = `${staticImports}\nhsonLiveMap.fromHson(\`+\${value}\`);`;
+  const concatenated = `${staticImports}\nhsonLiveMap.fromHson("+" + "1");`;
+  assert.deepEqual(diagnose(interpolated, "typescript", "/workspace/a.ts"), []);
+  assert.deepEqual(diagnose(concatenated, "typescript", "/workspace/b.ts"), []);
+});
+
+check("wrong package and local fromHson spellings receive no authority", () => {
+  const wrong = 'import { hsonLiveMap } from "other"; hsonLiveMap.fromHson("+1");';
+  const local = 'const local = { fromHson(value: string) { return value; } }; local.fromHson("+1");';
+  assert.deepEqual(diagnose(wrong, "typescript", "/workspace/a.ts"), []);
+  assert.deepEqual(diagnose(local, "typescript", "/workspace/b.ts"), []);
+});
+
+check("editing a static literal recomputes and clears syntax diagnostics", () => {
+  const invalid = `${staticImports}\nhsonLiveMap.fromHson("+1");`;
+  const valid = invalid.replace("+1", "<a/>");
+  assert.equal(diagnose(invalid, "typescript", "/workspace/static.ts").length, 1);
+  assert.deepEqual(diagnose(valid, "typescript", "/workspace/static.ts"), []);
+});
+
 type Listener = (document: DiagnosticDocument) => void;
 
 class FakeHost implements DiagnosticHost {

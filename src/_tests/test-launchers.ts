@@ -211,6 +211,22 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:schema-d3-editor", repositoryModule: "tests/schema-d3-editor.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),
     launcher({
+      id: "static-hson-js-literal-mapping", subject: "Transform", displayName: "D4 JavaScript literal cooking and source mapping",
+      packageScript: "test:static-hson-js-literal-mapping", repositoryModule: "tests/static-hson-js-literal-mapping.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "diagnostics", "internal"],
+    }),
+    launcher({
+      id: "from-hson-static-discovery", subject: "Transform", displayName: "D4 official fromHson binding discovery",
+      packageScript: "test:from-hson-static-discovery", repositoryModule: "tests/from-hson-static-discovery.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "discovery", "internal"],
+    }),
+    launcher({
+      id: "schema-d4-editor", subject: "LiveMap", displayName: "D4 static fromHson editor and lifecycle diagnostics",
+      packageScript: "test:schema-d4-editor", repositoryModule: "tests/schema-d4-editor.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-d4-performance", subject: "LiveMap", displayName: "D4 static fromHson warmed performance",
+      packageScript: "test:schema-d4-performance", repositoryModule: "tests/schema-d4-performance.acceptance.mts", runtime: "node", collections: ["schema", "performance", "internal"],
+    }),
+    launcher({
       id: "trusted-schema-d1", subject: "LiveMap", displayName: "D1 trusted Schema runtime authority",
       packageScript: "test:trusted-schema-d1", repositoryModule: "tests/trusted-schema-d1.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),

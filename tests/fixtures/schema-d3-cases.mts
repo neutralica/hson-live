@@ -26,5 +26,14 @@ export const cases: Readonly<Record<string, string>> = {
   mixed: imports + source + map + use + 'try { HSON.validate(OtherSchema, source); } catch {}',
   repeated: imports + 'function make() {\n' + source + map + use + '} make(); make();',
   equal: imports + source + 'const equal = HSON`<user <age "37">>`;\n' + map + 'const b = hsonLiveMap.fromHson(equal);\n' + use + 'b.schema.use(OtherSchema);',
+  staticDirect: imports + 'const source = `<user <age "37">>`;\n' + map + use,
+  staticEscaped: imports + 'const source = "<user <age \\x2237\\x22>>";\n' + map + use,
+  staticMutated: imports + 'const source = `<user <age "37">>`;\n' + map + 'map.set(["user", "age"], 37);\n' + use,
+  staticReverted: imports + 'const source = `<user <age "37">>`;\n' + map + 'map.set(["user", "age"], 37); map.set(["user", "age"], "37");\n' + use,
+  staticTwo: imports + 'const source = `<user <age "37">>`;\n' + map + 'const b = hsonLiveMap.fromHson(source);\n' + use + 'b.schema.use(OtherSchema);',
+  staticDocument: imports + 'const source = `<button count="bad"/>`;\n' + map + 'map.schema.use(DocumentSchema);',
+  staticFragment: imports + 'const source = `<a/> <c/>`;\n' + map + 'map.schema.use(FragmentSchema);',
+  staticText: imports + 'const source = `"text"`;\n' + map + 'map.schema.use(TextSchema);',
+  staticLive: imports + 'const source = `<user <age 37>>`;\n' + map + use + 'export { map };',
 };
 export const caseFile = (name: string) => fileURLToPath(new URL(`./d3-${name}.ts`, import.meta.url));

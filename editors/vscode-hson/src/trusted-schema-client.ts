@@ -3,7 +3,7 @@ import { TrustedSchemaNodeSupervisor, type TrustedSchemaSupervisorOptions } from
 import type { TrustedSchemaBindingRegistration, TrustedSchemaDirectSource, TrustedSchemaResponse, TrustedSchemaTiming } from "../../../src/internal/trusted-schema-diagnostics/protocol.js";
 import { same_schema_source_binding, same_map_flow } from "../../../src/internal/trusted-schema-diagnostics/source-binding.js";
 import { discover_schema_validation_sources } from "../../../src/internal/trusted-schema-diagnostics/discover-validation-sources.js";
-import { read_embedded_hson_body } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { read_authored_hson_source } from "../../../src/internal/embedded-hson/authored-hson-source.js";
 import { present_schema_diagnostic } from "./schema-presentation.js";
 import type { DiagnosticDocument } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
@@ -91,7 +91,7 @@ export class TrustedSchemaClient {
             message = failed.message; continue;
           }
           const response = await this.supervisor.request({ type: "validate", associationId, schemaId: registration.schemaId,
-            templateRevision: document.version, candidateRevision: document.version, directSource, source: read_embedded_hson_body(association.source) });
+            templateRevision: document.version, candidateRevision: document.version, directSource, source: read_authored_hson_source(association.source) });
           roundTripMs += performance.now() - requestStarted;
           if (!current() || generation !== this.supervisor.activeGeneration || response.runtimeGeneration !== generation) return { status: "stale", diagnostics: [] };
           if (response.type === "error") {

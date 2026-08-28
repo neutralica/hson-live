@@ -165,6 +165,31 @@ The VS Code client uses the same supervisor, trust/enablement gates, revisions,
 diagnostic collection and presentation. Related information names the relevant
 `map.schema.use` call. No primary squiggle is placed there for invalid HSON.
 
+## D4 static `fromHson` sources
+
+D4 adds a secure outer source map for exact JavaScript string values admitted
+by official Transform, LiveMap, and LiveTree `fromHson` bindings. TypeScript's
+parsed literal text is the cooking authority. A private sidecar maps UTF-16
+runtime ranges back to literal-body ranges; complete escapes, CRLF
+normalization, line continuations, and surrogate pairs remain indivisible where
+required. Canonical HSON graphs receive no JavaScript-source metadata.
+
+Supported inputs are direct quoted literals, no-substitution ordinary template
+literals, parentheses, and finite same-domain local `const` identifier aliases.
+Interpolated templates, concatenation, mutable/imported values, helpers,
+properties, `String.raw`, and interprocedural flow are unavailable rather than
+guessed. Syntax checking runs without project execution. Boundary identity
+selects ordinary Transform/LiveTree parsing or LiveMap document parsing; no
+success-driven alternate interpretation is attempted.
+
+For LiveMap only, the existing D3 provider instrumenter wraps the exact
+construction call. The helper verifies the official runtime function identity,
+captures one source occurrence independently of its text, constructs the actual
+map, and reuses D3 attachment and revision evidence. Failed attachment,
+mutation/mutate-revert suppression, independent maps/Schemas, runtime
+generations, and stale editor publication therefore retain their existing
+authority. Static source equality is never used to locate an occurrence.
+
 ## Uppercase authoring migration
 
 Authoring discovery recognizes `HSON` from the root or `/hson`, including renamed

@@ -1,4 +1,5 @@
 import { hson } from "../../../src/hson.js";
+import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import {
   read_transform_error_details,
   type TransformErrorDetails,
@@ -11,6 +12,11 @@ import {
   type HostSourceRange,
 } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
 import { map_transform_error_to_embedded_source } from "../../../src/internal/embedded-hson/map-transform-error.js";
+import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
+import {
+  map_static_hson_point,
+  type StaticHsonSource,
+} from "../../../src/internal/embedded-hson/static-hson-source.js";
 
 export const DIAGNOSTIC_SOURCE = "HSON";
 export type SupportedLanguageId = "hson" | "typescript" | "typescriptreact";
@@ -139,10 +145,43 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
       }));
     }
   }
+  const staticSources = discover_static_from_hson_sources(input.fileName, input.text).sources;
+  for (const source of staticSources) {
+    try {
+      // Boundary identity selects the parser contract. LiveMap alone admits a
+      // top-level text/document fragment; Transform and LiveTree use the
+      // ordinary parser-root contract.
+      parse_hson(source.runtimeText, source.boundary === "livemap" ? { allowTopLevelTextFragment: true } : {});
+    } catch (error) {
+      const details = read_transform_error_details(error);
+      if (details === undefined) throw error;
+      diagnostics.push(staticTransformDiagnostic(error, details, source));
+    }
+  }
   // Runtime substitution values are intentionally opaque to the editor. The
   // discovery result records interpolated templates, but only substitution-free
   // templates can receive authoritative whole-source parsing here.
   return Object.freeze(diagnostics);
+}
+
+function staticTransformDiagnostic(
+  error: unknown,
+  details: TransformErrorDetails,
+  source: StaticHsonSource,
+): DocumentDiagnosticSpec {
+  const primary = details.source === undefined ? undefined : map_static_hson_point(source, details.source.index);
+  const related = Object.freeze((details.related ?? []).flatMap(item => {
+    const mapped = map_static_hson_point(source, item.source.index);
+    return mapped === undefined ? [] : [Object.freeze({ message: `Related HSON source (${item.role}).`, range: mapped })];
+  }));
+  return Object.freeze({
+    message: error instanceof Error ? error.message : "HSON validation failed.",
+    range: primary ?? source.bodyRange,
+    source: DIAGNOSTIC_SOURCE,
+    code: details.code,
+    precision: primary === undefined ? "fallback" : details.source?.index === source.runtimeText.length ? "eof" : "point",
+    related,
+  });
 }
 
 export function produce_document_diagnostics(

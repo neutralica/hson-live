@@ -38,6 +38,12 @@ assert.equal(run(pre + template + construct + '(map.schema.use(UserSchema));').l
 assert.equal(run(pre + template + construct + 'if (enabled) ' + use).length, 0);
 assert.equal(run(pre + template + construct + 'const result = ' + use).length, 0);
 check('standalone plus map are independent', direct + 'hson.liveMap.schema.validate(UserSchema, source);', 1);
+check('static template source participates in map lifecycle', pre + 'const source = `<age "37">`;' + construct + use, 1);
+check('static quoted source participates in map lifecycle', pre + 'const source = "<age \\x2237\\x22>";' + construct + use, 1);
+check('static immutable aliases participate in map lifecycle', pre + 'const authored = `<age "37">`; const source = authored;' + construct + use, 1);
+check('static interpolation remains unavailable to lifecycle', pre + 'const source = `<age ${value}>`;' + construct + use, 0);
+check('static concatenation remains unavailable to lifecycle', pre + 'const source = "<age " + value + ">";' + construct + use, 0);
+check('static wrong constructor identity remains rejected', pre + 'const source = `<age "37">`; const fake = { fromHson(value: string) { return value; } }; const map = fake.fromHson(source);' + use, 0);
 const a = run(direct)[0]!, b = run(direct.replace('"37"', '37000'))[0]!;
 assert.deepEqual(a.mapFlow, b.mapFlow, 'body-only edits retain site context but will validate new candidate');
 assert.notDeepEqual(a.mapFlow, run(direct.replace('const map', '/*edited*/ const map'))[0]!.mapFlow);

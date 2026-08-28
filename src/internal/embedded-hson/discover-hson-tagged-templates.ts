@@ -93,7 +93,7 @@ export function read_supported_hson_import_symbols(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
   diagnostics: readonly ts.Diagnostic[],
-  facade: "HSON" | "hson" | "hsonLiveMap" = "HSON",
+  facade: "HSON" | "hson" | "hsonTransform" | "hsonLiveMap" | "hsonLiveTree" = "HSON",
 ): ReadonlySet<ts.Symbol> {
   const symbols = new Set<ts.Symbol>();
   for (const statement of sourceFile.statements) {
@@ -103,7 +103,9 @@ export function read_supported_hson_import_symbols(
       || !ts.isStringLiteral(statement.moduleSpecifier)
       || !(facade === "HSON" ? supportedPackageSpecifiers.has(statement.moduleSpecifier.text)
         : facade === "hson" ? statement.moduleSpecifier.text === "hson-live"
-        : ["hson-live", "hson-live/livemap"].includes(statement.moduleSpecifier.text))
+        : facade === "hsonTransform" ? ["hson-live", "hson-live/transform"].includes(statement.moduleSpecifier.text)
+        : facade === "hsonLiveMap" ? ["hson-live", "hson-live/livemap"].includes(statement.moduleSpecifier.text)
+        : ["hson-live", "hson-live/livetree"].includes(statement.moduleSpecifier.text))
       || hasOverlappingDiagnostic(diagnostics, nodeRange(statement, sourceFile))) {
       continue;
     }

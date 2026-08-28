@@ -23,6 +23,18 @@ export async function run(): Promise<void> {
   assert.ok(extension, "HSON extension was not discovered by the extension host");
   await extension.activate();
 
+  if (process.env.HSON_D4_RESTRICTED === "1") {
+    assert.equal(vscode.workspace.isTrusted, false, "restricted integration workspace must remain untrusted");
+    const workspace = process.env.HSON_D2_TEST_WORKSPACE;
+    assert.ok(workspace);
+    const source = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-syntax.ts")));
+    await vscode.window.showTextDocument(source);
+    const diagnostics = await diagnosticsFor(source.uri, 1);
+    assert.equal(source.getText(diagnostics[0]?.range), "\\x2b");
+    process.stdout.write("ok - real VS Code D4 Restricted Mode: secure static fromHson syntax diagnostics remain active without trust\n");
+    return;
+  }
+
   const standalone = await vscode.workspace.openTextDocument({ language: "hson", content: "+1" });
   await vscode.window.showTextDocument(standalone);
   const standaloneDiagnostics = await diagnosticsFor(standalone.uri, 1);
@@ -108,5 +120,31 @@ export async function run(): Promise<void> {
   await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
   await waitMap(0);
   process.stdout.write("ok - real VS Code D3: dedicated facade, rejected attachment exact diagnostic, related use site, unsaved correction, revalidation, disable clearing\n");
+
+  const staticSyntax = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-syntax.ts")));
+  await vscode.window.showTextDocument(staticSyntax);
+  const staticSyntaxDiagnostics = await diagnosticsFor(staticSyntax.uri, 1);
+  assert.equal(staticSyntax.getText(staticSyntaxDiagnostics[0]?.range), "\\x2b");
+  const syntaxBodyStart = staticSyntax.getText().indexOf("\\x2b1");
+  const syntaxFix = new vscode.WorkspaceEdit(); syntaxFix.replace(staticSyntax.uri,
+    new vscode.Range(staticSyntax.positionAt(syntaxBodyStart), staticSyntax.positionAt(syntaxBodyStart + "\\x2b1".length)), "<a/>");
+  await vscode.workspace.applyEdit(syntaxFix);
+  assert.equal((await diagnosticsFor(staticSyntax.uri, 0)).length, 0);
+  process.stdout.write("ok - real VS Code D4 secure syntax: escaped Transform literal exact range and unsaved correction clearing\n");
+
+  const staticMap = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-map-user.ts")));
+  await vscode.window.showTextDocument(staticMap);
+  const staticSchemaDiagnostics = () => vscode.languages.getDiagnostics(staticMap.uri).filter(d => d.source === "HSON Schema");
+  await config.update("enabled", true, vscode.ConfigurationTarget.Workspace);
+  const staticDeadline = Date.now() + 10_000;
+  while (staticSchemaDiagnostics().length !== 1 && Date.now() < staticDeadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(staticSchemaDiagnostics().length, 1);
+  assert.equal(staticMap.getText(staticSchemaDiagnostics()[0]!.range), "\\x2237\\x22");
+  const staticMutated = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace, "static-mutated.ts")));
+  await vscode.window.showTextDocument(staticMutated);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  assert.equal(vscode.languages.getDiagnostics(staticMutated.uri).filter(d => d.source === "HSON Schema").length, 0);
+  await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
+  process.stdout.write("ok - real VS Code D4 trusted Schema: static escaped literal exact diagnostic and mutation suppression\n");
 
 }

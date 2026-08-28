@@ -1,8 +1,9 @@
 # HSON Language for VS Code
 
 This extension provides syntax highlighting and authoritative parser diagnostics
-for standalone `.hson` files and supported `HSON` tagged templates in
-TypeScript and TSX.
+for standalone `.hson` files, supported `HSON` tagged templates, and statically
+recoverable strings passed to official `fromHson` boundaries in TypeScript and
+TSX.
 
 The tagged-template injection intentionally recognizes only the exact direct tag
 spelling `HSON`. Import aliases and facade/property forms are left to the
@@ -16,6 +17,15 @@ not write helper files or modify user source.
 Substitution-free templates receive authoritative whole-HSON diagnostics.
 Interpolated templates are discovered, but receive no speculative whole-source
 syntax diagnostic because their primitive values are known only at runtime.
+
+Official Transform, LiveMap, and LiveTree `fromHson` calls also receive secure
+syntax checking when their argument is a direct string/no-substitution template
+literal or a finite local `const` identifier-only alias of one. JavaScript's
+cooked string value is checked, and escape-produced characters map back to the
+complete authored escape. Dynamic templates, concatenation, helper results,
+imports, properties, `let`/`var`, and runtime file/network input remain
+runtime-only. Recognition follows official import binding identity; unrelated
+methods that merely share the name `fromHson` are ignored.
 
 ## Trusted Schema diagnostics (D2, opt in)
 
@@ -85,8 +95,9 @@ template bodies remain stale until saved. Reloads use D1's finite replacement
 budget (one replacement); after exhaustion, reload the extension window or
 explicitly reconfigure to create a new owner. This is not hot module reload.
 
-`map.schema.use` backward association remains a follow-up. It will require real
-lifecycle evidence, not an assumption that the map was not mutated.
+`map.schema.use` backward association is provided by the D3/D4 lifecycle path
+below and requires real construction/revision evidence, not an assumption that
+the map was not mutated.
 
 ## Development
 
@@ -136,6 +147,11 @@ The alias may retain ordinary TypeScript template coloring, but both receive the
 same semantic diagnostics because import identity is resolved by the bundled
 TypeScript scanner.
 
+Ordinary strings and templates inside `fromHson(...)` intentionally retain
+ordinary TypeScript coloring. D4 adds semantic diagnostics, not spelling-based
+TextMate injection. `HSON\`...\`` remains the preferred embedded authoring form
+with first-class HSON presentation.
+
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to
 inspect the emitted TextMate scopes.
 
@@ -170,3 +186,22 @@ its limits are documented in
 There is no automatic application import, public provenance API, or new
 validation API. The editor makes no claim that application execution reached
 `schema.use`.
+
+### Static `fromHson` Schema governance (D4)
+
+A statically recoverable raw string can be the source occurrence for the same
+D3 lifecycle path:
+
+```ts
+const source = `<user <age "37">>`;
+const map = hsonLiveMap.fromHson(source);
+map.schema.use(UserSchema);
+```
+
+Syntax checking is immediate and does not require trust or Schema execution.
+When Workspace Trust and trusted diagnostics are both enabled, the private D3
+provider can prove that this exact construction produced the actual map and
+project the later Schema relationship back into the original literal. Failed
+initial attachment remains diagnosable. Actual mutation, including mutation
+followed by restoration, suppresses attribution. Multiple maps using one
+literal retain separate Schema relationships.
