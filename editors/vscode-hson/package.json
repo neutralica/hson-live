@@ -70,13 +70,37 @@
         "path": "./syntaxes/hson.tmLanguage.json"
       }
     ],
+    "colors": [
+      {
+        "id": "hson.authoringMarker.h",
+        "description": "HSON authoring marker: H (blue).",
+        "defaults": { "dark": "#74A7D8", "light": "#356A9A", "highContrast": "#66B3FF", "highContrastLight": "#005FB8" }
+      },
+      {
+        "id": "hson.authoringMarker.s",
+        "description": "HSON authoring marker: S (yellow).",
+        "defaults": { "dark": "#D2B45F", "light": "#786422", "highContrast": "#FFD166", "highContrastLight": "#8A6200" }
+      },
+      {
+        "id": "hson.authoringMarker.o",
+        "description": "HSON authoring marker: O (pink).",
+        "defaults": { "dark": "#D789AE", "light": "#8E4768", "highContrast": "#FF80BF", "highContrastLight": "#B0005A" }
+      },
+      {
+        "id": "hson.authoringMarker.n",
+        "description": "HSON authoring marker: N (green).",
+        "defaults": { "dark": "#78B996", "light": "#3E7256", "highContrast": "#6EE7A8", "highContrastLight": "#147A3D" }
+      }
+    ],
     "semanticTokenTypes": [
       { "id": "hsonType", "superType": "type", "description": "HSON grammar name" },
       { "id": "hsonProperty", "superType": "property", "description": "HSON grammar attribute" },
       { "id": "hsonString", "superType": "string", "description": "HSON grammar string" },
       { "id": "hsonNumber", "superType": "number", "description": "HSON grammar number" },
       { "id": "hsonKeyword", "superType": "keyword", "description": "HSON grammar constant" },
+      { "id": "hsonQuid", "superType": "string", "description": "HSON QUID literal" },
       { "id": "hsonComment", "superType": "comment", "description": "HSON grammar comment" },
+      { "id": "hsonDelimiter", "superType": "operator", "description": "HSON grammar delimiter" },
       { "id": "hsonOperator", "superType": "operator", "description": "HSON grammar punctuation" },
       { "id": "hsonEscape", "superType": "string", "description": "HSON grammar escape" },
       { "id": "hsonInvalid", "description": "HSON grammar invalid token" }
@@ -87,8 +111,10 @@
       "hsonString": ["string.quoted.double.hson", "string.unquoted.attribute-value.hson"],
       "hsonNumber": ["constant.numeric.hson"],
       "hsonKeyword": ["constant.language.boolean.hson", "constant.language.null.hson"],
+      "hsonQuid": ["constant.other.quid.hson"],
       "hsonComment": ["comment.line.double-slash.hson"],
-      "hsonOperator": ["punctuation.definition.tag.begin.hson", "keyword.operator.assignment.hson"],
+      "hsonDelimiter": ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson", "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson", "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson"],
+      "hsonOperator": ["keyword.operator.assignment.hson"],
       "hsonEscape": ["constant.character.escape.hson"],
       "hsonInvalid": ["invalid.illegal.hson"]
     }}]

@@ -15,6 +15,7 @@ import {
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
+import { hson_authoring_marker_parts, hsonAuthoringMarker } from "./authoring-marker.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -100,6 +101,32 @@ export function activate(context: vscode.ExtensionContext): void {
         return builder.build();
       },
     }, legend));
+  // Exact H/S/O/N brand colors are presentation-only. Binding discovery is the
+  // authority; decoration never participates in parsing or admission.
+  const markerDecorations = new Map(hsonAuthoringMarker.map(marker => [marker.colorId,
+    vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(marker.colorId) })]));
+  const presentMarkers = (editor: vscode.TextEditor): void => {
+    const document = editor.document;
+    const parts = document.languageId === "typescript" || document.languageId === "typescriptreact"
+      ? hson_authoring_marker_parts(document.fileName, document.getText()) : [];
+    for (const marker of hsonAuthoringMarker) {
+      const decoration = markerDecorations.get(marker.colorId);
+      if (decoration === undefined) continue;
+      editor.setDecorations(decoration, parts.filter(part => part.colorId === marker.colorId).map(part =>
+        new vscode.Range(document.positionAt(part.range.start), document.positionAt(part.range.end))));
+    }
+  };
+  const presentVisibleMarkers = (): void => {
+    for (const editor of vscode.window.visibleTextEditors) presentMarkers(editor);
+  };
+  presentVisibleMarkers();
+  context.subscriptions.push(...markerDecorations.values(),
+    vscode.window.onDidChangeVisibleTextEditors(presentVisibleMarkers),
+    vscode.workspace.onDidChangeTextDocument(event => {
+      for (const editor of vscode.window.visibleTextEditors) {
+        if (editor.document === event.document) presentMarkers(editor);
+      }
+    }));
   const schemaCollection = vscode.languages.createDiagnosticCollection("hson-schema");
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
   const output = vscode.window.createOutputChannel("HSON Schema diagnostics");

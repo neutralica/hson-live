@@ -14,8 +14,12 @@ export const hsonTokenScopes = {
   hsonString: ["string.quoted.double.hson", "string.unquoted.attribute-value.hson"],
   hsonNumber: ["constant.numeric.hson"],
   hsonKeyword: ["constant.language.boolean.hson", "constant.language.null.hson"],
+  hsonQuid: ["constant.other.quid.hson"],
   hsonComment: ["comment.line.double-slash.hson"],
-  hsonOperator: ["punctuation.definition.tag.begin.hson", "keyword.operator.assignment.hson"],
+  hsonDelimiter: ["punctuation.definition.tag.begin.hson", "punctuation.definition.tag.end.hson",
+    "punctuation.section.array.begin.hson", "punctuation.section.array.end.hson", "punctuation.separator.sequence.hson",
+    "punctuation.definition.comment.hson", "punctuation.definition.string.begin.hson", "punctuation.definition.string.end.hson"],
+  hsonOperator: ["keyword.operator.assignment.hson"],
   hsonEscape: ["constant.character.escape.hson"],
   hsonInvalid: ["invalid.illegal.hson"],
 } as const;
@@ -43,9 +47,11 @@ function tokenType(scopes: readonly string[]): HsonHighlight["type"] | undefined
     if (scope.startsWith("entity.other.attribute-name.")) return "hsonProperty";
     if (scope.startsWith("string.")) return "hsonString";
     if (scope.startsWith("constant.numeric.")) return "hsonNumber";
-    if (scope.startsWith("constant.language.") || scope.startsWith("constant.other.")) return "hsonKeyword";
+    if (scope.startsWith("constant.other.quid.")) return "hsonQuid";
+    if (scope.startsWith("constant.language.")) return "hsonKeyword";
     if (scope.startsWith("comment.")) return "hsonComment";
-    if (scope.startsWith("punctuation.") || scope.startsWith("keyword.")) return "hsonOperator";
+    if (scope.startsWith("punctuation.")) return "hsonDelimiter";
+    if (scope.startsWith("keyword.")) return "hsonOperator";
   }
   return undefined;
 }
