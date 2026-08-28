@@ -83,11 +83,34 @@ Schema bindings with explicit private registration metadata, parentheses, and
 acyclic identifier-only `const` aliases (at most 32 hops). Canonical declarations
 must precede their use in the same module/function-body statement domain.
 No namespace imports, re-export/path-alias inference, extracted validators,
-mutable aliases, helper transformations, or interpolation capture are attempted.
+mutable aliases or helper transformations are attempted. Interpolation requires
+actual trusted provider capture as described below.
 Multiple validation statements run independently, including stateful predicates.
 
 The status bar distinguishes off, waiting, valid, invalid, stale, ambiguous,
 unavailable, and runtime failure. No squiggle is not a claim of validity.
+
+### Evaluated HSON substitutions (D5)
+
+`HSON` preserves JavaScript primitive types: strings become quoted HSON strings,
+numbers remain numbers (including `-0`), booleans remain booleans, and `null`
+remains null. Substitutions are values, not structural source splices.
+
+When your explicitly configured trusted provider evaluates an instrumented
+diagnostic copy, Schema errors can underline the expression inside `${...}`.
+For example: “This expression evaluated to an HSON string, but the Schema
+requires number here.” The underline identifies the code that **produced** the
+invalid value; it does not imply those JavaScript characters are an HSON token.
+This works with standalone `HSON.validate` and natural map/schema attachment.
+Runtime HSON admission errors can also appear without a later Schema call.
+
+Expression or literal edits immediately retire runtime-derived diagnostics.
+Unsaved changes wait for fresh provider evaluation; old values are never combined
+with newly edited source. Save/reload through the existing provider lifecycle
+to obtain new evidence. Repeated evaluations without a unique association are
+ambiguous, not “last value wins.” Secure mode never executes expressions and
+does not claim an interpolated template is valid. A Schema-only provider that
+does not evaluate the template cannot supply its runtime values.
 The output channel contains stage timings, not candidate source. Edits clear
 old Schema diagnostics immediately; validation is debounced by 150 ms.
 Provider changes retire the runtime; unsaved provider changes outside recognized

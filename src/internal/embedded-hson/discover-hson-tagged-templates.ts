@@ -18,6 +18,7 @@ export type InterpolatedEmbeddedHsonTemplate = Readonly<{
   templateRange: HostSourceRange;
   bodyRange: HostSourceRange;
   substitutionRanges: readonly HostSourceRange[];
+  expressionRanges: readonly HostSourceRange[];
 }>;
 
 export type HsonTaggedTemplateDiscoveryResult = Readonly<{
@@ -224,6 +225,7 @@ export function discover_hson_tagged_templates(
                 templateRange: validated.templateRange,
                 bodyRange: validated.bodyRange,
                 substitutionRanges,
+                expressionRanges: Object.freeze(node.template.templateSpans.map(span => nodeRange(span.expression, sourceFile))),
               }));
             }
           }

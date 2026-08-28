@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import { fileURLToPath,pathToFileURL } from "node:url";
+import { TrustedSchemaClient } from "../editors/vscode-hson/src/trusted-schema-client.ts";
+import { produce_document_diagnostics } from "../editors/vscode-hson/src/document-diagnostics.ts";
+import { cases,caseFile } from "./fixtures/schema-d5-cases.mts";
+import { emit_hson_live_test_completion } from "./launcher-completion.mjs";
+let checks=0;
+const check=async(name:string,run:()=>unknown)=>{await run();console.log(`ok ${++checks} - ${name}`);};
+const options={moduleUrl:new URL('./fixtures/schema-d5-runtime.fixture.mts',import.meta.url).href,hsonModuleUrl:new URL('../src/hson.ts',import.meta.url).href,
+  runtimeEntry:fileURLToPath(new URL('../src/internal/trusted-schema-diagnostics/node-runtime-entry.ts',import.meta.url)),execArgv:['--loader','ts-node/esm'],startupDeadlineMs:10_000};
+const doc=(name:string,text=cases[name]!,version=1)=>({fileName:caseFile(name),uri:pathToFileURL(caseFile(name)).href,languageId:'typescript',text,version});
+const client=new TrustedSchemaClient({...options,trust:{workspaceTrusted:true,enabled:true}});
+const validate=(name:string)=>client.validate(doc(name),()=>true);
+try {
+  await check('D2 mismatch on runtime expression body',async()=>{const r=await validate('direct');assert.equal(r.status,'current-invalid',r.message+client.supervisor.output.stderr);assert.equal(cases.direct!.slice(r.diagnostics[0]!.range.start,r.diagnostics[0]!.range.end),'age');});
+  await check('D2 validates even when application validate statement was never reached',async()=>assert.equal((await validate('beforeValidate')).diagnostics[0]!.precision,'substitution-expression'));
+  await check('substitution wording describes evaluated HSON kind',async()=>assert.match((await validate('direct')).diagnostics[0]!.message,/expression evaluated to an HSON string, but the Schema requires number/));
+  await check('host precision is semantic not literal exact',async()=>assert.equal((await validate('direct')).diagnostics[0]!.precision,'substitution-expression'));
+  await check('actual number clears Schema mismatch',async()=>assert.equal((await validate('valid')).status,'current-valid'));
+  await check('literal mismatch still points at authored token',async()=>{const r=await validate('literal');const d=r.diagnostics.find(d=>d.code==='TYPE_MISMATCH')!;assert.equal(cases.literal!.slice(d.range.start,d.range.end),'"bad"');assert.equal(d.hostOrigin,'literal-exact');});
+  await check('C2 attribute mismatch points to expression',async()=>{const r=await validate('document');assert.ok(r.diagnostics.some(d=>d.precision==='substitution-expression'));});
+  await check('C2 missing flag retains literal anchor',async()=>assert.ok((await validate('document')).diagnostics.some(d=>d.precision==='anchor'&&/flag/.test(d.message))));
+  await check('labeled constraint uses evaluated-value wording',async()=>assert.match((await validate('constraint')).diagnostics[0]!.message,/evaluated.*constraint “positive age”/));
+  await check('literal set uses structured expected evidence',async()=>assert.match((await validate('literalSet')).diagnostics[0]!.message,/evaluated.*literal/));
+  await check('D2 multiple Schemas validate independently',async()=>assert.equal((await validate('multiple')).diagnostics.length,2));
+  await check('D3 natural map flow maps expression',async()=>{const r=await validate('map');assert.equal(r.status,'current-invalid');assert.match(r.diagnostics[0]!.related[0]!.message,/map.schema.use/);assert.equal(r.diagnostics[0]!.precision,'substitution-expression');});
+  await check('D3 successful attachment remains valid',async()=>assert.equal((await validate('mapValid')).status,'current-valid'));
+  await check('D3 failed initial attachment still diagnoses',async()=>assert.equal((await validate('map')).diagnostics.length,1));
+  await check('D3 mutation suppresses interpolation diagnostics',async()=>{const r=await validate('mapMutated');assert.equal(r.status,'unavailable');assert.deepEqual(r.diagnostics,[]);});
+  await check('D3 mutate/revert never recovers authority',async()=>assert.deepEqual((await validate('mapReverted')).diagnostics,[]));
+  await check('D3 independent attachment attempts both validate',async()=>assert.equal((await validate('mapMultiple')).diagnostics.length,2));
+  await check('D3 two maps retain exact shared evaluation with independent identities',async()=>assert.equal((await validate('mapTwo')).diagnostics.length,2));
+  await check('D2 repeated execution fails closed',async()=>{const r=await validate('repeated');assert.equal(r.status,'ambiguous');assert.deepEqual(r.diagnostics,[]);});
+  await check('D3 repeated execution fails closed',async()=>{const r=await validate('mapRepeated');assert.equal(r.status,'ambiguous');assert.deepEqual(r.diagnostics,[]);});
+  await check('unsupported substitution maps without downstream validation',async()=>assert.equal((await validate('unsupported')).diagnostics[0]!.precision,'substitution-expression'));
+  await check('nonfinite substitution maps to producing expression',async()=>assert.equal((await validate('nonfinite')).diagnostics[0]!.precision,'substitution-expression'));
+  await check('completed grammar failure maps generated origin',async()=>{const r=await validate('grammar');assert.equal(r.status,'current-invalid');assert.equal(r.diagnostics[0]!.precision,'substitution-expression');});
+  await check('literal grammar failure maps literal characters',async()=>{const r=await validate('literalGrammar');assert.equal(r.status,'current-invalid');assert.equal(r.diagnostics[0]!.hostOrigin,'literal-exact');});
+  await check('CRLF host mapping remains precise',async()=>{const r=await validate('crlf');const d=r.diagnostics[0]!;assert.equal(cases.crlf!.slice(d.range.start,d.range.end),'age');});
+  await check('secure mode executes nothing for interpolation',async()=>{for(const [workspaceTrusted,enabled] of [[false,true],[true,false],[false,false]]){const c=new TrustedSchemaClient({...options,trust:{workspaceTrusted:workspaceTrusted!,enabled:enabled!}});try{assert.equal((await c.validate(doc('direct'),()=>true)).status,'off');assert.equal(c.supervisor.generation,0);}finally{c.dispose();}}assert.deepEqual(produce_document_diagnostics(doc('unsupported')),[]);});
+  await check('expression edit waits for fresh actual evaluation',async()=>{const r=await client.validate(doc('direct',cases.direct!.replace('${age}','${(age)}'),2),()=>true);assert.equal(r.status,'waiting');assert.deepEqual(r.diagnostics,[]);});
+  await check('literal edit does not combine new source with old values',async()=>{const r=await client.validate(doc('direct',cases.direct!.replace('<age ','<age  '),3),()=>true);assert.equal(r.status,'waiting');assert.deepEqual(r.diagnostics,[]);});
+  await check('stale publication guard discards evidence',async()=>assert.equal((await client.validate(doc('direct'),()=>false)).status,'stale'));
+} finally { client.dispose(); }
+emit_hson_live_test_completion('schema-d5-editor',checks,checks,0);

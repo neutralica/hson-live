@@ -32,6 +32,14 @@ export async function run(): Promise<void> {
     const diagnostics = await diagnosticsFor(source.uri, 1);
     assert.equal(source.getText(diagnostics[0]?.range), "\\x2b");
     process.stdout.write("ok - real VS Code D4 Restricted Mode: secure static fromHson syntax diagnostics remain active without trust\n");
+    const marker = vscode.Uri.file(join(workspace,"provider-count.txt"));
+    const before = Buffer.from(await vscode.workspace.fs.readFile(marker)).toString();
+    const interpolated = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,"interpolated.ts")));
+    await vscode.window.showTextDocument(interpolated);
+    await new Promise(resolve=>setTimeout(resolve,700));
+    assert.equal(vscode.languages.getDiagnostics(interpolated.uri).filter(d=>d.source?.startsWith("HSON")).length,0);
+    assert.equal(Buffer.from(await vscode.workspace.fs.readFile(marker)).toString(),before);
+    process.stdout.write("ok - real VS Code D5 Restricted Mode executes no provider and makes no runtime validity claim\n");
     return;
   }
 
@@ -146,5 +154,57 @@ export async function run(): Promise<void> {
   assert.equal(vscode.languages.getDiagnostics(staticMutated.uri).filter(d => d.source === "HSON Schema").length, 0);
   await config.update("enabled", false, vscode.ConfigurationTarget.Workspace);
   process.stdout.write("ok - real VS Code D4 trusted Schema: static escaped literal exact diagnostic and mutation suppression\n");
+
+  const d5 = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,"interpolated.ts")));
+  await vscode.window.showTextDocument(d5);
+  const runtimeDiagnostics=(doc:vscode.TextDocument)=>vscode.languages.getDiagnostics(doc.uri).filter(d=>d.source==='HSON Schema'||d.source==='HSON');
+  const waitRuntime=async(doc:vscode.TextDocument,count:number)=>{
+    const deadline=Date.now()+15_000;
+    while(runtimeDiagnostics(doc).length!==count && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,50));
+    assert.equal(runtimeDiagnostics(doc).length,count,`D5 ${doc.fileName}`);
+    return runtimeDiagnostics(doc);
+  };
+  const marker = vscode.Uri.file(join(workspace,'provider-count.txt'));
+  const before=Buffer.from(await vscode.workspace.fs.readFile(marker)).toString();
+  await new Promise(resolve=>setTimeout(resolve,400));
+  assert.equal(runtimeDiagnostics(d5).length,0);
+  assert.equal(Buffer.from(await vscode.workspace.fs.readFile(marker)).toString(),before,'explicit-disable executes nothing');
+  await config.update('enabled',true,vscode.ConfigurationTarget.Workspace);
+  const first=(await waitRuntime(d5,1))[0]!;
+  assert.equal(d5.getText(first.range),'age');
+  assert.match(first.message,/expression evaluated to an HSON string/);
+  const exprEdit=new vscode.WorkspaceEdit(); exprEdit.replace(d5.uri,first.range,'getAge()');
+  await vscode.workspace.applyEdit(exprEdit);
+  assert.equal(runtimeDiagnostics(d5).length,0,'expression edit synchronously retires runtime diagnostics');
+  await new Promise(resolve=>setTimeout(resolve,700));
+  assert.equal(runtimeDiagnostics(d5).length,0,'unsaved edited expression cannot reuse previous values');
+  await d5.save();
+  await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
+  await config.update('enabled',true,vscode.ConfigurationTarget.Workspace);
+  assert.equal(d5.getText((await waitRuntime(d5,1))[0]!.range),'getAge()');
+  await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
+  await vscode.workspace.fs.writeFile(vscode.Uri.file(join(workspace,'runtime-age.json')),Buffer.from('37'));
+  await config.update('enabled',true,vscode.ConfigurationTarget.Workspace);
+  await waitRuntime(d5,0);
+  await new Promise(resolve=>setTimeout(resolve,1000));
+  assert.equal(runtimeDiagnostics(d5).length,0,'fresh runtime number clears mismatch');
+  const journal=Buffer.from(await vscode.workspace.fs.readFile(vscode.Uri.file(join(workspace,'evaluated-values.jsonl')))).toString().trim().split('\n').map(line=>JSON.parse(line));
+  assert.ok(journal.includes('37') && journal.at(-1)===37,'provider actually evaluated old string and fresh number');
+  await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
+  await vscode.workspace.fs.writeFile(vscode.Uri.file(join(workspace,'runtime-age.json')),Buffer.from('"37"'));
+  await config.update('enabled',true,vscode.ConfigurationTarget.Workspace);
+  assert.equal(d5.getText((await waitRuntime(d5,1))[0]!.range),'getAge()','fresh invalid value restores expression diagnostic');
+  for(const [name,origin] of [['interpolated-map.ts','age'],['interpolated-literal-error.ts','+'],['interpolated-value-error.ts','value']] as const){
+    const doc: vscode.TextDocument = await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,name)));
+    await vscode.window.showTextDocument(doc);
+    const diagnostic=(await waitRuntime(doc,1))[0]!;
+    assert.equal(doc.getText(diagnostic.range),origin);
+  }
+  const repeated=await vscode.workspace.openTextDocument(vscode.Uri.file(join(workspace,'interpolated-repeated.ts')));
+  await vscode.window.showTextDocument(repeated);
+  await new Promise(resolve=>setTimeout(resolve,700));
+  assert.equal(runtimeDiagnostics(repeated).length,0,'repeated equal evaluations fail closed');
+  await config.update('enabled',false,vscode.ConfigurationTarget.Workspace);
+  process.stdout.write('ok - real VS Code D5: actual interpolation, expression mismatch, edit retirement, fresh runtime value, trust off, literal/admission errors, D3 flow, repeated ambiguity\n');
 
 }

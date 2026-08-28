@@ -29,7 +29,7 @@ check('mutable map alias rejected', pre + template + construct + 'let other = ma
 check('helper transformed HSON rejected', pre + template + 'const changed = transform(source);' + construct.replace('(source)', '(changed)') + use, 0);
 check('helper returned map rejected', pre + template + 'const map = createMap(source);' + use, 0);
 check('cross-function flow rejected', pre + template + construct + 'function useSchema() {' + use + '}', 0);
-check('interpolation deferred', direct.replace('"37"', '${age}'), 0);
+check('interpolation relationship discovered for trusted D5 capture', direct.replace('"37"', '${age}'), 1);
 check('mutable Schema rejected', pre + template + construct + 'let S = UserSchema; map.schema.use(S);', 0);
 check('optional use rejected', direct.replace('.use(', '.use?.('), 0);
 check('two maps retain independent source sites', pre + template + construct + 'const b = hson.liveMap.fromHson(source);' + use + 'b.schema.use(UserSchema);', 2);

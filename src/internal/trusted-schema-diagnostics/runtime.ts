@@ -13,6 +13,8 @@ import { consume_trusted_schema_development_registrations } from "./dev-registra
 import { consume_trusted_schema_attachments, type TrustedSchemaAttachment } from "./lifecycle-evidence.js";
 import { is_owned_trusted_schema, is_trusted_schema_runtime } from "./runtime-origin.js";
 import { TRUSTED_SCHEMA_DIAGNOSTICS_PROTOCOL_VERSION, type TrustedSchemaDiagnostic, type TrustedSchemaRequest, type TrustedSchemaResponse } from "./protocol.js";
+import { reset_interpolation_captures, read_interpolation_captures, type InterpolationCapture } from "./interpolation-capture.js";
+import { map_interpolation_range } from "./interpolation-source.js";
 
 export class TrustedSchemaDiagnosticRuntime {
   readonly #generation: number;
@@ -22,6 +24,7 @@ export class TrustedSchemaDiagnosticRuntime {
   readonly #bindings: TrustedSchemaBindingRegistration[] = [];
   readonly #direct = new Map<string, Readonly<{ schema: object; schemaId: string; evidence: TrustedSchemaDirectSource; lifecycle?: TrustedSchemaAttachment }>>();
   #loadAttempted = false;
+  #captures: readonly InterpolationCapture[] = [];
 
   constructor(generation: number) { this.#generation = generation; }
 
@@ -30,6 +33,8 @@ export class TrustedSchemaDiagnosticRuntime {
     if (request.runtimeGeneration !== this.#generation) return this.error(request, "ASSOCIATION_UNAVAILABLE", "Stale runtime generation.");
     if (request.type === "handshake") return this.reply(request, "ready");
     if (request.type === "ping") return this.reply(request, "pong");
+    if (request.type === "captures") return Object.freeze({ ...this.reply(request, "captured"),
+      captures: read_interpolation_captures().filter(c => c.site.moduleUrl === request.moduleUrl) });
     if (request.type === "shutdown") return this.reply(request, "disposed");
     if (request.type === "load") return this.load(request);
     if (request.type === "associate") return this.associate(request);
@@ -45,7 +50,17 @@ export class TrustedSchemaDiagnosticRuntime {
     try {
       const configured = await import(request.hsonModuleUrl);
       if (!is_trusted_schema_runtime(configured.hson)) return this.error(request, "RUNTIME_MISMATCH", "Configured runtime is not the D1 validator's supported runtime instance.");
-      const project = await import(request.moduleUrl);
+      reset_interpolation_captures();
+      let project: Record<string, unknown> = {};
+      let loadFailure: string | undefined;
+      try { project = await import(request.moduleUrl); }
+      catch (cause) {
+        if (read_interpolation_captures().length === 0) throw cause;
+        // The provider still failed; retain already executed evidence and prior
+        // explicit registrations, without pretending remaining code executed.
+        loadFailure = cause instanceof Error ? cause.message : "Project module failed to load.";
+      }
+      this.#captures = read_interpolation_captures();
       const registrations = consume_trusted_schema_development_registrations();
       const attachments = consume_trusted_schema_attachments();
       if (project.hson !== undefined && !is_trusted_schema_runtime(project.hson)) return this.error(request, "RUNTIME_MISMATCH", "Project runtime identity differs from the validator.");
@@ -101,7 +116,7 @@ export class TrustedSchemaDiagnosticRuntime {
       for (const [id, schema] of schemas) this.#schemas.set(id, schema);
       this.#bindings.push(...bindings.map(record => Object.freeze({ schemaId: record.schemaId, binding: Object.freeze({ ...record.binding }) })));
       for (const proposal of resolvedAttachments) this.#proposals.set(proposal.evidence.associationId, proposal);
-      return Object.freeze({ ...this.reply(request, "loaded"), schemaIds: Object.freeze([...this.#schemas.keys()]), bindings: Object.freeze(bindings), associations: Object.freeze(resolvedAttachments.map((record) => record.evidence)) });
+      return Object.freeze({ ...this.reply(request, "loaded"), captures: this.#captures, loadFailure, schemaIds: Object.freeze([...this.#schemas.keys()]), bindings: Object.freeze(bindings), associations: Object.freeze(resolvedAttachments.map((record) => record.evidence)) });
     } catch (cause) {
       consume_trusted_schema_development_registrations();
       consume_trusted_schema_attachments();
@@ -120,6 +135,7 @@ export class TrustedSchemaDiagnosticRuntime {
   }
 
   private associateSource(request: Extract<TrustedSchemaRequest, { type: "associate-source" }>): TrustedSchemaResponse {
+    this.#captures = read_interpolation_captures();
     this.#direct.delete(request.associationId);
     const matches = this.#bindings.filter(record => same_schema_source_binding(record.binding, request.directSource.binding));
     const objects = new Set(matches.map(record => this.#schemas.get(record.schemaId)));
@@ -127,6 +143,16 @@ export class TrustedSchemaDiagnosticRuntime {
     const schema = this.#schemas.get(request.schemaId);
     if (schema === undefined || !matches.some(record => record.schemaId === request.schemaId)) return this.error(request, "ASSOCIATION_UNAVAILABLE", "No current registered source binding.");
     const lifecycle = request.lifecycleId === undefined ? undefined : this.#proposals.get(request.lifecycleId);
+    const interpolation = request.directSource.interpolation;
+    if (interpolation !== undefined) {
+      const captures = this.#captures.filter(c => c.site.templateId === interpolation.templateId && c.site.sourceRevision === interpolation.sourceRevision);
+      if (captures.length > 1) return this.error(request, "AMBIGUOUS_REGISTRATION", "Multiple evaluated templates occupy this source relationship.");
+      if (captures.length !== 1 || captures[0].evaluationId !== interpolation.evaluationId || captures[0].canonical === undefined
+        || (request.directSource.mapFlow === undefined && request.directSource.templateId !== captures[0].site.templateId)
+        || (request.directSource.mapFlow !== undefined && lifecycle?.evidence.evaluationId !== interpolation.evaluationId)) {
+        return this.error(request, "ASSOCIATION_UNAVAILABLE", "No exact current template evaluation.");
+      }
+    }
     if (request.directSource.mapFlow !== undefined || request.lifecycleId !== undefined) {
       const proposals = [...this.#proposals.values()].filter(proposal => same_map_flow(proposal.evidence.mapFlow, request.directSource.mapFlow)
         && proposal.evidence.binding !== undefined && same_schema_source_binding(proposal.evidence.binding, request.directSource.binding)
@@ -145,6 +171,7 @@ export class TrustedSchemaDiagnosticRuntime {
   }
 
   private validate(request: Extract<TrustedSchemaRequest, { type: "validate" }>): TrustedSchemaResponse {
+    this.#captures = read_interpolation_captures();
     const association = this.#associations.get(request.associationId);
     const direct = this.#direct.get(request.associationId);
     const validDirect = direct !== undefined && request.directSource !== undefined && same_direct_source(direct.evidence, request.directSource)
@@ -156,6 +183,14 @@ export class TrustedSchemaDiagnosticRuntime {
     const schema = validDirect ? direct!.schema : association!.schema;
     let rootMode: TrustedSchemaRootMode = validDirect ? "projected" : association!.evidence.rootMode;
     const fromHson = validDirect && direct!.lifecycle !== undefined;
+    const capture = validDirect && direct!.evidence.interpolation !== undefined
+      ? this.#captures.find(c => c.evaluationId === direct!.evidence.interpolation!.evaluationId) : undefined;
+    if (capture !== undefined && this.#captures.filter(c => c.site.templateId === capture.site.templateId && c.site.sourceRevision === capture.site.sourceRevision).length !== 1) {
+      return this.error(request, "AMBIGUOUS_REGISTRATION", "Template evaluated again after association.");
+    }
+    if (direct?.evidence.interpolation !== undefined && (capture === undefined || capture.source !== request.source)) {
+      return Object.freeze({ ...this.reply(request, "result"), result: { status: "ASSOCIATION_UNAVAILABLE" as const, diagnostics: [] } });
+    }
     const parseStart = performance.now();
     let parsed: ReturnType<typeof parse_hson_with_provenance>;
     try { parsed = parse_hson_with_provenance(request.source, { allowTopLevelTextFragment: fromHson || (!validDirect && rootMode === "fragment") }); }
@@ -171,6 +206,11 @@ export class TrustedSchemaDiagnosticRuntime {
       issues = validate_schema_hson_graph(schema, parsed.value).issues;
     } catch (cause) { return this.error(request, "VALIDATION_THROW", cause instanceof Error ? cause.message : "Schema validation threw unexpectedly."); }
     if (validDirect && direct!.lifecycle?.isCurrent?.() === false) return Object.freeze({ ...this.reply(request, "result"), result: { status: "ASSOCIATION_UNAVAILABLE" as const, diagnostics: Object.freeze([]) } });
+    if (capture !== undefined) {
+      const current = read_interpolation_captures().filter(c => c.site.templateId === capture.site.templateId && c.site.sourceRevision === capture.site.sourceRevision);
+      if (current.length !== 1 || current[0].evaluationId !== capture.evaluationId) return this.error(request,
+        current.length > 1 ? "AMBIGUOUS_REGISTRATION" : "ASSOCIATION_UNAVAILABLE", "Template evidence changed during validation.");
+    }
     const validateMs = performance.now() - validateStart;
     const lowerStart = performance.now();
     const diagnostics: TrustedSchemaDiagnostic[] = issues.map((issue) => {
@@ -178,7 +218,8 @@ export class TrustedSchemaDiagnosticRuntime {
         ? resolve_projected_schema_issue_source(parsed.value, parsed.provenance, issue)
         : resolve_document_schema_issue_source(parsed.value, rootMode, parsed.provenance, issue);
       const range = resolution.kind === "unresolved" ? { precision: "unresolved" as const } : { precision: resolution.kind, start: resolution.range.start, end: resolution.range.end };
-      return Object.freeze({ ...read_schema_issue_presentation(issue), code: issue.code, path: Object.freeze([...issue.path]), expected: issue.expected, received: issue.received, attributeName: issue.attributeName, range: Object.freeze(range) });
+      return Object.freeze({ ...read_schema_issue_presentation(issue), code: issue.code, path: Object.freeze([...issue.path]), expected: issue.expected, received: issue.received, attributeName: issue.attributeName, range: Object.freeze(range),
+        hostOrigin: capture === undefined ? undefined : map_interpolation_range(capture.site, capture.segments, range) });
     });
     return Object.freeze({ ...this.reply(request, "result"), result: Object.freeze({ status: issues.length === 0 ? "VALID" : "INVALID", diagnostics: Object.freeze(diagnostics), timings: Object.freeze({ parseMs, validateMs, lowerMs: performance.now() - lowerStart }) }) });
   }

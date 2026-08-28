@@ -89,6 +89,10 @@
     }
   },
   "scripts": {
+    "test:hson-d5-mapping": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/hson-d5-mapping.acceptance.mts",
+    "test:trusted-d5-capture": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/trusted-d5-capture.acceptance.mts",
+    "test:schema-d5-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d5-editor.acceptance.mts",
+    "test:schema-d5-performance": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d5-performance.acceptance.mts",
     "clean": "rm -rf dist",
     "build": "npm run clean && tsc",
     "pack:consumer": "node ../hson-demo2/scripts/certified-package.mjs pack",

@@ -26,6 +26,18 @@ function encodeTemplatePrimitive(value: HsonTemplatePrimitive): string {
   return serialize_primitive_hson(value as Primitive);
 }
 
+/** Private shared admission operation; not a package export. */
+export function encode_hson_template_substitution(value: unknown, index: number): string {
+  if (value !== null && typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+    _throw_transform_err(
+      `HSON tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`,
+      "HSON", undefined, undefined,
+      { code: HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED, stage: "template-admission" },
+    );
+  }
+  return encodeTemplatePrimitive(value);
+}
+
 function isTemplateStringsArray(value: unknown): value is TemplateStringsArray {
   if (!Array.isArray(value)) return false;
   const raw = (value as unknown as { raw?: unknown }).raw;
@@ -56,23 +68,7 @@ function reconstructTaggedSource(
 
   let source = strings.raw[0];
   for (let index = 0; index < substitutions.length; index += 1) {
-    const value: unknown = substitutions[index];
-    if (value !== null
-      && typeof value !== "string"
-      && typeof value !== "number"
-      && typeof value !== "boolean") {
-      _throw_transform_err(
-        `HSON tagged-template substitutions must be primitive string, number, boolean, or null values; substitution ${index + 1} received ${typeof value}`,
-        "HSON",
-        undefined,
-        undefined,
-        {
-          code: HSON_TEMPLATE_SUBSTITUTION_TYPE_REQUIRED,
-          stage: "template-admission",
-        },
-      );
-    }
-    source += encodeTemplatePrimitive(value as HsonTemplatePrimitive);
+    source += encode_hson_template_substitution(substitutions[index], index);
     source += strings.raw[index + 1];
   }
   return source;

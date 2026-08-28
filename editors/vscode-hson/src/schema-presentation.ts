@@ -4,6 +4,14 @@ import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { authored_hson_occurrence_range, map_authored_hson_range } from "../../../src/internal/embedded-hson/authored-hson-source.js";
 
 export function schema_diagnostic_message(issue: TrustedSchemaDiagnostic): string {
+  if (issue.hostOrigin?.kind === "substitution-expression") {
+    const kind = issue.hostOrigin.scalarKind ?? issue.received ?? "value";
+    const evaluated = `This expression evaluated to ${kind === "null" ? "HSON null" : `an HSON ${kind}`}`;
+    if (issue.code === "TYPE_MISMATCH") return `${evaluated}, but the Schema requires ${issue.expected ?? "a different value"} here.`;
+    if (issue.code === "INVALID_LITERAL") return `${evaluated}, but the Schema requires literal ${issue.expected} here.`;
+    if (issue.code === "INVALID_CONSTRAINT") return `${evaluated} that does not satisfy ${issue.constraintLabel === undefined ? "its Schema constraint" : `constraint “${issue.constraintLabel}”`}.`;
+    return `${evaluated} that fails Schema validation (${issue.code}).`;
+  }
   const name = issue.attributeName ?? issue.path.at(-1);
   const subject = name === undefined ? "this value" : issue.attributeName === undefined ? `\`${name}\`` : `attribute \`${name}\``;
   if (issue.subject === "tag") return `Expected element tag ${issue.expected}; found ${issue.received}.`;
@@ -29,14 +37,17 @@ export function present_schema_diagnostic(issue: TrustedSchemaDiagnostic, associ
   const { start, end } = issue.range;
   const precise = issue.range.precision !== "unresolved" && start !== undefined && end !== undefined
     && Number.isInteger(start) && Number.isInteger(end) && start >= 0 && end >= start;
-  const mapped = precise ? map_authored_hson_range(association.source, { start, end }) : undefined;
-  const precision = mapped !== undefined ? issue.range.precision : "unresolved";
-  const locationNote = precision === "anchor" ? " (Anchored to existing source; required structure is absent.)"
+  const mapped = issue.hostOrigin?.range ?? (precise ? map_authored_hson_range(association.source, { start, end }) : undefined);
+  const precision = issue.hostOrigin?.kind === "composite" || issue.hostOrigin?.kind === "unresolved" ? "unresolved"
+    : issue.hostOrigin?.kind === "substitution-expression" ? "substitution-expression" : mapped !== undefined ? issue.range.precision : "unresolved";
+  const locationNote = issue.hostOrigin?.kind === "composite" ? " (Range spans multiple source origins; not a character-exact location.)"
+    : precision === "anchor" ? " (Anchored to existing source; required structure is absent.)"
     : precision === "unresolved" ? " (Template-level diagnostic; exact source location unavailable.)" : "";
   return {
     message: `[${association.schemaLabel}] ${schema_diagnostic_message(issue)}${locationNote}`,
     range: mapped ?? occurrenceRange,
     precision, source: "HSON", code: issue.code,
+    hostOrigin: issue.hostOrigin?.kind,
     related: [{ range: association.callRange, message: `Schema requested by this ${association.mapFlow === undefined ? "validate" : "map.schema.use"} call (${association.schemaLabel}).` }],
   };
 }

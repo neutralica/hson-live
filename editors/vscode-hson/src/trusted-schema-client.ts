@@ -7,6 +7,10 @@ import { read_authored_hson_source } from "../../../src/internal/embedded-hson/a
 import { present_schema_diagnostic } from "./schema-presentation.js";
 import type { DiagnosticDocument } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
+import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
+import { interpolation_site, map_interpolation_range } from "../../../src/internal/trusted-schema-diagnostics/interpolation-source.js";
+import { source_point_range_at } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
+import { pathToFileURL } from "node:url";
 
 export type SchemaStatus = "off" | "waiting" | "current-valid" | "current-invalid" | "stale" | "ambiguous" | "unavailable" | "runtime-failed";
 export type D2Measurement = Readonly<{
@@ -29,16 +33,31 @@ export class TrustedSchemaClient {
   #revision = 0;
   #bindings: readonly TrustedSchemaBindingRegistration[] = [];
   #lifecycleModules: readonly string[] = [];
+  readonly #documentVersions = new Map<string, number>();
+  readonly #retiredDocuments = new Set<string>();
   get schemaModuleUrls(): readonly string[] { return [...this.#bindings.map(record => record.binding.moduleUrl), ...this.#lifecycleModules]; }
   constructor(options: SchemaClientOptions) { this.#options = options; this.supervisor = new TrustedSchemaNodeSupervisor(options); }
   dispose(): void { this.supervisor.dispose(); }
-  invalidate(): void { this.supervisor.terminate(); this.#load = undefined; }
+  invalidate(): void { this.supervisor.terminate(); this.#load = undefined; this.#documentVersions.clear(); this.#retiredDocuments.clear(); }
+  invalidateDocument(document: DiagnosticDocument): void {
+    if (this.#documentVersions.has(document.uri) || discover_hson_tagged_templates(document.fileName, document.text).interpolated.length > 0) {
+      this.#retiredDocuments.add(document.uri);
+    }
+  }
   async validate(document: DiagnosticDocument, current: () => boolean): Promise<SchemaClientResult> {
     const started = performance.now();
     if (!this.#options.trust.enabled || !this.#options.trust.workspaceTrusted) return { status: "off", diagnostics: [] };
+    if (!current()) return { status: "stale", diagnostics: [] };
     const associations = discover_schema_validation_sources(document.fileName, document.text);
+    const templates = discover_hson_tagged_templates(document.fileName, document.text).interpolated.map(source => interpolation_site(source, pathToFileURL(document.fileName).href));
+    if (templates.length > 0) {
+      const previous = this.#documentVersions.get(document.uri);
+      if (previous !== undefined && previous !== document.version) this.#retiredDocuments.add(document.uri);
+      this.#documentVersions.set(document.uri, document.version);
+      if (this.#retiredDocuments.has(document.uri)) return { status: "waiting", diagnostics: [] };
+    }
     const discoveryMs = performance.now() - started;
-    if (associations.length === 0) return { status: "unavailable", diagnostics: [] };
+    if (associations.length === 0 && templates.length === 0) return { status: "unavailable", diagnostics: [] };
     let roundTripMs = 0, publicationMs = 0, lifecycleMs = 0, checked = 0;
     const stages: TrustedSchemaTiming[] = [];
     const diagnostics: DocumentDiagnosticSpec[] = [];
@@ -55,11 +74,36 @@ export class TrustedSchemaClient {
       const loaded = await this.#load;
       if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
       if (loaded.type !== "loaded") return failure(loaded);
+      message = loaded.loadFailure;
+      const observed = templates.length === 0 ? undefined : await this.supervisor.request({ type: "captures", moduleUrl: pathToFileURL(document.fileName).href });
+      if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
+      if (observed !== undefined && observed.type !== "captured") return failure(observed);
+      const runtimeCaptures = observed?.captures ?? [];
       const bindings: readonly TrustedSchemaBindingRegistration[] = loaded.bindings ?? [];
       this.#bindings = bindings;
       this.#lifecycleModules = (loaded.associations ?? []).flatMap(record => record.mapFlow === undefined ? [] : [record.mapFlow.moduleUrl]);
+      this.#lifecycleModules = [...this.#lifecycleModules, ...(loaded.captures ?? []).map(c => c.site.moduleUrl), ...runtimeCaptures.map(c => c.site.moduleUrl)];
+      for (const template of templates) {
+        const matches = runtimeCaptures.filter(c => c.site.templateId === template.templateId && c.site.sourceRevision === template.sourceRevision);
+        if (matches.length !== 1) { status = matches.length > 1 ? "ambiguous" : "waiting"; continue; }
+        const capture = matches[0]!;
+        if (capture.failure !== undefined) {
+          const failure = capture.failure;
+          const point = failure.details?.source === undefined ? undefined : source_point_range_at(capture.source, failure.details.source.index);
+          const origin = failure.substitution === undefined ? map_interpolation_range(template, capture.segments,
+            point === undefined ? { precision: "unresolved" } : { precision: "exact", ...point })
+            : { kind: "substitution-expression" as const, range: template.expressions[failure.substitution]! };
+          diagnostics.push({ runtimeAdmission: true, range: origin.range, hostOrigin: origin.kind, precision: origin.kind === "substitution-expression" ? "substitution-expression" : origin.kind === "literal-exact" ? "exact" : "unresolved",
+            message: failure.message, code: failure.details?.code, source: "HSON", related: [] });
+          status = "current-invalid"; checked++;
+        }
+      }
       for (const association of associations) {
         if (!current() || generation !== this.supervisor.activeGeneration) return { status: "stale", diagnostics: [] };
+        const captures = association.interpolation === undefined ? [] : runtimeCaptures.filter(c => c.site.templateId === association.interpolation!.templateId && c.site.sourceRevision === association.interpolation!.sourceRevision);
+        const capture = captures.length === 1 ? captures[0] : undefined;
+        if (association.interpolation !== undefined && capture === undefined) { status = captures.length > 1 ? "ambiguous" : "waiting"; continue; }
+        if (capture?.failure !== undefined) continue;
         let registration = bindings.find(record => same_schema_source_binding(record.binding, association.binding));
         if (registration === undefined) { if (status !== "ambiguous" && status !== "runtime-failed") status = "unavailable"; continue; }
         const lookupStarted = performance.now();
@@ -77,6 +121,7 @@ export class TrustedSchemaClient {
         const associationRevision = ++this.#revision;
         const associationId = `${association.callId}@${document.version}:${associationRevision}`;
         const directSource: TrustedSchemaDirectSource = {
+          interpolation: capture === undefined ? undefined : { templateId: capture.site.templateId, sourceRevision: capture.site.sourceRevision, evaluationId: capture.evaluationId },
           mapFlow: association.mapFlow,
           templateId: association.templateId, callId: association.callId, binding: association.binding,
           documentRevision: document.version, templateRevision: document.version, associationRevision,
@@ -91,7 +136,7 @@ export class TrustedSchemaClient {
             message = failed.message; continue;
           }
           const response = await this.supervisor.request({ type: "validate", associationId, schemaId: registration.schemaId,
-            templateRevision: document.version, candidateRevision: document.version, directSource, source: read_authored_hson_source(association.source) });
+            templateRevision: document.version, candidateRevision: document.version, directSource, source: capture?.source ?? read_authored_hson_source(association.source) });
           roundTripMs += performance.now() - requestStarted;
           if (!current() || generation !== this.supervisor.activeGeneration || response.runtimeGeneration !== generation) return { status: "stale", diagnostics: [] };
           if (response.type === "error") {

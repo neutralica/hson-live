@@ -32,11 +32,27 @@ const d4Mutated = 'import { hsonLiveMap } from "hson-live/livemap";\nimport { Us
 await writeFile(join(workspaceDir, "static-map-user.ts"), d4Source);
 await writeFile(join(workspaceDir, "static-mutated.ts"), d4Mutated);
 await writeFile(join(workspaceDir, "static-syntax.ts"), 'import { hsonTransform } from "hson-live/transform";\nhsonTransform.fromHson("\\x2b1").toNode();\n');
+const d5Imports = 'import { HSON } from "hson-live/hson";\nimport { hsonLiveMap } from "hson-live/livemap";\nimport { UserSchema } from "./contracts.mjs";\nimport { getAge } from "./runtime-value.mjs";\n';
+const d5Source = d5Imports + 'const age=getAge(); const source=HSON`<user <age ${age}>>`;\nHSON.validate(UserSchema,source);';
+const d5Map = d5Imports + 'const age="37"; const source=HSON`<user <age ${age}>>`;\nconst map=hsonLiveMap.fromHson(source);\nmap.schema.use(UserSchema);';
+const d5Cases = {
+  'interpolated.ts': d5Source,
+  'interpolated-map.ts': d5Map,
+  'interpolated-repeated.ts': d5Imports + 'function make(){ const age="37"; const source=HSON`<user <age ${age}>>`; try { HSON.validate(UserSchema,source); } catch {} } make(); make();',
+  'interpolated-literal-error.ts': d5Imports + 'const value=37; HSON`<user <age ${value}> +>`;',
+  'interpolated-value-error.ts': d5Imports + 'const value=Infinity; HSON`<user <age ${value}>>`;',
+};
+for (const [name,text] of Object.entries(d5Cases)) await writeFile(join(workspaceDir,name),text);
+await writeFile(join(workspaceDir,'runtime-age.json'),'"37"');
+await writeFile(join(workspaceDir,'runtime-value.mjs'), 'import { readFileSync, appendFileSync } from "node:fs"; export function getAge(){ const value=JSON.parse(readFileSync(new URL("./runtime-age.json",import.meta.url),"utf8")); appendFileSync(new URL("./evaluated-values.jsonl",import.meta.url),JSON.stringify(value)+"\\n"); return value; }');
 const instrumenter = pathToFileURL(resolve(here, "../../../../dist/internal/trusted-schema-diagnostics/instrument-map-sources.js")).href;
 const helper = pathToFileURL(resolve(here, "../../../../dist/internal/trusted-schema-diagnostics/source-lifecycle.js")).href;
 await writeFile(join(workspaceDir, "trusted-schema.mjs"), `
 export * from "./contracts.mjs";
+import { readFile, writeFile } from "node:fs/promises";
 import { instrument_trusted_schema_map_sources } from ${JSON.stringify(instrumenter)};
+const marker=new URL("./provider-count.txt",import.meta.url);
+await writeFile(marker,String(Number(await readFile(marker,"utf8").catch(()=>"0"))+1));
 const contractsUrl = new URL("./contracts.mjs", import.meta.url).href;
 export const trustedSchemaBindings = [{ schemaId: "runtimeHandle", binding: { moduleUrl: contractsUrl, exportName: "UserSchema" } }];
 const source = ${JSON.stringify(d3Source)};
@@ -44,14 +60,18 @@ const cases = [
   [${JSON.stringify(join(workspaceDir, "map-user.ts"))}, source],
   [${JSON.stringify(join(workspaceDir, "static-map-user.ts"))}, ${JSON.stringify(d4Source)}],
   [${JSON.stringify(join(workspaceDir, "static-mutated.ts"))}, ${JSON.stringify(d4Mutated)}],
+  ...await Promise.all(${JSON.stringify(Object.keys(d5Cases))}.map(async name => [new URL(name, import.meta.url).pathname, await readFile(new URL(name,import.meta.url),"utf8")])),
 ];
 for (const [fileName, caseSource] of cases) {
 const code = instrument_trusted_schema_map_sources(fileName, caseSource, ${JSON.stringify(helper)})
   .replaceAll('"hson-live"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/index.js")).href))})
   .replaceAll('"hson-live/hson"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/hson-authoring.js")).href))})
   .replaceAll('"hson-live/livemap"', ${JSON.stringify(JSON.stringify(pathToFileURL(resolve(here, "../../../../dist/api/livemap/livemap.facade.js")).href))})
-  .replaceAll('"./contracts.mjs"', JSON.stringify(contractsUrl));
-await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+  .replaceAll('"./contracts.mjs"', JSON.stringify(contractsUrl))
+  .replaceAll('"./runtime-value.mjs"', JSON.stringify(new URL("./runtime-value.mjs",import.meta.url).href));
+try { await import("data:text/javascript;base64," + Buffer.from(code).toString("base64")); } catch(error) {
+  if (!fileName.includes("interpolated")) throw error;
+}
 }
 `);
 await writeFile(join(workspaceDir, "user.ts"), 'import { HSON, hson } from "hson-live";\nimport { UserSchema } from "./trusted-schema.mjs";\nconst user = HSON`<user <age "37">>`;\nHSON.validate(UserSchema, user);\n');

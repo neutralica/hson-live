@@ -1,5 +1,8 @@
 import { discover_schema_validation_sources } from "./discover-validation-sources.js";
 import { is_static_hson_source } from "../embedded-hson/authored-hson-source.js";
+import { discover_hson_tagged_templates } from "../embedded-hson/discover-hson-tagged-templates.js";
+import { interpolation_site } from "./interpolation-source.js";
+import { pathToFileURL } from "node:url";
 
 /** Explicit trusted-provider build step, never applied to an editor buffer or
  * installed as a project loader. Only the diagnostic copy is instrumented.
@@ -7,13 +10,14 @@ import { is_static_hson_source } from "../embedded-hson/authored-hson-source.js"
  */
 export function instrument_trusted_schema_map_sources(fileName: string, text: string, helperModuleUrl: string): string {
   const associations = discover_schema_validation_sources(fileName, text).filter(site => site.mapFlow !== undefined);
-  if (associations.length === 0) return text;
+  const interpolated = discover_hson_tagged_templates(fileName, text).interpolated;
+  if (associations.length === 0 && interpolated.length === 0) return text;
   let name = "__hsonTrustedLifecycle";
   while (text.includes(name)) name += "_";
   const edits = new Map<number, { end: number; text: string }>();
   for (const [index, site] of associations.entries()) {
     const boundary = site.constructionCalleeRange!;
-    if (!is_static_hson_source(site.source)) edits.set(site.source.tagRange.start, { end: site.source.tagRange.end,
+    if (!is_static_hson_source(site.source) && site.interpolation === undefined) edits.set(site.source.tagRange.start, { end: site.source.tagRange.end,
       text: `${name}.tag(${JSON.stringify(site.templateId)}, ${text.slice(site.source.tagRange.start, site.source.tagRange.end)})` });
     // Replace only the callee, leaving nested inline authored templates intact.
     edits.set(boundary.start, { end: boundary.end,
@@ -21,6 +25,12 @@ export function instrument_trusted_schema_map_sources(fileName: string, text: st
     // Discovery supplies the receiver and argument ranges; no spelling guesses.
     edits.set(site.useCalleeRange!.start, { end: site.useCalleeRange!.end,
       text: `${name}.use(${index}, ${text.slice(site.mapRange!.start, site.mapRange!.end)})` });
+  }
+  for (const source of interpolated) {
+    const descriptor = interpolation_site(source, pathToFileURL(fileName).href);
+    const aliases = [...new Set(associations.filter(site => site.interpolation?.templateId === descriptor.templateId).map(site => site.templateId))];
+    edits.set(source.tagRange.start, { end: source.tagRange.end,
+      text: `${name}.interpolation(${JSON.stringify(descriptor)}, ${JSON.stringify(aliases)}, ${text.slice(source.tagRange.start, source.tagRange.end)})` });
   }
   let result = text;
   for (const [start, edit] of [...edits].sort(([a], [b]) => b - a)) result = result.slice(0, start) + edit.text + result.slice(edit.end);

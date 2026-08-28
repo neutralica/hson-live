@@ -23,7 +23,7 @@ check("cyclic aliases rejected", prelude + 'const user = a; const a = user;' + c
 check("function return flow rejected", prelude + 'const user = getUser();' + call, 0);
 check("transformation breaks correspondence", prelude + template + 'const changed = transform(user); HSON.validate(UserSchema, changed);', 0);
 check("property lookup rejected", prelude + template + 'HSON.validate(UserSchema, box.user);', 0);
-check("interpolation deferred", prelude + 'const user = HSON`<age ${age}>`;' + call, 0);
+check("interpolation relationship discovered for trusted D5 capture", prelude + 'const user = HSON`<age ${age}>`;' + call, 1);
 check("wrong package rejected", (prelude + template + call).replace('"hson-live"', '"lookalike"'), 0);
 check("namespace lookalike rejected", 'import * as HSON from "hson-live";' + template + 'const UserSchema = {};'+call, 0);
 check("shadowed facade rejected", prelude + template + 'function f(HSON: any) {' + call + '}', 0);

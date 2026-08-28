@@ -33,11 +33,13 @@ export type RelatedDiagnosticSpec = Readonly<{
 }>;
 
 export type DocumentDiagnosticSpec = Readonly<{
+  runtimeAdmission?: boolean;
+  hostOrigin?: import("../../../src/internal/trusted-schema-diagnostics/interpolation-source.js").HostOrigin["kind"];
   message: string;
   range: HostSourceRange;
   source: typeof DIAGNOSTIC_SOURCE;
   code?: string;
-  precision: "point" | "eof" | "fallback" | "exact" | "anchor" | "unresolved";
+  precision: "point" | "eof" | "fallback" | "exact" | "anchor" | "unresolved" | "substitution-expression";
   related: readonly RelatedDiagnosticSpec[];
 }>;
 

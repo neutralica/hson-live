@@ -94,7 +94,7 @@ export function activate(context: vscode.ExtensionContext): void {
     const state = uri === undefined ? undefined : statuses.get(uri);
     statusBar.text = `HSON Schema: ${state?.status ?? "off"}`;
     statusBar.tooltip = state?.message ?? (state?.status === "current-valid" || state?.status === "current-invalid"
-      ? "Current editor candidate checked against current mapped Schema. Application validation has not been executed; stateful predicates may change."
+      ? "Current authored source checked using trusted runtime evidence. Stateful predicates may change."
       : "Trusted Schema diagnostics require Workspace Trust, explicit enablement, and a current registered source binding. No diagnostics does not mean Schema passed.");
     statusBar.show();
   };
@@ -105,7 +105,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (current === undefined) return;
       schemaCollection.set(current.uri, specs.map(spec => {
         const diagnostic = new vscode.Diagnostic(toRange(current, spec), spec.message, vscode.DiagnosticSeverity.Error);
-        diagnostic.source = "HSON Schema"; diagnostic.code = spec.code;
+        diagnostic.source = spec.runtimeAdmission ? "HSON" : "HSON Schema"; diagnostic.code = spec.code;
         diagnostic.relatedInformation = spec.related.map(item => new vscode.DiagnosticRelatedInformation(new vscode.Location(current.uri,
           new vscode.Range(current.positionAt(item.range.start), current.positionAt(item.range.end))), item.message));
         return diagnostic;

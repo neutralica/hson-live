@@ -6,6 +6,8 @@ export function same_schema_source_binding(a: TrustedSchemaSourceBinding, b: Tru
 }
 export function same_direct_source(a: TrustedSchemaDirectSource, b: TrustedSchemaDirectSource): boolean {
   return a.templateId === b.templateId && a.callId === b.callId
+    && a.interpolation?.templateId === b.interpolation?.templateId && a.interpolation?.sourceRevision === b.interpolation?.sourceRevision
+    && a.interpolation?.evaluationId === b.interpolation?.evaluationId
     && a.documentRevision === b.documentRevision && a.templateRevision === b.templateRevision
     && same_map_flow(a.mapFlow, b.mapFlow)
     && a.associationRevision === b.associationRevision && same_schema_source_binding(a.binding, b.binding);

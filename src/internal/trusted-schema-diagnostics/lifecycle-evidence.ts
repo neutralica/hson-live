@@ -6,11 +6,13 @@ import type { ClassifiedLiveMap } from "../../types/livemap.types.js";
 import { require_document_root_schema } from "../../api/livemap/livemap.document.schema.js";
 import { is_owned_projected_schema } from "../../api/livemap/livemap.schema.js";
 import type { TrustedSchemaAssociationEvidence, TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
+import type { InterpolationCapture } from "./interpolation-capture.js";
 
 type TrustedSchemaTemplateBase = Readonly<{
   templateId: string;
   templateRevision: number;
   source: string;
+  evaluationId?: string;
 }>;
 export type TrustedSchemaTaggedTemplate = TrustedSchemaTemplateBase & Readonly<{ kind: "tagged"; canonical: HsonCanonical }>;
 export type TrustedSchemaStaticTemplate = TrustedSchemaTemplateBase & Readonly<{ kind: "static"; canonical: string }>;
@@ -59,6 +61,15 @@ export function construct_trusted_schema_application(template: TrustedSchemaTagg
   return application;
 }
 
+/** A successful provider capture is one evaluation, not a cached template object. */
+export function captured_interpolation_template(capture: InterpolationCapture): TrustedSchemaTaggedTemplate | undefined {
+  if (capture.canonical === undefined) return undefined;
+  const template: TrustedSchemaTaggedTemplate = Object.freeze({ kind: "tagged", templateId: capture.site.templateId,
+    templateRevision: 1, evaluationId: capture.evaluationId, source: capture.source, canonical: capture.canonical });
+  CAPTURED_TEMPLATES.add(template);
+  return template;
+}
+
 /** Capture one instrumented static source occurrence; text is not its identity. */
 export function capture_trusted_schema_static_source(source: string): TrustedSchemaStaticTemplate {
   const template = Object.freeze({
@@ -98,6 +109,7 @@ export function attempt_trusted_schema_attachment(application: TrustedSchemaAppl
     associationId, applicationId: application.applicationId, schemaId, rootMode,
     templateId: template.templateId, templateRevision: template.templateRevision,
     source: template.source, canonical: template.canonical,
+    evaluationId: template.evaluationId,
     constructedRevision, attemptRevision,
   };
   const correspondence = constructedRevision === attemptRevision ? "direct" : "unavailable";

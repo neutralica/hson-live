@@ -53,8 +53,8 @@ execution-boundary tests without exposing a public test hook.
 process-boundary checks, public export graph checks, and executed timing probes.
 Negative type imports also live in `tests/entrypoints/public-entrypoints.ts`.
 The D2 VS Code client reuses this process supervisor and protocol. Arbitrary
-provenance tracing, automatic Schema instrumentation, and interpolated template
-capture remain out of scope.
+provenance tracing and automatic Schema instrumentation remain out of scope.
+Source-bound interpolation capture is described under D5 below.
 
 ## D2 direct-source association
 
@@ -128,10 +128,11 @@ independent attempts; it is not an assertion about application control flow.
 
 Supported relationships are local `const` declarations in one module/function
 body, parentheses, bounded identifier-only canonical/map/Schema aliases,
-named relative Schema imports, and inline substitution-free templates inside
+named relative Schema imports, and inline templates inside
 `fromHson`. Attachment uses are standalone expression statements in that same
 body. Conditional/return/expression attachment flow, arbitrary helpers,
-interpolations, transformations and equality recovery remain unsupported.
+transformations and equality recovery remain unsupported. Interpolated tags
+add D5's exact evaluated-source requirement below.
 Both `hson.liveMap` and the dedicated `hsonLiveMap` facade are recognized by
 compiler binding identity on their actual public entrypoints.
 
@@ -200,3 +201,68 @@ uses root `hson`; dedicated construction uses root or `/livemap` `hsonLiveMap`.
 D3 captures the exact `HSON` object. D1 runtime origin registration still uses
 the existing noncallable aggregate `hson` from the configured `hson.js` module;
 this private runtime requirement does not enter the public authoring graph.
+
+## D5 trusted evaluated interpolation
+
+The same explicit diagnostic-copy instrumenter now wraps discovered official
+interpolated HSON tags, including occurrences without Schema relationships so
+admission failures can be reported. It does not wrap arbitrary tags, evaluate
+expressions in the editor, install hooks, register Schemas, or modify application
+source. The provider must evaluate the original source revision, not a rewritten
+preview combining new literals and old values.
+
+The wrapper checks HSON identity and invokes the real tag once with the original
+TemplateStringsArray and already evaluated argument values. JavaScript evaluates
+each expression once in original order. If an expression throws, the tag never
+runs and no template evaluation is claimed. The real tag's primitive return or
+original exception is preserved. Afterwards, private capture reuses the exact
+pure primitive admission encoder to record scalar source. This re-encodes primitive
+values, **not expressions**, and performs no second parse, coercion, property
+inspection, or cloning. Ordinary HSON shares only that small encoder function;
+it imports none of the provider, registry, trace or source-map code.
+
+One private capture contains an evaluation ID, static occurrence/module URL,
+SHA-256 of the complete original host document, template/expression ranges,
+literal raw strings and UTF-16 boundary tables, alternating generated literal/
+substitution intervals (with primitive kinds), completed pre-serialization HSON,
+the actual canonical return, or structured failure and offending substitution
+index. Partial source is retained when encoding cannot complete. Exact primitive
+values are represented by their authoritative scalar source, including -0;
+unsupported objects are never retained. Admission/trace timing is separate.
+Generation and request IDs belong to the existing protocol envelope, not to
+public values. Captures are reset for a new load, capped at 256 evaluations,
+1,000,000 generated UTF-16 units per evaluation and 4,000,000 total; overflow
+disables the generation's capture evidence, never silently evicts to a last value.
+
+The private `captures` request retrieves current evidence, including admission
+errors, under a fresh D1 request ID. D2 association binds the selected evaluation
+and source hash to the source relationship, registered Schema handle, editor
+version, generation and validation request. It does not depend on successful
+execution of the application's validate call. D3 additionally requires that
+exact evaluation on the actual map application's attachment evidence. Canonical
+equality is never a lookup key. Each Schema relationship validates independently.
+Repeated evaluation is ambiguous rather than first/last-wins, even for equal
+values. Repetition after association is checked again at validation. Existing
+map revisions, rejected attempts, mutation and mutate/revert suppression remain
+authoritative. A provider import failure retains prior capture/registration
+evidence and reports `loadFailure`; the failed statement is not swallowed by
+the tag and no subsequent application execution is claimed.
+
+Generated C1/C2 exact/anchor/unresolved evidence is preserved separately from
+host origin: `literal-exact`, `substitution-expression`, `anchor`, `composite`,
+or `unresolved`. Any interval wholly within a substitution maps to its AST
+expression body (excluding `${` and `}`), never generated quote characters.
+Cross-origin ranges enclose their contributing host origins and are explicitly
+non-exact. Unresolved locations use the complete template. Raw backslashes,
+escaped backticks and escaped `${` spellings are preserved; physical CRLF/lone
+CR become LF at runtime with physical host boundary maps. Astral characters
+use UTF-16 offsets; parser points use the existing Unicode-safe point mapper.
+EOF maps immediately before the closing backtick, including an empty tail.
+
+An editor change immediately clears publication and retires that document's
+evaluation evidence before debounce. Unsaved expression/literal edits (including
+edit/revert) wait; they do not trigger value replay or consume restart budget.
+The existing explicit provider reload/save lifecycle supplies a new generation.
+Unchanged generated bytes never override host revision evidence. With either
+trust gate closed there is no provider start or runtime-derived validity claim.
+D4 ordinary JavaScript string interpolation remains separate and unsupported.

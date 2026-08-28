@@ -6,8 +6,10 @@ import type { HostSourceRange } from "../embedded-hson/embedded-hson-source.js";
 import { discover_static_from_hson_sources } from "../embedded-hson/discover-static-from-hson-sources.js";
 import { authored_hson_occurrence_range, type AuthoredHsonSource } from "../embedded-hson/authored-hson-source.js";
 import type { TrustedSchemaMapFlow, TrustedSchemaSourceBinding } from "./protocol.js";
+import { interpolation_site, type InterpolationSite } from "./interpolation-source.js";
 
 export type DiscoveredSchemaValidation = Readonly<{
+  interpolation?: InterpolationSite;
   mapFlow?: TrustedSchemaMapFlow;
   constructionRange?: HostSourceRange;
   constructionCalleeRange?: HostSourceRange;
@@ -42,7 +44,8 @@ function standalone(node: ts.Node): boolean {
 /** Finite local const tracing only. Source identity is never recovered by value. */
 export function discover_schema_validation_sources(fileName: string, text: string): readonly DiscoveredSchemaValidation[] {
   if (!/\.(?:ts|tsx)$/.test(fileName)) return [];
-  const templates = discover_hson_tagged_templates(fileName, text).sources;
+  const discovered = discover_hson_tagged_templates(fileName, text);
+  const templates = [...discovered.sources, ...discovered.interpolated];
   const staticSources = discover_static_from_hson_sources(fileName, text).sources;
   const program = create_hson_source_program(fileName, text);
   const file = program.getSourceFile(fileName);
@@ -171,5 +174,8 @@ export function discover_schema_validation_sources(fileName: string, text: strin
     ts.forEachChild(node, visit);
   };
   visit(file);
-  return results;
+  return results.map(site => {
+    const interpolated = discovered.interpolated.find(source => source.templateRange.start === authored_hson_occurrence_range(site.source).start);
+    return interpolated === undefined ? site : { ...site, interpolation: interpolation_site(interpolated, moduleUrl) };
+  });
 }

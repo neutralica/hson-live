@@ -28,6 +28,10 @@ check("actual /hson export resolves to the narrow authoring module", () => asser
 check("authoring does not traverse aggregate or full LiveMap core", () => assert.ok(narrow.parsed.every(path => !/(?:dist\/hson\.js|livemap\.core\.js|\/livetree\/|\/livehost\/|\/locus\/|\/reflect\/|\/inspect\/)/.test(path))));
 check("authoring has no browser or external parser dependencies", () => assert.ok(narrow.parsed.every(path => !/(?:node_modules|transform\.browser|\/safety\/)/.test(path))));
 check("tree-shaken authoring retains no mutation history or session machinery", () => assert.ok(narrow.inputs.every(path => !/livemap\.(?:mutation|replay|history|session|store|install)/.test(path))));
+// The pre-D5 Schema validators already use issue-presentation's semantic sidecar.
+// No capture, provider, lifecycle, protocol or generated source-map module may join it.
+check("D5 tooling never enters the ordinary authoring graph", () => assert.ok(narrow.parsed.every(path =>
+  !/trusted-schema-diagnostics|embedded-hson|source-provenance/.test(path) || path.endsWith("trusted-schema-diagnostics/issue-presentation.js"))));
 check("same-object validate retains real Schema validators in tag-only bundle", () => { assert.ok(narrow.inputs.some(path => path.endsWith("livemap.schema.js"))); assert.ok(narrow.inputs.some(path => path.endsWith("livemap.document.schema.js"))); });
 check("narrow authoring stays within the approved practical size boundary", () => { assert.ok(narrow.gzip < 40_000, `gzip=${narrow.gzip}`); assert.ok(narrow.gzip < results.aggregate.gzip / 4); });
 check("referencing validate does not unexpectedly import another subsystem", () => assert.deepEqual(results.validation.inputs.filter(path => path.startsWith("dist/")), narrow.inputs.filter(path => path.startsWith("dist/"))));

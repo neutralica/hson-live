@@ -23,6 +23,7 @@ export type TrustedSchemaMapFlow = Readonly<{
   callId: string;
 }>;
 export type TrustedSchemaDirectSource = Readonly<{
+  interpolation?: Readonly<{ templateId: string; sourceRevision: string; evaluationId: string }>;
   templateId: string;
   callId: string;
   documentRevision: number;
@@ -34,6 +35,7 @@ export type TrustedSchemaDirectSource = Readonly<{
 
 export type TrustedSchemaRootMode = "projected" | "element" | "fragment";
 export type TrustedSchemaAssociationEvidence = Readonly<{
+  evaluationId?: string;
   mapFlow?: TrustedSchemaMapFlow;
   binding?: TrustedSchemaSourceBinding;
   validationAttempted?: boolean;
@@ -70,6 +72,7 @@ export type TrustedSchemaRange = Readonly<{
 }>;
 
 export type TrustedSchemaDiagnostic = Readonly<{
+  hostOrigin?: import("./interpolation-source.js").HostOrigin;
   subject?: "tag" | "flag";
   constraintLabel?: string;
   code: string;
@@ -81,6 +84,7 @@ export type TrustedSchemaDiagnostic = Readonly<{
 }>;
 
 export type TrustedSchemaRequest =
+  | Readonly<{ type: "captures"; protocolVersion: number; requestId: string; runtimeGeneration: number; moduleUrl: string }>
   | Readonly<{ type: "handshake"; protocolVersion: number; requestId: string; runtimeGeneration: number }>
   | Readonly<{
       type: "load";
@@ -122,10 +126,12 @@ export type TrustedSchemaRequest =
   | Readonly<{ type: "dispose" | "shutdown" | "ping"; protocolVersion: number; requestId: string; runtimeGeneration: number; associationId?: string }>;
 
 export type TrustedSchemaResponse = Readonly<{
+  captures?: readonly import("./interpolation-capture.js").InterpolationCapture[];
+  loadFailure?: string;
   protocolVersion: number;
   requestId: string;
   runtimeGeneration: number;
-  type: "ready" | "loaded" | "associated" | "result" | "disposed" | "pong" | "error";
+  type: "ready" | "loaded" | "captured" | "associated" | "result" | "disposed" | "pong" | "error";
   error?: "PROTOCOL_MISMATCH" | "RUNTIME_MISMATCH" | "MODULE_LOAD_FAILED" | "ASSOCIATION_UNAVAILABLE" | "AMBIGUOUS_REGISTRATION" | "VALIDATION_THROW";
   message?: string;
   schemaIds?: readonly string[];

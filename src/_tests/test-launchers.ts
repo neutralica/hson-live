@@ -227,6 +227,22 @@ export const hson_live_test_launchers: readonly HsonLiveTestLauncher[] =
       packageScript: "test:schema-d4-performance", repositoryModule: "tests/schema-d4-performance.acceptance.mts", runtime: "node", collections: ["schema", "performance", "internal"],
     }),
     launcher({
+      id: "hson-d5-mapping", subject: "Transform", displayName: "D5 generated HSON to template mapping",
+      packageScript: "test:hson-d5-mapping", repositoryModule: "tests/hson-d5-mapping.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
+    }),
+    launcher({
+      id: "trusted-d5-capture", subject: "Transform", displayName: "D5 trusted interpolation capture",
+      packageScript: "test:trusted-d5-capture", repositoryModule: "tests/trusted-d5-capture.acceptance.mts", runtime: "node", collections: ["hson", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-d5-editor", subject: "LiveMap", displayName: "D5 evaluated interpolation Schema diagnostics",
+      packageScript: "test:schema-d5-editor", repositoryModule: "tests/schema-d5-editor.acceptance.mts", runtime: "node", collections: ["schema", "authoring", "internal"],
+    }),
+    launcher({
+      id: "schema-d5-performance", subject: "LiveMap", displayName: "D5 trusted interpolation performance",
+      packageScript: "test:schema-d5-performance", repositoryModule: "tests/schema-d5-performance.acceptance.mts", runtime: "node", collections: ["schema", "performance", "internal"],
+    }),
+    launcher({
       id: "trusted-schema-d1", subject: "LiveMap", displayName: "D1 trusted Schema runtime authority",
       packageScript: "test:trusted-schema-d1", repositoryModule: "tests/trusted-schema-d1.acceptance.mts", runtime: "node", collections: ["schema", "internal"],
     }),

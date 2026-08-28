@@ -2,6 +2,7 @@ import type { DiagnosticHost, DiagnosticPublisher, Disposable, DiagnosticDocumen
 import type { SchemaClientResult, SchemaStatus } from "./trusted-schema-client.js";
 
 export type SchemaDiagnosticClient = Readonly<{
+  invalidateDocument?(document: DiagnosticDocument): void;
   validate(document: DiagnosticDocument, current: () => boolean): Promise<SchemaClientResult>;
 }>;
 export type SchemaDiagnosticOptions = Readonly<{
@@ -50,7 +51,12 @@ export function start_schema_diagnostics(host: DiagnosticHost, publisher: Diagno
       });
     }, options.debounceMilliseconds ?? 150));
   };
-  const opened = host.onDidOpen(schedule), changed = host.onDidChange(schedule);
+  const opened = host.onDidOpen(schedule), changed = host.onDidChange(document => {
+    // Retire before debounce, including edit/revert sequences with equal bytes.
+    cancel(document.uri);
+    if (options.enabled()) options.clientFor(document)?.invalidateDocument?.(document);
+    schedule(document);
+  });
   const closed = host.onDidClose(doc => cancel(doc.uri));
   const refresh = (): void => { for (const doc of host.openDocuments()) schedule(doc); };
   refresh();
