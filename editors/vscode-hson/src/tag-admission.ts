@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import { admit_hson } from "../../../src/api/transform/hson-admission.js";
 import { tokenize_hson } from "../../../src/api/transform/parsers/tokenize-hson.js";
 import { read_transform_error_details } from "../../../src/core/errors.js";
@@ -19,12 +20,12 @@ function diagnostic(error: unknown, literal: Literal, fallback: HostSourceRange)
   };
   const primary = details.source && map(details.source.index);
   return {
-    message: error instanceof Error ? error.message : "HSON admission failed.",
+    message: error instanceof Error ? error.message : messages.hsonAdmissionFailed,
     range: primary ?? fallback, source: "HSON", code: details.code,
     precision: !primary ? "fallback" : details.source?.index === literal.raw.length ? "eof" : "point",
     related: (details.related ?? []).flatMap(item => {
       const range = map(item.source.index);
-      return range ? [{ message: `Related HSON source (${item.role}).`, range }] : [];
+      return range ? [{ message: messages.hsonSourceRelated(item.role), range }] : [];
     }),
   };
 }

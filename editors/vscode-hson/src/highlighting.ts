@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Registry, INITIAL, parseRawGrammar, type IGrammar } from "vscode-textmate";
@@ -30,7 +31,7 @@ export async function load_hson_grammar(extensionRoot: string): Promise<IGrammar
       ? parseRawGrammar(await readFile(join(extensionRoot, "syntaxes/hson.tmLanguage.json"), "utf8"), "hson.json") : null,
   });
   const grammar = await registry.loadGrammar("source.hson");
-  if (!grammar) throw new Error("Missing packaged HSON grammar");
+  if (!grammar) throw new Error(messages.missingPackagedGrammar);
   return grammar;
 }
 

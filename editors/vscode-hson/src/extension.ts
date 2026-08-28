@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import * as vscode from "vscode";
 import { resolve, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -44,7 +45,7 @@ export function activate(context: vscode.ExtensionContext): void {
     setTimer: (callback, delayMilliseconds) => setTimeout(callback, delayMilliseconds),
     clearTimer: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>),
     reportUnexpected: (error, document) => {
-      console.error(`HSON diagnostics failed for ${document.fileName}`, error);
+      console.error(messages.unexpectedDiagnosticsFailure(document.fileName), error);
     },
   };
   const publisher: DiagnosticPublisher = {
@@ -110,10 +111,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const describe = (): void => {
     const uri = vscode.window.activeTextEditor?.document.uri.toString();
     const state = uri === undefined ? undefined : statuses.get(uri);
-    statusBar.text = `HSON Schema: ${state?.status ?? "off"}`;
-    statusBar.tooltip = state?.message ?? (state?.status === "current-valid" || state?.status === "current-invalid"
-      ? "Current authored source checked using trusted runtime evidence. Stateful predicates may change."
-      : "Trusted Schema diagnostics require Workspace Trust, explicit enablement, and a current registered source binding. No diagnostics does not mean Schema passed.");
+    statusBar.text = messages.schemaStatusLabel(state?.status);
+    statusBar.tooltip = messages.schemaStatusTooltip(state?.status, state?.message);
     statusBar.show();
   };
   const enabled = (): boolean => vscode.workspace.isTrusted;
@@ -170,7 +169,7 @@ export function activate(context: vscode.ExtensionContext): void {
     measure(result, perceivedMs) {
       if (result.measurement === undefined) return;
       output.appendLine(JSON.stringify({ ...result.measurement, perceivedMs, status: result.status }));
-      if (result.measurement.endToEndMs >= 2_000) output.appendLine("Slow trusted diagnostic request (>= 2 seconds); includes cold load if this is the first request.");
+      if (result.measurement.endToEndMs >= 2_000) output.appendLine(messages.slowSchemaRequest);
     },
   });
   const reconfigure = (): void => {
@@ -198,7 +197,7 @@ export function activate(context: vscode.ExtensionContext): void {
         const item = new vscode.CompletionItem(spec.label, spec.kind === "literal" ? vscode.CompletionItemKind.Value : spec.kind === "tag" ? vscode.CompletionItemKind.Class : vscode.CompletionItemKind.Property);
         item.range = range;
         item.insertText = spec.snippet ? new vscode.SnippetString(spec.insertText) : spec.insertText;
-        item.detail = `HSON Schema: ${spec.detail}`;
+        item.detail = messages.schemaCompletionDetail(spec.detail);
         item.sortText = spec.sortText;
         return item;
       });

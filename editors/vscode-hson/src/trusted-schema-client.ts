@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import { performance } from "node:perf_hooks";
 import { TrustedSchemaNodeSupervisor, type TrustedSchemaSupervisorOptions } from "../../../src/internal/trusted-schema-diagnostics/node-supervisor.js";
 import type { TrustedSchemaBindingRegistration, TrustedSchemaDirectSource, TrustedSchemaResponse, TrustedSchemaTiming } from "../../../src/internal/trusted-schema-diagnostics/protocol.js";
@@ -171,7 +172,7 @@ export class TrustedSchemaClient {
       if (checked === 0 && status === "current-valid") status = "unavailable";
       return { status, diagnostics, generation, message, measurement: { lifecycleMs, discoveryMs, roundTripMs, publicationMs, stages, endToEndMs: performance.now() - started } };
     } catch (error) {
-      return { status: "runtime-failed", diagnostics: [], message: error instanceof Error ? error.message : "Trusted Schema runtime failed." };
+      return { status: "runtime-failed", diagnostics: [], message: error instanceof Error ? error.message : messages.schemaRuntimeFailed };
     }
   }
 

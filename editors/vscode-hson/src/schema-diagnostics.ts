@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import type { DiagnosticHost, DiagnosticPublisher, Disposable, DiagnosticDocument } from "./diagnostics.js";
 import type { SchemaClientResult, SchemaStatus } from "./trusted-schema-client.js";
 
@@ -47,7 +48,7 @@ export function start_schema_diagnostics(host: DiagnosticHost, publisher: Diagno
       }).catch(error => {
         if (!current()) return;
         publisher.delete(document.uri);
-        options.status(document, "runtime-failed", error instanceof Error ? error.message : "Runtime failed.");
+        options.status(document, "runtime-failed", error instanceof Error ? error.message : messages.runtimeFailed);
       });
     }, options.debounceMilliseconds ?? 150));
   };

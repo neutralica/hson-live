@@ -1,3 +1,4 @@
+import * as messages from "./diagnostic-messages.js";
 import { hson } from "../../../src/hson.js";
 import { parse_hson } from "../../../src/api/transform/parsers/parse-hson.js";
 import {
@@ -76,7 +77,7 @@ function relatedFromDetails(
     return range === undefined
       ? []
       : [Object.freeze({
-          message: `Related HSON source (${item.role}).`,
+          message: messages.hsonSourceRelated(item.role),
           range,
         })];
   }));
@@ -96,7 +97,7 @@ export function transform_error_to_standalone_diagnostic(
     ? "fallback"
     : details.source?.index === text.length ? "eof" : "point";
   return Object.freeze({
-    message: error instanceof Error ? error.message : "HSON validation failed.",
+    message: error instanceof Error ? error.message : messages.hsonValidationFailed,
     range,
     source: DIAGNOSTIC_SOURCE,
     code: details.code,
@@ -150,10 +151,10 @@ function staticTransformDiagnostic(
   const primary = details.source === undefined ? undefined : map_static_hson_point(source, details.source.index);
   const related = Object.freeze((details.related ?? []).flatMap(item => {
     const mapped = map_static_hson_point(source, item.source.index);
-    return mapped === undefined ? [] : [Object.freeze({ message: `Related HSON source (${item.role}).`, range: mapped })];
+    return mapped === undefined ? [] : [Object.freeze({ message: messages.hsonSourceRelated(item.role), range: mapped })];
   }));
   return Object.freeze({
-    message: error instanceof Error ? error.message : "HSON validation failed.",
+    message: error instanceof Error ? error.message : messages.hsonValidationFailed,
     range: primary ?? source.bodyRange,
     source: DIAGNOSTIC_SOURCE,
     code: details.code,
