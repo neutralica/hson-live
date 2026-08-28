@@ -5,7 +5,13 @@ import { hson_highlights, load_hson_grammar, hsonTokenScopes } from "../src/high
 import { produce_document_diagnostics } from "../src/document-diagnostics.js";
 import { start_diagnostics, type DiagnosticDocument, type DiagnosticHost } from "../src/diagnostics.js";
 import { HSON } from "../../../src/hson-authoring.js";
-import { hson_identity_marker_parts, hsonIdentityMarkers } from "../src/authoring-marker.js";
+import {
+  HSON_LIBRARY_SEPARATOR_COLOR_ID,
+  hson_identity_marker_parts,
+  hson_identity_presentation,
+  hson_library_separator_parts,
+  hsonIdentityMarkers,
+} from "../src/authoring-marker.js";
 
 async function run(): Promise<void> {
   const grammar = await load_hson_grammar(resolve(__dirname, ".."));
@@ -16,6 +22,7 @@ async function run(): Promise<void> {
   const diagnose = (text: string) => produce_document_diagnostics({ fileName: "/workspace/baseline.ts", languageId: "typescript", text });
   const nameToken = (text: string) => tokens(text).some(token => text.slice(token.range.start, token.range.end) === "thing" && token.scopes.includes("entity.name.type.hson"));
   const markers = (text: string) => hson_identity_marker_parts("/workspace/baseline.ts", text);
+  const separators = (text: string) => hson_library_separator_parts("/workspace/baseline.ts", text);
   const referenceParts = (text: string, spelling: "HSON" | "hson", start = text.lastIndexOf(spelling)) =>
     markers(text).filter(part => part.range.start >= start && part.range.end <= start + spelling.length);
   const expectedMarker = (spelling: "HSON" | "hson") => hsonIdentityMarkers
@@ -71,6 +78,37 @@ async function run(): Promise<void> {
     assert.deepEqual(lower.map(part => ({ text: text.slice(part.range.start, part.range.end), colorId: part.colorId, strength: part.strength })), expectedMarker('hson'));
     assert.deepEqual(lower.map(part => part.range), [0, 1, 2, 3].map(index => ({ start: hsonStart + index, end: hsonStart + index + 1 })));
   });
+  check("only the first official lowercase member period receives the violet separator identity", () => {
+    const text = 'import { hson } from "hson-live"; hson.liveMap.schema.validate(x); hson.fromJson("{}"); hson.transform;';
+    const parts = separators(text);
+    assert.deepEqual(parts.map(part => text.slice(part.range.start, part.range.end)), [".", ".", "."]);
+    assert.deepEqual(parts.map(part => part.range.start), [
+      text.indexOf(".liveMap"), text.indexOf(".fromJson"), text.indexOf(".transform"),
+    ]);
+    assert.ok(parts.every(part => part.colorId === HSON_LIBRARY_SEPARATOR_COLOR_ID && part.strength === "strong"));
+    assert.ok(!parts.some(part => part.range.start === text.indexOf(".schema")));
+    assert.ok(!parts.some(part => part.range.start === text.indexOf(".validate")));
+  });
+  check("separator authority excludes aliases, fakes, shadows, properties, wrong packages, imports, and uppercase HSON", () => {
+    const cases = [
+      'import { hson as library } from "hson-live"; library.liveMap;',
+      'const hson={}; hson.liveMap;',
+      'import { hson } from "hson-live"; function f(hson:any){ hson.liveMap; }',
+      'const obj={hson:{}}; obj.hson.liveMap;',
+      'import { hson } from "other"; hson.liveMap;',
+      'import { hson } from "hson-live";',
+      'import { HSON } from "hson-live"; HSON.validate(x,y);',
+    ];
+    for (const text of cases) assert.deepEqual(separators(text), []);
+  });
+  check("lowercase color toggle removes lowercase markers and separator without affecting uppercase HSON", () => {
+    const text = 'import { hson, HSON } from "hson-live"; hson.liveMap; HSON.validate(x,y);';
+    const enabled = hson_identity_presentation("/workspace/baseline.ts", text, true);
+    const disabled = hson_identity_presentation("/workspace/baseline.ts", text, false);
+    assert.equal(enabled.markers.length, 8); assert.equal(enabled.separators.length, 1);
+    assert.equal(disabled.markers.length, 4); assert.equal(disabled.separators.length, 0);
+    assert.ok(disabled.markers.every(part => part.publicName === "HSON"));
+  });
   check("aliases stay ordinary while alias-tag body semantics remain recognized", () => {
     const upper = source('<thing 1>', 'HSON as authored', 'authored');
     const lower = 'import { hson as library } from "hson-live"; library.liveMap;';
@@ -125,16 +163,12 @@ async function run(): Promise<void> {
     assert.equal(manifest.capabilities.untrustedWorkspaces.supported, 'limited');
     assert.deepEqual(manifest.contributes.semanticTokenScopes[0].scopes, hsonTokenScopes);
     assert.equal(manifest.contributes.grammars.length, 1, 'no spelling-only injection');
-    assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), hsonIdentityMarkers.map(marker => marker.colorId));
+    assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), [
+      ...hsonIdentityMarkers.map(marker => marker.colorId), HSON_LIBRARY_SEPARATOR_COLOR_ID,
+    ]);
     assert.deepEqual(manifest.contributes.colors.map((color: { defaults: object }) => color.defaults), [
-      { dark: '#69B8EE', light: '#2A86C0', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
-      { dark: '#F2D064', light: '#AD8200', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
-      { dark: '#F18BA8', light: '#D45179', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
-      { dark: '#6CCA96', light: '#31945E', highContrast: '#6BD092', highContrastLight: '#096A36' },
-      { dark: '#69B8EE', light: '#2A86C0', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
-      { dark: '#F2D064', light: '#AD8200', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
-      { dark: '#F18BA8', light: '#D45179', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
-      { dark: '#6CCA96', light: '#31945E', highContrast: '#6BD092', highContrastLight: '#096A36' },
+      ...["#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#00adf6", "#c9d100", "#ff4a8c", "#39a500", "#7247d4"]
+        .map(color => ({ dark: color, light: color, highContrast: color, highContrastLight: color })),
     ]);
   });
   check("interpolation preserves literal highlighting and excludes expressions", () => {

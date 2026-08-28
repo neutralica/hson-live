@@ -7,13 +7,13 @@ export const TRUSTED_CONFIGURATION_KEYS = Object.freeze([
   "hson.trustedSchemaDiagnostics.runtimeEntry",
   "hson.trustedSchemaDiagnostics.execArgv",
 ]);
-export type AppearanceColorKey = "blue" | "yellow" | "orange" | "green";
-export const APPEARANCE_COLOR_KEYS: readonly AppearanceColorKey[] = Object.freeze(["blue", "yellow", "orange", "green"]);
+export type AppearanceColorKey = "blue" | "yellow" | "pink" | "green";
+export const APPEARANCE_COLOR_KEYS: readonly AppearanceColorKey[] = Object.freeze(["blue", "yellow", "pink", "green"]);
 
 const MARKER_COLOR_KEY: Readonly<Record<string, AppearanceColorKey>> = Object.freeze({
   h: "blue",
   s: "yellow",
-  o: "orange",
+  o: "pink",
   n: "green",
 });
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;

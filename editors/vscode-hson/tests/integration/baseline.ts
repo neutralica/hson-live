@@ -19,21 +19,30 @@ export async function run(): Promise<void> {
   assert.deepEqual(markerColors.map((color: { id: string }) => color.id), [
     "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",
     "hson.authoringMarker.h", "hson.authoringMarker.s", "hson.authoringMarker.o", "hson.authoringMarker.n",
+    "hson.libraryMarker.separator",
   ]);
   assert.ok(markerColors.every((color: { defaults: object }) =>
     ["dark", "light", "highContrast", "highContrastLight"].every(key => key in color.defaults)));
   const settings = Object.assign({}, ...extension.packageJSON.contributes.configuration.map(
     (group: { properties: object }) => group.properties,
   ));
-  assert.equal(settings["hson.appearance.authoringMarkerStrength"].default, 0.6);
+  assert.equal(settings["hson.appearance.authoringMarkerStrength"].default, 0.7);
   assert.equal(settings["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
   assert.equal(settings["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
-  for (const key of ["blue", "yellow", "orange", "green"]) {
+  const hueDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" } as const;
+  for (const key of Object.keys(hueDefaults) as (keyof typeof hueDefaults)[]) {
     const colorSetting = settings[`hson.appearance.${key}`];
-    assert.equal(colorSetting.default, ""); assert.equal(colorSetting.type, "string");
-    assert.ok(new RegExp(colorSetting.pattern).test("#69B8EE"));
+    assert.equal(colorSetting.default, hueDefaults[key]); assert.equal(colorSetting.type, "string");
+    assert.ok(new RegExp(colorSetting.pattern).test("#00adf6"));
   }
-  const override = { "hson.libraryMarker.h": "#123456", "hson.authoringMarker.h": "#123456CC" };
+  assert.equal(settings["hson.appearance.orange"], undefined);
+  assert.equal(settings["hson.appearance.colorLibraryMarker"].default, true);
+  assert.equal(settings["hson.appearance.librarySeparatorColor"].default, "#7247d4");
+  const override = {
+    "hson.libraryMarker.h": "#123456",
+    "hson.authoringMarker.h": "#123456CC",
+    "hson.libraryMarker.separator": "#654321",
+  };
   await vscode.workspace.getConfiguration("workbench").update("colorCustomizations", override, vscode.ConfigurationTarget.Global);
   assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override);
   const appearance = vscode.workspace.getConfiguration("hson.appearance", doc.uri);
@@ -43,24 +52,34 @@ export async function run(): Promise<void> {
   await appearance.update("libraryMarkerStrength", 0.55, vscode.ConfigurationTarget.Workspace);
   assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), 0.55);
   assert.equal(extension.isActive, true, "library marker strength refresh must not reload the extension");
-  for (const [key, color] of [["blue", "#102030"], ["yellow", "#405060"], ["orange", "#708090"], ["green", "#A0B0C0"]]) {
+  for (const [key, color] of [["blue", "#102030"], ["yellow", "#405060"], ["pink", "#708090"], ["green", "#A0B0C0"]]) {
     await appearance.update(key, color, vscode.ConfigurationTarget.Workspace);
     assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), color);
     assert.equal(extension.isActive, true, `${key} marker color refresh must not reload the extension`);
   }
+  await appearance.update("librarySeparatorColor", "#1122CC", vscode.ConfigurationTarget.Workspace);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("librarySeparatorColor"), "#1122CC");
+  assert.equal(extension.isActive, true, "separator color refresh must not reload the extension");
+  await appearance.update("colorLibraryMarker", false, vscode.ConfigurationTarget.Workspace);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("colorLibraryMarker"), false);
+  assert.equal(extension.isActive, true, "lowercase marker toggle refresh must not reload the extension");
   assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override,
     "shared colors do not mutate the advanced theme-specific color IDs");
-  for (const key of ["blue", "yellow", "orange", "green"]) {
+  for (const key of Object.keys(hueDefaults)) {
     await appearance.update(key, undefined, vscode.ConfigurationTarget.Workspace);
-    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), "");
+    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), hueDefaults[key as keyof typeof hueDefaults]);
   }
+  await appearance.update("librarySeparatorColor", undefined, vscode.ConfigurationTarget.Workspace);
+  await appearance.update("colorLibraryMarker", undefined, vscode.ConfigurationTarget.Workspace);
   await appearance.update("authoringMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
   await appearance.update("libraryMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
-  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), 0.6);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), 0.7);
   assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), 1);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("librarySeparatorColor"), "#7247d4");
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("colorLibraryMarker"), true);
   await vscode.commands.executeCommand("hson.openSettings");
   assert.equal(extension.isActive, true, "opening native HSON Settings must not reload the extension");
-  process.stdout.write("ok - real VS Code strengths and four shared colors update and restore live without extension reload; contributed color overrides remain intact; HSON Settings command opens\n");
+  process.stdout.write("ok - real VS Code strengths, four shared colors, lowercase toggle, and separator color update and restore live without extension reload; contributed color overrides remain intact; HSON Settings command opens\n");
   const syntax = await vscode.commands.executeCommand("_workbench.captureSyntaxTokens", doc.uri);
   const grammarHighlighted = JSON.stringify(syntax).includes("entity.name.type.hson");
   const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);

@@ -58,7 +58,7 @@
           },
           "hson.appearance.authoringMarkerStrength": {
             "type": "number",
-            "default": 0.6,
+            "default": 0.7,
             "minimum": 0,
             "maximum": 1,
             "scope": "window",
@@ -68,43 +68,61 @@
           },
           "hson.appearance.blue": {
             "type": "string",
-            "default": "",
+            "default": "#00adf6",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
-            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #69B8EE.",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #00adf6.",
             "scope": "window",
             "order": 30,
             "title": "Blue",
-            "markdownDescription": "Optional shared blue hue for the `h` and `H` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+            "markdownDescription": "Shared blue hue for the `h` and `H` markers. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` IDs."
           },
           "hson.appearance.yellow": {
             "type": "string",
-            "default": "",
+            "default": "#c9d100",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
-            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #F2D064.",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #c9d100.",
             "scope": "window",
             "order": 40,
             "title": "Yellow",
-            "markdownDescription": "Optional shared yellow hue for the `s` and `S` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+            "markdownDescription": "Shared yellow hue for the `s` and `S` markers. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` IDs."
           },
-          "hson.appearance.orange": {
+          "hson.appearance.pink": {
             "type": "string",
-            "default": "",
+            "default": "#ff4a8c",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
-            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #F18BA8.",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #ff4a8c.",
             "scope": "window",
             "order": 50,
-            "title": "Orange",
-            "markdownDescription": "Optional shared orange/pink hue for the `o` and `O` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+            "title": "Pink",
+            "markdownDescription": "Shared pink hue for the `o` and `O` markers. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` IDs."
           },
           "hson.appearance.green": {
             "type": "string",
-            "default": "",
+            "default": "#39a500",
             "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
-            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #6CCA96.",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #39a500.",
             "scope": "window",
             "order": 60,
             "title": "Green",
-            "markdownDescription": "Optional shared green hue for the `n` and `N` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+            "markdownDescription": "Shared green hue for the `n` and `N` markers. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` IDs."
+          },
+          "hson.appearance.colorLibraryMarker": {
+            "type": "boolean",
+            "default": true,
+            "scope": "window",
+            "order": 70,
+            "title": "Color Library hson",
+            "markdownDescription": "Applies four-color branding to official lowercase `hson` usage and its first member-access period. Uppercase `HSON`, HSON bodies, diagnostics, and imports are unaffected."
+          },
+          "hson.appearance.librarySeparatorColor": {
+            "type": "string",
+            "default": "#7247d4",
+            "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #7247d4.",
+            "scope": "window",
+            "order": 80,
+            "title": "Library Separator Color",
+            "markdownDescription": "Colors only the first member-access period after an official lowercase `hson` root. Clear an explicit override to use the contributed theme color and `workbench.colorCustomizations` ID."
           }
         }
       },
@@ -192,42 +210,47 @@
       {
         "id": "hson.libraryMarker.h",
         "description": "HSON library facade marker: h (strong blue).",
-        "defaults": { "dark": "#69B8EE", "light": "#2A86C0", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
+        "defaults": { "dark": "#00adf6", "light": "#00adf6", "highContrast": "#00adf6", "highContrastLight": "#00adf6" }
       },
       {
         "id": "hson.libraryMarker.s",
         "description": "HSON library facade marker: s (strong yellow).",
-        "defaults": { "dark": "#F2D064", "light": "#AD8200", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
+        "defaults": { "dark": "#c9d100", "light": "#c9d100", "highContrast": "#c9d100", "highContrastLight": "#c9d100" }
       },
       {
         "id": "hson.libraryMarker.o",
         "description": "HSON library facade marker: o (strong pink).",
-        "defaults": { "dark": "#F18BA8", "light": "#D45179", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
+        "defaults": { "dark": "#ff4a8c", "light": "#ff4a8c", "highContrast": "#ff4a8c", "highContrastLight": "#ff4a8c" }
       },
       {
         "id": "hson.libraryMarker.n",
         "description": "HSON library facade marker: n (strong green).",
-        "defaults": { "dark": "#6CCA96", "light": "#31945E", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
+        "defaults": { "dark": "#39a500", "light": "#39a500", "highContrast": "#39a500", "highContrastLight": "#39a500" }
       },
       {
         "id": "hson.authoringMarker.h",
         "description": "HSON notation marker: H (soft blue).",
-        "defaults": { "dark": "#69B8EE", "light": "#2A86C0", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
+        "defaults": { "dark": "#00adf6", "light": "#00adf6", "highContrast": "#00adf6", "highContrastLight": "#00adf6" }
       },
       {
         "id": "hson.authoringMarker.s",
         "description": "HSON notation marker: S (soft yellow).",
-        "defaults": { "dark": "#F2D064", "light": "#AD8200", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
+        "defaults": { "dark": "#c9d100", "light": "#c9d100", "highContrast": "#c9d100", "highContrastLight": "#c9d100" }
       },
       {
         "id": "hson.authoringMarker.o",
         "description": "HSON notation marker: O (soft pink).",
-        "defaults": { "dark": "#F18BA8", "light": "#D45179", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
+        "defaults": { "dark": "#ff4a8c", "light": "#ff4a8c", "highContrast": "#ff4a8c", "highContrastLight": "#ff4a8c" }
       },
       {
         "id": "hson.authoringMarker.n",
         "description": "HSON notation marker: N (soft green).",
-        "defaults": { "dark": "#6CCA96", "light": "#31945E", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
+        "defaults": { "dark": "#39a500", "light": "#39a500", "highContrast": "#39a500", "highContrastLight": "#39a500" }
+      },
+      {
+        "id": "hson.libraryMarker.separator",
+        "description": "HSON library facade first member-access separator (violet).",
+        "defaults": { "dark": "#7247d4", "light": "#7247d4", "highContrast": "#7247d4", "highContrastLight": "#7247d4" }
       }
     ],
     "semanticTokenTypes": [

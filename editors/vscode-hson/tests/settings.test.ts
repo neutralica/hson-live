@@ -28,10 +28,23 @@ function check(name: string, body: () => void): void {
 check("settings use three coherent native groups", () => assert.deepEqual(groups.map(group => group.title), [
   "HSON › Appearance", "HSON › Schema Diagnostics", "HSON › Runtime / Provider",
 ]));
+check("appearance surface contains only the finalized eight controls", () => assert.deepEqual(
+  Object.keys(groups[0]!.properties),
+  [
+    "hson.appearance.libraryMarkerStrength",
+    "hson.appearance.authoringMarkerStrength",
+    "hson.appearance.blue",
+    "hson.appearance.yellow",
+    "hson.appearance.pink",
+    "hson.appearance.green",
+    "hson.appearance.colorLibraryMarker",
+    "hson.appearance.librarySeparatorColor",
+  ],
+));
 check("library strength has the exact stable key", () => assert.ok(properties["hson.appearance.libraryMarkerStrength"]));
 check("library strength defaults to full presence", () => assert.equal(properties["hson.appearance.libraryMarkerStrength"].default, 1));
 check("authoring strength has the exact stable key", () => assert.ok(properties["hson.appearance.authoringMarkerStrength"]));
-check("authoring strength defaults to sixty percent", () => assert.equal(properties["hson.appearance.authoringMarkerStrength"].default, 0.6));
+check("authoring strength defaults to seventy percent", () => assert.equal(properties["hson.appearance.authoringMarkerStrength"].default, 0.7));
 check("strength range is zero through one", () => {
   for (const key of ["hson.appearance.libraryMarkerStrength", "hson.appearance.authoringMarkerStrength"]) {
     assert.equal(properties[key].minimum, 0); assert.equal(properties[key].maximum, 1);
@@ -42,19 +55,32 @@ check("strength settings retain bounds without broken multiple-of restrictions",
   assert.equal(properties["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
 });
 check("appearance settings are window scoped", () => assert.equal(properties["hson.appearance.libraryMarkerStrength"].scope, "window"));
-check("four optional shared color fields are native empty-or-hex strings", () => {
-  assert.deepEqual(APPEARANCE_COLOR_KEYS, ["blue", "yellow", "orange", "green"]);
+check("four shared color fields have approved defaults and accept empty-or-hex overrides", () => {
+  assert.deepEqual(APPEARANCE_COLOR_KEYS, ["blue", "yellow", "pink", "green"]);
+  const defaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" } as const;
   for (const key of APPEARANCE_COLOR_KEYS) {
     const property = properties[`hson.appearance.${key}`];
-    assert.equal(property.default, ""); assert.equal(property.scope, "window");
+    assert.equal(property.default, defaults[key]); assert.equal(property.scope, "window");
     const pattern = new RegExp(property.pattern ?? "");
-    assert.ok(pattern.test("")); assert.ok(pattern.test("#69B8EE")); assert.ok(!pattern.test("blue"));
+    assert.ok(pattern.test("")); assert.ok(pattern.test("#00adf6")); assert.ok(!pattern.test("blue"));
   }
 });
 check("each explicit hue is shared by its lowercase and uppercase marker letters", () => {
-  for (const [lower, upper, key] of [["h", "H", "blue"], ["s", "S", "yellow"], ["o", "O", "orange"], ["n", "N", "green"]]) {
+  for (const [lower, upper, key] of [["h", "H", "blue"], ["s", "S", "yellow"], ["o", "O", "pink"], ["n", "N", "green"]]) {
     assert.equal(marker_color_key(lower), key); assert.equal(marker_color_key(upper), key);
   }
+});
+check("orange is hard-migrated to pink", () => assert.equal(properties["hson.appearance.orange"], undefined));
+check("lowercase branding toggle defaults on and is window scoped", () => {
+  assert.equal(properties["hson.appearance.colorLibraryMarker"].default, true);
+  assert.equal(properties["hson.appearance.colorLibraryMarker"].scope, "window");
+});
+check("library separator has the approved violet default and accepted hex forms", () => {
+  const property = properties["hson.appearance.librarySeparatorColor"];
+  assert.equal(property.default, "#7247d4"); assert.equal(property.scope, "window");
+  const pattern = new RegExp(property.pattern ?? "");
+  for (const value of ["", "#abc", "#abcd", "#abcdef", "#abcdef12"]) assert.ok(pattern.test(value));
+  assert.ok(!pattern.test("violet"));
 });
 check("runtime color parsing accepts hex and falls back for unset or invalid values", () => {
   assert.equal(appearance_color("#abc"), "#abc"); assert.equal(appearance_color("#69B8EECC"), "#69B8EECC");

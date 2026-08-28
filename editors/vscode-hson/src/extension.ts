@@ -15,7 +15,11 @@ import {
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
-import { hson_identity_marker_parts, hsonIdentityMarkers } from "./authoring-marker.js";
+import {
+  HSON_LIBRARY_SEPARATOR_COLOR_ID,
+  hson_identity_presentation,
+  hsonIdentityMarkers,
+} from "./authoring-marker.js";
 import {
   HSON_SETTINGS_QUERY,
   TRUSTED_CONFIGURATION_KEYS,
@@ -43,6 +47,21 @@ function toRange(document: vscode.TextDocument, spec: DocumentDiagnosticSpec): v
     document.positionAt(spec.range.start),
     document.positionAt(spec.range.end),
   );
+}
+
+function explicitAppearanceColor(
+  appearance: vscode.WorkspaceConfiguration,
+  key: string,
+): string | undefined {
+  const inspected = appearance.inspect<string>(key);
+  if (inspected === undefined) return undefined;
+  const explicitlyConfigured = inspected.globalValue !== undefined
+    || inspected.workspaceValue !== undefined
+    || inspected.workspaceFolderValue !== undefined
+    || inspected.globalLanguageValue !== undefined
+    || inspected.workspaceLanguageValue !== undefined
+    || inspected.workspaceFolderLanguageValue !== undefined;
+  return explicitlyConfigured ? appearance_color(appearance.get<string>(key)) : undefined;
 }
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -115,30 +134,45 @@ export function activate(context: vscode.ExtensionContext): void {
   // Exact h/s/o/n and H/S/O/N identity colors are presentation-only. Binding
   // discovery is the authority; decoration never participates in admission.
   let markerDecorations = new Map<string, vscode.TextEditorDecorationType>();
+  let colorLibraryMarker = true;
   const replaceMarkerDecorations = (): void => {
     for (const decoration of markerDecorations.values()) decoration.dispose();
     const appearance = vscode.workspace.getConfiguration("hson.appearance");
     const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), 1);
-    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), 0.6);
+    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), 0.7);
+    colorLibraryMarker = appearance.get<boolean>("colorLibraryMarker", true);
     markerDecorations = new Map(hsonIdentityMarkers.map((marker): [string, vscode.TextEditorDecorationType] => {
       const colorKey = marker_color_key(marker.letter);
-      const explicitColor = colorKey === undefined ? undefined : appearance_color(appearance.get<string>(colorKey));
+      const explicitColor = colorKey === undefined ? undefined : explicitAppearanceColor(appearance, colorKey);
       return [marker.colorId,
         vscode.window.createTextEditorDecorationType({
           color: explicitColor ?? new vscode.ThemeColor(marker.colorId),
           opacity: String(marker.strength === "strong" ? libraryStrength : authoringStrength),
         })];
-    }));
+    }).concat([[
+      HSON_LIBRARY_SEPARATOR_COLOR_ID,
+      vscode.window.createTextEditorDecorationType({
+        color: explicitAppearanceColor(appearance, "librarySeparatorColor")
+          ?? new vscode.ThemeColor(HSON_LIBRARY_SEPARATOR_COLOR_ID),
+        opacity: String(libraryStrength),
+      }),
+    ]]));
   };
   replaceMarkerDecorations();
   const presentMarkers = (editor: vscode.TextEditor): void => {
     const document = editor.document;
-    const parts = document.languageId === "typescript" || document.languageId === "typescriptreact"
-      ? hson_identity_marker_parts(document.fileName, document.getText()) : [];
+    const presentation = document.languageId === "typescript" || document.languageId === "typescriptreact"
+      ? hson_identity_presentation(document.fileName, document.getText(), colorLibraryMarker)
+      : { markers: [], separators: [] };
     for (const marker of hsonIdentityMarkers) {
       const decoration = markerDecorations.get(marker.colorId);
       if (decoration === undefined) continue;
-      editor.setDecorations(decoration, parts.filter(part => part.colorId === marker.colorId).map(part =>
+      editor.setDecorations(decoration, presentation.markers.filter(part => part.colorId === marker.colorId).map(part =>
+        new vscode.Range(document.positionAt(part.range.start), document.positionAt(part.range.end))));
+    }
+    const separatorDecoration = markerDecorations.get(HSON_LIBRARY_SEPARATOR_COLOR_ID);
+    if (separatorDecoration !== undefined) {
+      editor.setDecorations(separatorDecoration, presentation.separators.map(part =>
         new vscode.Range(document.positionAt(part.range.start), document.positionAt(part.range.end))));
     }
   };

@@ -18,11 +18,12 @@ trusted provider, Workspace Trust, completion, or application execution.
 Literal usage references to the official `hson` facade carry strong blue, yellow,
 pink, and green family colors; literal usage references to official `HSON` use
 the same hues with softer opacity. This includes bare references, member roots,
-validation calls, and `HSON` tagged templates. Import/export declarations and
-renamed imports retain ordinary host-theme presentation. Local, shadowed,
-wrong-package, property-name, and otherwise unrelated lookalikes receive no
-marker. Standalone `.hson` files do not invent one. All ordinary HSON body syntax
-remains controlled by the active syntax theme.
+validation calls, and `HSON` tagged templates. The first member-access period
+after an official lowercase `hson` root is violet; later periods are ordinary.
+Import/export declarations and renamed imports retain ordinary host-theme
+presentation. Local, shadowed, wrong-package, property-name, and otherwise
+unrelated lookalikes receive no marker. Standalone `.hson` files do not invent
+one. All ordinary HSON body syntax remains controlled by the active syntax theme.
 
 ## Settings
 
@@ -33,13 +34,20 @@ The initial user-facing surface is deliberately compact:
   (`hson.appearance.libraryMarkerStrength`, default `1.0`) controls the presence
   of official literal `hson` markers.
 - **HSON › Appearance: Authoring Marker Strength**
-  (`hson.appearance.authoringMarkerStrength`, default `0.60`) keeps official
+  (`hson.appearance.authoringMarkerStrength`, default `0.70`) keeps official
   literal `HSON` markers visibly quieter.
-- **HSON › Appearance: Blue / Yellow / Orange / Green**
-  (`hson.appearance.blue`, `.yellow`, `.orange`, `.green`, default empty) are
-  optional hexadecimal colors shared by the corresponding `hson` and `HSON`
-  letters. The Settings UI presents discoverable text fields accepting `#RGB`,
+- **HSON › Appearance: Blue / Yellow / Pink / Green**
+  (`hson.appearance.blue`, `.yellow`, `.pink`, `.green`) are hexadecimal colors
+  shared by the corresponding `hson` and `HSON` letters. Their shipped defaults
+  are `#00adf6`, `#c9d100`, `#ff4a8c`, and `#39a500`. The fields accept `#RGB`,
   `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`.
+- **HSON › Appearance: Color Library hson**
+  (`hson.appearance.colorLibraryMarker`, default `true`) controls only the
+  lowercase official library marker and its violet separator. Uppercase `HSON`,
+  HSON bodies, imports, diagnostics, and trusted runtime behavior are unaffected.
+- **HSON › Appearance: Library Separator Color**
+  (`hson.appearance.librarySeparatorColor`, default `#7247d4`) controls the first
+  member-access period immediately after an official lowercase `hson` root.
 - **HSON › Schema Diagnostics: Trusted Execution**
   (`hson.trustedSchemaDiagnostics.enabled`, default `false`, resource scope)
   permits project code execution only when Workspace Trust and separate HSON
@@ -50,43 +58,44 @@ The initial user-facing surface is deliberately compact:
   workspace folder. These execution-sensitive settings are restricted in
   Restricted Mode.
 
-Changing a strength or shared color recreates the marker decorations and refreshes
-visible editors immediately; no rebuild, reinstall, window reload, or runtime
-restart is required. Trusted-runtime configuration changes retire the old generation and
-invalidate consent for the previous configuration. The 150 ms validation
+Changing a strength, shared color, lowercase toggle, or separator color recreates
+the presentation decorations and refreshes visible editors immediately; no
+rebuild, reinstall, window reload, or runtime restart is required. Trusted-runtime
+configuration changes retire the old generation and invalidate consent for the
+previous configuration. The 150 ms validation
 debounce, request/startup timeouts, restart budget, queue limits, and log bounds
 remain implementation-owned safeguards. Schema completion stays on whenever a
 current authorized trusted runtime is available; it has no separate toggle.
 
-When a shared color is empty, each marker uses its independently tuned contributed
-light, dark, high-contrast, or high-contrast-light color. The existing color IDs
-remain the advanced theme-specific override path through
-`workbench.colorCustomizations`:
+When no non-empty user/workspace Appearance color override is configured, each
+marker uses its contributed theme color identity. `workbench.colorCustomizations`
+therefore remains the advanced override path:
 
 ```json
 {
   "workbench.colorCustomizations": {
-    "hson.libraryMarker.h": "#69B8EE",
-    "hson.libraryMarker.s": "#F2D064",
-    "hson.libraryMarker.o": "#F18BA8",
-    "hson.libraryMarker.n": "#6CCA96",
-    "hson.authoringMarker.h": "#69B8EE",
-    "hson.authoringMarker.s": "#F2D064",
-    "hson.authoringMarker.o": "#F18BA8",
-    "hson.authoringMarker.n": "#6CCA96"
+    "hson.libraryMarker.h": "#00adf6",
+    "hson.libraryMarker.s": "#c9d100",
+    "hson.libraryMarker.o": "#ff4a8c",
+    "hson.libraryMarker.n": "#39a500",
+    "hson.authoringMarker.h": "#00adf6",
+    "hson.authoringMarker.s": "#c9d100",
+    "hson.authoringMarker.o": "#ff4a8c",
+    "hson.authoringMarker.n": "#39a500",
+    "hson.libraryMarker.separator": "#7247d4"
   }
 }
 ```
 
-Dark strong defaults are `#69B8EE`, `#F2D064`, `#F18BA8`, and `#6CCA96`;
-light strong defaults are `#2A86C0`, `#AD8200`, `#D45179`, and `#31945E`.
-High-contrast strong defaults are `#6CB8F0`, `#F5D35D`, `#F58AA8`, and
-`#6BD092`; high-contrast-light strong defaults are `#005F9E`, `#6F5C00`,
-`#A51F50`, and `#096A36`. The authoring IDs use the same theme-specific RGB
-defaults; the Authoring Marker Strength setting supplies the default `0.60`
-opacity. An explicit shared Appearance color overrides that hue for both marker
-families; library and authoring strength still apply independently. A supplied
-alpha channel is respected and multiplied by strength.
+The contributed defaults use the approved blue `#00adf6`, yellow `#c9d100`, pink
+`#ff4a8c`, green `#39a500`, and separator violet `#7247d4` identities across
+dark, light, and high-contrast variants. Precedence is: a non-empty explicitly
+configured HSON Appearance color, then the corresponding theme color identity
+(including `workbench.colorCustomizations`), then its contributed default. An
+empty explicit field also falls back to the theme identity. The authoring IDs use
+the same hues; Authoring Marker Strength supplies the default `0.70` opacity.
+Library Marker Strength applies equally to lowercase letters and the violet
+separator. A supplied alpha channel is respected and multiplied by strength.
 
 Syntax diagnostics analyze only open in-memory documents. In the default secure
 mode the extension does not load a project or execute workspace code. It does

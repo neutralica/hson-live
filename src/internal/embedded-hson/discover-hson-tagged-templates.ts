@@ -126,7 +126,22 @@ export function read_supported_hson_import_symbols(
 export type HsonBindingReference = Readonly<{
   publicName: "HSON" | "hson";
   range: HostSourceRange;
+  memberSeparatorRange?: HostSourceRange;
 }>;
+
+function directMemberSeparatorRange(
+  node: ts.Identifier,
+  sourceFile: ts.SourceFile,
+): HostSourceRange | undefined {
+  const parent = node.parent;
+  if (!ts.isPropertyAccessExpression(parent)
+    || parent.expression !== node
+    || parent.questionDotToken !== undefined) {
+    return undefined;
+  }
+  const separator = parent.getChildren(sourceFile).find(child => child.kind === ts.SyntaxKind.DotToken);
+  return separator === undefined ? undefined : nodeRange(separator, sourceFile);
+}
 
 function isImportOrExportPosition(node: ts.Node): boolean {
   for (let current: ts.Node | undefined = node; current !== undefined; current = current.parent) {
@@ -162,7 +177,12 @@ export function discover_hson_binding_references(
       && !hasOverlappingDiagnostic(diagnostics, nodeRange(node, sourceFile))) {
       const symbol = checker.getSymbolAtLocation(node);
       if (symbol !== undefined && symbols[node.text].has(symbol)) {
-        result.push(Object.freeze({ publicName: node.text, range: nodeRange(node, sourceFile) }));
+        const memberSeparatorRange = node.text === "hson" ? directMemberSeparatorRange(node, sourceFile) : undefined;
+        result.push(Object.freeze({
+          publicName: node.text,
+          range: nodeRange(node, sourceFile),
+          ...(memberSeparatorRange === undefined ? {} : { memberSeparatorRange }),
+        }));
       }
     }
     ts.forEachChild(node, visit);

@@ -19,6 +19,7 @@ assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hson
 assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
   "hson.libraryMarker.h", "hson.libraryMarker.s", "hson.libraryMarker.o", "hson.libraryMarker.n",
   "hson.authoringMarker.h", "hson.authoringMarker.s", "hson.authoringMarker.o", "hson.authoringMarker.n",
+  "hson.libraryMarker.separator",
 ]);
 assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
@@ -26,14 +27,20 @@ assert.equal(manifest.contributes.commands.length, 4);
 const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
 assert.equal(configuration["hson.trustedSchemaDiagnostics.enabled"].default, false);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
-assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.6);
+assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.7);
 assert.equal(configuration["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
 assert.equal(configuration["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
-assert.deepEqual(["blue", "yellow", "orange", "green"].map(key => ({
+const appearanceDefaults = { blue: "#00adf6", yellow: "#c9d100", pink: "#ff4a8c", green: "#39a500" };
+assert.deepEqual(Object.keys(appearanceDefaults).map(key => ({
   key: `hson.appearance.${key}`,
   default: configuration[`hson.appearance.${key}`].default,
   scope: configuration[`hson.appearance.${key}`].scope,
-})), ["blue", "yellow", "orange", "green"].map(key => ({ key: `hson.appearance.${key}`, default: "", scope: "window" })));
+})), Object.entries(appearanceDefaults).map(([key, value]) => ({ key: `hson.appearance.${key}`, default: value, scope: "window" })));
+assert.equal(configuration["hson.appearance.orange"], undefined);
+assert.deepEqual({
+  enabled: configuration["hson.appearance.colorLibraryMarker"].default,
+  separator: configuration["hson.appearance.librarySeparatorColor"].default,
+}, { enabled: true, separator: "#7247d4" });
 assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
 assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("hson.trustedSchemaDiagnostics.module"));
 assert.ok(manifest.devDependencies.esbuild);
