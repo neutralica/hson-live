@@ -1,4 +1,5 @@
-import { rm } from "node:fs/promises";
+import { rm, copyFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
@@ -21,3 +22,4 @@ await build({
   legalComments: "none",
   logLevel: "info",
 });
+await copyFile(createRequire(import.meta.url).resolve("vscode-oniguruma/release/onig.wasm"), new URL("../dist/onig.wasm", import.meta.url));

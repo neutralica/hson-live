@@ -6,18 +6,25 @@ recoverable strings passed to official `fromHson` boundaries in TypeScript and
 TSX. In trusted Schema mode, `HSON` templates also support bounded structural
 completion.
 
-The tagged-template injection intentionally recognizes only the exact direct tag
-spelling `HSON`. Import aliases and facade/property forms are left to the
-semantic diagnostics layer. Highlighting is lexical presentation, not HSON
-validation: an official aliased import can receive parser diagnostics while
-retaining ordinary TypeScript template coloring.
+Highlighting and diagnostics share TypeScript binding-aware discovery of named
+`HSON` imports from `hson-live` and `hson-live/hson`, including renamed imports.
+Local/shadowed names, wrong packages, copied functions and wrappers are excluded.
+The existing HSON TextMate grammar supplies the template tokens, published through
+VS Code semantic tokens with HSON scope fallbacks. A spelling-only injection is
+not contributed. Invalid HSON and literal segments around interpolation are still
+highlighted. Neither highlighting nor secure diagnostics requires Schema, a
+trusted provider, Workspace Trust, completion, or application execution.
 
 Syntax diagnostics analyze only open in-memory documents. In the default secure
 mode the extension does not load a project or execute workspace code. It does
 not write helper files or modify user source.
-Substitution-free templates receive authoritative whole-HSON diagnostics.
+Substitution-free templates receive authoritative whole-HSON tag admission
+diagnostics, including raw-template newline normalization and UTF-16 mapping.
+Readable noncanonical formatting is accepted when the actual tag accepts it.
 Interpolated templates are discovered, but receive no speculative whole-source
 syntax diagnostic because their primitive values are known only at runtime.
+Irrevocable tokenizer failures before the first interpolation can still be
+reported securely; incomplete prefixes and unknown completed candidates cannot.
 
 Official Transform, LiveMap, and LiveTree `fromHson` calls also receive secure
 syntax checking when their argument is a direct string/no-substitution template
@@ -183,10 +190,8 @@ the map was not mutated.
    `;
    ```
 
-The direct `HSON` form receives the Pass 3 TextMate injection coloring.
-The alias may retain ordinary TypeScript template coloring, but both receive the
-same semantic diagnostics because import identity is resolved by the bundled
-TypeScript scanner.
+Direct and renamed official imports receive the same grammar-backed highlighting
+and admission diagnostics because both use the same TypeScript binding identity.
 
 Ordinary strings and templates inside `fromHson(...)` intentionally retain
 ordinary TypeScript coloring. D4 adds semantic diagnostics, not spelling-based
@@ -194,7 +199,17 @@ TextMate injection. `HSON\`...\`` remains the preferred embedded authoring form
 with first-class HSON presentation.
 
 Use **Developer: Inspect Editor Tokens and Scopes** in the Command Palette to
-inspect the emitted TextMate scopes.
+inspect the emitted HSON semantic tokens and their TextMate scope fallbacks.
+
+### Zero-Schema regression verification
+
+`npm run test:baseline` runs 24 focused recognition, grammar, admission, mapping
+and stale-publication checks. `npm run test:baseline:integration` runs the unsaved
+edit journey in trusted and genuinely restricted workspaces. Set
+`HSON_VSCODE_EXECUTABLE` to select a VS Code binary (the runner defaults to the
+ordinary macOS installation). `npm run test:baseline:installed` builds the actual
+VSIX and runs the same journey from a clean installed-extension directory, using
+an empty test-driver extension rather than a development override for HSON.
 
 ### Natural LiveMap Schema governance (D3)
 
@@ -223,7 +238,8 @@ Workspace Trust and explicit enablement are still both required. A Schema-only
 provider does not establish map correspondence: D3 needs the existing D1
 capture path bound to the source sites. The private provider instrumenter and
 its limits are documented in
-[`src/internal/trusted-schema-diagnostics/README.md`](../../src/internal/trusted-schema-diagnostics/README.md#d3-natural-map-association).
+`src/internal/trusted-schema-diagnostics/README.md` in the source repository
+(D3 natural map association section).
 There is no automatic application import, public provenance API, or new
 validation API. The editor makes no claim that application execution reached
 `schema.use`.

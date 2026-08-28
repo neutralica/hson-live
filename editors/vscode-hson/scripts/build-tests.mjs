@@ -10,6 +10,8 @@ await build({
   entryPoints: {
     unit: "tests/runtime.test.ts",
     integration: "tests/integration/suite.ts",
+    "baseline-integration": "tests/integration/baseline.ts",
+    baseline: "tests/baseline.test.ts",
     benchmark: "tests/benchmark.ts",
   },
   outdir: ".test-dist",

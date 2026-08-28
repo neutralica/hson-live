@@ -7,11 +7,10 @@ import {
 } from "../../../src/core/errors.js";
 import { discover_hson_tagged_templates } from "../../../src/internal/embedded-hson/discover-hson-tagged-templates.js";
 import {
-  read_embedded_hson_body,
   source_point_range_at,
   type HostSourceRange,
 } from "../../../src/internal/embedded-hson/embedded-hson-source.js";
-import { map_transform_error_to_embedded_source } from "../../../src/internal/embedded-hson/map-transform-error.js";
+import { diagnose_hson_tag, diagnose_hson_prefix } from "./tag-admission.js";
 import { discover_static_from_hson_sources } from "../../../src/internal/embedded-hson/discover-static-from-hson-sources.js";
 import {
   map_static_hson_point,
@@ -121,32 +120,9 @@ function validateEmbedded(input: DocumentDiagnosticInput): readonly DocumentDiag
   const discovery = discover_hson_tagged_templates(input.fileName, input.text);
   const diagnostics: DocumentDiagnosticSpec[] = [];
   for (const source of discovery.sources) {
-    try {
-      hson.fromHson(read_embedded_hson_body(source)).toNode();
-    } catch (error) {
-      const details = read_transform_error_details(error);
-      if (details === undefined) throw error;
-      const mapping = map_transform_error_to_embedded_source(error, source);
-      if (mapping.status === "invalid-descriptor") {
-        throw new Error(`Invalid embedded HSON descriptor: ${mapping.reason}`);
-      }
-      const related = Object.freeze(mapping.related.flatMap((item) => {
-        if (item.mapping.status !== "mapped") return [];
-        return [Object.freeze({
-          message: `Related HSON source (${item.role}).`,
-          range: item.mapping.range,
-        })];
-      }));
-      diagnostics.push(Object.freeze({
-        message: error instanceof Error ? error.message : "HSON validation failed.",
-        range: mapping.range,
-        source: DIAGNOSTIC_SOURCE,
-        code: details.code,
-        precision: mapping.status === "fallback" ? "fallback" : mapping.precision,
-        related,
-      }));
-    }
+    diagnostics.push(...diagnose_hson_tag(source));
   }
+  for (const source of discovery.interpolated) diagnostics.push(...diagnose_hson_prefix(source));
   const staticSources = discover_static_from_hson_sources(input.fileName, input.text).sources;
   for (const source of staticSources) {
     try {

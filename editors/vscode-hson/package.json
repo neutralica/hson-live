@@ -2,8 +2,9 @@
   "name": "hson-language",
   "displayName": "HSON Language",
   "description": "Syntax highlighting and authoritative diagnostics for HSON files and supported HSON tagged templates.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "terminal-gothic",
+  "repository": { "type": "git", "url": "https://github.com/neutralica/hson-live.git", "directory": "editors/vscode-hson" },
   "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "main": "./dist/extension.js",
@@ -28,9 +29,12 @@
     "build": "node ./scripts/build.mjs",
     "check": "tsc -p ./tsconfig.json --noEmit && node ./tests/validate-artifact.mjs",
     "test": "npm run test:grammar && npm run test:unit",
-    "test:grammar": "node ./tests/grammar.test.mjs",
+    "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
     "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
+    "test:baseline": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/baseline.cjs",
+    "test:baseline:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-baseline.mjs",
+    "test:baseline:installed": "npm run package:vsix && node ./scripts/build-tests.mjs && HSON_BASELINE_VSIX=hson-language.vsix node ./tests/integration/run-baseline.mjs",
     "benchmark": "node ./scripts/build-tests.mjs && node ./.test-dist/benchmark.cjs",
     "package:dry-run": "npm run build && vsce ls --tree",
     "package:vsix": "npm run build && vsce package --no-dependencies --out hson-language.vsix"
@@ -64,20 +68,30 @@
         "language": "hson",
         "scopeName": "source.hson",
         "path": "./syntaxes/hson.tmLanguage.json"
-      },
-      {
-        "scopeName": "source.hson.template.injection",
-        "path": "./syntaxes/hson-template-injection.tmLanguage.json",
-        "injectTo": [
-          "source.ts",
-          "source.tsx"
-        ],
-        "embeddedLanguages": {
-          "meta.embedded.block.hson": "hson",
-          "meta.embedded.expression.ts": "typescript"
-        }
       }
-    ]
+    ],
+    "semanticTokenTypes": [
+      { "id": "hsonType", "superType": "type", "description": "HSON grammar name" },
+      { "id": "hsonProperty", "superType": "property", "description": "HSON grammar attribute" },
+      { "id": "hsonString", "superType": "string", "description": "HSON grammar string" },
+      { "id": "hsonNumber", "superType": "number", "description": "HSON grammar number" },
+      { "id": "hsonKeyword", "superType": "keyword", "description": "HSON grammar constant" },
+      { "id": "hsonComment", "superType": "comment", "description": "HSON grammar comment" },
+      { "id": "hsonOperator", "superType": "operator", "description": "HSON grammar punctuation" },
+      { "id": "hsonEscape", "superType": "string", "description": "HSON grammar escape" },
+      { "id": "hsonInvalid", "description": "HSON grammar invalid token" }
+    ],
+    "semanticTokenScopes": [{ "scopes": {
+      "hsonType": ["entity.name.type.hson"],
+      "hsonProperty": ["entity.other.attribute-name.hson"],
+      "hsonString": ["string.quoted.double.hson", "string.unquoted.attribute-value.hson"],
+      "hsonNumber": ["constant.numeric.hson"],
+      "hsonKeyword": ["constant.language.boolean.hson", "constant.language.null.hson"],
+      "hsonComment": ["comment.line.double-slash.hson"],
+      "hsonOperator": ["punctuation.definition.tag.begin.hson", "keyword.operator.assignment.hson"],
+      "hsonEscape": ["constant.character.escape.hson"],
+      "hsonInvalid": ["invalid.illegal.hson"]
+    }}]
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

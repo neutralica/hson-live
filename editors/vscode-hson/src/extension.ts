@@ -13,6 +13,7 @@ import {
   type DiagnosticPublisher,
 } from "./diagnostics.js";
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
+import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -81,6 +82,23 @@ export function activate(context: vscode.ExtensionContext): void {
   };
 
   context.subscriptions.push(start_diagnostics(host, publisher));
+  // Independent of all trusted clients, associations and completion providers.
+  const legend = new vscode.SemanticTokensLegend(Object.keys(hsonTokenScopes));
+  const grammar = load_hson_grammar(context.extensionPath);
+  context.subscriptions.push(vscode.languages.registerDocumentSemanticTokensProvider(
+    [{ language: "typescript" }, { language: "typescriptreact" }], {
+      async provideDocumentSemanticTokens(document, cancellation) {
+        const version = document.version, text = document.getText();
+        const loaded = await grammar;
+        if (cancellation.isCancellationRequested || document.isClosed || document.version !== version) return undefined;
+        const builder = new vscode.SemanticTokensBuilder(legend);
+        for (const token of hson_highlights(loaded, document.fileName, text)) {
+          builder.push(new vscode.Range(document.positionAt(token.range.start), document.positionAt(token.range.end)), token.type);
+        }
+        if (cancellation.isCancellationRequested || document.version !== version) return undefined;
+        return builder.build();
+      },
+    }, legend));
   const schemaCollection = vscode.languages.createDiagnosticCollection("hson-schema");
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
   const output = vscode.window.createOutputChannel("HSON Schema diagnostics");

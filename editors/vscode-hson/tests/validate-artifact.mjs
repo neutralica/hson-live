@@ -6,7 +6,6 @@ const readJson = async (path) => JSON.parse(await readFile(new URL(path, import.
 const manifest = await readJson("../package.json");
 const languageConfiguration = await readJson("../language-configuration.json");
 const coreGrammar = await readJson("../syntaxes/hson.tmLanguage.json");
-const injectionGrammar = await readJson("../syntaxes/hson-template-injection.tmLanguage.json");
 
 assert.equal(manifest.main, "./dist/extension.js");
 assert.deepEqual(manifest.activationEvents, [
@@ -15,8 +14,9 @@ assert.deepEqual(manifest.activationEvents, [
 ]);
 assert.deepEqual(manifest.contributes.languages[0].extensions, [".hson"]);
 assert.equal(coreGrammar.scopeName, "source.hson");
-assert.deepEqual(manifest.contributes.grammars[1].injectTo, ["source.ts", "source.tsx"]);
-assert.match(injectionGrammar.injectionSelector, /source\.ts/);
+assert.equal(manifest.contributes.grammars.length, 1, "spelling-only injection must not bypass binding discovery");
+assert.ok(manifest.contributes.semanticTokenTypes.some(type => type.id === "hsonType"));
+assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
 assert.equal(manifest.contributes.commands, undefined);
 assert.equal(manifest.contributes.configuration.properties["hson.trustedSchemaDiagnostics.enabled"].default, false);

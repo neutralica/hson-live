@@ -13,6 +13,8 @@
     "src/**/*.ts",
     "tests/runtime.test.ts",
     "tests/benchmark.ts",
-    "tests/integration/suite.ts"
+    "tests/integration/suite.ts",
+    "tests/integration/baseline.ts",
+    "tests/baseline.test.ts"
   ]
 }
