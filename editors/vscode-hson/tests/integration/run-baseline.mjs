@@ -14,7 +14,9 @@ await writeFile(join(workspace, "baseline.ts"), 'import { hson, hson as library,
 await writeFile(join(workspace, "provider.mjs"), 'import { writeFileSync } from "node:fs"; writeFileSync(new URL("./provider-executed",import.meta.url),"unexpected");');
 await mkdir(join(workspace, ".vscode"));
 await writeFile(join(workspace, ".vscode/settings.json"), JSON.stringify({
-  "hson.trustedSchemaDiagnostics.enabled": false,
+  // A repository-authored preference is deliberately insufficient: the
+  // extension-owned consent receipt is absent in both isolated profiles.
+  "hson.trustedSchemaDiagnostics.enabled": true,
   "hson.trustedSchemaDiagnostics.module": "provider.mjs",
   "hson.trustedSchemaDiagnostics.hsonModule": "provider.mjs",
 }));

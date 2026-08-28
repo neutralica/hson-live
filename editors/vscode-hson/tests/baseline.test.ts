@@ -127,14 +127,14 @@ async function run(): Promise<void> {
     assert.equal(manifest.contributes.grammars.length, 1, 'no spelling-only injection');
     assert.deepEqual(manifest.contributes.colors.map((color: { id: string }) => color.id), hsonIdentityMarkers.map(marker => marker.colorId));
     assert.deepEqual(manifest.contributes.colors.map((color: { defaults: object }) => color.defaults), [
-      { dark: '#55A7E3', light: '#0D6FAE', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
-      { dark: '#E7C34D', light: '#806A00', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
-      { dark: '#E97A9A', light: '#B82E61', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
-      { dark: '#59BA82', light: '#147A45', highContrast: '#6BD092', highContrastLight: '#096A36' },
-      { dark: '#55A7E3DB', light: '#0D6FAEE0', highContrast: '#6CB8F0EB', highContrastLight: '#005F9EEB' },
-      { dark: '#E7C34DDB', light: '#806A00E0', highContrast: '#F5D35DEB', highContrastLight: '#6F5C00EB' },
-      { dark: '#E97A9ADB', light: '#B82E61E0', highContrast: '#F58AA8EB', highContrastLight: '#A51F50EB' },
-      { dark: '#59BA82DB', light: '#147A45E0', highContrast: '#6BD092EB', highContrastLight: '#096A36EB' },
+      { dark: '#69B8EE', light: '#2A86C0', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
+      { dark: '#F2D064', light: '#AD8200', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
+      { dark: '#F18BA8', light: '#D45179', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
+      { dark: '#6CCA96', light: '#31945E', highContrast: '#6BD092', highContrastLight: '#096A36' },
+      { dark: '#69B8EE', light: '#2A86C0', highContrast: '#6CB8F0', highContrastLight: '#005F9E' },
+      { dark: '#F2D064', light: '#AD8200', highContrast: '#F5D35D', highContrastLight: '#6F5C00' },
+      { dark: '#F18BA8', light: '#D45179', highContrast: '#F58AA8', highContrastLight: '#A51F50' },
+      { dark: '#6CCA96', light: '#31945E', highContrast: '#6BD092', highContrastLight: '#096A36' },
     ]);
   });
   check("interpolation preserves literal highlighting and excludes expressions", () => {

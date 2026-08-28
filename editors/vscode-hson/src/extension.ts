@@ -16,6 +16,17 @@ import {
 import type { DocumentDiagnosticSpec } from "./document-diagnostics.js";
 import { hson_highlights, hsonTokenScopes, load_hson_grammar } from "./highlighting.js";
 import { hson_identity_marker_parts, hsonIdentityMarkers } from "./authoring-marker.js";
+import {
+  HSON_SETTINGS_QUERY,
+  TRUSTED_CONFIGURATION_KEYS,
+  TRUSTED_CONFIGURATION_SECTION,
+  appearance_color,
+  marker_strength,
+  marker_color_key,
+  trusted_consent_key,
+  trusted_execution_fingerprint,
+  type TrustedExecutionConfiguration,
+} from "./settings.js";
 
 function adaptDocument(document: vscode.TextDocument): DiagnosticDocument {
   return Object.freeze({
@@ -103,8 +114,23 @@ export function activate(context: vscode.ExtensionContext): void {
     }, legend));
   // Exact h/s/o/n and H/S/O/N identity colors are presentation-only. Binding
   // discovery is the authority; decoration never participates in admission.
-  const markerDecorations = new Map(hsonIdentityMarkers.map(marker => [marker.colorId,
-    vscode.window.createTextEditorDecorationType({ color: new vscode.ThemeColor(marker.colorId) })]));
+  let markerDecorations = new Map<string, vscode.TextEditorDecorationType>();
+  const replaceMarkerDecorations = (): void => {
+    for (const decoration of markerDecorations.values()) decoration.dispose();
+    const appearance = vscode.workspace.getConfiguration("hson.appearance");
+    const libraryStrength = marker_strength(appearance.get<number>("libraryMarkerStrength"), 1);
+    const authoringStrength = marker_strength(appearance.get<number>("authoringMarkerStrength"), 0.6);
+    markerDecorations = new Map(hsonIdentityMarkers.map((marker): [string, vscode.TextEditorDecorationType] => {
+      const colorKey = marker_color_key(marker.letter);
+      const explicitColor = colorKey === undefined ? undefined : appearance_color(appearance.get<string>(colorKey));
+      return [marker.colorId,
+        vscode.window.createTextEditorDecorationType({
+          color: explicitColor ?? new vscode.ThemeColor(marker.colorId),
+          opacity: String(marker.strength === "strong" ? libraryStrength : authoringStrength),
+        })];
+    }));
+  };
+  replaceMarkerDecorations();
   const presentMarkers = (editor: vscode.TextEditor): void => {
     const document = editor.document;
     const parts = document.languageId === "typescript" || document.languageId === "typescriptreact"
@@ -120,12 +146,17 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const editor of vscode.window.visibleTextEditors) presentMarkers(editor);
   };
   presentVisibleMarkers();
-  context.subscriptions.push(...markerDecorations.values(),
+  context.subscriptions.push({ dispose(): void { for (const decoration of markerDecorations.values()) decoration.dispose(); } },
     vscode.window.onDidChangeVisibleTextEditors(presentVisibleMarkers),
     vscode.workspace.onDidChangeTextDocument(event => {
       for (const editor of vscode.window.visibleTextEditors) {
         if (editor.document === event.document) presentMarkers(editor);
       }
+    }),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (!event.affectsConfiguration("hson.appearance")) return;
+      replaceMarkerDecorations();
+      presentVisibleMarkers();
     }));
   const schemaCollection = vscode.languages.createDiagnosticCollection("hson-schema");
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 10);
@@ -134,7 +165,26 @@ export function activate(context: vscode.ExtensionContext): void {
   const clients = new Map<string, TrustedSchemaClient>();
   const files = new Map<string, ReadonlySet<string>>();
   const staleProviders = new Set<string>();
+  const pendingConsent = new Set<string>();
   const documentTexts = new Map(vscode.workspace.textDocuments.map(doc => [doc.uri.toString(), doc.getText()]));
+  const executionConfiguration = (uri: vscode.Uri): TrustedExecutionConfiguration => {
+    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
+    return {
+      module: configuration.get<string>("module", ""),
+      hsonModule: configuration.get<string>("hsonModule", ""),
+      runtimeEntry: configuration.get<string>("runtimeEntry", ""),
+      execArgv: configuration.get<string[]>("execArgv", []),
+    };
+  };
+  const hasConsent = (folder: vscode.WorkspaceFolder, uri: vscode.Uri): boolean => context.workspaceState.get<string>(
+    trusted_consent_key(folder.uri.toString()),
+  ) === trusted_execution_fingerprint(executionConfiguration(uri));
+  const trustedExecutionAvailable = (uri: vscode.Uri): boolean => {
+    const folder = vscode.workspace.getWorkspaceFolder(uri);
+    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
+    return vscode.workspace.isTrusted && folder !== undefined && configuration.get<boolean>("enabled", false)
+      && hasConsent(folder, uri);
+  };
   const describe = (): void => {
     const uri = vscode.window.activeTextEditor?.document.uri.toString();
     const state = uri === undefined ? undefined : statuses.get(uri);
@@ -163,8 +213,8 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!vscode.workspace.isTrusted) return undefined;
       const uri = vscode.Uri.parse(document.uri);
       const folder = vscode.workspace.getWorkspaceFolder(uri);
-      const config = vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", uri);
-      if (!config.get<boolean>("enabled", false) || folder === undefined) return undefined;
+      const config = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
+      if (folder === undefined || !trustedExecutionAvailable(uri)) return undefined;
       const key = folder.uri.toString();
       if (staleProviders.has(key)) return undefined;
       const previous = clients.get(key);
@@ -187,10 +237,17 @@ export function activate(context: vscode.ExtensionContext): void {
       return client;
     },
     status(document, status, message) {
-      const config = vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", vscode.Uri.parse(document.uri));
-      const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.parse(document.uri));
-      statuses.set(document.uri, { status: config.get<boolean>("enabled", false) && vscode.workspace.isTrusted
-        ? folder !== undefined && staleProviders.has(folder.uri.toString()) ? "stale" : status : "off", message });
+      const uri = vscode.Uri.parse(document.uri);
+      const config = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, uri);
+      const folder = vscode.workspace.getWorkspaceFolder(uri);
+      const configured = config.get<boolean>("enabled", false);
+      const unavailableMessage = !configured ? "Trusted Schema diagnostics are disabled."
+        : !vscode.workspace.isTrusted ? "Workspace Trust is required before project code can execute."
+        : folder === undefined ? "The document is not contained by a workspace folder."
+        : !hasConsent(folder, uri) ? "This provider/runtime configuration is awaiting explicit HSON consent."
+        : message;
+      statuses.set(document.uri, { status: configured && vscode.workspace.isTrusted && folder !== undefined && hasConsent(folder, uri)
+        ? staleProviders.has(folder.uri.toString()) ? "stale" : status : "off", message: unavailableMessage });
       describe();
     },
     measure(result, perceivedMs) {
@@ -205,17 +262,88 @@ export function activate(context: vscode.ExtensionContext): void {
     clients.clear(); files.clear(); staleProviders.clear();
     controller.refresh();
   };
+  const selectedFolder = (): vscode.WorkspaceFolder | undefined => {
+    const active = vscode.window.activeTextEditor?.document.uri;
+    return active === undefined ? vscode.workspace.workspaceFolders?.[0] : vscode.workspace.getWorkspaceFolder(active);
+  };
+  const resourceFor = (folder: vscode.WorkspaceFolder): vscode.Uri => {
+    const active = vscode.window.activeTextEditor?.document.uri;
+    return active !== undefined && vscode.workspace.getWorkspaceFolder(active)?.uri.toString() === folder.uri.toString()
+      ? active : folder.uri;
+  };
+  const requestConsent = async (folder: vscode.WorkspaceFolder, resource: vscode.Uri): Promise<boolean> => {
+    const key = folder.uri.toString();
+    if (hasConsent(folder, resource)) return true;
+    if (!vscode.workspace.isTrusted) {
+      void vscode.window.showWarningMessage("HSON trusted Schema diagnostics remain off until this workspace is trusted through VS Code Workspace Trust.");
+      return false;
+    }
+    const execution = executionConfiguration(resource);
+    if (!execution.module || !execution.hsonModule) {
+      void vscode.window.showWarningMessage("Configure both the HSON Provider Entry and HSON Runtime Module before enabling trusted Schema diagnostics.", "Open HSON Settings")
+        .then(action => action === "Open HSON Settings" && vscode.commands.executeCommand("hson.openSettings"));
+      return false;
+    }
+    if (pendingConsent.has(key)) return false;
+    pendingConsent.add(key);
+    try {
+      const allow = process.env.HSON_D2_TEST_WORKSPACE !== undefined ? "Allow Trusted Execution" : await vscode.window.showWarningMessage(
+        `Allow HSON to execute project code from “${folder.name}” with your user permissions in a supervised separate process? Schema definitions, constraints, recurse callbacks, and module initialization may run. This is not a security sandbox.`,
+        { modal: true },
+        "Allow Trusted Execution",
+      );
+      if (allow !== "Allow Trusted Execution") return false;
+      await context.workspaceState.update(trusted_consent_key(key), trusted_execution_fingerprint(execution));
+      reconfigure();
+      return true;
+    } finally {
+      pendingConsent.delete(key);
+    }
+  };
+  const updateEnabled = async (value: boolean): Promise<void> => {
+    const folder = selectedFolder();
+    if (folder === undefined) {
+      void vscode.window.showWarningMessage("Open a workspace folder before configuring HSON trusted Schema diagnostics.");
+      return;
+    }
+    const resource = resourceFor(folder);
+    const configuration = vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, resource);
+    const target = (vscode.workspace.workspaceFolders?.length ?? 0) > 1
+      ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
+    await configuration.update("enabled", value, target);
+    if (!value) {
+      await context.workspaceState.update(trusted_consent_key(folder.uri.toString()), undefined);
+      reconfigure();
+      return;
+    }
+    await requestConsent(folder, resource);
+  };
+  statusBar.command = "hson.openSettings";
+  context.subscriptions.push(
+    vscode.commands.registerCommand("hson.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", HSON_SETTINGS_QUERY)),
+    vscode.commands.registerCommand("hson.enableTrustedSchemaDiagnostics", () => updateEnabled(true)),
+    vscode.commands.registerCommand("hson.disableTrustedSchemaDiagnostics", () => updateEnabled(false)),
+    vscode.commands.registerCommand("hson.restartTrustedSchemaRuntime", async () => {
+      const folder = selectedFolder();
+      if (folder === undefined || !trustedExecutionAvailable(resourceFor(folder))) {
+        void vscode.window.showWarningMessage("HSON trusted Schema diagnostics are not currently authorized and available.");
+        return;
+      }
+      reconfigure();
+      void vscode.window.showInformationMessage("HSON trusted Schema runtime restarted.");
+    }),
+  );
   // Manual invocation only: no punctuation-trigger spam or expression ownership.
   context.subscriptions.push(vscode.languages.registerCompletionItemProvider(["typescript", "typescriptreact"], {
     async provideCompletionItems(document, position, token) {
       const folder = vscode.workspace.getWorkspaceFolder(document.uri);
-      if (folder === undefined || !vscode.workspace.isTrusted || !vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", document.uri).get<boolean>("enabled", false)) return [];
+      if (folder === undefined || !trustedExecutionAvailable(document.uri)) return [];
       const key = folder.uri.toString();
       const client = clients.get(key);
       if (client === undefined || staleProviders.has(key)) return [];
       const snapshot = adaptDocument(document);
       const current = () => !token.isCancellationRequested && document.version === snapshot.version && clients.get(key) === client
-        && !staleProviders.has(key) && vscode.workspace.isTrusted && vscode.workspace.getConfiguration("hson.trustedSchemaDiagnostics", document.uri).get<boolean>("enabled", false);
+        && !staleProviders.has(key) && trustedExecutionAvailable(document.uri);
       const result = await client.complete(snapshot, document.offsetAt(position), current);
       if (!current() || result.completion?.range === undefined) return [];
       const started = performance.now();
@@ -257,7 +385,16 @@ export function activate(context: vscode.ExtensionContext): void {
         }
       }
     }),
-    vscode.workspace.onDidChangeConfiguration(event => { if (event.affectsConfiguration("hson.trustedSchemaDiagnostics")) reconfigure(); }),
+    vscode.workspace.onDidChangeConfiguration(event => {
+      if (!TRUSTED_CONFIGURATION_KEYS.some(key => event.affectsConfiguration(key))) return;
+      reconfigure();
+      for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        const resource = resourceFor(folder);
+        if (vscode.workspace.getConfiguration(TRUSTED_CONFIGURATION_SECTION, resource).get<boolean>("enabled", false)) {
+          void requestConsent(folder, resource);
+        }
+      }
+    }),
     vscode.workspace.onDidGrantWorkspaceTrust(reconfigure),
     vscode.workspace.onDidChangeWorkspaceFolders(reconfigure),
     vscode.window.onDidChangeActiveTextEditor(describe),

@@ -24,29 +24,69 @@ wrong-package, property-name, and otherwise unrelated lookalikes receive no
 marker. Standalone `.hson` files do not invent one. All ordinary HSON body syntax
 remains controlled by the active syntax theme.
 
-The identity markers use appearance-aware editor color IDs. Users may override
-either strength in `workbench.colorCustomizations` without editing the extension:
+## Settings
+
+Run **HSON: Open Settings** or search Settings for `@ext:terminal-gothic.hson-language`.
+The initial user-facing surface is deliberately compact:
+
+- **HSON › Appearance: Library Marker Strength**
+  (`hson.appearance.libraryMarkerStrength`, default `1.0`) controls the presence
+  of official literal `hson` markers.
+- **HSON › Appearance: Authoring Marker Strength**
+  (`hson.appearance.authoringMarkerStrength`, default `0.60`) keeps official
+  literal `HSON` markers visibly quieter.
+- **HSON › Appearance: Blue / Yellow / Orange / Green**
+  (`hson.appearance.blue`, `.yellow`, `.orange`, `.green`, default empty) are
+  optional hexadecimal colors shared by the corresponding `hson` and `HSON`
+  letters. The Settings UI presents discoverable text fields accepting `#RGB`,
+  `#RGBA`, `#RRGGBB`, or `#RRGGBBAA`.
+- **HSON › Schema Diagnostics: Trusted Execution**
+  (`hson.trustedSchemaDiagnostics.enabled`, default `false`, resource scope)
+  permits project code execution only when Workspace Trust and separate HSON
+  consent are also present.
+- **HSON › Runtime / Provider** contains the existing resource-scoped Provider
+  Entry, HSON Runtime Module, optional Runtime Entry, and Node Arguments needed
+  by the current D1–D6 trusted runtime. Paths are relative to the containing
+  workspace folder. These execution-sensitive settings are restricted in
+  Restricted Mode.
+
+Changing a strength or shared color recreates the marker decorations and refreshes
+visible editors immediately; no rebuild, reinstall, window reload, or runtime
+restart is required. Trusted-runtime configuration changes retire the old generation and
+invalidate consent for the previous configuration. The 150 ms validation
+debounce, request/startup timeouts, restart budget, queue limits, and log bounds
+remain implementation-owned safeguards. Schema completion stays on whenever a
+current authorized trusted runtime is available; it has no separate toggle.
+
+When a shared color is empty, each marker uses its independently tuned contributed
+light, dark, high-contrast, or high-contrast-light color. The existing color IDs
+remain the advanced theme-specific override path through
+`workbench.colorCustomizations`:
 
 ```json
 {
   "workbench.colorCustomizations": {
-    "hson.libraryMarker.h": "#55A7E3",
-    "hson.libraryMarker.s": "#E7C34D",
-    "hson.libraryMarker.o": "#E97A9A",
-    "hson.libraryMarker.n": "#59BA82",
-    "hson.authoringMarker.h": "#55A7E3DB",
-    "hson.authoringMarker.s": "#E7C34DDB",
-    "hson.authoringMarker.o": "#E97A9ADB",
-    "hson.authoringMarker.n": "#59BA82DB"
+    "hson.libraryMarker.h": "#69B8EE",
+    "hson.libraryMarker.s": "#F2D064",
+    "hson.libraryMarker.o": "#F18BA8",
+    "hson.libraryMarker.n": "#6CCA96",
+    "hson.authoringMarker.h": "#69B8EE",
+    "hson.authoringMarker.s": "#F2D064",
+    "hson.authoringMarker.o": "#F18BA8",
+    "hson.authoringMarker.n": "#6CCA96"
   }
 }
 ```
 
-Dark strong defaults are `#55A7E3`, `#E7C34D`, `#E97A9A`, and `#59BA82`;
-light strong defaults are `#0D6FAE`, `#806A00`, `#B82E61`, and `#147A45`.
-The corresponding `HSON` colors use those same RGB hues at 86% dark or 88%
-light opacity, keeping notation quieter than the library facade. High-contrast
-themes use brighter hues and approximately 92% opacity for the soft form.
+Dark strong defaults are `#69B8EE`, `#F2D064`, `#F18BA8`, and `#6CCA96`;
+light strong defaults are `#2A86C0`, `#AD8200`, `#D45179`, and `#31945E`.
+High-contrast strong defaults are `#6CB8F0`, `#F5D35D`, `#F58AA8`, and
+`#6BD092`; high-contrast-light strong defaults are `#005F9E`, `#6F5C00`,
+`#A51F50`, and `#096A36`. The authoring IDs use the same theme-specific RGB
+defaults; the Authoring Marker Strength setting supplies the default `0.60`
+opacity. An explicit shared Appearance color overrides that hue for both marker
+families; library and authoring strength still apply independently. A supplied
+alpha channel is respected and multiplied by strength.
 
 Syntax diagnostics analyze only open in-memory documents. In the default secure
 mode the extension does not load a project or execute workspace code. It does
@@ -87,10 +127,25 @@ and `fromHson` when you already have HSON source.
 
 ## Trusted Schema diagnostics (D2, opt in)
 
-Both VS Code Workspace Trust and `hson.trustedSchemaDiagnostics.enabled: true`
-are required. Workspace Trust alone never enables project execution. Restricted
-Mode retains highlighting and secure syntax diagnostics. This is trusted Node
-execution, not a sandbox.
+VS Code Workspace Trust, `hson.trustedSchemaDiagnostics.enabled: true`, and a
+separate HSON consent receipt for the containing workspace folder and exact
+provider/runtime configuration are all required. Workspace Trust alone never
+enables project execution. A checked-in workspace setting can express preference
+but cannot create the consent receipt, so it remains inert until the user accepts
+the HSON execution warning or runs **HSON: Enable Trusted Schema Diagnostics**.
+Changing a provider path, runtime path, runtime entry, or Node argument invalidates
+the receipt and requires consent for the new configuration. Restricted Mode
+retains highlighting and secure syntax diagnostics. This is trusted Node
+execution with the user's permissions in a supervised separate process, not a
+security sandbox.
+
+The status-bar item reports `off`, `waiting`, `current-valid`, `current-invalid`,
+`stale`, `ambiguous`, `unavailable`, or `runtime-failed`; its tooltip explains
+the active document's state and never treats “no diagnostic” as proof of
+validity. Use **HSON: Disable Trusted Schema Diagnostics** to stop new trusted
+work, clear trusted diagnostics, and dispose the runtime. Use **HSON: Restart
+Trusted Schema Runtime** after an external provider repair; restart is available
+only while the exact configuration is trusted and authorized.
 
 Configure a Schema-only registration module, **not the application entrypoint**:
 

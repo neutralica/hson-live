@@ -9,6 +9,7 @@ await build({
   absWorkingDir: extensionRoot,
   entryPoints: {
     unit: "tests/runtime.test.ts",
+    settings: "tests/settings.test.ts",
     integration: "tests/integration/suite.ts",
     "baseline-integration": "tests/integration/baseline.ts",
     baseline: "tests/baseline.test.ts",

@@ -28,9 +28,10 @@
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "check": "tsc -p ./tsconfig.json --noEmit && node ./tests/validate-artifact.mjs",
-    "test": "npm run test:grammar && npm run test:unit",
+    "test": "npm run test:grammar && npm run test:unit && npm run test:settings",
     "test:grammar": "node ./tests/grammar.test.mjs && npm run test:baseline",
     "test:unit": "node ./scripts/build-tests.mjs && node ./.test-dist/unit.cjs",
+    "test:settings": "node ./scripts/build-tests.mjs && node ./.test-dist/settings.cjs",
     "test:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run.mjs",
     "test:baseline": "npm run build && node ./scripts/build-tests.mjs && node ./.test-dist/baseline.cjs",
     "test:baseline:integration": "npm run build && node ./scripts/build-tests.mjs && node ./tests/integration/run-baseline.mjs",
@@ -40,16 +41,133 @@
     "package:vsix": "npm run build && vsce package --no-dependencies --out hson-language.vsix"
   },
   "contributes": {
-    "configuration": {
-      "title": "HSON trusted Schema diagnostics",
-      "properties": {
-        "hson.trustedSchemaDiagnostics.enabled": { "type": "boolean", "default": false, "scope": "resource", "description": "Explicitly allow trusted project Schema execution. Also requires Workspace Trust. Not a sandbox." },
-        "hson.trustedSchemaDiagnostics.module": { "type": "string", "default": "", "scope": "resource", "description": "Trusted Schema registration module path relative to the workspace folder. Prefer a Schema-only module, not the application entrypoint." },
-        "hson.trustedSchemaDiagnostics.hsonModule": { "type": "string", "default": "", "scope": "resource", "description": "Path to the project's hson.js facade (same runtime instance as its private D1 entry)." },
-        "hson.trustedSchemaDiagnostics.runtimeEntry": { "type": "string", "default": "", "scope": "resource", "description": "Optional private D1 Node entry path; defaults beside hson.js under internal/trusted-schema-diagnostics." },
-        "hson.trustedSchemaDiagnostics.execArgv": { "type": "array", "items": { "type": "string" }, "default": [], "scope": "resource", "description": "Explicit trusted Node loader arguments, if required by the configured project runtime." }
+    "configuration": [
+      {
+        "title": "HSON › Appearance",
+        "order": 10,
+        "properties": {
+          "hson.appearance.libraryMarkerStrength": {
+            "type": "number",
+            "default": 1,
+            "minimum": 0,
+            "maximum": 1,
+            "scope": "window",
+            "order": 10,
+            "title": "Library Marker Strength",
+            "markdownDescription": "Controls the visual presence of the four-color marker on official literal `hson` usage sites. Colors remain customizable through `workbench.colorCustomizations`."
+          },
+          "hson.appearance.authoringMarkerStrength": {
+            "type": "number",
+            "default": 0.6,
+            "minimum": 0,
+            "maximum": 1,
+            "scope": "window",
+            "order": 20,
+            "title": "Authoring Marker Strength",
+            "markdownDescription": "Controls the softer visual presence of the four-color marker on official literal `HSON` usage sites, including validation calls and tagged templates."
+          },
+          "hson.appearance.blue": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #69B8EE.",
+            "scope": "window",
+            "order": 30,
+            "title": "Blue",
+            "markdownDescription": "Optional shared blue hue for the `h` and `H` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+          },
+          "hson.appearance.yellow": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #F2D064.",
+            "scope": "window",
+            "order": 40,
+            "title": "Yellow",
+            "markdownDescription": "Optional shared yellow hue for the `s` and `S` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+          },
+          "hson.appearance.orange": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #F18BA8.",
+            "scope": "window",
+            "order": 50,
+            "title": "Orange",
+            "markdownDescription": "Optional shared orange/pink hue for the `o` and `O` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+          },
+          "hson.appearance.green": {
+            "type": "string",
+            "default": "",
+            "pattern": "^(?:|#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8}))$",
+            "patternErrorMessage": "Use an empty value or a hexadecimal color such as #6CCA96.",
+            "scope": "window",
+            "order": 60,
+            "title": "Green",
+            "markdownDescription": "Optional shared green hue for the `n` and `N` markers. Leave empty to use the independently tuned theme colors and `workbench.colorCustomizations` IDs."
+          }
+        }
+      },
+      {
+        "title": "HSON › Schema Diagnostics",
+        "order": 20,
+        "properties": {
+          "hson.trustedSchemaDiagnostics.enabled": {
+            "type": "boolean",
+            "default": false,
+            "scope": "resource",
+            "order": 10,
+            "title": "Trusted Execution",
+            "markdownDescription": "Allows HSON trusted Schema diagnostics to execute the selected project's code, including Schema definitions, constraints, recurse callbacks, and module initialization. Execution occurs only in a VS Code-trusted workspace, after separate HSON consent, and runs with your user permissions in a supervised separate process. This is not a security sandbox."
+          }
+        }
+      },
+      {
+        "title": "HSON › Runtime / Provider",
+        "order": 30,
+        "properties": {
+          "hson.trustedSchemaDiagnostics.module": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "order": 10,
+            "title": "Provider Entry",
+            "description": "Trusted Schema registration module path, resolved relative to the containing workspace folder. Prefer a Schema-only module, not the application entrypoint."
+          },
+          "hson.trustedSchemaDiagnostics.hsonModule": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "order": 20,
+            "title": "HSON Runtime Module",
+            "description": "Advanced: path to the project's hson.js facade, resolved relative to the containing workspace folder. It must be the same runtime instance used by the provider."
+          },
+          "hson.trustedSchemaDiagnostics.runtimeEntry": {
+            "type": "string",
+            "default": "",
+            "scope": "resource",
+            "order": 30,
+            "title": "Runtime Entry",
+            "description": "Advanced: private trusted-diagnostics Node entry path relative to the workspace folder. When empty, HSON uses the entry beside the configured HSON runtime module."
+          },
+          "hson.trustedSchemaDiagnostics.execArgv": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": [],
+            "scope": "resource",
+            "order": 40,
+            "title": "Node Arguments",
+            "description": "Advanced: Node loader arguments required by the trusted provider, for example when executing development TypeScript modules."
+          }
+        }
       }
-    },
+    ],
+    "commands": [
+      { "command": "hson.openSettings", "title": "Open Settings", "category": "HSON" },
+      { "command": "hson.enableTrustedSchemaDiagnostics", "title": "Enable Trusted Schema Diagnostics", "category": "HSON" },
+      { "command": "hson.disableTrustedSchemaDiagnostics", "title": "Disable Trusted Schema Diagnostics", "category": "HSON" },
+      { "command": "hson.restartTrustedSchemaRuntime", "title": "Restart Trusted Schema Runtime", "category": "HSON" }
+    ],
     "languages": [
       {
         "id": "hson",
@@ -74,42 +192,42 @@
       {
         "id": "hson.libraryMarker.h",
         "description": "HSON library facade marker: h (strong blue).",
-        "defaults": { "dark": "#55A7E3", "light": "#0D6FAE", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
+        "defaults": { "dark": "#69B8EE", "light": "#2A86C0", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
       },
       {
         "id": "hson.libraryMarker.s",
         "description": "HSON library facade marker: s (strong yellow).",
-        "defaults": { "dark": "#E7C34D", "light": "#806A00", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
+        "defaults": { "dark": "#F2D064", "light": "#AD8200", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
       },
       {
         "id": "hson.libraryMarker.o",
         "description": "HSON library facade marker: o (strong pink).",
-        "defaults": { "dark": "#E97A9A", "light": "#B82E61", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
+        "defaults": { "dark": "#F18BA8", "light": "#D45179", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
       },
       {
         "id": "hson.libraryMarker.n",
         "description": "HSON library facade marker: n (strong green).",
-        "defaults": { "dark": "#59BA82", "light": "#147A45", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
+        "defaults": { "dark": "#6CCA96", "light": "#31945E", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
       },
       {
         "id": "hson.authoringMarker.h",
         "description": "HSON notation marker: H (soft blue).",
-        "defaults": { "dark": "#55A7E3DB", "light": "#0D6FAEE0", "highContrast": "#6CB8F0EB", "highContrastLight": "#005F9EEB" }
+        "defaults": { "dark": "#69B8EE", "light": "#2A86C0", "highContrast": "#6CB8F0", "highContrastLight": "#005F9E" }
       },
       {
         "id": "hson.authoringMarker.s",
         "description": "HSON notation marker: S (soft yellow).",
-        "defaults": { "dark": "#E7C34DDB", "light": "#806A00E0", "highContrast": "#F5D35DEB", "highContrastLight": "#6F5C00EB" }
+        "defaults": { "dark": "#F2D064", "light": "#AD8200", "highContrast": "#F5D35D", "highContrastLight": "#6F5C00" }
       },
       {
         "id": "hson.authoringMarker.o",
         "description": "HSON notation marker: O (soft pink).",
-        "defaults": { "dark": "#E97A9ADB", "light": "#B82E61E0", "highContrast": "#F58AA8EB", "highContrastLight": "#A51F50EB" }
+        "defaults": { "dark": "#F18BA8", "light": "#D45179", "highContrast": "#F58AA8", "highContrastLight": "#A51F50" }
       },
       {
         "id": "hson.authoringMarker.n",
         "description": "HSON notation marker: N (soft green).",
-        "defaults": { "dark": "#59BA82DB", "light": "#147A45E0", "highContrast": "#6BD092EB", "highContrastLight": "#096A36EB" }
+        "defaults": { "dark": "#6CCA96", "light": "#31945E", "highContrast": "#6BD092", "highContrastLight": "#096A36" }
       }
     ],
     "semanticTokenTypes": [

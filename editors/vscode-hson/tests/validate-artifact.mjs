@@ -22,8 +22,18 @@ assert.deepEqual(manifest.contributes.colors.map(color => color.id), [
 ]);
 assert.ok((await readFile(new URL("../dist/onig.wasm", import.meta.url))).length > 0);
 assert.deepEqual(languageConfiguration.comments, { lineComment: "//" });
-assert.equal(manifest.contributes.commands, undefined);
-assert.equal(manifest.contributes.configuration.properties["hson.trustedSchemaDiagnostics.enabled"].default, false);
+assert.equal(manifest.contributes.commands.length, 4);
+const configuration = Object.assign({}, ...manifest.contributes.configuration.map(group => group.properties));
+assert.equal(configuration["hson.trustedSchemaDiagnostics.enabled"].default, false);
+assert.equal(configuration["hson.appearance.libraryMarkerStrength"].default, 1);
+assert.equal(configuration["hson.appearance.authoringMarkerStrength"].default, 0.6);
+assert.equal(configuration["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
+assert.equal(configuration["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
+assert.deepEqual(["blue", "yellow", "orange", "green"].map(key => ({
+  key: `hson.appearance.${key}`,
+  default: configuration[`hson.appearance.${key}`].default,
+  scope: configuration[`hson.appearance.${key}`].scope,
+})), ["blue", "yellow", "orange", "green"].map(key => ({ key: `hson.appearance.${key}`, default: "", scope: "window" })));
 assert.equal(manifest.capabilities.untrustedWorkspaces.supported, "limited");
 assert.ok(manifest.capabilities.untrustedWorkspaces.restrictedConfigurations.includes("hson.trustedSchemaDiagnostics.module"));
 assert.ok(manifest.devDependencies.esbuild);

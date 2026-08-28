@@ -22,9 +22,45 @@ export async function run(): Promise<void> {
   ]);
   assert.ok(markerColors.every((color: { defaults: object }) =>
     ["dark", "light", "highContrast", "highContrastLight"].every(key => key in color.defaults)));
+  const settings = Object.assign({}, ...extension.packageJSON.contributes.configuration.map(
+    (group: { properties: object }) => group.properties,
+  ));
+  assert.equal(settings["hson.appearance.authoringMarkerStrength"].default, 0.6);
+  assert.equal(settings["hson.appearance.libraryMarkerStrength"].multipleOf, undefined);
+  assert.equal(settings["hson.appearance.authoringMarkerStrength"].multipleOf, undefined);
+  for (const key of ["blue", "yellow", "orange", "green"]) {
+    const colorSetting = settings[`hson.appearance.${key}`];
+    assert.equal(colorSetting.default, ""); assert.equal(colorSetting.type, "string");
+    assert.ok(new RegExp(colorSetting.pattern).test("#69B8EE"));
+  }
   const override = { "hson.libraryMarker.h": "#123456", "hson.authoringMarker.h": "#123456CC" };
   await vscode.workspace.getConfiguration("workbench").update("colorCustomizations", override, vscode.ConfigurationTarget.Global);
   assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override);
+  const appearance = vscode.workspace.getConfiguration("hson.appearance", doc.uri);
+  await appearance.update("authoringMarkerStrength", 0.35, vscode.ConfigurationTarget.Workspace);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), 0.35);
+  assert.equal(extension.isActive, true, "authoring marker strength refresh must not reload the extension");
+  await appearance.update("libraryMarkerStrength", 0.55, vscode.ConfigurationTarget.Workspace);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), 0.55);
+  assert.equal(extension.isActive, true, "library marker strength refresh must not reload the extension");
+  for (const [key, color] of [["blue", "#102030"], ["yellow", "#405060"], ["orange", "#708090"], ["green", "#A0B0C0"]]) {
+    await appearance.update(key, color, vscode.ConfigurationTarget.Workspace);
+    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), color);
+    assert.equal(extension.isActive, true, `${key} marker color refresh must not reload the extension`);
+  }
+  assert.deepEqual(vscode.workspace.getConfiguration("workbench").get("colorCustomizations"), override,
+    "shared colors do not mutate the advanced theme-specific color IDs");
+  for (const key of ["blue", "yellow", "orange", "green"]) {
+    await appearance.update(key, undefined, vscode.ConfigurationTarget.Workspace);
+    assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get(key), "");
+  }
+  await appearance.update("authoringMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
+  await appearance.update("libraryMarkerStrength", undefined, vscode.ConfigurationTarget.Workspace);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("authoringMarkerStrength"), 0.6);
+  assert.equal(vscode.workspace.getConfiguration("hson.appearance", doc.uri).get("libraryMarkerStrength"), 1);
+  await vscode.commands.executeCommand("hson.openSettings");
+  assert.equal(extension.isActive, true, "opening native HSON Settings must not reload the extension");
+  process.stdout.write("ok - real VS Code strengths and four shared colors update and restore live without extension reload; contributed color overrides remain intact; HSON Settings command opens\n");
   const syntax = await vscode.commands.executeCommand("_workbench.captureSyntaxTokens", doc.uri);
   const grammarHighlighted = JSON.stringify(syntax).includes("entity.name.type.hson");
   const semantic = await vscode.commands.executeCommand<vscode.SemanticTokens>("vscode.provideDocumentSemanticTokens", doc.uri);
@@ -94,6 +130,7 @@ export async function run(): Promise<void> {
   }
   assert.equal(vscode.languages.getDiagnostics(doc.uri).filter(d => d.source === "HSON Schema").length, 0);
   await assert.rejects(Promise.resolve(vscode.workspace.fs.stat(vscode.Uri.file(join(workspace, "provider-executed")))));
+  if (vscode.workspace.isTrusted) process.stdout.write("ok - checked-in trusted execution preference remains inert without the extension-owned consent receipt\n");
   console.log("# HSON baseline " + JSON.stringify({ version: extension.packageJSON.version, extensionPath: extension.extensionPath,
     active: extension.isActive, trusted: vscode.workspace.isTrusted, grammarHighlighted, semanticHighlighted,
     invalidCount, correctedCount, republishedCount, providerExecuted: false }));
