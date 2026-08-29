@@ -614,10 +614,18 @@ type LiveMapSchemaDraft = Readonly<{
 const SCHEMA_DRAFT: unique symbol = Symbol("LiveMapSchemaDraft");
 const DEFINED_PROJECTED_NODES = new WeakMap<object, LiveMapSchemaNode>();
 const COMPILED_PROJECTED_TOKENS = new WeakMap<object, LiveMapSchemaNode>();
+const RESOLVED_SCHEMA_RECURSIONS = new WeakMap<() => LiveMapSchemaNode, LiveMapSchemaNode>();
 
 /** Private tooling authority; absent from package barrels and public Schema objects. */
 export function read_defined_projected_schema_node(schema: object): LiveMapSchemaNode | undefined {
   return DEFINED_PROJECTED_NODES.get(schema);
+}
+
+/** Read-only migration evidence. This never executes an unresolved recurse thunk. */
+export function read_resolved_schema_recursion(
+  recurse: () => LiveMapSchemaNode,
+): LiveMapSchemaNode | undefined {
+  return RESOLVED_SCHEMA_RECURSIONS.get(recurse);
 }
 
 /** Private capability-origin check; intentionally absent from public barrels. */
@@ -1196,11 +1204,14 @@ function normalize_schema_choice(choice: LiveMapSchemaChoice): LiveMapSchemaNode
 
 function memoize_schema_recursion(makeInput: () => LiveMapSchemaInput): () => LiveMapSchemaNode {
   let node: LiveMapSchemaNode | undefined;
-
-  return () => {
-    node ??= normalize_schema_input(makeInput());
+  const recurse = () => {
+    if (node === undefined) {
+      node = normalize_schema_input(makeInput());
+      RESOLVED_SCHEMA_RECURSIONS.set(recurse, node);
+    }
     return node;
   };
+  return recurse;
 }
 
 function normalize_schema_props(shape: LiveMapSchemaShape): readonly (readonly [string, LiveMapSchemaNode])[] {

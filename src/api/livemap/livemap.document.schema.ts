@@ -121,7 +121,7 @@ export type InternalDocumentSchemaEvidence<TSchema> =
 type ItemEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 type ContentEvidence<TSchema> = InternalDocumentSchemaEvidence<TSchema>;
 
-type DocumentItemNode =
+export type DocumentItemNode =
   | Readonly<{ kind: "text"; category: "item" }>
   | Readonly<{ kind: "unknown"; category: "item" }>
   | DocumentElementNode
@@ -131,7 +131,7 @@ type DocumentItemNode =
     choices: readonly DocumentItemNode[];
   }>;
 
-type DocumentElementNode = Readonly<{
+export type DocumentElementNode = Readonly<{
   kind: "element";
   category: "item";
   tag?: string;
@@ -151,9 +151,9 @@ export type InternalDocumentAttrsNode = Readonly<{
   exact: boolean;
   props: readonly (readonly [string, InternalDocumentAttrRule])[];
 }>;
-type DocumentAttrsNode = InternalDocumentAttrsNode;
+export type DocumentAttrsNode = InternalDocumentAttrsNode;
 
-type DocumentContentNode =
+export type DocumentContentNode =
   | Readonly<{
     kind: "sequence";
     category: "content";
@@ -171,19 +171,48 @@ type DocumentContentNode =
     choices: readonly DocumentContentNode[];
   }>;
 
-type DocumentFragmentNode = Readonly<{
+export type DocumentFragmentNode = Readonly<{
   kind: "fragment";
   category: "root";
   content: DocumentContentNode;
 }>;
 
-type DocumentRootNode = DocumentElementNode | DocumentFragmentNode;
+export type DocumentRootNode = DocumentElementNode | DocumentFragmentNode;
 type DocumentSchemaNode = DocumentItemNode | DocumentContentNode | DocumentFragmentNode;
 
 const DOCUMENT_ITEM_NODES = new WeakMap<object, DocumentItemNode>();
 const DOCUMENT_CONTENT_NODES = new WeakMap<object, DocumentContentNode>();
 const DOCUMENT_ROOT_NODES = new WeakMap<object, DocumentRootNode>();
 const DOCUMENT_ATTRS_NODES = new WeakMap<object, DocumentAttrsNode>();
+
+export type CurrentDocumentSchemaCapabilities = Readonly<{
+  item?: DocumentItemNode;
+  content?: DocumentContentNode;
+  root?: DocumentRootNode;
+  attrs?: DocumentAttrsNode;
+}>;
+
+/** Read-only migration snapshot; absent from package barrels and public objects. */
+export function read_current_document_schema_capabilities(
+  value: unknown,
+): CurrentDocumentSchemaCapabilities {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) return Object.freeze({});
+  const result: {
+    item?: DocumentItemNode;
+    content?: DocumentContentNode;
+    root?: DocumentRootNode;
+    attrs?: DocumentAttrsNode;
+  } = {};
+  const item = DOCUMENT_ITEM_NODES.get(value);
+  const content = DOCUMENT_CONTENT_NODES.get(value);
+  const root = DOCUMENT_ROOT_NODES.get(value);
+  const attrs = DOCUMENT_ATTRS_NODES.get(value);
+  if (item !== undefined) result.item = item;
+  if (content !== undefined) result.content = content;
+  if (root !== undefined) result.root = root;
+  if (attrs !== undefined) result.attrs = attrs;
+  return Object.freeze(result);
+}
 
 function document_token<TSchema extends object>(
   register: (value: object) => void,
