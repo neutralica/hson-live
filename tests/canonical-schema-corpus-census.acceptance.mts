@@ -10,6 +10,7 @@ const root = new URL("..", import.meta.url).pathname;
 const testRoot = join(root, "tests");
 const files = walk(testRoot).filter(file => /\.(?:mts|ts)$/.test(file) && !file.includes("canonical-schema-"));
 const entries: CensusEntry[] = [];
+const constrainIntents: Record<string, number> = { numericBound: 0, integer: 0, stringLength: 0, stringPattern: 0, collectionLength: 0, uniqueness: 0, arbitraryBusiness: 0, sideEffectOrThrow: 0, other: 0 };
 
 for (const file of files) {
   const sourceText = readFileSync(file, "utf8");
@@ -26,7 +27,10 @@ for (const file of files) {
       if (argument === undefined) category = "E";
       else {
         const executable = subtreeFlags(argument);
-        if (executable.constrain) category = "B";
+        if (executable.constrain) {
+          category = "B";
+          constrainIntents[classifyConstrainIntent(argument.getText(source))] += 1;
+        }
         else if (executable.recurse) category = "C";
         else if (!ts.isArrowFunction(argument) && !ts.isFunctionExpression(argument)) category = "D";
         else if (hasFunctionAncestor(node) || executable.dynamicFrontend) category = "D";
@@ -48,6 +52,7 @@ assert.ok(counts.C > 0, "expected recurse blockers");
 assert.ok(counts.D > 0, "expected acquisition-only dynamic definitions");
 assert.equal(counts.E, 0, `unexpected blockers: ${JSON.stringify(entries.filter(entry => entry.category === "E"))}`);
 console.log(`# canonical Schema corpus census ${JSON.stringify({ total: entries.length, ...counts })}`);
+console.log(`# constrain intent census ${JSON.stringify(constrainIntents)}`);
 let checks = 0;
 for (const [name, run] of [
   ["all discovered callsites are classified", () => assert.ok(entries.length > 0)],
@@ -56,6 +61,7 @@ for (const [name, run] of [
   ["executable recurse blocker category is populated", () => assert.ok(counts.C > 0)],
   ["dynamic frontend/acquisition-only category is populated", () => assert.ok(counts.D > 0)],
   ["no unexpected blocker remains", () => assert.equal(counts.E, 0)],
+  ["every constrain-bearing callsite has an intent classification", () => assert.equal(Object.values(constrainIntents).reduce((sum, count) => sum + count, 0), counts.B)],
 ] as const) { run(); console.log(`ok ${++checks} - ${name}`); }
 emit_hson_live_test_completion("canonical-schema-corpus-census", checks, checks, 0);
 
@@ -93,4 +99,15 @@ function hasFunctionAncestor(node: ts.Node): boolean {
     parent = parent.parent;
   }
   return false;
+}
+
+function classifyConstrainIntent(text: string): keyof typeof constrainIntents {
+  if (/\bthrow\b|\+\+|--|\+=|-=|\.push\s*\(|\.add\s*\(/.test(text)) return "sideEffectOrThrow";
+  if (/Number\.isInteger\s*\(/.test(text)) return "integer";
+  if (/new\s+Set\b|\.every\s*\([^)]*(?:indexOf|findIndex)/.test(text)) return "uniqueness";
+  if (/\.length\b/.test(text)) return /(?:s|schema)\.string/.test(text) ? "stringLength" : "collectionLength";
+  if (/\.test\s*\(|\.match\s*\(|\.startsWith\s*\(|\.endsWith\s*\(|\.includes\s*\(/.test(text)) return "stringPattern";
+  if (/(?:=>|return)[^;{}]*(?:>=|<=|>|<)\s*-?\d/.test(text)) return "numericBound";
+  if (/constrain\s*\(\s*(?:["'`][^"'`]*["'`]\s*,\s*)?[^)]*=>/.test(text)) return "arbitraryBusiness";
+  return "other";
 }

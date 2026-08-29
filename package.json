@@ -245,6 +245,8 @@
     "test:canonical-schema-recursion-productivity": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-schema-recursion-productivity.acceptance.mts",
     "test:canonical-schema-refinement": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-schema-refinement.acceptance.mts",
     "test:canonical-schema-corpus-census": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-schema-corpus-census.acceptance.mts",
+    "test:canonical-schema-shadow-construction": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-schema-shadow-construction.acceptance.mts",
+    "test:canonical-schema-resource-semantics": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/canonical-schema-resource-semantics.acceptance.mts",
     "test:schema-d2-discovery": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d2-discovery.acceptance.mts",
     "test:schema-d2-runtime": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d2-runtime.acceptance.mts",
     "test:schema-d2-editor": "TS_NODE_TRANSPILE_ONLY=true node --loader ts-node/esm tests/schema-d2-editor.acceptance.mts",

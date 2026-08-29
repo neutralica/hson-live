@@ -3,6 +3,7 @@ import { is_public_attr_name } from "../../core/public-attrs.js";
 import {
   CANONICAL_CAPABILITY_KEYS,
   CANONICAL_SCHEMA_FORMAT,
+  CANONICAL_SCHEMA_FORMAT_LIMITS,
   CANONICAL_SCHEMA_VERSION,
   type CanonicalCapabilityKey,
   type CanonicalDocumentAttrProperty,
@@ -45,6 +46,10 @@ export function verify_canonical_schema_graph(input: unknown): CanonicalGraphVer
   exact_fields(capabilities, CANONICAL_CAPABILITY_KEYS, ["capabilities"], fail);
   const nodes = input.nodes;
   if (nodes.length === 0) fail(["nodes"], "Node table must not be empty.");
+  if (nodes.length > CANONICAL_SCHEMA_FORMAT_LIMITS.maxGraphNodes) {
+    fail(["nodes"], `Node table exceeds the format limit of ${CANONICAL_SCHEMA_FORMAT_LIMITS.maxGraphNodes}.`);
+    return invalid(issues);
+  }
   let capabilityCount = 0;
   for (const key of CANONICAL_CAPABILITY_KEYS) {
     const ref = capabilities[key];

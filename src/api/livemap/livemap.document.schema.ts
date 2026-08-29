@@ -11,6 +11,7 @@ import type {
   LiveMapSchemaIssue,
   LiveMapSchemaValidation,
 } from "./livemap.schema.js";
+import { assert_document_shadow_equivalence } from "../../internal/canonical-schema/shadow-current-schema.js";
 
 declare const DOCUMENT_ITEM_EVIDENCE: unique symbol;
 declare const DOCUMENT_CONTENT_EVIDENCE: unique symbol;
@@ -486,6 +487,16 @@ export function require_document_root_schema(
 }
 
 export function validate_livemap_document_schema_root(
+  schema: InternalDocumentRootSchema,
+  root: HsonNode,
+  mode: DocumentLiveMapMode,
+): LiveMapSchemaValidation {
+  const current = validate_livemap_document_schema_root_current(schema, root, mode);
+  assert_document_shadow_equivalence(schema, root, mode, current);
+  return current;
+}
+
+function validate_livemap_document_schema_root_current(
   schema: InternalDocumentRootSchema,
   root: HsonNode,
   mode: DocumentLiveMapMode,

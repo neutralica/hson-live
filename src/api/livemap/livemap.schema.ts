@@ -22,6 +22,11 @@ import { materialize_projected_value } from "../../core/projected-value-material
 import { emit_ordered_json } from "../transform/utils/json-utils/ordered-json.js";
 import { HTML_TAGS, SVG_TAGS } from "../../core/all-html-tags.js";
 import {
+  assert_projected_shadow_equivalence,
+  finalize_current_schema_shadow,
+} from "../../internal/canonical-schema/shadow-current-schema.js";
+import { register_current_schema_lowering_readers } from "../../internal/canonical-schema/lower-current-schema.js";
+import {
   decode_public_attr_value,
   is_public_attr_name,
 } from "../../core/public-attrs.js";
@@ -39,6 +44,7 @@ import {
   make_document_tuple_schema,
   register_defined_document_schema,
   register_defined_document_attrs_schema,
+  read_current_document_schema_capabilities,
   document_attrs_node,
   type DocumentAttrsEvidence,
   type DocumentAttrValueEvidence,
@@ -628,6 +634,12 @@ export function read_resolved_schema_recursion(
   return RESOLVED_SCHEMA_RECURSIONS.get(recurse);
 }
 
+register_current_schema_lowering_readers(Object.freeze({
+  projected: read_defined_projected_schema_node,
+  document: read_current_document_schema_capabilities,
+  resolvedRecursion: read_resolved_schema_recursion,
+}));
+
 /** Private capability-origin check; intentionally absent from public barrels. */
 export function is_owned_projected_schema(value: unknown): value is LiveMapProjectedSchema {
   return typeof value === "object" && value !== null && DEFINED_PROJECTED_NODES.has(value);
@@ -922,6 +934,12 @@ function define_schema_expression<const TExpression extends InternalLiveMapSchem
     throw new TypeError("schema.define(...) callback must return one recognized schema expression.");
   }
   if (projectedRoot !== undefined) DEFINED_PROJECTED_NODES.set(target, projectedRoot);
+  finalize_current_schema_shadow(target, {
+    expression,
+    ...(projectedRoot === undefined ? {} : { projectedRoot }),
+    hasDocument: hasDocumentCapability,
+    hasAttrs: hasAttrsCapability,
+  });
   return Object.freeze(target) as InternalDefinedLiveMapSchema<TExpression>;
 }
 
@@ -967,7 +985,9 @@ export function validate_livemap_schema_projected_root(
   schema: LiveMapProjectedSchema,
   value: OrderedProjectedValue,
 ): LiveMapSchemaValidation {
-  return validate_schema_node(schema.root, [], value);
+  const current = validate_schema_node(schema.root, [], value);
+  assert_projected_shadow_equivalence(schema, value, current);
+  return current;
 }
 
 /** Validate one already-admitted endpoint, including an explicitly missing value. */
@@ -1394,7 +1414,11 @@ function validate_public_schema_root(
   root: LiveMapSchemaNode,
   value: JsonValue | undefined,
 ): LiveMapSchemaValidation {
-  return admit_public_schema_value(value, [], (admitted) => validate_schema_node(root, [], admitted));
+  return admit_public_schema_value(value, [], (admitted) => {
+    const current = validate_schema_node(root, [], admitted);
+    assert_projected_shadow_equivalence(root, admitted, current);
+    return current;
+  });
 }
 
 function validate_public_schema_value(

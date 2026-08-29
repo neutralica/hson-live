@@ -1,15 +1,11 @@
-import {
-  read_current_document_schema_capabilities,
-  type DocumentAttrsNode,
-  type DocumentContentNode,
-  type DocumentItemNode,
-  type DocumentRootNode,
+import type {
+  CurrentDocumentSchemaCapabilities,
+  DocumentAttrsNode,
+  DocumentContentNode,
+  DocumentItemNode,
+  DocumentRootNode,
 } from "../../api/livemap/livemap.document.schema.js";
-import {
-  read_defined_projected_schema_node,
-  read_resolved_schema_recursion,
-  type LiveMapSchemaNode,
-} from "../../api/livemap/livemap.schema.js";
+import type { LiveMapSchemaNode } from "../../api/livemap/livemap.schema.js";
 import {
   CANONICAL_SCHEMA_FORMAT,
   CANONICAL_SCHEMA_VERSION,
@@ -29,7 +25,8 @@ export type CurrentSchemaNonLowerableReason = Readonly<{
     | "EXECUTABLE_SEMANTIC"
     | "UNSUPPORTED_CURRENT_NODE"
     | "NO_SCHEMA_CAPABILITY"
-    | "INVALID_LOWERED_GRAPH";
+    | "INVALID_LOWERED_GRAPH"
+    | "CAPABILITY_FAILURE";
   capability?: keyof CanonicalSchemaCapabilities;
   currentKind?: string;
   detail: string;
@@ -39,9 +36,27 @@ export type CurrentSchemaLoweringResult =
   | Readonly<{ ok: true; graph: VerifiedCanonicalSchemaGraph }>
   | Readonly<{ ok: false; reasons: readonly CurrentSchemaNonLowerableReason[] }>;
 
+type CurrentSchemaLoweringReaders = Readonly<{
+  projected: (schema: object) => LiveMapSchemaNode | undefined;
+  document: (schema: unknown) => CurrentDocumentSchemaCapabilities;
+  resolvedRecursion: (recurse: () => LiveMapSchemaNode) => LiveMapSchemaNode | undefined;
+}>;
+
+let CURRENT_SCHEMA_READERS: CurrentSchemaLoweringReaders | undefined;
+
+/** Installed once by the current Schema implementation; not a package export. */
+export function register_current_schema_lowering_readers(readers: CurrentSchemaLoweringReaders): void {
+  if (CURRENT_SCHEMA_READERS !== undefined) return;
+  CURRENT_SCHEMA_READERS = Object.freeze(readers);
+}
+
 export function lower_current_schema(schema: unknown): CurrentSchemaLoweringResult {
   if ((typeof schema !== "object" && typeof schema !== "function") || schema === null) {
     return failed([{ code: "NO_SCHEMA_CAPABILITY", detail: "Current Schema value is not an object." }]);
+  }
+  const readers = CURRENT_SCHEMA_READERS;
+  if (readers === undefined) {
+    return failed([{ code: "NO_SCHEMA_CAPABILITY", detail: "Current Schema lowering readers are not initialized." }]);
   }
   const nodes: CanonicalSchemaNode[] = [];
   const reasons: CurrentSchemaNonLowerableReason[] = [];
@@ -106,7 +121,7 @@ export function lower_current_schema(schema: unknown): CurrentSchemaLoweringResu
             reason({ code: "UNRESOLVED_RECURSE_THUNK", currentKind: source.kind, detail: "Current recurse node has no resolver." });
             return put(core, { kind: "projected-ref", target: core });
           }
-          const resolved = read_resolved_schema_recursion(source.recurse);
+          const resolved = readers.resolvedRecursion(source.recurse);
           if (resolved === undefined) {
             reason({ code: "UNRESOLVED_RECURSE_THUNK", currentKind: source.kind, detail: "Recurse thunk has not been memoized by current runtime use; lowering did not execute it." });
             return put(core, { kind: "projected-ref", target: core });
@@ -180,8 +195,8 @@ export function lower_current_schema(schema: unknown): CurrentSchemaLoweringResu
     })()
     : item(source);
 
-  const projectedRoot = read_defined_projected_schema_node(schema);
-  const document = read_current_document_schema_capabilities(schema);
+  const projectedRoot = readers.projected(schema);
+  const document = readers.document(schema);
   const add = (key: keyof CanonicalSchemaCapabilities, make: () => number): void => {
     activeCapability = key; capabilities[key] = make();
   };

@@ -3,6 +3,19 @@ import type { OrderedProjectedValue } from "../../core/ordered-projected-value.j
 export const CANONICAL_SCHEMA_FORMAT = "hson-canonical-schema" as const;
 export const CANONICAL_SCHEMA_VERSION = 1 as const;
 
+/** Provisional v1 internal limits. Format and evaluator limits are intentionally separate. */
+export const CANONICAL_SCHEMA_FORMAT_LIMITS = Object.freeze({
+  maxGraphNodes: 100_000,
+});
+
+export const CANONICAL_SCHEMA_EVALUATOR_LIMITS = Object.freeze({
+  maxSteps: 1_000_000,
+  maxIssues: 10_000,
+  maxDepth: 512,
+  maxUnionWork: 100_000,
+  maxContentItems: 100_000,
+});
+
 export type CanonicalSchemaNodeRef = number;
 
 export type CanonicalSchemaCapabilities = Readonly<{
@@ -30,9 +43,11 @@ export type CanonicalRefinementRule =
   | Readonly<{ kind: "number-lower-bound"; value: number; inclusive: boolean }>
   | Readonly<{ kind: "number-upper-bound"; value: number; inclusive: boolean }>
   | Readonly<{ kind: "integer" }>
+  /** Unicode code-point count (ECMAScript string iteration), not UTF-16 units or grapheme clusters. */
   | Readonly<{ kind: "string-length"; minimum?: number; maximum?: number }>
   | Readonly<{
     kind: "string-pattern";
+    /** Portable literal matching only; no host RegExp semantics participate. */
     dialect: "literal-string-v1";
     mode: "full" | "prefix" | "suffix" | "contains";
     pattern: string;
